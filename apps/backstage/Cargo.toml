@@ -1,0 +1,20 @@
+[package]
+name = "backstage"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "An observer-only production desk for Magic Studio"
+
+[dependencies]
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29", "layout-cache"] }
+crossterm = "0.29"
+notify = "8.2"
+tempfile = "3.27"
+nix = { version = "0.31", default-features = false, features = ["fs", "signal", "process"] }
+serde_json.workspace = true
+toml = "1.1.8"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[lints]
+workspace = true
