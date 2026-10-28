@@ -219,7 +219,7 @@ For pipeline changes, check:
 - `checkpoint_required`
 - `human_approval_default`
 - Matching stage director skills
-- Tests in `tests/contracts/` or `tests/pipelines/`
+- Human-approved native acceptance expectations (no legacy contract/pipeline suites)
 
 The manifest and the stage skill must agree. If the manifest says a stage
 produces `scene_plan`, the director skill should actually guide creation of a
@@ -428,23 +428,15 @@ wrong behavior.
 
 ## Testing Expectations
 
-Pick tests based on risk. Do not require expensive integration tests for every
-small doc fix, but do require evidence for changed behavior.
-
-Common checks:
+Retain ordinary compiler, syntax and lint checks, for example:
 
 ```bash
-python -m pytest tests/contracts -q
-python -m pytest tests/tools -q
-python -m pytest tests/qa -q
 python -m py_compile path/to/changed_file.py
+node --check path/to/changed_file.js
+cargo check --workspace
 ```
 
-For provider PRs, focused mocked tests are often better than expensive live API
-tests. Live-provider QA is useful when credentials and cost are acceptable, but
-the contract should not depend on a maintainer having every provider configured.
-
-If tests cannot be run, the review should say why and what risk remains.
+Behavioral cases belong only in the native WebdriverIO/installed `magic-cli` runner after Jesse observes the real UI and explicitly approves the expected chain. Legacy suites and mocked native acceptance are not substitutes. Report missing approval and unavailable desktop prerequisites as pending/blocked, never passing coverage. Do not run paid-provider workflows without authorization.
 
 ## PR Comment Guidance
 

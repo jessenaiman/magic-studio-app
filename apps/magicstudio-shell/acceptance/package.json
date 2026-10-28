@@ -1,0 +1,21 @@
+{
+  "name": "magic-native-acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs",
+    "check": "node --check run.mjs && node --check wdio.conf.mjs && node --check workflow.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@wdio/cli": "9.32.0",
+    "@wdio/local-runner": "9.32.0",
+    "@wdio/mocha-framework": "9.32.0",
+    "@wdio/spec-reporter": "9.32.0",
+    "@wdio/json-reporter": "9.32.0",
+    "webdriverio": "9.32.0",
+    "@wdio/tauri-service": "1.5.1"
+  }
+}
