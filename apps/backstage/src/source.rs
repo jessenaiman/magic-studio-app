@@ -126,21 +126,8 @@ pub fn run(
         .map_err(|e| format!("{program}: invalid JSON: {e}"))
 }
 
-pub fn inspect(project: &str, cancel: &AtomicBool) -> Result<Value, String> {
-    let input = format!(
-        "{}\n{}\n",
-        serde_json::json!({"id":"project.attach","params":{"path":project}}),
-        serde_json::json!({"id":"backstage.status","params":{"trace":false}})
-    );
-    let bytes = output("magic-cli", &["run", "-"], Some(input), cancel)?;
-    let receipts: Vec<Value> = String::from_utf8_lossy(&bytes)
-        .lines()
-        .map(serde_json::from_str)
-        .collect::<Result<_, _>>()
-        .map_err(|e| e.to_string())?;
-    let last = receipts.last().ok_or("No project observation received")?;
-    if last["ok"] != true {
-        return Err(format!("Observation failed: {last}"));
-    }
-    Ok(last["result"].clone())
+pub fn inspect(_project: &str, _cancel: &AtomicBool) -> Result<Value, String> {
+    // project.attach itself is read-only, but current native dispatch can implicitly
+    // call journaled project.load_asset before backstage.status. Do not enter that path.
+    Err("Project observation unavailable pending Magic's verified read-only contract; no project command was executed".into())
 }

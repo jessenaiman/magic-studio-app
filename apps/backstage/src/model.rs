@@ -48,6 +48,7 @@ pub struct App {
     pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub worker: Option<std::thread::JoinHandle<()>>,
     pub pending: Option<crate::ReadRequest>,
+    pub refresh_needed: bool,
 }
 impl Default for App {
     fn default() -> Self {
@@ -71,6 +72,7 @@ impl Default for App {
             cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             worker: None,
             pending: None,
+            refresh_needed: false,
         }
     }
 }

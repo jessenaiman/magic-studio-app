@@ -58,11 +58,20 @@ impl Drop for Screen {
 }
 
 fn request(a: &mut App, tx: &SyncSender<Event>, request: ReadRequest) {
+    if matches!(request, ReadRequest::Catalog) {
+        a.refresh_needed = true;
+    }
     if a.busy {
-        if a.pending.is_none() || !matches!(request, ReadRequest::Catalog) {
+        // Explicit reads and refresh demand are independent: neither can erase the other.
+        if !matches!(request, ReadRequest::Catalog) {
             a.pending = Some(request);
         }
         return;
+    }
+    if matches!(request, ReadRequest::Catalog) {
+        // Consume demand only when its read is scheduled. Changes during that read
+        // set it again; completing an older read must never clear newer demand.
+        a.refresh_needed = false;
     }
     if let Some(previous) = a.worker.take() {
         let _ = previous.join();
@@ -91,6 +100,13 @@ fn request(a: &mut App, tx: &SyncSender<Event>, request: ReadRequest) {
             }
         }
     }));
+}
+fn next_read(a: &mut App, tx: &SyncSender<Event>) {
+    if let Some(explicit) = a.pending.take() {
+        request(a, tx, explicit);
+    } else if a.refresh_needed {
+        request(a, tx, ReadRequest::Catalog);
+    }
 }
 fn inspect(a: &mut App, tx: &SyncSender<Event>) {
     if let Some(path) = a.path() {
@@ -362,9 +378,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                         a.status = e;
                     }
                 }
-                if let Some(audit) = a.pending.take() {
-                    request(&mut a, &tx, audit);
-                }
+                next_read(&mut a, &tx);
             }
             Some(Event::Audit(result)) => {
                 a.busy = false;
@@ -383,9 +397,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                         a.status = format!("Audit unavailable: {e}");
                     }
                 }
-                if let Some(audit) = a.pending.take() {
-                    request(&mut a, &tx, audit);
-                }
+                next_read(&mut a, &tx);
             }
             Some(Event::Project(path, result)) => {
                 a.busy = false;
@@ -402,9 +414,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                if let Some(audit) = a.pending.take() {
-                    request(&mut a, &tx, audit);
-                }
+                next_read(&mut a, &tx);
             }
             Some(Event::Agents(result)) => {
                 match result {
