@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generator": "Magic Studio original SVG starter artwork",
+  "characters": {
+    "gaffer": {
+      "label": "Gaffer",
+      "species": "cat",
+      "role": "artwork",
+      "poses": {
+        "rest": "media/companions/gaffer-cat-rest.svg",
+        "work": "media/companions/gaffer-cat-work.svg",
+        "sniff": "media/companions/gaffer-cat-sniff.svg",
+        "alert": "media/companions/gaffer-cat-alert.svg",
+        "asleep": "media/companions/gaffer-cat-asleep.svg"
+      }
+    },
+    "sproket": {
+      "label": "Sproket",
+      "species": "dog",
+      "role": "issue/chat",
+      "poses": {
+        "rest": "media/companions/sproket-dog-rest.svg",
+        "work": "media/companions/sproket-dog-work.svg",
+        "sniff": "media/companions/sproket-dog-sniff.svg",
+        "alert": "media/companions/sproket-dog-alert.svg",
+        "asleep": "media/companions/sproket-dog-asleep.svg"
+      }
+    }
+  }
+}
