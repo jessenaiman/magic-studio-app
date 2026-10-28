@@ -34,6 +34,42 @@ fn read_state(dir: &Path) -> Value {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or(json!({}))
 }
+
+/// Observe the saved project file without attaching it to this or any other session.
+/// This intentionally does not call status(): storyboard inspection may create PDFCraft files.
+pub fn observe_saved_project(_: &mut Session, params: &Value) -> Result<Value> {
+    let allowed = ["path", "_origin", "_client", "_request_id", "_control"];
+    if params.as_object().is_none_or(|p| p.keys().any(|k| !allowed.contains(&k.as_str()))) {
+        return Err(EngineError::InvalidParams("backstage.observe accepts only an absolute project path; trace and mutation options are not supported".into()));
+    }
+    let path = params["path"].as_str().filter(|p| !p.is_empty())
+        .ok_or_else(|| EngineError::InvalidParams("backstage.observe requires path to an existing .magic project".into()))?;
+    if !Path::new(path).is_absolute() {
+        return Err(EngineError::InvalidParams("backstage.observe requires an absolute project path".into()));
+    }
+    let canonical = fs::canonicalize(path)?;
+    let file = crate::read_only_file::open_regular(&canonical)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > 32 * 1024 * 1024 {
+        return Err(EngineError::InvalidParams("project must be a regular file no larger than 32 MiB".into()));
+    }
+    use std::io::Read;
+    let mut bytes=Vec::new();
+    file.take(32 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 32 * 1024 * 1024 {
+        return Err(EngineError::InvalidParams("project grew beyond 32 MiB during observation".into()));
+    }
+    let doc:Value=serde_json::from_slice(&bytes).map_err(|e|EngineError::InvalidParams(format!("invalid project file: {e}")))?;
+    if doc["format"] != "magicstudio.project" {
+        return Err(EngineError::InvalidParams("path is not a Magic Studio project".into()));
+    }
+    let now=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros();
+    Ok(json!({"ok":true,"project":canonical,"observation":{
+        "source":"saved_project_file","observed_unix_micros":now,
+        "sha256":format!("{:x}",Sha256::digest(&bytes)),
+        "live_unsaved_state":"unknown","external_files":"not inspected"
+    },"name":doc["name"],"assets":doc["assets"],"workshop":doc["workshop"]}))
+}
 pub(crate) fn write_state(dir: &Path, v: &Value) -> Result<()> {
     fs::write(
         dir.join("intake-state.json"),

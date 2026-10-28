@@ -26,3 +26,18 @@ References: [CLI-Anything HARNESS](https://github.com/HKUDS/CLI-Anything/blob/ma
 MCP dispatch uses an AnyIO lock and non-abandoning workers. Cancellation of a client request does not release the lock before native work and binding updates finish. Live transport uses registry long-running metadata for reply deadlines; a lost reply after submission is explicitly an unknown outcome and is never retried automatically.
 
 Native `--headless run` is a stop-on-error batch; the adapter uses internal `--headless serve` for persistent requests so a validation error does not discard session state. Native pipe reads and writes have the registry-based deadline too. A lost/timed-out native session is unavailable until explicit `project open` recovery; recovery never replays the failed request or replaces a still-running engine. Discovery remains available.
+
+### Saved-project observation
+
+`magic-cli backstage observe path=/absolute/Project.magic` reads the specified saved project
+file without selecting a project or Studio window. Discover it with `magic-cli commands backstage.observe`;
+MCP `command_run` uses ID `backstage.observe` and `{"path":"/absolute/Project.magic"}`. Call it
+without global `--project`, which explicitly changes the caller's binding. The output includes the
+canonical `project`, `name`, saved `assets` and `workshop`, and `observation` with
+`source: saved_project_file`, `sha256` of the bytes read, `observed_unix_micros`,
+`live_unsaved_state: unknown` and `external_files: not inspected`. It is a point-in-time disk read,
+not a live-window snapshot or a transactional snapshot of external assets. It accepts an existing
+absolute Magic Studio project file up to 32 MiB; invalid paths, other formats, `trace` and other
+unsupported parameters are errors. It does not attach, load assets, claim a writer, write activity,
+change a session binding, or switch a window. It remains usable while a Studio owns the project.
+This narrow observation is not the Backstage audit and does not provide release or productivity totals.
