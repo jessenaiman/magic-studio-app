@@ -63,14 +63,18 @@ pub fn status(_: &mut Session, params: &Value) -> Result<Value> {
     }
     let path=directory()?.join("changes.json");
     let read=(|| -> std::result::Result<Value,&'static str> {
-        let meta=fs::symlink_metadata(&path).map_err(|e|if e.kind()==std::io::ErrorKind::NotFound{"marker_missing"}else{"marker_unreadable"})?;
-        if !meta.is_file() || meta.len()>4096 { return Err("marker_invalid"); }
+        let file=crate::read_only_file::open_regular(&path).map_err(|e|match e {
+            EngineError::Io(e) if e.kind()==std::io::ErrorKind::NotFound => "marker_missing",
+            EngineError::InvalidParams(_) => "marker_invalid",
+            _ => "marker_unreadable",
+        })?;
+        let meta=file.metadata().map_err(|_|"marker_unreadable")?;
+        if meta.len()>4096 { return Err("marker_invalid"); }
         #[cfg(unix)] {
             use std::os::unix::fs::MetadataExt;
             if meta.uid()!=rustix::process::getuid().as_raw() || meta.mode() & 0o077 != 0 { return Err("marker_not_private"); }
         }
         use std::io::Read;
-        let file=fs::File::open(&path).map_err(|_|"marker_unreadable")?;
         let mut bytes=Vec::new();
         file.take(4097).read_to_end(&mut bytes).map_err(|_|"marker_unreadable")?;
         if bytes.len()>4096 { return Err("marker_invalid"); }
