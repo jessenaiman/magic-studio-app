@@ -14,15 +14,13 @@ use crate::{EngineError, Result};
 /// Return the canonical current Tauri/engine workspace, independent of the caller working directory.
 pub fn workspace_root(s: &crate::Session) -> PathBuf {
     let current_root = |root:&Path| root.join("Cargo.toml").is_file() && root.join("apps/magicstudio-shell/Cargo.toml").is_file();
-    if current_root(&s.cwd) {
-        return s.cwd.clone();
-    }
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()
         && current_root(&canon)
     {
         return canon;
     }
+    // Installed builds without their source tree can still use an explicit workspace cwd.
     s.cwd.clone()
 }
 

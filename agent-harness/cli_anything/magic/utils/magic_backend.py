@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 
-REPO_ROOT = Path("/run/media/jesse/Speedy/Work/omhas-animation")
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 def find_magicstudio_shell() -> str:
@@ -295,7 +295,9 @@ class HeadlessSession:
                 self.process.stdin.close()
             except BrokenPipeError:
                 pass
-            self.process.wait()
+            self.process.stdin = None
+            # Drain a reply interrupted by Ctrl-C rather than deadlocking on a full pipe.
+            self.process.communicate()
         finally:
             self.process.stdout.close()
             self.log.close()
