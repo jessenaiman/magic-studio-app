@@ -48,7 +48,7 @@ pub fn observe_saved_project(_: &mut Session, params: &Value) -> Result<Value> {
         return Err(EngineError::InvalidParams("backstage.observe requires an absolute project path".into()));
     }
     let canonical = fs::canonicalize(path)?;
-    let file = fs::File::open(&canonical)?;
+    let file = crate::read_only_file::open_regular(&canonical)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > 32 * 1024 * 1024 {
         return Err(EngineError::InvalidParams("project must be a regular file no larger than 32 MiB".into()));

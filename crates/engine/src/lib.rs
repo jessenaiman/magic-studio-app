@@ -44,6 +44,7 @@ pub mod part_replacement;
 pub mod photocraft;
 pub mod panels;
 pub mod project;
+pub(crate) mod read_only_file;
 pub mod project_settings;
 pub mod skills_registry;
 pub mod crew;
