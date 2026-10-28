@@ -687,9 +687,9 @@ fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool
     if let Some(obj) = params.as_object_mut() {
         obj.remove("_dry_run");
     }
-    // The saved-file observer validates its own arguments and must never attach, open or
+    // These observer queries validate their own arguments and must never attach, open or
     // auto-load an asset in the caller's persistent session, even for rejected requests.
-    if id == "backstage.observe" {
+    if matches!(id, "backstage.observe" | "backstage.changes") {
         return s.execute(id, params).map_err(|e| e.to_string());
     }
     if matches!(id, "project.open" | "project.identity" | "project.attach")

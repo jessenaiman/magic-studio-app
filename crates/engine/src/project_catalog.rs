@@ -50,12 +50,16 @@ fn update(path: &str, forget: bool) -> Result<(), String> {
         items.insert(0, path);
         items.truncate(10);
     }
-    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-    let bytes = serde_json::to_vec(&items).map_err(|e| e.to_string())?;
-    file.write_all(&bytes).map_err(|e| e.to_string())?;
-    file.set_len(bytes.len() as u64)
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    let result=(|| {
+        file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        let bytes = serde_json::to_vec(&items).map_err(|e| e.to_string())?;
+        file.write_all(&bytes).map_err(|e| e.to_string())?;
+        file.set_len(bytes.len() as u64).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    // Even a failed write may have changed a prefix of the catalog.
+    crate::change_marker::invalidate();
+    result
 }
 pub fn record(path: &str) -> Result<(), String> {
     update(path, false)

@@ -29,6 +29,7 @@ pub mod character;
 pub mod complexity;
 pub mod commands;
 pub mod command_center;
+pub mod change_marker;
 pub mod control_bindings;
 pub mod doctor;
 pub mod exports;

@@ -80,3 +80,8 @@ For read-only saved-project observation without changing a session or window, us
 `magic-cli backstage observe path=/absolute/Project.magic` (no global `--project`). Its canonical
 project, file hash, timestamp and saved fields are described in [MAGIC.md](../../../MAGIC.md).
 Unsaved window state and external files are not observed; this is not an audit report.
+
+For the saved-project change-token path and current limited coverage, use
+`magic-cli backstage changes` without global `--project`; see [MAGIC.md](../../../MAGIC.md).
+Each observer keeps its own token and never clears the producer's file. Unavailable notification
+state is not evidence that nothing changed.

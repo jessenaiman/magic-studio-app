@@ -156,9 +156,8 @@ class Session:
         # their pinned window, even when another window now owns the same path.
         if cmd_id == "command.list":
             return backend.execute_headless(cmd_id, req)
-        # Observation is an isolated saved-file read even if this caller is pinned to a
-        # Studio or has an active native writer session. It must never alter either binding.
-        if cmd_id == "backstage.observe":
+        # Isolated read-only queries must not change the caller's target or writer session.
+        if cmd_id in {"backstage.observe", "backstage.changes"}:
             return backend.execute_headless(cmd_id, req)
         selecting = cmd_id == "project.open"
         target = req.get("path") if selecting else req.get("project")
