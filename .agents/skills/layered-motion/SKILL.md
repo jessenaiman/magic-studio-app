@@ -10,7 +10,7 @@ Drives `export.layered_motion` (`pipeline/layered_motion.py`): takes a JSON spec
 ## Command
 
 ```bash
-mc exec export.layered_motion spec=<spec.json> out_dir=<folder> [tracks=a,b] [stills=4] [video=false] [gpu=true] [crf=24]
+magic-cli exec export.layered_motion spec=<spec.json> out_dir=<folder> [tracks=a,b] [stills=4] [video=false] [gpu=true] [crf=24]
 ```
 
 - `stills=N video=false` renders N evenly spaced transparent PNGs per track in seconds. Use it to review motion before a full export.
@@ -20,7 +20,7 @@ mc exec export.layered_motion spec=<spec.json> out_dir=<folder> [tracks=a,b] [st
 
 ## Validation (no vision needed)
 
-`mc exec validate.motion video=<clip.webm> [frames=N fps=30 loop=true reference=<image> spec=<spec.json>]`
+`magic-cli exec validate.motion video=<clip.webm> [frames=N fps=30 loop=true reference=<image> spec=<spec.json>]`
 checks frame count and rate, alpha, empty or clipped frames, teleports and flicker, loop closure, colour and size against a
 reference image, and lints the spec for oscillations that alias at its frame rate. It proves "no measurable problem", not that
 the result looks right: also review `review/*_detail.png` visually against the same reference.

@@ -1,6 +1,6 @@
 ---
 name: storyboard
-description: Read, create, update, split, combine and restore Magic Studio storyboard pages through shared mc commands. Lyrics and recorded timing remain project inputs.
+description: Read, create, update, split, combine and restore Magic Studio storyboard pages through shared magic-cli commands. Lyrics and recorded timing remain project inputs.
 ---
 
 # Storyboard
@@ -10,20 +10,20 @@ Read the project's `intent.md` first. The saved native document is
 Use the existing `studio-template.deckcraft` pipeline; do not generate a second template,
 Markdown storyboard, transcript or timing model.
 
-Select the exact Studio bridge. The CLI, MCP and left Storyboard rail use the same commands:
+Select the intended project once with `magic-cli project open path=/absolute/Project.magic` or `magic-cli studio open /absolute/Project.magic`. Routing to its window or native engine is automatic. The CLI, MCP and left Storyboard rail use the same commands:
 
 ```sh
-mc --bridge PORT storyboard create
-mc --bridge PORT storyboard read
-mc --bridge PORT storyboard read scene=1
-mc --bridge PORT storyboard read page=1
-mc --bridge PORT storyboard update page=1 field=story value='The story'
-mc --bridge PORT storyboard create scene=1 word=w17 expected_revision='<revision>'
-mc --bridge PORT storyboard update scene=1 edge=end word=w20 expected_revision='<revision>'
-mc --bridge PORT storyboard delete scene=2 into=previous expected_revision='<revision>'
-mc --bridge PORT storyboard update restore='/project/storyboard/history/VERSION/manifest.json' expected_revision='<revision>'
-mc --bridge PORT exec storyboard.backgrounds
-mc --bridge PORT exec project.search query='captain'
+magic-cli storyboard create
+magic-cli storyboard read
+magic-cli storyboard read scene=1
+magic-cli storyboard read page=1
+magic-cli storyboard update page=1 field=story value='The story'
+magic-cli storyboard create scene=1 word=w17 expected_revision='<revision>'
+magic-cli storyboard update scene=1 edge=end word=w20 expected_revision='<revision>'
+magic-cli storyboard delete scene=2 into=previous expected_revision='<revision>'
+magic-cli storyboard update restore='/project/storyboard/history/VERSION/manifest.json' expected_revision='<revision>'
+magic-cli exec storyboard.backgrounds
+magic-cli exec project.search query='captain'
 ```
 
 `read` returns the current revision, stable scene IDs, pages and recorded words.

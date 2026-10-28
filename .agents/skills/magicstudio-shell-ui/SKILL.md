@@ -131,8 +131,7 @@ lifts, a 90° chevron); nothing bounces. Respect `prefers-reduced-motion` (alrea
 
 Follow the implementation order in research.md: persistent live MCP → visible actions/history/undo →
 two-way pointing/drawings/comments → captured message context → inline questions/progress → vendored
-Markdown. Use `mc --bridge <selected-endpoint> mcp` for the verified Studio window; never bind
-it to a song path or guess a port. Discover its project/instance and endpoint with `mc exec ui.feedback`.
+Markdown. Use `magic-cli --project /absolute/Project.magic mcp` for the intended project. Select a visible window with `magic-cli studio open /absolute/Project.magic`, and discover its identity with `magic-cli ui feedback`. Transport is automatic; callers do not select ports.
 Persistent config edits require user authorization.
 
 Capture view, selection, scene, track/instance, song/local time, range and revision when sending a
@@ -154,9 +153,10 @@ Upgrade only touched dependencies to latest stable releases and record versions;
 ## Verify loop (every visible change)
 
 ```
-cargo build -p magicstudio-shell -p mc          # ui/ is embedded: rebuild after edits
-./target/debug/magicstudio-shell --control <port> [<project.magic>]
-mc --bridge <selected-endpoint> exec ui.look [region=<id|css>] [click=<id|label>] output=<project>/.agent/look.png
+cargo build -p magicstudio-shell          # ui/ is embedded: rebuild after edits
+magic [<project.magic>]
+magic-cli project open path=<project.magic>
+magic-cli exec ui.look [region=<id|css>] [click=<id|label>] output=<project>/.agent/look.png
 ```
 Open the PNG and check, every time: alignment, truncation, contrast, empty states, hover-only controls
 still reachable, the narrow window. For layout bugs, `ui.eval js='return …getBoundingClientRect()…'`

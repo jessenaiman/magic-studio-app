@@ -73,3 +73,5 @@ The official Python MCP SDK owns initialization, protocol negotiation, transport
 ## Upstream references
 
 Follow [CLI-Anything HARNESS](https://github.com/HKUDS/CLI-Anything/blob/main/cli-anything-plugin/HARNESS.md), with this project's explicit no-REPL entry points, and the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x) and [MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture). Add no new tests without first presenting their cases for user approval. Preserve user-deleted files.
+
+Native `--headless run` is a stop-on-error batch; the adapter uses internal `--headless serve` for persistent requests so a validation error does not discard session state. Native pipe reads and writes have the registry-based deadline too. A lost/timed-out native session is unavailable until explicit `project open` recovery; recovery never replays the failed request or replaces a still-running engine. Discovery remains available.
