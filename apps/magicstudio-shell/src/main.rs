@@ -689,7 +689,7 @@ fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool
     }
     // These observer queries validate their own arguments and must never attach, open or
     // auto-load an asset in the caller's persistent session, even for rejected requests.
-    if matches!(id, "backstage.observe" | "backstage.changes") {
+    if matches!(id, "audit" | "project.observe" | "app.changes") {
         return s.execute(id, params).map_err(|e| e.to_string());
     }
     if matches!(id, "project.open" | "project.identity" | "project.attach")

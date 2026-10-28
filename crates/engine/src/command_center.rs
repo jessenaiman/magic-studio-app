@@ -40,12 +40,12 @@ fn read_state(dir: &Path) -> Value {
 pub fn observe_saved_project(_: &mut Session, params: &Value) -> Result<Value> {
     let allowed = ["path", "_origin", "_client", "_request_id", "_control"];
     if params.as_object().is_none_or(|p| p.keys().any(|k| !allowed.contains(&k.as_str()))) {
-        return Err(EngineError::InvalidParams("backstage.observe accepts only an absolute project path; trace and mutation options are not supported".into()));
+        return Err(EngineError::InvalidParams("project.observe accepts only an absolute project path; trace and mutation options are not supported".into()));
     }
     let path = params["path"].as_str().filter(|p| !p.is_empty())
-        .ok_or_else(|| EngineError::InvalidParams("backstage.observe requires path to an existing .magic project".into()))?;
+        .ok_or_else(|| EngineError::InvalidParams("project.observe requires path to an existing .magic project".into()))?;
     if !Path::new(path).is_absolute() {
-        return Err(EngineError::InvalidParams("backstage.observe requires an absolute project path".into()));
+        return Err(EngineError::InvalidParams("project.observe requires an absolute project path".into()));
     }
     let canonical = fs::canonicalize(path)?;
     let file = crate::read_only_file::open_regular(&canonical)?;
