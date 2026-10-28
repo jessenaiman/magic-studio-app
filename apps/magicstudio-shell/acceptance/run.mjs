@@ -1,5 +1,5 @@
 // Infrastructure gate only: never convert an empty approved suite into a green run.
-import { accessSync, appendFileSync, constants, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { accessSync, appendFileSync, constants, cpSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -20,10 +20,16 @@ const prune = () => {
 const artifacts = join(runsRoot, `run-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 mkdirSync(artifacts);
 const finish = (code, status) => {
+  rmSync(join(artifacts, 'project'), { recursive: true, force: true }); // never keep the song copy
   writeFileSync(join(artifacts, 'result.json'), JSON.stringify({ status, exitCode: code, finishedAt: new Date().toISOString() }, null, 2));
   prune();
   process.exit(code);
 };
+// Official test song. Copied (never modified) with only what opening it needs.
+const song = process.env.MAGIC_ACCEPTANCE_SONG || '/run/media/jesse/Speedy/media/merriweather/nelly';
+const songEntries = ['Nelly.magic', 'project.json', 'nelly.transcript.json', 'assets', 'sequence', 'tracks',
+  'storyboard/movie-board.json', 'storyboard/design-draft.json', 'storyboard/design-history',
+  'storyboard/storyboard.pdf', 'storyboard/design-1793145236295'];
 process.env.MAGIC_ACCEPTANCE_ARTIFACTS = artifacts;
 if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `artifacts=${artifacts}\n`);
 const approvals = JSON.parse(readFileSync(join(here, 'approved-workflows.json'), 'utf8'));
@@ -64,5 +70,7 @@ for (const approval of approvals) {
   if (!approval.reference || !approval.approvedBy || !approval.approvedAt || !/^approved\/[\w-]+\.spec\.mjs$/.test(approval.spec)) throw new Error('Incomplete approval record');
   accessSync(join(here, approval.spec));
 }
+for (const entry of songEntries) cpSync(join(song, entry), join(artifacts, 'project', entry), { recursive: true, errorOnExist: true, force: false });
+process.env.MAGIC_ACCEPTANCE_PROJECT = join(artifacts, 'project', 'Nelly.magic');
 const result = spawnSync(process.execPath, [join(here, 'node_modules/@wdio/cli/bin/wdio.js'), 'run', join(here, 'wdio.conf.mjs')], { stdio: 'inherit', env: process.env });
 finish(result.status ?? 1, result.status === 0 ? 'pass' : 'fail');

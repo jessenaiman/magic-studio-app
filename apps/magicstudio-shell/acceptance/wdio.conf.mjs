@@ -7,9 +7,11 @@ export const config = {
   runner: 'local',
   specs: approvals.map(({ spec }) => join(here, spec)),
   maxInstances: 1,
-  capabilities: [{ browserName: 'wry', 'tauri:options': { application: process.env.MAGICSTUDIO_SHELL_BIN } }],
+  capabilities: [{ browserName: 'wry', 'tauri:options': { application: process.env.MAGICSTUDIO_SHELL_BIN, args: [process.env.MAGIC_ACCEPTANCE_PROJECT] } }],
   services: [['@wdio/tauri-service', {
     appBinaryPath: process.env.MAGICSTUDIO_SHELL_BIN,
+    // tauri-driver forwards tauri:options.args: the app opens the disposable song directly.
+    appArgs: [process.env.MAGIC_ACCEPTANCE_PROJECT],
     // Pinned service 1.5.1 source normalizes deprecated 'official' to 'external'.
     driverProvider: 'external',
     autoInstallTauriDriver: false,

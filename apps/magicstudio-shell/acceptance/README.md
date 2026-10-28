@@ -45,24 +45,28 @@ After Jesse observes the real UI, record the exact command/action → result →
 window/project → saved-file → visible-response chain and approval reference in a
 reviewed change. Only then add its `approved/<name>.spec.mjs` and an entry in
 `approved-workflows.json` with `spec`, `reference`, `approvedBy`, `approvedAt`.
-Use WDIO/Mocha standard assertions and `createWorkflow` in `workflow.mjs` for
-installed CLI steps, normal automatic routing, a fresh disposable session/project,
-UI assertions and saved-output inspection. Explicit approved initialization is
-`project new path=<disposable project>`; subsequent commands select that project.
-An approved desktop workflow must explicitly open/bind the same disposable project
-in the driver-owned GUI and assert its actual window/project identity. Creating a
-project headlessly does not establish GUI parity; the driver initially opens the
-normal app home window. Never count CLI-only engine success as a desktop pass.
-Navigation needs only UI expectations, not invented engine commands. A future
-approved MCP parity case must use the official SDK with `magic-cli mcp`.
+Use WDIO/Mocha standard assertions and `createWorkflow` in `workflow.mjs`.
+**Actions are `magic-cli` commands** (e.g. `project save path=…`, `ui click`, `ui key`,
+`ui state`): with `--project <song copy>` the CLI routes to the one live window that owns
+that project over `$XDG_RUNTIME_DIR/magicstudio-studio/*.sock`, and refuses if none or
+several match. WDIO launches the real binary and **reads** the webview DOM
+(header, title, footer build) as independent UI evidence. WebDriver only reaches web
+content; native GTK menus and file choosers are outside it and are not automated here.
+The official test song is **Nelly**. The launcher copies the needed parts of
+`/run/media/jesse/Speedy/media/merriweather/nelly` into the run before launch and passes
+the copied `Nelly.magic` as the app's launch argument (`tauri:options.args`, forwarded by
+`tauri-driver`), so the window opens that project directly. The original is never
+written. Never count a headless CLI result as a desktop pass: assert the step reached
+the window (`ui feedback`/`ui state` identity matches the launched project).
+A future approved MCP parity case must use the official SDK with `magic-cli mcp`.
 
-The launcher creates a unique `/tmp/magic-acceptance-*` evidence directory and
-prints its location. Standard spec/JSON reporters, service logs, screenshots and
-`steps.jsonl` expose actual outcomes, expectations, timestamps, project/session,
-CLI exit/stdout/stderr and file hashes/content for later TUI inspection. Unknown
-CLI outcomes block further steps without retries. Preserve evidence for diagnosis;
-never commit it. WDIO closes its own driver session; helpers never kill other app
-instances. Disposable projects are retained for inspection, not source projects.
+Runs live in `acceptance/artifacts/run-<time>/` (git-ignored): standard spec/JSON
+reports, `steps.jsonl` (actions, expectations, CLI exit/stdout/stderr, file hashes) and
+640px JPEG previews. The song copy is deleted at the end of every run. Only the newest
+passing run is kept, plus the newest failed run if it is more recent; everything else is
+pruned automatically. Rerun a case if more detail is needed. Unknown CLI outcomes block
+further steps without retries. WDIO closes its own driver session; helpers never kill
+other app instances.
 
 CI's syntax/source-lint job does not establish acceptance coverage. Manual native
 CI uses a separately provisioned Linux `magic-native` runner and the exact same

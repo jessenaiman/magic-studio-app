@@ -1,8 +1,8 @@
 // Infrastructure only: no workflow is approved by the presence of this helper.
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFile, cp, mkdir, readFile, realpath, rm } from 'node:fs/promises';
-import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import { appendFile, mkdir, readFile, realpath, rm } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 
 const inside = (root, path) => {
@@ -19,24 +19,17 @@ const requirement = (value, name) => {
 
 /** Call from an approved WDIO spec; assertion callbacks must throw on mismatch.
  * Approval must cite Jesse's actual observation/approval, never the issue/spec itself.
- * The disposable project lives inside this run's artifact directory and is removed by
- * `cleanup()`; only hashes, reports and small screenshots remain. `fixture` copies
- * selected entries of a real project (never modified) into that disposable folder.
+ * The launcher copies the official test song (Nelly) into this run before the app
+ * starts and passes it as the app's launch argument; the copy is deleted at run end.
+ * Only hashes, reports and small screenshots remain.
  */
-export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCEPTANCE_CLI, approval, artifactDir = process.env.MAGIC_ACCEPTANCE_ARTIFACTS, fixture }) {
+export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCEPTANCE_CLI, approval, artifactDir = process.env.MAGIC_ACCEPTANCE_ARTIFACTS, project = process.env.MAGIC_ACCEPTANCE_PROJECT }) {
   assert(approval?.reference && approval.approvedBy && approval.approvedAt, 'Human UI approval evidence is required');
   assert(isAbsolute(cliPath), 'Use the verified installed magic-cli absolute path');
   assert(isAbsolute(artifactDir), 'Use the launcher-owned artifact directory');
-  const root = join(artifactDir, 'project');
-  await mkdir(root, { recursive: true });
-  if (fixture) {
-    assert(isAbsolute(fixture.source) && fixture.project && Array.isArray(fixture.include), 'Fixture needs source, project and include');
-    for (const entry of [fixture.project, ...fixture.include]) {
-      await cp(join(fixture.source, entry), join(root, entry), { recursive: true, errorOnExist: true, force: false });
-    }
-  }
-  const project = join(root, fixture ? basename(fixture.project) : 'Acceptance.magic');
-  const sessionFile = join(root, 'session.json');
+  assert(isAbsolute(project ?? ''), 'Use the launcher-owned disposable project');
+  const root = dirname(project);
+  const sessionFile = join(artifactDir, 'session.json');
   await mkdir(artifactDir, { recursive: true });
   const stream = join(artifactDir, 'steps.jsonl');
   let sequence = 0;
@@ -125,7 +118,5 @@ export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCE
 
   return { root, project, sessionFile, cli, ui, fileEvidence,
     pending: async (name, reason) => record({ name, status: 'pending', reason }),
-    // Remove the disposable project copy; reports, hashes and previews stay.
-    cleanup: () => rm(root, { recursive: true, force: true }),
   };
 }
