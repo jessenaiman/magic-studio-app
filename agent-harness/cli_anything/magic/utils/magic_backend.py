@@ -11,12 +11,14 @@ Handles:
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 import os
 import shutil
 import socket
 import subprocess
 import sys
 import time
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -65,18 +67,44 @@ def studio_socket_dir() -> Path | None:
     return Path(runtime) / "magicstudio-studio" if runtime else None
 
 
+class CommandOutcomeUnknown(RuntimeError):
+    """The connection ended after submission; this does not cancel engine work."""
+
+
+@lru_cache(maxsize=1)
+def _long_running_commands() -> frozenset[str]:
+    return frozenset(spec["id"] for spec in list_engine_commands() if spec["long_running"])
+
+
+def command_timeout(cmd_id: str) -> float:
+    override = os.environ.get("MAGICSTUDIO_BRIDGE_TIMEOUT_MS")
+    if override:
+        try:
+            value = float(override) / 1000
+            if value <= 0:
+                raise ValueError()
+            return value
+        except ValueError:
+            raise ValueError("MAGICSTUDIO_BRIDGE_TIMEOUT_MS must be a positive number") from None
+    return 3600.0 if cmd_id in _long_running_commands() else 30.0
+
+
 def _send_jsonl_line(sock: socket.socket, cmd_id: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Send one JSON-lines request over a connected socket and parse the reply."""
     payload = json.dumps({"id": cmd_id, "params": params}) + "\n"
-    sock.sendall(payload.encode("utf-8"))
-    buf = b""
-    while not buf.endswith(b"\n"):
-        chunk = sock.recv(65536)
-        if not chunk:
-            break
-        buf += chunk
-    if not buf.strip():
-        raise RuntimeError(f"Studio closed connection without replying ({cmd_id})")
+    try:
+        sock.sendall(payload.encode("utf-8"))
+        buf = b""
+        while not buf.endswith(b"\n"):
+            chunk = sock.recv(65536)
+            if not chunk:
+                raise ConnectionError("Studio closed the connection before replying")
+            buf += chunk
+    except OSError as exc:
+        raise CommandOutcomeUnknown(
+            f"{cmd_id}: reply unavailable after submission ({exc}). Outcome unknown; "
+            "the operation may still be running. It was not cancelled or retried. "
+            "Inspect ui.feedback and the operation's saved result before retrying."
+        ) from exc
     resp = json.loads(buf.decode("utf-8").strip())
     if resp.get("ok") is True:
         res = resp.get("result")
@@ -85,49 +113,36 @@ def _send_jsonl_line(sock: socket.socket, cmd_id: str, params: dict[str, Any]) -
 
 
 def call_unix_socket(
-    sock_path: str | Path,
-    cmd_id: str,
-    params: dict[str, Any] | None = None,
-    timeout: float = 30.0,
+    sock_path: str | Path, cmd_id: str, params: dict[str, Any] | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
-    """Call a live Studio window over its Unix domain socket."""
-    path_str = str(sock_path)
-    if path_str.startswith("unix:"):
-        path_str = path_str[len("unix:") :]
-    params_obj = dict(params or {})
-    if "_client" not in params_obj and os.environ.get("HERDR_PANE_ID"):
-        params_obj["_client"] = f"herdr:{os.environ['HERDR_PANE_ID']}"
-
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.settimeout(timeout)
-        s.connect(path_str)
-        result = _send_jsonl_line(s, cmd_id, params_obj)
-    if isinstance(result, dict):
-        result.setdefault("endpoint", f"unix:{path_str}")
-        result.setdefault("instance", Path(path_str).name)
+    path_str = str(sock_path).removeprefix("unix:")
+    req = dict(params or {})
+    if "_client" not in req and os.environ.get("HERDR_PANE_ID"):
+        req["_client"] = f"herdr:{os.environ['HERDR_PANE_ID']}"
+    reply_timeout = command_timeout(cmd_id) if timeout is None else timeout
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(min(reply_timeout, 5.0))
+        sock.connect(path_str)
+        sock.settimeout(reply_timeout)
+        result = _send_jsonl_line(sock, cmd_id, req)
+    result.setdefault("endpoint", f"unix:{path_str}")
+    result.setdefault("instance", Path(path_str).name)
     return result
 
 
 def call_tcp_bridge(
-    addr: str,
-    cmd_id: str,
-    params: dict[str, Any] | None = None,
-    timeout: float = 30.0,
+    addr: str, cmd_id: str, params: dict[str, Any] | None = None,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
-    """Call a live Studio window over its `--control <port>` TCP bridge."""
     host, port_str = ("127.0.0.1", addr) if ":" not in addr else addr.rsplit(":", 1)
-    port = int(port_str)
-    params_obj = dict(params or {})
-    if "_client" not in params_obj and os.environ.get("HERDR_PANE_ID"):
-        params_obj["_client"] = f"herdr:{os.environ['HERDR_PANE_ID']}"
-
-    env_timeout = os.environ.get("MAGICSTUDIO_BRIDGE_TIMEOUT_MS")
-    if env_timeout and env_timeout.isdigit():
-        timeout = max(0.05, int(env_timeout) / 1000.0)
-
-    with socket.create_connection((host, port), timeout=timeout) as s:
-        s.settimeout(timeout)
-        return _send_jsonl_line(s, cmd_id, params_obj)
+    req = dict(params or {})
+    if "_client" not in req and os.environ.get("HERDR_PANE_ID"):
+        req["_client"] = f"herdr:{os.environ['HERDR_PANE_ID']}"
+    reply_timeout = command_timeout(cmd_id) if timeout is None else timeout
+    with socket.create_connection((host, int(port_str)), timeout=min(reply_timeout, 5.0)) as sock:
+        sock.settimeout(reply_timeout)
+        return _send_jsonl_line(sock, cmd_id, req)
 
 
 def discover_studios() -> dict[str, list[dict[str, Any]]]:
@@ -238,6 +253,52 @@ def execute_headless(
     if not out:
         return {"ok": True}
     return json.loads(out)
+
+
+class HeadlessSession:
+    """Own one existing native JSONL engine session until its caller closes it."""
+
+    def __init__(self) -> None:
+        self.log = tempfile.TemporaryFile(mode="w+t", encoding="utf-8")
+        try:
+            self.process = subprocess.Popen(
+                [find_magicstudio_shell(), "--headless", "run"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log,
+                text=True, encoding="utf-8", bufsize=1,
+            )
+        except BaseException:
+            self.log.close()
+            raise
+
+    def execute(self, cmd_id: str, params: dict[str, Any]) -> dict[str, Any]:
+        request = json.dumps({"id": cmd_id, "params": params}) + "\n"
+        try:
+            self.process.stdin.write(request)
+            self.process.stdin.flush()
+            line = self.process.stdout.readline()
+        except (BrokenPipeError, OSError) as exc:
+            raise CommandOutcomeUnknown(f"Native session lost during {cmd_id}; no retry was made") from exc
+        if not line:
+            self.log.seek(0)
+            detail = self.log.read()[-8000:].strip()
+            raise CommandOutcomeUnknown(f"Native session ended during {cmd_id}; outcome unknown; no retry. {detail}")
+        reply = json.loads(line)
+        if reply.get("ok") is not True:
+            raise RuntimeError(reply.get("error") or f"{cmd_id} failed")
+        return reply["result"]
+
+    def close(self) -> None:
+        # EOF ends the existing engine loop and releases the project writer lease.
+        # Do not kill work that may already be changing a project.
+        try:
+            try:
+                self.process.stdin.close()
+            except BrokenPipeError:
+                pass
+            self.process.wait()
+        finally:
+            self.process.stdout.close()
+            self.log.close()
 
 
 def list_engine_commands() -> list[dict[str, Any]]:

@@ -1,3 +1,13 @@
+> Follow-up: the four integration issues below were fixed and verified locally on 2026-10-28. The original checkpoint record remains below for traceability.
+>
+> - Headless CLI batches and MCP connections now retain one native engine process and its project lease. `project.load_asset` followed by `project.list_assets` retains `review_icon`; a competing writer was refused and the lease released on session close.
+> - AnyIO non-abandoning workers keep MCP commands serialized across client cancellation. Real SDK cancellation at 1 second followed by another command completed at 8.01 seconds, with observed order `started`, `finished`, `next`.
+> - Registry-marked long operations use a one-hour reply deadline. A real UI command returned successfully after 32 seconds. A forced 100 ms timeout reported unknown outcome; subsequent inspection confirmed the 1.5-second operation completed without retry.
+> - Local Codex/OpenCode Magic entries now use `/home/jesse/.local/bin/magic-cli mcp`. `mc` and the stale Python `magic` script were removed, mise shims refreshed, and only one Magic Studio desktop entry remains. Other Craft servers were preserved.
+> - A real MCP `studio_open` transferred a held headless project to a ready GUI window, returned a `ui.look` image and closed through `app.quit`. Native build, Python compilation and the five existing registry tests passed. No new tests were added and no deleted tests were restored.
+>
+> Bleaker is being asked to challenge the follow-up implementation and these verification claims. Full rendering workflows and all session edge cases remain outside the completed checks.
+
 # Magic entry points — review checkpoint, 2026-10-28
 
 This is a review checkpoint requested by Jesse, not a claim that all historical cleanup and installed configuration migration is complete. Read `agent-harness/MAGIC.md` and the packaged Magic skill first.

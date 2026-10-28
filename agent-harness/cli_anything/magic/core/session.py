@@ -56,6 +56,7 @@ class Session:
         self.project_path: str | None = None
         self.studio_endpoint: str | None = None
         self.studio_instance: str | None = None
+        self._headless: backend.HeadlessSession | None = None
         self.load_session()
 
     def load_session(self) -> None:
@@ -92,6 +93,7 @@ class Session:
 
     def clear(self) -> None:
         """Clear this caller's binding without changing its project or window."""
+        self.close()
         self.project_path = None
         self.studio_endpoint = None
         self.studio_instance = None
@@ -100,6 +102,24 @@ class Session:
                 self.session_file.unlink()
             except OSError:
                 raise
+
+    def close(self) -> None:
+        if self._headless is not None:
+            engine, self._headless = self._headless, None
+            engine.close()
+
+    def execute_headless(self, cmd_id: str, params: dict[str, Any]) -> dict[str, Any]:
+        if self._headless is None:
+            self._headless = backend.HeadlessSession()
+        return self._headless.execute(cmd_id, params)
+
+    def open_studio(self, project: str | None = None) -> dict[str, Any]:
+        from cli_anything.magic.core.project import resolve_project_path
+        target = str(resolve_project_path(project)) if project else None
+        self.close()  # Explicitly transfer the saved project from this engine to the GUI.
+        live = backend.open_studio_window(target)
+        self.bind_studio(live)
+        return live
 
     def select_project(self, path: str) -> dict[str, Any]:
         """Explicit selection may replace an old binding only after a successful open."""
@@ -131,6 +151,7 @@ class Session:
             req["path" if selecting else "project"] = target
 
         if bridge:
+            self.close()
             result = backend.call_bridge(bridge, cmd_id, req)
         elif self.studio_endpoint and not selecting:
             if target and self.project_path and target != self.project_path:
@@ -146,6 +167,7 @@ class Session:
         else:
             live = backend.studio_for_project(target) if target else None
             if live:
+                self.close()
                 result = backend.call_bridge(
                     live["endpoint"], cmd_id, req, expected_project=target,
                     expected_instance=live.get("instance"),
@@ -155,7 +177,7 @@ class Session:
             elif cmd_id.startswith("ui.") or cmd_id == "app.quit":
                 result = backend.call_bridge("auto", cmd_id, req, expected_project=target)
             else:
-                result = backend.execute_headless(cmd_id, req, dry_run=dry_run)
+                result = self.execute_headless(cmd_id, req)
             if selecting and not live and not dry_run and result.get("ok") is not False:
                 self.studio_endpoint = None
                 self.studio_instance = None

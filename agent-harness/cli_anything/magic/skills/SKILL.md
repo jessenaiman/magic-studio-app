@@ -28,7 +28,7 @@ magic-cli project save
 
 The command tree is generated from the Rust application registry. Dots in IDs become subcommands; underscores become hyphens: `project.add_asset` → `magic-cli project add-asset`. Use `key=value` arguments, or `--params '{"key":"value"}'`. A command that also has children uses `--params` for its own parameters (for example `motion path --params '{...}'`). Numeric and boolean JSON values retain their types. Parameter descriptions are engine documentation, not default values to copy blindly. Engine commands enforce revisions, project ownership and domain validation.
 
-`magic-cli run steps.jsonl` accepts `{ "id": "project.open", "params": {"path":"/absolute/Example.magic"} }` per line. Steps run in order through the same session routing; an error stops the batch, without rolling back earlier steps. Do not assume a cross-domain undo stack. Discover the relevant domain's undo command and receipt requirements.
+`magic-cli run steps.jsonl` accepts `{ "id": "project.open", "params": {"path":"/absolute/Example.magic"} }` per line. Steps run in order through the same session routing; an error stops the batch, without rolling back earlier steps. Headless batches and each MCP connection retain one native engine session, including active-asset selection. The engine holds the selected project writer lease until close, explicit project switching, or transfer to a Studio window. Separate CLI invocations retain the project binding, not transient engine selection. Do not assume a cross-domain undo stack. Discover the relevant domain's undo command and receipt requirements.
 
 ## Project and window targeting
 
@@ -65,6 +65,8 @@ Omit `--project` to select later with `command_run` (`id: project.open`, `params
 - `command_list`: filterable discovery of registry IDs and parameter documentation.
 - `command_run`: execute a Magic command by `id` and optional `params`; `ui.look` returns image content.
 - `studio_open`: explicitly open/focus and bind a visible Magic window.
+
+MCP cancellation does not interrupt native work already in progress. The session remains serialized until that work finishes; a later command cannot overtake it. A socket reply timeout is an unknown outcome, not proof of cancellation or failure. Inspect live feedback and saved results before retrying. Registered long-running commands have a one-hour reply timeout; other commands use 30 seconds.
 
 The official Python MCP SDK owns initialization, protocol negotiation, transport and errors. SDK 1.30.0 supports `2024-11-05`, `2025-03-26`, `2025-06-18`, and `2025-11-25`; do not claim newer versions merely because a newer specification exists.
 

@@ -168,6 +168,8 @@ const fn is_long_running_id(id: &str) -> bool {
     matches!(
         id.as_bytes(),
         b"project.intake"
+            | b"agent.send"
+            | b"ui.eval"
             | b"blender.start"
             | b"mlt.start"
             | b"opentoonz.start"

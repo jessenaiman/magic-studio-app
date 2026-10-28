@@ -619,13 +619,15 @@ fn run_headless() -> i32 {
                 .or_else(|| v["command"].as_str())
                 .unwrap_or("");
             let params = v.get("params").cloned().unwrap_or_else(|| json!({}));
-            match headless_dispatch(&mut s, id, params, dry_run) {
+            match headless_dispatch(&mut s, id, params, dry_run, true) {
                 Ok(r) => println!("{}", json!({"line": n + 1, "id": id, "ok": true, "result": r})),
                 Err(e) => {
                     println!("{}", json!({"line": n + 1, "id": id, "ok": false, "error": e}));
                     failed += 1;
                 }
             }
+            use std::io::Write;
+            if std::io::stdout().flush().is_err() { return 1; }
         }
         return if failed == 0 { 0 } else { 1 };
     }
@@ -658,7 +660,7 @@ fn run_headless() -> i32 {
             obj.insert(k.to_string(), parsed);
         }
     }
-    match headless_dispatch(&mut s, id, params, dry_run) {
+    match headless_dispatch(&mut s, id, params, dry_run, false) {
         Ok(v) => {
             println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
             if v.get("ok").and_then(Value::as_bool) == Some(false) { 1 } else { 0 }
@@ -671,7 +673,7 @@ fn run_headless() -> i32 {
 }
 
 
-fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool) -> Result<Value, String> {
+fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool, persistent: bool) -> Result<Value, String> {
     let is_dry = dry_run || params.get("_dry_run").and_then(Value::as_bool) == Some(true);
     if let Some(obj) = params.as_object_mut() {
         obj.remove("_dry_run");
@@ -681,6 +683,9 @@ fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool
         && params["project"].is_string()
     {
         params["path"] = params["project"].clone();
+    }
+    if persistent && id == "project.open" && !is_dry {
+        params["claim_owner"] = json!(true);
     }
     if !matches!(
         id,
@@ -693,7 +698,7 @@ fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool
         if let Some(project) = identity["project"].as_str()
             && s.project_path.as_deref() != Some(std::path::Path::new(project))
         {
-            s.execute("project.attach", json!({"path": project}))
+            s.execute(if persistent { "project.open" } else { "project.attach" }, json!({"path": project, "claim_owner": persistent}))
                 .map_err(|e| e.to_string())?;
         }
     }

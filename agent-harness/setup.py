@@ -10,6 +10,7 @@ setup(
     install_requires=[
         "click>=8.0.0",
         "mcp>=1.28,<2",
+        "anyio>=4.5,<5",
     ],
     entry_points={
         "console_scripts": [

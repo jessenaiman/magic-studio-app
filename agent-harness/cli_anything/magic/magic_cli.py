@@ -103,6 +103,7 @@ def cli(ctx: click.Context, use_json: bool, project: str | None, session_file: s
     Use key=value parameters or --params JSON; no REPL or per-operation ports.
     """
     session = Session(session_file)
+    ctx.call_on_close(session.close)
     ctx.obj = {"session": session, "dry_run": dry_run, "bridge": bridge}
     if project:
         session.select_project(project)
@@ -162,10 +163,7 @@ def studio_open(ctx: click.Context, project: str | None) -> None:
     if ctx.obj["dry_run"]:
         emit({"dry_run": True, "project": project})
         return
-    from cli_anything.magic.core.project import resolve_project_path
-    live = backend.open_studio_window(str(resolve_project_path(project)) if project else None)
-    ctx.obj["session"].bind_studio(live)
-    emit(live)
+    emit(ctx.obj["session"].open_studio(project))
 
 
 @studio.command("list")
