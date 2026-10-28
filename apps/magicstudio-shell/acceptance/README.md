@@ -33,7 +33,7 @@ Local owner preparation, only when ready to run an approved workflow:
    The repository installer writes this exact absolute-Python-shebang entry point
    (`scripts/install_magic.py`); standard editable console-script installs match it.
 3. Install compatible `tauri-driver` and the distro's WebKitGTK driver
-   (`webkit2gtk-driver` on Debian/Ubuntu, providing `WebKitWebDriver`). Have a
+   (`webkit2gtk-driver` on Debian/Ubuntu, `webkitgtk-6.0` on Arch/Omarchy, providing `WebKitWebDriver`). Have a
    headed desktop session for human review; `xvfb-run` is for unattended CI, not
    Jesse's observation/approval.
 4. In `apps/magicstudio-shell/acceptance`, run `npm ci --ignore-scripts`,
