@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Existing storyboard-kit template population via DeckCraft native commands; no alternate document editor."""
-import argparse, collections, contextlib, hashlib, json, math, os, re, select, shutil, subprocess, sys, time
+import argparse, collections, contextlib, hashlib, json, math, os, re, shutil, sys, time
+from datetime import timedelta
 from pathlib import Path
 
 VERSION = '4.1'
@@ -89,25 +90,34 @@ def read_inputs(config,grouping=None):
 
 class Deck:
     def __init__(self,template_root,output_root):
-        self.p=subprocess.Popen([shutil.which('deckcraft-cli') or 'deckcraft-cli','mcp','--automation-read-root',str(template_root),'--automation-write-root',str(output_root)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True);self.serial=0;self.queue=[]
-        self.rpc('initialize',dict(protocolVersion='2024-11-05',capabilities={},clientInfo=dict(name='project-local-storyboard',version=VERSION)))
-    def rpc(self,method,params):
-        self.serial+=1;req=dict(jsonrpc='2.0',id=self.serial,method=method,params=params);self.p.stdin.write(json.dumps(req)+'\n');self.p.stdin.flush()
-        if not select.select([self.p.stdout],[],[],60)[0]:raise RuntimeError('DeckCraft MCP timed out; no fallback renderer used')
-        line=self.p.stdout.readline()
-        if not line:raise RuntimeError('DeckCraft stopped: '+self.p.stderr.read())
-        r=json.loads(line)
-        if 'error' in r or r.get('result',{}).get('isError'):raise RuntimeError(r)
-        blocks=r.get('result',{}).get('content',[])
-        if blocks and blocks[0]['type']=='text':
-            try:return json.loads(blocks[0]['text'])
-            except ValueError:return blocks[0]['text']
-        return r.get('result',{})
-    def cmd(self,c,**p):return self.rpc('tools/call',dict(name='run_command',arguments=dict(command=c,params=p)))
+        from anyio.from_thread import start_blocking_portal
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+        from mcp.types import Implementation
+        self.queue=[]
+        # One native session retains slide/shape selection between synchronous calls.
+        # SDK lifecycle: https://github.com/modelcontextprotocol/python-sdk/tree/v1.29.0/src/mcp/client
+        # Sync bridge: https://anyio.readthedocs.io/en/stable/threads.html#using-asynchronous-context-managers
+        with contextlib.ExitStack() as stack:
+            self.portal=stack.enter_context(start_blocking_portal())
+            server=StdioServerParameters(command=shutil.which('deckcraft-cli') or 'deckcraft-cli',args=['mcp','--automation-read-root',str(template_root),'--automation-write-root',str(output_root)],env=dict(os.environ))
+            streams=stack.enter_context(self.portal.wrap_async_context_manager(stdio_client(server)))
+            self.session=stack.enter_context(self.portal.wrap_async_context_manager(ClientSession(*streams,read_timeout_seconds=timedelta(seconds=60),client_info=Implementation(name='project-local-storyboard',version=VERSION))))
+            self.portal.call(self.session.initialize)
+            self.stack=stack.pop_all()
+    def call(self,name,arguments):
+        result=self.portal.call(self.session.call_tool,name,arguments)
+        if result.isError:raise RuntimeError(result.model_dump(by_alias=True,exclude_none=True))
+        blocks=result.content
+        if blocks and blocks[0].type=='text':
+            try:return json.loads(blocks[0].text)
+            except ValueError:return blocks[0].text
+        return result.model_dump(by_alias=True,exclude_none=True)
+    def cmd(self,c,**p):return self.call('run_command',dict(command=c,params=p))
     def q(self,c,**p):self.queue.append(dict(command=c,params=p))
     def flush(self):
-        if self.queue:self.rpc('tools/call',dict(name='batch',arguments=dict(commands=self.queue)));self.queue=[]
-    def close(self):self.p.terminate();self.p.wait()
+        if self.queue:self.call('batch',dict(commands=self.queue));self.queue=[]
+    def close(self):self.stack.close()
     def box(self,rect,color,role=None):
         self.q('shape.insert',preset='rect',rect=rect);self.q('shape.fill',color=color);self.q('shape.line',none=True)
         if role:self.q('shape.altText',text=role)
