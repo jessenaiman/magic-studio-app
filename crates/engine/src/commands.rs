@@ -102,6 +102,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
     match id {
         "project.catalog" => params.get("forget").is_none_or(Value::is_null),
         "project.attach"
+        | "backstage.observe"
         | "project.identity"
         | "project.list_assets"
         | "project.search"
@@ -319,6 +320,7 @@ pub fn build() -> Vec<CommandSpec> {
         cmd!("skills.remove", "Remove Learning block reversibly", [], None, "{\"id\":\"block id\",\"expected_revision\":\"from skills.info\"}", always, crate::skills_registry::cmd_skills_remove),
         cmd!("skills.undo", "Restore removed Learning block", [], None, "{\"id\":\"block id\",\"expected_revision\":\"from remove receipt\"}", always, crate::skills_registry::cmd_skills_undo),
         cmd!("skills.add", "Register / update one knowledge skill", [], None, "{\"id\":\"skill id\",\"name\":\"display name\",\"description\":\"what it does\",\"status\":\"researching|implemented|not_implemented\",\"source\":\"url or reference\",\"implemented_at\":[\"command ids\"],\"implemented_in\":[\"file paths\"],\"integration_notes\":\"where it plugs in\"}", always, crate::skills_registry::cmd_skills_add),
+        query!("backstage.observe", "Observe a Saved Project Without Changing Its Session", "{\"path\":\"absolute existing .magic project path\"}", crate::command_center::observe_saved_project),
         query!("backstage.events", "Recent Activity Receipts", "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}", crate::activity::events),
         query!("backstage.status", "Backstage — Live Production Status", "{\"trace\":false}", crate::command_center::status),
         query!("booth.events", "Recent Activity Receipts (alias of backstage.events)", "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}", crate::activity::events),
