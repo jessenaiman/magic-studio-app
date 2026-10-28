@@ -71,12 +71,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prefix', type=Path, default=Path.home() / '.local')
     parser.add_argument('--migrate-legacy', action='store_true', help='Migrate recognized existing Magic MCP configuration and retire old entry points')
+    parser.add_argument('--python', type=Path, help='Existing Python environment containing the Magic package and dependencies')
     parser.add_argument('--profile', choices=['debug', 'release'], default='debug')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     build = root / 'target' / args.profile
     shell = build / 'magicstudio-shell'
-    python = root / '.venv/bin/python'
+    python = args.python.expanduser().absolute() if args.python else root / '.venv/bin/python'
     if not shell.is_file() or not python.is_file():
         parser.error('Build the native shell and prepare the project virtual environment first')
     destination = args.prefix / 'share/magic-studio/bin'
