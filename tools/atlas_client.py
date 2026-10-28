@@ -11,7 +11,7 @@ Every non-LLM generation follows the same three-step shape:
     GET  /api/v1/model/prediction/{id} -> {"data": {"status", "outputs", "error"}}
 
 `requests` is imported lazily inside functions so registry discovery stays fast
-(see tests/contracts — the lazy-import convention is enforced by the suite).
+without loading provider dependencies during discovery.
 """
 
 from __future__ import annotations

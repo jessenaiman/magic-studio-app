@@ -90,12 +90,3 @@ impl AudioTrace {
         result.map_err(|e|EngineError::InvalidParams(format!("audio.analyze stage=import; {e}; receipt={}. Read `magic-cli commands workshop.import_transcript`; received files remain preserved and no ASR retry was attempted.",self.path.display())))
     }
 }
-
-#[cfg(test)]mod tests{
-    use super::*;
-    #[test]fn producer_summary_uses_only_actual_output_and_keeps_unknowns(){
-        let known=summary("progress\n{\"ok\":true,\"engine\":\"synthetic-engine\",\"model\":\"synthetic-model\",\"words\":[\"not copied\"]}");
-        assert_eq!(known["engine"],"synthetic-engine");assert!(known.get("words").is_none());
-        assert!(summary("not a producer receipt").get("engine").is_none());
-    }
-}

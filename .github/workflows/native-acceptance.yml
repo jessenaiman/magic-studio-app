@@ -1,0 +1,59 @@
+name: Native acceptance infrastructure
+on:
+  pull_request:
+    paths:
+      - apps/magicstudio-shell/acceptance/**
+      - .github/workflows/native-acceptance.yml
+  workflow_dispatch:
+    inputs:
+      native_acceptance:
+        description: Run native acceptance on a provisioned Linux runner
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  syntax:
+    name: Infrastructure syntax (not behavioral coverage)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: for source in apps/magicstudio-shell/acceptance/*.mjs; do node --check "$source"; done
+  native:
+    name: Native acceptance (approval gated)
+    if: github.event_name == 'workflow_dispatch' && inputs.native_acceptance
+    runs-on: [self-hosted, linux, magic-native]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned framework
+        working-directory: apps/magicstudio-shell/acceptance
+        run: npm ci --ignore-scripts
+      - name: Build this checkout and isolate installed CLI
+        run: |
+          cargo build -p magicstudio-shell
+          cli_env=$(mktemp -d "$RUNNER_TEMP/magic-acceptance-cli-XXXXXX")
+          echo "MAGIC_ACCEPTANCE_CLI_ENV=$cli_env" >> "$GITHUB_ENV"
+          python3 -m venv "$cli_env"
+          "$cli_env/bin/python" -m pip install -e "$GITHUB_WORKSPACE/agent-harness"
+          echo "$cli_env/bin" >> "$GITHUB_PATH"
+      - name: Real native path (no browser fallback)
+        id: acceptance
+        working-directory: apps/magicstudio-shell/acceptance
+        run: npm test
+      - name: Publish diagnostics, not source snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-acceptance-diagnostics
+          path: ${{ steps.acceptance.outputs.artifacts }}
+          if-no-files-found: warn
+      - name: Remove only this job's CLI environment
+        if: always()
+        run: |
+          if [[ -n "${MAGIC_ACCEPTANCE_CLI_ENV:-}" && "$MAGIC_ACCEPTANCE_CLI_ENV" == "$RUNNER_TEMP"/magic-acceptance-cli-* ]]; then
+            rm -rf -- "$MAGIC_ACCEPTANCE_CLI_ENV"
+          fi
