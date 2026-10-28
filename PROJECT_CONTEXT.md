@@ -84,7 +84,7 @@ Each tool's `agent_skills[]` field bridges Layer 1 → Layer 3. See `skills/INDE
 | `.agents/skills/threejs-world-generation/` | Layer 3 coarse-to-fine semantic world construction and render-guided refinement workflow |
 | `skills/core/hyperframes.md` | Layer 2 — when OpenMontage should pick HyperFrames vs Remotion, artifact → workspace mapping |
 | `schemas/styles/playbook.schema.json` | Playbook schema v2 with design tokens (chart_palette, scale_system, weight_matrix, color_rules) |
-| `tests/qa/` | Quality validation test scripts for tool-by-tool output inspection |
+| `apps/magicstudio-shell/acceptance/` | Native acceptance infrastructure; workflows require Jesse's observed-UI approval before executable cases are added |
 
 ## Available Pipelines
 
@@ -109,7 +109,7 @@ Each tool's `agent_skills[]` field bridges Layer 1 → Layer 3. See `skills/INDE
 2. Create stage director skills in `skills/pipelines/<pipeline-name>/` (7 skills: idea through publish)
 3. Reference meta skills (reviewer, checkpoint-protocol) in the manifest
 4. Add compatible playbooks to the manifest
-5. Add contract tests in `tests/contracts/`
+5. Propose native acceptance command/UI/file expectations; encode behavior only after Jesse observes and explicitly approves it.
 
 ## When Building New Tools
 

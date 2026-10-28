@@ -475,23 +475,9 @@ Consumed via `npx hyperframes` (no monorepo checkout needed). Runtime floor: Nod
 
 ---
 
-## Test Architecture
+## Acceptance architecture
 
-```
-tests/
-├── contracts/              # Phase 0-3: tool contract validation, schema checks, registry tests
-├── qa/                     # Integration tests: TTS, image gen, music, audio mix, video compose/stitch, E2E
-├── eval/                   # Golden scenario replay harness for regression testing
-├── pipelines/              # Pipeline-level tests
-├── tools/                  # Individual tool tests
-└── styles/                 # Style playbook tests
-```
-
-**Contract tests** verify every tool satisfies the `BaseTool` contract: identity fields, schemas, dependency declarations, inheritance.
-
-**QA tests** call real tools (with real APIs/binaries) and inspect output quality.
-
-**Eval harness** (`tests/eval/replay_harness/`) replays golden scenarios with tolerance-based comparison for stochastic outputs.
+Legacy Python contract/QA/evaluation, JavaScript VM/browser and Rust behavioral suites have been retired. Native acceptance uses WebdriverIO with the Tauri service and installed `magic-cli`; each executable behavior requires Jesse's explicit approval after real UI observation. No workflows are approved by the infrastructure migration itself. Ordinary compiler, syntax and source-lint checks remain independent of acceptance coverage.
 
 ---
 
@@ -508,7 +494,7 @@ tests/
 - ManimCE (math animations)
 - Mermaid CLI (diagram generation)
 
-**Python packages:** pyyaml, pydantic, jsonschema, python-dotenv (core); pytest, pytest-asyncio (dev); torch, torchvision, torchaudio (GPU)
+**Python packages:** pyyaml, pydantic, jsonschema, python-dotenv (core); torch, torchvision, torchaudio (GPU)
 
 ---
 

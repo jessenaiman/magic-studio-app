@@ -2,10 +2,10 @@
 // inline styling. This lint counts what the design contract forbids, per file,
 // and fails when a count grows past its baseline.
 //
-//   node tests/ui-lint.mjs                 check against the baseline
-//   node tests/ui-lint.mjs --report        print the acceptance numbers
-//   node tests/ui-lint.mjs --write-baseline  record today's counts
-//   node tests/ui-lint.mjs --ratchet       no count may rise; a touched file
+//   node scripts/ui-lint.mjs                 check against the baseline
+//   node scripts/ui-lint.mjs --report        print the acceptance numbers
+//   node scripts/ui-lint.mjs --write-baseline  record today's counts
+//   node scripts/ui-lint.mjs --ratchet       no count may rise; a touched file
 //                                           with a non-zero count must lower one
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -223,7 +223,7 @@ if (process.argv.includes('--write-baseline')) {
   const baseline = (() => {
     if (process.argv.includes('--ratchet')) {
       try {
-        return JSON.parse(execSync('git show :apps/magicstudio-shell/tests/ui-lint.baseline.json', { encoding: 'utf8' }));
+        return JSON.parse(execSync('git show :apps/magicstudio-shell/scripts/ui-lint.baseline.json', { encoding: 'utf8' }));
       } catch { /* not staged yet */ }
     }
     return JSON.parse(fs.readFileSync(BASELINE, 'utf8'));
@@ -269,7 +269,7 @@ if (process.argv.includes('--write-baseline')) {
     } catch { staged = []; }
     let previous = {};
     try {
-      previous = JSON.parse(execSync('git show HEAD:apps/magicstudio-shell/tests/ui-lint.baseline.json', { encoding: 'utf8' })).files ?? {};
+      previous = JSON.parse(execSync('git show HEAD:apps/magicstudio-shell/scripts/ui-lint.baseline.json', { encoding: 'utf8' })).files ?? {};
     } catch { previous = {}; }
     for (const path of staged) {
       const file = path.split('/').slice(-1)[0];

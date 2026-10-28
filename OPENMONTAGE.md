@@ -730,13 +730,7 @@ For bugs, feature requests, and workflow discussions, use [GitHub Issues](https:
 
 ## Testing
 
-```bash
-# Run contract tests (no API keys needed)
-make test-contracts
-
-# Run all tests
-make test
-```
+Legacy behavioral suites have been retired. Native WebdriverIO acceptance workflows require Jesse's explicit approval after observing the real UI. Compiler, syntax and lint checks remain; infrastructure with no approved workflows is not passing coverage.
 
 ---
 
