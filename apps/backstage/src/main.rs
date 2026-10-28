@@ -1,3 +1,4 @@
+mod art;
 mod model;
 mod observe;
 mod source;
@@ -38,6 +39,11 @@ pub enum ReadRequest {
 pub enum Event {
     Input(TerminalEvent),
     Changed,
+    Marker {
+        before: Result<Value, String>,
+        after: Result<Value, String>,
+        read_ok: bool,
+    },
     Notice(String),
     Catalog(Result<Value, String>),
     Audit(Result<Value, String>),
@@ -80,6 +86,7 @@ fn request(a: &mut App, tx: &SyncSender<Event>, request: ReadRequest) {
     let tx = tx.clone();
     let cancel = a.cancel.clone();
     a.worker = Some(thread::spawn(move || {
+        let before = source::changes(&cancel);
         let event = match request {
             ReadRequest::Catalog => Event::Catalog(source::catalog(&cancel)),
             ReadRequest::Audit => Event::Audit(source::audit(&cancel)),
@@ -88,15 +95,25 @@ fn request(a: &mut App, tx: &SyncSender<Event>, request: ReadRequest) {
                 Event::Project(path, result)
             }
         };
-        let mut event = event;
-        while !cancel.load(Ordering::Acquire) {
-            match tx.try_send(event) {
-                Ok(()) => break,
-                Err(mpsc::TrySendError::Full(e)) => {
-                    event = e;
-                    thread::sleep(Duration::from_millis(10));
+        let read_ok = matches!(&event, Event::Catalog(Ok(_)) | Event::Project(_, Ok(_)));
+        let after = source::changes(&cancel);
+        for mut event in [
+            Event::Marker {
+                before,
+                after,
+                read_ok,
+            },
+            event,
+        ] {
+            while !cancel.load(Ordering::Acquire) {
+                match tx.try_send(event) {
+                    Ok(()) => break,
+                    Err(mpsc::TrySendError::Full(e)) => {
+                        event = e;
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => return,
                 }
-                Err(_) => break,
             }
         }
     }));
@@ -106,6 +123,9 @@ fn next_read(a: &mut App, tx: &SyncSender<Event>) {
         request(a, tx, explicit);
     } else if a.refresh_needed {
         request(a, tx, ReadRequest::Catalog);
+    } else if a.project_refresh_needed {
+        a.project_refresh_needed = false;
+        inspect(a, tx);
     }
 }
 fn inspect(a: &mut App, tx: &SyncSender<Event>) {
@@ -113,7 +133,11 @@ fn inspect(a: &mut App, tx: &SyncSender<Event>) {
         request(a, tx, ReadRequest::Project(path));
     }
 }
-fn thumbnail(a: &App) -> Option<image::RgbImage> {
+fn thumbnail(
+    a: &App,
+    picker: &Option<ratatui_image::picker::Picker>,
+) -> Option<ratatui_image::protocol::StatefulProtocol> {
+    let picker = picker.as_ref()?;
     let p = a.project()?;
     let path = p["thumb"].as_str()?;
     if std::fs::metadata(path).ok()?.len() > 20 * 1024 * 1024 {
@@ -128,7 +152,7 @@ fn thumbnail(a: &App) -> Option<image::RgbImage> {
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(64 * 1024 * 1024);
     reader.limits(limits);
-    Some(reader.decode().ok()?.thumbnail(160, 100).to_rgb8())
+    Some(picker.new_resize_protocol(reader.decode().ok()?.thumbnail(1600, 900)))
 }
 fn main() {
     if let Err(e) = start() {
@@ -196,22 +220,6 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     let (tx, rx) = mpsc::sync_channel(64);
-    let keys = tx.clone();
-    thread::spawn(move || {
-        loop {
-            match event::read() {
-                Ok(e) => {
-                    if keys.send(Event::Input(e)).is_err() {
-                        break;
-                    }
-                }
-                Err(e) => {
-                    let _ = keys.send(Event::Notice(e.to_string()));
-                    break;
-                }
-            }
-        }
-    });
     let mut paths = vec![
         theme::config_home().join("herdr/config.toml"),
         theme::state_home().join("omarchy/current/theme/colors.toml"),
@@ -244,17 +252,53 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
         event::EnableMouseCapture,
         crossterm::cursor::Hide
     )?;
+    // Capability negotiation owns stdin briefly: do this before the key reader.
+    let picker = match ratatui_image::picker::Picker::from_query_stdio() {
+        Ok(picker) if picker.protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks => {
+            a.graphics_status = format!("{:?} graphics · cached image", picker.protocol_type());
+            Some(picker)
+        }
+        Ok(_) => {
+            a.graphics_status =
+                "No image graphics protocol detected; open Kitty and relaunch Backstage".into();
+            None
+        }
+        Err(e) => {
+            a.graphics_status = format!("Terminal graphics negotiation failed: {e}");
+            None
+        }
+    };
+    let keys = tx.clone();
+    thread::spawn(move || {
+        loop {
+            match event::read() {
+                Ok(e) => {
+                    if keys.send(Event::Input(e)).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let _ = keys.send(Event::Notice(e.to_string()));
+                    break;
+                }
+            }
+        }
+    });
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     request(&mut a, &tx, ReadRequest::Catalog);
     let mut thumb = None;
     let mut sample_at = Instant::now();
     let mut hits = ui::HitMap::default();
+    let mut marker_watch: Option<(PathBuf, PathBuf, notify::RecommendedWatcher)> = None;
     loop {
-        terminal.draw(|f| ui::draw(f, &a, &t, &m, thumb.as_ref(), &mut hits))?;
-        let effect = a.tab == 2 && !a.reduce_motion && Instant::now() < a.effect_until;
+        terminal.draw(|f| ui::draw(f, &a, &t, &m, thumb.as_mut(), &mut hits))?;
+        let effect = !a.reduce_motion
+            && (a.busy
+                || (a.tab == 2 && a.agents.iter().any(|p| p["agent_status"] == "working"))
+                || Instant::now() < a.effect_until);
         let event = if a.tab == 4 || effect {
             let timeout = if effect {
-                Duration::from_millis(180)
+                Duration::from_millis(250)
             } else {
                 sample_at.saturating_duration_since(Instant::now())
             };
@@ -271,6 +315,10 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
             sample_at = Instant::now() + Duration::from_secs(1);
         }
         if dirty.swap(false, Ordering::AcqRel) {
+            // Notifications may include replacement of the watched directory itself.
+            // Rearm even when its pathname is unchanged; the old watch may refer
+            // to an unlinked inode. Installation requires another bracketed read.
+            marker_watch = None;
             request(&mut a, &tx, ReadRequest::Catalog);
         }
         let old_tab = a.tab;
@@ -278,6 +326,23 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
             Some(Event::Input(TerminalEvent::Key(k))) if k.kind != event::KeyEventKind::Release => {
                 if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
                     break;
+                }
+                if a.help || a.detail {
+                    match k.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            a.help = false;
+                            a.detail = false;
+                            a.detail_scroll = 0;
+                        }
+                        KeyCode::Down | KeyCode::PageDown => {
+                            a.detail_scroll = a.detail_scroll.saturating_add(5)
+                        }
+                        KeyCode::Up | KeyCode::PageUp => {
+                            a.detail_scroll = a.detail_scroll.saturating_sub(5)
+                        }
+                        _ => {}
+                    }
+                    continue;
                 }
                 if a.searching {
                     match k.code {
@@ -295,7 +360,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     a.project_report = Value::Null;
                     a.project_error.clear();
                     a.selected = 0;
-                    thumb = thumbnail(&a);
+                    thumb = thumbnail(&a, &picker);
                     continue;
                 }
                 match k.code {
@@ -305,10 +370,20 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::F(n @ 1..=5) => a.tab = usize::from(n - 1),
                     KeyCode::Char(c @ '1'..='5') => a.tab = (c as u8 - b'1') as usize,
                     KeyCode::Char('/') => a.searching = true,
+                    KeyCode::Char('?') => {
+                        a.help = true;
+                        a.detail_scroll = 0;
+                    }
+                    KeyCode::Char('d' | 'D') => {
+                        a.detail = true;
+                        a.detail_scroll = 0;
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if a.tab == 0 {
                             a.move_selection(1);
-                            thumb = thumbnail(&a);
+                            thumb = thumbnail(&a, &picker);
+                        } else if a.tab == 2 {
+                            a.move_agent(1);
                         } else {
                             a.scroll = a.scroll.saturating_add(1);
                         }
@@ -316,7 +391,9 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::Up | KeyCode::Char('k') => {
                         if a.tab == 0 {
                             a.move_selection(-1);
-                            thumb = thumbnail(&a);
+                            thumb = thumbnail(&a, &picker);
+                        } else if a.tab == 2 {
+                            a.move_agent(-1);
                         } else {
                             a.scroll = a.scroll.saturating_sub(1);
                         }
@@ -326,6 +403,9 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::Enter => {
                         if a.tab == 0 {
                             a.tab = 1;
+                        } else {
+                            a.detail = true;
+                            a.detail_scroll = 0;
                         }
                     }
                     KeyCode::Char('a' | 'A') => request(&mut a, &tx, ReadRequest::Audit),
@@ -350,6 +430,23 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some(Event::Input(TerminalEvent::Mouse(mouse))) => {
                 let point = ratatui::layout::Position::new(mouse.column, mouse.row);
+                if a.help || a.detail {
+                    match mouse.kind {
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            a.help = false;
+                            a.detail = false;
+                        }
+                        MouseEventKind::ScrollDown => {
+                            a.detail_scroll = a.detail_scroll.saturating_add(3)
+                        }
+                        MouseEventKind::ScrollUp => {
+                            a.detail_scroll = a.detail_scroll.saturating_sub(3)
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 match mouse.kind {
                     MouseEventKind::Down(MouseButton::Left) => {
                         if let Some((_, index)) =
@@ -357,12 +454,17 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                         {
                             a.tab = *index;
                             a.searching = false;
+                        } else if a.tab == 2
+                            && let Some((_, index)) =
+                                hits.agents.iter().find(|(rect, _)| rect.contains(point))
+                        {
+                            a.agent_selected = *index;
                         } else if a.tab == 0
                             && let Some((_, index)) =
                                 hits.projects.iter().find(|(rect, _)| rect.contains(point))
                         {
                             a.move_selection(*index as isize - a.selected as isize);
-                            thumb = thumbnail(&a);
+                            thumb = thumbnail(&a, &picker);
                         }
                     }
                     MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
@@ -373,7 +475,9 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                         };
                         if a.tab == 0 {
                             a.move_selection(delta);
-                            thumb = thumbnail(&a);
+                            thumb = thumbnail(&a, &picker);
+                        } else if a.tab == 2 {
+                            a.move_agent(delta);
                         } else {
                             a.scroll = a.scroll.saturating_add_signed(delta as i16 * 3);
                         }
@@ -381,11 +485,110 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     _ => {}
                 }
             }
+            Some(Event::Marker {
+                before,
+                after,
+                read_ok,
+            }) => {
+                let before_token = before.as_ref().ok().and_then(observe::token);
+                let after_token = after.as_ref().ok().and_then(observe::token);
+                if before_token != after_token {
+                    a.refresh_needed = true;
+                }
+                let mut installed_now = false;
+                match after {
+                    Ok(status) if status["ok"] == true => {
+                        a.changes = status;
+                        if let Some(path) = a.changes["path"]
+                            .as_str()
+                            .filter(|p| std::path::Path::new(p).is_absolute())
+                            .map(PathBuf::from)
+                        {
+                            match observe::watch_directory(&path) {
+                                Ok(directory) => {
+                                    let replace =
+                                        marker_watch.as_ref().is_none_or(|(old, dir, _)| {
+                                            old != &path || dir != &directory
+                                        });
+                                    if replace {
+                                        match observe::watch(
+                                            std::slice::from_ref(&path),
+                                            tx.clone(),
+                                            dirty.clone(),
+                                        ) {
+                                            Ok(watcher) => {
+                                                marker_watch = Some((
+                                                    path.clone(),
+                                                    directory.clone(),
+                                                    watcher,
+                                                ));
+                                                installed_now = true;
+                                                a.refresh_needed = true;
+                                            }
+                                            Err(e) => {
+                                                marker_watch = None;
+                                                a.notification_status =
+                                                    format!("Change watcher unavailable: {e}");
+                                            }
+                                        }
+                                    }
+                                    if marker_watch.is_some() {
+                                        a.notification_status = if path.parent()
+                                            != Some(directory.as_path())
+                                        {
+                                            "Marker parent missing; watching ancestor for creation"
+                                                .into()
+                                        } else if after_token.is_some() {
+                                            "Change token observed · limited, best-effort coverage"
+                                                .into()
+                                        } else {
+                                            format!(
+                                                "Change token unavailable: {}",
+                                                model::text(&a.changes["reason"])
+                                            )
+                                        };
+                                    }
+                                }
+                                Err(e) => {
+                                    marker_watch = None;
+                                    a.notification_status = e;
+                                }
+                            }
+                        } else {
+                            marker_watch = None;
+                            a.notification_status =
+                                "Provider returned no absolute change-marker path".into();
+                        }
+                    }
+                    Ok(_) => {
+                        a.changes = Value::Null;
+                        marker_watch = None;
+                        a.notification_status = "Change provider returned no usable status".into();
+                    }
+                    Err(e) => {
+                        a.changes = Value::Null;
+                        marker_watch = None;
+                        a.notification_status = format!("Change provider unavailable: {e}");
+                    }
+                }
+                // A fresh watch always requires a subsequent bracketed read; a failed
+                // observation or changing/unavailable token must not be acknowledged.
+                if read_ok
+                    && !installed_now
+                    && before_token == after_token
+                    && marker_watch.is_some()
+                {
+                    a.last_token = after_token;
+                }
+            }
             Some(Event::Catalog(result)) => {
                 a.busy = false;
                 let selected = a.path();
                 match result {
                     Ok(v) => {
+                        // A catalog refresh does not refresh saved project evidence.
+                        // Keep that demand separate from explicit user requests.
+                        a.project_refresh_needed = a.tab == 1 || !a.project_report.is_null();
                         a.catalog = v;
                         a.selected = a
                             .projects()
@@ -397,7 +600,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                             a.project_report = Value::Null;
                             a.project_error.clear();
                         }
-                        thumb = thumbnail(&a);
+                        thumb = thumbnail(&a, &picker);
                     }
                     Err(e) => {
                         a.project_report = Value::Null;
@@ -435,7 +638,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(v) => {
                             a.project_report = v;
                             a.project_error.clear();
-                            a.status = "Disk observation received; Studio was not switched".into();
+                            a.status = "Saved-file observation received · live/unsaved state remains unknown".into();
                         }
                         Err(e) => {
                             a.project_report = Value::Null;
@@ -448,7 +651,16 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
             Some(Event::Agents(result)) => {
                 match result {
                     Ok(v) => {
+                        let selected = a.agents.get(a.agent_selected).map(|p| p["pane_id"].clone());
+                        a.agent_selected = v
+                            .iter()
+                            .position(|p| Some(&p["pane_id"]) == selected.as_ref())
+                            .unwrap_or(0);
                         a.agents = v;
+                        a.agents_observed_at = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .ok()
+                            .map(|d| d.as_secs());
                         a.agent_status="Herdr event subscription · observed host only · title is not task proof".into();
                         a.effect_until = Instant::now() + Duration::from_millis(900);
                     }
@@ -466,7 +678,13 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            Some(Event::Notice(e)) => a.status = e,
+            Some(Event::Notice(e)) => {
+                if e.starts_with("Watcher:") {
+                    marker_watch = None;
+                    a.notification_status = e.clone();
+                }
+                a.status = e;
+            }
             _ => {}
         }
         if a.tab != old_tab {

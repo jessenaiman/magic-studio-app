@@ -12,6 +12,26 @@ use std::{
     thread,
 };
 
+pub fn watch_directory(target: &Path) -> Result<PathBuf, String> {
+    let mut dir = target.parent().ok_or("Notification path has no parent")?;
+    while !dir.is_dir() {
+        dir = dir.parent().ok_or("No accessible notification parent")?;
+    }
+    Ok(dir.to_path_buf())
+}
+
+pub fn token(status: &Value) -> Option<(String, String)> {
+    if status["ok"] != true || status["available"] != true {
+        return None;
+    }
+    let path = status["path"].as_str()?;
+    if !Path::new(path).is_absolute() {
+        return None;
+    }
+    let token = status["token"].as_str().filter(|s| !s.is_empty())?;
+    Some((path.to_owned(), token.to_owned()))
+}
+
 pub fn watch(
     paths: &[PathBuf],
     tx: SyncSender<Event>,
@@ -32,17 +52,17 @@ pub fn watch(
             }
             Err(e) => {
                 dirty.store(true, Ordering::Release);
-                let _ = tx.try_send(Event::Notice(format!("Watcher: {e}; press A to refresh")));
+                let _ = tx.try_send(Event::Notice(format!("Watcher: {e}; press R to refresh")));
             }
             _ => {}
         })
         .map_err(|e| e.to_string())?;
     let mut watched = std::collections::HashSet::new();
     for target in paths {
-        let parent = target.parent().unwrap_or(Path::new("."));
-        if parent.is_dir() && watched.insert(parent.to_path_buf()) {
+        let parent = watch_directory(target)?;
+        if watched.insert(parent.clone()) {
             watcher
-                .watch(parent, RecursiveMode::NonRecursive)
+                .watch(&parent, RecursiveMode::NonRecursive)
                 .map_err(|e| e.to_string())?;
         }
     }

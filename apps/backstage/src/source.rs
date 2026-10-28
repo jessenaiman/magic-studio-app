@@ -111,6 +111,10 @@ pub fn catalog(cancel: &AtomicBool) -> Result<Value, String> {
     run("magic-cli", &["exec", "project.catalog"], None, cancel)
 }
 
+pub fn changes(cancel: &AtomicBool) -> Result<Value, String> {
+    run("magic-cli", &["backstage", "changes"], None, cancel)
+}
+
 pub fn audit(cancel: &AtomicBool) -> Result<Value, String> {
     // Do not rebrand app.analytics or reconstruct the provider's audit report here.
     run("magic-cli", &["audit"], None, cancel)
@@ -126,8 +130,23 @@ pub fn run(
         .map_err(|e| format!("{program}: invalid JSON: {e}"))
 }
 
-pub fn inspect(_project: &str, _cancel: &AtomicBool) -> Result<Value, String> {
-    // project.attach itself is read-only, but current native dispatch can implicitly
-    // call journaled project.load_asset before backstage.status. Do not enter that path.
-    Err("Project observation unavailable pending Magic's verified read-only contract; no project command was executed".into())
+pub fn inspect(project: &str, cancel: &AtomicBool) -> Result<Value, String> {
+    if !std::path::Path::new(project).is_absolute() {
+        return Err("Saved-project observation requires an absolute path".into());
+    }
+    let expected =
+        std::fs::canonicalize(project).map_err(|e| format!("Project identity unavailable: {e}"))?;
+    // PR #12's isolated registry query. Never fall back to attach/status or --project.
+    let param = format!("path={project}");
+    let report =
+        run("magic-cli", &["backstage", "observe", &param], None, cancel).map_err(|e| {
+            format!("Saved-project observer unavailable (requires Magic backstage.observe): {e}")
+        })?;
+    if report["ok"] != true || report["observation"]["source"] != "saved_project_file" {
+        return Err("Magic did not return the saved-project observation contract".into());
+    }
+    if report["project"].as_str() != expected.to_str() {
+        return Err("Magic returned a different project identity; observation discarded".into());
+    }
+    Ok(report)
 }

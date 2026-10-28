@@ -1,5 +1,9 @@
 //! Linux measurements, sampled exclusively by the visible MAYHEM view.
-use std::{collections::VecDeque, fs, time::Instant};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs,
+    time::Instant,
+};
 
 #[derive(Default)]
 pub struct Metrics {
@@ -9,9 +13,15 @@ pub struct Metrics {
     pub memory_used: u64,
     pub memory_total: u64,
     pub history: VecDeque<u64>,
+    pub memory_history: VecDeque<u64>,
+    pub network_history: VecDeque<u64>,
+    pub samples: u64,
+    pub uptime: u64,
+    pub process_count: usize,
+    previous_processes: HashMap<u32, (u64, u64)>,
     pub network: Option<(u64, u64)>,
     pub load: String,
-    pub processes: Vec<(u32, String, u64)>,
+    pub processes: Vec<(u32, String, u64, Option<u64>)>,
     pub error: Option<String>,
     previous: Option<(u64, u64, u64, u64, Instant)>,
 }
@@ -33,6 +43,7 @@ pub fn cpu_ticks(raw: &str) -> Option<(u64, u64)> {
 impl Metrics {
     pub fn pause(&mut self) {
         self.previous = None;
+        self.previous_processes.clear();
         self.previous_cores.clear();
         self.cores.clear();
         self.cpu = None;
@@ -121,6 +132,35 @@ impl Metrics {
                 ));
             }
         }
+        let cpu_delta = self
+            .previous
+            .map(|(old, _, _, _, _)| total.saturating_sub(old));
+        let cpu_count = raw
+            .lines()
+            .skip(1)
+            .take_while(|l| l.starts_with("cpu"))
+            .count() as u64;
+        self.samples = self.samples.wrapping_add(1);
+        self.uptime = fs::read_to_string("/proc/uptime")
+            .ok()
+            .and_then(|s| {
+                s.split_whitespace()
+                    .next()
+                    .and_then(|n| n.parse::<f64>().ok())
+            })
+            .unwrap_or(0.0) as u64;
+        if let Some(percent) = (100 * self.memory_used).checked_div(self.memory_total) {
+            self.memory_history.push_back(percent);
+        }
+        if let Some((rx, _)) = self.network {
+            self.network_history.push_back(rx);
+        }
+        if self.memory_history.len() > 120 {
+            self.memory_history.pop_front();
+        }
+        if self.network_history.len() > 120 {
+            self.network_history.pop_front();
+        }
         self.previous = Some((total, idle, rx, tx, now));
         self.load = fs::read_to_string("/proc/loadavg")
             .unwrap_or_default()
@@ -129,6 +169,7 @@ impl Metrics {
             .collect::<Vec<_>>()
             .join("  ");
         self.processes.clear();
+        let mut current_processes = HashMap::new();
         if let Ok(entries) = fs::read_dir("/proc") {
             for e in entries.flatten() {
                 let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
@@ -150,9 +191,32 @@ impl Metrics {
                     .and_then(|l| l.split_whitespace().nth(1))
                     .and_then(|v| v.parse::<u64>().ok())
                     .unwrap_or(0);
-                self.processes.push((pid, name, rss));
+                let sample = fs::read_to_string(e.path().join("stat"))
+                    .ok()
+                    .and_then(|v| {
+                        let fields: Vec<&str> = v.rsplit_once(')')?.1.split_whitespace().collect();
+                        Some((
+                            fields.get(19)?.parse::<u64>().ok()?,
+                            fields
+                                .get(11)?
+                                .parse::<u64>()
+                                .ok()?
+                                .saturating_add(fields.get(12)?.parse::<u64>().ok()?),
+                        ))
+                    });
+                let cpu = sample.and_then(|(start, ticks)| {
+                    current_processes.insert(pid, (start, ticks));
+                    let (old_start, old_ticks) = *self.previous_processes.get(&pid)?;
+                    if old_start != start {
+                        return None;
+                    }
+                    (ticks.saturating_sub(old_ticks) * 1000 * cpu_count).checked_div(cpu_delta?)
+                });
+                self.processes.push((pid, name, rss, cpu));
             }
         }
+        self.process_count = self.processes.len();
+        self.previous_processes = current_processes;
         self.processes.sort_by_key(|p| std::cmp::Reverse(p.2));
         self.processes.truncate(12);
         self.error = None;

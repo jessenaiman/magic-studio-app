@@ -36,9 +36,18 @@ pub struct App {
     pub searching: bool,
     pub catalog: Value,
     pub report: Value,
+    pub changes: Value,
+    pub notification_status: String,
+    pub last_token: Option<(String, String)>,
     pub project_report: Value,
     pub project_error: String,
+    pub graphics_status: String,
     pub agents: Vec<Value>,
+    pub agent_selected: usize,
+    pub agents_observed_at: Option<u64>,
+    pub help: bool,
+    pub detail: bool,
+    pub detail_scroll: u16,
     pub status: String,
     pub observed: Option<std::time::Instant>,
     pub agent_status: String,
@@ -49,6 +58,7 @@ pub struct App {
     pub worker: Option<std::thread::JoinHandle<()>>,
     pub pending: Option<crate::ReadRequest>,
     pub refresh_needed: bool,
+    pub project_refresh_needed: bool,
 }
 impl Default for App {
     fn default() -> Self {
@@ -60,9 +70,18 @@ impl Default for App {
             searching: false,
             catalog: Value::Null,
             report: Value::Null,
+            changes: Value::Null,
+            notification_status: "Change notifications not discovered".into(),
+            last_token: None,
             project_report: Value::Null,
             project_error: String::new(),
+            graphics_status: "Terminal graphics not queried".into(),
             agents: vec![],
+            agent_selected: 0,
+            agents_observed_at: None,
+            help: false,
+            detail: false,
+            detail_scroll: 0,
             status: "Connecting to Magic…".into(),
             observed: None,
             agent_status: "Agent observations unavailable".into(),
@@ -73,10 +92,18 @@ impl Default for App {
             worker: None,
             pending: None,
             refresh_needed: false,
+            project_refresh_needed: false,
         }
     }
 }
 impl App {
+    pub fn move_agent(&mut self, delta: isize) {
+        let count = self.agents.len();
+        if count > 0 {
+            self.agent_selected =
+                (self.agent_selected as isize + delta).rem_euclid(count as isize) as usize;
+        }
+    }
     pub fn projects(&self) -> Vec<Value> {
         rows(&self.catalog, &self.query)
     }
