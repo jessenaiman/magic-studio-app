@@ -27,6 +27,24 @@ pub(crate) fn resolve_storyboard_template(s: &Session, raw: &str) -> Result<Path
     Ok(template)
 }
 
+/// Use the SDK environment selected by scripts/install_magic.py, not PATH's python3.
+fn storyboard_python(s: &Session) -> Result<String> {
+    let unavailable = || EngineError::ExternalTool("storyboard Python".into(),
+        "Magic's Python environment is unavailable. Prepare the dependencies in agent-harness and run scripts/install_magic.py --python /absolute/environment/bin/python; no alternate interpreter was selected".into());
+    if let Some(cli) = std::env::current_exe().ok().map(|p| p.with_file_name("magic-cli")).filter(|p| p.is_file()) {
+        let entry = std::fs::read_to_string(cli)?;
+        let mut lines = entry.lines();
+        let python = lines.next().and_then(|line| line.strip_prefix("#!"))
+            .map(Path::new).filter(|p| p.is_absolute() && p.is_file()).ok_or_else(unavailable)?;
+        if lines.next() != Some("from cli_anything.magic.magic_cli import main") { return Err(unavailable()); }
+        // Keep the venv executable path: resolving its symlink would lose its site-packages.
+        return Ok(python.to_string_lossy().into_owned());
+    }
+    let root = crate::workspace::workspace_root(s);
+    [root.join(".venv/bin/python"), root.join(".venv/Scripts/python.exe")].into_iter()
+        .find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned()).ok_or_else(unavailable)
+}
+
 /// A scene's packet sections, in the order they print.
 pub(crate) const SCENE_SECTIONS: &[(&str, &str)] = &[
     ("skills", "Skills"),
@@ -468,7 +486,7 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
         if params["allow_timing_overrun"]==true{if params["draft"]!=true{return Err(EngineError::InvalidParams("Timing-overrun source may only produce an explicitly warned draft".into()));}args.push("--allow-timing-overrun".into());}
         if let Some(source)=params["source"].as_str(){args.extend(["--source".into(),resolve_workspace_path(s,source).to_string_lossy().into_owned()]);}
         if let Some(panels)=params["panels"].as_str(){args.extend(["--panels".into(),panels.into()]);}
-        let output=run_tool_in(&dir,"python3",&args)?;
+        let output=run_tool_in(&dir,&storyboard_python(s)?,&args)?;
         let mut result:Value=serde_json::from_str(&output).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
         result["project"]=json!(s.project_path);result["manifest"]=json!(out.join("manifest.json"));
         result["draft"]=json!(params["draft"]==true || result["mapping"]["needs_correction"]==true);
