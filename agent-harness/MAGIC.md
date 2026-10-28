@@ -41,3 +41,30 @@ absolute Magic Studio project file up to 32 MiB; invalid paths, other formats, `
 unsupported parameters are errors. It does not attach, load assets, claim a writer, write activity,
 change a session binding, or switch a window. It remains usable while a Studio owns the project.
 This narrow observation is not the Backstage audit and does not provide release or productivity totals.
+
+### Change notification token
+
+`magic-cli backstage changes` (or MCP `command_run` with ID `backstage.changes` and `{}`)
+returns the producer's resolved `path`, `available`, `token`, `reason`, `coverage` and
+`excluded`. It is read-only and does not create or clear the marker or change caller binding;
+omit global `--project`. The path is `$XDG_RUNTIME_DIR/magicstudio/changes.json`, falling
+back to `$XDG_STATE_HOME/magicstudio/changes.json` or `~/.local/state/magicstudio/changes.json`.
+The writer creates private files and atomically replaces the marker. An absent, invalid,
+unreadable or nonprivate marker is unavailable, not a zero-change result.
+
+Each observer watches the marker's parent, reads the token before and after refreshing, and
+remembers its own last successfully observed token. Never delete or reset shared producer state.
+A token is an opaque invalidation identity, not a revision counter; concurrent changes can
+coalesce. Reconnect and rescan require a fresh observation. The first producer write creates the
+marker; if its parent or watcher is unavailable, report that state and arrange a fresh watch
+when available rather than asserting no changes.
+
+Current producer coverage is limited to user-session attempts to write `.magic` project files through
+`project::write_project_file` and updates to Magic's recent-project navigation history. Attempts
+that fail after a partial write also invalidate; an invalidation does not prove bytes changed or
+that an operation succeeded. External file edits, other project files, asynchronous work and
+unsaved UI state and writes in non-user sessions are not covered. Publication is best effort: an error is written to the
+producer's stderr without relabeling a completed save as failed. A process crash or publication
+failure can miss an invalidation, and a previously readable token cannot prove the producer is
+healthy. Consumers must report watcher/read failures and cannot infer full freshness from the
+token alone.

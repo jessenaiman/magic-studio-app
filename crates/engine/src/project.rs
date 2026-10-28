@@ -67,7 +67,10 @@ pub fn write_project_file(s: &Session) -> Result<()> {
     }
     let text = serde_json::to_string_pretty(&doc)
         .map_err(|e| EngineError::InvalidParams(format!("cannot encode project: {e}")))?;
-    write_preserving_lease(path, text.as_bytes())?;
+    let written=write_preserving_lease(path, text.as_bytes());
+    // A failed write can still have left partial effects if rollback failed.
+    if s.record_user_state { crate::change_marker::invalidate(); }
+    written?;
     s.project_saves.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if s.record_user_state{crate::activity::stored(path,text.len());}
     Ok(())
