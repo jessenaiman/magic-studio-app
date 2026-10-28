@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -148,6 +149,16 @@ def mcp(ctx: click.Context) -> None:
     """Serve Magic commands over MCP stdio using the official Python SDK."""
     from cli_anything.magic.core.mcp_server import run_mcp_stdio
     run_mcp_stdio(ctx.obj["session"], bridge=ctx.obj["bridge"], dry_run=ctx.obj["dry_run"])
+
+
+@cli.command("tui", context_settings={"ignore_unknown_options": True})
+@click.argument("arguments", nargs=-1, type=click.UNPROCESSED)
+def tui(arguments: tuple[str, ...]) -> None:
+    """Launch the installed Backstage terminal application."""
+    try:
+        os.execvp("backstage", ["backstage", *arguments])
+    except OSError as exc:
+        raise click.ClickException(f"Cannot launch backstage: {exc}") from exc
 
 
 @cli.group(cls=RegistryGroup, prefix="studio.")

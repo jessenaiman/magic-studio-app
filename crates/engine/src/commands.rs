@@ -101,10 +101,11 @@ impl CommandSpec {
 pub fn is_read_only_command(id: &str, params: &Value) -> bool {
     match id {
         "project.catalog" => params.get("forget").is_none_or(Value::is_null),
-        "project.attach"
-        | "backstage.observe"
+        "audit"
+        | "project.attach"
+        | "project.observe"
 
-        | "backstage.changes"
+        | "app.changes"
         | "project.identity"
         | "project.list_assets"
         | "project.search"
@@ -322,14 +323,10 @@ pub fn build() -> Vec<CommandSpec> {
         cmd!("skills.remove", "Remove Learning block reversibly", [], None, "{\"id\":\"block id\",\"expected_revision\":\"from skills.info\"}", always, crate::skills_registry::cmd_skills_remove),
         cmd!("skills.undo", "Restore removed Learning block", [], None, "{\"id\":\"block id\",\"expected_revision\":\"from remove receipt\"}", always, crate::skills_registry::cmd_skills_undo),
         cmd!("skills.add", "Register / update one knowledge skill", [], None, "{\"id\":\"skill id\",\"name\":\"display name\",\"description\":\"what it does\",\"status\":\"researching|implemented|not_implemented\",\"source\":\"url or reference\",\"implemented_at\":[\"command ids\"],\"implemented_in\":[\"file paths\"],\"integration_notes\":\"where it plugs in\"}", always, crate::skills_registry::cmd_skills_add),
-        query!("backstage.observe", "Observe a Saved Project Without Changing Its Session", "{\"path\":\"absolute existing .magic project path\"}", crate::command_center::observe_saved_project),
+        query!("project.observe", "Observe a Saved Project Without Changing Its Session", "{\"path\":\"absolute existing .magic project path\"}", crate::command_center::observe_saved_project),
 
-        query!("backstage.changes", "Discover Saved-Project Change Notifications", "{}", crate::change_marker::status),
-        query!("backstage.events", "Recent Activity Receipts", "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}", crate::activity::events),
-        query!("backstage.status", "Backstage — Live Production Status", "{\"trace\":false}", crate::command_center::status),
-        query!("booth.events", "Recent Activity Receipts (alias of backstage.events)", "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}", crate::activity::events),
-        query!("booth.status", "Backstage (alias of backstage.status)", "{\"trace\":false}", crate::command_center::status),
-        query!("center.events", "Recent Activity Receipts (alias of backstage.events)", "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}", crate::activity::events),
+        query!("app.changes", "Discover Saved-Project Change Notifications", "{}", crate::change_marker::status),
+        query!("center.events", "Recent Activity Receipts", "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}", crate::activity::events),
         query!("ui.state", "Live window state", "{}", crate::command_center::requires_ui),
         query!("ui.elements", "Visible controls", "{\"region\":\"optional CSS selector\"}", crate::command_center::requires_ui),
         query!("ui.unconfigured", "Unconfigured controls", "{}", crate::command_center::requires_ui),
@@ -346,7 +343,7 @@ pub fn build() -> Vec<CommandSpec> {
         query!("ui.components", "Rendered Studio Components", "{\"region\":\"#view-project\",\"filter\":\"optional ID filter\",\"limit\":30}", crate::command_center::requires_ui),
         query!("ui.controls", "Studio control telemetry", "{\"region\":\"optional region\",\"offset\":0,\"limit\":64}", crate::command_center::requires_ui),
         cmd!("ui.attention", "Request attention at a Studio panel", ["Window"], None, "{\"project\":\"exact open .magic path\",\"id\":\"registered panel id\",\"reason\":\"what needs attention\",\"clear\":false}", always, crate::command_center::requires_ui),
-        query!("center.status", "Backstage (alias of backstage.status)", "{\"trace\":false}", crate::command_center::status),
+        query!("center.status", "Production Status", "{\"trace\":false}", crate::command_center::status),
         query!("studio.cues", "Cues at a Song Time / Uses of a Clip (read-only)", "{\"project\":\"existing .magic path\",\"at\":43.2,\"clip\":\"clip id; give at or clip\"}", crate::studio_cues::cues),
         cmd!("project.migrate", "Migrate a Legacy .acproj to .magic", ["File"], None, "{\"path\":\"legacy .acproj file\"}", always, crate::project::cmd_project_migrate),
         cmd!("project.intake", "New / Resume Project Intake", ["File"], None, "{\"path\":\"optional explicit .magic override\",\"root\":\"optional per-request root override; defaults to project.root\",\"name\":\"song name\",\"audio\":\"optional existing audio; analyzed only without valid existing timing\",\"transcript\":\"optional existing JSON\",\"captions\":\"optional original SRT\",\"audiomap\":\"optional existing audiomap.json\",\"materials\":[\"optional notes/reference file\"],\"skills\":[{\"id\":\"skill id\",\"name\":\"display name\",\"description\":\"what it does\",\"status\":\"researching|implemented|not_implemented\",\"source\":\"url or reference\",\"implemented_at\":[\"command ids\"],\"implemented_in\":[\"file paths\"],\"integration_notes\":\"where it plugs in\"}],\"resume\":false,\"replace_transcript\":false,\"hyperframes_cli\":\"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}", always, crate::command_center::intake),
@@ -845,6 +842,9 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"clean\": false}",
             cmd_app_doctor
         ),
+        CommandSpec { id:"audit", label:"Codacy Source Audit", menu:&[], shortcut:None,
+            params:"{\"path\":\"optional source repository path\"}", enabled:always,
+            run:crate::audit::run, journal:false, long_running:true },
         query!("command.list", "List Commands", "{\"filter\":\"optional command ID or search text\"}", cmd_query_list),
     ]
 }

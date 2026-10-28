@@ -29,9 +29,9 @@ Native `--headless run` is a stop-on-error batch; the adapter uses internal `--h
 
 ### Saved-project observation
 
-`magic-cli backstage observe path=/absolute/Project.magic` reads the specified saved project
-file without selecting a project or Studio window. Discover it with `magic-cli commands backstage.observe`;
-MCP `command_run` uses ID `backstage.observe` and `{"path":"/absolute/Project.magic"}`. Call it
+`magic-cli project observe path=/absolute/Project.magic` reads the specified saved project
+file without selecting a project or Studio window. Discover it with `magic-cli commands project.observe`;
+MCP `command_run` uses ID `project.observe` and `{"path":"/absolute/Project.magic"}`. Call it
 without global `--project`, which explicitly changes the caller's binding. The output includes the
 canonical `project`, `name`, saved `assets` and `workshop`, and `observation` with
 `source: saved_project_file`, `sha256` of the bytes read, `observed_unix_micros`,
@@ -44,7 +44,7 @@ This narrow observation is not the Backstage audit and does not provide release 
 
 ### Change notification token
 
-`magic-cli backstage changes` (or MCP `command_run` with ID `backstage.changes` and `{}`)
+`magic-cli app changes` (or MCP `command_run` with ID `app.changes` and `{}`)
 returns the producer's resolved `path`, `available`, `token`, `reason`, `coverage` and
 `excluded`. It is read-only and does not create or clear the marker or change caller binding;
 omit global `--project`. The path is `$XDG_RUNTIME_DIR/magicstudio/changes.json`, falling
@@ -68,3 +68,21 @@ producer's stderr without relabeling a completed save as failed. A process crash
 failure can miss an invalidation, and a previously readable token cannot prove the producer is
 healthy. Consumers must report watcher/read failures and cannot infer full freshness from the
 token alone.
+
+### Audit and terminal view
+
+`magic-cli audit` runs the configured Codacy analysis for the Magic source checkout and returns
+Codacy's JSON report, including its tool results, issues and errors. Use
+`magic-cli audit path=/absolute/source/checkout` to select a different source repository. The selected checkout must
+have `.codacy/codacy.config.json` and `codacy-analysis` must be installed. Audit does not install
+analyzers or upload code. Missing tools and scanner failures are present in Codacy's report; an
+empty issue list is not evidence of a clean scan unless analyzers actually ran. See the
+[Codacy Analysis CLI documentation](https://docs.codacy.com/codacy-analysis-cli/) and
+[Codacy JSON output format](https://github.com/codacy/codacy-skills/blob/master/skills/codacy-analysis-cli/references/output-format.md).
+MCP `command_run` uses registry ID `audit` and the same optional `path` parameter. Audit runs
+independently of the terminal UI and does not change the selected project or window.
+
+`magic-cli tui` launches the installed `backstage` program and forwards its arguments. It does
+not implement TUI behaviour or start a server. If the application is not installed, the command
+reports that it cannot launch it. The generic project observation and change commands above are
+Magic operations; they do not depend on the terminal UI.

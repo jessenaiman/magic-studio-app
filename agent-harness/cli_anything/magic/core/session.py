@@ -157,7 +157,7 @@ class Session:
         if cmd_id == "command.list":
             return backend.execute_headless(cmd_id, req)
         # Isolated read-only queries must not change the caller's target or writer session.
-        if cmd_id in {"backstage.observe", "backstage.changes"}:
+        if cmd_id in {"audit", "project.observe", "app.changes"}:
             return backend.execute_headless(cmd_id, req)
         selecting = cmd_id == "project.open"
         target = req.get("path") if selecting else req.get("project")

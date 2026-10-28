@@ -77,11 +77,16 @@ Follow [CLI-Anything HARNESS](https://github.com/HKUDS/CLI-Anything/blob/main/cl
 Native `--headless run` is a stop-on-error batch; the adapter uses internal `--headless serve` for persistent requests so a validation error does not discard session state. Native pipe reads and writes have the registry-based deadline too. A lost/timed-out native session is unavailable until explicit `project open` recovery; recovery never replays the failed request or replaces a still-running engine. Discovery remains available.
 
 For read-only saved-project observation without changing a session or window, use
-`magic-cli backstage observe path=/absolute/Project.magic` (no global `--project`). Its canonical
+`magic-cli project observe path=/absolute/Project.magic` (no global `--project`). Its canonical
 project, file hash, timestamp and saved fields are described in [MAGIC.md](../../../MAGIC.md).
 Unsaved window state and external files are not observed; this is not an audit report.
 
 For the saved-project change-token path and current limited coverage, use
-`magic-cli backstage changes` without global `--project`; see [MAGIC.md](../../../MAGIC.md).
+`magic-cli app changes` without global `--project`; see [MAGIC.md](../../../MAGIC.md).
 Each observer keeps its own token and never clears the producer's file. Unavailable notification
 state is not evidence that nothing changed.
+
+`magic-cli audit` returns Codacy's actual JSON source-analysis report. See
+[MAGIC.md](../../../MAGIC.md) for setup, optional repository targeting and coverage semantics.
+`magic-cli tui` launches the installed Backstage terminal app; the audit and Magic registry
+operations work independently of the TUI.

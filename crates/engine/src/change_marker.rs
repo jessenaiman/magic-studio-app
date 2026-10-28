@@ -59,7 +59,7 @@ fn publish() -> Result<()> {
 pub fn status(_: &mut Session, params: &Value) -> Result<Value> {
     let allowed=["_origin","_client","_request_id","_control"];
     if params.as_object().is_none_or(|p|p.keys().any(|k|!allowed.contains(&k.as_str()))) {
-        return Err(EngineError::InvalidParams("backstage.changes accepts no options".into()));
+        return Err(EngineError::InvalidParams("app.changes accepts no options".into()));
     }
     let path=directory()?.join("changes.json");
     let read=(|| -> std::result::Result<Value,&'static str> {

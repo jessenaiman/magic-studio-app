@@ -156,7 +156,10 @@ venv/
 
 # Tool output directories (reports and audits, not source)
 .archify/
-.codacy/
+.codacy/*
+!.codacy/.gitignore
+!.codacy/codacy.config.json
+!.codacy/codacy.config.baseline.json
 .superpowers/
 docs/codacy-report.md
 
