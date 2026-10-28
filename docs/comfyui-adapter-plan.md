@@ -504,7 +504,7 @@ compatibility matrices. ComfyUI is the abstraction layer.
 | Registry summary | `tools/tool_registry.py` | setup offer surfacing |
 | Selector readiness filter | `tools/video/video_selector.py` | small operation-readiness check |
 | Workflow templates | `tools/_comfyui/workflows/*.json` | 3 files |
-| Tests | `tests/contracts/test_comfyui_tools.py` | ~200 lines |
+| Historical tests | Retired by issue #3; native approval pending | — |
 | Docs | `docs/comfyui-adapter-plan.md` | This file |
 
 **Total:** ~500 lines of Python + 3 workflow JSONs.

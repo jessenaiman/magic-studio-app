@@ -398,7 +398,7 @@ OpenMontage/
 ├── styles/             # 视觉风格指导（YAML）
 ├── remotion-composer/  # React/Remotion 视频合成引擎
 ├── lib/                # 核心基础设施（配置、检查点、流水线加载器）
-└── tests/              # 契约测试、QA 集成测试、评估工具包
+└── docs/               # 架构、开发与验收文档
 ```
 
 ### 三层知识架构
@@ -658,13 +658,7 @@ OpenMontage 被设计为高度可扩展的。最常见的两种贡献是：
 
 ## 测试
 
-```bash
-# 运行契约测试（无需 API 密钥）
-make test-contracts
-
-# 运行所有测试
-make test
-```
+旧版测试已移除。原生 WebdriverIO 验收流程必须先经 Jesse 在真实 UI 中观察并明确批准；语法、编译及 lint 检查仍保留。
 
 ---
 

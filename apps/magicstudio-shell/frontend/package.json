@@ -9,8 +9,5 @@
     "@theatre/core": "0.7.0",
     "@theatre/studio": "0.7.0",
     "@milkdown/crepe": "7.22.3"
-  },
-  "devDependencies": {
-    "playwright-core": "1.58.2"
   }
 }
