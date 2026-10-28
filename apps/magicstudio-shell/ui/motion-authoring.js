@@ -24,8 +24,7 @@ function motionAuthoringPanels(meta){
  const reason=(id,allowed)=>el('p',{id:`authoring-${id}-reason`,class:'muted'},allowed?'Changes replace only the edited action channels. Save project separately.':caps.reason||'A project-local authored action and authoring backend are required.');
  const editControls=[];
  const key=`animation.editUndo.${project}.${character}`;
- const quote=v=>`'${String(v).replaceAll("'","'\\''")}'`;
- const command=(id,params)=>`mc exec ${id} ${quote(`project=${project}`)} ${Object.entries(params).map(([k,v])=>quote(`${k}=${typeof v==='object'?JSON.stringify(v):v}`)).join(' ')}`;
+ const command=(id,params)=>magicCommandText(id,params,project);
  async function edit(id,params){
   if(motion.authoringBusy)throw Error('Wait for the current rig edit.');
   theatreRequireSaved();if(!current())throw Error('Selected project or character changed.');

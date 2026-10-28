@@ -38,15 +38,34 @@ $('application-settings-form').addEventListener('submit',async event=>{
   finally{$('application-settings-save').disabled=false;}
 });
 
+let projectSavePending=false;
+async function saveProjectFromMenu(saveAs=false){
+  if(projectSavePending)return;
+  const project=state.project;
+  if(!project){toast('Open or create a project before saving');return;}
+  projectSavePending=true;
+  try {
+    // Save As changes identity. Never discard an unsaved timeline during that transition.
+    if(saveAs && typeof theatreRequireSaved==='function')theatreRequireSaved();
+    const path=saveAs ? await dialog.save({title:'Save Project As',defaultPath:project,
+      filters:[{name:'Magic Studio project',extensions:['magic']}]}) : null;
+    if(saveAs && !path)return;
+    if(state.project!==project)throw Error('The open project changed; save was not submitted');
+    if(projectView.textDrafts.size || state.data?.design?.dirty)await saveStoryboard();
+    if(state.project!==project)throw Error('The open project changed; save was not submitted');
+    if(saveAs && typeof theatreRequireSaved==='function')theatreRequireSaved();
+    await designCommand('project.save',{expected_project:project,...(saveAs?{path}:{})});
+    toast('Project saved');
+  } finally {projectSavePending=false;}
+}
+
 window.studioMenu=async id=>{
   try {
     switch(id){
       case 'file.new': await beginNewProject(); break;
       case 'file.open': await openDialog(); break;
-      case 'file.save':
-        if(!state.project){toast('Open or create a project before saving');break;}
-        if(projectView.textDrafts.size || state.data?.design?.dirty)await saveStoryboard();
-        await designCommand('project.save');toast('Project saved');break;
+      case 'file.save': await saveProjectFromMenu(); break;
+      case 'file.save_as': await saveProjectFromMenu(true); break;
       case 'file.close': await showHome(); break;
       case 'app.settings': await showApplicationSettings(); break;
     }

@@ -266,7 +266,9 @@ async fn project_command(app:tauri::AppHandle, project:String, id:String, mut pa
    let saved=project_dispatch::execute(&app,"project.save",json!({"_client":"Studio project workflow"}))?;
    result["_ui_engine_revision"]=saved["_ui_engine_revision"].clone();
   }
-  result["project"]=json!(project);Ok(result)
+  // Save As may change identity; return the engine's canonical destination.
+  result["project"]=app.state::<Engine>().with(None,|s|Ok(json!(s.project_path)))?;
+  Ok(result)
  }).await.map_err(|e|e.to_string())?
 }
 

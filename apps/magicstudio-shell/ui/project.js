@@ -22,6 +22,10 @@ class ProjectView {
       try {
         const result=await invoke('project_command',{project,id,params});
         if(this.state.project!==project)throw new Error('The open project changed; its previous command result was not applied');
+        if(result.project && result.project!==project){
+          await applyOpenedProject(result);
+          return result;
+        }
         this.state.data=result;this.render();
         if(result?._ui_engine_revision)await acFeedback.acknowledge(result._ui_engine_revision,project);
         return result;

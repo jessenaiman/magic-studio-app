@@ -2,7 +2,9 @@
 
 This is a review specification and observation record, not an added test suite. Only after Jesse navigates/observes and approves the behavior should the test agent turn it into executable `magic-cli` command/expectation chains.
 
-The shared command is `project.save` with an optional `path`. There is currently a **Save Project** menu item, but no **Save As** menu item. The Save As transition below is triggered through the installed CLI while the real desktop window is observed; it is not a claim of button-click coverage for a nonexistent menu item.
+The shared command is `project.save` with an optional `path`. The desktop **File → Save Project As…** item (`CmdOrCtrl+Shift+S`) uses the native save dialog and the same command. Cancel submits no save; an intervening project switch refuses the request. The UI flushes pending storyboard text and refuses an unsaved timeline before changing identity. Destination writer protection remains in the engine.
+
+Jesse must still approve the menu flow: cancel without changes, save to a new path, reject a destination held by another session, and ordinary Save after the transition. The older CLI observations below do not constitute approval of this new menu flow.
 
 ## Expected chain
 
@@ -28,3 +30,21 @@ Use disposable projects. Each step needs an expected command result plus visible
 - Saving to a directory failed without changing selection; a subsequent normal Save succeeded.
 - A real desktop window followed a CLI Save As to `/tmp/magic-save-as-review/Save As Review.magic`; its reported project, header and caller binding matched. The disposable window is left open for Jesse's review.
 - Native build and whitespace checks passed. No new tests or restored tests were added. Mid-write storage failure was not injected in this live check; the existing byte-restoration helper remains in use.
+
+## Native menu observations (2026-10-28)
+
+The Grober UI cleanup candidate was built and launched with `magic` using an explicit candidate
+binary override and `/tmp/grober-ui-review/Source.magic`. AT-SPI activated the real native menu
+and edited the real GTK file chooser; no dialog or engine mocks were used.
+
+- Cancel preserved the source bytes and selected path.
+- Save As to `Menu Copy.magic` created a readable project, changed the visible header, and reported
+  the canonical destination with writer ownership and no engine/UI errors. Source bytes stayed unchanged.
+- Reopening that saved destination succeeded.
+- Save As to an existing file held by a separate OS writer lock was refused after the native overwrite
+  confirmation; destination bytes and the current selection were preserved.
+- Ordinary Save succeeded after that refusal. The candidate window was closed through guarded `app.quit`.
+- Build, JavaScript syntax, source lint and whitespace checks passed. No new behavioral tests were added.
+
+These engineering observations do not replace Jesse's pending UI approval. Concurrent project switching,
+unsaved timeline behavior and storyboard draft flushing still need their own human review.

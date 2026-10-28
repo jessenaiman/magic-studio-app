@@ -65,10 +65,9 @@ function imagePromptBlock() {
     }
   });
   const command = el('code', { id: 'image-command' });
-  const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
   function updateCommand() {
-    const ref = draft.target?.references ? ` ${quote(`references=${JSON.stringify(draft.target.references)}`)}` : '';
-    command.textContent = `mc exec image.generate ${quote(`project=${project}`)} ${quote(`prompt=${draft.prompt}`)} ${quote(`model=${draft.model}`)} quality=auto${ref}`;
+    command.textContent=magicCommandText('image.generate',{prompt:draft.prompt,model:draft.model,quality:'auto',
+      ...(draft.target?.references?{references:draft.target.references}:{})},project);
   }
   updateCommand();
   const elapsed = () => Math.max(0, Math.floor((performance.now() - draft.startedAt) / 1000));
