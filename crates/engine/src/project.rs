@@ -271,11 +271,32 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
 /// Save the open project (or save-as when `path` is given).
 pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     if params.get("expected_project").is_some(){crate::motion_authoring::project_guard(s,params)?;}
-    if params.get("path").is_some() {
-        s.project_path = Some(project_file_path(s, params)?);
-    }
     if s.project_path.is_none() {
         return Err(EngineError::InvalidParams("no project is open; use project.new".into()));
+    }
+    if params.get("path").is_some() {
+        let target = project_file_path(s, params)?;
+        if s.project_path.as_ref() != Some(&target) {
+            if let Some(parent) = target.parent() { std::fs::create_dir_all(parent)?; }
+            // Acquire the destination without truncating it, before changing session identity.
+            let file = std::fs::OpenOptions::new().read(true).write(true)
+                .create(true).truncate(false).open(&target)?;
+            if !file.metadata()?.is_file() {
+                return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
+            }
+            file.try_lock().map_err(|_| EngineError::InvalidParams(format!(
+                "Project is owned by another live writer: {}. No Save As write performed; the original project remains selected.", target.display()
+            )))?;
+            let target = std::fs::canonicalize(target)?;
+            let previous_path = s.project_path.replace(target);
+            let previous_owner = s.project_owner.replace(std::sync::Arc::new(file));
+            if let Err(error) = write_project_file(s) {
+                s.project_path = previous_path;
+                s.project_owner = previous_owner;
+                return Err(error);
+            }
+            return Ok(json!({"ok": true, "project": s.project_path}));
+        }
     }
     write_project_file(s)?;
     Ok(json!({"ok": true, "project": s.project_path}))

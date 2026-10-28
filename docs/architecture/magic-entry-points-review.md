@@ -1,3 +1,5 @@
+> Authoritative-installation follow-up: the installed Python package now imports from `/run/media/jesse/Speedy/Work/magic-studio-app`; its existing Python dependency environment is reused with no dependency reinstall. The native shell was rebuilt from this checkout and installed with `--python` pointing to that existing environment. Calling `app.analytics` from the retired checkout reported the new `source_root`. Batch state and a fresh real MCP client were checked again after installation. `workspace_root` now prefers the compiled source location; the Python build fallback derives its checkout from the package location. Headless shutdown drains stdout so an interrupted reply cannot deadlock cleanup on a full pipe.
+
 > Follow-up: the four integration issues below were fixed and verified locally on 2026-10-28. The original checkpoint record remains below for traceability.
 >
 > - Headless CLI batches and MCP connections now retain one native engine process and its project lease. `project.load_asset` followed by `project.list_assets` retains `review_icon`; a competing writer was refused and the lease released on session close.

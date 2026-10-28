@@ -140,7 +140,8 @@ impl Session {
         }
         if record{if let Ok(value)=&result{activity::result(self.project_path.as_deref(),id,value,started.elapsed().as_millis());}}
         if record{match &result{Ok(v)=>activity::command(self.project_path.as_deref(),id,&params,if v["ok"]==false{"engine_error"}else if v["intake_ready"]==false{"engine_needs_work"}else{"engine_success"},None),Err(e)=>activity::command(self.project_path.as_deref(),id,&params,"engine_error",Some(&e.to_string()))};}
-        if _writer.is_some(){self.project_owner=prior_owner;}
+        // Save As transfers ownership to a new path; never restore the source lease over it.
+        if _writer.is_some() && self.project_path == project_before {self.project_owner=prior_owner;}
         result
     }
     fn execute_inner(&mut self, id: &str, params: Value) -> Result<Value> {
