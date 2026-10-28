@@ -1,9 +1,8 @@
 // Infrastructure only: no workflow is approved by the presence of this helper.
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, realpath } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { appendFile, cp, mkdir, readFile, realpath, rm } from 'node:fs/promises';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 
 const inside = (root, path) => {
@@ -20,14 +19,23 @@ const requirement = (value, name) => {
 
 /** Call from an approved WDIO spec; assertion callbacks must throw on mismatch.
  * Approval must cite Jesse's actual observation/approval, never the issue/spec itself.
- * No app or project is created here. WDIO owns only its launched native session.
+ * The disposable project lives inside this run's artifact directory and is removed by
+ * `cleanup()`; only hashes, reports and small screenshots remain. `fixture` copies
+ * selected entries of a real project (never modified) into that disposable folder.
  */
-export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCEPTANCE_CLI, approval, artifactDir = process.env.MAGIC_ACCEPTANCE_ARTIFACTS }) {
+export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCEPTANCE_CLI, approval, artifactDir = process.env.MAGIC_ACCEPTANCE_ARTIFACTS, fixture }) {
   assert(approval?.reference && approval.approvedBy && approval.approvedAt, 'Human UI approval evidence is required');
   assert(isAbsolute(cliPath), 'Use the verified installed magic-cli absolute path');
   assert(isAbsolute(artifactDir), 'Use the launcher-owned artifact directory');
-  const root = await mkdtemp(join(tmpdir(), 'magic-acceptance-'));
-  const project = join(root, 'Acceptance.magic');
+  const root = join(artifactDir, 'project');
+  await mkdir(root, { recursive: true });
+  if (fixture) {
+    assert(isAbsolute(fixture.source) && fixture.project && Array.isArray(fixture.include), 'Fixture needs source, project and include');
+    for (const entry of [fixture.project, ...fixture.include]) {
+      await cp(join(fixture.source, entry), join(root, entry), { recursive: true, errorOnExist: true, force: false });
+    }
+  }
+  const project = join(root, fixture ? basename(fixture.project) : 'Acceptance.magic');
   const sessionFile = join(root, 'session.json');
   await mkdir(artifactDir, { recursive: true });
   const stream = join(artifactDir, 'steps.jsonl');
@@ -55,8 +63,12 @@ export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCE
         blocked = true;
         throw new Error('CLI timed out or lost its reply: outcome unknown, no automatic retry');
       }
-      entry.screenshot = join(artifactDir, `step-${id}.png`);
-      await browser.saveScreenshot(entry.screenshot);
+      const full = join(artifactDir, `step-${id}.png`);
+      await browser.saveScreenshot(full);
+      // Keep a small preview only; rerun the case if more detail is needed.
+      entry.screenshot = join(artifactDir, `step-${id}.jpg`);
+      execFileSync('magick', [full, '-resize', '640x>', '-quality', '60', entry.screenshot]);
+      await rm(full);
       entry.observations = {};
       for (const [key, expectation] of Object.entries(expectations)) {
         const result = await expectation.check(entry.actual, { browser, root, project, sessionFile, fileEvidence });
@@ -113,5 +125,7 @@ export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCE
 
   return { root, project, sessionFile, cli, ui, fileEvidence,
     pending: async (name, reason) => record({ name, status: 'pending', reason }),
+    // Remove the disposable project copy; reports, hashes and previews stay.
+    cleanup: () => rm(root, { recursive: true, force: true }),
   };
 }
