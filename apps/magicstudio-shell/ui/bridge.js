@@ -102,6 +102,7 @@ window.magicBridge = {
     return rows;
   },
   click(target, instance = null, files = null) {
+    if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const node = find(target, instance);
     if (!visible(node) || node.disabled) throw new Error("Control is hidden or disabled");
     node.scrollIntoView({ block: "nearest" });
@@ -111,6 +112,7 @@ window.magicBridge = {
     return { clicked: idOf(node) };
   },
   drag(params) {
+    if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const source=find(params.source,params.instance), target=find(params.target,params.instance);
     if(!source.draggable || !visible(source) || !visible(target))throw new Error('Choose a visible draggable asset and a visible storyboard page');
     const x=Number(params.x), y=Number(params.y);
@@ -125,6 +127,7 @@ window.magicBridge = {
     return {source:idOf(source),target:idOf(target),drop_dispatched:true};
   },
   set(target, value, instance = null) {
+    if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const node = find(target, instance);
     if (!visible(node) || node.disabled || node.readOnly) throw new Error("Control is not editable");
     if (node.type === 'checkbox' || node.type === 'radio') {
@@ -137,6 +140,7 @@ window.magicBridge = {
     return { set: idOf(node) };
   },
   key(key, target, instance = null) {
+    if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const node = target ? find(target, instance) : document.activeElement || document.body;
     const [mods, k] = [key.split("+").slice(0, -1).map((m) => m.toLowerCase()), key.split("+").pop()];
     node.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, ctrlKey: mods.includes("ctrl"), shiftKey: mods.includes("shift"), altKey: mods.includes("alt") }));

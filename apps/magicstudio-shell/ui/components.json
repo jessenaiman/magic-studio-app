@@ -1416,7 +1416,7 @@
     },
     "footer-instance": {
       "component": "control",
-      "label": "Studio port and build",
+      "label": "Studio instance and build",
       "indicator": "hidden"
     },
     "words-view-modes": {

@@ -230,6 +230,12 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Copyable examples use public project targeting; execution stays in the shared engine.
+function magicCommandText(id,params={},project=state.project){
+  const quote=value=>`'${String(value).replaceAll("'","'\\''")}'`;
+  return `magic-cli${project ? ` --project ${quote(project)}` : ''} exec ${id}${Object.entries(params).map(([key,value])=>` ${quote(`${key}=${typeof value==='object'?JSON.stringify(value):value}`)}`).join('')}`;
+}
+
 const kindOf = (name) => (name.split(".").pop() || "file").toUpperCase().slice(0, 4);
 
 function fileButton(chip) {
@@ -369,8 +375,8 @@ async function load() {
     motion.character = start.character;
     motion.explicitCharacter = true;
   }
-  const identity=start.identity||{},port=identity.control_port;
-  $('footer-instance').textContent=`Port ${port??'unavailable'} · ${identity.branch||'unknown build'}`;
+  const identity=start.identity||{};
+  $('footer-instance').textContent=`Studio ${identity.pid??'unknown'} · ${identity.branch||'unknown build'}`;
   $('footer-instance').title=`${identity.build_id||'Unknown build'} · PID ${identity.pid??'?'} · ${identity.executable||''} · Click to copy the CLI command`;
   if (start.new_project) return beginNewProject();
   if (!start.project) return showHome();
@@ -413,7 +419,7 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 
 $("target").addEventListener("click", toggleServer);
 $("footer-server").addEventListener("click", toggleServer);
-$("footer-instance").addEventListener("click",async()=>{const port=state.identity?.control_port;if(!port)return;try{await navigator.clipboard.writeText(`mc --bridge ${port} exec ui.feedback`);toast(`Copied Studio port ${port}`);}catch{toast(`Studio control port ${port}`);}});
+$("footer-instance").addEventListener("click",async()=>{if(!state.project){toast("Open a project to copy its command");return;}try{await navigator.clipboard.writeText(magicCommandText("ui.feedback"));toast("Copied project feedback command");}catch{toast("Could not copy the project command");}});
 $("studio-start").addEventListener("click", toggleServer);
 window.addEventListener("resize", placeInk);
 placeInk();

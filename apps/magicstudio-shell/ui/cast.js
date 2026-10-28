@@ -1,4 +1,4 @@
-// Department AGENTS.md files are the shared source for this callboard and mc.
+// Department AGENTS.md files are the shared source for this callboard and Magic commands.
 const cast = { active:false, items:[], drafts:new Map(), department:'creative', filter:'all', search:'', busy:false };
 const CAST_STATES = {candidate:'Audition',cast:'Cast',reserve:'Reserve',wings:'In the wings'};
 const cnode=(tag,cls,...children)=>el(tag,{class:cls},...children);
@@ -113,7 +113,7 @@ function castRender() {
     castField('Skills · comma separated',castInput('Department skills',d.skills.join(', '),value=>{d.skills=value.split(',').map(v=>v.trim()).filter(Boolean);castChanged();})),
     castField('Commands · comma separated',castInput('Department commands',d.commands.join(', '),value=>{d.commands=value.split(',').map(v=>v.trim()).filter(Boolean);castChanged();})),
     castInput('Shared department instructions',doc.instructions,value=>{doc.instructions=value;castChanged();},true),
-    cnode('p','cast-note','Profiles must use one of the allowed roles. Discover command support with mc commands.'));
+    cnode('p','cast-note','Profiles must use one of the allowed roles. Discover command support with magic-cli commands.'));
   const saved=cnode('details','cast-saved',cnode('summary','','Read saved AGENTS.md'),cnode('pre','',item.markdown));saved.id='cast-saved-file';
   const reload=cbutton('Load saved version · retain this draft',()=>{
     const draft=castDraft();learningStore(`${castKey(d.id)}:recovery`,draft);cast.drafts.delete(d.id);learningStore(castKey(d.id),null);castRender();
