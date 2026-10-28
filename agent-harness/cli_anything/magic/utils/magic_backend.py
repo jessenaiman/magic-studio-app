@@ -15,6 +15,7 @@ from functools import lru_cache
 import os
 import shutil
 import socket
+import selectors
 import subprocess
 import sys
 import time
@@ -256,48 +257,91 @@ def execute_headless(
 
 
 class HeadlessSession:
-    """Own one existing native JSONL engine session until its caller closes it."""
+    """Own one native request session; transport failure requires explicit recovery."""
 
     def __init__(self) -> None:
         self.log = tempfile.TemporaryFile(mode="w+t", encoding="utf-8")
+        self.unavailable: str | None = None
         try:
             self.process = subprocess.Popen(
-                [find_magicstudio_shell(), "--headless", "run"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log,
-                text=True, encoding="utf-8", bufsize=1,
+                [find_magicstudio_shell(), "--headless", "serve"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, bufsize=0,
             )
+            os.set_blocking(self.process.stdin.fileno(), False)
+            os.set_blocking(self.process.stdout.fileno(), False)
         except BaseException:
             self.log.close()
             raise
 
+    @staticmethod
+    def _ready(fd: int, event: int, deadline: float) -> None:
+        remaining = deadline - time.monotonic()
+        with selectors.DefaultSelector() as selector:
+            selector.register(fd, event)
+            if remaining <= 0 or not selector.select(remaining):
+                raise TimeoutError("native reply deadline exceeded")
+
     def execute(self, cmd_id: str, params: dict[str, Any]) -> dict[str, Any]:
-        request = json.dumps({"id": cmd_id, "params": params}) + "\n"
+        if self.unavailable:
+            raise CommandOutcomeUnknown(self.unavailable)
+        # Encode and validate the deadline before submitting anything.
+        request = (json.dumps({"id": cmd_id, "params": params}) + "\n").encode("utf-8")
+        deadline = time.monotonic() + command_timeout(cmd_id)
         try:
-            self.process.stdin.write(request)
-            self.process.stdin.flush()
-            line = self.process.stdout.readline()
-        except (BrokenPipeError, OSError) as exc:
-            raise CommandOutcomeUnknown(f"Native session lost during {cmd_id}; no retry was made") from exc
-        if not line:
-            self.log.seek(0)
-            detail = self.log.read()[-8000:].strip()
-            raise CommandOutcomeUnknown(f"Native session ended during {cmd_id}; outcome unknown; no retry. {detail}")
-        reply = json.loads(line)
+            write_fd, read_fd = self.process.stdin.fileno(), self.process.stdout.fileno()
+            sent = 0
+            while sent < len(request):
+                self._ready(write_fd, selectors.EVENT_WRITE, deadline)
+                sent += os.write(write_fd, request[sent:])
+            chunks = bytearray()
+            while not chunks.endswith(b"\n"):
+                self._ready(read_fd, selectors.EVENT_READ, deadline)
+                chunk = os.read(read_fd, 65536)
+                if not chunk:
+                    raise EOFError("native engine exited before replying")
+                chunks.extend(chunk)
+            reply = json.loads(chunks.decode("utf-8"))
+            if not isinstance(reply, dict) or "ok" not in reply:
+                raise ValueError("invalid native response")
+        except (OSError, EOFError, ValueError) as exc:
+            self.unavailable = (
+                f"{cmd_id}: native session {self.process.pid} lost or timed out ({exc}). "
+                "Outcome unknown; no cancellation or retry was performed. "
+                "Inspect saved results, then explicitly use project.open to recover. "
+                "Recovery refuses while that native process is still running."
+            )
+            raise CommandOutcomeUnknown(self.unavailable) from exc
         if reply.get("ok") is not True:
-            raise RuntimeError(reply.get("error") or f"{cmd_id} failed")
-        return reply["result"]
+            raise RuntimeError(reply.get("error") or json.dumps(reply.get("result")) or f"{cmd_id} failed")
+        result = reply["result"]
+        return result if isinstance(result, dict) else {"value": result}
+
+    def _finish(self) -> bool:
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+            self.process.stdin = None
+        try:
+            # EOF ends the native loop after active work. Drain without waiting forever.
+            self.process.communicate(timeout=1.0)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
+
+    def recover(self) -> None:
+        if not self._finish():
+            raise CommandOutcomeUnknown(
+                f"Native process {self.process.pid} is still running after the lost reply; "
+                "no replacement was started. Inspect the operation before reselecting."
+            )
+        self.process.stdout.close()
+        self.log.close()
 
     def close(self) -> None:
-        # EOF ends the existing engine loop and releases the project writer lease.
-        # Do not kill work that may already be changing a project.
         try:
-            try:
-                self.process.stdin.close()
-            except BrokenPipeError:
-                pass
-            self.process.stdin = None
-            # Drain a reply interrupted by Ctrl-C rather than deadlocking on a full pipe.
-            self.process.communicate()
+            finished = self._finish()
+            if not finished:
+                print(f"Native process {self.process.pid} still running after a lost reply; "
+                      "stdin closed, no force kill or retry. Inspect saved results before retrying.", file=sys.stderr)
         finally:
             self.process.stdout.close()
             self.log.close()

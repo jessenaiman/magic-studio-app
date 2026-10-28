@@ -31,12 +31,11 @@ function blenderPlacementControls({project,getJob,current,jobParameter='blender_
   if(!job.job||(jobParameter==='blender_job'&&(!job.character||!job.track)))throw Error('Completed receipt is missing its job or source action identity.');
   return {id:id.input.value,[jobParameter]:job.job,...(scene?{scene:scene.scene}:{}),start:t,duration:d,rect:box,playback_rate:r,...(job.character&&job.track?{character:job.character,track:job.track}:{})};
  }
- const quote=value=>`'${String(value).replaceAll("'","'\\''")}'`;
  function update(){
   for(const input of inputs)input.disabled=placing||renderBusy;
   try{
    const params=request();
-   command.textContent=`mc exec video.place_track ${quote(`project=${project}`)} ${Object.entries(params).map(([key,value])=>quote(`${key}=${Array.isArray(value)?JSON.stringify(value):value}`)).join(' ')}`;
+   command.textContent=magicCommandText('video.place_track',params,project);
    place.disabled=copy.disabled=placing;
    if(validationError){validationError=false;message('Ready to place. Start uses absolute project time.');}
   }catch(error){place.disabled=copy.disabled=true;command.textContent='';if(!placing){validationError=true;message(String(error),true);}}

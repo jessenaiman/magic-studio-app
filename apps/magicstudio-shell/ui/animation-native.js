@@ -53,8 +53,7 @@ async function nativeAnimationOpen(selection={}){
   if(first!==undefined&&last!==undefined&&last<first)throw Error('Last frame must follow first frame.');
   return p;
  }
- const quote=v=>`'${String(v).replaceAll("'","'\\''")}'`;
- const echo=(id,params)=>`mc exec ${id} ${Object.entries({project,...params}).map(([key,value])=>quote(`${key}=${typeof value==='object'?JSON.stringify(value):value}`)).join(' ')}`;
+ const echo=(id,params)=>magicCommandText(id,params,project);
  function renderRequest(){const p=request();for(const key of ['source','scene','timeline','blend','bundle'])delete p[key];return {...sourceIdentity(),options:p};}
  const cli=()=>{try{command.textContent=echo('animation.source.render',renderRequest());}catch{command.textContent='';}busy(rendering);};
  for(const f of fields)f.addEventListener('input',cli);

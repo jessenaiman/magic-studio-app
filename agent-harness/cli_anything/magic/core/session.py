@@ -57,6 +57,7 @@ class Session:
         self.studio_endpoint: str | None = None
         self.studio_instance: str | None = None
         self._headless: backend.HeadlessSession | None = None
+        self._headless_error: str | None = None
         self.load_session()
 
     def load_session(self) -> None:
@@ -85,6 +86,7 @@ class Session:
 
     def bind_studio(self, live: dict[str, Any]) -> None:
         """Bind the session to a live Studio window receipt."""
+        self._headless_error = None
         self.studio_endpoint = live.get("endpoint")
         self.studio_instance = live.get("instance")
         active = live.get("active_project")
@@ -94,6 +96,7 @@ class Session:
     def clear(self) -> None:
         """Clear this caller's binding without changing its project or window."""
         self.close()
+        self._headless_error = None
         self.project_path = None
         self.studio_endpoint = None
         self.studio_instance = None
@@ -109,13 +112,29 @@ class Session:
             engine.close()
 
     def execute_headless(self, cmd_id: str, params: dict[str, Any]) -> dict[str, Any]:
+        if self._headless_error:
+            if cmd_id != "project.open":
+                raise backend.CommandOutcomeUnknown(self._headless_error)
+            if self._headless is not None:
+                self._headless.recover()
+                self._headless = None
+            self._headless_error = None
         if self._headless is None:
             self._headless = backend.HeadlessSession()
-        return self._headless.execute(cmd_id, params)
+        try:
+            return self._headless.execute(cmd_id, params)
+        except backend.CommandOutcomeUnknown as exc:
+            self._headless_error = str(exc)
+            if self._headless.process.poll() is not None:
+                self.close()
+            raise
 
     def open_studio(self, project: str | None = None) -> dict[str, Any]:
         from cli_anything.magic.core.project import resolve_project_path
         target = str(resolve_project_path(project)) if project else None
+        if self._headless_error and self._headless is not None:
+            self._headless.recover()  # Refuse a second writer while unknown work is still running.
+            self._headless = None
         self.close()  # Explicitly transfer the saved project from this engine to the GUI.
         live = backend.open_studio_window(target)
         self.bind_studio(live)

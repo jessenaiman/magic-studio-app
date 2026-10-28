@@ -85,6 +85,8 @@ window.addEventListener('message',async event=>{
     try{if(sheet.sequence.__experimental_getKeyframes(partObj.props.rotation).length>0)sequencedParts.push(partId);}catch{}
    }
    send('ready',{part:message.part,sequencedParts});
+  }else if(message.type==='interaction_barrier'){
+   send('interaction_barrier',{request:message.request,project:projectPath,revision:interactionRevision,active:pointers.size>0});
   }else if(message.type==='export'){
    if(!project||message.project!==projectPath)throw new Error('Theatre export project mismatch; reload the intended project');
    send('exported',{request:message.request,project:projectPath,state:studio.createContentOfSaveFile(projectId)});

@@ -77,29 +77,31 @@ Write the sheet to <project>/assets/sheets/<character>-<sheet>.png and this exac
 <project>/assets/sheets/<character>-<sheet>.prompt.md.
 ```
 
-## Normalise, matte and connect — through `mc` only
+## Normalise, matte and connect — through the shared Magic registry
+
+Select the intended project with `magic-cli project open path=/absolute/Project.magic`. Use one `magic-cli run` JSONL batch when later steps depend on the active asset; separate invocations retain the project binding but not transient engine state.
 
 ```bash
 # 1. fixed contract size, whatever the image tool returned
-mc exec image.image_size source=assets/sheets/<character>-<sheet>.png \
+magic-cli exec image.image_size source=assets/sheets/<character>-<sheet>.png \
   out=assets/sheets/<character>-<sheet>-2048.png width=2048 height=2048
 
 # 2. cut the sheet into frames/parts and remove the background (PhotoCraft under the hood)
-mc exec asset.cut_sheet asset=<character>
+magic-cli exec asset.cut_sheet asset=<character>
 
 # 3. connect the prepared artwork to the animated subject
-mc exec project.add_asset path=assets/sheets/<character>-turnaround-2048.png \
+magic-cli exec project.add_asset path=assets/sheets/<character>-turnaround-2048.png \
   kind=image character=<character> load=true
 
 # 4. judge it, then rig
-mc exec assets.assess path=assets/sheets/<character>-turnaround-2048.png
-mc exec asset.build_cutout_rig
+magic-cli exec assets.assess path=assets/sheets/<character>-turnaround-2048.png
+magic-cli exec asset.build_cutout_rig
 ```
 
-Run the steps that have a command through `mc`, and read each command's JSON before the next.
+Run the steps that have a command through `magic-cli`, and read each command's JSON before the next.
 Iterating on a static sheet is expected work: when a stage must be re-run with variations to get
 the result right, a small throwaway driver is an acceptable tool, and no sheet is finished before
-the user has seen it. A step missing from `mc commands` is a gap to report and get filled — not a
+the user has seen it. A step missing from `magic-cli commands` is a gap to report and get filled — not a
 reason to stall or to quietly substitute a different deliverable.
 
 ## Naming and prompts
@@ -114,10 +116,10 @@ reason to stall or to quietly substitute a different deliverable.
 ## After the sheets exist — the agent runs this chain, in order
 
 ```bash
-mc exec intake.validate image=<sheet.png> slot=turnaround_sheet attach_to_active=true
-mc exec asset.cut_sheet asset=<id>          # PhotoCraft cuts frames/parts
-mc exec assets.assess path=<sheet.png>      # clean or recreate, with reasons
-mc exec asset.build_cutout_rig              # parts + pivots from the cut sheet
+magic-cli exec intake.validate image=<sheet.png> slot=turnaround_sheet attach_to_active=true
+magic-cli exec asset.cut_sheet asset=<id>          # PhotoCraft cuts frames/parts
+magic-cli exec assets.assess path=<sheet.png>      # clean or recreate, with reasons
+magic-cli exec asset.build_cutout_rig              # parts + pivots from the cut sheet
 ```
 
 The handoff between those commands is one field: intake records its recommendation's
@@ -142,6 +144,5 @@ rig builds — the rig attaches to the in-session asset and is gone on reload un
 - cells overlap, text appears, or the background is not flat;
 - limbs are drawn detached on the turnaround or poses sheets (only the skeleton sheet separates them).
 
-Use `mc` for all of it: it is the harness wrapping the *craft CLIs (see
-`~/.agents/skills/cli-anything/SKILL.md`). Never call `photocraft-cli` directly for these steps, and
-read each command's JSON before running the next. Do not report success from a file existing alone.
+Use the shared Magic commands for project operations and each installed app’s documented CLI for its own work. Do not build generic Craft wrappers (see
+`~/.agents/skills/cli-anything/SKILL.md`). Read each command’s JSON before running the next. Do not report success from a file existing alone.

@@ -17,19 +17,19 @@ live app, act through its tools, show the result, and leave work reversible and 
 
 ## One application, one live session
 
-Repository: `/run/media/jesse/Speedy/Work/omhas-animation`. Application: `apps/magicstudio-shell`.
-The shell's selected bridge and page share one `magicstudio_engine::Session`. Native Tauri
-`engine_command` handlers call that engine directly; New/Open invoke the adjacent `mc` process
-through the window's private bridge. A shared registry does not imply every UI action starts `mc`.
+Application: `apps/magicstudio-shell` in the current Magic Studio checkout.
+Read [the command contract](../../agent-harness/MAGIC.md). The UI, CLI and MCP adapters
+share the Rust command registry and the window's engine session. New/Open and project
+workflow controls enter the guarded native dispatch directly; do not add a CLI subprocess loop.
 
-Use `mc --bridge <selected-endpoint> mcp` for the selected Studio window. Discover and verify its
-project/instance with `mc exec ui.feedback`, then use its reported endpoint or the explicitly selected
-`--control` address; never guess a port. This connection follows the window's open project, rather
-than binding a project folder. Do not create a headless session when the user expects changes in
-their open window. Never start a video studio server merely to animate.
+Launch with `magic`. Use `magic-cli --project /absolute/Project.magic mcp` for the intended
+project, or `magic-cli studio open /absolute/Project.magic` to open/select its visible window.
+Verify identity with `magic-cli --project /absolute/Project.magic ui feedback`.
+Routing is automatic; do not ask users or agents to choose bridge ports. Do not start a video
+studio server merely to animate. Other installed applications retain their own documented CLIs.
 
 The native computer-use surface is `ui.look`, `ui.state`, `ui.elements`, `ui.click`, `ui.set`,
-`ui.key`, and engine commands. Use stable IDs and typed parameters. For a numbered `@...` target returned by `ui.components`, pass its `component_instance` as `instance` to `ui.click` or `ui.set`; inspect again after the UI changes. The existing Add asset control accepts `mc --bridge <port> exec ui.click id=asset-import files='["/absolute/image.png"]'`; this supplies the chosen files to the same UI import handler, which invokes `mc exec project.add_asset`, saves, and leaves them unplaced. To use the existing drag/drop handler, `ui.drag source=<asset tile id> target=<storyboard page id> x=0.5 y=0.5` supplies a drop point as fractions of that page. Inspect the actual placement, then select Save new version. A dispatched drop is not a saved document. Read back changed state and
+`ui.key`, and engine commands. Use stable IDs and typed parameters. For a numbered `@...` target returned by `ui.components`, pass its `component_instance` as `instance` to `ui.click` or `ui.set`; inspect again after the UI changes. The existing Add asset control accepts `magic-cli --project /absolute/Project.magic exec ui.click id=asset-import files='["/absolute/image.png"]'`; this supplies the chosen files to the same UI import handler, which invokes the shared `project.add_asset` command, saves, and leaves them unplaced. To use the existing drag/drop handler, `ui.drag source=<asset tile id> target=<storyboard page id> x=0.5 y=0.5` supplies a drop point as fractions of that page. Inspect the actual placement, then select Save new version. A dispatched drop is not a saved document. Read back changed state and
 pixels; a delivered click or successful command alone is not proof. Use `ui.eval` for diagnostics,
 not as a substitute for missing product commands. Avoid global mouse/focus automation.
 
@@ -88,16 +88,18 @@ Work only on assigned files and coordinate ownership before editing. Read the re
 guidelines. Preserve unrelated changes. Use the existing model unless asked to switch; if Codex is
 chosen, the user permits Sol 6.1 only. Learn and observe regardless of model strength.
 
-Build `cargo build -p magicstudio-shell -p mc` after UI edits (assets are embedded). Before restarting the shared shell,
+Build `cargo build -p magicstudio-shell` after UI edits (assets are embedded). Before restarting the shared shell,
 inspect pending/dirty state and preserve unsaved edits. After every visible change run
-`mc --bridge <selected-endpoint> exec ui.look` and inspect the PNG. With a project open, captures
+`magic-cli --project /absolute/Project.magic ui look` and inspect the PNG. With a project open, captures
 default to `<project>/.agent/looks/`. Keep project outputs inside the project.
 
 Verify the changed behavior, empty/error states, keyboard access and narrow layout. For animation,
 check rest pose, swaps, attachment at pivots, scrub/play agreement, song timing and exported frames.
 For agent features, perform a real task through the inner agent and inspect its outcome and undo.
 Upgrade only touched dependencies to stable versions; Tauri remains 2.x. Record version changes.
-Commit explicit task-owned paths at pauses, honoring hooks. Report commit, evidence and limitations.
+Work in your Moppet-named worktree and branch. Commit explicit task-owned paths and submit a PR
+for review before merging; do not commit implementation directly to main. Report evidence and limitations.
+Do not add behavioral tests until Jesse personally navigates/observes and approves the UI behavior.
 
 For PDF validation, inspect fields through PdfCraft's document/form tools, not by searching raw PDF
 bytes (object streams may be compressed). A `pdfcraft-cli run` process owns its open documents:
