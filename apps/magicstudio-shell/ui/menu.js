@@ -44,23 +44,26 @@ async function saveProjectFromMenu(saveAs=false){
   const project=state.project;
   if(!project){toast('Open or create a project before saving');return;}
   projectSavePending=true;
+  const wasInert=document.body.inert;
   try {
-    // Save As changes identity. Never discard an unsaved timeline during that transition.
-    if(saveAs && typeof theatreRequireSaved==='function')theatreRequireSaved();
+    // Freeze user editing until identity has changed or the request has failed. The native
+    // file picker remains usable; blur first commits the currently focused storyboard field.
+    if(saveAs){document.body.inert=true;document.activeElement?.blur();}
     const path=saveAs ? await dialog.save({title:'Save Project As',defaultPath:project,
       filters:[{name:'Magic Studio project',extensions:['magic']}]}) : null;
     if(saveAs && !path)return;
     if(state.project!==project)throw Error('The open project changed; save was not submitted');
     if(projectView.textDrafts.size || state.data?.design?.dirty)await saveStoryboard();
     if(state.project!==project)throw Error('The open project changed; save was not submitted');
-    if(saveAs && typeof theatreRequireSaved==='function')theatreRequireSaved();
+    if(saveAs && typeof theatreGuardIdentityChange==='function')await theatreGuardIdentityChange(project);
     await designCommand('project.save',{expected_project:project,...(saveAs?{path}:{})});
     toast('Project saved');
-  } finally {projectSavePending=false;}
+  } finally {if(saveAs)document.body.inert=wasInert;projectSavePending=false;}
 }
 
 window.studioMenu=async id=>{
   try {
+    if(projectSavePending){toast('Wait for the current save to finish');return;}
     switch(id){
       case 'file.new': await beginNewProject(); break;
       case 'file.open': await openDialog(); break;

@@ -13,6 +13,24 @@ function theatreRequireSaved(){
 function theatreCanLeave(){
  try{theatreRequireSaved();return true;}catch(error){if(typeof toast==='function')toast(String(error));return false;}
 }
+// Once the page is inert, wait for the frame's already-queued interactions before deciding
+// whether changing project identity is safe. A missing or stale frame response fails closed.
+async function theatreGuardIdentityChange(project){
+ theatreRequireSaved();
+ const frame=magicTheatre.frame;
+ if(!frame)return;
+ if(!magicTheatre.ready||magicTheatre.project!==project)throw new Error('Wait for the motion timeline before changing the project.');
+ const request=++magicTheatre.nextRequest;
+ const response=await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{magicTheatre.exports.delete(request);reject(new Error('Motion timeline did not confirm its state; project was not changed.'));},5000);
+  magicTheatre.exports.set(request,{project,resolve,reject,timer,barrier:true});
+  frame.contentWindow.postMessage({magicTheatre:true,type:'interaction_barrier',request},location.origin);
+ });
+ if(frame!==magicTheatre.frame||state.project!==project||response.project!==project)throw new Error('Project or timeline changed; save was not submitted.');
+ if(response.revision>magicTheatre.interactionRevision)magicTheatre.interactionRevision=response.revision;
+ magicTheatre.gestureActive=response.active===true;
+ theatreRequireSaved();
+}
 function theatreMount(container){
  theatreRequireSaved();
  const status=el('span',{id:'theatre-status',class:'muted'},'Loading Theatre…');
@@ -112,6 +130,7 @@ window.addEventListener('message',event=>{
  if(message.type==='interaction'&&message.project===state.project&&message.project===magicTheatre.project&&Number.isSafeInteger(message.revision)&&message.revision>magicTheatre.interactionRevision){magicTheatre.interactionRevision=message.revision;magicTheatre.gestureActive=message.active===true;if(typeof acFeedback!=='undefined')acFeedback.report();}
  if(message.type==='loaded'){magicTheatre.ready=true;theatreContext();}
  if(message.type==='ready'){magicTheatre.availability='ready';magicTheatre.error=null;$('theatre-save').disabled=false;$('theatre-status').textContent=`${message.part} · ${magicTheatre.persistence==='saved'?'saved motion loaded':'Save motion to persist edits'}`;theatreEvent('ready',{part:message.part});}
+ if(message.type==='interaction_barrier'){const pending=magicTheatre.exports.get(message.request);if(pending?.barrier){clearTimeout(pending.timer);magicTheatre.exports.delete(message.request);pending.resolve(message);}}
  if(message.type==='exported'||message.type==='error'&&message.request){const pending=magicTheatre.exports.get(message.request);if(pending){clearTimeout(pending.timer);magicTheatre.exports.delete(message.request);if(message.type==='error'||message.project!==pending.project)pending.reject(new Error(message.error||'Theatre export project mismatch'));else pending.resolve(message);}}
  if(message.type==='keyframes'){theatreEvent('keyframes',{sheet:message.sheet,part:message.part,count:message.count,previous:message.previous});}
  if(message.type==='selection'){magicTheatre.objects=message.objects;const picked=message.objects?.[0]?.part;if(picked&&motion.meta?.layers?.some(l=>l.id===picked)&&motion.selected!==picked){motion.selected=picked;magicTheatre.part=picked;magicTheatre.rotation=magicTheatre.rotations[picked]||0;if(typeof updateMagicSelection==='function')updateMagicSelection();}theatreEvent('selection',{objects:message.objects});}
