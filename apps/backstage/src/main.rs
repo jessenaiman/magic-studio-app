@@ -6,7 +6,7 @@ mod theme;
 mod ui;
 
 use crossterm::{
-    event::{self, Event as TerminalEvent, KeyCode, KeyModifiers},
+    event::{self, Event as TerminalEvent, KeyCode, KeyModifiers, MouseButton, MouseEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -148,7 +148,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
         match arg.as_str() {
             "--help" | "-h" => {
                 println!(
-                    "backstage — a production observer\n\nUsage: backstage [--theme daylight|midnight|omarchy|herdr|PATH]\n                 [--herdr-socket PATH] [--watch PATH] [--reduce-motion]\n                 [--snapshot overview|booth|mops|code|mayhem]\n\nA requests Magic's audit; R refreshes the catalog; / filters videos.\n1–5 or Tab selects views; arrows select; PgUp/PgDn scroll audit; Q exits.\nT toggles the bundled Omarchy-format Backstage themes.\n--watch watches a supplied change-marker path; no marker writer is installed.\n--herdr-socket enables read-only agent event subscriptions; outside Herdr this is opt-in.\n--snapshot prints a deterministic text view without contacting any service.\nNo production controls or agent messaging are available."
+                    "backstage — a production observer\n\nUsage: backstage [--theme daylight|midnight|omarchy|herdr|PATH]\n                 [--herdr-socket PATH] [--watch PATH] [--reduce-motion]\n                 [--snapshot overview|booth|mops|code|mayhem]\n\nA requests Magic's audit; R refreshes the catalog; / filters videos.\nClick tabs, use Left/Right, F1–F5 or Tab for views; Up/Down selects; PgUp/PgDn scroll audit; Q exits.\nT toggles the bundled Omarchy-format Backstage themes.\n--watch watches a supplied change-marker path; no marker writer is installed.\n--herdr-socket enables read-only agent event subscriptions; outside Herdr this is opt-in.\n--snapshot prints a deterministic text view without contacting any service.\nNo production controls or agent messaging are available."
                 );
                 return Ok(());
             }
@@ -182,7 +182,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("Unknown view")?;
         a.status = "Offline layout inspection · no service queried".into();
         let mut term = Terminal::new(TestBackend::new(120, 38))?;
-        term.draw(|f| ui::draw(f, &a, &t, &m, None))?;
+        term.draw(|f| ui::draw(f, &a, &t, &m, None, &mut ui::HitMap::default()))?;
         let b = term.backend().buffer();
         for y in 0..38 {
             let line = (0..120).map(|x| b[(x, y)].symbol()).collect::<String>();
@@ -238,13 +238,19 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
     }
     enable_raw_mode()?;
     let _screen = Screen;
-    execute!(io::stdout(), EnterAlternateScreen, crossterm::cursor::Hide)?;
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        event::EnableMouseCapture,
+        crossterm::cursor::Hide
+    )?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     request(&mut a, &tx, ReadRequest::Catalog);
     let mut thumb = None;
     let mut sample_at = Instant::now();
+    let mut hits = ui::HitMap::default();
     loop {
-        terminal.draw(|f| ui::draw(f, &a, &t, &m, thumb.as_ref()))?;
+        terminal.draw(|f| ui::draw(f, &a, &t, &m, thumb.as_ref(), &mut hits))?;
         let effect = a.tab == 2 && !a.reduce_motion && Instant::now() < a.effect_until;
         let event = if a.tab == 4 || effect {
             let timeout = if effect {
@@ -267,6 +273,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
         if dirty.swap(false, Ordering::AcqRel) {
             request(&mut a, &tx, ReadRequest::Catalog);
         }
+        let old_tab = a.tab;
         match event {
             Some(Event::Input(TerminalEvent::Key(k))) if k.kind != event::KeyEventKind::Release => {
                 if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
@@ -291,11 +298,11 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     thumb = thumbnail(&a);
                     continue;
                 }
-                let old_tab = a.tab;
                 match k.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Tab => a.tab = (a.tab + 1) % 5,
-                    KeyCode::BackTab => a.tab = (a.tab + 4) % 5,
+                    KeyCode::Tab | KeyCode::Right => a.tab = (a.tab + 1) % 5,
+                    KeyCode::BackTab | KeyCode::Left => a.tab = (a.tab + 4) % 5,
+                    KeyCode::F(n @ 1..=5) => a.tab = usize::from(n - 1),
                     KeyCode::Char(c @ '1'..='5') => a.tab = (c as u8 - b'1') as usize,
                     KeyCode::Char('/') => a.searching = true,
                     KeyCode::Down | KeyCode::Char('j') => {
@@ -340,16 +347,38 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     _ => {}
                 }
-                if a.tab != old_tab {
-                    a.scroll = 0;
-                    if a.tab == 1 {
-                        inspect(&mut a, &tx);
+            }
+            Some(Event::Input(TerminalEvent::Mouse(mouse))) => {
+                let point = ratatui::layout::Position::new(mouse.column, mouse.row);
+                match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if let Some((_, index)) =
+                            hits.tabs.iter().find(|(rect, _)| rect.contains(point))
+                        {
+                            a.tab = *index;
+                            a.searching = false;
+                        } else if a.tab == 0
+                            && let Some((_, index)) =
+                                hits.projects.iter().find(|(rect, _)| rect.contains(point))
+                        {
+                            a.move_selection(*index as isize - a.selected as isize);
+                            thumb = thumbnail(&a);
+                        }
                     }
-                    if a.tab == 4 {
-                        sample_at = Instant::now();
-                    } else if old_tab == 4 {
-                        m.pause();
+                    MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                        let delta = if mouse.kind == MouseEventKind::ScrollDown {
+                            1
+                        } else {
+                            -1
+                        };
+                        if a.tab == 0 {
+                            a.move_selection(delta);
+                            thumb = thumbnail(&a);
+                        } else {
+                            a.scroll = a.scroll.saturating_add_signed(delta as i16 * 3);
+                        }
                     }
+                    _ => {}
                 }
             }
             Some(Event::Catalog(result)) => {
@@ -439,6 +468,17 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some(Event::Notice(e)) => a.status = e,
             _ => {}
+        }
+        if a.tab != old_tab {
+            a.scroll = 0;
+            if a.tab == 1 {
+                inspect(&mut a, &tx);
+            }
+            if a.tab == 4 {
+                sample_at = Instant::now();
+            } else if old_tab == 4 {
+                m.pause();
+            }
         }
     }
     Ok(())

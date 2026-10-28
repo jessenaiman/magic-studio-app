@@ -6,7 +6,7 @@ An observer-only production desk for Magic Studio. **Backstage** is the applicat
 cargo run -p backstage --release -- --theme daylight
 ```
 
-Use `1`–`5` or Tab for Overview, Booth, MOPS, Code and MAYHEM. `/` filters the video list. Arrows select a video; Enter inspects it in Booth. `R` refreshes the current catalog/project observation, `A` requests `magic-cli audit`, `T` toggles the two bundled themes, and `Q` exits. Page keys scroll the audit. `--reduce-motion` disables brief character reactions.
+Click the tabs or use `1`–`5`, F1–F5, Left/Right or Tab for Overview, Booth, MOPS, Code and MAYHEM. Click inside the Backstage pane first to give it keyboard focus. `/` filters the video list. Up/Down, mouse-wheel or row clicks select a video; Enter inspects it in Booth. `R` refreshes the current catalog/project observation, `A` requests `magic-cli audit`, `T` toggles the two bundled themes, and `Q` exits. Page keys scroll the audit. `--reduce-motion` disables brief character reactions.
 
 ## What is observed
 

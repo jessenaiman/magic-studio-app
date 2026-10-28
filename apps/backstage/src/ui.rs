@@ -32,7 +32,22 @@ fn short_path(v: &Value) -> String {
         .unwrap_or_else(|| value(v))
 }
 
-pub fn draw(f: &mut Frame, a: &App, t: &Theme, m: &Metrics, thumb: Option<&image::RgbImage>) {
+#[derive(Default)]
+pub struct HitMap {
+    pub tabs: Vec<(Rect, usize)>,
+    pub projects: Vec<(Rect, usize)>,
+}
+
+pub fn draw(
+    f: &mut Frame,
+    a: &App,
+    t: &Theme,
+    m: &Metrics,
+    thumb: Option<&image::RgbImage>,
+    hits: &mut HitMap,
+) {
+    hits.tabs.clear();
+    hits.projects.clear();
     let full = f.area();
     f.render_widget(Block::new().style(t.base()), full);
     let size = Rect::new(
@@ -71,6 +86,15 @@ pub fn draw(f: &mut Frame, a: &App, t: &Theme, m: &Metrics, thumb: Option<&image
         .style(t.base()),
         areas[0],
     );
+    let mut tab_x = areas[1].x;
+    for (index, label) in TABS.iter().enumerate() {
+        let width = (label.len() + 4) as u16;
+        hits.tabs.push((
+            Rect::new(tab_x, areas[1].y, width, 1).intersection(areas[1]),
+            index,
+        ));
+        tab_x = tab_x.saturating_add(width + 1);
+    }
     f.render_widget(
         Tabs::new(
             TABS.iter()
@@ -84,7 +108,7 @@ pub fn draw(f: &mut Frame, a: &App, t: &Theme, m: &Metrics, thumb: Option<&image
         areas[1],
     );
     match a.tab {
-        0 => overview(f, areas[2], a, t),
+        0 => overview(f, areas[2], a, t, hits),
         1 => booth(f, areas[2], a, t, thumb),
         2 => mops(f, areas[2], a, t),
         3 => code(f, areas[2], a, t),
@@ -94,7 +118,7 @@ pub fn draw(f: &mut Frame, a: &App, t: &Theme, m: &Metrics, thumb: Option<&image
         format!(" /{}▏   Enter to finish · Esc clears", a.query)
     } else {
         format!(
-            " [A] Audit  [R] Refresh  [/] Find  [1–5] Views  [T] Theme  [Q] Exit  {}",
+            " [A] Audit  [R] Refresh  [/] Find  [1–5/←→/click] Views  [T] Theme  [Q] Exit  {}",
             if a.busy { "· Reading…" } else { "" }
         )
     };
@@ -109,7 +133,7 @@ pub fn draw(f: &mut Frame, a: &App, t: &Theme, m: &Metrics, thumb: Option<&image
         areas[3],
     );
 }
-fn overview(f: &mut Frame, area: Rect, a: &App, t: &Theme) {
+fn overview(f: &mut Frame, area: Rect, a: &App, t: &Theme, hits: &mut HitMap) {
     let (list, productivity) = if area.width >= 100 {
         let p = Layout::horizontal([Constraint::Percentage(72), Constraint::Percentage(28)])
             .split(area);
@@ -155,6 +179,22 @@ fn overview(f: &mut Frame, area: Rect, a: &App, t: &Theme) {
         Some(a.selected.min(projects.len() - 1))
     });
     f.render_stateful_widget(table, parts[0], &mut selection);
+    let body = Rect::new(
+        parts[0].x + 1,
+        parts[0].y + 3,
+        parts[0].width.saturating_sub(2),
+        parts[0].height.saturating_sub(4),
+    );
+    for (row, index) in (selection.offset()..projects.len())
+        .take((body.height as usize).div_ceil(2))
+        .enumerate()
+    {
+        hits.projects.push((
+            Rect::new(body.x, body.y + row as u16 * 2, body.width, 2).intersection(body),
+            index,
+        ));
+    }
+
     if projects.is_empty() {
         let inner = parts[0].inner(Margin::new(2, 3));
         f.render_widget(
