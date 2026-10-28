@@ -600,36 +600,40 @@ fn run_headless() -> i32 {
         return 0;
     }
     let mut s = Session::user_session();
-    if args.first().map(String::as_str) == Some("run") {
+    if matches!(args.first().map(String::as_str), Some("run" | "serve")) {
+        use std::io::Write;
+        let keep_alive = args.first().map(String::as_str) == Some("serve");
         let dry_run = args.iter().any(|a| a == "--dry-run");
         let stdin = std::io::stdin();
-        let mut failed = 0;
-        for (n, line) in stdin.lock().lines().map_while(Result::ok).enumerate() {
+        let mut failed = false;
+        for (n, line) in stdin.lock().lines().enumerate() {
+            let line = match line { Ok(line) => line, Err(error) => { eprintln!("{error}"); return 1; } };
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("//") {
                 continue;
             }
-            let Ok(v) = serde_json::from_str::<Value>(trimmed) else {
-                println!("{}", json!({"line": n + 1, "ok": false, "error": "invalid json"}));
-                failed += 1;
-                continue;
-            };
-            let id = v["id"]
-                .as_str()
-                .or_else(|| v["command"].as_str())
-                .unwrap_or("");
-            let params = v.get("params").cloned().unwrap_or_else(|| json!({}));
-            match headless_dispatch(&mut s, id, params, dry_run, true) {
-                Ok(r) => println!("{}", json!({"line": n + 1, "id": id, "ok": true, "result": r})),
-                Err(e) => {
-                    println!("{}", json!({"line": n + 1, "id": id, "ok": false, "error": e}));
-                    failed += 1;
+            let reply = match serde_json::from_str::<Value>(trimmed) {
+                Err(_) => json!({"line": n + 1, "ok": false, "error": "invalid json"}),
+                Ok(v) => {
+                    let id = v["id"].as_str().or_else(|| v["command"].as_str()).unwrap_or("");
+                    let params = v.get("params").cloned().unwrap_or_else(|| json!({}));
+                    if !v.is_object() || !params.is_object() {
+                        json!({"line": n + 1, "id": id, "ok": false, "error": "request and params must be objects"})
+                    } else {
+                        match headless_dispatch(&mut s, id, params, dry_run, true) {
+                            Ok(r) => json!({"line": n + 1, "id": id, "ok": r["ok"] != false, "result": r}),
+                            Err(e) => json!({"line": n + 1, "id": id, "ok": false, "error": e}),
+                        }
+                    }
                 }
-            }
-            use std::io::Write;
+            };
+            let error = reply["ok"] == false;
+            println!("{reply}");
             if std::io::stdout().flush().is_err() { return 1; }
+            failed |= error;
+            if error && !keep_alive { break; }
         }
-        return if failed == 0 { 0 } else { 1 };
+        return if failed { 1 } else { 0 };
     }
     let (id, param_start) = if args.first().map(String::as_str) == Some("exec") {
         (args.get(1).map(String::as_str).unwrap_or(""), 2)
@@ -674,6 +678,9 @@ fn run_headless() -> i32 {
 
 
 fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool, persistent: bool) -> Result<Value, String> {
+    if magicstudio_engine::find_command(id).is_none() {
+        return Err(format!("Unknown engine command: {id}"));
+    }
     let is_dry = dry_run || params.get("_dry_run").and_then(Value::as_bool) == Some(true);
     if let Some(obj) = params.as_object_mut() {
         obj.remove("_dry_run");
@@ -703,9 +710,6 @@ fn headless_dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool
         }
     }
     if is_dry && !magicstudio_engine::commands::is_read_only_command(id, &params) {
-        if magicstudio_engine::find_command(id).is_none() {
-            return Err(format!("Unknown engine command: {id}"));
-        }
         return Ok(json!({
             "ok": true,
             "dry_run": true,
