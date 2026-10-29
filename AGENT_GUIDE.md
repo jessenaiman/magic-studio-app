@@ -1,20 +1,8 @@
-> Magic Studio entry-point and command architecture: [current contract](agent-harness/MAGIC.md). `magic` opens the GUI; `magic-cli` and `magic-cli mcp` share the application registry. Do not restore retired `mc`, REPL or duplicated routing from historical instructions.
+# Magic Studio
 
-# OpenMontage - Agent Guide
-
-Start here. This is the complete operating guide and agent contract for OpenMontage.
-
-For architecture, key files, and conventions see [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md).
-
-## First Interaction — Onboarding
-
-When the user's first message is vague, exploratory, or asks what you can do ("make me a video", "what can you do?", "help me create something", "I want to make content"), read the onboarding skill **before** doing anything else:
-
-**Read:** `skills/meta/onboarding.md`
-
-This skill teaches you to run discovery, classify the user's setup, present capabilities in plain language, and offer starter prompts tailored to their available tools. The goal: get the user from "curious" to "making a video" in under 60 seconds.
-
-**Skip onboarding** when the user arrives with a specific, actionable request (e.g., "Make a 60-second explainer about black holes"). Go directly to Rule Zero.
+Use `magic` for the app; discover operations with `magic-cli --help` and `magic-cli commands`.
+Ask about unclear goals or choices. Do not bootstrap OpenMontage to start Magic.
+The guidance below and [PROJECT_CONTEXT](PROJECT_CONTEXT.md) are reusable references when relevant, not required onboarding.
 
 ## Reference Video Entry Point
 

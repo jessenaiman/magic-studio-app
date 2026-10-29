@@ -1,9 +1,7 @@
-# OpenMontage
+# Magic Studio
 
-**MANDATORY: Read [`AGENT_GUIDE.md`](../AGENT_GUIDE.md) before responding to ANY user message.**
-
-Do not act on the user's request until you have read AGENT_GUIDE.md.
-It contains routing rules that determine your first action based on what the user asked.
-Skipping it WILL cause you to take the wrong action.
-
-There are no instructions in this file. All instructions are in AGENT_GUIDE.md.
+Use `magic` for the app. Discover operations with `magic-cli --help` and
+`magic-cli commands`. Ask when the goal or a choice is unclear.
+For coding, follow [CONTRIBUTING](../CONTRIBUTING.md).
+Consult [the command contract](../agent-harness/MAGIC.md) and
+[reusable production context](../PROJECT_CONTEXT.md) only when relevant.
