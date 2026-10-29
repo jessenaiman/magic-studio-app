@@ -248,8 +248,6 @@ def main():
     )
     parser.add_argument("--profile", choices=["debug", "release"], default="debug")
     args = parser.parse_args()
-    if sys.version_info < (3, 10):
-        parser.error("The installer requires Python 3.10 or newer")
     root = Path(__file__).resolve().parent.parent
     build = root / "target" / args.profile
     shell = build / "magicstudio-shell"
