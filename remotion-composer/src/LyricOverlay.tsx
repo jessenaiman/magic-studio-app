@@ -56,8 +56,8 @@ const LyricLine: React.FC<{ lyric: Lyric; bottomY: number }> = ({ lyric, bottomY
   });
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         pointerEvents: "none",
         display: "flex",
         flexDirection: "column",
@@ -66,10 +66,10 @@ const LyricLine: React.FC<{ lyric: Lyric; bottomY: number }> = ({ lyric, bottomY
         paddingBottom: height * (1 - bottomY),
         opacity,
       }}
-    >
-      {/* Subtle dark backdrop behind text for readability */}
-      <div
-        style={{
+      >
+          {/* Subtle dark backdrop behind text for readability */}
+          <div
+              style={{
           position: "absolute",
           bottom: height * (1 - bottomY) - 80,
           left: 0,
@@ -79,9 +79,9 @@ const LyricLine: React.FC<{ lyric: Lyric; bottomY: number }> = ({ lyric, bottomY
             "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.75) 100%)",
           opacity,
         }}
-      />
-      <div
-        style={{
+          />
+          <div
+              style={{
           transform: `translateY(${yRise}px)`,
           textAlign: "center",
           padding: "0 60px",
@@ -89,9 +89,9 @@ const LyricLine: React.FC<{ lyric: Lyric; bottomY: number }> = ({ lyric, bottomY
           position: "relative",
           zIndex: 2,
         }}
-      >
-        <div
-          style={{
+          >
+              <div
+                  style={{
             fontFamily: playfairItalic,
             fontStyle: "italic",
             fontWeight: 400,
@@ -101,28 +101,28 @@ const LyricLine: React.FC<{ lyric: Lyric; bottomY: number }> = ({ lyric, bottomY
             letterSpacing: "0.01em",
             textShadow: "0 2px 18px rgba(0,0,0,0.85), 0 0 22px rgba(0,0,0,0.5)",
           }}
-        >
-          {lyric.text}
-        </div>
-        {/* Gold underline */}
-        <div
-          style={{
+              >
+                  {lyric.text}
+              </div>
+              {/* Gold underline */}
+              <div
+                  style={{
             marginTop: 18,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
             gap: 10,
           }}
-        >
-          <div
-            style={{
+              >
+                  <div
+                      style={{
               width: 90 * lineProgress,
               height: 1.2,
               background: `linear-gradient(90deg, rgba(245,231,197,0) 0%, ${gold} 100%)`,
             }}
-          />
-          <div
-            style={{
+                  />
+                  <div
+                      style={{
               width: 5,
               height: 5,
               borderRadius: 999,
@@ -130,17 +130,17 @@ const LyricLine: React.FC<{ lyric: Lyric; bottomY: number }> = ({ lyric, bottomY
               opacity: lineProgress,
               boxShadow: `0 0 10px ${gold}`,
             }}
-          />
-          <div
-            style={{
+                  />
+                  <div
+                      style={{
               width: 90 * lineProgress,
               height: 1.2,
               background: `linear-gradient(90deg, ${gold} 0%, rgba(245,231,197,0) 100%)`,
             }}
-          />
-        </div>
-      </div>
-    </AbsoluteFill>
+                  />
+              </div>
+          </div>
+      </AbsoluteFill>
   );
 };
 
@@ -151,11 +151,11 @@ export const LyricOverlay: React.FC<LyricOverlayProps> = ({
 }) => {
   const { durationInFrames } = useVideoConfig();
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      <OffthreadVideo src={resolveAsset(videoSrc)} />
-      {lyrics.map((l, i) => (
-        <LyricLine key={i} lyric={l} bottomY={bottomY} />
+      <AbsoluteFill style={{ backgroundColor: "#000" }}>
+          <OffthreadVideo src={resolveAsset(videoSrc)} />
+          {lyrics.map((l, i) => (
+              <LyricLine key={i} lyric={l} bottomY={bottomY} />
       ))}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

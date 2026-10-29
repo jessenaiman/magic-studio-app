@@ -42,7 +42,9 @@ _DEFAULT_MODEL = "gemini-omni-1.1-flash"
 # (ai.google.dev/gemini-api/docs/pricing) — effectively ~$0.10 per second.
 _OUTPUT_VIDEO_TOKENS_PER_SECOND = 5_792
 _MAX_OUTPUT_DURATION_SECONDS = 10
-_MAX_VIDEO_TOKEN_ESTIMATE = _MAX_OUTPUT_DURATION_SECONDS * _OUTPUT_VIDEO_TOKENS_PER_SECOND
+_MAX_VIDEO_TOKEN_ESTIMATE = (
+    _MAX_OUTPUT_DURATION_SECONDS * _OUTPUT_VIDEO_TOKENS_PER_SECOND
+)
 _INPUT_COST_PER_MILLION_TOKENS = 1.50
 _OUTPUT_TEXT_COST_PER_MILLION_TOKENS = 9.00
 _OUTPUT_VIDEO_COST_PER_MILLION_TOKENS = 17.50
@@ -72,7 +74,12 @@ class GeminiOmniVideo(BaseTool):
     )
     agent_skills = ["gemini-omni", "ai-video-gen"]
 
-    capabilities = ["text_to_video", "image_to_video", "reference_to_video", "edit_video"]
+    capabilities = [
+        "text_to_video",
+        "image_to_video",
+        "reference_to_video",
+        "edit_video",
+    ]
     supports = {
         "text_to_video": True,
         "image_to_video": True,
@@ -119,7 +126,12 @@ class GeminiOmniVideo(BaseTool):
             },
             "operation": {
                 "type": "string",
-                "enum": ["text_to_video", "image_to_video", "reference_to_video", "edit_video"],
+                "enum": [
+                    "text_to_video",
+                    "image_to_video",
+                    "reference_to_video",
+                    "edit_video",
+                ],
                 "default": "text_to_video",
             },
             "model": {
@@ -434,7 +446,7 @@ class GeminiOmniVideo(BaseTool):
         path = uri.split("?", 1)[0].rstrip("/")
         marker = "files/"
         idx = path.rfind(marker)
-        tail = path[idx + len(marker):] if idx != -1 else path.split("/")[-1]
+        tail = path[idx + len(marker) :] if idx != -1 else path.split("/")[-1]
         return tail.split(":", 1)[0]
 
     def _download_via_uri(self, requests_mod: Any, api_key: str, uri: str) -> bytes:
@@ -451,9 +463,13 @@ class GeminiOmniVideo(BaseTool):
             if state == "ACTIVE":
                 break
             if state == "FAILED":
-                raise RuntimeError("Gemini Omni video generation failed during processing")
+                raise RuntimeError(
+                    "Gemini Omni video generation failed during processing"
+                )
             if time.time() > deadline:
-                raise TimeoutError("Timed out waiting for Gemini Omni video to become ACTIVE")
+                raise TimeoutError(
+                    "Timed out waiting for Gemini Omni video to become ACTIVE"
+                )
             time.sleep(_POLL_INTERVAL_SECONDS)
 
         download_resp = requests_mod.get(
@@ -470,7 +486,8 @@ class GeminiOmniVideo(BaseTool):
         if not api_key:
             return ToolResult(
                 success=False,
-                error="GEMINI_API_KEY / GOOGLE_API_KEY not set. " + self.install_instructions,
+                error="GEMINI_API_KEY / GOOGLE_API_KEY not set. "
+                + self.install_instructions,
             )
 
         import requests
@@ -487,7 +504,9 @@ class GeminiOmniVideo(BaseTool):
             interaction_id = inputs.get("interaction_id")
             output_path = Path(inputs.get("output_path", "gemini_omni_output.mp4"))
             try:
-                video_bytes = self._download_via_uri(requests, api_key, str(resume_video_uri))
+                video_bytes = self._download_via_uri(
+                    requests, api_key, str(resume_video_uri)
+                )
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(video_bytes)
             except Exception as e:
@@ -508,7 +527,8 @@ class GeminiOmniVideo(BaseTool):
                     "output": str(output_path),
                     "output_uri": str(resume_video_uri),
                     "interaction_id": interaction_id,
-                    "editable": bool(interaction_id) and inputs.get("store") is not False,
+                    "editable": bool(interaction_id)
+                    and inputs.get("store") is not False,
                 },
                 artifacts=[str(output_path)],
                 cost_usd=0.0,
@@ -518,7 +538,9 @@ class GeminiOmniVideo(BaseTool):
         operation = inputs.get("operation", "text_to_video")
         prompt = str(inputs.get("prompt") or "").strip()
         if not prompt:
-            return ToolResult(success=False, error="Gemini Omni generation requires a prompt.")
+            return ToolResult(
+                success=False, error="Gemini Omni generation requires a prompt."
+            )
         aspect_ratio = inputs.get("aspect_ratio", "16:9")
         if inputs.get("resolution", "720p") != "720p":
             return ToolResult(
@@ -527,7 +549,11 @@ class GeminiOmniVideo(BaseTool):
             )
         previous_interaction_id = inputs.get("previous_interaction_id")
 
-        if operation == "edit_video" and not previous_interaction_id and not inputs.get("input_video_path"):
+        if (
+            operation == "edit_video"
+            and not previous_interaction_id
+            and not inputs.get("input_video_path")
+        ):
             return ToolResult(
                 success=False,
                 error="edit_video requires previous_interaction_id (edit a generated clip) or input_video_path (edit an uploaded clip)",
@@ -536,7 +562,10 @@ class GeminiOmniVideo(BaseTool):
         reference_paths = list(inputs.get("reference_image_paths") or [])
         if inputs.get("reference_image_path"):
             reference_paths.insert(0, inputs["reference_image_path"])
-        if operation in {"image_to_video", "reference_to_video"} and not reference_paths:
+        if (
+            operation in {"image_to_video", "reference_to_video"}
+            and not reference_paths
+        ):
             return ToolResult(
                 success=False,
                 error=f"{operation} requires reference_image_path or reference_image_paths",
@@ -545,16 +574,22 @@ class GeminiOmniVideo(BaseTool):
         try:
             parts: list[dict[str, Any]] = [self._image_part(p) for p in reference_paths]
             if inputs.get("input_video_path"):
-                video_uri = self._upload_video_file(requests, api_key, inputs["input_video_path"])
+                video_uri = self._upload_video_file(
+                    requests, api_key, inputs["input_video_path"]
+                )
                 parts.append({"type": "video", "uri": video_uri})
         except Exception as e:
-            return ToolResult(success=False, error=f"Gemini Omni input preparation failed: {e}")
+            return ToolResult(
+                success=False, error=f"Gemini Omni input preparation failed: {e}"
+            )
 
         payload: dict[str, Any] = {
             "model": model,
             # Plain string for text-only turns (the documented minimal form),
             # typed parts when images or an uploaded video ride along.
-            "input": prompt if not parts else parts + [{"type": "text", "text": prompt}],
+            "input": prompt
+            if not parts
+            else parts + [{"type": "text", "text": prompt}],
             # uri delivery avoids the ~4MB inline-payload ceiling; inline data in
             # the response is still handled below if the API returns it anyway.
             "response_format": {
@@ -577,7 +612,10 @@ class GeminiOmniVideo(BaseTool):
             try:
                 resp = requests.post(
                     f"{_BASE_URL}/interactions",
-                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    headers={
+                        "x-goog-api-key": api_key,
+                        "Content-Type": "application/json",
+                    },
                     json=payload,
                     timeout=600,
                 )
@@ -614,7 +652,9 @@ class GeminiOmniVideo(BaseTool):
                     data={"interaction_id": interaction_id} if interaction_id else {},
                     error=f"Gemini Omni response did not include an output video: {str(data)[:1000]}",
                     cost_usd=(
-                        usage_cost if usage_cost is not None else self.estimate_cost(inputs)
+                        usage_cost
+                        if usage_cost is not None
+                        else self.estimate_cost(inputs)
                     ),
                 )
 
@@ -652,7 +692,9 @@ class GeminiOmniVideo(BaseTool):
                 cost_usd=(
                     usage_cost
                     if usage_cost is not None
-                    else self.estimate_cost(inputs) if generation_accepted else 0.0
+                    else self.estimate_cost(inputs)
+                    if generation_accepted
+                    else 0.0
                 ),
             )
 
@@ -673,7 +715,9 @@ class GeminiOmniVideo(BaseTool):
                 "editable": editable,
             },
             artifacts=[str(output_path)],
-            cost_usd=usage_cost if usage_cost is not None else self.estimate_cost(inputs),
+            cost_usd=usage_cost
+            if usage_cost is not None
+            else self.estimate_cost(inputs),
             duration_seconds=round(time.time() - start, 2),
             model=model,
         )

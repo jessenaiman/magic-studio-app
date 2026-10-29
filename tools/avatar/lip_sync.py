@@ -100,7 +100,13 @@ class LipSync(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=2, ram_mb=4096, vram_mb=4096, disk_mb=2000
     )
-    idempotency_key_fields = ["video_path", "audio_path", "model", "face_padding", "resize_factor"]
+    idempotency_key_fields = [
+        "video_path",
+        "audio_path",
+        "model",
+        "face_padding",
+        "resize_factor",
+    ]
     side_effects = ["writes lip-synced video to output_path"]
     user_visible_verification = [
         "Watch output video to verify lip movements match the new audio",
@@ -117,6 +123,7 @@ class LipSync(BaseTool):
         # Fallback: try importing wav2lip as a Python package
         try:
             import wav2lip  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             pass
@@ -137,6 +144,7 @@ class LipSync(BaseTool):
         # Fallback: check if wav2lip is importable and find its location
         try:
             import wav2lip
+
             return Path(wav2lip.__file__).parent
         except (ImportError, AttributeError):
             pass
@@ -159,7 +167,9 @@ class LipSync(BaseTool):
             return ToolResult(success=False, error=f"Audio not found: {audio_path}")
 
         output_path = Path(
-            inputs.get("output_path", str(video_path.with_stem(f"{video_path.stem}_lipsync")))
+            inputs.get(
+                "output_path", str(video_path.with_stem(f"{video_path.stem}_lipsync"))
+            )
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -171,7 +181,8 @@ class LipSync(BaseTool):
         if wav2lip_dir is None:
             return ToolResult(
                 success=False,
-                error="Could not locate Wav2Lip directory. " + self.install_instructions,
+                error="Could not locate Wav2Lip directory. "
+                + self.install_instructions,
             )
 
         checkpoint = wav2lip_dir / "checkpoints" / MODEL_CHECKPOINTS[model_variant]
@@ -191,19 +202,28 @@ class LipSync(BaseTool):
         start = time.time()
 
         cmd = [
-            "python", str(inference_script),
-            "--checkpoint_path", str(checkpoint),
-            "--face", str(video_path),
-            "--audio", str(audio_path),
-            "--outfile", str(output_path),
-            "--pads", *[str(p) for p in face_padding],
-            "--resize_factor", str(resize_factor),
+            "python",
+            str(inference_script),
+            "--checkpoint_path",
+            str(checkpoint),
+            "--face",
+            str(video_path),
+            "--audio",
+            str(audio_path),
+            "--outfile",
+            str(output_path),
+            "--pads",
+            *[str(p) for p in face_padding],
+            "--resize_factor",
+            str(resize_factor),
         ]
 
         try:
             self.run_command(cmd, timeout=600, cwd=wav2lip_dir)
         except subprocess.TimeoutExpired:
-            return ToolResult(success=False, error="Lip-sync timed out after 600 seconds")
+            return ToolResult(
+                success=False, error="Lip-sync timed out after 600 seconds"
+            )
         except Exception as e:
             return ToolResult(success=False, error=f"Wav2Lip inference failed: {e}")
 

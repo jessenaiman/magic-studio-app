@@ -77,24 +77,24 @@ const EditorialTagline: React.FC<{
   );
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         justifyContent: "flex-start",
         alignItems: "center",
         pointerEvents: "none",
       }}
-    >
-      {/* Soft top-of-frame darkening so the bright type sits on a scrim
+      >
+          {/* Soft top-of-frame darkening so the bright type sits on a scrim
           without covering the whole video. Gradient fades out by ~35% */}
-      <AbsoluteFill
-        style={{
+          <AbsoluteFill
+              style={{
           background:
             "linear-gradient(to bottom, rgba(10,8,6,0.55) 0%, rgba(10,8,6,0.25) 22%, rgba(10,8,6,0) 40%)",
           opacity: fadeOut,
         }}
-      />
-      <div
-        style={{
+          />
+          <div
+              style={{
           position: "absolute",
           top: topPx,
           left: 0,
@@ -104,10 +104,10 @@ const EditorialTagline: React.FC<{
           alignItems: "center",
           opacity: fadeOut,
         }}
-      >
-        {/* Tagline text */}
-        <div
-          style={{
+          >
+              {/* Tagline text */}
+              <div
+                  style={{
             fontFamily,
             fontWeight: 900,
             fontSize,
@@ -127,8 +127,8 @@ const EditorialTagline: React.FC<{
             flexWrap: "nowrap",
             whiteSpace: "nowrap",
           }}
-        >
-          {chars.map((char, i) => {
+              >
+                  {chars.map((char, i) => {
             const delay = i * 1.6;
             const charSpring = spring({
               frame: frame - delay,
@@ -137,25 +137,25 @@ const EditorialTagline: React.FC<{
             });
             const dy = interpolate(charSpring, [0, 1], [38, 0]);
             return (
-              <span
-                key={i}
-                style={{
+                <span
+                    key={i}
+                    style={{
                   display: "inline-block",
                   opacity: charSpring,
                   transform: `translateY(${dy}px)`,
                   whiteSpace: char === " " ? "pre" : undefined,
                   minWidth: char === " " ? "0.28em" : undefined,
                 }}
-              >
-                {char}
-              </span>
+                >
+                    {char}
+                </span>
             );
           })}
-        </div>
+              </div>
 
-        {/* Animated underline — draws in from the center outward */}
-        <div
-          style={{
+              {/* Animated underline — draws in from the center outward */}
+              <div
+                  style={{
             marginTop: Math.round(fontSize * 0.18),
             height: Math.max(4, Math.round(fontSize * 0.055)),
             width: estimatedTextWidth * underline,
@@ -163,9 +163,9 @@ const EditorialTagline: React.FC<{
             borderRadius: 4,
             boxShadow: `0 0 ${18 + glowPulse * 18}px ${accentColor}cc`,
           }}
-        />
-      </div>
-    </AbsoluteFill>
+              />
+          </div>
+      </AbsoluteFill>
   );
 };
 
@@ -192,30 +192,30 @@ export const TitledVideo: React.FC<TitledVideoProps> = ({
   const overlayFrames = Math.max(1, endFrame - inFrame);
 
   return (
-    <AbsoluteFill style={{ background: "#000" }}>
-      {/* Full-bleed background video — no fades, no vignette, no color shift.
+      <AbsoluteFill style={{ background: "#000" }}>
+          {/* Full-bleed background video — no fades, no vignette, no color shift.
           The source is already color-graded final.mp4 with music baked in;
           we play it through untouched, audio included. */}
-      <OffthreadVideo
-        src={resolveAsset(videoSrc)}
-        style={{
+          <OffthreadVideo
+              src={resolveAsset(videoSrc)}
+              style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
         }}
-      />
+          />
 
-      {/* Tagline overlay in its own Sequence so it mounts exactly on the
+          {/* Tagline overlay in its own Sequence so it mounts exactly on the
           fade-in frame and carries its own local frame counter. */}
-      <Sequence from={inFrame} durationInFrames={overlayFrames}>
-        <EditorialTagline
-          text={tagline}
-          topPx={topPx}
-          fontSize={fontSize}
-          accentColor={accentColor}
-        />
-      </Sequence>
-    </AbsoluteFill>
+          <Sequence from={inFrame} durationInFrames={overlayFrames}>
+              <EditorialTagline
+                  text={tagline}
+                  topPx={topPx}
+                  fontSize={fontSize}
+                  accentColor={accentColor}
+              />
+          </Sequence>
+      </AbsoluteFill>
   );
 };
 

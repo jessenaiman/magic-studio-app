@@ -1,11 +1,11 @@
 # Reference artwork → pose sheet → animation → storyboard → video
 
-Use the shared engine commands through `mc`, MCP or the app. Image drawing uses the app's **native Codex image generator**, separate from chat-agent selection. No chat message or provider switch is involved.
+Use the shared engine commands through `magic-cli`, MCP or the app. Image drawing uses the app's **native Codex image generator**, separate from chat-agent selection. No chat message or provider switch is involved.
 
 ## Draw an action from an existing character
 
 ```bash
-mc exec image.generate project='/path/Song.magic' \
+magic-cli exec image.generate project='/path/Song.magic' \
   reference_asset=older_fish_fabric_swim_v2 \
   character=older_fish_layered scene=2 animation=turn-around \
   poses='["right-facing three-quarter toward viewer","front-facing","left-facing three-quarter toward viewer"]' \
@@ -19,28 +19,31 @@ mc exec image.generate project='/path/Song.magic' \
 - The native generation receipt contains reference hashes/IDs, ordered pose descriptions, character identity, saved storyboard version and measured output dimensions. `asset.prompt.md` saves the complete worker instruction. The output PNG is attached to the project as a new image asset. Originals are preserved.
 - Layout and dimensions are requests to the image tool, not verified crop boundaries. Review the actual drawings before cutting them or using them in a film.
 
-For a running app, explicitly select its bridge. It must be rebuilt with the updated engine; inspect `mc --bridge PORT exec command.list filter=image.generate` and confirm its parameter description includes `reference_asset` and `poses`. A new CLI driving an older app does not upgrade the app's command handlers.
+Select the intended project with `magic-cli project open path=/absolute/Project.magic` (or
+`magic-cli studio open /absolute/Project.magic` for its visible window). Transport is automatic.
+Inspect `magic-cli commands image.generate` for `reference_asset` and `poses`; a new CLI driving
+an older app does not upgrade the app's command handlers.
 
 ## Save the storyboard reference
 
 Use the returned `asset_id` with the existing placement/save path, choosing coordinates from `storyboard.read` or `storyboard.design`:
 
 ```bash
-mc --bridge PORT exec storyboard.place_asset asset=GENERATED_ASSET page=3 x=574 y=890 width=428
-mc --bridge PORT exec storyboard.save_version
+magic-cli exec storyboard.place_asset asset=GENERATED_ASSET page=3 x=574 y=890 width=428
+magic-cli exec storyboard.save_version
 ```
 
 Save source identity and intended clip in the scene's native fields. This is a static pose-sheet reference, not an animated PDF. Do not mark it approved on the user's behalf.
 
 ## Turn drawings into motion
 
-Keep the whole-character reference and individual parts. Use the existing `image.image_size`, `intake.validate`, `asset.cut_sheet` and rig commands after visual review, with their current `mc commands` parameter contracts. A generated pose sheet does not automatically become a valid rig or a 3D mesh.
+Keep the whole-character reference and individual parts. Use the existing `image.image_size`, `intake.validate`, `asset.cut_sheet` and rig commands after visual review, with their current `magic-cli commands` parameter contracts. A generated pose sheet does not automatically become a valid rig or a 3D mesh.
 
 For a sheet whose drawings are not evenly spaced, do not cut equal cells through a nose or tail. Load the generated image, inspect its actual silhouette bounds, then use the existing PhotoCraft-backed polygon separation command:
 
 ```bash
-mc --bridge PORT exec project.load_asset id=GENERATED_ASSET
-mc --bridge PORT exec image.break_apart asset=GENERATED_ASSET \
+magic-cli exec project.load_asset id=GENERATED_ASSET
+magic-cli exec image.break_apart asset=GENERATED_ASSET \
   out_dir=/path/to/project/assets/characters/CHARACTER/turn/frames \
   'regions={"quarter_right":[[18,55],[752,55],[752,700],[18,700]],"front":[[760,45],[1336,45],[1336,686],[760,686]],"quarter_left":[[1338,60],[2090,60],[2090,700],[1338,700]]}'
 ```
@@ -50,7 +53,7 @@ Those coordinates are an example from the older fish's 2103×748 sheet, not a un
 Register the separated views with the native CLI, preserving their measured body pivot and proportions:
 
 ```bash
-mc exec image.register_frame \
+magic-cli exec image.register_frame \
   source=/path/to/project/assets/characters/CHARACTER/turn/frames/quarter_right.png \
   out=/path/to/project/assets/characters/CHARACTER/turn/registered-v1/quarter_right.png \
   'canvas=[1400,900]' 'source_pivot=[490,389]' 'target_pivot=[700,450]' scale=1.15
@@ -67,7 +70,7 @@ Once a named track exists, inspect `motion.tracks`, sample with `motion.sample`,
 ## Place a rendered animation and retain its source
 
 ```bash
-mc --bridge PORT exec video.place_track \
+magic-cli exec video.place_track \
   id=older-fish-first-turn path=/path/to/rendered/turn.webm \
   character=older_fish_volume_turn track=turn-left \
   start=22.30 duration=1.10 'rect=[1180,340,520,390]' scene=2 \

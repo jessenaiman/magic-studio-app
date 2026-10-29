@@ -109,25 +109,25 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
   const isQuote = type === "quote";
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: containerBackgroundColor,
         justifyContent: "center",
         alignItems: "center",
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           opacity,
           transform: `translateX(${slideX}px) scale(${scale})`,
           width: "72%",
           maxWidth: 1380,
           position: "relative",
         }}
-      >
-        {/* Main box */}
-        <div
-          style={{
+          >
+              {/* Main box */}
+              <div
+                  style={{
             display: "flex",
             flexDirection: "row",
             alignItems: "flex-start",
@@ -138,10 +138,10 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
             position: "relative",
             boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
           }}
-        >
-          {/* Left border accent */}
-          <div
-            style={{
+              >
+                  {/* Left border accent */}
+                  <div
+                      style={{
               position: "absolute",
               left: 0,
               top: 0,
@@ -150,11 +150,11 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
               backgroundColor: resolvedBorder,
               borderRadius: "12px 0 0 12px",
             }}
-          />
+                  />
 
-          {/* Icon */}
-          <div
-            style={{
+                  {/* Icon */}
+                  <div
+                      style={{
               fontSize: isQuote ? 72 : 48,
               lineHeight: 1,
               marginRight: 28,
@@ -166,35 +166,35 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
               fontWeight: isQuote ? 700 : undefined,
               marginTop: isQuote ? -12 : 0,
             }}
-          >
-            {resolvedIcon}
-          </div>
+                  >
+                      {resolvedIcon}
+                  </div>
 
-          {/* Content */}
-          <div
-            style={{
+                  {/* Content */}
+                  <div
+                      style={{
               display: "flex",
               flexDirection: "column",
               gap: 12,
               flex: 1,
               opacity: textOpacity,
             }}
-          >
-            {title && (
-              <div
-                style={{
+                  >
+                      {title && (
+                      <div
+                          style={{
                   fontFamily,
                   fontWeight: 700,
                   fontSize: titleFontSize,
                   color: resolvedBorder,
                   lineHeight: 1.3,
                 }}
-              >
-                {title}
-              </div>
+                      >
+                          {title}
+                      </div>
             )}
-            <div
-              style={{
+                      <div
+                          style={{
                 fontFamily: isQuote ? "Georgia, serif" : fontFamily,
                 fontWeight: isQuote ? 400 : 400,
                 fontStyle: isQuote ? "italic" : "normal",
@@ -202,12 +202,12 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
                 color: textColor,
                 lineHeight: 1.6,
               }}
-            >
-              {text}
-            </div>
+                      >
+                          {text}
+                      </div>
+                  </div>
+              </div>
           </div>
-        </div>
-      </div>
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

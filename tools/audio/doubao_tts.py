@@ -155,9 +155,19 @@ class DoubaoTTS(BaseTool):
     retry_policy = RetryPolicy(
         max_retries=2,
         backoff_seconds=2.0,
-        retryable_errors=["timeout", "rate_limit", "quota exceeded for types: concurrency"],
+        retryable_errors=[
+            "timeout",
+            "rate_limit",
+            "quota exceeded for types: concurrency",
+        ],
     )
-    idempotency_key_fields = ["text", "voice_id", "resource_id", "speech_rate", "sample_rate"]
+    idempotency_key_fields = [
+        "text",
+        "voice_id",
+        "resource_id",
+        "speech_rate",
+        "sample_rate",
+    ]
     side_effects = [
         "writes audio file to output_path",
         "writes Doubao query metadata JSON next to output_path",
@@ -188,7 +198,10 @@ class DoubaoTTS(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         api_key = os.environ.get("DOUBAO_SPEECH_API_KEY")
         if not api_key:
-            return ToolResult(success=False, error="No Doubao Speech API key. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="No Doubao Speech API key. " + self.install_instructions,
+            )
 
         voice_id = inputs.get("voice_id") or os.environ.get(self.DEFAULT_VOICE_ENV)
         if not voice_id:
@@ -204,22 +217,29 @@ class DoubaoTTS(BaseTool):
         try:
             result = self._generate(inputs, api_key=api_key, voice_id=voice_id)
         except Exception as exc:
-            return ToolResult(success=False, error=f"Doubao TTS failed: {self._safe_error(exc)}")
+            return ToolResult(
+                success=False, error=f"Doubao TTS failed: {self._safe_error(exc)}"
+            )
 
         result.duration_seconds = round(time.time() - start, 2)
         if not result.cost_usd:
             result.cost_usd = self.estimate_cost(inputs)
         return result
 
-    def _generate(self, inputs: dict[str, Any], *, api_key: str, voice_id: str) -> ToolResult:
+    def _generate(
+        self, inputs: dict[str, Any], *, api_key: str, voice_id: str
+    ) -> ToolResult:
         import requests
 
         text = inputs["text"]
         fmt = inputs.get("format", "mp3")
         resource_id = inputs.get("resource_id", self.DEFAULT_RESOURCE_ID)
-        output_path = Path(inputs.get("output_path", f"doubao_tts.{self._extension_for_format(fmt)}"))
+        output_path = Path(
+            inputs.get("output_path", f"doubao_tts.{self._extension_for_format(fmt)}")
+        )
         metadata_path = Path(
-            inputs.get("metadata_path") or output_path.with_suffix(output_path.suffix + ".json")
+            inputs.get("metadata_path")
+            or output_path.with_suffix(output_path.suffix + ".json")
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
@@ -233,13 +253,17 @@ class DoubaoTTS(BaseTool):
         )
         body = self._submit_body(inputs, voice_id=voice_id, request_id=req_id)
 
-        submit_response = requests.post(self.SUBMIT_URL, headers=headers, json=body, timeout=(10, 60))
+        submit_response = requests.post(
+            self.SUBMIT_URL, headers=headers, json=body, timeout=(10, 60)
+        )
         submit_data = self._json_or_raise(submit_response)
         self._raise_for_doubao_error(submit_response.status_code, submit_data)
 
         task_id = submit_data.get("data", {}).get("task_id")
         if not task_id:
-            raise RuntimeError("Doubao submit succeeded but did not return data.task_id")
+            raise RuntimeError(
+                "Doubao submit succeeded but did not return data.task_id"
+            )
 
         query_data = self._poll_query(
             requests_module=requests,
@@ -253,12 +277,17 @@ class DoubaoTTS(BaseTool):
         data = query_data.get("data", {})
         audio_url = data.get("audio_url")
         if not audio_url:
-            raise RuntimeError("Doubao task completed but did not return data.audio_url")
+            raise RuntimeError(
+                "Doubao task completed but did not return data.audio_url"
+            )
 
         audio_response = requests.get(audio_url, timeout=(10, 120))
         audio_response.raise_for_status()
         output_path.write_bytes(audio_response.content)
-        metadata_path.write_text(json.dumps(query_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        metadata_path.write_text(
+            json.dumps(query_data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
         audio_duration = self._audio_duration(output_path)
         usage = data.get("usage")
@@ -279,7 +308,9 @@ class DoubaoTTS(BaseTool):
                 "task_status": data.get("task_status"),
                 "req_text_length": data.get("req_text_length"),
                 "synthesize_text_length": data.get("synthesize_text_length"),
-                "audio_duration_seconds": round(audio_duration, 2) if audio_duration else None,
+                "audio_duration_seconds": round(audio_duration, 2)
+                if audio_duration
+                else None,
                 "output": str(output_path),
                 "metadata_path": str(metadata_path),
                 "sentences": data.get("sentences", []),
@@ -309,7 +340,9 @@ class DoubaoTTS(BaseTool):
             headers["X-Control-Require-Usage-Tokens-Return"] = "true"
         return headers
 
-    def _submit_body(self, inputs: dict[str, Any], *, voice_id: str, request_id: str) -> dict[str, Any]:
+    def _submit_body(
+        self, inputs: dict[str, Any], *, voice_id: str, request_id: str
+    ) -> dict[str, Any]:
         audio_params = {
             "format": inputs.get("format", "mp3"),
             "sample_rate": inputs.get("sample_rate", 24000),
@@ -317,10 +350,12 @@ class DoubaoTTS(BaseTool):
             "enable_timestamp": bool(inputs.get("enable_timestamp", True)),
         }
         additions = {
-            "disable_markdown_filter": bool(inputs.get("disable_markdown_filter", False)),
+            "disable_markdown_filter": bool(
+                inputs.get("disable_markdown_filter", False)
+            ),
         }
         return {
-            "user": {"uid": inputs.get("user_id", "openmontage")},
+            "user": {"uid": inputs.get("user_id", "magicstudio")},
             "unique_id": request_id,
             "req_params": {
                 "text": inputs["text"],
@@ -350,24 +385,37 @@ class DoubaoTTS(BaseTool):
                 request_id=str(uuid.uuid4()),
                 return_usage=return_usage,
             )
-            response = requests_module.post(self.QUERY_URL, headers=headers, json={"task_id": task_id}, timeout=(10, 60))
+            response = requests_module.post(
+                self.QUERY_URL,
+                headers=headers,
+                json={"task_id": task_id},
+                timeout=(10, 60),
+            )
             query_data = self._json_or_raise(response)
             self._raise_for_doubao_error(response.status_code, query_data)
             status = query_data.get("data", {}).get("task_status")
             if status == 2:
                 return query_data
             if status == 3:
-                raise RuntimeError(f"Doubao task failed: {query_data.get('message', 'unknown error')}")
-        raise TimeoutError(f"Doubao task did not finish within {timeout_seconds} seconds")
+                raise RuntimeError(
+                    f"Doubao task failed: {query_data.get('message', 'unknown error')}"
+                )
+        raise TimeoutError(
+            f"Doubao task did not finish within {timeout_seconds} seconds"
+        )
 
     @staticmethod
     def _json_or_raise(response: Any) -> dict[str, Any]:
         try:
             return response.json()
         except ValueError as exc:
-            raise RuntimeError(f"Non-JSON response from Doubao API: HTTP {response.status_code}") from exc
+            raise RuntimeError(
+                f"Non-JSON response from Doubao API: HTTP {response.status_code}"
+            ) from exc
 
-    def _raise_for_doubao_error(self, http_status: int, payload: dict[str, Any]) -> None:
+    def _raise_for_doubao_error(
+        self, http_status: int, payload: dict[str, Any]
+    ) -> None:
         code = payload.get("code")
         if http_status < 400 and code == 20000000:
             return
@@ -379,7 +427,9 @@ class DoubaoTTS(BaseTool):
     def _diagnostic_hint(message: str) -> str:
         lowered = message.lower()
         if "load grant" in lowered or "requested grant not found" in lowered:
-            return " (check DOUBAO_SPEECH_API_KEY and use the new-console X-Api-Key flow)"
+            return (
+                " (check DOUBAO_SPEECH_API_KEY and use the new-console X-Api-Key flow)"
+            )
         if "speaker permission denied" in lowered or "access denied" in lowered:
             return " (check voice_id/DOUBAO_SPEECH_VOICE_TYPE and voice authorization)"
         if "quota exceeded" in lowered:
@@ -391,7 +441,9 @@ class DoubaoTTS(BaseTool):
     @staticmethod
     def _safe_error(exc: Exception) -> str:
         # Avoid ever echoing request headers or secrets in user-visible errors.
-        return str(exc).replace(os.environ.get("DOUBAO_SPEECH_API_KEY", ""), "[redacted]")
+        return str(exc).replace(
+            os.environ.get("DOUBAO_SPEECH_API_KEY", ""), "[redacted]"
+        )
 
     @staticmethod
     def _extension_for_format(fmt: str) -> str:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage 4 Orchestrator: Export shareable 2D character package (`step_turnaround_register` + `step_motion_range` + `step_six_action_track`)."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,22 +29,36 @@ CHARACTER_PRESETS: dict[str, dict[str, str]] = {
     "whiskers": {
         "title": "Whiskers (Grey Tabby Kitten)",
         "poses_dir": str(POSE_PARTS_ROOT / "whiskers_poses"),
-        "turnaround_dir": str(POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_17"),
+        "turnaround_dir": str(
+            POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_17"
+        ),
     },
     "puddles": {
         "title": "Puddles (Yellow Duckling)",
-        "poses_dir": str(POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_13"),
-        "turnaround_dir": str(POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_12"),
+        "poses_dir": str(
+            POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_13"
+        ),
+        "turnaround_dir": str(
+            POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_12"
+        ),
     },
     "jenny": {
         "title": "Jenny (Yellow Chick)",
-        "poses_dir": str(POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_3"),
-        "turnaround_dir": str(POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_9"),
+        "poses_dir": str(
+            POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_3"
+        ),
+        "turnaround_dir": str(
+            POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_9"
+        ),
     },
     "rusty": {
         "title": "Rusty (Brown Foal)",
-        "poses_dir": str(POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_24"),
-        "turnaround_dir": str(POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_19"),
+        "poses_dir": str(
+            POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_24"
+        ),
+        "turnaround_dir": str(
+            POSE_PARTS_ROOT / "Character_turnaround_sheet_anima\u2026_202607180130_19"
+        ),
     },
     "miss_hayley": {
         "title": "Miss Hayley (Farm School Teacher)",
@@ -52,7 +67,9 @@ CHARACTER_PRESETS: dict[str, dict[str, str]] = {
     },
     "old_mac": {
         "title": "Old Mac (Farm School Principal)",
-        "poses_dir": str(POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_27"),
+        "poses_dir": str(
+            POSE_PARTS_ROOT / "Create_pose_sheet_for_puppet_202607180130_27"
+        ),
         "turnaround_dir": str(POSE_PARTS_ROOT / "old_mac_turnaround"),
     },
 }
@@ -67,7 +84,9 @@ def export_character_iteration(
     slug = char_id.lower().strip()
     preset = CHARACTER_PRESETS.get(slug, {})
     title = preset.get("title", slug.replace("_", " ").title())
-    p_dir = Path(poses_dir or preset.get("poses_dir", POSE_PARTS_ROOT / f"{slug}_poses")).resolve()
+    p_dir = Path(
+        poses_dir or preset.get("poses_dir", POSE_PARTS_ROOT / f"{slug}_poses")
+    ).resolve()
     t_raw = turnaround_dir or preset.get("turnaround_dir")
     t_dir = Path(t_raw).resolve() if t_raw else None
     dest = Path(out_dir or (SHARE_ROOT / slug)).resolve()
@@ -97,10 +116,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root_dir = Path(args.out_root).resolve() if args.out_root else SHARE_ROOT
     if args.character.lower() == "all":
-        print(json.dumps({"ok": True, "iterations": [export_character_iteration(c, out_dir=root_dir / c) for c in CHARACTER_PRESETS]}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "iterations": [
+                        export_character_iteration(c, out_dir=root_dir / c)
+                        for c in CHARACTER_PRESETS
+                    ],
+                },
+                indent=2,
+            )
+        )
         return 0
     target_out = args.out_dir or str(root_dir / args.character.lower().strip())
-    print(json.dumps(export_character_iteration(args.character, args.poses_dir, args.turnaround_dir, target_out), indent=2))
+    print(
+        json.dumps(
+            export_character_iteration(
+                args.character, args.poses_dir, args.turnaround_dir, target_out
+            ),
+            indent=2,
+        )
+    )
     return 0
 
 

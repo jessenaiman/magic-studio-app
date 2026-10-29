@@ -1,10 +1,52 @@
-//! Magic Studio engine façade.
+//! Shared project state and command dispatch for Magic Studio's creative workspace.
 //!
-//! Every user-visible action is a command with a stable id
-//! (`sheet.slice`, `turnaround.register`, `mesh.build4dir`, `export.blender`…)
-//! and JSON parameters, dispatched through [`Session::execute`].
-//! The Tauri UI, CLI, and MCP server all use
-//! this one entry point; that is what makes the UI swappable and agent-drivable.
+//! The desktop Tauri shell, CLI, and MCP clients share the same command registry
+//! and [`Session::execute`] entry point. This crate owns project state and domain
+//! validation; frontends should not implement a second persistence model.
+//!
+//! # Start here
+//!
+//! - [`Session`] holds the selected project, connected assets, and measurements.
+//! - [`command_specs`] and [`CommandSpec`] expose stable command IDs, parameter
+//!   descriptions, enablement, journaling, and long-running metadata.
+//! - [`find_command`] locates a command; [`Session::execute`] checks parameters
+//!   and enablement before dispatching its handler and recording applicable edits.
+//! - [`EngineError`] describes dispatch, validation, I/O, and external-tool failures.
+//!
+//! Inspect the registry without opening a project or invoking a production tool:
+//!
+//! ```no_run
+//! use magicstudio_engine::{Session, command_specs, find_command};
+//!
+//! let session = Session::default();
+//! for command in command_specs() {
+//!     println!("{}: {}", command.id, command.params);
+//! }
+//! if let Some(command) = find_command("project.open") {
+//!     println!("{} enabled: {:?}", command.label, (command.enabled)(&session));
+//! }
+//! ```
+//!
+//! # Responsibility map
+//!
+//! | Area | Modules |
+//! |---|---|
+//! | Project lifecycle, paths, settings | [`project`], [`workspace`], [`project_settings`] |
+//! | Storyboard and song workspace | [`storyboard`], [`storyboard_crud`], [`storyboard_design`], [`workshop`] |
+//! | Character, rig, motion, sequence | [`character`], [`rig`], [`motion`], [`motion_authoring`], [`sequence`] |
+//! | Lyrics, timing, native animation sources | [`lyrics`], [`words`], [`theatre`], [`animation_links`] |
+//! | Production adapters and exports | [`exports`], [`blender`], [`image_generation`], [`agent`] |
+//!
+//! Commands may write project files, launch installed production tools, or call
+//! configured providers. A default session is not a sandbox for arbitrary command
+//! execution. Discover the command contract and use explicit project selection.
+//! Backstage is a separate observer binary, not an engine dependency or controller.
+//!
+//! For the non-Rust layers and existing diagrams, see the repository's
+//! [documentation index](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/README.md)
+//! and [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md).
+//! Repository links track the default branch; new guides appear after this
+//! documentation change merges.
 
 #![cfg_attr(
     not(test),
@@ -18,50 +60,50 @@
     )
 )]
 
-pub mod agent;
-pub mod blender;
-pub mod animation_links;
-pub mod opentoonz;
-pub mod synfig;
-pub(crate) mod audio_trace;
 pub mod activity;
-pub mod character;
-pub mod complexity;
-pub mod commands;
-pub mod command_center;
+pub mod agent;
+pub mod animation_links;
+pub(crate) mod audio_trace;
+pub mod blender;
 pub mod change_marker;
+pub mod character;
+pub mod command_center;
+pub mod commands;
+pub mod complexity;
 pub mod control_bindings;
+pub mod crew;
 pub mod doctor;
 pub mod exports;
 pub mod image_cmds;
+pub mod image_generation;
+pub mod lyrics;
 pub mod mesh_geometry;
-pub mod motion;
 pub mod mlt;
+pub mod motion;
 pub mod motion_authoring;
-pub mod theatre;
-pub mod parts;
-pub mod part_replacement;
-pub mod photocraft;
+pub mod opentoonz;
 pub mod panels;
+pub mod part_replacement;
+pub mod parts;
+pub mod photocraft;
 pub mod project;
-pub(crate) mod read_only_file;
 pub mod project_settings;
-pub mod skills_registry;
-pub mod crew;
+pub(crate) mod read_only_file;
 pub mod rig;
 pub mod sequence;
-pub mod sheets;
-pub mod image_generation;
 pub mod session;
-pub mod lyrics;
-pub mod words;
+pub mod sheets;
+pub mod skills_registry;
 pub mod storyboard;
-pub mod storyboard_design;
 pub mod storyboard_crud;
+pub mod storyboard_design;
 pub mod studio_cues;
+pub mod synfig;
+pub mod theatre;
 pub mod turnaround;
 pub mod video_target;
 pub mod vision;
+pub mod words;
 pub mod workshop;
 pub mod workspace;
 
@@ -93,16 +135,15 @@ pub enum EngineError {
 
 pub type Result<T> = std::result::Result<T, EngineError>;
 
-
-
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`
 /// description (e.g. `"auto_cut": "true"` where the description says `false`). Every caller (CLI, MCP,
 /// app, bridge) goes through `Session::execute`, so a mistyped value fails the same way everywhere
 /// instead of a handler silently falling back to its default.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
-    let (Ok(Value::Object(expected)), Some(given)) =
-        (serde_json::from_str::<Value>(description), params.as_object())
-    else {
+    let (Ok(Value::Object(expected)), Some(given)) = (
+        serde_json::from_str::<Value>(description),
+        params.as_object(),
+    ) else {
         return Ok(());
     };
     for (key, value) in given {
@@ -111,9 +152,15 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
             Some(Value::Number(_)) => "number",
             _ => continue,
         };
-        let ok = if wanted == "boolean" { value.is_boolean() } else { value.is_number() };
+        let ok = if wanted == "boolean" {
+            value.is_boolean()
+        } else {
+            value.is_number()
+        };
         if !ok {
-            return Err(EngineError::InvalidParams(format!("`{key}` must be a {wanted}, got {value}")));
+            return Err(EngineError::InvalidParams(format!(
+                "`{key}` must be a {wanted}, got {value}"
+            )));
         }
     }
     Ok(())
@@ -121,29 +168,92 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
 
 impl Session {
     /// Execute one command by id with JSON parameters, returning JSON.
-    pub fn execute(&mut self,id:&str,params:Value)->Result<Value>{
-        let _context=activity::enter(id,&params);
+    pub fn execute(&mut self, id: &str, params: Value) -> Result<Value> {
+        let _context = activity::enter(id, &params);
         // Cast writes are journaled workshop files, independent of the open song's writer lease.
-        let project_edit=commands::find(id).is_some_and(|c|c.journal) && id!="crew.save";
-        let _writer=if project_edit && !matches!(id,"project.open"|"project.close"|"project.new"|"project.intake") {
-            self.project_path.as_deref().map(|path|project::claim(self,path)).transpose()?
-        }else{None};
-        let prior_owner=self.project_owner.clone();
-        if let Some(owner)=&_writer{self.project_owner=Some(owner.clone());}
-        let record=self.record_user_state&&commands::find(id).is_none_or(|c|c.journal);
-        if record{activity::command(self.project_path.as_deref(),id,&params,"dispatch_running",None);}
-        let started=std::time::Instant::now();
-        let (saves_before,project_before)=(self.project_saves.load(std::sync::atomic::Ordering::Relaxed),self.project_path.clone());
-        let result=self.execute_inner(id,params.clone());
-        // An edit is a successful journaled command that left the project file unwritten.
-        if result.as_ref().is_ok_and(|v|v["ok"]!=false) && project_edit {
-            if self.project_saves.load(std::sync::atomic::Ordering::Relaxed)!=saves_before || self.project_path!=project_before {self.edits_since_save=0;}
-            else {self.edits_since_save+=1;}
+        let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
+        let _writer = if project_edit
+            && !matches!(
+                id,
+                "project.open" | "project.close" | "project.new" | "project.intake"
+            ) {
+            self.project_path
+                .as_deref()
+                .map(|path| project::claim(self, path))
+                .transpose()?
+        } else {
+            None
+        };
+        let prior_owner = self.project_owner.clone();
+        if let Some(owner) = &_writer {
+            self.project_owner = Some(owner.clone());
         }
-        if record{if let Ok(value)=&result{activity::result(self.project_path.as_deref(),id,value,started.elapsed().as_millis());}}
-        if record{match &result{Ok(v)=>activity::command(self.project_path.as_deref(),id,&params,if v["ok"]==false{"engine_error"}else if v["intake_ready"]==false{"engine_needs_work"}else{"engine_success"},None),Err(e)=>activity::command(self.project_path.as_deref(),id,&params,"engine_error",Some(&e.to_string()))};}
+        let record = self.record_user_state && commands::find(id).is_none_or(|c| c.journal);
+        if record {
+            activity::command(
+                self.project_path.as_deref(),
+                id,
+                &params,
+                "dispatch_running",
+                None,
+            );
+        }
+        let started = std::time::Instant::now();
+        let (saves_before, project_before) = (
+            self.project_saves
+                .load(std::sync::atomic::Ordering::Relaxed),
+            self.project_path.clone(),
+        );
+        let result = self.execute_inner(id, params.clone());
+        // An edit is a successful journaled command that left the project file unwritten.
+        if result.as_ref().is_ok_and(|v| v["ok"] != false) && project_edit {
+            if self
+                .project_saves
+                .load(std::sync::atomic::Ordering::Relaxed)
+                != saves_before
+                || self.project_path != project_before
+            {
+                self.edits_since_save = 0;
+            } else {
+                self.edits_since_save += 1;
+            }
+        }
+        if record && let Ok(value) = &result {
+            activity::result(
+                self.project_path.as_deref(),
+                id,
+                value,
+                started.elapsed().as_millis(),
+            );
+        }
+        if record {
+            match &result {
+                Ok(v) => activity::command(
+                    self.project_path.as_deref(),
+                    id,
+                    &params,
+                    if v["ok"] == false {
+                        "engine_error"
+                    } else if v["intake_ready"] == false {
+                        "engine_needs_work"
+                    } else {
+                        "engine_success"
+                    },
+                    None,
+                ),
+                Err(e) => activity::command(
+                    self.project_path.as_deref(),
+                    id,
+                    &params,
+                    "engine_error",
+                    Some(&e.to_string()),
+                ),
+            };
+        }
         // Save As transfers ownership to a new path; never restore the source lease over it.
-        if _writer.is_some() && self.project_path == project_before {self.project_owner=prior_owner;}
+        if _writer.is_some() && self.project_path == project_before {
+            self.project_owner = prior_owner;
+        }
         result
     }
     fn execute_inner(&mut self, id: &str, params: Value) -> Result<Value> {
@@ -198,7 +308,8 @@ impl Session {
             }
         }
         // Keep the open project file in step with its asset connections.
-        if spec.journal && !matches!(id, "project.open" | "project.new" | "project.close")
+        if spec.journal
+            && !matches!(id, "project.open" | "project.new" | "project.close")
             && self.project_path.is_some()
             && serde_json::to_value(&self.project_assets).ok() != assets_before
         {

@@ -165,7 +165,7 @@ class FishAudioTTS(BaseTool):
             },
             "prosody": {
                 "type": "object",
-                "description": "Optional prosody controls, e.g. {\"speed\": 1.0, \"volume\": 0}.",
+                "description": 'Optional prosody controls, e.g. {"speed": 1.0, "volume": 0}.',
             },
             "output_path": {"type": "string"},
         },
@@ -225,10 +225,10 @@ class FishAudioTTS(BaseTool):
     # Kept here (not pricing.yaml, which is fal-only) to mirror google_tts /
     # doubao_tts. Verify against https://fish.audio pricing when refreshing.
     _FALLBACK_RATES = {
-        "s1": 0.000015,            # ~$15 / 1M bytes
-        "s2-pro": 0.000015,        # ~$15 / 1M bytes
-        "s2.1-pro": 0.000015,      # ~$15 / 1M bytes
-        "s2.1-pro-free": 0.0,      # promotional free tier — see _S21_PRO_FREE_PROMO_END
+        "s1": 0.000015,  # ~$15 / 1M bytes
+        "s2-pro": 0.000015,  # ~$15 / 1M bytes
+        "s2.1-pro": 0.000015,  # ~$15 / 1M bytes
+        "s2.1-pro-free": 0.0,  # promotional free tier — see _S21_PRO_FREE_PROMO_END
     }
     _DEFAULT_RATE = 0.000015
 
@@ -268,7 +268,9 @@ class FishAudioTTS(BaseTool):
     @classmethod
     def _effective_inputs(cls, inputs: dict[str, Any]) -> dict[str, Any]:
         """Alias-normalized inputs with API defaults filled for output-affecting fields."""
-        provided = {k: v for k, v in cls._normalized_inputs(inputs).items() if v is not None}
+        provided = {
+            k: v for k, v in cls._normalized_inputs(inputs).items() if v is not None
+        }
         effective = {**cls._KEY_DEFAULTS, **provided}
         if effective.get("format") != "mp3":
             effective["mp3_bitrate"] = None
@@ -330,7 +332,8 @@ class FishAudioTTS(BaseTool):
             result = self._generate(inputs, api_key=api_key, model=model)
         except Exception as exc:
             return ToolResult(
-                success=False, error=f"fish.audio TTS failed: {self._safe_error(exc, api_key)}"
+                success=False,
+                error=f"fish.audio TTS failed: {self._safe_error(exc, api_key)}",
             )
 
         result.duration_seconds = round(time.time() - start, 2)
@@ -338,7 +341,9 @@ class FishAudioTTS(BaseTool):
             result.cost_usd = self.estimate_cost(inputs)
         return result
 
-    def _generate(self, inputs: dict[str, Any], *, api_key: str, model: str) -> ToolResult:
+    def _generate(
+        self, inputs: dict[str, Any], *, api_key: str, model: str
+    ) -> ToolResult:
         import requests
 
         text = inputs["text"]

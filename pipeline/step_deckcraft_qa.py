@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage: Build a 5-slide DeckCraft QA review deck for a character (.deckcraft + .pdf + slide PNGs)."""
+
 from __future__ import annotations
 
 import argparse
@@ -13,7 +14,9 @@ def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dic
     """Build a 5-slide DeckCraft QA review deck for a character (`.deckcraft` + `.pdf` + slide PNGs)."""
     root = Path(__file__).resolve().parents[1]
     slug = slug.lower().strip()
-    pose_dir = Path(out_dir).resolve() if out_dir else (root / "exports/pose_and_parts" / slug)
+    pose_dir = (
+        Path(out_dir).resolve() if out_dir else (root / "exports/pose_and_parts" / slug)
+    )
     pose_dir.mkdir(parents=True, exist_ok=True)
     share_dir = root / "exports/design_share" / slug
     blender_dir = root / "exports/farm_school_milestone/characters" / slug
@@ -107,14 +110,30 @@ def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dic
             else:
                 d.page("qa", s_title, s_sub, new=True)
             d.box(SCENE_ART_REGION, "#08090C", f"layout.qa.{s_key}.well")
-            d.card("Stage QA Telemetry & Verification", notes_txt, [60, 800, 960, 320], f"qa.{s_key}.telemetry", size=20)
+            d.card(
+                "Stage QA Telemetry & Verification",
+                notes_txt,
+                [60, 800, 960, 320],
+                f"qa.{s_key}.telemetry",
+                size=20,
+            )
             d.flush()
             if img_path and Path(img_path).is_file():
-                pic = d.cmd("insert.picture", path=str(Path(img_path).resolve()), name=s_key)
+                pic = d.cmd(
+                    "insert.picture", path=str(Path(img_path).resolve()), name=s_key
+                )
                 pid = pic["id"]
                 native = d.cmd("shape.inspect", id=pid)["box"]
                 fitted = fit_rect(native["w"], native["h"], SCENE_ART_REGION)
-                d.cmd("shape.sizePosition", ids=[pid], x=fitted[0], y=fitted[1], w=fitted[2], h=fitted[3], lockAspect=False)
+                d.cmd(
+                    "shape.sizePosition",
+                    ids=[pid],
+                    x=fitted[0],
+                    y=fitted[1],
+                    w=fitted[2],
+                    h=fitted[3],
+                    lockAspect=False,
+                )
                 d.cmd("shape.sizePosition", ids=[pid], lockAspect=True)
         d.flush()
         d.cmd("file.saveAs", path=str(deck_path))

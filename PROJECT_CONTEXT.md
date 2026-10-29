@@ -1,125 +1,79 @@
-# OpenMontage - Shared Project Context
+# Magic Studio — project context
 
-This is the single source of truth for project architecture and conventions. All platform-specific agent files (CLAUDE.md, CODEX.md, CURSOR.md, COPILOT.md) should point here instead of duplicating this content.
+Magic Studio is Jesse Naiman's desktop creative-production app. The canonical
+repository is [jessenaiman/magic-studio-app](https://github.com/jessenaiman/magic-studio-app).
+Original authorship and licensing are recorded in
+[SOURCE-ATTRIBUTION.md](SOURCE-ATTRIBUTION.md) and [LICENSE](LICENSE).
 
-## Identity
+## Desktop application
 
-OpenMontage is an open-source, AI-orchestrated video production platform.
+The Tauri shell in `apps/magicstudio-shell/` embeds four creative areas:
+Storyboard, Animation, Lyrics, and Studio. Studio targets HyperFrames. The
+Rust engine owns project data, command validation, and motion evaluation.
+The shell UI, `magic-cli`, and MCP use that shared command registry; there is no
+second Python implementation of project persistence or UI command behavior.
 
-## Architecture: Instruction-Driven (Agent-First)
+| Contract | Source |
+|---|---|
+| Current app behavior and agent interaction | `apps/magicstudio-shell/agent.md` |
+| Command IDs and typed parameters | `crates/engine/src/commands.rs` |
+| CLI/MCP routing and ownership | `agent-harness/MAGIC.md` |
+| Installed app and source installation | `agent-harness/cli_anything/magic/README.md` |
+| Storyboard, animation, lyrics, video workflow | `MAGIC-STUDIO.md` |
+| Native acceptance approval policy | `CONTRIBUTING.md` |
 
-The AI agent IS the intelligence. Python exists only for tools and persistence. Everything else — orchestration, creative decisions, review, stage transitions — lives in instructions (YAML manifests + markdown skills) the agent follows.
+Project media belongs in the user's selected production root outside the source
+checkout. Preserve supplied media, transcript wording/timing, and editable native
+documents. A command receipt, draft, or preview is not a completed creative review.
 
+## Backstage observer
+
+`apps/backstage/` is the separate Rust/Ratatui observer for saved project
+references, PR handoffs, worktrees, native audit artifacts, and settings.
+It shows source identity and unavailable observations explicitly. It is not an
+agent session controller or a production orchestrator.
+See [Backstage](apps/backstage/README.md) for exact read boundaries and controls.
+
+## Reusable production toolkit
+
+Magic Studio retains the Python tools and declarative pipeline system:
+
+```text
+Agent reads pipeline YAML → reads the stage director skill → calls tools
+→ reviews artifacts → saves a checkpoint → requests configured human approval
 ```
-Agent reads pipeline manifest (YAML) → reads stage director skill (MD)
-→ uses tools (Python BaseTool) → self-reviews (meta skill)
-→ checkpoints (Python utility) → presents to human for approval
-```
 
-**No Python orchestrator, no Python reviewer, no Python handlers.** The agent drives the pipeline.
+Python supplies capabilities and persistence utilities; the agent makes creative
+choices and follows stage/approval instructions. This toolkit can be reused
+without treating every app interaction as a complete pipeline run.
 
-## Source of Truth
+| Layer | Source and purpose |
+|---|---|
+| Capabilities | `tools/tool_registry.py`, `tools/base_tool.py`, `tools/` |
+| Production process | `pipeline_defs/*.yaml`, `skills/pipelines/` |
+| Production guidance | `skills/INDEX.md`, `skills/core/`, `skills/creative/`, `skills/meta/` |
+| Checkpoints and budgets | `lib/checkpoint.py`, `tools/cost_tracker.py` |
+| Artifact contracts | `schemas/artifacts/`, `schemas/checkpoints/`, `schemas/pipelines/` |
+| Visual playbooks | `styles/*.yaml`, `schemas/styles/playbook.schema.json` |
+| Technology knowledge | Relevant `.agents/skills/`; preserve third-party content and notices |
+| Composition adapters | `tools/video/video_compose.py`, `remotion-composer/`, HyperFrames adapters |
+| Pipeline board | `backlot/` reads pipeline-produced artifacts/checkpoints |
 
-- **Agent guide & contract:** `AGENT_GUIDE.md` (tool inventory, pipeline selection, stage agents, protocols)
-- **Skill index:** `skills/INDEX.md`
-- **Tool registry:** `tools/tool_registry.py`
-- **Pipeline manifests:** `pipeline_defs/`
-- **Artifact schemas:** `schemas/artifacts/`
-- **Style playbooks:** `styles/*.yaml` (schema: `schemas/styles/playbook.schema.json`)
-- **Stage director skills:** `skills/pipelines/<pipeline>/<stage>-director.md`
-- **Meta skills:** `skills/meta/*.md` (reviewer, checkpoint-protocol, skill-creator)
-- **Architecture deep-dive:** `docs/ARCHITECTURE.md`
+The pipeline registry and manifest are the authority for tools, stages, required
+artifacts, and approval gates. Installed providers are discovered, not inferred.
+Pipeline composition can use Remotion, HyperFrames, or FFmpeg as approved; that
+choice does not add another target to the desktop Studio.
 
-## Knowledge Architecture (3 Layers)
+## Extending the toolkit
 
-```
-Layer 1: tools/tool_registry.py     → "What tools exist" (runtime capabilities, status, cost)
-Layer 2: skills/                    → "How OpenMontage uses them" (project conventions)
-Layer 3: .agents/skills/            → "How the technology works" (generic API rules, skills.sh)
-```
+- New tools inherit `BaseTool`, declare real capability/provider contracts, and
+  enter registry discovery. Use selector-plus-provider routing where appropriate.
+- New pipelines need a valid `pipeline_defs/` manifest and referenced director
+  skills. Keep review focus, success criteria, canonical outputs, and gates clear.
+- Keep canonical artifacts schema-valid. Preserve checkpoint history and append
+  changed production decisions instead of silently rewriting them.
+- Propose native acceptance expectations first; encode behavior only after Jesse
+  observes and explicitly approves the workflow.
 
-Each tool's `agent_skills[]` field bridges Layer 1 → Layer 3. See `skills/INDEX.md` for the full mapping.
-
-## Key Patterns
-
-- **Pipeline state machine:** `idea -> script -> scene_plan -> assets -> edit -> compose -> publish`
-- **Instruction-driven stages:** Each stage has a director skill (MD) that teaches the agent HOW
-- **Pipeline manifests:** Declarative YAML defining stages, skills, tools, review focus, approval gates
-- **Capability-first tool design:** Each major family should expose a selector tool plus explicit provider tools
-  - Example: `tts_selector` + `elevenlabs_tts` / `google_tts` / `openai_tts` / `piper_tts`
-  - Example: `video_selector` + `heygen_video` / `wan_video` / `hunyuan_video` / `ltx_video_local` / `ltx_video_modal` / `cogvideo_video`
-- **Style playbooks:** YAML defining visual language, typography, motion, audio, asset generation constraints
-- **Artifacts are canonical:** `brief`, `script`, `scene_plan`, `asset_manifest`, `edit_decisions`, `render_report`, `publish_log`
-- **Every tool inherits from `tools/base_tool.py`** (ToolContract)
-- **Checkpoint policy** lives in pipeline manifest (`human_approval_default` per stage) + `skills/meta/checkpoint-protocol.md`
-- **Reviewer** is a meta skill (`skills/meta/reviewer.md`), advisory, max 2 rounds
-- **Cost tracker** (`tools/cost_tracker.py`) manages budget: estimate -> reserve -> reconcile
-- **Canonical artifacts** validated against JSON schemas in `schemas/artifacts/`
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `config.yaml` | Global configuration |
-| `lib/config_model.py` | Runtime config loader (Pydantic) |
-| `lib/checkpoint.py` | Checkpoint writer/reader |
-| `lib/pipeline_loader.py` | Pipeline manifest loader + helpers |
-| `lib/media_profiles.py` | Platform-specific render profiles |
-| `styles/playbook_loader.py` | Style playbook loader + validator + design intelligence (color/type/a11y) |
-| `tools/base_tool.py` | ToolContract base class |
-| `tools/tool_registry.py` | Tool discovery and reporting |
-| `tools/cost_tracker.py` | Budget governance |
-| `tools/video/video_stitch.py` | Multi-clip assembly (stitch, spatial, validate, preview) |
-| `tools/video/video_compose.py` | Runtime-aware composition orchestrator — routes to Remotion / HyperFrames / FFmpeg based on `edit_decisions.render_runtime` |
-| `tools/video/hyperframes_compose.py` | HyperFrames runtime — templated workspace materialization plus authored-workspace unified `check`/`render`, FFmpeg floor check |
-| `tools/graphics/threejs_world.py` | Local semantic 3D-world authoring with explicit blockout/production fidelity tiers, region-aware terrain, diagnostics, and HyperFrames atelier workspaces |
-| `tools/graphics/threejs_asset_catalog.py` | CC0 GLTF/GLB catalog acquisition, inventory, and provenance for production-fidelity world builds |
-| `tools/graphics/atlas_3d.py` | Atlas Cloud Tripo H3.1 text-to-3D for unique textured/PBR GLB assets |
-| `tools/graphics/fal_3d.py` | fal.ai Hunyuan 3D and SAM 3D routes for image-conditioned and multi-object GLB generation |
-| `tools/graphics/blender_world.py` | Blender 4.5 LTS production world assembly, terrain, lighting, camera, and Eevee Next rendering |
-| `tools/character/character_animation.py` | Local character-animation tools — character specs, SVG rig plans, pose libraries, action timelines, HyperFrames packages, and QA reports |
-| `lib/hyperframes_style_bridge.py` | Playbook → CSS custom properties + `DESIGN.md` bridge for HyperFrames workspaces |
-| `remotion-composer/src/components/` | 8 Remotion components (TextCard, StatCard, ProgressBar, CalloutBox, ComparisonCard + charts/) |
-| `.agents/skills/hyperframes*/` | Vendored HyperFrames Layer 3 skills (authoring contract, CLI, registry, website-to-video) |
-| `.agents/skills/threejs-world-generation/` | Layer 3 coarse-to-fine semantic world construction and render-guided refinement workflow |
-| `skills/core/hyperframes.md` | Layer 2 — when OpenMontage should pick HyperFrames vs Remotion, artifact → workspace mapping |
-| `schemas/styles/playbook.schema.json` | Playbook schema v2 with design tokens (chart_palette, scale_system, weight_matrix, color_rules) |
-| `apps/magicstudio-shell/acceptance/` | Native acceptance infrastructure; workflows require Jesse's observed-UI approval before executable cases are added |
-
-## Available Pipelines
-
-| Pipeline | Manifest | Type |
-|----------|----------|------|
-| `talking-head` | `pipeline_defs/talking-head.yaml` | Footage-based |
-| `animated-explainer` | `pipeline_defs/animated-explainer.yaml` | AI-generated |
-| `screen-demo` | `pipeline_defs/screen-demo.yaml` | Screen-recording |
-| `clip-factory` | `pipeline_defs/clip-factory.yaml` | Short-form batch extraction |
-| `podcast-repurpose` | `pipeline_defs/podcast-repurpose.yaml` | Podcast repurposing |
-| `cinematic` | `pipeline_defs/cinematic.yaml` | Cinematic edit |
-| `animation` | `pipeline_defs/animation.yaml` | Animation-first |
-| `character-animation` | `pipeline_defs/character-animation.yaml` | Local rigged character animation |
-| `hybrid` | `pipeline_defs/hybrid.yaml` | Source-plus-support hybrid |
-| `avatar-spokesperson` | `pipeline_defs/avatar-spokesperson.yaml` | Avatar presenter |
-| `localization-dub` | `pipeline_defs/localization-dub.yaml` | Localization and dubbing |
-| `framework-smoke` | `pipeline_defs/framework-smoke.yaml` | Test harness |
-
-## When Building New Pipelines
-
-1. Create a YAML manifest in `pipeline_defs/` (validated by `pipeline_manifest.schema.json`)
-2. Create stage director skills in `skills/pipelines/<pipeline-name>/` (7 skills: idea through publish)
-3. Reference meta skills (reviewer, checkpoint-protocol) in the manifest
-4. Add compatible playbooks to the manifest
-5. Propose native acceptance command/UI/file expectations; encode behavior only after Jesse observes and explicitly approves it.
-
-## When Building New Tools
-
-1. Inherit from `tools/base_tool.py` `BaseTool`
-2. Put the tool in the correct capability package (`tools/audio/`, `tools/video/`, `tools/enhancement/`, `tools/analysis/`, `tools/graphics/`, `tools/avatar/`, `tools/subtitle/`)
-3. Prefer the selector-plus-provider pattern:
-   - one capability router tool for agent convenience
-   - one concrete tool per real provider/runtime path
-4. Set all contract fields (name, version, tier, capability, provider, supports, fallback_tools, agent_skills, etc.)
-5. Implement `execute()` returning a `ToolResult`
-6. Let discovery happen through `tools/tool_registry.py`; do not depend on ad hoc imports
-7. Add a JSON schema in `schemas/tools/` if the tool has complex I/O
-8. Add tests only after the runtime path is correct
+Read [AGENT_GUIDE.md](AGENT_GUIDE.md) for routing and production governance and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the pipeline internals.

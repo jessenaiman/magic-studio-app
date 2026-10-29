@@ -154,7 +154,9 @@ class SchemaMedia(BaseTool):
             or (
                 "edit"
                 if references and self.capability == "image_generation"
-                else "image_to_video" if references else next(iter(routes), "")
+                else "image_to_video"
+                if references
+                else next(iter(routes), "")
             )
         )
         if operation == "generate" and self.capability == "video_generation":
@@ -206,7 +208,9 @@ class SchemaMedia(BaseTool):
                     else (
                         "image"
                         if "image" in props
-                        else "image_uri" if "image_uri" in props else None
+                        else "image_uri"
+                        if "image_uri" in props
+                        else None
                     )
                 )
             )

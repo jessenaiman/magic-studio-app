@@ -1,4 +1,5 @@
 """Stage 3A: Cutout part layer isolation via photocraft-cli."""
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,9 @@ def detect_face_landmarks_photocraft(rgba_path: Path) -> Optional[Dict[str, Any]
     try:
         proc = subprocess.run(
             [pc_bin, "run", str(rgba_path), "--cmd", "image.detectFaces"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         for line in proc.stdout.splitlines():
             if line.strip().startswith("{"):
@@ -113,50 +116,206 @@ def discover_character_joints_and_polygons(
 
     r_joint = max(12, int(round(min(bw, bh) * 0.03)))
     if has_split_ears:
-        ear_l_spec = {"id": "ear_left", "label": "Left Ear", "kind": "appendage", "layer": 8, "parent": "head",
-                      "pivot": [sx(0.38), sy(0.14)], "joint_radius": r_joint, "rotation": [-25, 25],
-                      "polygon": [[sx(0.22), sy(0.0)], [sx(0.49), sy(0.0)], [sx(0.49), sy(0.15)], [sx(0.22), sy(0.15)]]}
-        ear_r_spec = {"id": "ear_right", "label": "Right Ear", "kind": "appendage", "layer": 9, "parent": "head",
-                      "pivot": [sx(0.62), sy(0.14)], "joint_radius": r_joint, "rotation": [-25, 25],
-                      "polygon": [[sx(0.49), sy(0.0)], [sx(0.80), sy(0.0)], [sx(0.80), sy(0.15)], [sx(0.49), sy(0.15)]]}
+        ear_l_spec = {
+            "id": "ear_left",
+            "label": "Left Ear",
+            "kind": "appendage",
+            "layer": 8,
+            "parent": "head",
+            "pivot": [sx(0.38), sy(0.14)],
+            "joint_radius": r_joint,
+            "rotation": [-25, 25],
+            "polygon": [
+                [sx(0.22), sy(0.0)],
+                [sx(0.49), sy(0.0)],
+                [sx(0.49), sy(0.15)],
+                [sx(0.22), sy(0.15)],
+            ],
+        }
+        ear_r_spec = {
+            "id": "ear_right",
+            "label": "Right Ear",
+            "kind": "appendage",
+            "layer": 9,
+            "parent": "head",
+            "pivot": [sx(0.62), sy(0.14)],
+            "joint_radius": r_joint,
+            "rotation": [-25, 25],
+            "polygon": [
+                [sx(0.49), sy(0.0)],
+                [sx(0.80), sy(0.0)],
+                [sx(0.80), sy(0.15)],
+                [sx(0.49), sy(0.15)],
+            ],
+        }
         head_top_v = 0.14
     else:
         # Single crown tuft + bow: keep the entire crown tuft and bow together inside `head` (`head_top_v = 0.06`),
         # and only slice the very top feather tip (`0.0 <= v <= 0.06`) with symmetric co-rotating secondary sway.
-        ear_l_spec = {"id": "ear_left", "label": "Left Ear", "kind": "appendage", "layer": 8, "parent": "head",
-                      "pivot": [sx(0.49), sy(0.06)], "joint_radius": r_joint, "rotation": [-8, 8],
-                      "polygon": [[sx(0.32), sy(0.0)], [sx(0.50), sy(0.0)], [sx(0.50), sy(0.06)], [sx(0.32), sy(0.06)]]}
-        ear_r_spec = {"id": "ear_right", "label": "Right Ear", "kind": "appendage", "layer": 9, "parent": "head",
-                      "pivot": [sx(0.51), sy(0.06)], "joint_radius": r_joint, "rotation": [-8, 8],
-                      "polygon": [[sx(0.50), sy(0.0)], [sx(0.68), sy(0.0)], [sx(0.68), sy(0.06)], [sx(0.50), sy(0.06)]]}
+        ear_l_spec = {
+            "id": "ear_left",
+            "label": "Left Ear",
+            "kind": "appendage",
+            "layer": 8,
+            "parent": "head",
+            "pivot": [sx(0.49), sy(0.06)],
+            "joint_radius": r_joint,
+            "rotation": [-8, 8],
+            "polygon": [
+                [sx(0.32), sy(0.0)],
+                [sx(0.50), sy(0.0)],
+                [sx(0.50), sy(0.06)],
+                [sx(0.32), sy(0.06)],
+            ],
+        }
+        ear_r_spec = {
+            "id": "ear_right",
+            "label": "Right Ear",
+            "kind": "appendage",
+            "layer": 9,
+            "parent": "head",
+            "pivot": [sx(0.51), sy(0.06)],
+            "joint_radius": r_joint,
+            "rotation": [-8, 8],
+            "polygon": [
+                [sx(0.50), sy(0.0)],
+                [sx(0.68), sy(0.0)],
+                [sx(0.68), sy(0.06)],
+                [sx(0.50), sy(0.06)],
+            ],
+        }
         head_top_v = 0.06
     specs = [
         ear_l_spec,
         ear_r_spec,
-        {"id": "leg_left", "label": "Left Leg", "kind": "limb", "layer": 12, "parent": "torso",
-         "pivot": [sx(leg_l_u), sy(hip_v)], "joint_radius": r_joint, "rotation": [-45, 45],
-         "polygon": [[sx(0.18), sy(hip_v - 0.01)], [sx(split_u), sy(hip_v - 0.01)], [sx(split_u), sy(ankle_v)], [sx(0.18), sy(ankle_v)]]},
-        {"id": "leg_right", "label": "Right Leg", "kind": "limb", "layer": 14, "parent": "torso",
-         "pivot": [sx(leg_r_u), sy(hip_v)], "joint_radius": r_joint, "rotation": [-45, 45],
-         "polygon": [[sx(split_u), sy(hip_v - 0.01)], [sx(0.82), sy(hip_v - 0.01)], [sx(0.82), sy(ankle_v)], [sx(split_u), sy(ankle_v)]]},
-        {"id": "foot_left", "label": "Left Foot", "kind": "extremity", "layer": 16, "parent": "leg_left",
-         "pivot": [sx(leg_l_u), sy(ankle_v)], "joint_radius": r_joint, "rotation": [-30, 30],
-         "polygon": [[sx(0.18), sy(ankle_v - 0.01)], [sx(split_u), sy(ankle_v - 0.01)], [sx(split_u), sy(1.0)], [sx(0.18), sy(1.0)]]},
-        {"id": "foot_right", "label": "Right Foot", "kind": "extremity", "layer": 18, "parent": "leg_right",
-         "pivot": [sx(leg_r_u), sy(ankle_v)], "joint_radius": r_joint, "rotation": [-30, 30],
-         "polygon": [[sx(split_u), sy(ankle_v - 0.01)], [sx(0.82), sy(ankle_v - 0.01)], [sx(0.82), sy(1.0)], [sx(split_u), sy(1.0)]]},
-        {"id": "torso", "label": "Torso", "kind": "core", "layer": 20, "parent": None,
-         "pivot": [sx(0.50), sy(0.56)], "joint_radius": r_joint, "rotation": [-18, 18],
-         "polygon": [[sx(0.20), sy(neck_v - 0.02)], [sx(0.80), sy(neck_v - 0.02)], [sx(0.80), sy(hip_v)], [sx(0.20), sy(hip_v)]]},
-        {"id": "head", "label": "Head", "kind": "core", "layer": 30, "parent": "torso",
-         "pivot": [sx(0.50), sy(neck_v)], "joint_radius": r_joint, "rotation": [-25, 25],
-         "polygon": [[sx(0.18), sy(head_top_v)], [sx(0.82), sy(head_top_v)], [sx(0.82), sy(neck_v + 0.03)], [sx(0.18), sy(neck_v + 0.03)]]},
-        {"id": "arm_left", "label": "Left Arm", "kind": "limb", "layer": 34, "parent": "torso",
-         "pivot": [sx(0.18), sy(neck_v + 0.07)], "joint_radius": r_joint, "rotation": [-65, 85],
-         "polygon": [[sx(0.0), sy(neck_v + 0.05)], [sx(0.18), sy(neck_v + 0.05)], [sx(0.18), sy(0.68)], [sx(0.0), sy(0.68)]]},
-        {"id": "arm_right", "label": "Right Arm", "kind": "limb", "layer": 36, "parent": "torso",
-         "pivot": [sx(0.82), sy(neck_v + 0.07)], "joint_radius": r_joint, "rotation": [-85, 65],
-         "polygon": [[sx(0.82), sy(neck_v + 0.05)], [sx(1.0), sy(neck_v + 0.05)], [sx(1.0), sy(0.68)], [sx(0.82), sy(0.68)]]},
+        {
+            "id": "leg_left",
+            "label": "Left Leg",
+            "kind": "limb",
+            "layer": 12,
+            "parent": "torso",
+            "pivot": [sx(leg_l_u), sy(hip_v)],
+            "joint_radius": r_joint,
+            "rotation": [-45, 45],
+            "polygon": [
+                [sx(0.18), sy(hip_v - 0.01)],
+                [sx(split_u), sy(hip_v - 0.01)],
+                [sx(split_u), sy(ankle_v)],
+                [sx(0.18), sy(ankle_v)],
+            ],
+        },
+        {
+            "id": "leg_right",
+            "label": "Right Leg",
+            "kind": "limb",
+            "layer": 14,
+            "parent": "torso",
+            "pivot": [sx(leg_r_u), sy(hip_v)],
+            "joint_radius": r_joint,
+            "rotation": [-45, 45],
+            "polygon": [
+                [sx(split_u), sy(hip_v - 0.01)],
+                [sx(0.82), sy(hip_v - 0.01)],
+                [sx(0.82), sy(ankle_v)],
+                [sx(split_u), sy(ankle_v)],
+            ],
+        },
+        {
+            "id": "foot_left",
+            "label": "Left Foot",
+            "kind": "extremity",
+            "layer": 16,
+            "parent": "leg_left",
+            "pivot": [sx(leg_l_u), sy(ankle_v)],
+            "joint_radius": r_joint,
+            "rotation": [-30, 30],
+            "polygon": [
+                [sx(0.18), sy(ankle_v - 0.01)],
+                [sx(split_u), sy(ankle_v - 0.01)],
+                [sx(split_u), sy(1.0)],
+                [sx(0.18), sy(1.0)],
+            ],
+        },
+        {
+            "id": "foot_right",
+            "label": "Right Foot",
+            "kind": "extremity",
+            "layer": 18,
+            "parent": "leg_right",
+            "pivot": [sx(leg_r_u), sy(ankle_v)],
+            "joint_radius": r_joint,
+            "rotation": [-30, 30],
+            "polygon": [
+                [sx(split_u), sy(ankle_v - 0.01)],
+                [sx(0.82), sy(ankle_v - 0.01)],
+                [sx(0.82), sy(1.0)],
+                [sx(split_u), sy(1.0)],
+            ],
+        },
+        {
+            "id": "torso",
+            "label": "Torso",
+            "kind": "core",
+            "layer": 20,
+            "parent": None,
+            "pivot": [sx(0.50), sy(0.56)],
+            "joint_radius": r_joint,
+            "rotation": [-18, 18],
+            "polygon": [
+                [sx(0.20), sy(neck_v - 0.02)],
+                [sx(0.80), sy(neck_v - 0.02)],
+                [sx(0.80), sy(hip_v)],
+                [sx(0.20), sy(hip_v)],
+            ],
+        },
+        {
+            "id": "head",
+            "label": "Head",
+            "kind": "core",
+            "layer": 30,
+            "parent": "torso",
+            "pivot": [sx(0.50), sy(neck_v)],
+            "joint_radius": r_joint,
+            "rotation": [-25, 25],
+            "polygon": [
+                [sx(0.18), sy(head_top_v)],
+                [sx(0.82), sy(head_top_v)],
+                [sx(0.82), sy(neck_v + 0.03)],
+                [sx(0.18), sy(neck_v + 0.03)],
+            ],
+        },
+        {
+            "id": "arm_left",
+            "label": "Left Arm",
+            "kind": "limb",
+            "layer": 34,
+            "parent": "torso",
+            "pivot": [sx(0.18), sy(neck_v + 0.07)],
+            "joint_radius": r_joint,
+            "rotation": [-65, 85],
+            "polygon": [
+                [sx(0.0), sy(neck_v + 0.05)],
+                [sx(0.18), sy(neck_v + 0.05)],
+                [sx(0.18), sy(0.68)],
+                [sx(0.0), sy(0.68)],
+            ],
+        },
+        {
+            "id": "arm_right",
+            "label": "Right Arm",
+            "kind": "limb",
+            "layer": 36,
+            "parent": "torso",
+            "pivot": [sx(0.82), sy(neck_v + 0.07)],
+            "joint_radius": r_joint,
+            "rotation": [-85, 65],
+            "polygon": [
+                [sx(0.82), sy(neck_v + 0.05)],
+                [sx(1.0), sy(neck_v + 0.05)],
+                [sx(1.0), sy(0.68)],
+                [sx(0.82), sy(0.68)],
+            ],
+        },
     ]
     if selected_parts:
         keep = set(selected_parts) | {"torso", "head"}
@@ -228,7 +387,13 @@ def _extend_back_layer_under_front_layer(
         if not np.any(core_inner):
             core_inner = back_core
         _, inner_idx = ndi.distance_transform_edt(~core_inner, return_indices=True)
-        smooth_rgb = ndi.gaussian_filter(sub_full[:, :, :3].astype(np.float32), sigma=(1.6, 1.6, 0)).clip(0, 255).astype(np.uint8)
+        smooth_rgb = (
+            ndi.gaussian_filter(
+                sub_full[:, :, :3].astype(np.float32), sigma=(1.6, 1.6, 0)
+            )
+            .clip(0, 255)
+            .astype(np.uint8)
+        )
         cuff_rgb = smooth_rgb[inner_idx[0], inner_idx[1]]
         sub_back[under_ext, :3] = cuff_rgb[under_ext]
         sub_back[under_ext, 3] = 255
@@ -292,38 +457,89 @@ def mask_and_export_layers_with_photocraft(
     pc_bin = shutil.which("photocraft-cli") or "photocraft-cli"
     cleaned_input = raw_export_dir / f"{asset_id}_cleaned_input.png"
     clean_cmd: List[str] = [
-        pc_bin, "run", str(rgba_path),
-        "--cmd", "layer.removeBackground", "--params", json.dumps({"refine": True}),
-        "--cmd", "select.colorRange", "--params", json.dumps({"color": "#dcdcdc", "fuzziness": 22}),
-        "--cmd", "layer.layerMask.hideSelection", "--params", "{}",
-        "--cmd", "layer.matting.colorDecontaminate", "--params", json.dumps({"amount": 50}),
-        "--out", str(cleaned_input),
+        pc_bin,
+        "run",
+        str(rgba_path),
+        "--cmd",
+        "layer.removeBackground",
+        "--params",
+        json.dumps({"refine": True}),
+        "--cmd",
+        "select.colorRange",
+        "--params",
+        json.dumps({"color": "#dcdcdc", "fuzziness": 22}),
+        "--cmd",
+        "layer.layerMask.hideSelection",
+        "--params",
+        "{}",
+        "--cmd",
+        "layer.matting.colorDecontaminate",
+        "--params",
+        json.dumps({"amount": 50}),
+        "--out",
+        str(cleaned_input),
     ]
     clean_proc = subprocess.run(clean_cmd, capture_output=True, text=True, timeout=60)
-    source_for_layers = cleaned_input if (clean_proc.returncode == 0 and cleaned_input.is_file()) else rgba_path
+    source_for_layers = (
+        cleaned_input
+        if (clean_proc.returncode == 0 and cleaned_input.is_file())
+        else rgba_path
+    )
     cmd: List[str] = [pc_bin, "run", str(source_for_layers)]
 
     for part in parts_spec:
-        cmd.extend([
-            "--cmd", "layer.selectBottom", "--params", "{}",
-            "--cmd", "select.lasso", "--params", json.dumps({
-                "points": part["polygon"], "mode": "replace", "antiAlias": False, "feather": 0,
-            }),
-            "--cmd", "layer.new.layerViaCopy", "--params", "{}",
-            "--cmd", "layer.renameLayer", "--params", json.dumps({"name": part["id"]}),
-        ])
+        cmd.extend(
+            [
+                "--cmd",
+                "layer.selectBottom",
+                "--params",
+                "{}",
+                "--cmd",
+                "select.lasso",
+                "--params",
+                json.dumps(
+                    {
+                        "points": part["polygon"],
+                        "mode": "replace",
+                        "antiAlias": False,
+                        "feather": 0,
+                    }
+                ),
+                "--cmd",
+                "layer.new.layerViaCopy",
+                "--params",
+                "{}",
+                "--cmd",
+                "layer.renameLayer",
+                "--params",
+                json.dumps({"name": part["id"]}),
+            ]
+        )
 
     psd_out = out_dir / f"{asset_id}_cutout_layers.psd"
-    cmd.extend([
-        "--cmd", "file.export.layersToFiles", "--params", json.dumps({
-            "dir": str(raw_export_dir), "format": "png", "prefix": asset_id, "visibleOnly": True,
-        }),
-        "--out", str(psd_out),
-    ])
+    cmd.extend(
+        [
+            "--cmd",
+            "file.export.layersToFiles",
+            "--params",
+            json.dumps(
+                {
+                    "dir": str(raw_export_dir),
+                    "format": "png",
+                    "prefix": asset_id,
+                    "visibleOnly": True,
+                }
+            ),
+            "--out",
+            str(psd_out),
+        ]
+    )
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if proc.returncode != 0:
         shutil.rmtree(raw_export_dir, ignore_errors=True)
-        raise RuntimeError(f"photocraft-cli layer masking failed: {proc.stderr or proc.stdout}")
+        raise RuntimeError(
+            f"photocraft-cli layer masking failed: {proc.stderr or proc.stdout}"
+        )
 
     full_rgba = np.array(Image.open(source_for_layers).convert("RGBA"))
     h, w = full_rgba.shape[:2]
@@ -333,7 +549,9 @@ def mask_and_export_layers_with_photocraft(
 
     for part in parts_spec:
         pid = part["id"]
-        matched = next((ef for ef in exported_files if ef.stem.endswith(f"_{pid}")), None)
+        matched = next(
+            (ef for ef in exported_files if ef.stem.endswith(f"_{pid}")), None
+        )
         if matched is None:
             raise FileNotFoundError(f"photocraft-cli did not export layer for {pid}")
         arr = np.array(Image.open(matched).convert("RGBA"))
@@ -345,8 +563,16 @@ def mask_and_export_layers_with_photocraft(
         part_arrays[pid] = clean_arr
 
     priority_order = [
-        "foot_left", "foot_right", "arm_left", "arm_right",
-        "ear_left", "ear_right", "head", "torso", "leg_left", "leg_right",
+        "foot_left",
+        "foot_right",
+        "arm_left",
+        "arm_right",
+        "ear_left",
+        "ear_right",
+        "head",
+        "torso",
+        "leg_left",
+        "leg_right",
     ]
     claimed = np.zeros((h, w), dtype=bool)
     for pid in priority_order:
@@ -361,7 +587,7 @@ def mask_and_export_layers_with_photocraft(
                 arr[overlap & (~ar_mask)] = [0, 0, 0, 0]
             else:
                 arr[overlap] = [0, 0, 0, 0]
-        claimed |= (arr[:, :, 3] > 20)
+        claimed |= arr[:, :, 3] > 20
 
     orig_fg = full_rgba[:, :, 3] > 20
     unclaimed = orig_fg & (~claimed)
@@ -385,13 +611,24 @@ def mask_and_export_layers_with_photocraft(
             # by a tight 8px cuff (instead of 32px) so rotating the tuft/ear never opens a slit and never peeks past the cheek.
             ext_iters = 8 if child_id in ("ear_left", "ear_right") else 14
             part_arrays[child_id], c_px = _extend_back_layer_under_front_layer(
-                part_arrays[child_id], part_arrays[parent_id], full_rgba, pivot, r, dilate_iters=ext_iters
+                part_arrays[child_id],
+                part_arrays[parent_id],
+                full_rgba,
+                pivot,
+                r,
+                dilate_iters=ext_iters,
             )
             completed_counts[child_id] += c_px
         else:
             win_m = 6.5 if child_id in ("arm_left", "arm_right", "head") else 2.6
             part_arrays[parent_id], c_px = _extend_back_layer_under_front_layer(
-                part_arrays[parent_id], part_arrays[child_id], full_rgba, pivot, r, dilate_iters=22, window_mult=win_m
+                part_arrays[parent_id],
+                part_arrays[child_id],
+                full_rgba,
+                pivot,
+                r,
+                dilate_iters=22,
+                window_mult=win_m,
             )
             completed_counts[parent_id] += c_px
 
@@ -400,7 +637,12 @@ def mask_and_export_layers_with_photocraft(
         if leg_id in part_arrays and foot_id in part_arrays and foot_id in spec_by_id:
             f_spec = spec_by_id[foot_id]
             part_arrays[leg_id], c_px = _extend_back_layer_under_front_layer(
-                part_arrays[leg_id], part_arrays[foot_id], full_rgba, f_spec["pivot"], f_spec["joint_radius"], dilate_iters=10
+                part_arrays[leg_id],
+                part_arrays[foot_id],
+                full_rgba,
+                f_spec["pivot"],
+                f_spec["joint_radius"],
+                dilate_iters=10,
             )
             completed_counts[leg_id] += c_px
 
@@ -424,33 +666,52 @@ def mask_and_export_layers_with_photocraft(
         Image.fromarray(part_arr[by0:by1, bx0:bx1]).save(crop_path)
 
         cw, ch = max(1, bx1 - bx0), max(1, by1 - by0)
-        part_records.append({
-            "id": pid, "label": part["label"], "kind": part["kind"],
-            "layer": part["layer"], "parent": part["parent"],
-            "pivot": [px, py],
-            "pivot_uv": [round((px - bx0) / float(cw), 4), round((py - by0) / float(ch), 4)],
-            "joint_radius_px": part["joint_radius"],
-            "completed_overlap_pixels": completed_px,
-            "rotation": part["rotation"],
-            "crop_box": [bx0, by0, bx1, by1], "crop_size": [cw, ch],
-            "cropped_path": str(crop_path), "full_layer_path": str(full_layer_path),
-        })
+        part_records.append(
+            {
+                "id": pid,
+                "label": part["label"],
+                "kind": part["kind"],
+                "layer": part["layer"],
+                "parent": part["parent"],
+                "pivot": [px, py],
+                "pivot_uv": [
+                    round((px - bx0) / float(cw), 4),
+                    round((py - by0) / float(ch), 4),
+                ],
+                "joint_radius_px": part["joint_radius"],
+                "completed_overlap_pixels": completed_px,
+                "rotation": part["rotation"],
+                "crop_box": [bx0, by0, bx1, by1],
+                "crop_size": [cw, ch],
+                "cropped_path": str(crop_path),
+                "full_layer_path": str(full_layer_path),
+            }
+        )
 
     shutil.rmtree(raw_export_dir, ignore_errors=True)
     return {
         "psd_path": str(psd_out),
         "layers_dir": str(layers_dir),
         "parts": part_records,
-        "qa_telemetry": {"non_joint_duplicate_px": 0, "back_layer_under_extension": True},
+        "qa_telemetry": {
+            "non_joint_duplicate_px": 0,
+            "back_layer_under_extension": True,
+        },
     }
 
 
-def render_cutout_asset_sheet(rgba_path: Path, rig_plan: Dict[str, Any], out_sheet_path: Path) -> Path:
+def render_cutout_asset_sheet(
+    rgba_path: Path, rig_plan: Dict[str, Any], out_sheet_path: Path
+) -> Path:
     """Render a compact visual overview sheet of discovered joints and PhotoCraft layers."""
     sheet = Image.new("RGBA", (1280, 720), (18, 21, 28, 255))
     draw = ImageDraw.Draw(sheet)
     draw.rectangle([0, 0, 1280, 48], fill=(26, 31, 42, 255))
-    draw.text((20, 16), f"{rig_plan['character_id'].upper()} - PhotoCraft Cutout Layers", fill=(240, 245, 255, 255))
+    draw.text(
+        (20, 16),
+        f"{rig_plan['character_id'].upper()} - PhotoCraft Cutout Layers",
+        fill=(240, 245, 255, 255),
+    )
     with Image.open(rgba_path) as orig:
         thumb = orig.convert("RGBA")
         thumb.thumbnail((360, 620))
@@ -458,14 +719,22 @@ def render_cutout_asset_sheet(rgba_path: Path, rig_plan: Dict[str, Any], out_she
     for idx, part in enumerate(rig_plan.get("parts", [])[:10]):
         col, row = idx % 5, idx // 5
         cx, cy = 420 + col * 168, 70 + row * 310
-        draw.rectangle([cx, cy, cx + 156, cy + 290], fill=(26, 30, 40, 255), outline=(64, 76, 100, 255))
+        draw.rectangle(
+            [cx, cy, cx + 156, cy + 290],
+            fill=(26, 30, 40, 255),
+            outline=(64, 76, 100, 255),
+        )
         p_path = Path(part["cropped_path"])
         if p_path.is_file():
             with Image.open(p_path) as pim:
                 pt = pim.convert("RGBA")
                 pt.thumbnail((136, 220))
                 sheet.alpha_composite(pt, (cx + 10, cy + 36))
-        draw.text((cx + 8, cy + 10), f"{part['id']} (z={part['layer']})", fill=(220, 235, 255, 255))
+        draw.text(
+            (cx + 8, cy + 10),
+            f"{part['id']} (z={part['layer']})",
+            fill=(220, 235, 255, 255),
+        )
     out_sheet_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out_sheet_path)
     return out_sheet_path

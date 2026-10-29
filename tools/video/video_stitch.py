@@ -142,10 +142,21 @@ class VideoStitch(BaseTool):
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["Conversion failed"])
     resume_support = ResumeSupport.FROM_START
     idempotency_key_fields = [
-        "operation", "clips", "transition", "layout",
-        "transition_duration", "auto_normalize", "target_resolution", "target_fps",
-        "codec", "crf", "preset", "profile",
-        "pip_position", "pip_scale", "pip_margin",
+        "operation",
+        "clips",
+        "transition",
+        "layout",
+        "transition_duration",
+        "auto_normalize",
+        "target_resolution",
+        "target_fps",
+        "codec",
+        "crf",
+        "preset",
+        "profile",
+        "pip_position",
+        "pip_scale",
+        "pip_margin",
     ]
     side_effects = ["writes video file to output_path"]
     user_visible_verification = [
@@ -172,7 +183,9 @@ class VideoStitch(BaseTool):
             elif operation == "spatial":
                 result = self._spatial(inputs)
             else:
-                return ToolResult(success=False, error=f"Unknown operation: {operation}")
+                return ToolResult(
+                    success=False, error=f"Unknown operation: {operation}"
+                )
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -211,10 +224,15 @@ class VideoStitch(BaseTool):
     def _clip_has_audio(self, clip_path: str) -> bool:
         """Return True if *clip_path* contains at least one audio stream."""
         cmd = [
-            "ffprobe", "-v", "quiet",
-            "-select_streams", "a",
-            "-show_entries", "stream=codec_type",
-            "-of", "json",
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "json",
             str(clip_path),
         ]
         try:
@@ -243,11 +261,18 @@ class VideoStitch(BaseTool):
             else:
                 augmented = temp_dir / f"audio_aug_{i:04d}.mp4"
                 cmd = [
-                    "ffmpeg", "-y",
-                    "-i", str(clip),
-                    "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-                    "-c:v", "copy",
-                    "-c:a", "aac",
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(clip),
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=r=44100:cl=stereo",
+                    "-c:v",
+                    "copy",
+                    "-c:a",
+                    "aac",
                     "-shortest",
                     str(augmented),
                 ]
@@ -263,8 +288,11 @@ class VideoStitch(BaseTool):
     def _probe_clip(self, clip_path: str) -> Optional[dict[str, Any]]:
         """Probe a single clip with ffprobe and return metadata dict."""
         cmd = [
-            "ffprobe", "-v", "quiet",
-            "-print_format", "json",
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_streams",
             "-show_format",
             str(clip_path),
@@ -377,11 +405,13 @@ class VideoStitch(BaseTool):
                         f"{label}: clip[0]={ref_val} vs clip[{i}]={cur_val}"
                     )
             if clip_mismatches:
-                mismatches.append({
-                    "clip_index": i,
-                    "clip_path": probe["path"],
-                    "differences": clip_mismatches,
-                })
+                mismatches.append(
+                    {
+                        "clip_index": i,
+                        "clip_path": probe["path"],
+                        "differences": clip_mismatches,
+                    }
+                )
 
         compatible = len(mismatches) == 0
         total_duration = sum(p.get("duration", 0) for p in probes)
@@ -421,8 +451,15 @@ class VideoStitch(BaseTool):
         if profile_name:
             try:
                 from lib.media_profiles import get_profile
+
                 profile = get_profile(profile_name)
-                return (profile.width, profile.height, profile.fps, profile.codec, profile.audio_codec)
+                return (
+                    profile.width,
+                    profile.height,
+                    profile.fps,
+                    profile.codec,
+                    profile.audio_codec,
+                )
             except (ImportError, ValueError):
                 pass
 
@@ -459,13 +496,28 @@ class VideoStitch(BaseTool):
     ) -> None:
         """Re-encode a clip to the target format."""
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(clip_path),
-            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
-            "-r", str(fps),
-            "-c:v", video_codec, "-crf", str(crf), "-preset", preset,
-            "-c:a", audio_codec, "-ar", "44100", "-ac", "2",
-            "-pix_fmt", "yuv420p",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(clip_path),
+            "-vf",
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+            "-r",
+            str(fps),
+            "-c:v",
+            video_codec,
+            "-crf",
+            str(crf),
+            "-preset",
+            preset,
+            "-c:a",
+            audio_codec,
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            "-pix_fmt",
+            "yuv420p",
             str(output_path),
         ]
         self.run_command(cmd)
@@ -476,7 +528,14 @@ class VideoStitch(BaseTool):
             return False
         ref = probes[0]
         for probe in probes[1:]:
-            for key in ("width", "height", "fps", "video_codec", "audio_codec", "sample_rate"):
+            for key in (
+                "width",
+                "height",
+                "fps",
+                "video_codec",
+                "audio_codec",
+                "sample_rate",
+            ):
                 if ref.get(key) != probe.get(key) and ref.get(key) is not None:
                     return True
         return False
@@ -494,7 +553,9 @@ class VideoStitch(BaseTool):
         if not clips:
             return ToolResult(success=False, error="No clips provided")
         if len(clips) < 2:
-            return ToolResult(success=False, error="At least 2 clips required for stitch")
+            return ToolResult(
+                success=False, error="At least 2 clips required for stitch"
+            )
 
         output_path = Path(inputs.get("output_path", "stitched_output.mp4"))
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -538,10 +599,22 @@ class VideoStitch(BaseTool):
             # Normalize clips if needed
             working_clips: list[str] = []
             if needs_norm or auto_normalize or transition != "cut":
-                width, height, fps, vid_codec, aud_codec = self._resolve_normalization_target(inputs, probes)
+                width, height, fps, vid_codec, aud_codec = (
+                    self._resolve_normalization_target(inputs, probes)
+                )
                 for i, clip in enumerate(clips):
                     norm_path = temp_dir / f"norm_{i:04d}.mp4"
-                    self._normalize_clip(clip, norm_path, width, height, fps, vid_codec, aud_codec, crf, preset)
+                    self._normalize_clip(
+                        clip,
+                        norm_path,
+                        width,
+                        height,
+                        fps,
+                        vid_codec,
+                        aud_codec,
+                        crf,
+                        preset,
+                    )
                     working_clips.append(str(norm_path))
                     temp_files.append(norm_path)
             else:
@@ -552,17 +625,27 @@ class VideoStitch(BaseTool):
             # video clips typically lack audio; we add a silent track for those.
             if transition in ("crossfade", "fade"):
                 working_clips = self._ensure_audio_for_clips(
-                    working_clips, temp_dir, temp_files,
+                    working_clips,
+                    temp_dir,
+                    temp_files,
                 )
 
             if transition == "cut":
-                result_data = self._stitch_cut(working_clips, output_path, temp_dir, temp_files)
+                result_data = self._stitch_cut(
+                    working_clips, output_path, temp_dir, temp_files
+                )
             elif transition == "crossfade":
-                result_data = self._stitch_crossfade(working_clips, output_path, transition_dur, probes)
+                result_data = self._stitch_crossfade(
+                    working_clips, output_path, transition_dur, probes
+                )
             elif transition == "fade":
-                result_data = self._stitch_fade_through_black(working_clips, output_path, transition_dur, probes)
+                result_data = self._stitch_fade_through_black(
+                    working_clips, output_path, transition_dur, probes
+                )
             else:
-                return ToolResult(success=False, error=f"Unknown transition type: {transition}")
+                return ToolResult(
+                    success=False, error=f"Unknown transition type: {transition}"
+                )
 
             # Get output file info
             file_size = output_path.stat().st_size if output_path.exists() else 0
@@ -603,10 +686,16 @@ class VideoStitch(BaseTool):
                 f.write(f"file '{safe_path}'\n")
 
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-c", "copy",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c",
+            "copy",
             str(output_path),
         ]
         self.run_command(cmd)
@@ -623,13 +712,19 @@ class VideoStitch(BaseTool):
         if len(clips) == 2:
             # Simple two-clip crossfade
             cmd = [
-                "ffmpeg", "-y",
-                "-i", clips[0],
-                "-i", clips[1],
+                "ffmpeg",
+                "-y",
+                "-i",
+                clips[0],
+                "-i",
+                clips[1],
                 "-filter_complex",
                 f"[0:v][1:v]xfade=transition=fade:duration={duration}:offset={self._get_xfade_offset(probes, 0, duration)}[v];"
                 f"[0:a][1:a]acrossfade=d={duration}[a]",
-                "-map", "[v]", "-map", "[a]",
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
                 str(output_path),
             ]
             self.run_command(cmd)
@@ -648,18 +743,26 @@ class VideoStitch(BaseTool):
         """Fade-through-black between adjacent clips using xfade fadeblack."""
         if len(clips) == 2:
             cmd = [
-                "ffmpeg", "-y",
-                "-i", clips[0],
-                "-i", clips[1],
+                "ffmpeg",
+                "-y",
+                "-i",
+                clips[0],
+                "-i",
+                clips[1],
                 "-filter_complex",
                 f"[0:v][1:v]xfade=transition=fadeblack:duration={duration}:offset={self._get_xfade_offset(probes, 0, duration)}[v];"
                 f"[0:a][1:a]acrossfade=d={duration}[a]",
-                "-map", "[v]", "-map", "[a]",
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
                 str(output_path),
             ]
             self.run_command(cmd)
         else:
-            self._chain_xfade(clips, output_path, duration, probes, transition="fadeblack")
+            self._chain_xfade(
+                clips, output_path, duration, probes, transition="fadeblack"
+            )
         return {"method": "xfade_fadeblack"}
 
     def _get_xfade_offset(
@@ -670,7 +773,9 @@ class VideoStitch(BaseTool):
         The offset is the timestamp in the output where the transition starts,
         which equals the duration of the first clip minus the transition duration.
         """
-        clip_dur = probes[clip_index].get("duration", 0) if clip_index < len(probes) else 0
+        clip_dur = (
+            probes[clip_index].get("duration", 0) if clip_index < len(probes) else 0
+        )
         offset = max(0, clip_dur - duration)
         return round(offset, 3)
 
@@ -708,11 +813,11 @@ class VideoStitch(BaseTool):
                 v_in1 = "[0:v]"
                 a_in1 = "[0:a]"
             else:
-                v_in1 = f"[vfade{i-1}]"
-                a_in1 = f"[afade{i-1}]"
+                v_in1 = f"[vfade{i - 1}]"
+                a_in1 = f"[afade{i - 1}]"
 
-            v_in2 = f"[{i+1}:v]"
-            a_in2 = f"[{i+1}:a]"
+            v_in2 = f"[{i + 1}:v]"
+            a_in2 = f"[{i + 1}:a]"
 
             if i < n - 2:
                 v_out = f"[vfade{i}]"
@@ -724,9 +829,7 @@ class VideoStitch(BaseTool):
             video_filters.append(
                 f"{v_in1}{v_in2}xfade=transition={transition}:duration={duration}:offset={offset}{v_out}"
             )
-            audio_filters.append(
-                f"{a_in1}{a_in2}acrossfade=d={duration}{a_out}"
-            )
+            audio_filters.append(f"{a_in1}{a_in2}acrossfade=d={duration}{a_out}")
 
             # Cumulative offset advances by clip duration minus overlap
             cumulative_offset = offset
@@ -750,7 +853,9 @@ class VideoStitch(BaseTool):
         if not clips:
             return ToolResult(success=False, error="No clips provided")
         if len(clips) < 2:
-            return ToolResult(success=False, error="At least 2 clips required for preview")
+            return ToolResult(
+                success=False, error="At least 2 clips required for preview"
+            )
 
         output_path = Path(inputs.get("output_path", "stitch_preview.mp4"))
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -797,7 +902,9 @@ class VideoStitch(BaseTool):
 
         layout = inputs.get("layout")
         if not layout:
-            return ToolResult(success=False, error="layout is required for spatial operation")
+            return ToolResult(
+                success=False, error="layout is required for spatial operation"
+            )
 
         output_path = Path(inputs.get("output_path", "spatial_output.mp4"))
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -809,7 +916,9 @@ class VideoStitch(BaseTool):
             if not Path(clip).exists():
                 return ToolResult(success=False, error=f"Clip not found: {clip}")
 
-        temp_dir = Path(tempfile.mkdtemp(prefix=".spatial_tmp-", dir=output_path.parent))
+        temp_dir = Path(
+            tempfile.mkdtemp(prefix=".spatial_tmp-", dir=output_path.parent)
+        )
         temp_files: list[Path] = []
 
         try:
@@ -818,7 +927,9 @@ class VideoStitch(BaseTool):
             working_clips = list(clips)
             if layout in ("side_by_side", "vertical_stack"):
                 working_clips = self._ensure_audio_for_clips(
-                    working_clips, temp_dir, temp_files,
+                    working_clips,
+                    temp_dir,
+                    temp_files,
                 )
 
             if layout == "side_by_side":
@@ -868,14 +979,24 @@ class VideoStitch(BaseTool):
         )
         cmd = ["ffmpeg", "-y"]
         cmd.extend(input_args)
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-map", "[v]", "-map", "[a]",
-            "-c:v", codec, "-crf", str(crf),
-            "-c:a", "aac",
-            "-shortest",
-            str(output_path),
-        ])
+        cmd.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
+                "-c:v",
+                codec,
+                "-crf",
+                str(crf),
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(output_path),
+            ]
+        )
         self.run_command(cmd)
 
     def _spatial_vertical_stack(
@@ -895,14 +1016,24 @@ class VideoStitch(BaseTool):
         )
         cmd = ["ffmpeg", "-y"]
         cmd.extend(input_args)
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-map", "[v]", "-map", "[a]",
-            "-c:v", codec, "-crf", str(crf),
-            "-c:a", "aac",
-            "-shortest",
-            str(output_path),
-        ])
+        cmd.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
+                "-c:v",
+                codec,
+                "-crf",
+                str(crf),
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(output_path),
+            ]
+        )
         self.run_command(cmd)
 
     def _spatial_pip(
@@ -937,14 +1068,24 @@ class VideoStitch(BaseTool):
         )
         cmd = ["ffmpeg", "-y"]
         cmd.extend(input_args)
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-map", "[v]", "-map", "0:a?",
-            "-c:v", codec, "-crf", str(crf),
-            "-c:a", "aac",
-            "-shortest",
-            str(output_path),
-        ])
+        cmd.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v]",
+                "-map",
+                "0:a?",
+                "-c:v",
+                codec,
+                "-crf",
+                str(crf),
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(output_path),
+            ]
+        )
         self.run_command(cmd)
 
     # ------------------------------------------------------------------

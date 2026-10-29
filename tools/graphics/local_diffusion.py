@@ -79,12 +79,16 @@ class LocalDiffusion(BaseTool):
     )
     retry_policy = RetryPolicy(max_retries=1)
     idempotency_key_fields = ["prompt", "width", "height", "seed", "model"]
-    side_effects = ["writes image file to output_path", "may download model weights on first run"]
+    side_effects = [
+        "writes image file to output_path",
+        "may download model weights on first run",
+    ]
     user_visible_verification = ["Inspect generated image for relevance and quality"]
 
     def get_status(self) -> ToolStatus:
         try:
             import diffusers  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             return ToolStatus.UNAVAILABLE
@@ -141,7 +145,9 @@ class LocalDiffusion(BaseTool):
             image.save(str(output_path))
 
         except Exception as e:
-            return ToolResult(success=False, error=f"Local diffusion generation failed: {e}")
+            return ToolResult(
+                success=False, error=f"Local diffusion generation failed: {e}"
+            )
 
         return ToolResult(
             success=True,

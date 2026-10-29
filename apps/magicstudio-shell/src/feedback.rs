@@ -105,13 +105,17 @@ pub fn snapshot(app: &tauri::AppHandle) -> Result<Value, String> {
             std::fs::read(path)
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                .map(|doc| {
-                    magicstudio_engine::project::project_is_dirty(&s, &doc)
-                })
+                .map(|doc| magicstudio_engine::project::project_is_dirty(&s, &doc))
         } else {
             Some(false)
         };
-        (s.project_path.clone(), dirty, s.agent_selection.clone(), Some(s.edits_since_save),Some(s.project_owner.is_some()))
+        (
+            s.project_path.clone(),
+            dirty,
+            s.agent_selection.clone(),
+            Some(s.edits_since_save),
+            Some(s.project_owner.is_some()),
+        )
     } else {
         (
             v["session_project"].as_str().map(std::path::PathBuf::from),
@@ -126,9 +130,9 @@ pub fn snapshot(app: &tauri::AppHandle) -> Result<Value, String> {
     v["connection"] = json!("connected");
     v["identity"] = crate::studio_identity(app);
     #[cfg(unix)]
-    if let Some(socket)=app.try_state::<crate::bridge::LocalSocket>() {
-        v["instance"]=json!(socket.0.file_name().and_then(|p|p.to_str()));
-        v["endpoint"]=json!(format!("unix:{}",socket.0.display()));
+    if let Some(socket) = app.try_state::<crate::bridge::LocalSocket>() {
+        v["instance"] = json!(socket.0.file_name().and_then(|p| p.to_str()));
+        v["endpoint"] = json!(format!("unix:{}", socket.0.display()));
     }
 
     v["writer_owner"] = json!(writer_owner);
@@ -136,21 +140,42 @@ pub fn snapshot(app: &tauri::AppHandle) -> Result<Value, String> {
     v["project_id"] = json!(project);
     v["project_identity_kind"] = json!("canonical project path");
     v["observed_unix_ms"] = json!(now());
-    v["frontend_report_age_ms"] = v["updated_unix_ms"].as_u64().map(|updated|json!(now().saturating_sub(updated as u128))).unwrap_or(Value::Null);
+    v["frontend_report_age_ms"] = v["updated_unix_ms"]
+        .as_u64()
+        .map(|updated| json!(now().saturating_sub(updated as u128)))
+        .unwrap_or(Value::Null);
     v["chat_selection"] = match chat_selection {
-        Some(selected)=>json!({"agent":selected["agent"],"provider":selected["provider"],"model":selected["model"],"source":"active engine selection","runtime_model_verified":false}),
-        None=>json!({"status":"unknown","reason":"active engine selection unavailable","runtime_model_verified":false}),
+        Some(selected) => {
+            json!({"agent":selected["agent"],"provider":selected["provider"],"model":selected["model"],"source":"active engine selection","runtime_model_verified":false})
+        }
+        None => {
+            json!({"status":"unknown","reason":"active engine selection unavailable","runtime_model_verified":false})
+        }
     };
-    let mut reasons=Vec::new();
-    if dirty==Some(true){reasons.push(json!("engine state differs from saved project"));}
-    if dirty.is_none(){reasons.push(json!("engine state unavailable; busy or unreadable saved project"));}
-    for field in v["draft_fields"].as_array().into_iter().flatten(){reasons.push(json!({"draft_field":field}));}
-    if v["pending_invokes"].as_u64().unwrap_or(0)>0 {reasons.push(json!({"pending_invokes":v["pending_invokes"]}));}
-    v["dirty_reasons"]=json!(reasons);
+    let mut reasons = Vec::new();
+    if dirty == Some(true) {
+        reasons.push(json!("engine state differs from saved project"));
+    }
+    if dirty.is_none() {
+        reasons.push(json!(
+            "engine state unavailable; busy or unreadable saved project"
+        ));
+    }
+    for field in v["draft_fields"].as_array().into_iter().flatten() {
+        reasons.push(json!({"draft_field":field}));
+    }
+    if v["pending_invokes"].as_u64().unwrap_or(0) > 0 {
+        reasons.push(json!({"pending_invokes":v["pending_invokes"]}));
+    }
+    v["dirty_reasons"] = json!(reasons);
     // Engine edits since the last project write, plus each changed form field. A clean diff
     // means 0 even after commands (e.g. exports) that never touch project state.
-    let drafts=v["draft_fields"].as_array().map_or(0,Vec::len) as u64;
-    v["unsaved_edits"]=match (dirty,edits) {(Some(false),_)=>json!(drafts),(Some(true),Some(n))=>json!(n.max(1)+drafts),_=>Value::Null};
+    let drafts = v["draft_fields"].as_array().map_or(0, Vec::len) as u64;
+    v["unsaved_edits"] = match (dirty, edits) {
+        (Some(false), _) => json!(drafts),
+        (Some(true), Some(n)) => json!(n.max(1) + drafts),
+        _ => Value::Null,
+    };
     v["engine_unsaved"] = json!(dirty);
     v["unsaved_state"] = json!(if dirty == Some(true)
         || v["draft_fields"].as_array().is_some_and(|a| !a.is_empty())
@@ -252,7 +277,9 @@ pub fn reuse_open(app: &tauri::AppHandle, params: &Value) -> Result<Option<Value
     if let Some(live) = magicstudio_engine::studio_sessions::for_project(&target)? {
         // This engine has opened the file but its frontend has not applied it yet. Returning
         // "focused existing session" here used to skip the actual document/name render.
-        if live["identity"]["pid"].as_u64()==Some(std::process::id() as u64){return Ok(None);}
+        if live["identity"]["pid"].as_u64() == Some(std::process::id() as u64) {
+            return Ok(None);
+        }
         #[cfg(unix)]
         {
             let endpoint = live["endpoint"]
@@ -270,10 +297,10 @@ pub fn reuse_open(app: &tauri::AppHandle, params: &Value) -> Result<Option<Value
         }
     }
     if active.is_some() {
-        let exe=std::env::current_exe().map_err(|e|e.to_string())?;
-        let mut opened=magicstudio_engine::studio_sessions::open(&exe,target.to_str())?;
-        opened["reused_session"]=json!(true);
-        opened["opened_new_instance"]=json!(true);
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mut opened = magicstudio_engine::studio_sessions::open(&exe, target.to_str())?;
+        opened["reused_session"] = json!(true);
+        opened["opened_new_instance"] = json!(true);
         return Ok(Some(opened));
     }
 

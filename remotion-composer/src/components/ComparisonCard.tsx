@@ -132,15 +132,15 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
         : "#9CA3AF";
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "center",
         alignItems: "center",
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -148,11 +148,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
           maxWidth: 1540,
           gap: 32,
         }}
-      >
-        {/* Title */}
-        {title && (
-          <div
-            style={{
+          >
+              {/* Title */}
+              {title && (
+              <div
+                  style={{
               fontFamily,
               fontWeight: 700,
               fontSize: titleFontSize,
@@ -161,14 +161,14 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
               opacity: titleOpacity,
               letterSpacing: "-0.02em",
             }}
-          >
-            {title}
-          </div>
+              >
+                  {title}
+              </div>
         )}
 
-        {/* Comparison container */}
-        <div
-          style={{
+              {/* Comparison container */}
+              <div
+                  style={{
             display: "flex",
             flexDirection: "row",
             alignItems: "stretch",
@@ -179,10 +179,10 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
             boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
             minHeight: 280,
           }}
-        >
-          {/* Left side */}
-          <div
-            style={{
+              >
+                  {/* Left side */}
+                  <div
+                      style={{
               flex: 1,
               display: "flex",
               flexDirection: "column",
@@ -193,19 +193,19 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
               transform: `translateX(${leftSlide}px) scale(${leftScale})`,
               gap: 16,
             }}
-          >
-            {/* Left color accent bar */}
-            <div
-              style={{
+                  >
+                      {/* Left color accent bar */}
+                      <div
+                          style={{
                 width: 48,
                 height: 4,
                 backgroundColor: leftColor,
                 borderRadius: 2,
                 marginBottom: 8,
               }}
-            />
-            <div
-              style={{
+                      />
+                      <div
+                          style={{
                 fontFamily,
                 fontWeight: 600,
                 fontSize: labelFontSize,
@@ -214,25 +214,25 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
                 textTransform: "uppercase" as const,
                 letterSpacing: "0.05em",
               }}
-            >
-              {leftLabel}
-            </div>
-            <div
-              style={{
+                      >
+                          {leftLabel}
+                      </div>
+                      <div
+                          style={{
                 fontFamily,
                 fontWeight: 800,
                 fontSize: valueFontSize,
                 color: leftColor,
                 lineHeight: 1.1,
               }}
-            >
-              {leftValue}
-            </div>
-          </div>
+                      >
+                          {leftValue}
+                      </div>
+                  </div>
 
-          {/* Center divider + change indicator */}
-          <div
-            style={{
+                  {/* Center divider + change indicator */}
+                  <div
+                      style={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -240,22 +240,22 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
               width: 80,
               position: "relative",
             }}
-          >
-            {/* Vertical divider line */}
-            <div
-              style={{
+                  >
+                      {/* Vertical divider line */}
+                      <div
+                          style={{
                 width: 2,
                 height: `${dividerDraw * 100}%`,
                 backgroundColor: "#D1D5DB",
                 position: "absolute",
                 top: `${((1 - dividerDraw) / 2) * 100}%`,
               }}
-            />
+                      />
 
-            {/* Change indicator badge */}
-            {changeIndicator && (
-              <div
-                style={{
+                      {/* Change indicator badge */}
+                      {changeIndicator && (
+                      <div
+                          style={{
                   position: "relative",
                   zIndex: 1,
                   display: "flex",
@@ -265,9 +265,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
                   opacity: indicatorOpacity,
                   transform: `scale(${indicatorScale})`,
                 }}
-              >
-                <div
-                  style={{
+                      >
+                          <div
+                              style={{
                     width: 48,
                     height: 48,
                     borderRadius: 24,
@@ -277,36 +277,36 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
                     alignItems: "center",
                     boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
                   }}
-                >
-                  <span
-                    style={{
+                          >
+                              <span
+                                  style={{
                       fontFamily,
                       fontWeight: 700,
                       fontSize: 24,
                       color: directionColor,
                     }}
-                  >
-                    {directionArrow}
-                  </span>
-                </div>
-                <div
-                  style={{
+                              >
+                                  {directionArrow}
+                              </span>
+                          </div>
+                          <div
+                              style={{
                     fontFamily,
                     fontWeight: 700,
                     fontSize: 18,
                     color: directionColor,
                     whiteSpace: "nowrap" as const,
                   }}
-                >
-                  {changeIndicator}
-                </div>
-              </div>
+                          >
+                              {changeIndicator}
+                          </div>
+                      </div>
             )}
-          </div>
+                  </div>
 
-          {/* Right side */}
-          <div
-            style={{
+                  {/* Right side */}
+                  <div
+                      style={{
               flex: 1,
               display: "flex",
               flexDirection: "column",
@@ -317,19 +317,19 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
               transform: `translateX(${rightSlide}px) scale(${rightScale})`,
               gap: 16,
             }}
-          >
-            {/* Right color accent bar */}
-            <div
-              style={{
+                  >
+                      {/* Right color accent bar */}
+                      <div
+                          style={{
                 width: 48,
                 height: 4,
                 backgroundColor: rightColor,
                 borderRadius: 2,
                 marginBottom: 8,
               }}
-            />
-            <div
-              style={{
+                      />
+                      <div
+                          style={{
                 fontFamily,
                 fontWeight: 600,
                 fontSize: labelFontSize,
@@ -338,23 +338,23 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
                 textTransform: "uppercase" as const,
                 letterSpacing: "0.05em",
               }}
-            >
-              {rightLabel}
-            </div>
-            <div
-              style={{
+                      >
+                          {rightLabel}
+                      </div>
+                      <div
+                          style={{
                 fontFamily,
                 fontWeight: 800,
                 fontSize: valueFontSize,
                 color: rightColor,
                 lineHeight: 1.1,
               }}
-            >
-              {rightValue}
-            </div>
+                      >
+                          {rightValue}
+                      </div>
+                  </div>
+              </div>
           </div>
-        </div>
-      </div>
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

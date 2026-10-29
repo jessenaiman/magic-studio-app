@@ -84,7 +84,12 @@ class KlingOfficialVideo(BaseTool):
             "prompt": {"type": "string"},
             "operation": {
                 "type": "string",
-                "enum": ["text_to_video", "image_to_video", "reference_to_video", "omni_video"],
+                "enum": [
+                    "text_to_video",
+                    "image_to_video",
+                    "reference_to_video",
+                    "omni_video",
+                ],
                 "default": "text_to_video",
             },
             "api_family": {
@@ -92,11 +97,26 @@ class KlingOfficialVideo(BaseTool):
                 "enum": ["classic", "turbo", "omni"],
                 "default": "classic",
             },
-            "model_name": {"type": "string", "enum": VIDEO_MODELS, "default": "kling-v3"},
-            "model_variant": {"type": "string", "description": "Compatibility alias for model_name."},
+            "model_name": {
+                "type": "string",
+                "enum": VIDEO_MODELS,
+                "default": "kling-v3",
+            },
+            "model_variant": {
+                "type": "string",
+                "description": "Compatibility alias for model_name.",
+            },
             "duration": {"type": "string", "enum": VIDEO_DURATIONS, "default": "5"},
-            "aspect_ratio": {"type": "string", "enum": VIDEO_ASPECT_RATIOS, "default": "16:9"},
-            "resolution": {"type": "string", "enum": VIDEO_RESOLUTIONS, "default": "720p"},
+            "aspect_ratio": {
+                "type": "string",
+                "enum": VIDEO_ASPECT_RATIOS,
+                "default": "16:9",
+            },
+            "resolution": {
+                "type": "string",
+                "enum": VIDEO_RESOLUTIONS,
+                "default": "720p",
+            },
             "mode": {"type": "string", "enum": VIDEO_MODES, "default": "std"},
             "sound": {"type": "string", "enum": SOUND_VALUES, "default": "off"},
             "negative_prompt": {"type": "string"},
@@ -174,7 +194,9 @@ class KlingOfficialVideo(BaseTool):
         "paid remote generation via official Kling API",
         "writes video file to output_path",
     ]
-    user_visible_verification = ["Watch generated clip for motion coherence and prompt adherence"]
+    user_visible_verification = [
+        "Watch generated clip for motion coherence and prompt adherence"
+    ]
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         duration = int(str(inputs.get("duration", "5")))
@@ -208,7 +230,7 @@ class KlingOfficialVideo(BaseTool):
             {
                 "paid_api": True,
                 "cost_estimate_confidence": "low",
-                "cost_estimate_basis": "Conservative OpenMontage estimate; official account usage reconciliation is planned for Phase 2.",
+                "cost_estimate_basis": "Conservative MagicStudio estimate; official account usage reconciliation is planned for Phase 2.",
             }
         )
         return result
@@ -231,7 +253,9 @@ class KlingOfficialVideo(BaseTool):
                     poll_interval=float(inputs.get("poll_interval", 5.0)),
                 )
             else:
-                task_id = client.create_classic_task(request["path"], request["payload"])
+                task_id = client.create_classic_task(
+                    request["path"], request["payload"]
+                )
                 outputs = client.poll_classic(
                     request["path"],
                     task_id,
@@ -242,7 +266,13 @@ class KlingOfficialVideo(BaseTool):
             paths = self._download_videos(client, outputs, inputs)
             video_url = self._first_output_url(outputs)
             probed = probe_output(paths[0])
-        except (KlingAPIError, TimeoutError, ValueError, KeyError, FileNotFoundError) as exc:
+        except (
+            KlingAPIError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            FileNotFoundError,
+        ) as exc:
             data: dict[str, Any] = {"provider": self.provider}
             if isinstance(exc, KlingAPIError):
                 data.update(
@@ -253,9 +283,17 @@ class KlingOfficialVideo(BaseTool):
                     }
                 )
                 data["account_usage_diagnostic"] = account_usage_hint_for_error(exc)
-            return ToolResult(success=False, data=data, error=f"Kling official video generation failed: {exc}")
+            return ToolResult(
+                success=False,
+                data=data,
+                error=f"Kling official video generation failed: {exc}",
+            )
         except Exception as exc:
-            return ToolResult(success=False, data={"provider": self.provider}, error=f"Kling official video generation failed: {exc}")
+            return ToolResult(
+                success=False,
+                data={"provider": self.provider},
+                error=f"Kling official video generation failed: {exc}",
+            )
 
         return ToolResult(
             success=True,
@@ -298,7 +336,9 @@ class KlingOfficialVideo(BaseTool):
             return self._build_omni_request(inputs, operation)
         return self._build_classic_request(inputs, operation)
 
-    def _build_classic_request(self, inputs: dict[str, Any], operation: str) -> dict[str, Any]:
+    def _build_classic_request(
+        self, inputs: dict[str, Any], operation: str
+    ) -> dict[str, Any]:
         if operation == "text_to_video":
             payload = self._base_classic_payload(inputs)
             payload["prompt"] = self._prompt(inputs)
@@ -309,20 +349,29 @@ class KlingOfficialVideo(BaseTool):
             self._copy_multi_shot_fields(inputs, payload)
             path = "/v1/videos/text2video"
         elif operation == "image_to_video":
-            image = normalize_image_input(inputs.get("reference_image_url"), inputs.get("reference_image_path"))
+            image = normalize_image_input(
+                inputs.get("reference_image_url"), inputs.get("reference_image_path")
+            )
             if not image:
-                raise ValueError("image_to_video requires reference_image_url or reference_image_path")
+                raise ValueError(
+                    "image_to_video requires reference_image_url or reference_image_path"
+                )
             payload = self._base_classic_payload(inputs)
             payload["image"] = image
             if inputs.get("prompt"):
                 payload["prompt"] = inputs["prompt"]
             if inputs.get("negative_prompt"):
                 payload["negative_prompt"] = inputs["negative_prompt"]
-            tail = normalize_image_input(inputs.get("reference_tail_image_url"), inputs.get("reference_tail_image_path"))
+            tail = normalize_image_input(
+                inputs.get("reference_tail_image_url"),
+                inputs.get("reference_tail_image_path"),
+            )
             if tail:
                 payload["image_tail"] = tail
             if inputs.get("element_list"):
-                payload["element_list"] = normalize_element_list(inputs.get("element_list"))
+                payload["element_list"] = normalize_element_list(
+                    inputs.get("element_list")
+                )
             self._copy_multi_shot_fields(inputs, payload)
             path = "/v1/videos/image2video"
         else:
@@ -338,7 +387,9 @@ class KlingOfficialVideo(BaseTool):
             "element_ids": element_ids(payload.get("element_list")),
         }
 
-    def _build_turbo_request(self, inputs: dict[str, Any], operation: str) -> dict[str, Any]:
+    def _build_turbo_request(
+        self, inputs: dict[str, Any], operation: str
+    ) -> dict[str, Any]:
         settings = {
             "resolution": inputs.get("resolution", "720p"),
             "duration": int(str(inputs.get("duration", "5"))),
@@ -351,12 +402,21 @@ class KlingOfficialVideo(BaseTool):
                 payload["options"] = options
             path = "/text-to-video/kling-3.0-turbo"
         elif operation == "image_to_video":
-            if inputs.get("reference_image_path") and not inputs.get("reference_image_url"):
-                raise ValueError("Turbo image_to_video requires reference_image_url; local paths cannot be silently uploaded.")
+            if inputs.get("reference_image_path") and not inputs.get(
+                "reference_image_url"
+            ):
+                raise ValueError(
+                    "Turbo image_to_video requires reference_image_url; local paths cannot be silently uploaded."
+                )
             image_url = inputs.get("reference_image_url")
             if not image_url:
-                raise ValueError("image_to_video requires reference_image_url for api_family=turbo")
-            contents = [{"type": "prompt", "text": self._prompt(inputs)}, {"type": "first_frame", "url": image_url}]
+                raise ValueError(
+                    "image_to_video requires reference_image_url for api_family=turbo"
+                )
+            contents = [
+                {"type": "prompt", "text": self._prompt(inputs)},
+                {"type": "first_frame", "url": image_url},
+            ]
             payload = {"contents": contents, "settings": settings}
             if options:
                 payload["options"] = options
@@ -372,12 +432,18 @@ class KlingOfficialVideo(BaseTool):
             "model": "kling-3.0-turbo",
         }
 
-    def _build_omni_request(self, inputs: dict[str, Any], operation: str) -> dict[str, Any]:
+    def _build_omni_request(
+        self, inputs: dict[str, Any], operation: str
+    ) -> dict[str, Any]:
         explicit_model = inputs.get("model_name") or inputs.get("model_variant")
         model_name = str(explicit_model or "kling-video-o1")
         if model_name not in OMNI_VIDEO_MODELS:
-            raise ValueError(f"model_name {model_name!r} is not supported for api_family=omni")
-        payload, references_used, element_id_values = self._build_omni_payload(inputs, operation, model_name)
+            raise ValueError(
+                f"model_name {model_name!r} is not supported for api_family=omni"
+            )
+        payload, references_used, element_id_values = self._build_omni_payload(
+            inputs, operation, model_name
+        )
         return {
             "protocol": "classic",
             "path": "/v1/videos/omni-video",
@@ -427,14 +493,22 @@ class KlingOfficialVideo(BaseTool):
                 {"kind": "element", "element_id": item["element_id"]}
                 for item in elements
             )
-        if operation == "reference_to_video" and not any(payload.get(k) for k in ("image_list", "video_list", "element_list")):
-            raise ValueError("reference_to_video with api_family=omni requires image_list, video_list, element_list, or reference image URLs.")
+        if operation == "reference_to_video" and not any(
+            payload.get(k) for k in ("image_list", "video_list", "element_list")
+        ):
+            raise ValueError(
+                "reference_to_video with api_family=omni requires image_list, video_list, element_list, or reference image URLs."
+            )
         return payload, references_used, element_id_values
 
     def _base_classic_payload(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        model_name = str(inputs.get("model_name") or inputs.get("model_variant") or "kling-v3")
+        model_name = str(
+            inputs.get("model_name") or inputs.get("model_variant") or "kling-v3"
+        )
         if model_name not in CLASSIC_VIDEO_MODELS:
-            raise ValueError(f"model_name {model_name!r} is not supported for api_family=classic")
+            raise ValueError(
+                f"model_name {model_name!r} is not supported for api_family=classic"
+            )
         payload: dict[str, Any] = {
             "model_name": model_name,
             "duration": str(inputs.get("duration", "5")),
@@ -459,7 +533,9 @@ class KlingOfficialVideo(BaseTool):
             options["watermark_info"] = {"enabled": bool(inputs.get("watermark"))}
         return options
 
-    def _copy_common_task_fields(self, inputs: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _copy_common_task_fields(
+        self, inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
         if "watermark" in inputs:
             payload["watermark_info"] = {"enabled": bool(inputs.get("watermark"))}
         callback_url = validate_callback_url(inputs.get("callback_url"))
@@ -468,7 +544,9 @@ class KlingOfficialVideo(BaseTool):
         if inputs.get("external_task_id"):
             payload["external_task_id"] = inputs["external_task_id"]
 
-    def _copy_multi_shot_fields(self, inputs: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _copy_multi_shot_fields(
+        self, inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
         if inputs.get("multi_shot") is None and not inputs.get("multi_prompt"):
             return
         payload["multi_shot"] = bool(inputs.get("multi_shot", True))
@@ -482,10 +560,18 @@ class KlingOfficialVideo(BaseTool):
             normalized: list[dict[str, Any]] = []
             for item in inputs["multi_prompt"]:
                 if not isinstance(item, dict) or not item.get("prompt"):
-                    raise ValueError("each multi_prompt item must be an object with prompt")
+                    raise ValueError(
+                        "each multi_prompt item must be an object with prompt"
+                    )
                 allowed = {
                     key: item[key]
-                    for key in ("prompt", "duration", "camera_control", "image_refs", "element_refs")
+                    for key in (
+                        "prompt",
+                        "duration",
+                        "camera_control",
+                        "image_refs",
+                        "element_refs",
+                    )
                     if key in item
                 }
                 normalized.append(allowed)
@@ -498,7 +584,9 @@ class KlingOfficialVideo(BaseTool):
         image_list: list[dict[str, Any]] = []
         references_used: list[dict[str, Any]] = []
 
-        def add_image(value: str | None, *, kind: str, item_type: str | None = None) -> None:
+        def add_image(
+            value: str | None, *, kind: str, item_type: str | None = None
+        ) -> None:
             if not value:
                 return
             record = {"image_url": value}
@@ -517,9 +605,13 @@ class KlingOfficialVideo(BaseTool):
         for item in inputs.get("image_list") or []:
             if not isinstance(item, dict):
                 raise ValueError("image_list items must be objects")
-            value = normalize_image_input(item.get("image_url") or item.get("image"), item.get("image_path"))
+            value = normalize_image_input(
+                item.get("image_url") or item.get("image"), item.get("image_path")
+            )
             if not value:
-                raise ValueError("image_list items must include image_url, image, or image_path")
+                raise ValueError(
+                    "image_list items must include image_url, image, or image_path"
+                )
             record = {"image_url": value}
             if item.get("type"):
                 record["type"] = item["type"]
@@ -527,19 +619,26 @@ class KlingOfficialVideo(BaseTool):
             references_used.append(
                 {
                     "kind": "image",
-                    "source": item.get("image_url") or item.get("image_path") or item.get("image"),
+                    "source": item.get("image_url")
+                    or item.get("image_path")
+                    or item.get("image"),
                     "source_type": "image_list",
                     "type": item.get("type"),
                 }
             )
 
         add_image(
-            normalize_image_input(inputs.get("reference_image_url"), inputs.get("reference_image_path")),
+            normalize_image_input(
+                inputs.get("reference_image_url"), inputs.get("reference_image_path")
+            ),
             kind="reference_image",
             item_type="first_frame",
         )
         add_image(
-            normalize_image_input(inputs.get("reference_tail_image_url"), inputs.get("reference_tail_image_path")),
+            normalize_image_input(
+                inputs.get("reference_tail_image_url"),
+                inputs.get("reference_tail_image_path"),
+            ),
             kind="reference_tail_image",
             item_type="end_frame",
         )
@@ -554,14 +653,18 @@ class KlingOfficialVideo(BaseTool):
         inputs: dict[str, Any],
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         if inputs.get("reference_video_path") or inputs.get("video_paths"):
-            raise ValueError("Video Omni requires video URLs; local video paths cannot be silently uploaded.")
+            raise ValueError(
+                "Video Omni requires video URLs; local video paths cannot be silently uploaded."
+            )
 
         video_list: list[dict[str, Any]] = []
         references_used: list[dict[str, Any]] = []
 
         def add_video(item: dict[str, Any], source_type: str) -> None:
             if item.get("video_path"):
-                raise ValueError("Video Omni requires video URLs; local video paths cannot be silently uploaded.")
+                raise ValueError(
+                    "Video Omni requires video URLs; local video paths cannot be silently uploaded."
+                )
             video_url = item.get("video_url") or item.get("url")
             if not video_url:
                 raise ValueError("video_list items must include video_url")
@@ -570,7 +673,9 @@ class KlingOfficialVideo(BaseTool):
                 record["refer_type"] = item["refer_type"]
             if "keep_original_sound" in item:
                 value = item["keep_original_sound"]
-                record["keep_original_sound"] = "yes" if value is True else "no" if value is False else value
+                record["keep_original_sound"] = (
+                    "yes" if value is True else "no" if value is False else value
+                )
             video_list.append(record)
             references_used.append(
                 {
@@ -587,7 +692,9 @@ class KlingOfficialVideo(BaseTool):
                 raise ValueError("video_list items must be objects")
             add_video(item, "video_list")
         if inputs.get("reference_video_url"):
-            add_video({"video_url": inputs["reference_video_url"]}, "reference_video_url")
+            add_video(
+                {"video_url": inputs["reference_video_url"]}, "reference_video_url"
+            )
         for url in inputs.get("video_urls") or []:
             add_video({"video_url": url}, "video_urls")
         return video_list, references_used
@@ -605,7 +712,9 @@ class KlingOfficialVideo(BaseTool):
         for index, item in enumerate(outputs):
             url = self._output_url(item)
             suffix = extension_from_url(url, ".mp4")
-            output_path = numbered_output_path(output_path_with_suffix(base_path, suffix), index, suffix)
+            output_path = numbered_output_path(
+                output_path_with_suffix(base_path, suffix), index, suffix
+            )
             client.download(url, output_path)
             paths.append(output_path)
         return paths
@@ -621,7 +730,9 @@ class KlingOfficialVideo(BaseTool):
         raise ValueError(f"Kling video response contained no downloadable URL: {item}")
 
     @staticmethod
-    def _reference_metadata_from_classic_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    def _reference_metadata_from_classic_payload(
+        payload: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         references: list[dict[str, Any]] = []
         if payload.get("image"):
             references.append({"kind": "image", "source_type": "reference_image"})
@@ -647,7 +758,9 @@ class KlingOfficialVideo(BaseTool):
         }
 
     @staticmethod
-    def _account_usage_result(inputs: dict[str, Any], client: KlingClient) -> dict[str, Any]:
+    def _account_usage_result(
+        inputs: dict[str, Any], client: KlingClient
+    ) -> dict[str, Any]:
         if not inputs.get("include_account_usage"):
             return {}
         try:
@@ -701,4 +814,6 @@ class KlingOfficialVideo(BaseTool):
                 return KlingOfficialVideo._output_url(item)
             except ValueError:
                 continue
-        raise ValueError(f"Kling video response contained no downloadable URL: {outputs}")
+        raise ValueError(
+            f"Kling video response contained no downloadable URL: {outputs}"
+        )

@@ -8,13 +8,13 @@ Discovery does not launch the renderer; version is nullable there and recorded
 inside the bounded job. Synfig 1.4.5 prints its version with exit status 3.
 
 ```sh
-mc exec synfig.discover
-mc exec animation.list
-mc exec synfig.start project=/absolute/Generic.magic \
+magic-cli exec synfig.discover
+magic-cli exec animation.list
+magic-cli exec synfig.start project=/absolute/Generic.magic \
   source=/absolute/bundle/scene.sif bundle=/absolute/bundle \
   memory_mb=512 timeout_seconds=60
-mc exec animation.status project=/absolute/Generic.magic job=<returned-job>
-mc exec animation.cancel project=/absolute/Generic.magic job=<returned-job>
+magic-cli exec animation.status project=/absolute/Generic.magic job=<returned-job>
+magic-cli exec animation.cancel project=/absolute/Generic.magic job=<returned-job>
 ```
 
 Optional `first_frame`, `last_frame` are inclusive, nonnegative output frame
@@ -65,7 +65,7 @@ The original source is never edited. The job saves an editable source bundle and
 Placement keeps the same hash, ffprobe, duration/rate and full-frame aspect checks:
 
 ```sh
-mc exec video.place_track project=/absolute/Generic.magic \
+magic-cli exec video.place_track project=/absolute/Generic.magic \
   animation_job=<completed-job> id=native-clip start=0 duration=1 \
   'rect=[0,0,64,48]'
 ```

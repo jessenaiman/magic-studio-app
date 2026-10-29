@@ -57,7 +57,7 @@
     },
     "view-project": {
       "component": "workspace",
-      "label": "Project",
+      "label": "Storyboard",
       "indicator": "hidden"
     },
     "view-animation": {

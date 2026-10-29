@@ -21,6 +21,7 @@ What Library of Congress is good for
 - Cultural recordings, folk traditions
 - Government and civic footage
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,8 +48,7 @@ class LibraryOfCongressSource:
     provider = "loc"
     priority = 40
     install_instructions = (
-        "Library of Congress works without an API key. "
-        "No setup needed."
+        "Library of Congress works without an API key. No setup needed."
     )
     supports = {"video": True, "image": True}
 
@@ -118,7 +118,9 @@ class LibraryOfCongressSource:
             subjects = " ".join(s for s in subjects if isinstance(s, str))
         source_tags = f"{title} {description} {subjects}".strip()
 
-        source_url = item_id if item_id.startswith("http") else f"https://www.loc.gov{item_id}"
+        source_url = (
+            item_id if item_id.startswith("http") else f"https://www.loc.gov{item_id}"
+        )
 
         # Determine rights
         rights = item.get("rights", []) or []
@@ -126,7 +128,11 @@ class LibraryOfCongressSource:
             rights_str = " ".join(r for r in rights if isinstance(r, str)).lower()
         else:
             rights_str = str(rights).lower()
-        lic = _LICENSE_PD if "public domain" in rights_str or "no known" in rights_str else _LICENSE_CHECK
+        lic = (
+            _LICENSE_PD
+            if "public domain" in rights_str or "no known" in rights_str
+            else _LICENSE_CHECK
+        )
 
         # Look for downloadable resources
         resources = item.get("resources", []) or []
@@ -172,7 +178,9 @@ class LibraryOfCongressSource:
                     if not is_video and not is_image:
                         continue
 
-                    full_url = url if url.startswith("http") else f"https://www.loc.gov{url}"
+                    full_url = (
+                        url if url.startswith("http") else f"https://www.loc.gov{url}"
+                    )
 
                     out.append(
                         Candidate(
@@ -197,7 +205,11 @@ class LibraryOfCongressSource:
 
         # If no resources found but we have an image_url for image kind
         if not out and kind in ("image", "any") and image_url:
-            full_url = image_url if image_url.startswith("http") else f"https://www.loc.gov{image_url}"
+            full_url = (
+                image_url
+                if image_url.startswith("http")
+                else f"https://www.loc.gov{image_url}"
+            )
             out.append(
                 Candidate(
                     source=self.name,
@@ -224,9 +236,7 @@ class LibraryOfCongressSource:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with requests.get(
-            candidate.download_url, stream=True, timeout=180
-        ) as r:
+        with requests.get(candidate.download_url, stream=True, timeout=180) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):

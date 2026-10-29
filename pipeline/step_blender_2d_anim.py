@@ -6,6 +6,7 @@ computes 2D-derived world-space foot targets (`gait_frames`) and drives the 3D
 Blender armature (`animate_character_rig`), runs manifold & ground-contact QA
 (`verify_character`), and exports `.blend`, `.glb`, `.mp4`, and `.png`.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,8 +60,14 @@ def gait_frames(spec: dict, count: int, solo: bool = False) -> list:
         for side in ["L", "R"]:
             if (moving or turn) and side == active:
                 if side not in swing:
-                    end = min(48 if turn else 35, f + half - phase - 1) if not solo else f + half - phase - 1
-                    goal = rest_target(side, min(35, end + half * 0.5) if moving and not solo else end)
+                    end = (
+                        min(48 if turn else 35, f + half - phase - 1)
+                        if not solo
+                        else f + half - phase - 1
+                    )
+                    goal = rest_target(
+                        side, min(35, end + half * 0.5) if moving and not solo else end
+                    )
                     if solo:
                         goal[1] = (-1 if cycle % 4 < 2 else 1) * h * 0.055
                     swing[side] = (targets[side][:], goal, f, max(1, end - f))
@@ -68,7 +75,9 @@ def gait_frames(spec: dict, count: int, solo: bool = False) -> list:
                 u = min(1.0, (f - start_f + 1) / (length + 1))
                 eased = smooth01(u)
                 foot = [start[i] + (goal[i] - start[i]) * eased for i in range(3)]
-                foot[2] = math.sin(math.pi * u) ** 2 * spec["foot_lift_max_m"] * perf["lift"]
+                foot[2] = (
+                    math.sin(math.pi * u) ** 2 * spec["foot_lift_max_m"] * perf["lift"]
+                )
                 if phase == half - 1 or f in [35, 47]:
                     foot = goal[:]
                     targets[side] = goal[:]
@@ -91,14 +100,22 @@ def gait_frames(spec: dict, count: int, solo: bool = False) -> list:
                 foot = row["feet"][side]
                 horizontal = math.hypot(foot[0] - hip_x, foot[1] - hip_y)
                 if horizontal >= reach:
-                    raise ValueError(f"{spec['slug']} frame {f}: stride exceeds anatomical reach")
-                pelvis_z = min(pelvis_z, foot[2] + a["ankle"] * h + math.sqrt(reach * reach - horizontal * horizontal) - a["hip"] * h)
+                    raise ValueError(
+                        f"{spec['slug']} frame {f}: stride exceeds anatomical reach"
+                    )
+                pelvis_z = min(
+                    pelvis_z,
+                    foot[2]
+                    + a["ankle"] * h
+                    + math.sqrt(reach * reach - horizontal * horizontal)
+                    - a["hip"] * h,
+                )
             row["root"][2] = pelvis_z
         result.append(row)
     return result
 
 
-BLENDER_2D_ANIM_CODE = r'''
+BLENDER_2D_ANIM_CODE = r"""
 def two_link(hip,ankle,l1,l2,forward):
     delta=ankle-hip;d=delta.length
     if d>l1+l2-1e-5:raise ValueError('Unreachable planted-foot target: %.4f > %.4f'%(d,l1+l2))
@@ -279,7 +296,7 @@ def render_frames_to_mp4(scene,out_mp4,out_png,frame_start,frame_end,**kwargs):
     subprocess.run(['ffmpeg','-v','error','-y','-f','concat','-safe','0','-i',str(concat),'-frames:v',str(frame_end-frame_start+1),'-r','24','-c:v','libx264','-crf','18','-pix_fmt','yuv420p',out_mp4],check=True)
     shutil.copy2(str(frames_dir/('frame_%04d.png'%frame_end)),out_png)
     return dict(frame_count=frame_end-frame_start+1,snapshots=snapshots,frames_dir=str(frames_dir))
-'''
+"""
 
 BLENDER_HELPERS = BLENDER_MESH_RIG_CODE + "\n" + BLENDER_2D_ANIM_CODE
 
@@ -296,20 +313,27 @@ def run_blender_stage(code: str, timeout: float = 3600) -> dict:
         import shutil
         import subprocess
         import tempfile
+
         blender_bin = shutil.which("blender") or "/usr/bin/blender"
-        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
             tf.write(full_script)
             script_path = tf.name
         try:
             proc = subprocess.run(
                 [blender_bin, "--background", "--python", script_path],
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
             )
             output = (proc.stdout or "") + "\n" + (proc.stderr or "")
         finally:
             Path(script_path).unlink(missing_ok=True)
     marker = "FARM_SCHOOL_RESULT="
-    lines = [line[len(marker):] for line in output.splitlines() if line.startswith(marker)]
+    lines = [
+        line[len(marker) :] for line in output.splitlines() if line.startswith(marker)
+    ]
     if not lines:
         raise RuntimeError(f"Blender returned no verified result: {output[-3000:]}")
     return json.loads(lines[-1])

@@ -1,13 +1,15 @@
 # Prompt Gallery
 
-Tested prompts that produce impressive videos. Copy any prompt into your AI coding assistant after running `make setup`.
+Example production briefs for Magic Studio's reusable pipelines. Discover actual
+tools and provider access before choosing a brief; the examples are not evidence
+that every optional runtime is installed. For the desktop app, start with the
+[overview](README.md) and [production guide](MAGIC-STUDIO.md).
 
-## Zero-Key Demos (instant, no API keys)
+## Zero-key production concepts
 
 These render pre-built compositions using only Remotion components — animated charts, typography, data visualization. No external services, no cost, no waiting.
 
 ```bash
-make demo                         # Render all three demos
 ./render-demo.sh world-in-numbers # Render one specific demo
 ./render-demo.sh --list           # See all available demos
 ```
@@ -130,7 +132,7 @@ These use the **Animation pipeline** with `image_animation` approach — FLUX-ge
 
 These use the HyperFrames composition runtime — HTML + CSS + GSAP rendered deterministically to video via headless Chrome + FFmpeg. Perfect for kinetic typography, product promos, launch reels, and website-to-video treatments where the visual grammar is typographic and motion-first.
 
-**Requirements:** Node.js ≥ 22, FFmpeg, `npx` — no monorepo checkout, the CLI is fetched via `npx @hyperframes/cli` on first run.
+**Requirements:** Node.js ≥ 22, FFmpeg, `npx` — no monorepo checkout, the CLI is fetched via `npx hyperframes` on first run.
 
 ### Kinetic Product Launch
 

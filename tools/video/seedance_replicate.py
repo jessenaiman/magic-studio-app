@@ -90,7 +90,21 @@ class SeedanceReplicate(BaseTool):
             },
             "duration": {
                 "type": "string",
-                "enum": ["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"],
+                "enum": [
+                    "auto",
+                    "4",
+                    "5",
+                    "6",
+                    "7",
+                    "8",
+                    "9",
+                    "10",
+                    "11",
+                    "12",
+                    "13",
+                    "14",
+                    "15",
+                ],
                 "default": "5",
             },
             "aspect_ratio": {
@@ -119,8 +133,16 @@ class SeedanceReplicate(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
-    idempotency_key_fields = ["prompt", "model_variant", "operation", "duration", "seed"]
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
+    idempotency_key_fields = [
+        "prompt",
+        "model_variant",
+        "operation",
+        "duration",
+        "seed",
+    ]
     side_effects = ["writes video file to output_path", "calls Replicate API"]
     user_visible_verification = [
         "Watch generated clip for motion coherence, audio sync, and visual quality"
@@ -156,7 +178,9 @@ class SeedanceReplicate(BaseTool):
         start = time.time()
         variant = inputs.get("model_variant", "standard")
         model_slug = (
-            "bytedance/seedance-2.0-fast" if variant == "fast" else "bytedance/seedance-2.0"
+            "bytedance/seedance-2.0-fast"
+            if variant == "fast"
+            else "bytedance/seedance-2.0"
         )
 
         payload_input: dict[str, Any] = {"prompt": inputs["prompt"]}
@@ -195,7 +219,9 @@ class SeedanceReplicate(BaseTool):
                 time.sleep(3)
                 get_url = pred.get("urls", {}).get("get")
                 if not get_url:
-                    return ToolResult(success=False, error="Replicate response missing poll URL")
+                    return ToolResult(
+                        success=False, error="Replicate response missing poll URL"
+                    )
                 poll = requests.get(get_url, headers=headers, timeout=30)
                 poll.raise_for_status()
                 pred = poll.json()
@@ -211,12 +237,17 @@ class SeedanceReplicate(BaseTool):
             # Replicate returns either a string URL or a list.
             video_url = output[0] if isinstance(output, list) else output
             if not isinstance(video_url, str):
-                return ToolResult(success=False, error=f"Unexpected output shape from Replicate: {output!r}")
+                return ToolResult(
+                    success=False,
+                    error=f"Unexpected output shape from Replicate: {output!r}",
+                )
 
             video_response = requests.get(video_url, timeout=180)
             video_response.raise_for_status()
 
-            output_path = Path(inputs.get("output_path", "seedance_replicate_output.mp4"))
+            output_path = Path(
+                inputs.get("output_path", "seedance_replicate_output.mp4")
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(video_response.content)
 

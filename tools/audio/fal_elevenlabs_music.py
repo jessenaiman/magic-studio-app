@@ -1,6 +1,6 @@
 """Generate music with ElevenLabs Music through fal.ai.
 
-This provider uses OpenMontage's shared ``FAL_KEY`` credential and the fal.ai
+This provider uses MagicStudio's shared ``FAL_KEY`` credential and the fal.ai
 queue API, then downloads the generated MP3 to a project-local path.
 """
 
@@ -41,8 +41,7 @@ class FalElevenLabsMusic(BaseTool):
 
     dependencies = ["env:FAL_KEY"]
     install_instructions = (
-        "Set FAL_KEY to a fal.ai API key. "
-        "Get one at https://fal.ai/dashboard/keys"
+        "Set FAL_KEY to a fal.ai API key. Get one at https://fal.ai/dashboard/keys"
     )
     fallback_tools = ["music_gen", "google_music"]
     agent_skills = ["music", "elevenlabs"]

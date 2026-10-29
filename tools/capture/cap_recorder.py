@@ -117,19 +117,25 @@ def _is_cap_running() -> bool:
         if sys_platform == "Windows":
             result = subprocess.run(
                 ["tasklist", "/FI", "IMAGENAME eq Cap.exe", "/NH"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             return "Cap.exe" in result.stdout
         elif sys_platform == "Darwin":
             result = subprocess.run(
                 ["pgrep", "-x", "Cap"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             return result.returncode == 0
         elif sys_platform == "Linux":
             result = subprocess.run(
                 ["pgrep", "-x", "cap"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             return result.returncode == 0
     except Exception:
@@ -137,25 +143,31 @@ def _is_cap_running() -> bool:
     return False
 
 
-def _get_recent_recordings(recordings_dir: Path, since_seconds: int = 300) -> list[dict]:
+def _get_recent_recordings(
+    recordings_dir: Path, since_seconds: int = 300
+) -> list[dict]:
     """Find Cap recordings created within the last N seconds."""
     recordings = []
     cutoff = time.time() - since_seconds
 
     # Cap stores recordings as directories with output/ subdirs
-    for item in sorted(recordings_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+    for item in sorted(
+        recordings_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
         if not item.is_dir():
             continue
         # Look for video files in the recording directory
         for pattern in ["*.mp4", "output/*.mp4", "output/result.mp4"]:
             for video in item.glob(pattern):
                 if video.stat().st_mtime > cutoff:
-                    recordings.append({
-                        "path": str(video),
-                        "name": item.name,
-                        "size_mb": round(video.stat().st_size / (1024 * 1024), 1),
-                        "modified": video.stat().st_mtime,
-                    })
+                    recordings.append(
+                        {
+                            "path": str(video),
+                            "name": item.name,
+                            "size_mb": round(video.stat().st_size / (1024 * 1024), 1),
+                            "modified": video.stat().st_mtime,
+                        }
+                    )
 
     return recordings[:10]  # Return most recent 10
 
@@ -209,7 +221,13 @@ class CapRecorder(BaseTool):
         "properties": {
             "operation": {
                 "type": "string",
-                "enum": ["detect", "status", "find_recordings", "setup_guide", "pick_latest"],
+                "enum": [
+                    "detect",
+                    "status",
+                    "find_recordings",
+                    "setup_guide",
+                    "pick_latest",
+                ],
                 "description": (
                     "'detect' — check if Cap is installed, "
                     "'status' — check if Cap is running, "
@@ -243,7 +261,11 @@ class CapRecorder(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=1, ram_mb=64, vram_mb=0, disk_mb=0, network_required=False,
+        cpu_cores=1,
+        ram_mb=64,
+        vram_mb=0,
+        disk_mb=0,
+        network_required=False,
     )
 
     side_effects = []
@@ -252,6 +274,7 @@ class CapRecorder(BaseTool):
     def get_status(self):
         """Cap tool is always 'available' — it gracefully handles missing Cap."""
         from tools.base_tool import ToolStatus
+
         return ToolStatus.AVAILABLE
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
@@ -273,7 +296,7 @@ class CapRecorder(BaseTool):
             return ToolResult(
                 success=False,
                 error=f"Unknown operation: {operation}. "
-                      f"Valid: detect, status, find_recordings, setup_guide, pick_latest",
+                f"Valid: detect, status, find_recordings, setup_guide, pick_latest",
             )
 
     def _detect(self) -> ToolResult:
@@ -314,8 +337,9 @@ class CapRecorder(BaseTool):
                 "running": running,
                 "binary_path": binary,
                 "recordings_dir": str(recordings_dir) if recordings_dir else None,
-                "message": "Cap is running and ready to record." if running
-                          else "Cap is installed but not running. The user should open Cap to start recording.",
+                "message": "Cap is running and ready to record."
+                if running
+                else "Cap is installed but not running. The user should open Cap to start recording.",
             },
         )
 
@@ -330,7 +354,9 @@ class CapRecorder(BaseTool):
                 },
             )
 
-        recordings = _get_recent_recordings(recordings_dir, since_seconds=since_minutes * 60)
+        recordings = _get_recent_recordings(
+            recordings_dir, since_seconds=since_minutes * 60
+        )
 
         return ToolResult(
             success=True,
@@ -339,7 +365,8 @@ class CapRecorder(BaseTool):
                 "recordings_dir": str(recordings_dir),
                 "count": len(recordings),
                 "message": f"Found {len(recordings)} recording(s) from the last {since_minutes} minutes."
-                          if recordings else f"No recordings found in the last {since_minutes} minutes.",
+                if recordings
+                else f"No recordings found in the last {since_minutes} minutes.",
             },
         )
 

@@ -73,7 +73,11 @@ class KlingLipSync(BaseTool):
     input_schema = {
         "type": "object",
         "properties": {
-            "operation": {"type": "string", "enum": LIP_SYNC_OPERATIONS, "default": "advanced_lip_sync"},
+            "operation": {
+                "type": "string",
+                "enum": LIP_SYNC_OPERATIONS,
+                "default": "advanced_lip_sync",
+            },
             "video_id": {"type": "string"},
             "video_url": {"type": "string"},
             "video_path": {
@@ -162,7 +166,9 @@ class KlingLipSync(BaseTool):
         "writes face selection artifact",
         "writes lip-synced video to output_path",
     ]
-    user_visible_verification = ["Watch output video to verify the selected face matches the new audio"]
+    user_visible_verification = [
+        "Watch output video to verify the selected face matches the new audio"
+    ]
     quality_score = 0.80
     latency_p50_seconds = 240.0
 
@@ -185,7 +191,7 @@ class KlingLipSync(BaseTool):
             {
                 "paid_api": True,
                 "cost_estimate_confidence": "low",
-                "cost_estimate_basis": "Conservative OpenMontage estimate for identify-face plus advanced lip-sync.",
+                "cost_estimate_basis": "Conservative MagicStudio estimate for identify-face plus advanced lip-sync.",
             }
         )
         return result
@@ -207,7 +213,9 @@ class KlingLipSync(BaseTool):
                 identify = self._identify_faces(client, inputs)
                 artifact_path = self._write_faces_artifact(inputs, identify)
                 face_choose, selection = self._face_selection(identify["faces"], inputs)
-                artifact_path = self._write_faces_artifact(inputs, identify, selection=selection)
+                artifact_path = self._write_faces_artifact(
+                    inputs, identify, selection=selection
+                )
                 if selection["selection_method"] == "requires_user_selection":
                     return ToolResult(
                         success=False,
@@ -226,8 +234,14 @@ class KlingLipSync(BaseTool):
                         duration_seconds=round(time.time() - start, 2),
                         model="kling-official-lip-sync",
                     )
-                merged = {**inputs, "session_id": identify["session_id"], "face_choose": face_choose}
-                selected_face = self._selected_face_record(identify["faces"], face_choose)
+                merged = {
+                    **inputs,
+                    "session_id": identify["session_id"],
+                    "face_choose": face_choose,
+                }
+                selected_face = self._selected_face_record(
+                    identify["faces"], face_choose
+                )
                 self._apply_face_timing_defaults(merged, selected_face)
                 request = self._build_advanced_request(merged)
                 result = self._run_advanced_lip_sync(client, merged, request, start)
@@ -239,7 +253,13 @@ class KlingLipSync(BaseTool):
                 request = self._build_advanced_request(inputs)
                 return self._run_advanced_lip_sync(client, inputs, request, start)
             raise ValueError(f"Unsupported Kling lip-sync operation: {operation}")
-        except (KlingAPIError, TimeoutError, ValueError, KeyError, FileNotFoundError) as exc:
+        except (
+            KlingAPIError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            FileNotFoundError,
+        ) as exc:
             data: dict[str, Any] = {"provider": self.provider}
             if isinstance(exc, KlingAPIError):
                 data.update(
@@ -250,17 +270,27 @@ class KlingLipSync(BaseTool):
                         "account_usage_diagnostic": account_usage_hint_for_error(exc),
                     }
                 )
-            return ToolResult(success=False, data=data, error=f"Kling official lip-sync failed: {exc}")
+            return ToolResult(
+                success=False, data=data, error=f"Kling official lip-sync failed: {exc}"
+            )
         except Exception as exc:
-            return ToolResult(success=False, data={"provider": self.provider}, error=f"Kling official lip-sync failed: {exc}")
+            return ToolResult(
+                success=False,
+                data={"provider": self.provider},
+                error=f"Kling official lip-sync failed: {exc}",
+            )
 
-    def _identify_faces(self, client: KlingClient, inputs: dict[str, Any]) -> dict[str, Any]:
+    def _identify_faces(
+        self, client: KlingClient, inputs: dict[str, Any]
+    ) -> dict[str, Any]:
         request = self._build_identify_request(inputs)
         data = client.post(request["path"], request["payload"])
         payload = data.get("data") or {}
         session_id = payload.get("session_id")
         if not session_id:
-            raise ValueError(f"Kling identify-face response missing data.session_id: {data}")
+            raise ValueError(
+                f"Kling identify-face response missing data.session_id: {data}"
+            )
         faces = (
             payload.get("face_data")
             or payload.get("faces")
@@ -280,7 +310,9 @@ class KlingLipSync(BaseTool):
             "request": request,
         }
 
-    def _identify_result(self, inputs: dict[str, Any], identify: dict[str, Any], start: float) -> ToolResult:
+    def _identify_result(
+        self, inputs: dict[str, Any], identify: dict[str, Any], start: float
+    ) -> ToolResult:
         artifact_path = self._write_faces_artifact(inputs, identify)
         return ToolResult(
             success=True,
@@ -346,8 +378,12 @@ class KlingLipSync(BaseTool):
         )
 
     def _build_identify_request(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        if inputs.get("video_path") and not (inputs.get("video_url") or inputs.get("video_id")):
-            raise ValueError("Kling identify_face requires video_url or video_id; local video paths cannot be silently uploaded.")
+        if inputs.get("video_path") and not (
+            inputs.get("video_url") or inputs.get("video_id")
+        ):
+            raise ValueError(
+                "Kling identify_face requires video_url or video_id; local video paths cannot be silently uploaded."
+            )
         payload: dict[str, Any] = {}
         if inputs.get("video_id"):
             payload["video_id"] = str(inputs["video_id"])
@@ -369,7 +405,9 @@ class KlingLipSync(BaseTool):
         if not face_choose:
             raise ValueError("advanced_lip_sync requires face_choose or face_id")
         if len(face_choose) != 1:
-            raise ValueError("advanced_lip_sync currently supports exactly one face_choose item")
+            raise ValueError(
+                "advanced_lip_sync currently supports exactly one face_choose item"
+            )
         face_item = face_choose[0]
         audio_source = self._copy_audio_input(inputs, face_item)
         self._copy_timing_fields(inputs, face_item)
@@ -490,7 +528,9 @@ class KlingLipSync(BaseTool):
         for face in faces:
             if str(face.get("face_id") or face.get("id") or "") == selected_id:
                 return face
-        raise ValueError(f"Selected face_id {selected_id!r} was not returned by identify_face")
+        raise ValueError(
+            f"Selected face_id {selected_id!r} was not returned by identify_face"
+        )
 
     def _apply_face_timing_defaults(
         self, inputs: dict[str, Any], face: dict[str, Any]
@@ -499,11 +539,20 @@ class KlingLipSync(BaseTool):
         face_end = int(face.get("end_time") or 0)
         face_choose = self._normalize_face_choose(inputs)
         face_item = face_choose[0] if face_choose else {}
-        if inputs.get("sound_start_time") is None and face_item.get("sound_start_time") is None:
+        if (
+            inputs.get("sound_start_time") is None
+            and face_item.get("sound_start_time") is None
+        ):
             inputs["sound_start_time"] = 0
-        if inputs.get("sound_insert_time") is None and face_item.get("sound_insert_time") is None:
+        if (
+            inputs.get("sound_insert_time") is None
+            and face_item.get("sound_insert_time") is None
+        ):
             inputs["sound_insert_time"] = face_start
-        if inputs.get("sound_end_time") is not None or face_item.get("sound_end_time") is not None:
+        if (
+            inputs.get("sound_end_time") is not None
+            or face_item.get("sound_end_time") is not None
+        ):
             return
 
         candidates: list[int] = []
@@ -536,7 +585,11 @@ class KlingLipSync(BaseTool):
         for key, default in (("sound_start_time", 0), ("sound_insert_time", 0)):
             nested = face_item.get(key)
             top_level = inputs.get(key)
-            if nested is not None and top_level is not None and int(nested) != int(top_level):
+            if (
+                nested is not None
+                and top_level is not None
+                and int(nested) != int(top_level)
+            ):
                 raise ValueError(
                     f"Conflicting {key} values between top-level input and face_choose[0]"
                 )
@@ -560,12 +613,18 @@ class KlingLipSync(BaseTool):
             raise ValueError("advanced_lip_sync requires sound_end_time")
         face_item["sound_end_time"] = int(sound_end)
         if face_item["sound_end_time"] - face_item["sound_start_time"] < 2000:
-            raise ValueError("advanced_lip_sync requires at least 2000ms of cropped audio")
+            raise ValueError(
+                "advanced_lip_sync requires at least 2000ms of cropped audio"
+            )
 
         for key in ("sound_volume", "original_audio_volume"):
             nested = face_item.get(key)
             top_level = inputs.get(key)
-            if nested is not None and top_level is not None and float(nested) != float(top_level):
+            if (
+                nested is not None
+                and top_level is not None
+                and float(nested) != float(top_level)
+            ):
                 raise ValueError(
                     f"Conflicting {key} values between top-level input and face_choose[0]"
                 )
@@ -586,7 +645,9 @@ class KlingLipSync(BaseTool):
         return metadata
 
     @staticmethod
-    def _copy_audio_input(inputs: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    def _copy_audio_input(
+        inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> dict[str, Any]:
         nested_audio_id = str(payload.get("audio_id") or "").strip()
         nested_sound_file = payload.get("sound_file")
         if nested_audio_id and nested_sound_file:
@@ -602,9 +663,8 @@ class KlingLipSync(BaseTool):
 
         if nested_audio_id:
             if (
-                (top_level_audio_id and top_level_audio_id != nested_audio_id)
-                or top_level_sound_requested
-            ):
+                top_level_audio_id and top_level_audio_id != nested_audio_id
+            ) or top_level_sound_requested:
                 raise ValueError(
                     "Conflicting audio input between top-level fields and face_choose[0]"
                 )
@@ -641,7 +701,9 @@ class KlingLipSync(BaseTool):
             label="Lip-sync audio file",
         )
         if not sound_file:
-            raise ValueError("advanced_lip_sync requires audio_id, sound_file, sound_file_url, sound_file_path, or audio_path")
+            raise ValueError(
+                "advanced_lip_sync requires audio_id, sound_file, sound_file_url, sound_file_path, or audio_path"
+            )
         payload["sound_file"] = sound_file
         return {
             "type": "sound_file",
@@ -661,7 +723,9 @@ class KlingLipSync(BaseTool):
         for index, item in enumerate(outputs):
             url = self._output_url(item)
             suffix = extension_from_url(url, ".mp4")
-            output_path = numbered_output_path(output_path_with_suffix(base_path, suffix), index, suffix)
+            output_path = numbered_output_path(
+                output_path_with_suffix(base_path, suffix), index, suffix
+            )
             client.download(url, output_path)
             paths.append(output_path)
         return paths
@@ -674,10 +738,14 @@ class KlingLipSync(BaseTool):
         resource = item.get("resource") or {}
         if isinstance(resource, dict) and resource.get("url"):
             return str(resource["url"])
-        raise ValueError(f"Kling lip-sync response item contained no downloadable URL: {item}")
+        raise ValueError(
+            f"Kling lip-sync response item contained no downloadable URL: {item}"
+        )
 
     @staticmethod
-    def _copy_common_task_fields(inputs: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _copy_common_task_fields(
+        inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
         callback_url = validate_callback_url(inputs.get("callback_url"))
         if callback_url:
             payload["callback_url"] = callback_url
@@ -697,7 +765,9 @@ class KlingLipSync(BaseTool):
         }
 
     @staticmethod
-    def _account_usage_result(inputs: dict[str, Any], client: KlingClient) -> dict[str, Any]:
+    def _account_usage_result(
+        inputs: dict[str, Any], client: KlingClient
+    ) -> dict[str, Any]:
         if not inputs.get("include_account_usage"):
             return {}
         try:
@@ -723,7 +793,9 @@ class KlingLipSync(BaseTool):
         if inputs.get("faces_artifact_path"):
             artifact_path = Path(inputs["faces_artifact_path"])
         elif inputs.get("output_path"):
-            artifact_path = Path(inputs["output_path"]).with_name("kling_lip_sync_faces.json")
+            artifact_path = Path(inputs["output_path"]).with_name(
+                "kling_lip_sync_faces.json"
+            )
         else:
             artifact_path = Path("kling_lip_sync_faces.json")
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -735,5 +807,7 @@ class KlingLipSync(BaseTool):
             "face_count": len(identify["faces"]),
             "selection": selection,
         }
-        artifact_path.write_text(json.dumps(artifact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        artifact_path.write_text(
+            json.dumps(artifact, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
         return artifact_path

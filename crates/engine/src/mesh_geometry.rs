@@ -31,38 +31,40 @@ pub fn load_views(asset: &Asset) -> Vec<(String, image::RgbaImage)> {
             }
         }
     }
-    if views.is_empty() {
-        if let Some(manifest) = &asset.pose_manifest {
-            for frame in &manifest.frames {
-                if let Ok(img) = image::open(&frame.resolved_path) {
-                    let target = asset
-                        .turnaround_registration
-                        .as_ref()
-                        .map(|r| r.target_height_px)
-                        .filter(|h| *h > 0);
-                    views.push((
-                        frame.label.clone(),
-                        crate::commands::decontaminate_sprite_rgba(&img.into_rgba8(), target).0,
-                    ));
-                    break;
-                }
+    if views.is_empty()
+        && let Some(manifest) = &asset.pose_manifest
+    {
+        for frame in &manifest.frames {
+            if let Ok(img) = image::open(&frame.resolved_path) {
+                let target = asset
+                    .turnaround_registration
+                    .as_ref()
+                    .map(|r| r.target_height_px)
+                    .filter(|h| *h > 0);
+                views.push((
+                    frame.label.clone(),
+                    crate::commands::decontaminate_sprite_rgba(&img.into_rgba8(), target).0,
+                ));
+                break;
             }
         }
     }
-    if views.is_empty() {
-        if let Ok(img) = image::open(&asset.path) {
-            views.push((
-                "front".into(),
-                crate::commands::decontaminate_sprite_rgba(&img.into_rgba8(), None).0,
-            ));
-        }
+    if views.is_empty()
+        && let Ok(img) = image::open(&asset.path)
+    {
+        views.push((
+            "front".into(),
+            crate::commands::decontaminate_sprite_rgba(&img.into_rgba8(), None).0,
+        ));
     }
     views.retain(|(_, image)| image.pixels().any(|pixel| pixel[3] >= 96));
     views
 }
 
 pub fn build(views: &[(String, image::RgbaImage)], settings: ShapeSettings) -> MeshGeometry {
-    let Some((_, fallback_img)) = views.first() else { return MeshGeometry::default(); };
+    let Some((_, fallback_img)) = views.first() else {
+        return MeshGeometry::default();
+    };
     let fallback_img = fallback_img.clone();
 
     let find_view = |needle: &str| -> &image::RgbaImage {

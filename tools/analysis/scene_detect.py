@@ -65,12 +65,20 @@ class SceneDetect(BaseTool):
                 "minimum": 0.1,
                 "default": 1.0,
             },
-            "output_path": {"type": "string", "description": "Path for scene list JSON"},
+            "output_path": {
+                "type": "string",
+                "description": "Path for scene list JSON",
+            },
         },
     }
 
     resource_profile = ResourceProfile(cpu_cores=2, ram_mb=1024, vram_mb=0, disk_mb=100)
-    idempotency_key_fields = ["input_path", "method", "threshold", "min_scene_length_seconds"]
+    idempotency_key_fields = [
+        "input_path",
+        "method",
+        "threshold",
+        "min_scene_length_seconds",
+    ]
     side_effects = ["writes scene list JSON to output_path"]
     user_visible_verification = [
         "Spot-check detected scene boundaries against the video",
@@ -79,6 +87,7 @@ class SceneDetect(BaseTool):
     def _has_pyscenedetect(self) -> bool:
         try:
             import scenedetect  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -102,7 +111,9 @@ class SceneDetect(BaseTool):
             inputs.get("output_path", str(input_path.with_suffix(".scenes.json")))
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps({"scenes": scenes}, indent=2), encoding="utf-8")
+        output_path.write_text(
+            json.dumps({"scenes": scenes}, indent=2), encoding="utf-8"
+        )
 
         return ToolResult(
             success=True,
@@ -119,7 +130,11 @@ class SceneDetect(BaseTool):
     def _detect_pyscenedetect(self, inputs: dict[str, Any]) -> list[dict]:
         """Use PySceneDetect for scene detection."""
         from scenedetect import open_video, SceneManager
-        from scenedetect.detectors import ContentDetector, ThresholdDetector, AdaptiveDetector
+        from scenedetect.detectors import (
+            ContentDetector,
+            ThresholdDetector,
+            AdaptiveDetector,
+        )
 
         input_path = str(inputs["input_path"])
         method = inputs.get("method", "content")
@@ -153,14 +168,16 @@ class SceneDetect(BaseTool):
 
         scenes = []
         for i, (scene_start, scene_end) in enumerate(scene_list):
-            scenes.append({
-                "index": i,
-                "start_seconds": round(scene_start.get_seconds(), 3),
-                "end_seconds": round(scene_end.get_seconds(), 3),
-                "duration_seconds": round(
-                    scene_end.get_seconds() - scene_start.get_seconds(), 3
-                ),
-            })
+            scenes.append(
+                {
+                    "index": i,
+                    "start_seconds": round(scene_start.get_seconds(), 3),
+                    "end_seconds": round(scene_end.get_seconds(), 3),
+                    "duration_seconds": round(
+                        scene_end.get_seconds() - scene_start.get_seconds(), 3
+                    ),
+                }
+            )
 
         return scenes
 
@@ -169,7 +186,9 @@ class SceneDetect(BaseTool):
         """Escape a path for FFmpeg lavfi movie=... without allowing filter injection."""
         normalized = path.replace("\\", "/")
         if "'" in normalized:
-            raise ValueError("FFmpeg lavfi movie paths containing single quotes are unsupported")
+            raise ValueError(
+                "FFmpeg lavfi movie paths containing single quotes are unsupported"
+            )
         escaped = []
         for char in normalized:
             if char in "\\:,[];":
@@ -187,10 +206,14 @@ class SceneDetect(BaseTool):
 
         cmd = [
             "ffprobe",
-            "-v", "quiet",
-            "-show_entries", "frame=pts_time",
-            "-of", "json",
-            "-f", "lavfi",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "frame=pts_time",
+            "-of",
+            "json",
+            "-f",
+            "lavfi",
             f"movie='{escaped_input}',select='gt(scene,{threshold})'",
         ]
 
@@ -209,9 +232,14 @@ class SceneDetect(BaseTool):
 
         # Get total duration
         dur_cmd = [
-            "ffprobe", "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "json", input_path,
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            input_path,
         ]
         dur_result = self.run_command(dur_cmd)
         total_dur = float(json.loads(dur_result.stdout)["format"]["duration"])
@@ -221,12 +249,14 @@ class SceneDetect(BaseTool):
         for i in range(len(change_points) - 1):
             start = change_points[i]
             end = change_points[i + 1]
-            scenes.append({
-                "index": i,
-                "start_seconds": round(start, 3),
-                "end_seconds": round(end, 3),
-                "duration_seconds": round(end - start, 3),
-            })
+            scenes.append(
+                {
+                    "index": i,
+                    "start_seconds": round(start, 3),
+                    "end_seconds": round(end, 3),
+                    "duration_seconds": round(end - start, 3),
+                }
+            )
 
         return scenes
 
@@ -235,9 +265,14 @@ class SceneDetect(BaseTool):
     ) -> list[dict]:
         """Simplest fallback: split into uniform segments."""
         dur_cmd = [
-            "ffprobe", "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "json", input_path,
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            input_path,
         ]
         dur_result = self.run_command(dur_cmd)
         total_dur = float(json.loads(dur_result.stdout)["format"]["duration"])
@@ -245,9 +280,13 @@ class SceneDetect(BaseTool):
         # Use select filter to find scene changes via stdout
         cmd = [
             "ffmpeg",
-            "-i", input_path,
-            "-vf", f"select='gt(scene,{threshold})',showinfo",
-            "-f", "null", "-",
+            "-i",
+            input_path,
+            "-vf",
+            f"select='gt(scene,{threshold})',showinfo",
+            "-f",
+            "null",
+            "-",
         ]
         try:
             result = self.run_command(cmd, timeout=120)
@@ -256,6 +295,7 @@ class SceneDetect(BaseTool):
             output = ""
 
         import re
+
         change_points = [0.0]
         for match in re.finditer(r"pts_time:(\d+\.?\d*)", output):
             ts = float(match.group(1))
@@ -267,11 +307,13 @@ class SceneDetect(BaseTool):
         for i in range(len(change_points) - 1):
             start = change_points[i]
             end = change_points[i + 1]
-            scenes.append({
-                "index": i,
-                "start_seconds": round(start, 3),
-                "end_seconds": round(end, 3),
-                "duration_seconds": round(end - start, 3),
-            })
+            scenes.append(
+                {
+                    "index": i,
+                    "start_seconds": round(start, 3),
+                    "end_seconds": round(end, 3),
+                    "duration_seconds": round(end - start, 3),
+                }
+            )
 
         return scenes

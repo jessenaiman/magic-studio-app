@@ -135,7 +135,7 @@ Every integration also updates `docs/PROVIDERS.md`, relevant Layer 2/3 skills, r
 - Public docs verify availability, not that this account is entitled to a model. No paid generation or credential inspection was performed.
 - Before implementing, capture exact route schemas/pricing for Atlas Image 2.5/Wan, direct Eleven v4/Turbo, Ideogram Precise Edit, and HeyGen Avatar V. The HeyGen detailed Markdown page could not be fetched in this pass; its official index was readable.
 - Qwen 2.1 cloud hosting, fal v4 Turbo, and Atlas Kling 4 remain unverified. Do not invent IDs from naming conventions.
-- Compare like-for-like prompts, duration, resolution and native audio. Provider marketing rankings are not independent OpenMontage evaluations.
+- Compare like-for-like prompts, duration, resolution and native audio. Provider marketing rankings are not independent Magic Studio evaluations.
 - Run targeted adapter/selector tests first. Paid cross-provider samples require a concrete costed test batch; this planning task does not execute one.
 
 ## 6. Pull and local-work preservation

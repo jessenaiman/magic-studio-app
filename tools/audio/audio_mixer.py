@@ -35,12 +35,18 @@ class AudioMixer(BaseTool):
 
     dependencies = ["cmd:ffmpeg"]
     install_instructions = (
-        "FFmpeg is required. pydub is optional for advanced mixing:\n"
-        "pip install pydub"
+        "FFmpeg is required. pydub is optional for advanced mixing:\npip install pydub"
     )
     agent_skills = ["ffmpeg", "video-toolkit"]
 
-    capabilities = ["mix", "duck", "fade", "normalize", "extract_audio", "segmented_music"]
+    capabilities = [
+        "mix",
+        "duck",
+        "fade",
+        "normalize",
+        "extract_audio",
+        "segmented_music",
+    ]
 
     input_schema = {
         "type": "object",
@@ -113,7 +119,10 @@ class AudioMixer(BaseTool):
                 ),
                 "default": -12,
             },
-            "input_path": {"type": "string", "description": "Input for extract operation"},
+            "input_path": {
+                "type": "string",
+                "description": "Input for extract operation",
+            },
             "output_path": {"type": "string"},
             "ducking": {
                 "type": "object",
@@ -124,7 +133,10 @@ class AudioMixer(BaseTool):
                 "properties": {
                     "enabled": {"type": "boolean", "default": True},
                     "music_volume_during_speech": {
-                        "type": "number", "minimum": 0, "maximum": 1.0, "default": 0.15,
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1.0,
+                        "default": 0.15,
                     },
                     "attack_ms": {"type": "number", "default": 200},
                     "release_ms": {"type": "number", "default": 500},
@@ -197,10 +209,21 @@ class AudioMixer(BaseTool):
 
     resource_profile = ResourceProfile(cpu_cores=2, ram_mb=1024, vram_mb=0, disk_mb=500)
     idempotency_key_fields = [
-        "operation", "tracks", "ducking", "primary_audio", "secondary_audio",
-        "duck_level", "input_path", "normalize", "loudnorm_target",
-        "video_path", "music_path", "music_volume", "segments",
-        "fade_duration", "target_duration",
+        "operation",
+        "tracks",
+        "ducking",
+        "primary_audio",
+        "secondary_audio",
+        "duck_level",
+        "input_path",
+        "normalize",
+        "loudnorm_target",
+        "video_path",
+        "music_path",
+        "music_volume",
+        "segments",
+        "fade_duration",
+        "target_duration",
     ]
     side_effects = ["writes mixed audio file to output_path"]
     user_visible_verification = [
@@ -263,12 +286,18 @@ class AudioMixer(BaseTool):
             filters.append(f"afade=t=in:d={fade_in}")
         if fade_out > 0:
             duration_cmd = [
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
                 track["path"],
             ]
-            duration = float(self.run_command(duration_cmd).stdout.strip().split("\n")[0])
+            duration = float(
+                self.run_command(duration_cmd).stdout.strip().split("\n")[0]
+            )
             fade_start = max(0.0, duration - float(fade_out))
             filters.append(f"afade=t=out:st={fade_start}:d={fade_out}")
         if delay_ms > 0:
@@ -292,7 +321,9 @@ class AudioMixer(BaseTool):
             elif operation == "segmented_music":
                 result = self._segmented_music(inputs)
             else:
-                return ToolResult(success=False, error=f"Unknown operation: {operation}")
+                return ToolResult(
+                    success=False, error=f"Unknown operation: {operation}"
+                )
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -399,6 +430,7 @@ class AudioMixer(BaseTool):
             # music_volume_during_speech.  e.g. -12 dB -> 10^(-12/20) ~ 0.25
             if "duck_level" in inputs and "ducking" not in inputs:
                 import math
+
                 db = inputs["duck_level"]
                 ducking = dict(ducking)  # copy so we don't mutate caller
                 ducking.setdefault(
@@ -450,11 +482,16 @@ class AudioMixer(BaseTool):
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", speech_path,
-            "-i", music_path,
-            "-filter_complex", filter_complex,
-            "-map", "[out]",
+            "ffmpeg",
+            "-y",
+            "-i",
+            speech_path,
+            "-i",
+            music_path,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[out]",
             str(output_path),
         ]
 
@@ -482,12 +519,17 @@ class AudioMixer(BaseTool):
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
             "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", "16000",
-            "-ac", "1",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
             str(output_path),
         ]
 
@@ -541,9 +583,13 @@ class AudioMixer(BaseTool):
             try:
                 target = float(target_duration)
             except (TypeError, ValueError):
-                return ToolResult(success=False, error="target_duration must be a positive number")
+                return ToolResult(
+                    success=False, error="target_duration must be a positive number"
+                )
             if target <= 0:
-                return ToolResult(success=False, error="target_duration must be greater than zero")
+                return ToolResult(
+                    success=False, error="target_duration must be greater than zero"
+                )
 
         speech_tracks = [t for t in tracks if t.get("role") in ("speech", "primary")]
         music_tracks = [t for t in tracks if t.get("role") in ("music", "secondary")]
@@ -551,7 +597,9 @@ class AudioMixer(BaseTool):
         all_tracks = speech_tracks + music_tracks + sfx_tracks
 
         if not all_tracks:
-            return ToolResult(success=False, error="No valid tracks (need speech/music/sfx roles)")
+            return ToolResult(
+                success=False, error="No valid tracks (need speech/music/sfx roles)"
+            )
 
         # Validate all files exist
         for t in all_tracks:
@@ -573,7 +621,9 @@ class AudioMixer(BaseTool):
                 filter_parts.append(f"[{i}:a]acopy[a{i}]")
 
         # If ducking is enabled and we have both speech and music, apply sidechain
-        duck_enabled = ducking.get("enabled", True) if isinstance(ducking, dict) else bool(ducking)
+        duck_enabled = (
+            ducking.get("enabled", True) if isinstance(ducking, dict) else bool(ducking)
+        )
 
         if duck_enabled and speech_tracks and music_tracks:
             # Build ONE speech stream, then split it into two independent
@@ -638,7 +688,9 @@ class AudioMixer(BaseTool):
             # Add SFX if present
             sfx_start = len(speech_tracks) + len(music_tracks)
             if sfx_tracks:
-                sfx_labels = "".join(f"[a{i}]" for i in range(sfx_start, sfx_start + len(sfx_tracks)))
+                sfx_labels = "".join(
+                    f"[a{i}]" for i in range(sfx_start, sfx_start + len(sfx_tracks))
+                )
                 filter_parts.append(mix_label.replace("[premix]", "[pressfx]"))
                 filter_parts.append(
                     f"[pressfx]{sfx_labels}amix=inputs={1 + len(sfx_tracks)}:duration=longest:normalize=0[premix]"
@@ -737,9 +789,13 @@ class AudioMixer(BaseTool):
 
         # Get video duration
         dur_cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             video_path,
         ]
         total_dur = float(self.run_command(dur_cmd).stdout.strip().split("\n")[0])
@@ -776,15 +832,26 @@ class AudioMixer(BaseTool):
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", video_path,
-            "-stream_loop", "-1",
-            "-i", music_path,
-            "-filter_complex", filter_complex,
-            "-map", "0:v",
-            "-map", "[aout]",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k",
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-stream_loop",
+            "-1",
+            "-i",
+            music_path,
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "0:v",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
             str(output_path),
         ]
 

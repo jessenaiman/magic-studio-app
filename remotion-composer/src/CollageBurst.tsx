@@ -88,8 +88,8 @@ const OpeningText: React.FC<{
   const gold = "rgba(255, 214, 150, 0.9)";
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         pointerEvents: "none",
         display: "flex",
         flexDirection: "column",
@@ -98,25 +98,25 @@ const OpeningText: React.FC<{
         paddingTop: "8%",
         opacity,
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           transform: `translateY(${y}px)`,
           textAlign: "center",
           filter: `drop-shadow(0 0 22px rgba(255, 200, 120, 0.3))`,
         }}
-      >
-        {/* Decorative rule */}
-        <div
-          style={{
+          >
+              {/* Decorative rule */}
+              <div
+                  style={{
             width: 160 * lineProgress,
             height: 1.5,
             background: `linear-gradient(90deg, rgba(245,231,197,0) 0%, ${gold} 50%, rgba(245,231,197,0) 100%)`,
             margin: "0 auto 28px",
           }}
-        />
-        <div
-          style={{
+              />
+              <div
+                  style={{
             fontFamily: playfairFamily,
             fontWeight: 400,
             fontSize: 46,
@@ -125,11 +125,11 @@ const OpeningText: React.FC<{
             lineHeight: 1.35,
             textShadow: "0 2px 18px rgba(0,0,0,0.7)",
           }}
-        >
-          {lineOne}
-        </div>
-        <div
-          style={{
+              >
+                  {lineOne}
+              </div>
+              <div
+                  style={{
             fontFamily: playfairItalic,
             fontStyle: "italic",
             fontWeight: 400,
@@ -140,12 +140,12 @@ const OpeningText: React.FC<{
             marginTop: 14,
             textShadow: "0 2px 22px rgba(0,0,0,0.75)",
           }}
-        >
-          {lineTwo}
-        </div>
-        {/* Small jewel divider */}
-        <div
-          style={{
+              >
+                  {lineTwo}
+              </div>
+              {/* Small jewel divider */}
+              <div
+                  style={{
             marginTop: 30,
             display: "flex",
             justifyContent: "center",
@@ -153,33 +153,33 @@ const OpeningText: React.FC<{
             gap: 14,
             opacity: lineProgress,
           }}
-        >
-          <div
-            style={{
+              >
+                  <div
+                      style={{
               width: 60,
               height: 1,
               background: `linear-gradient(90deg, rgba(245,231,197,0) 0%, ${gold} 100%)`,
             }}
-          />
-          <div
-            style={{
+                  />
+                  <div
+                      style={{
               width: 6,
               height: 6,
               borderRadius: 999,
               background: gold,
               boxShadow: `0 0 14px ${gold}`,
             }}
-          />
-          <div
-            style={{
+                  />
+                  <div
+                      style={{
               width: 60,
               height: 1,
               background: `linear-gradient(90deg, ${gold} 0%, rgba(245,231,197,0) 100%)`,
             }}
-          />
-        </div>
-      </div>
-    </AbsoluteFill>
+                  />
+              </div>
+          </div>
+      </AbsoluteFill>
   );
 };
 
@@ -195,14 +195,14 @@ const CardFlash: React.FC<{ atFrame: number; strength?: number }> = ({
   const t = (frame - atFrame) / 6;
   const opacity = Math.max(0, (1 - t) * strength);
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         backgroundColor: "white",
         opacity,
         pointerEvents: "none",
         mixBlendMode: "screen",
       }}
-    />
+      />
   );
 };
 
@@ -335,35 +335,35 @@ const CollageCard: React.FC<{ clip: CollageClip; frameW: number; frameH: number 
 
   const cardContent =
     clip.kind === "image" ? (
-      <Img
-        src={resolveAsset(clip.src)}
-        style={{
+        <Img
+            src={resolveAsset(clip.src)}
+            style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
           display: "block",
         }}
-      />
+        />
     ) : (
-      <Sequence from={inFrame} layout="none">
-        <OffthreadVideo
-          src={resolveAsset(clip.src)}
-          startFrom={startFromFrames}
-          muted
-          playbackRate={1}
-          style={{
+        <Sequence from={inFrame} layout="none">
+            <OffthreadVideo
+                src={resolveAsset(clip.src)}
+                startFrom={startFromFrames}
+                muted
+                playbackRate={1}
+                style={{
             width: "100%",
             height: "100%",
             objectFit: "cover",
             display: "block",
           }}
-        />
-      </Sequence>
+            />
+        </Sequence>
     );
 
   return (
-    <div
-      style={{
+      <div
+          style={{
         position: "absolute",
         left: cx - w / 2,
         top: cy - h / 2,
@@ -375,9 +375,9 @@ const CollageCard: React.FC<{ clip: CollageClip; frameW: number; frameH: number 
         filter: blur > 0 ? `blur(${blur}px)` : undefined,
         willChange: "transform",
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           position: "absolute",
           inset: 0,
           borderRadius: 16,
@@ -389,29 +389,29 @@ const CollageCard: React.FC<{ clip: CollageClip; frameW: number; frameH: number 
           backgroundColor: "#FAFAF5",
           clipPath: clipPathCss,
         }}
-      >
-        {cardContent}
-        {/* Subtle inner vignette on hero cards for depth */}
-        {clip.hero && (
-          <AbsoluteFill
-            style={{
+          >
+              {cardContent}
+              {/* Subtle inner vignette on hero cards for depth */}
+              {clip.hero && (
+              <AbsoluteFill
+                  style={{
               pointerEvents: "none",
               background:
                 "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.4) 100%)",
             }}
-          />
+              />
         )}
-        {/* Warm film edge glow for hero */}
-        {clip.hero && (
-          <AbsoluteFill
-            style={{
+              {/* Warm film edge glow for hero */}
+              {clip.hero && (
+              <AbsoluteFill
+                  style={{
               pointerEvents: "none",
               boxShadow: `inset 0 0 60px ${glowColor}`,
             }}
-          />
+              />
         )}
+          </div>
       </div>
-    </div>
   );
 };
 
@@ -462,59 +462,59 @@ export const CollageBurst: React.FC<CollageBurstProps> = ({
   }
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
-      {/* ---------- Hazy muted background ---------- */}
-      {bgVisible && (
-        <AbsoluteFill
-          style={{
+      <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
+          {/* ---------- Hazy muted background ---------- */}
+          {bgVisible && (
+          <AbsoluteFill
+              style={{
             transform: `scale(${bgZoom})`,
             filter: "saturate(0.35) brightness(0.55) contrast(0.95) blur(6px)",
             opacity: 0.55,
           }}
-        >
-          <OffthreadVideo
-            src={resolveAsset(backgroundSrc)}
-            startFrom={Math.round(backgroundInSeconds * fps)}
-            muted
-            style={{
+          >
+              <OffthreadVideo
+                  src={resolveAsset(backgroundSrc)}
+                  startFrom={Math.round(backgroundInSeconds * fps)}
+                  muted
+                  style={{
               width: "100%",
               height: "100%",
               objectFit: "cover",
               display: "block",
             }}
-          />
-        </AbsoluteFill>
+              />
+          </AbsoluteFill>
       )}
 
-      {/* Dirty-gold / grey atmospheric wash layered over bg */}
-      {bgVisible && (
-        <AbsoluteFill
-          style={{
+          {/* Dirty-gold / grey atmospheric wash layered over bg */}
+          {bgVisible && (
+          <AbsoluteFill
+              style={{
             pointerEvents: "none",
             background:
               "radial-gradient(ellipse at 50% 40%, rgba(180,150,110,0.18) 0%, rgba(30,28,24,0.75) 70%, rgba(5,5,5,0.95) 100%)",
             mixBlendMode: "multiply",
           }}
-        />
+          />
       )}
 
-      {/* Grainy noise via CSS — subtle film texture */}
-      {bgVisible && (
-        <AbsoluteFill
-          style={{
+          {/* Grainy noise via CSS — subtle film texture */}
+          {bgVisible && (
+          <AbsoluteFill
+              style={{
             pointerEvents: "none",
             opacity: 0.22,
             background:
               "repeating-conic-gradient(rgba(255,255,255,0.04) 0deg 1deg, rgba(0,0,0,0) 1deg 2deg)",
             mixBlendMode: "overlay",
           }}
-        />
+          />
       )}
 
-      {/* ---------- Curtain ---------- */}
-      <AbsoluteFill>
-        <div
-          style={{
+          {/* ---------- Curtain ---------- */}
+          <AbsoluteFill>
+              <div
+                  style={{
             position: "absolute",
             top: 0,
             left: 0,
@@ -524,9 +524,9 @@ export const CollageBurst: React.FC<CollageBurstProps> = ({
             transform: `translateX(${-panelShift}px)`,
             boxShadow: "inset -30px 0 60px rgba(0,0,0,0.9)",
           }}
-        />
-        <div
-          style={{
+              />
+              <div
+                  style={{
             position: "absolute",
             top: 0,
             right: 0,
@@ -536,9 +536,9 @@ export const CollageBurst: React.FC<CollageBurstProps> = ({
             transform: `translateX(${panelShift}px)`,
             boxShadow: "inset 30px 0 60px rgba(0,0,0,0.9)",
           }}
-        />
-        <div
-          style={{
+              />
+              <div
+                  style={{
             position: "absolute",
             top: 0,
             left: "50%",
@@ -551,43 +551,43 @@ export const CollageBurst: React.FC<CollageBurstProps> = ({
             filter: `blur(${2 + 6 * seamGlow}px)`,
             boxShadow: `0 0 ${50 + 80 * seamGlow}px rgba(255, 200, 120, 0.95)`,
           }}
-        />
-      </AbsoluteFill>
+              />
+          </AbsoluteFill>
 
-      {/* ---------- Opening text (pre-reveal, on black) ---------- */}
-      <OpeningText
-        lineOne="When you realize your daughters"
-        lineTwo="deserve these lines"
-        fadeInStart={Math.round(0.3 * fps)}
-        fadeInEnd={Math.round(0.9 * fps)}
-        fadeOutStart={Math.round(1.8 * fps)}
-        fadeOutEnd={Math.round(2.6 * fps)}
-      />
+          {/* ---------- Opening text (pre-reveal, on black) ---------- */}
+          <OpeningText
+              lineOne="When you realize your daughters"
+              lineTwo="deserve these lines"
+              fadeInStart={Math.round(0.3 * fps)}
+              fadeInEnd={Math.round(0.9 * fps)}
+              fadeOutStart={Math.round(1.8 * fps)}
+              fadeOutEnd={Math.round(2.6 * fps)}
+          />
 
-      {/* ---------- Foreground shake wrapper ---------- */}
-      <AbsoluteFill style={{ transform: `translate(${shakeX}px, ${shakeY}px)` }}>
-        {clips.map((clip, i) => (
-          <CollageCard key={i} clip={clip} frameW={width} frameH={height} />
+          {/* ---------- Foreground shake wrapper ---------- */}
+          <AbsoluteFill style={{ transform: `translate(${shakeX}px, ${shakeY}px)` }}>
+              {clips.map((clip, i) => (
+                  <CollageCard key={i} clip={clip} frameW={width} frameH={height} />
         ))}
-      </AbsoluteFill>
+          </AbsoluteFill>
 
-      {/* ---------- Flash bursts layered on each clip entry ---------- */}
-      {clips.map((c, i) => (
-        <CardFlash
-          key={`f${i}`}
-          atFrame={c.inSeconds * fps}
-          strength={c.hero ? 0.55 : 0.22}
-        />
+          {/* ---------- Flash bursts layered on each clip entry ---------- */}
+          {clips.map((c, i) => (
+              <CardFlash
+                  key={`f${i}`}
+                  atFrame={c.inSeconds * fps}
+                  strength={c.hero ? 0.55 : 0.22}
+              />
       ))}
 
-      {/* Frame top/bottom vignette for focus */}
-      <AbsoluteFill
-        style={{
+          {/* Frame top/bottom vignette for focus */}
+          <AbsoluteFill
+              style={{
           background:
             "linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 14%, rgba(0,0,0,0) 86%, rgba(0,0,0,0.5) 100%)",
           pointerEvents: "none",
         }}
-      />
-    </AbsoluteFill>
+          />
+      </AbsoluteFill>
   );
 };

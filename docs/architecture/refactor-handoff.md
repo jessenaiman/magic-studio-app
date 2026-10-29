@@ -17,7 +17,7 @@ PRs: [#28 — shared refactor](https://github.com/ontariodungeons/animation-craf
 
 ## Style consolidation and scope
 
-Claude's page design is retained. Pixel and hex literals outside root tokens, direct visual style writes and style attributes are zero; selector count is below the original target. Computed-style comparisons found no changes to displayed lyrics/animation components. Historical whole-app source-line targets remain exceeded; they are recorded in `evidence/refactor-acceptance.json`, not represented as passed. Further page rewriting to reduce those totals is outside Jesse's instruction to leave the UI to Claude.
+Claude's page design is retained. Pixel and hex literals outside root tokens, direct visual style writes and style attributes are zero; selector count is below the original target. Computed-style comparisons found no changes to displayed lyrics/animation components. Historical whole-app source-line targets remain exceeded; they are recorded in `evidence/refactor-acceptance.json`, not represented as passed.
 
 No intake workflow, animation engine or new timeline was rewritten. Lyric-tag polish and the Pterodactyl creative spike remain Claude's work. No named TUI handoff recipient has been supplied; the durable interface is [tui-contract.md](tui-contract.md).
 

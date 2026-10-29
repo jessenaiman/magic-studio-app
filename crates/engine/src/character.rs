@@ -1,7 +1,7 @@
 //! Character folder (`assets/characters/<id>/character.magic`) retrieval, import, and angle/pose configuration.
 
-use crate::{EngineError, Result};
 use crate::session::Session;
+use crate::{EngineError, Result};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -17,7 +17,10 @@ pub fn find_character_magic_path(
     if let Some(pa) = s.project_assets.iter().find(|a| a.id == id)
         && let Some(p) = &pa.path
     {
-        if p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("magic")) {
+        if p.is_file()
+            && p.extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("magic"))
+        {
             return Some(p.clone());
         }
         let cand = p.parent()?.join("character.magic");
@@ -25,7 +28,10 @@ pub fn find_character_magic_path(
             return Some(cand);
         }
     }
-    let cand = project_root?.join("assets/characters").join(id).join("character.magic");
+    let cand = project_root?
+        .join("assets/characters")
+        .join(id)
+        .join("character.magic");
     cand.is_file().then_some(cand)
 }
 
@@ -35,7 +41,11 @@ fn resolve_rel(base_root: &Path, char_dir: &Path, rel: &str) -> String {
         return p.to_string_lossy().into_owned();
     }
     let from_root = base_root.join(&p);
-    let resolved = if from_root.exists() { from_root } else { char_dir.join(p) };
+    let resolved = if from_root.exists() {
+        from_root
+    } else {
+        char_dir.join(p)
+    };
     resolved.to_string_lossy().into_owned()
 }
 
@@ -49,7 +59,11 @@ fn resolve_character_map_paths(doc: &mut Value, base_root: &Path, char_dir: &Pat
     }
     if let Some(angles) = doc.get_mut("angles").and_then(Value::as_object_mut) {
         for a_val in angles.values_mut() {
-            if let Some(img) = a_val.get("image").and_then(Value::as_str).map(str::to_owned) {
+            if let Some(img) = a_val
+                .get("image")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+            {
                 a_val["image_path"] = json!(resolve_rel(base_root, char_dir, &img));
             }
             if let Some(rig_p) = a_val.get("rig").and_then(Value::as_str).map(str::to_owned) {
@@ -59,7 +73,11 @@ fn resolve_character_map_paths(doc: &mut Value, base_root: &Path, char_dir: &Pat
     }
     if let Some(poses) = doc.get_mut("poses").and_then(Value::as_object_mut) {
         for p_val in poses.values_mut() {
-            if let Some(img) = p_val.get("image").and_then(Value::as_str).map(str::to_owned) {
+            if let Some(img) = p_val
+                .get("image")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+            {
                 p_val["image_path"] = json!(resolve_rel(base_root, char_dir, &img));
             }
         }
@@ -80,7 +98,11 @@ pub fn load_character_config(s: &Session, id: &str, project_root: Option<&Path>)
     let base_root = project_root.unwrap_or(char_dir);
     doc["config_path"] = json!(cfg_path);
     doc["folder_path"] = json!(char_dir);
-    if let Some(ref_str) = doc.get("reference").and_then(Value::as_str).map(str::to_owned) {
+    if let Some(ref_str) = doc
+        .get("reference")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    {
         doc["reference_path"] = json!(resolve_rel(base_root, char_dir, &ref_str));
     }
     resolve_character_map_paths(&mut doc, base_root, char_dir);
@@ -149,8 +171,16 @@ fn update_character_manifest(
             "folder": format!("assets/characters/{id}"),
         })
     };
-    let rel_dest = dest.strip_prefix(proj_dir).unwrap_or(dest).to_string_lossy().into_owned();
-    let rel_draft = draft_copy.strip_prefix(proj_dir).unwrap_or(draft_copy).to_string_lossy().into_owned();
+    let rel_dest = dest
+        .strip_prefix(proj_dir)
+        .unwrap_or(dest)
+        .to_string_lossy()
+        .into_owned();
+    let rel_draft = draft_copy
+        .strip_prefix(proj_dir)
+        .unwrap_or(draft_copy)
+        .to_string_lossy()
+        .into_owned();
     doc["original_draft"] = json!(rel_draft);
     if !doc["drafts"].is_array() {
         doc["drafts"] = json!([]);
@@ -184,7 +214,10 @@ fn parse_import_params(s: &Session, params: &Value) -> Result<(String, PathBuf, 
         .map(str::to_owned)
         .or_else(|| {
             let proj_dir = crate::workshop::project_dir(s).ok()?;
-            let cand = proj_dir.join("assets/characters").join(&id).join("reference.png");
+            let cand = proj_dir
+                .join("assets/characters")
+                .join(&id)
+                .join("reference.png");
             cand.is_file().then(|| cand.to_string_lossy().into_owned())
         })
         .ok_or_else(|| invalid("Specify path=<image_or_sheet>"))?;
@@ -196,7 +229,10 @@ fn parse_import_params(s: &Session, params: &Value) -> Result<(String, PathBuf, 
         .to_owned();
     let source = crate::workspace::resolve_workspace_path(s, &raw_path);
     if !source.is_file() {
-        return Err(invalid(format!("Import file does not exist: {}", source.display())));
+        return Err(invalid(format!(
+            "Import file does not exist: {}",
+            source.display()
+        )));
     }
     Ok((id, source, role))
 }
@@ -208,7 +244,10 @@ pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
     std::fs::create_dir_all(char_dir.join("drafts"))?;
     std::fs::create_dir_all(char_dir.join("sheets"))?;
 
-    let fname = source.file_name().and_then(|n| n.to_str()).unwrap_or("imported.png");
+    let fname = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("imported.png");
     let dest = target_dest(&char_dir, &role, fname);
     if source != dest {
         std::fs::copy(&source, &dest)?;
@@ -218,7 +257,15 @@ pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
         let _ = std::fs::copy(&source, &draft_copy);
     }
     let cfg_path = char_dir.join("character.magic");
-    update_character_manifest(&cfg_path, &proj_dir, &id, &role, &dest, &draft_copy, &source)?;
+    update_character_manifest(
+        &cfg_path,
+        &proj_dir,
+        &id,
+        &role,
+        &dest,
+        &draft_copy,
+        &source,
+    )?;
 
     if !s.project_assets.iter().any(|a| a.id == id) {
         let _ = crate::project::cmd_project_add_asset(
@@ -239,30 +286,56 @@ pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 fn apply_pose_and_angle_params(doc: &mut Value, params: &Value) {
-    if let Some(pose) = params.get("pose").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+    if let Some(pose) = params
+        .get("pose")
+        .and_then(Value::as_str)
+        .filter(|p| !p.is_empty())
+    {
         doc["active_pose"] = json!(pose);
         if params.get("angle").is_none()
-            && let Some(pa) = doc.pointer(&format!("/poses/{pose}/angle")).and_then(Value::as_str)
+            && let Some(pa) = doc
+                .pointer(&format!("/poses/{pose}/angle"))
+                .and_then(Value::as_str)
         {
             doc["active_angle"] = json!(pa.to_owned());
         }
         if params.get("direction").is_none()
-            && let Some(pd) = doc.pointer(&format!("/poses/{pose}/direction")).and_then(Value::as_str)
+            && let Some(pd) = doc
+                .pointer(&format!("/poses/{pose}/direction"))
+                .and_then(Value::as_str)
         {
             doc["direction"] = json!(pd.to_owned());
         }
     }
-    if let Some(angle) = params.get("angle").and_then(Value::as_str).filter(|a| !a.is_empty()) {
+    if let Some(angle) = params
+        .get("angle")
+        .and_then(Value::as_str)
+        .filter(|a| !a.is_empty())
+    {
         doc["active_angle"] = json!(angle);
         if params.get("direction").is_none() {
-            let dir = if angle.contains("left") { "left" } else { "right" };
+            let dir = if angle.contains("left") {
+                "left"
+            } else {
+                "right"
+            };
             doc["direction"] = json!(dir);
         }
     }
-    if let Some(dir) = params.get("direction").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+    if let Some(dir) = params
+        .get("direction")
+        .and_then(Value::as_str)
+        .filter(|d| !d.is_empty())
+    {
         doc["direction"] = json!(dir);
         if params.get("angle").is_none() && params.get("pose").is_none() {
-            let next = if dir == "left" { "three_quarter_left" } else if dir == "right" { "three_quarter_right" } else { "front" };
+            let next = if dir == "left" {
+                "three_quarter_left"
+            } else if dir == "right" {
+                "three_quarter_right"
+            } else {
+                "front"
+            };
             doc["active_angle"] = json!(next);
         }
     }
@@ -299,8 +372,11 @@ pub fn cmd_character_configure(s: &mut Session, params: &Value) -> Result<Value>
         .or_else(|| s.active_asset.clone())
         .or_else(|| s.project_assets.first().map(|a| a.id.clone()))
         .ok_or_else(|| invalid("Specify character=<id>"))?;
-    let cfg_path = find_character_magic_path(s, &id, project_root.as_deref())
-        .ok_or_else(|| invalid(format!("Character '{id}' does not have a character.magic file")))?;
+    let cfg_path = find_character_magic_path(s, &id, project_root.as_deref()).ok_or_else(|| {
+        invalid(format!(
+            "Character '{id}' does not have a character.magic file"
+        ))
+    })?;
     if !s.project_assets.iter().any(|a| a.id == id) {
         let _ = crate::project::cmd_project_add_asset(
             s,
@@ -319,7 +395,10 @@ pub fn cmd_character_configure(s: &mut Session, params: &Value) -> Result<Value>
     if named_cfg.is_file() {
         let _ = std::fs::write(&named_cfg, &encoded);
     }
-    let active_angle = doc.get("active_angle").and_then(Value::as_str).unwrap_or("three_quarter_right");
+    let active_angle = doc
+        .get("active_angle")
+        .and_then(Value::as_str)
+        .unwrap_or("three_quarter_right");
     sync_angle_rig_files(char_dir, active_angle);
 
     crate::project::cmd_project_load_asset(s, &json!({"id": id, "reload": true}))?;
@@ -386,7 +465,11 @@ pub fn eval_theatre_rotation_at(sheet: &Value, part_id: &str, t: f64) -> f64 {
                 let (t0, v0) = w[0];
                 let (t1, v1) = w[1];
                 if t <= t1 {
-                    let u = if t1 > t0 { ((t - t0) / (t1 - t0)).clamp(0.0, 1.0) } else { 1.0 };
+                    let u = if t1 > t0 {
+                        ((t - t0) / (t1 - t0)).clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    };
                     let s = u * u * (3.0 - 2.0 * u);
                     return v0 + (v1 - v0) * s;
                 }

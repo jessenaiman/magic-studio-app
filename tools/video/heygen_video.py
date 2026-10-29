@@ -18,7 +18,12 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
-from tools.video._shared import HEYGEN_PROVIDERS, estimate_quality_cost, estimate_speed_runtime, generate_heygen_video
+from tools.video._shared import (
+    HEYGEN_PROVIDERS,
+    estimate_quality_cost,
+    estimate_speed_runtime,
+    generate_heygen_video,
+)
 
 
 class HeyGenVideo(BaseTool):
@@ -38,7 +43,14 @@ class HeyGenVideo(BaseTool):
         "Get a key at https://app.heygen.com/settings/api"
     )
     fallback = "wan_video"
-    fallback_tools = ["wan_video", "hunyuan_video", "ltx_video_local", "cogvideo_video", "ltx_video_modal", "image_selector"]
+    fallback_tools = [
+        "wan_video",
+        "hunyuan_video",
+        "ltx_video_local",
+        "cogvideo_video",
+        "ltx_video_modal",
+        "image_selector",
+    ]
     agent_skills = ["ai-video-gen", "create-video"]
 
     capabilities = ["text_to_video", "image_to_video", "provider_selection"]
@@ -57,7 +69,8 @@ class HeyGenVideo(BaseTool):
         "free local-first production",
     ]
     provider_matrix = {
-        key: {"tool": "heygen_video", **value, "mode": "api"} for key, value in HEYGEN_PROVIDERS.items()
+        key: {"tool": "heygen_video", **value, "mode": "api"}
+        for key, value in HEYGEN_PROVIDERS.items()
     }
 
     input_schema = {
@@ -86,31 +99,53 @@ class HeyGenVideo(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True)
-    retry_policy = RetryPolicy(max_retries=2, backoff_seconds=10.0, retryable_errors=["rate_limit", "timeout", "server_error"])
+    resource_profile = ResourceProfile(
+        cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True
+    )
+    retry_policy = RetryPolicy(
+        max_retries=2,
+        backoff_seconds=10.0,
+        retryable_errors=["rate_limit", "timeout", "server_error"],
+    )
     idempotency_key_fields = ["prompt", "provider_variant", "aspect_ratio"]
     side_effects = ["writes video file to output_path", "calls HeyGen API"]
-    user_visible_verification = ["Watch generated clip for motion quality and prompt adherence"]
+    user_visible_verification = [
+        "Watch generated clip for motion quality and prompt adherence"
+    ]
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if os.environ.get("HEYGEN_API_KEY") else ToolStatus.UNAVAILABLE
+        return (
+            ToolStatus.AVAILABLE
+            if os.environ.get("HEYGEN_API_KEY")
+            else ToolStatus.UNAVAILABLE
+        )
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
-        meta = HEYGEN_PROVIDERS.get(inputs.get("provider_variant", "veo_3_1"), HEYGEN_PROVIDERS["veo_3_1"])
+        meta = HEYGEN_PROVIDERS.get(
+            inputs.get("provider_variant", "veo_3_1"), HEYGEN_PROVIDERS["veo_3_1"]
+        )
         return estimate_quality_cost(meta["quality"])
 
     def estimate_runtime(self, inputs: dict[str, Any]) -> float:
-        meta = HEYGEN_PROVIDERS.get(inputs.get("provider_variant", "veo_3_1"), HEYGEN_PROVIDERS["veo_3_1"])
+        meta = HEYGEN_PROVIDERS.get(
+            inputs.get("provider_variant", "veo_3_1"), HEYGEN_PROVIDERS["veo_3_1"]
+        )
         return estimate_speed_runtime(meta["speed"])
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
-            return ToolResult(success=False, error="HeyGen video generation is unavailable. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="HeyGen video generation is unavailable. "
+                + self.install_instructions,
+            )
         start = time.time()
         try:
             result = generate_heygen_video(inputs)
         except Exception as exc:
-            return ToolResult(success=False, error=f"HeyGen video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"HeyGen video generation failed: {exc}"
+            )
         result.duration_seconds = round(time.time() - start, 2)
         result.cost_usd = self.estimate_cost(inputs)
         return result

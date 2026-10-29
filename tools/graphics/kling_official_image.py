@@ -80,10 +80,26 @@ class KlingOfficialImage(BaseTool):
         "properties": {
             "prompt": {"type": "string"},
             "negative_prompt": {"type": "string"},
-            "operation": {"type": "string", "enum": ["generate", "omni"], "default": "generate"},
-            "generation_mode": {"type": "string", "enum": ["generate", "edit"], "default": "generate"},
-            "api_family": {"type": "string", "enum": ["generation", "omni"], "default": "generation"},
-            "model_name": {"type": "string", "enum": IMAGE_MODELS, "default": "kling-v3"},
+            "operation": {
+                "type": "string",
+                "enum": ["generate", "omni"],
+                "default": "generate",
+            },
+            "generation_mode": {
+                "type": "string",
+                "enum": ["generate", "edit"],
+                "default": "generate",
+            },
+            "api_family": {
+                "type": "string",
+                "enum": ["generation", "omni"],
+                "default": "generation",
+            },
+            "model_name": {
+                "type": "string",
+                "enum": IMAGE_MODELS,
+                "default": "kling-v3",
+            },
             "image_url": {"type": "string"},
             "image_path": {"type": "string"},
             "image_urls": {"type": "array", "items": {"type": "string"}},
@@ -92,10 +108,22 @@ class KlingOfficialImage(BaseTool):
             "image_reference": {"type": "string", "enum": IMAGE_REFERENCE_TYPES},
             "image_fidelity": {"type": "number", "default": 0.5},
             "human_fidelity": {"type": "number", "default": 0.45},
-            "resolution": {"type": "string", "enum": IMAGE_RESOLUTIONS, "default": "1k"},
-            "aspect_ratio": {"type": "string", "enum": IMAGE_ASPECT_RATIOS, "default": "16:9"},
+            "resolution": {
+                "type": "string",
+                "enum": IMAGE_RESOLUTIONS,
+                "default": "1k",
+            },
+            "aspect_ratio": {
+                "type": "string",
+                "enum": IMAGE_ASPECT_RATIOS,
+                "default": "16:9",
+            },
             "n": {"type": "integer", "default": 1},
-            "result_type": {"type": "string", "enum": IMAGE_RESULT_TYPES, "default": "single"},
+            "result_type": {
+                "type": "string",
+                "enum": IMAGE_RESULT_TYPES,
+                "default": "single",
+            },
             "series_amount": {"type": "string"},
             "element_list": {"type": "array"},
             "watermark": {"type": "boolean", "default": False},
@@ -146,7 +174,9 @@ class KlingOfficialImage(BaseTool):
         "paid remote generation via official Kling API",
         "writes image file(s) to output_path",
     ]
-    user_visible_verification = ["Inspect generated image for quality, prompt adherence, and reference fidelity"]
+    user_visible_verification = [
+        "Inspect generated image for quality, prompt adherence, and reference fidelity"
+    ]
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         n = int(inputs.get("n", 1) or 1)
@@ -163,7 +193,10 @@ class KlingOfficialImage(BaseTool):
             if amount and str(amount).isdigit():
                 base *= max(int(str(amount)), 1)
         if api_family == "omni":
-            reference_count = sum(len(inputs.get(key) or []) for key in ("image_list", "image_urls", "image_paths", "element_list"))
+            reference_count = sum(
+                len(inputs.get(key) or [])
+                for key in ("image_list", "image_urls", "image_paths", "element_list")
+            )
             if inputs.get("image_url") or inputs.get("image_path"):
                 reference_count += 1
             base *= 1 + (0.08 * reference_count)
@@ -178,7 +211,7 @@ class KlingOfficialImage(BaseTool):
             {
                 "paid_api": True,
                 "cost_estimate_confidence": "low",
-                "cost_estimate_basis": "Conservative OpenMontage estimate; official account usage reconciliation is planned for Phase 2.",
+                "cost_estimate_basis": "Conservative MagicStudio estimate; official account usage reconciliation is planned for Phase 2.",
             }
         )
         return result
@@ -202,7 +235,13 @@ class KlingOfficialImage(BaseTool):
                 poll_interval=float(inputs.get("poll_interval", 3.0)),
             )
             paths = self._download_images(client, outputs, inputs)
-        except (KlingAPIError, TimeoutError, ValueError, KeyError, FileNotFoundError) as exc:
+        except (
+            KlingAPIError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            FileNotFoundError,
+        ) as exc:
             data: dict[str, Any] = {"provider": self.provider}
             if isinstance(exc, KlingAPIError):
                 data.update(
@@ -213,9 +252,17 @@ class KlingOfficialImage(BaseTool):
                     }
                 )
                 data["account_usage_diagnostic"] = account_usage_hint_for_error(exc)
-            return ToolResult(success=False, data=data, error=f"Kling official image generation failed: {exc}")
+            return ToolResult(
+                success=False,
+                data=data,
+                error=f"Kling official image generation failed: {exc}",
+            )
         except Exception as exc:
-            return ToolResult(success=False, data={"provider": self.provider}, error=f"Kling official image generation failed: {exc}")
+            return ToolResult(
+                success=False,
+                data={"provider": self.provider},
+                error=f"Kling official image generation failed: {exc}",
+            )
 
         return ToolResult(
             success=True,
@@ -256,7 +303,9 @@ class KlingOfficialImage(BaseTool):
         prompt = self._prompt(inputs)
         model_name = str(inputs.get("model_name") or "kling-v3")
         if model_name not in IMAGE_GENERATION_MODELS:
-            raise ValueError(f"model_name {model_name!r} is not supported for api_family=generation")
+            raise ValueError(
+                f"model_name {model_name!r} is not supported for api_family=generation"
+            )
         payload: dict[str, Any] = {
             "model_name": model_name,
             "prompt": prompt,
@@ -265,7 +314,9 @@ class KlingOfficialImage(BaseTool):
             "aspect_ratio": inputs.get("aspect_ratio", "16:9"),
         }
         if len(prompt) > 2500:
-            raise ValueError("prompt exceeds Kling image generation limit of 2500 characters")
+            raise ValueError(
+                "prompt exceeds Kling image generation limit of 2500 characters"
+            )
         if inputs.get("negative_prompt"):
             payload["negative_prompt"] = inputs["negative_prompt"]
         image = normalize_image_input(inputs.get("image_url"), inputs.get("image_path"))
@@ -287,16 +338,22 @@ class KlingOfficialImage(BaseTool):
             "api_family": "generation",
             "operation": "generate",
             "model": payload["model_name"],
-            "references_used": self._reference_metadata_from_generation_payload(payload),
+            "references_used": self._reference_metadata_from_generation_payload(
+                payload
+            ),
             "element_ids": element_ids(payload.get("element_list")),
         }
 
     def _build_omni_request(self, inputs: dict[str, Any]) -> dict[str, Any]:
         model_name = str(inputs.get("model_name") or "kling-image-o1")
         if model_name not in OMNI_IMAGE_MODELS:
-            raise ValueError(f"model_name {model_name!r} is not supported for api_family=omni")
+            raise ValueError(
+                f"model_name {model_name!r} is not supported for api_family=omni"
+            )
         image_items, references_used = self._normalize_omni_image_list(inputs)
-        prompt, prompt_references = build_image_prompt_references(self._prompt(inputs), image_items)
+        prompt, prompt_references = build_image_prompt_references(
+            self._prompt(inputs), image_items
+        )
         references_used = prompt_references or references_used
         elements = normalize_element_list(inputs.get("element_list"))
         payload: dict[str, Any] = {
@@ -332,10 +389,14 @@ class KlingOfficialImage(BaseTool):
         image_list: list[dict[str, Any]] = []
         references_used: list[dict[str, Any]] = []
 
-        def add_image(value: str | None, *, source: str | None, source_type: str) -> None:
+        def add_image(
+            value: str | None, *, source: str | None, source_type: str
+        ) -> None:
             if not value:
                 return
-            image_list.append({"image": value, "source": source or value, "source_type": source_type})
+            image_list.append(
+                {"image": value, "source": source or value, "source_type": source_type}
+            )
             references_used.append(
                 {
                     "kind": "image",
@@ -348,25 +409,41 @@ class KlingOfficialImage(BaseTool):
         for item in inputs.get("image_list") or []:
             if not isinstance(item, dict):
                 raise ValueError("image_list items must be objects")
-            source = item.get("image") or item.get("image_url") or item.get("image_path")
-            value = normalize_image_input(item.get("image") or item.get("image_url"), item.get("image_path"))
+            source = (
+                item.get("image") or item.get("image_url") or item.get("image_path")
+            )
+            value = normalize_image_input(
+                item.get("image") or item.get("image_url"), item.get("image_path")
+            )
             if not value:
-                raise ValueError("image_list items must include image, image_url, or image_path")
+                raise ValueError(
+                    "image_list items must include image, image_url, or image_path"
+                )
             add_image(value, source=source, source_type="image_list")
         for url in inputs.get("image_urls") or []:
-            add_image(normalize_image_input(url=url), source=url, source_type="image_urls")
+            add_image(
+                normalize_image_input(url=url), source=url, source_type="image_urls"
+            )
         for path in inputs.get("image_paths") or []:
-            add_image(normalize_image_input(path=path), source=str(path), source_type="image_paths")
+            add_image(
+                normalize_image_input(path=path),
+                source=str(path),
+                source_type="image_paths",
+            )
         if inputs.get("image_url") or inputs.get("image_path"):
             add_image(
-                normalize_image_input(inputs.get("image_url"), inputs.get("image_path")),
+                normalize_image_input(
+                    inputs.get("image_url"), inputs.get("image_path")
+                ),
                 source=inputs.get("image_url") or inputs.get("image_path"),
                 source_type="image",
             )
 
         return image_list, references_used
 
-    def _download_images(self, client: KlingClient, outputs: list[dict[str, Any]], inputs: dict[str, Any]) -> list[Path]:
+    def _download_images(
+        self, client: KlingClient, outputs: list[dict[str, Any]], inputs: dict[str, Any]
+    ) -> list[Path]:
         if not outputs:
             raise ValueError("Kling image response contained no images")
         base_path = Path(inputs.get("output_path", "kling_official_image.png"))
@@ -374,7 +451,9 @@ class KlingOfficialImage(BaseTool):
         for index, item in enumerate(outputs):
             url = self._output_url(item)
             suffix = extension_from_url(url, ".png")
-            output_path = numbered_output_path(output_path_with_suffix(base_path, suffix), index, suffix)
+            output_path = numbered_output_path(
+                output_path_with_suffix(base_path, suffix), index, suffix
+            )
             client.download(url, output_path)
             paths.append(output_path)
         return paths
@@ -387,7 +466,9 @@ class KlingOfficialImage(BaseTool):
         resource = item.get("resource") or {}
         if isinstance(resource, dict) and resource.get("url"):
             return str(resource["url"])
-        raise ValueError(f"Kling image response item contained no downloadable URL: {item}")
+        raise ValueError(
+            f"Kling image response item contained no downloadable URL: {item}"
+        )
 
     @staticmethod
     def _prompt(inputs: dict[str, Any]) -> str:
@@ -397,7 +478,9 @@ class KlingOfficialImage(BaseTool):
         return prompt
 
     @staticmethod
-    def _copy_common_task_fields(inputs: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _copy_common_task_fields(
+        inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
         if "watermark" in inputs:
             payload["watermark_info"] = {"enabled": bool(inputs.get("watermark"))}
         callback_url = validate_callback_url(inputs.get("callback_url"))
@@ -407,7 +490,9 @@ class KlingOfficialImage(BaseTool):
             payload["external_task_id"] = inputs["external_task_id"]
 
     @staticmethod
-    def _reference_metadata_from_generation_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    def _reference_metadata_from_generation_payload(
+        payload: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         references: list[dict[str, Any]] = []
         if payload.get("image"):
             references.append({"kind": "image", "source_type": "image"})
@@ -431,7 +516,9 @@ class KlingOfficialImage(BaseTool):
         }
 
     @staticmethod
-    def _account_usage_result(inputs: dict[str, Any], client: KlingClient) -> dict[str, Any]:
+    def _account_usage_result(
+        inputs: dict[str, Any], client: KlingClient
+    ) -> dict[str, Any]:
         if not inputs.get("include_account_usage"):
             return {}
         try:

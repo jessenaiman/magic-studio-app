@@ -53,9 +53,9 @@ export const ProviderChip: React.FC<ProviderChipProps> = ({
   const translateY = interpolate(springIn, [0, 1], [12, 0]);
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none" }}>
-      <div
-        style={{
+      <AbsoluteFill style={{ pointerEvents: "none" }}>
+          <div
+              style={{
           position: "absolute",
           ...POS_STYLES[position],
           display: "flex",
@@ -65,9 +65,9 @@ export const ProviderChip: React.FC<ProviderChipProps> = ({
           opacity: alpha,
           transform: `translateY(${translateY}px)`,
         }}
-      >
-        <div
-          style={{
+          >
+              <div
+                  style={{
             fontSize: 16,
             color: "rgba(255,255,255,0.6)",
             fontFamily: "Inter, sans-serif",
@@ -75,11 +75,11 @@ export const ProviderChip: React.FC<ProviderChipProps> = ({
             letterSpacing: 1.5,
             textTransform: "uppercase",
           }}
-        >
-          {label}
-        </div>
-        <div
-          style={{
+              >
+                  {label}
+              </div>
+              <div
+                  style={{
             padding: "14px 26px",
             background: "rgba(11, 15, 26, 0.82)",
             border: `2px solid ${accentColor}`,
@@ -92,10 +92,10 @@ export const ProviderChip: React.FC<ProviderChipProps> = ({
             backdropFilter: "blur(8px)",
             boxShadow: `0 8px 32px ${accentColor}30`,
           }}
-        >
-          {current}
-        </div>
-      </div>
-    </AbsoluteFill>
+              >
+                  {current}
+              </div>
+          </div>
+      </AbsoluteFill>
   );
 };

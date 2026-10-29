@@ -129,7 +129,9 @@ def resolve_precision(precision: str, model_params_b: float) -> str:
     return "int4"
 
 
-def resolve_offload_mode(offload_mode: str, precision: str, model_params_b: float) -> str:
+def resolve_offload_mode(
+    offload_mode: str, precision: str, model_params_b: float
+) -> str:
     """Choose how aggressively to offload weights to host RAM.
 
     ``model`` keeps a whole component resident and is fastest.  It only works if
@@ -230,12 +232,18 @@ def load_wan_pipeline(
 
         quant = _quant_config(precision)
         transformer = WanTransformer3DModel.from_pretrained(
-            model_id, subfolder="transformer", quantization_config=quant, torch_dtype=dtype
+            model_id,
+            subfolder="transformer",
+            quantization_config=quant,
+            torch_dtype=dtype,
         )
         kwargs["transformer"] = transformer
         if _has_subfolder(model_id, "transformer_2"):
             kwargs["transformer_2"] = WanTransformer3DModel.from_pretrained(
-                model_id, subfolder="transformer_2", quantization_config=quant, torch_dtype=dtype
+                model_id,
+                subfolder="transformer_2",
+                quantization_config=quant,
+                torch_dtype=dtype,
             )
 
     pipeline = pipeline_class.from_pretrained(model_id, **kwargs)
@@ -279,15 +287,22 @@ def _has_subfolder(model_id: str, subfolder: str) -> bool:
     try:
         from huggingface_hub import model_info
 
-        return any(s.rfilename.startswith(f"{subfolder}/") for s in model_info(model_id).siblings)
+        return any(
+            s.rfilename.startswith(f"{subfolder}/")
+            for s in model_info(model_id).siblings
+        )
     except Exception:
         return False
 
 
 def pipeline_scales(pipeline) -> tuple[int, int]:
     """Read (temporal, spatial) VAE compression factors off a loaded pipeline."""
-    temporal = getattr(pipeline, "vae_scale_factor_temporal", None) or _DEFAULT_TEMPORAL_SCALE
-    spatial = getattr(pipeline, "vae_scale_factor_spatial", None) or _DEFAULT_SPATIAL_SCALE
+    temporal = (
+        getattr(pipeline, "vae_scale_factor_temporal", None) or _DEFAULT_TEMPORAL_SCALE
+    )
+    spatial = (
+        getattr(pipeline, "vae_scale_factor_spatial", None) or _DEFAULT_SPATIAL_SCALE
+    )
     # Transformer patch size doubles the effective spatial alignment requirement.
     transformer = getattr(pipeline, "transformer", None)
     patch = getattr(getattr(transformer, "config", None), "patch_size", None)
@@ -316,7 +331,9 @@ def load_image(path: str | None, url: str | None, width: int, height: int):
         response.raise_for_status()
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
-        raise ValueError("This operation requires reference_image_path or reference_image_url")
+        raise ValueError(
+            "This operation requires reference_image_path or reference_image_url"
+        )
     return image.resize((width, height), Image.LANCZOS)
 
 
@@ -329,7 +346,9 @@ def load_video_frames(path: str, width: int, height: int, max_frames: int) -> li
     for index, frame in enumerate(iio.imiter(path)):
         if index >= max_frames:
             break
-        frames.append(Image.fromarray(frame).convert("RGB").resize((width, height), Image.LANCZOS))
+        frames.append(
+            Image.fromarray(frame).convert("RGB").resize((width, height), Image.LANCZOS)
+        )
     if not frames:
         raise ValueError(f"No frames could be read from {path}")
     return frames
@@ -383,7 +402,9 @@ def channel_stats(frames: list) -> tuple:
     """Per-channel mean and std over a list of frames, for drift correction."""
     import numpy as np
 
-    sample = np.stack([np.asarray(f, dtype=np.float32) for f in frames[:: max(1, len(frames) // 8)]])
+    sample = np.stack(
+        [np.asarray(f, dtype=np.float32) for f in frames[:: max(1, len(frames) // 8)]]
+    )
     return sample.mean(axis=(0, 1, 2)), sample.std(axis=(0, 1, 2)) + 1e-6
 
 
@@ -463,7 +484,10 @@ def _run_pass(
 
     # guidance_scale_2 only exists on the MoE (A14B) pipelines that carry a
     # second expert; passing it to the 5B dense model raises.
-    if guidance_scale_2 is not None and getattr(pipeline, "transformer_2", None) is not None:
+    if (
+        guidance_scale_2 is not None
+        and getattr(pipeline, "transformer_2", None) is not None
+    ):
         args["guidance_scale_2"] = guidance_scale_2
 
     if image is not None:
@@ -534,8 +558,12 @@ def generate_wan(
         return ToolResult(success=False, error=f"Failed to load {model_id}: {exc}")
 
     temporal_scale, spatial_scale = pipeline_scales(pipeline)
-    width = snap_dimension(int(inputs.get("width") or meta["default_width"]), spatial_scale)
-    height = snap_dimension(int(inputs.get("height") or meta["default_height"]), spatial_scale)
+    width = snap_dimension(
+        int(inputs.get("width") or meta["default_width"]), spatial_scale
+    )
+    height = snap_dimension(
+        int(inputs.get("height") or meta["default_height"]), spatial_scale
+    )
     fps = int(inputs.get("fps") or meta["fps"])
 
     segment_frames = snap_frames(
@@ -620,7 +648,9 @@ def generate_wan(
             )
             segment_log = [{"index": 0, "frames": len(frames), "operation": operation}]
     except Exception as exc:
-        return _oom_aware_error(exc, variant_key, precision, offload_mode, width, height, total_frames)
+        return _oom_aware_error(
+            exc, variant_key, precision, offload_mode, width, height, total_frames
+        )
 
     if operation == "text_to_image":
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -745,7 +775,10 @@ def _generate_single(
 
     if operation in {"image_to_video", "first_last_frame"}:
         image = load_image(
-            inputs.get("reference_image_path"), inputs.get("reference_image_url"), width, height
+            inputs.get("reference_image_path"),
+            inputs.get("reference_image_url"),
+            width,
+            height,
         )
     if operation == "first_last_frame":
         last_image = load_image(

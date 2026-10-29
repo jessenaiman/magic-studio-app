@@ -97,7 +97,13 @@ class TalkingHead(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=2, ram_mb=4096, vram_mb=4096, disk_mb=2000
     )
-    idempotency_key_fields = ["image_path", "audio_path", "model", "expression_scale", "still_mode"]
+    idempotency_key_fields = [
+        "image_path",
+        "audio_path",
+        "model",
+        "expression_scale",
+        "still_mode",
+    ]
     side_effects = ["writes video file to output_path"]
     user_visible_verification = [
         "Watch generated video for lip-sync accuracy",
@@ -118,6 +124,7 @@ class TalkingHead(BaseTool):
         # 2. Installed as a Python package
         try:
             import sadtalker  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             pass
@@ -150,7 +157,14 @@ class TalkingHead(BaseTool):
 
         model = inputs.get("model", "sadtalker")
         output_path = Path(
-            inputs.get("output_path", str(image_path.with_stem(f"{image_path.stem}_talking").with_suffix(".mp4")))
+            inputs.get(
+                "output_path",
+                str(
+                    image_path.with_stem(f"{image_path.stem}_talking").with_suffix(
+                        ".mp4"
+                    )
+                ),
+            )
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -158,7 +172,9 @@ class TalkingHead(BaseTool):
 
         try:
             if model == "sadtalker":
-                result = self._run_sadtalker(inputs, image_path, audio_path, output_path)
+                result = self._run_sadtalker(
+                    inputs, image_path, audio_path, output_path
+                )
             elif model == "musetalk":
                 result = self._run_musetalk(inputs, image_path, audio_path, output_path)
             else:
@@ -167,7 +183,9 @@ class TalkingHead(BaseTool):
                     error=f"Unknown model: {model}. Supported: sadtalker, musetalk",
                 )
         except Exception as e:
-            return ToolResult(success=False, error=f"Talking head generation failed: {e}")
+            return ToolResult(
+                success=False, error=f"Talking head generation failed: {e}"
+            )
 
         result.duration_seconds = round(time.time() - start, 2)
         return result
@@ -184,7 +202,8 @@ class TalkingHead(BaseTool):
         if not sadtalker_path or not Path(sadtalker_path).is_dir():
             return ToolResult(
                 success=False,
-                error="SADTALKER_PATH not set or directory does not exist.\n" + self.install_instructions,
+                error="SADTALKER_PATH not set or directory does not exist.\n"
+                + self.install_instructions,
             )
 
         sadtalker_dir = Path(sadtalker_path)
@@ -197,12 +216,18 @@ class TalkingHead(BaseTool):
 
         # Build SadTalker inference command
         cmd = [
-            "python", str(sadtalker_dir / "inference.py"),
-            "--driven_audio", str(audio_path),
-            "--source_image", str(image_path),
-            "--result_dir", str(result_dir),
-            "--expression_scale", str(expression_scale),
-            "--preprocess", preprocess,
+            "python",
+            str(sadtalker_dir / "inference.py"),
+            "--driven_audio",
+            str(audio_path),
+            "--source_image",
+            str(image_path),
+            "--result_dir",
+            str(result_dir),
+            "--expression_scale",
+            str(expression_scale),
+            "--preprocess",
+            preprocess,
         ]
 
         if still_mode:

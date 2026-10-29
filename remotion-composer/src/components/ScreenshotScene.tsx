@@ -188,15 +188,15 @@ function walkTimeline(
 // ---------- SVG cursor ----------
 
 const CursorArrow: React.FC<{ size?: number }> = ({ size = 28 }) => (
-  <svg width={size} height={size * 1.2} viewBox="0 0 16 20" style={{ display: "block" }}>
-    <path
-      d="M2 2 L2 16 L6 12 L8.5 17 L10.5 16 L8 11 L13 11 Z"
-      fill="#FFFFFF"
-      stroke="#111"
-      strokeWidth={1.2}
-      strokeLinejoin="round"
-    />
-  </svg>
+    <svg width={size} height={size * 1.2} viewBox="0 0 16 20" style={{ display: "block" }}>
+        <path
+            d="M2 2 L2 16 L6 12 L8.5 17 L10.5 16 L8 11 L13 11 Z"
+            fill="#FFFFFF"
+            stroke="#111"
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+        />
+    </svg>
 );
 
 // ---------- Main component ----------
@@ -256,11 +256,11 @@ export const ScreenshotScene: React.FC<ScreenshotSceneProps> = ({
   const cursorAbs = abs(cursorPos);
 
   return (
-    <AbsoluteFill style={{ background: "#000" }}>
-      {/* Backdrop */}
-      <Img
-        src={resolveAsset(backgroundImage)}
-        style={{
+      <AbsoluteFill style={{ background: "#000" }}>
+          {/* Backdrop */}
+          <Img
+              src={resolveAsset(backgroundImage)}
+              style={{
           position: "absolute",
           left: rect.x,
           top: rect.y,
@@ -268,12 +268,12 @@ export const ScreenshotScene: React.FC<ScreenshotSceneProps> = ({
           height: rect.h,
           objectFit: "fill",
         }}
-      />
+          />
 
-      {/* Overlays — render in order so later steps paint on top.
+          {/* Overlays — render in order so later steps paint on top.
           Sticky kinds (type_into, bubble_append) persist once they appear;
           transient kinds fade out after their duration. */}
-      {timed.map((t, i) => {
+          {timed.map((t, i) => {
         const kind = t.step.kind;
         const sticky = kind === "type_into" || kind === "bubble_append";
         const active = sticky
@@ -281,32 +281,32 @@ export const ScreenshotScene: React.FC<ScreenshotSceneProps> = ({
           : frame >= t.startFrame && frame <= t.endFrame + fps * 0.4;
         if (!active) return null;
         return (
-          <OverlayForStep
-            key={i}
-            timed={t}
-            frame={frame}
-            fps={fps}
-            rect={rect}
-            abs={abs}
-            absRect={absRect}
-            accentColor={accentColor}
-          />
+            <OverlayForStep
+                key={i}
+                timed={t}
+                frame={frame}
+                fps={fps}
+                rect={rect}
+                abs={abs}
+                absRect={absRect}
+                accentColor={accentColor}
+            />
         );
       })}
 
-      {/* Cursor — always on top */}
-      <div
-        style={{
+          {/* Cursor — always on top */}
+          <div
+              style={{
           position: "absolute",
           left: cursorAbs.x - 4,
           top: cursorAbs.y - 2,
           pointerEvents: "none",
           filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.4))",
         }}
-      >
-        <CursorArrow size={Math.round(rect.w * 0.018)} />
-      </div>
-    </AbsoluteFill>
+          >
+              <CursorArrow size={Math.round(rect.w * 0.018)} />
+          </div>
+      </AbsoluteFill>
   );
 };
 
@@ -344,8 +344,8 @@ const OverlayForStep: React.FC<OverlayProps> = ({
     const alpha = interpolate(progress, [0, 1], [0.85, 0]);
     const color = step.color ?? accentColor;
     return (
-      <div
-        style={{
+        <div
+            style={{
           position: "absolute",
           left: p.x - size / 2,
           top: p.y - size / 2,
@@ -356,7 +356,7 @@ const OverlayForStep: React.FC<OverlayProps> = ({
           opacity: alpha,
           pointerEvents: "none",
         }}
-      />
+        />
     );
   }
 
@@ -373,8 +373,8 @@ const OverlayForStep: React.FC<OverlayProps> = ({
     const fontPx = Math.round(rect.h * (step.fontSize ?? 0.024));
     const blink = Math.floor(frame / (fps * 0.5)) % 2 === 0;
     return (
-      <div
-        style={{
+        <div
+            style={{
           position: "absolute",
           left: r.left,
           top: r.top,
@@ -390,20 +390,20 @@ const OverlayForStep: React.FC<OverlayProps> = ({
           whiteSpace: "nowrap",
           overflow: "hidden",
         }}
-      >
-        <span>{typed}</span>
-        {blink && (
-          <span
-            style={{
+        >
+            <span>{typed}</span>
+            {blink && (
+            <span
+                style={{
               display: "inline-block",
               width: 2,
               height: fontPx * 0.95,
               background: step.color ?? "#E5E7EB",
               marginLeft: 2,
             }}
-          />
+            />
         )}
-      </div>
+        </div>
     );
   }
 
@@ -451,8 +451,8 @@ const OverlayForStep: React.FC<OverlayProps> = ({
     const border = isUser ? "#4A5568" : "#374151";
 
     return (
-      <div
-        style={{
+        <div
+            style={{
           position: "absolute",
           left: r.left,
           top: r.top,
@@ -473,9 +473,9 @@ const OverlayForStep: React.FC<OverlayProps> = ({
           pointerEvents: "none",
           overflow: "hidden",
         }}
-      >
-        {displayText}
-      </div>
+        >
+            {displayText}
+        </div>
     );
   }
 
@@ -489,8 +489,8 @@ const OverlayForStep: React.FC<OverlayProps> = ({
     });
     const color = step.color ?? accentColor;
     return (
-      <div
-        style={{
+        <div
+            style={{
           position: "absolute",
           left: p.x,
           top: p.y,
@@ -498,20 +498,20 @@ const OverlayForStep: React.FC<OverlayProps> = ({
           gap: dotSize * 0.7,
           pointerEvents: "none",
         }}
-      >
-        {dots.map((a, i) => (
-          <div
-            key={i}
-            style={{
+        >
+            {dots.map((a, i) => (
+                <div
+                    key={i}
+                    style={{
               width: dotSize,
               height: dotSize,
               borderRadius: "50%",
               background: color,
               opacity: Math.max(0.3, a),
             }}
-          />
+                />
         ))}
-      </div>
+        </div>
     );
   }
 
@@ -525,8 +525,8 @@ const OverlayForStep: React.FC<OverlayProps> = ({
     const alpha = 0.4 + wave * 0.5;
     const glow = 10 + wave * 18;
     return (
-      <div
-        style={{
+        <div
+            style={{
           position: "absolute",
           left: r.left - 6,
           top: r.top - 6,
@@ -538,7 +538,7 @@ const OverlayForStep: React.FC<OverlayProps> = ({
           opacity: alpha,
           pointerEvents: "none",
         }}
-      />
+        />
     );
   }
 
@@ -627,8 +627,8 @@ const OverlayForStep: React.FC<OverlayProps> = ({
     }
 
     return (
-      <div
-        style={{
+        <div
+            style={{
           position: "absolute",
           left: Math.max(rect.x + 8, Math.min(rect.x + rect.w - maxW - 8, bx)),
           top: by,
@@ -646,10 +646,10 @@ const OverlayForStep: React.FC<OverlayProps> = ({
           boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
           pointerEvents: "none",
         }}
-      >
-        {step.text}
-        <div style={tailStyle} />
-      </div>
+        >
+            {step.text}
+            <div style={tailStyle} />
+        </div>
     );
   }
 

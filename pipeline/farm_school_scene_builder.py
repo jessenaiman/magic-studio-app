@@ -7,6 +7,7 @@ Sequentially loads the three refactored 3D+2D pipeline stages:
   2. `pipeline/step_blender_mesh_rig.py` — 3D remesh, arm-torso partition, UV projection bake & `ARM_<slug>` armature
   3. `pipeline/step_blender_2d_anim.py`  — 2D gait/pose cycle import -> 3D IK animation, manifold QA & `.blend`/`.glb`/`.mp4`
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,8 +60,12 @@ def render_single_character_blender53(
     paths = dict(
         mp4=str(Path(out_mp4).resolve()),
         png=str(Path(out_png).resolve()),
-        glb=str(Path(out_glb).resolve()) if out_glb else str(Path(out_mp4).resolve().with_suffix(".glb")),
-        blend=str(Path(out_blend).resolve()) if out_blend else str(Path(out_mp4).resolve().with_suffix(".blend")),
+        glb=str(Path(out_glb).resolve())
+        if out_glb
+        else str(Path(out_mp4).resolve().with_suffix(".glb")),
+        blend=str(Path(out_blend).resolve())
+        if out_blend
+        else str(Path(out_mp4).resolve().with_suffix(".blend")),
     )
     code = f"""
 SPEC={spec!r}
@@ -85,7 +90,9 @@ print('FARM_SCHOOL_RESULT='+json.dumps(dict(ok=True,character=SPEC['slug'],qa=qa
     return report
 
 
-def build_farm_school_milestone(out_dir: str | Path, only_character: str | None = None) -> dict:
+def build_farm_school_milestone(
+    out_dir: str | Path, only_character: str | None = None
+) -> dict:
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
     if only_character and only_character != "all":
@@ -116,7 +123,10 @@ def build_farm_school_milestone(out_dir: str | Path, only_character: str | None 
         spec = json.loads((folder / "construction/asset_sources.json").read_text())
         spec["gait"] = gait_frames(spec, 48)
         specs.append(spec)
-    paths = {ext: str(out / f"farm_school_lineup_scene.{ext}") for ext in ["blend", "glb", "mp4", "png"]}
+    paths = {
+        ext: str(out / f"farm_school_lineup_scene.{ext}")
+        for ext in ["blend", "glb", "mp4", "png"]
+    }
     code = f"""
 SPECS={specs!r}
 PATHS={paths!r}
@@ -156,16 +166,24 @@ def self_test() -> None:
                 assert after["feet"][side][2] >= 0
                 assert after["feet"][side][2] <= spec["foot_lift_max_m"] + 1e-9
                 if before["planted"][side] and after["planted"][side]:
-                    assert before["feet"][side] == after["feet"][side], (slug, side, after["frame"])
+                    assert before["feet"][side] == after["feet"][side], (
+                        slug,
+                        side,
+                        after["frame"],
+                    )
         assert all(math.isfinite(v) for row in rows for v in row["root"])
     compile(BLENDER_MESH_RIG_CODE, "<blender mesh rig stage>", "exec")
     compile(BLENDER_2D_ANIM_CODE, "<blender 2d anim stage>", "exec")
     compile(BLENDER_HELPERS, "<blender helpers>", "exec")
-    print("Gait contact, measured lift bounds, and sequential Blender stage syntax checks passed.")
+    print(
+        "Gait contact, measured lift bounds, and sequential Blender stage syntax checks passed."
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build reference-derived volumetric characters and a verified 24 fps Farm School scene")
+    parser = argparse.ArgumentParser(
+        description="Build reference-derived volumetric characters and a verified 24 fps Farm School scene"
+    )
     parser.add_argument("--out-dir", default="exports/farm_school_milestone")
     parser.add_argument("--character", default=None)
     parser.add_argument("--self-test", action="store_true")
@@ -173,7 +191,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.self_test:
         self_test()
         return 0
-    print(json.dumps(build_farm_school_milestone(args.out_dir, args.character), indent=2))
+    print(
+        json.dumps(build_farm_school_milestone(args.out_dir, args.character), indent=2)
+    )
     return 0
 
 

@@ -1,11 +1,8 @@
 # Magic Studio shell research and proposed Animation workspace
 
-Research date: 2026-10-21. **Animation layout approved by the user on 2026-10-21; implementation is in progress.**
-Historical source (2026-10-21, before the full rename): user instructions and
+Research date: 2026-10-21.
+Historical source (2026-10-21, before the full rename):
 `apps/animationcraft-shell/HANDOFF.md` as it existed at `e1cac3a`.
-The user subsequently specified: animation inspector on the **left**, useful artwork immediately
-after import, and the in-app agent as the app's technical collaborator. Preserve all functionality
-in the handoff checklist; progressive disclosure changes placement, not scope.
 
 ## Evidence and limits
 
@@ -204,7 +201,7 @@ Sources: [agent and screenshots](https://linear.app/docs/linear-agent),
 ## Proposed Animation frame
 
 This is a full workspace inside the existing shell, not an external editor or a reduced preview.
-The user requested the animation inspector on the **left**. Keep the global 48px bar and its tokens.
+The proposed animation inspector is on the **left**, below the global 48px bar.
 Use one context inspector for the selected object/layer; avoid a second permanent technical sidebar.
 
 ```text
@@ -284,8 +281,7 @@ Keep reviewed state, show-all, anchors, labels and separation preview accessible
 Quality checks group measured results and unknowns consistently. Unknown is not zero or success.
 Exports live in one accessible menu/sheet: preserve layered video, cutout MP4, EffectCraft, FilmCraft,
 Blender, action reel, rig prompt and lineup workflows. No export controls extend below an unscrollable
-panel. A job shows its result and verification, not just “finished”. Intake, pose-sheet viewer and
-3D shape controls remain **user decisions: screen or rig/matting CLI chain**, not silently dropped.
+panel. A job shows its result and verification, not just “finished”.
 
 ### Song timing and track semantics
 
@@ -471,29 +467,10 @@ Additional live shell finding: `ui.elements` currently reports descendants of co
 offscreen scroll items as visible because nonzero DOM rectangles alone do not establish visibility.
 The agent contract needs clipping/occlusion-aware visibility or an explicit reveal operation.
 
-## Port, verify and stop points
-
-For each feature read its mapped implementation in HANDOFF, run the reference on 19898 beside the
-shell on 19897, compare behavior and engine calls, and port into the shell's design. Do not edit or
-maintain the reference UI. Record the port's commit beside the checklist entry only after verification.
-Close the reference after comparison; the user's explicit request to keep both beside each other
-during active work takes precedence while that comparison continues. The user alone authorizes deletion.
-
-The screenshot supplied by the user makes the left inspector and useful main canvas explicit.
-First approved slice should include rest/selection/import recovery, transport, track selection,
-layers/states and song timing. Subsequent slices preserve the rest of the checklist; do not call
-the migration complete after that first slice. Animate and export the bee, inspect stills/motion,
-validate the clip, then check the imported result in the chosen Craft design/video app. Export
-target choice remains a user decision; no target is silently substituted.
-
-Pending approval questions: (1) approve this Animation frame, (2) intake as screen or CLI chain,
-(3) pose-sheet viewer as screen or CLI chain, (4) 3D shape controls as screen or CLI chain.
-No Animation screen implementation is authorized by this document alone.
-
 ## Historical runtime investigation / operational evidence
 
 The following observations describe commit `e1cac3a` and its pre-rename paths. They are not current
-build or file-location instructions; use `magicstudio-shell`, `.magic` and `mc` for current work.
+build or file-location instructions; use the current shell skill for commands.
 
 - Rebuilt historical commit `e1cac3a` using `cargo build -p animationcraft-shell`; relaunched its
   shell on 19897.
@@ -524,11 +501,9 @@ build or file-location instructions; use `magicstudio-shell`, `.magic` and `mc` 
   design skill was found in installed crates or official Tauri/tauri-docs trees and organization
   repository inventory; community packages were not mislabeled or installed as official ones.
 
+## Refinement: section color and sliders
 
-## Approved refinement: section color and slider taste
-
-The user prefers this shell overall, and requested only the useful section coding and icons from the
-reference inspector, not its density. Reviewed actual Rust constants and slider styling and current
+Reviewed actual Rust constants and slider styling and current
 [Rive inspector](https://rive.app/docs/editor/interface-overview/inspector) plus
 [Adobe Spectrum slider anatomy](https://spectrum.adobe.com/fragments/components/slider/anatomy) and
 [usage guidance](https://spectrum.adobe.com/fragments/components/slider/usage-guidelines). Adopt labeled
@@ -540,5 +515,4 @@ the current fragment pages above were read instead.
 
 Pen path uses existing engine keys, not a second evaluator. Start/end scale is local scale; source
 wing/antenna motion and root rotation remain, so matrix diagonal entries are not scale measurements.
-A grid and the path are editor overlays and never enter exports. User intent for the bee is recorded
-in the song's intent.md: slow classic layered 2D, continuous frame, gentle scale/parallax for depth.
+A grid and the path are editor overlays and never enter exports.

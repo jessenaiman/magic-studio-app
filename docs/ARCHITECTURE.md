@@ -1,8 +1,28 @@
-# OpenMontage Architecture
+# Magic Studio architecture
 
-> Last updated: 2026-03-28 | Derived from code exploration, not prior documentation.
+## Desktop and observer
 
-OpenMontage is an **agent-orchestrated video production platform**. An LLM coding assistant (Claude Code, Cursor, Copilot, etc.) acts as the orchestrator — reading pipeline manifests, following skill instructions, calling Python tools, and checkpointing state. There is no runtime Python orchestrator; the agent _is_ the control plane.
+The desktop app is the Tauri shell in `apps/magicstudio-shell/`, with Storyboard,
+Animation, Lyrics, and Studio views. Its embedded UI, CLI, and MCP share the Rust
+engine registry in `crates/engine/src/commands.rs`. Project persistence and domain
+validation belong to the engine. The CLI-Anything Python harness is an adapter,
+not a second native installer or project implementation.
+
+Backstage (`apps/backstage/`) is a separate Rust/Ratatui observer for saved project
+references, PR handoffs, worktrees, native audit evidence, and settings. See
+[project context](../PROJECT_CONTEXT.md), [command architecture](../agent-harness/MAGIC.md),
+and [Backstage](../apps/backstage/README.md) for these contracts. The
+[source-installation guide](../agent-harness/cli_anything/magic/README.md) owns
+app build and installation instructions.
+
+## Reusable production pipeline internals
+
+The remaining sections describe the retained Python/YAML production toolkit,
+not requirements for launching the desktop app. The agent reads pipeline
+manifests and stage skills, calls Python tools, and checkpoints artifacts.
+Creative orchestration belongs to those instructions, while Python supplies
+capabilities and persistence. These details originated in the pipeline code
+exploration of 28 March 2026 and include later provider/runtime additions.
 
 ---
 
@@ -31,7 +51,7 @@ Final video output
 ## Repository Layout
 
 ```
-OpenMontage/
+magic-studio-app/
 ├── lib/                    # Core runtime infrastructure (Python)
 │   ├── config_model.py     # Pydantic config: LLM, budget, checkpoint, output, paths
 │   ├── checkpoint.py       # Pipeline state persistence & stage transitions
@@ -61,7 +81,7 @@ OpenMontage/
 │   ├── styles/             # Style playbook schema
 │   └── tools/              # Tool-specific schemas
 │
-├── skills/                 # Layer 2: OpenMontage-specific agent instructions
+├── skills/                 # Layer 2: Magic Studio-specific agent instructions
 │   ├── core/               # FFmpeg, Remotion, WhisperX, color grading skills
 │   ├── creative/           # Video editing, enhancement, data viz, prompt engineering
 │   ├── meta/               # reviewer, checkpoint-protocol, skill-creator
@@ -89,9 +109,13 @@ There is **no Python orchestrator**. The LLM agent:
 
 Python provides **tools and persistence only**. All intelligence lives in skill instructions (Markdown) and pipeline manifests (YAML).
 
-### 2. No LLM API Key in Runtime
+### 2. Agent-directed pipeline orchestration
 
-OpenMontage does not call LLM APIs at runtime. The coding assistant running in the user's IDE _is_ the LLM. Tools that need generation (images, video, TTS) call domain-specific APIs directly (ElevenLabs, fal.ai, HeyGen, etc.), not general-purpose LLM endpoints.
+The coding assistant reads the production instructions and makes stage decisions.
+Generation tools use their declared provider APIs; discover the actual available
+provider, model, credentials, and cost through the tool registry. The desktop's
+chat and native image adapters have their own engine contracts, separate from
+this pipeline orchestration model.
 
 ### 3. Dual-Provider Support
 
@@ -326,7 +350,7 @@ Layer 3: .agents/skills/          External technology knowledge (47 skills)
               ^
               | agent_skills[] references
               |
-Layer 2: skills/                  OpenMontage conventions
+Layer 2: skills/                  Magic Studio conventions
          "How this project uses the tech"  Pipeline integration, quality checklists, artifact mappings
               ^
               | stage skill references
@@ -406,7 +430,7 @@ request shapes, while Elements and Account Usage live under `tools/_kling/` as
 internal helpers for element ID references and low-frequency account diagnostics;
 they are not separate pipeline stages, selectors, or generated-asset capabilities.
 
-Kling Official also adds provider tools only where OpenMontage already has a
+Kling Official also adds provider tools only where Magic Studio already has a
 matching capability slot: `kling_tts` for `tts`, plus `kling_avatar` and
 `kling_lip_sync` for `avatar`. Official Kling audio effects and video effects are
 not registered as tools because current pipelines do not define stable
@@ -447,7 +471,7 @@ Each profile specifies codec, audio codec, CRF, pixel format, max file size, max
 
 ## Composition Runtimes
 
-OpenMontage has a multi-runtime composition layer. Three engines live behind `video_compose`, chosen at proposal and locked in `edit_decisions.render_runtime`:
+The reusable production toolkit has a multi-runtime composition layer. Three engines live behind `video_compose`, chosen at proposal and locked in `edit_decisions.render_runtime`:
 
 ### Remotion (React-based)
 
@@ -481,9 +505,12 @@ Legacy Python contract/QA/evaluation, JavaScript VM/browser and Rust behavioral 
 
 ---
 
-## System Dependencies
+## Pipeline tool dependencies
 
-**Required:**
+These are toolkit prerequisites, not an additional app installation path.
+Consult each tool's discovered requirements before using it.
+
+**Core source environment:**
 - Python >= 3.10
 - FFmpeg (used by ~15 tools)
 

@@ -81,10 +81,13 @@ pub fn cmd_turnaround_optimize_accuracy(s: &mut Session, params: &Value) -> Resu
     let reg_manifest = LoadedManifest::load_from_path(&reg_manifest_path).ok();
     let pose_manifest = LoadedManifest::load_from_path(&poses_dir).ok();
 
-    let asset = s.assets.entry(asset_id.clone()).or_insert_with(|| crate::session::Asset {
-        id: asset_id.clone(),
-        ..Default::default()
-    });
+    let asset = s
+        .assets
+        .entry(asset_id.clone())
+        .or_insert_with(|| crate::session::Asset {
+            id: asset_id.clone(),
+            ..Default::default()
+        });
     if asset.pose_manifest.is_none() {
         asset.pose_manifest = pose_manifest;
     }
@@ -122,7 +125,16 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
         .to_ascii_lowercase();
     if !matches!(
         mode.as_str(),
-        "idle" | "walk" | "run" | "jump" | "wave" | "static" | "standing" | "walking" | "running" | "waving"
+        "idle"
+            | "walk"
+            | "run"
+            | "jump"
+            | "wave"
+            | "static"
+            | "standing"
+            | "walking"
+            | "running"
+            | "waving"
     ) {
         return Err(EngineError::InvalidParams(format!(
             "invalid preview mode '{mode}'; expected idle|walk|run|jump|wave|static"
@@ -154,10 +166,16 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
         .map(|r| r.rig_type.clone());
     let still = matches!(mode.as_str(), "static" | "standing");
     let (ok, plays) = match rig_type.as_deref() {
-        Some("layered_motion") => (true, "the rig spec's own motion tracks (the action mode does not apply)".to_string()),
+        Some("layered_motion") => (
+            true,
+            "the rig spec's own motion tracks (the action mode does not apply)".to_string(),
+        ),
         Some(_) => (true, format!("the cutout rig's {mode} motion")),
         None if still => (true, "a still image".to_string()),
-        None => (false, "a still image: this asset has no rig, so it cannot move".to_string()),
+        None => (
+            false,
+            "a still image: this asset has no rig, so it cannot move".to_string(),
+        ),
     };
     let mut out = json!({
         "ok": ok,
@@ -178,4 +196,3 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 use std::path::PathBuf;
-

@@ -10,7 +10,11 @@ from tools._kling.account import account_usage_hint_for_error, get_account_costs
 from tools._kling.callbacks import validate_callback_url
 from tools._kling.client import KlingClient
 from tools._kling.errors import KlingAPIError
-from tools._kling.media import extension_from_url, numbered_output_path, output_path_with_suffix
+from tools._kling.media import (
+    extension_from_url,
+    numbered_output_path,
+    output_path_with_suffix,
+)
 from tools._kling.schemas import TTS_LANGUAGES, TTS_SPEED_MAX, TTS_SPEED_MIN
 from tools.analysis.audio_probe import probe_duration
 from tools.base_tool import (
@@ -41,7 +45,7 @@ class KlingTTS(BaseTool):
     dependencies = ["env:KLING_API_KEY"]
     install_instructions = (
         "Set KLING_API_KEY in .env for the official Kling API. "
-        "Pass voice_id explicitly; OpenMontage does not guess Kling voice IDs."
+        "Pass voice_id explicitly; MagicStudio does not guess Kling voice IDs."
     )
     agent_skills = ["kling-official", "text-to-speech"]
 
@@ -62,7 +66,13 @@ class KlingTTS(BaseTool):
         "voice cloning without a configured official voice_id",
         "auto-discovering voices",
     ]
-    fallback_tools = ["doubao_tts", "elevenlabs_tts", "openai_tts", "google_tts", "piper_tts"]
+    fallback_tools = [
+        "doubao_tts",
+        "elevenlabs_tts",
+        "openai_tts",
+        "google_tts",
+        "piper_tts",
+    ]
 
     input_schema = {
         "type": "object",
@@ -73,7 +83,11 @@ class KlingTTS(BaseTool):
                 "type": "string",
                 "description": "Official Kling voice ID. Required; do not rely on an unknown default.",
             },
-            "voice_language": {"type": "string", "enum": TTS_LANGUAGES, "default": "en"},
+            "voice_language": {
+                "type": "string",
+                "enum": TTS_LANGUAGES,
+                "default": "en",
+            },
             "voice_speed": {
                 "type": "number",
                 "minimum": TTS_SPEED_MIN,
@@ -112,8 +126,13 @@ class KlingTTS(BaseTool):
         retryable_errors=["1302", "1303", "5000", "5001", "5002"],
     )
     idempotency_key_fields = ["text", "voice_id", "voice_language", "voice_speed"]
-    side_effects = ["paid remote generation via official Kling API", "writes audio file to output_path"]
-    user_visible_verification = ["Listen to generated audio for voice, language, and pacing"]
+    side_effects = [
+        "paid remote generation via official Kling API",
+        "writes audio file to output_path",
+    ]
+    user_visible_verification = [
+        "Listen to generated audio for voice, language, and pacing"
+    ]
     quality_score = 0.78
     latency_p50_seconds = 20.0
 
@@ -130,7 +149,7 @@ class KlingTTS(BaseTool):
             {
                 "paid_api": True,
                 "cost_estimate_confidence": "low",
-                "cost_estimate_basis": "Conservative character-based OpenMontage estimate pending official account-usage reconciliation.",
+                "cost_estimate_basis": "Conservative character-based MagicStudio estimate pending official account-usage reconciliation.",
             }
         )
         return result
@@ -148,7 +167,13 @@ class KlingTTS(BaseTool):
             task_id, outputs = self._create_and_collect_audios(client, request, inputs)
             paths = self._download_audios(client, outputs, inputs)
             audio_duration = probe_duration(paths[0])
-        except (KlingAPIError, TimeoutError, ValueError, KeyError, FileNotFoundError) as exc:
+        except (
+            KlingAPIError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            FileNotFoundError,
+        ) as exc:
             data: dict[str, Any] = {"provider": self.provider}
             if isinstance(exc, KlingAPIError):
                 data.update(
@@ -159,9 +184,15 @@ class KlingTTS(BaseTool):
                         "account_usage_diagnostic": account_usage_hint_for_error(exc),
                     }
                 )
-            return ToolResult(success=False, data=data, error=f"Kling official TTS failed: {exc}")
+            return ToolResult(
+                success=False, data=data, error=f"Kling official TTS failed: {exc}"
+            )
         except Exception as exc:
-            return ToolResult(success=False, data={"provider": self.provider}, error=f"Kling official TTS failed: {exc}")
+            return ToolResult(
+                success=False,
+                data={"provider": self.provider},
+                error=f"Kling official TTS failed: {exc}",
+            )
 
         return ToolResult(
             success=True,
@@ -179,7 +210,9 @@ class KlingTTS(BaseTool):
                 "output_path": str(paths[0]),
                 "audio_paths": [str(path) for path in paths],
                 "format": paths[0].suffix.lstrip(".") or "mp3",
-                "audio_duration_seconds": round(audio_duration, 2) if audio_duration else None,
+                "audio_duration_seconds": round(audio_duration, 2)
+                if audio_duration
+                else None,
                 "cost_estimate_confidence": "low",
                 "cost_estimate_basis": "Conservative estimate pending official account-usage reconciliation.",
                 **self._account_usage_result(inputs, client),
@@ -204,11 +237,15 @@ class KlingTTS(BaseTool):
 
         voice_language = str(inputs.get("voice_language") or "en")
         if voice_language not in TTS_LANGUAGES:
-            raise ValueError(f"voice_language must be one of: {', '.join(TTS_LANGUAGES)}")
+            raise ValueError(
+                f"voice_language must be one of: {', '.join(TTS_LANGUAGES)}"
+            )
 
         voice_speed = float(inputs.get("voice_speed", 1.0))
         if voice_speed < TTS_SPEED_MIN or voice_speed > TTS_SPEED_MAX:
-            raise ValueError(f"voice_speed must be between {TTS_SPEED_MIN} and {TTS_SPEED_MAX}")
+            raise ValueError(
+                f"voice_speed must be between {TTS_SPEED_MIN} and {TTS_SPEED_MAX}"
+            )
 
         payload: dict[str, Any] = {
             "text": text,
@@ -242,19 +279,29 @@ class KlingTTS(BaseTool):
             payload = data.get("data") or {}
             task_id = payload.get("task_id")
             if not task_id:
-                raise KlingAPIError(f"Kling TTS create response missing data.task_id: {data}")
+                raise KlingAPIError(
+                    f"Kling TTS create response missing data.task_id: {data}"
+                )
 
             task_result = payload.get("task_result") or {}
             outputs = task_result.get("audios")
             if outputs is not None:
                 if not isinstance(outputs, list):
-                    raise KlingAPIError("Kling TTS result path data.task_result.audios is not a list")
+                    raise KlingAPIError(
+                        "Kling TTS result path data.task_result.audios is not a list"
+                    )
                 return str(task_id), outputs
 
             status = payload.get("task_status") or payload.get("status")
             if status == "failed":
-                message = payload.get("task_status_msg") or payload.get("message") or "Kling TTS task failed"
-                raise KlingAPIError(str(message), code=payload.get("task_status"), response=data)
+                message = (
+                    payload.get("task_status_msg")
+                    or payload.get("message")
+                    or "Kling TTS task failed"
+                )
+                raise KlingAPIError(
+                    str(message), code=payload.get("task_status"), response=data
+                )
 
             return str(task_id), client.poll_classic(
                 request["path"],
@@ -286,7 +333,9 @@ class KlingTTS(BaseTool):
         for index, item in enumerate(outputs):
             url = self._output_url(item)
             suffix = extension_from_url(url, ".mp3")
-            output_path = numbered_output_path(output_path_with_suffix(base_path, suffix), index, suffix)
+            output_path = numbered_output_path(
+                output_path_with_suffix(base_path, suffix), index, suffix
+            )
             client.download(url, output_path)
             paths.append(output_path)
         return paths
@@ -299,10 +348,14 @@ class KlingTTS(BaseTool):
         resource = item.get("resource") or {}
         if isinstance(resource, dict) and resource.get("url"):
             return str(resource["url"])
-        raise ValueError(f"Kling TTS response item contained no downloadable URL: {item}")
+        raise ValueError(
+            f"Kling TTS response item contained no downloadable URL: {item}"
+        )
 
     @staticmethod
-    def _copy_common_task_fields(inputs: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _copy_common_task_fields(
+        inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
         callback_url = validate_callback_url(inputs.get("callback_url"))
         if callback_url:
             payload["callback_url"] = callback_url
@@ -322,7 +375,9 @@ class KlingTTS(BaseTool):
         }
 
     @staticmethod
-    def _account_usage_result(inputs: dict[str, Any], client: KlingClient) -> dict[str, Any]:
+    def _account_usage_result(
+        inputs: dict[str, Any], client: KlingClient
+    ) -> dict[str, Any]:
         if not inputs.get("include_account_usage"):
             return {}
         try:

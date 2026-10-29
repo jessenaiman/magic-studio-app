@@ -5,6 +5,7 @@ Step 1B: Image Import Validator (`pipeline/import_validator.py`).
 Uses `photocraft-cli info` to inspect imported image dimensions, alpha, and layout
 without custom pixel flood-fill loops.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,15 +20,37 @@ STANDARD_TEMPLATE_SPEC = {
     "templateVersion": "1.0.0",
     "description": "Standard No-Guesswork Character Import Contract (Style-Agnostic)",
     "requiredTurnaroundRow": {
-        "views": ["0_front", "45_three_quarter_front", "90_side_profile", "135_three_quarter_back", "180_back"],
+        "views": [
+            "0_front",
+            "45_three_quarter_front",
+            "90_side_profile",
+            "135_three_quarter_back",
+            "180_back",
+        ],
         "minimumRequiredViews": ["0_front", "90_side_profile", "180_back"],
         "baselineAlignmentMaxDriftRatio": 0.08,
         "sideProfileMinWidthRatio": 0.22,
         "background": "Solid uniform studio background or transparent PNG alpha",
     },
     "optionalPoseOrPartRows": {
-        "actionPoses": ["idle", "walk_contact", "walk_passing", "run_stride", "jump_apex", "wave_express"],
-        "explodedParts": ["head", "torso_base", "costume_skin", "arm_L", "arm_R", "leg_L", "leg_R", "prop_back"],
+        "actionPoses": [
+            "idle",
+            "walk_contact",
+            "walk_passing",
+            "run_stride",
+            "jump_apex",
+            "wave_express",
+        ],
+        "explodedParts": [
+            "head",
+            "torso_base",
+            "costume_skin",
+            "arm_L",
+            "arm_R",
+            "leg_L",
+            "leg_R",
+            "prop_back",
+        ],
     },
 }
 
@@ -64,7 +87,11 @@ def validate_imported_asset(image_path: str) -> Dict[str, Any]:
 
     aspect = w / max(1, h)
     lower = os.path.basename(image_path).lower()
-    if aspect >= 1.45 and ("pose" in lower or "sheet" in lower) and "turnaround" not in lower:
+    if (
+        aspect >= 1.45
+        and ("pose" in lower or "sheet" in lower)
+        and "turnaround" not in lower
+    ):
         rows_detected = 2
         views_in_row = 5
         valid = True

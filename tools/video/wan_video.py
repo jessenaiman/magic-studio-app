@@ -23,7 +23,11 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
-from tools.video._shared import WAN_VARIANTS, local_generation_status, local_install_instructions
+from tools.video._shared import (
+    WAN_VARIANTS,
+    local_generation_status,
+    local_install_instructions,
+)
 from tools.video._wan_engine import (
     DEFAULT_NEGATIVE_PROMPT,
     generate_wan,
@@ -59,7 +63,12 @@ class WanVideo(BaseTool):
 
     install_instructions = local_install_instructions()
     fallback = "hunyuan_video"
-    fallback_tools = ["hunyuan_video", "ltx_video_local", "cogvideo_video", "image_selector"]
+    fallback_tools = [
+        "hunyuan_video",
+        "ltx_video_local",
+        "cogvideo_video",
+        "image_selector",
+    ]
     agent_skills = ["ltx2"]
 
     capabilities = [
@@ -88,7 +97,10 @@ class WanVideo(BaseTool):
         "instant iteration on low-end hardware",
         "single-pass shots longer than ~5s (Wan's trained clip length)",
     ]
-    provider_matrix = {key: {"tool": "wan_video", **value, "mode": "local_gpu"} for key, value in WAN_VARIANTS.items()}
+    provider_matrix = {
+        key: {"tool": "wan_video", **value, "mode": "local_gpu"}
+        for key, value in WAN_VARIANTS.items()
+    }
 
     input_schema = {
         "type": "object",
@@ -107,13 +119,30 @@ class WanVideo(BaseTool):
                 ],
                 "default": "text_to_video",
             },
-            "model_variant": {"type": "string", "enum": sorted(WAN_VARIANTS), "default": DEFAULT_VARIANT},
+            "model_variant": {
+                "type": "string",
+                "enum": sorted(WAN_VARIANTS),
+                "default": DEFAULT_VARIANT,
+            },
             "reference_image_url": {"type": "string"},
             "reference_image_path": {"type": "string"},
-            "last_image_url": {"type": "string", "description": "Target final frame for first_last_frame"},
-            "last_image_path": {"type": "string", "description": "Target final frame for first_last_frame"},
-            "source_video_path": {"type": "string", "description": "Input clip for video_to_video"},
-            "strength": {"type": "number", "default": 0.8, "description": "video_to_video denoise strength"},
+            "last_image_url": {
+                "type": "string",
+                "description": "Target final frame for first_last_frame",
+            },
+            "last_image_path": {
+                "type": "string",
+                "description": "Target final frame for first_last_frame",
+            },
+            "source_video_path": {
+                "type": "string",
+                "description": "Input clip for video_to_video",
+            },
+            "strength": {
+                "type": "number",
+                "default": 0.8,
+                "description": "video_to_video denoise strength",
+            },
             "width": {"type": "integer"},
             "height": {"type": "integer"},
             "fps": {"type": "integer"},
@@ -121,7 +150,10 @@ class WanVideo(BaseTool):
                 "type": "number",
                 "description": "Target length. Beyond one segment the clip is chained image-to-video.",
             },
-            "num_frames": {"type": "integer", "description": "Exact frame count; overrides duration_seconds"},
+            "num_frames": {
+                "type": "integer",
+                "description": "Exact frame count; overrides duration_seconds",
+            },
             "segment_frames": {
                 "type": "integer",
                 "description": "Frames per chained segment. Defaults to the model's native clip length.",
@@ -138,7 +170,10 @@ class WanVideo(BaseTool):
             },
             "num_inference_steps": {"type": "integer"},
             "guidance_scale": {"type": "number"},
-            "guidance_scale_2": {"type": "number", "description": "Second-expert guidance on MoE (A14B) variants"},
+            "guidance_scale_2": {
+                "type": "number",
+                "description": "Second-expert guidance on MoE (A14B) variants",
+            },
             "precision": {
                 "type": "string",
                 "enum": ["auto", "bf16", "int8", "int4"],
@@ -161,9 +196,17 @@ class WanVideo(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=16000, vram_mb=8000, disk_mb=40000, network_required=False)
+    resource_profile = ResourceProfile(
+        cpu_cores=2, ram_mb=16000, vram_mb=8000, disk_mb=40000, network_required=False
+    )
     retry_policy = RetryPolicy(max_retries=1)
-    idempotency_key_fields = ["prompt", "model_variant", "operation", "seed", "duration_seconds"]
+    idempotency_key_fields = [
+        "prompt",
+        "model_variant",
+        "operation",
+        "seed",
+        "duration_seconds",
+    ]
     side_effects = ["writes video file to output_path", "may download model weights"]
     user_visible_verification = [
         "Watch generated clip for motion coherence and artifacts",
@@ -178,9 +221,14 @@ class WanVideo(BaseTool):
 
     def _plan(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Resolve the frame/segment plan without loading any weights."""
-        meta = WAN_VARIANTS.get(inputs.get("model_variant") or DEFAULT_VARIANT, WAN_VARIANTS[DEFAULT_VARIANT])
+        meta = WAN_VARIANTS.get(
+            inputs.get("model_variant") or DEFAULT_VARIANT,
+            WAN_VARIANTS[DEFAULT_VARIANT],
+        )
         fps = int(inputs.get("fps") or meta["fps"])
-        segment_frames = snap_frames(int(inputs.get("segment_frames") or meta["default_num_frames"]))
+        segment_frames = snap_frames(
+            int(inputs.get("segment_frames") or meta["default_num_frames"])
+        )
         if inputs.get("num_frames"):
             total_frames = int(inputs["num_frames"])
         elif inputs.get("duration_seconds"):
@@ -224,12 +272,21 @@ class WanVideo(BaseTool):
             if plan["offload_mode"] == "sequential"
             else 0.0
         )
-        per_step = stream + plan["segment_frames"] * megapixels * _SECONDS_PER_STEP_PER_MPX_FRAME
-        return round(plan["segments"] * plan["steps"] * per_step + _MODEL_LOAD_SECONDS, 1)
+        per_step = (
+            stream
+            + plan["segment_frames"] * megapixels * _SECONDS_PER_STEP_PER_MPX_FRAME
+        )
+        return round(
+            plan["segments"] * plan["steps"] * per_step + _MODEL_LOAD_SECONDS, 1
+        )
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
-            return ToolResult(success=False, error="Wan local video generation is unavailable. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="Wan local video generation is unavailable. "
+                + self.install_instructions,
+            )
         start = time.time()
         try:
             result = generate_wan(
@@ -239,6 +296,8 @@ class WanVideo(BaseTool):
                 inputs=inputs,
             )
         except Exception as exc:
-            return ToolResult(success=False, error=f"Wan video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Wan video generation failed: {exc}"
+            )
         result.duration_seconds = round(time.time() - start, 2)
         return result

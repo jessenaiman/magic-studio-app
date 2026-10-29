@@ -28,7 +28,7 @@ class SubtitleGen(BaseTool):
     version = "0.1.0"
     tier = ToolTier.CORE
     capability = "subtitle"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.EXPERIMENTAL
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
@@ -66,7 +66,7 @@ class SubtitleGen(BaseTool):
                     "Dictionary of word corrections for common ASR misrecognitions. "
                     "Keys are the wrong word (case-insensitive), values are the "
                     "correct replacement. Applied before generating subtitles. "
-                    "Example: {\"cloud\": \"Claude\", \"co-pilot\": \"Copilot\"}."
+                    'Example: {"cloud": "Claude", "co-pilot": "Copilot"}.'
                 ),
             },
         },
@@ -104,7 +104,9 @@ class SubtitleGen(BaseTool):
             content = self._render_vtt(cues, highlight_style)
             ext = ".vtt"
         elif fmt == "json":
-            content = json.dumps({"cues": cues, "highlight_style": highlight_style}, indent=2)
+            content = json.dumps(
+                {"cues": cues, "highlight_style": highlight_style}, indent=2
+            )
             ext = ".caption.json"
         else:
             return ToolResult(success=False, error=f"Unknown format: {fmt}")
@@ -148,7 +150,7 @@ class SubtitleGen(BaseTool):
                 # Strip punctuation for lookup, preserve it
                 stripped = raw.lower().rstrip(".,!?;:'\"")
                 if stripped in corr:
-                    trailing = raw[len(stripped):]
+                    trailing = raw[len(stripped) :]
                     w["word"] = corr[stripped] + trailing
             # Also fix segment-level text
             if "text" in seg and words:
@@ -156,6 +158,7 @@ class SubtitleGen(BaseTool):
             elif "text" in seg:
                 for wrong, right in corr.items():
                     import re as _re
+
                     seg["text"] = _re.sub(
                         r"\b" + _re.escape(wrong) + r"\b",
                         right,
@@ -177,11 +180,13 @@ class SubtitleGen(BaseTool):
                 all_words.extend(words)
             elif "text" in seg:
                 # Fallback: segment-level only (no word timestamps)
-                all_words.append({
-                    "word": seg["text"],
-                    "start": seg["start"],
-                    "end": seg["end"],
-                })
+                all_words.append(
+                    {
+                        "word": seg["text"],
+                        "start": seg["start"],
+                        "end": seg["end"],
+                    }
+                )
 
         if not all_words:
             return []
@@ -195,16 +200,22 @@ class SubtitleGen(BaseTool):
             candidate = f"{buf_text} {word_text}".strip() if buf_text else word_text
 
             if buf and (len(buf) >= max_words or len(candidate) > max_chars):
-                cues.append({
-                    "index": len(cues) + 1,
-                    "start": buf[0]["start"],
-                    "end": buf[-1]["end"],
-                    "text": buf_text,
-                    "words": [
-                        {"word": b["word"].strip(), "start": b["start"], "end": b["end"]}
-                        for b in buf
-                    ],
-                })
+                cues.append(
+                    {
+                        "index": len(cues) + 1,
+                        "start": buf[0]["start"],
+                        "end": buf[-1]["end"],
+                        "text": buf_text,
+                        "words": [
+                            {
+                                "word": b["word"].strip(),
+                                "start": b["start"],
+                                "end": b["end"],
+                            }
+                            for b in buf
+                        ],
+                    }
+                )
                 buf = []
                 buf_text = ""
 
@@ -213,16 +224,22 @@ class SubtitleGen(BaseTool):
 
         # Flush remaining
         if buf:
-            cues.append({
-                "index": len(cues) + 1,
-                "start": buf[0]["start"],
-                "end": buf[-1]["end"],
-                "text": buf_text,
-                "words": [
-                    {"word": b["word"].strip(), "start": b["start"], "end": b["end"]}
-                    for b in buf
-                ],
-            })
+            cues.append(
+                {
+                    "index": len(cues) + 1,
+                    "start": buf[0]["start"],
+                    "end": buf[-1]["end"],
+                    "text": buf_text,
+                    "words": [
+                        {
+                            "word": b["word"].strip(),
+                            "start": b["start"],
+                            "end": b["end"],
+                        }
+                        for b in buf
+                    ],
+                }
+            )
 
         return cues
 
@@ -246,7 +263,9 @@ class SubtitleGen(BaseTool):
                 words = cue.get("words", [])
                 if not words:
                     lines.append(str(cue["index"]))
-                    lines.append(f"{self._ts_srt(cue['start'])} --> {self._ts_srt(cue['end'])}")
+                    lines.append(
+                        f"{self._ts_srt(cue['start'])} --> {self._ts_srt(cue['end'])}"
+                    )
                     lines.append(cue["text"])
                     lines.append("")
                     continue
@@ -266,7 +285,9 @@ class SubtitleGen(BaseTool):
         else:
             for cue in cues:
                 lines.append(str(cue["index"]))
-                lines.append(f"{self._ts_srt(cue['start'])} --> {self._ts_srt(cue['end'])}")
+                lines.append(
+                    f"{self._ts_srt(cue['start'])} --> {self._ts_srt(cue['end'])}"
+                )
                 lines.append(cue["text"])
                 lines.append("")
         return "\n".join(lines)
@@ -285,7 +306,9 @@ class SubtitleGen(BaseTool):
             for cue in cues:
                 words = cue.get("words", [])
                 if not words:
-                    lines.append(f"{self._ts_vtt(cue['start'])} --> {self._ts_vtt(cue['end'])}")
+                    lines.append(
+                        f"{self._ts_vtt(cue['start'])} --> {self._ts_vtt(cue['end'])}"
+                    )
                     lines.append(cue["text"])
                     lines.append("")
                     continue
@@ -303,7 +326,9 @@ class SubtitleGen(BaseTool):
                     lines.append("")
         else:
             for cue in cues:
-                lines.append(f"{self._ts_vtt(cue['start'])} --> {self._ts_vtt(cue['end'])}")
+                lines.append(
+                    f"{self._ts_vtt(cue['start'])} --> {self._ts_vtt(cue['end'])}"
+                )
                 lines.append(cue["text"])
                 lines.append("")
         return "\n".join(lines)

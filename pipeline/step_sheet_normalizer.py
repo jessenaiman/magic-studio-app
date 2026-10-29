@@ -10,6 +10,7 @@ Takes any non-standardized turnaround or animation pose sheet:
    when only one walking direction is supplied, recording `mirroredFallback: true` and `missingSlots` so not every
    animation must exist initially and UI buttons can generate missing sheets on demand.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,7 +36,13 @@ from pipeline.pose_and_part_cutter import (
 )
 from pipeline.step_cutter_review import background_candidates, detect_components
 
-CANONICAL_TURNAROUND_SLOTS = ["front", "quarter_front", "side", "opposite_quarter", "back"]
+CANONICAL_TURNAROUND_SLOTS = [
+    "front",
+    "quarter_front",
+    "side",
+    "opposite_quarter",
+    "back",
+]
 CANONICAL_ACTION_SLOTS = [
     "standing",
     "walk_right",
@@ -98,9 +105,17 @@ def _classify_unlabelled_panel_with_vision_fallback(
     ]
     if aspect > 0.88 and "arms_wide" not in already_assigned:
         return "arms_wide", "jev_vision_silhouette"
-    if top_spread > 0.62 and "waving" not in already_assigned and "standing" in already_assigned:
+    if (
+        top_spread > 0.62
+        and "waving" not in already_assigned
+        and "standing" in already_assigned
+    ):
         return "waving", "jev_vision_silhouette"
-    if bot_spread < 0.34 and "jumping" not in already_assigned and "standing" in already_assigned:
+    if (
+        bot_spread < 0.34
+        and "jumping" not in already_assigned
+        and "standing" in already_assigned
+    ):
         return "jumping", "jev_vision_silhouette"
     for cand in preferred_order:
         if cand not in already_assigned:
@@ -120,7 +135,10 @@ def _normalize_cell_with_photocraft(
     alpha = crop_img.getchannel("A")
     bbox = alpha.getbbox() or (0, 0, crop_img.width, crop_img.height)
     trimmed = crop_img.crop(bbox)
-    scale = min((cell_w * 0.82) / max(1, trimmed.width), (cell_h * 0.84) / max(1, trimmed.height))
+    scale = min(
+        (cell_w * 0.82) / max(1, trimmed.width),
+        (cell_h * 0.84) / max(1, trimmed.height),
+    )
     nw = max(1, int(round(trimmed.width * scale)))
     nh = max(1, int(round(trimmed.height * scale)))
     resized = trimmed.resize((nw, nh), Image.Resampling.LANCZOS)
@@ -189,7 +207,9 @@ def normalize_and_reorder_sheet(
     frames_dir = out_root / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    pc_bin = _find_photocraft_cli() or shutil.which("photocraft-cli") or "photocraft-cli"
+    pc_bin = (
+        _find_photocraft_cli() or shutil.which("photocraft-cli") or "photocraft-cli"
+    )
     with Image.open(src_path) as im:
         rgba = im.convert("RGBA")
     w, h = rgba.size
@@ -201,7 +221,9 @@ def normalize_and_reorder_sheet(
     raw = np.array(rgba)
     if raw[:, :, 3].min() < 255:
         mask = raw[:, :, 3] > 16
-        if mask.mean() > 0.5 or not detect_components(mask, "turnaround" if kind == "turnaround" else "action"):
+        if mask.mean() > 0.5 or not detect_components(
+            mask, "turnaround" if kind == "turnaround" else "action"
+        ):
             mask = mask & ~background_candidates(raw[:, :, :3], tolerance)
     else:
         mask = ~background_candidates(raw[:, :, :3], tolerance)
@@ -228,7 +250,8 @@ def normalize_and_reorder_sheet(
 
         # 1. Try OCR label match first
         candidates = [
-            l for l in ocr_hits
+            l
+            for l in ocr_hits
             if abs(l["x"] - (b[0] + b[2]) / 2) < (b[2] - b[0]) * 0.65
             and b[3] - 8 <= l["y"] <= b[3] + h * 0.12
         ]
@@ -248,18 +271,26 @@ def normalize_and_reorder_sheet(
                 crop, idx, len(boxes), kind, assigned_labels
             )
         assigned_labels.add(label)
-        raw_panels.append({
-            "originalIndex": idx,
-            "label": label,
-            "labelSource": label_source,
-            "sourceBox": box,
-            "crop": crop,
-        })
+        raw_panels.append(
+            {
+                "originalIndex": idx,
+                "label": label,
+                "labelSource": label_source,
+                "sourceBox": box,
+                "crop": crop,
+            }
+        )
 
     # Reorder panels into canonical sequence
-    canonical_order = CANONICAL_TURNAROUND_SLOTS if kind == "turnaround" else CANONICAL_ACTION_SLOTS
+    canonical_order = (
+        CANONICAL_TURNAROUND_SLOTS if kind == "turnaround" else CANONICAL_ACTION_SLOTS
+    )
     raw_panels.sort(
-        key=lambda p: canonical_order.index(p["label"]) if p["label"] in canonical_order else 100 + p["originalIndex"]
+        key=lambda p: (
+            canonical_order.index(p["label"])
+            if p["label"] in canonical_order
+            else 100 + p["originalIndex"]
+        )
     )
 
     cell_w, cell_h = int(cell_size[0]), int(cell_size[1])
@@ -287,7 +318,11 @@ def normalize_and_reorder_sheet(
 
     # Expand directional walking panels (`walk_right` <-> `walk_left`) via PhotoCraft flip when requested
     if kind == "action" and expand_directions:
-        base_walk = by_label.get("walk_right") or by_label.get("walking") or by_label.get("walk_left")
+        base_walk = (
+            by_label.get("walk_right")
+            or by_label.get("walking")
+            or by_label.get("walk_left")
+        )
         if base_walk:
             base_path = out_root / base_walk["file"]
             if "walk_right" not in by_label:
@@ -322,9 +357,15 @@ def normalize_and_reorder_sheet(
                     normalized_frames.append(wl_entry)
                     by_label["walk_left"] = wl_entry
 
-    required_slots = CANONICAL_TURNAROUND_SLOTS if kind == "turnaround" else ["standing", "walk_right", "walk_left", "running", "jumping", "waving"]
+    required_slots = (
+        CANONICAL_TURNAROUND_SLOTS
+        if kind == "turnaround"
+        else ["standing", "walk_right", "walk_left", "running", "jumping", "waving"]
+    )
     missing_slots = [s for s in required_slots if s not in by_label]
-    mirrored_slots = [f["label"] for f in normalized_frames if f.get("mirroredFallback")]
+    mirrored_slots = [
+        f["label"] for f in normalized_frames if f.get("mirroredFallback")
+    ]
 
     manifest_doc = {
         "schemaVersion": 1,
@@ -341,20 +382,30 @@ def normalize_and_reorder_sheet(
             "missingPoses": (
                 f"magic-cli exec image.generate provider=codex character={character_id} "
                 f"poses='{json.dumps(missing_slots + mirrored_slots)}'"
-            ) if (missing_slots or mirrored_slots) else None,
+            )
+            if (missing_slots or mirrored_slots)
+            else None,
             "turnaround": f"magic-cli exec assets.agent_sheets character={character_id} kinds='[\"turnaround\"]'",
             "explodedLimbs": f"magic-cli exec assets.agent_sheets character={character_id} kinds='[\"skeleton\"]'",
         },
         "frames": normalized_frames,
     }
-    (out_root / "manifest.json").write_text(json.dumps(manifest_doc, indent=2) + "\n", encoding="utf-8")
+    (out_root / "manifest.json").write_text(
+        json.dumps(manifest_doc, indent=2) + "\n", encoding="utf-8"
+    )
     return manifest_doc
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--source", required=True, help="Input turnaround or pose sheet image")
-    ap.add_argument("--out-dir", required=True, help="Output directory for normalized frames + manifest.json")
+    ap.add_argument(
+        "--source", required=True, help="Input turnaround or pose sheet image"
+    )
+    ap.add_argument(
+        "--out-dir",
+        required=True,
+        help="Output directory for normalized frames + manifest.json",
+    )
     ap.add_argument("--kind", default="auto", choices=["auto", "turnaround", "action"])
     ap.add_argument("--character", default="character")
     ap.add_argument("--cell-width", type=int, default=560)

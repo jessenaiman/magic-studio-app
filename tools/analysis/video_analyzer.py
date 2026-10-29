@@ -108,7 +108,10 @@ class VideoAnalyzer(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=2048, vram_mb=0, disk_mb=3000,
+        cpu_cores=2,
+        ram_mb=2048,
+        vram_mb=0,
+        disk_mb=3000,
         network_required=False,  # Only needed for URL sources
     )
     idempotency_key_fields = ["source", "analysis_depth"]
@@ -198,22 +201,27 @@ class VideoAnalyzer(BaseTool):
         if is_url:
             try:
                 from tools.analysis.video_downloader import VideoDownloader
+
                 downloader = VideoDownloader()
 
                 if depth == "transcript_only" and self._is_youtube(platform):
                     # Only get metadata, skip video download
-                    dl_result = downloader.execute({
-                        "url": source,
-                        "output_dir": str(output_dir),
-                        "format": "metadata_only",
-                    })
+                    dl_result = downloader.execute(
+                        {
+                            "url": source,
+                            "output_dir": str(output_dir),
+                            "format": "metadata_only",
+                        }
+                    )
                 else:
-                    dl_result = downloader.execute({
-                        "url": source,
-                        "output_dir": str(output_dir),
-                        "format": "video",
-                        "max_resolution": "720p",
-                    })
+                    dl_result = downloader.execute(
+                        {
+                            "url": source,
+                            "output_dir": str(output_dir),
+                            "format": "video",
+                            "max_resolution": "720p",
+                        }
+                    )
 
                 if dl_result.success:
                     metadata = dl_result.data.get("metadata", {})
@@ -263,6 +271,7 @@ class VideoAnalyzer(BaseTool):
                 from youtube_transcript_api import YouTubeTranscriptApi
 
                 from tools.analysis.transcript_fetcher import TranscriptFetcher
+
                 fetcher = TranscriptFetcher()
 
                 # Auto-detect available languages instead of hardcoding "en"
@@ -273,7 +282,9 @@ class VideoAnalyzer(BaseTool):
                     # Build priority list: manual first, then auto-generated
                     lang_codes = []
                     for t in available:
-                        code = t.language_code if hasattr(t, "language_code") else str(t)
+                        code = (
+                            t.language_code if hasattr(t, "language_code") else str(t)
+                        )
                         if code not in lang_codes:
                             lang_codes.append(code)
                     if lang_codes:
@@ -281,11 +292,13 @@ class VideoAnalyzer(BaseTool):
                 except Exception:
                     pass  # Fall through to default ["en"]
 
-                tf_result = fetcher.execute({
-                    "url_or_video_id": source,
-                    "languages": languages_to_try,
-                    "include_auto_generated": True,
-                })
+                tf_result = fetcher.execute(
+                    {
+                        "url_or_video_id": source,
+                        "languages": languages_to_try,
+                        "include_auto_generated": True,
+                    }
+                )
                 if tf_result.success:
                     transcript_data = tf_result.data
                     brief["narration_transcript"] = {
@@ -300,16 +313,24 @@ class VideoAnalyzer(BaseTool):
 
         # Fallback: If transcript failed and we don't have audio yet,
         # download the video to get audio for Whisper transcription
-        if transcript_data is None and audio_path is None and video_path is None and is_url:
+        if (
+            transcript_data is None
+            and audio_path is None
+            and video_path is None
+            and is_url
+        ):
             try:
                 from tools.analysis.video_downloader import VideoDownloader
+
                 downloader = VideoDownloader()
-                dl_result = downloader.execute({
-                    "url": source,
-                    "output_dir": str(output_dir),
-                    "format": "video",
-                    "max_resolution": "720p",
-                })
+                dl_result = downloader.execute(
+                    {
+                        "url": source,
+                        "output_dir": str(output_dir),
+                        "format": "video",
+                        "max_resolution": "720p",
+                    }
+                )
                 if dl_result.success:
                     video_path = dl_result.data.get("video_path")
                     audio_path = dl_result.data.get("audio_path")
@@ -319,7 +340,9 @@ class VideoAnalyzer(BaseTool):
                     if not metadata:
                         metadata = dl_result.data.get("metadata", {})
                         brief["source"]["title"] = metadata.get("title", "")
-                        brief["source"]["duration_seconds"] = metadata.get("duration", 0)
+                        brief["source"]["duration_seconds"] = metadata.get(
+                            "duration", 0
+                        )
             except Exception as e:
                 steps_failed.append(f"download_for_whisper: {e}")
 
@@ -327,6 +350,7 @@ class VideoAnalyzer(BaseTool):
         if transcript_data is None and audio_path:
             try:
                 from tools.analysis.transcriber import Transcriber
+
                 transcriber = Transcriber()
                 # Let Whisper auto-detect language instead of assuming English
                 tr_inputs = {
@@ -383,13 +407,16 @@ class VideoAnalyzer(BaseTool):
         if video_path:
             try:
                 from tools.analysis.scene_detect import SceneDetect
+
                 detector = SceneDetect()
-                sd_result = detector.execute({
-                    "input_path": video_path,
-                    "method": "content",
-                    "min_scene_length_seconds": 0.5,
-                    "output_path": str(output_dir / "scenes.json"),
-                })
+                sd_result = detector.execute(
+                    {
+                        "input_path": video_path,
+                        "method": "content",
+                        "min_scene_length_seconds": 0.5,
+                        "output_path": str(output_dir / "scenes.json"),
+                    }
+                )
                 if sd_result.success:
                     scenes = sd_result.data.get("scenes", [])
                     steps_completed.append("scene_detect")
@@ -401,28 +428,33 @@ class VideoAnalyzer(BaseTool):
             brief["structure_analysis"]["total_scenes"] = len(scenes)
             brief_scenes = []
             for scene in scenes:
-                brief_scenes.append({
-                    "scene_index": scene.get("index", scene.get("scene_index", 0)),
-                    "start_time": scene.get("start_seconds", 0),
-                    "end_time": scene.get("end_seconds", 0),
-                    "description": "",  # Agent fills this via vision
-                    "visual_type": "other",  # Agent classifies via vision
-                    "energy_level": "medium",
-                })
+                brief_scenes.append(
+                    {
+                        "scene_index": scene.get("index", scene.get("scene_index", 0)),
+                        "start_time": scene.get("start_seconds", 0),
+                        "end_time": scene.get("end_seconds", 0),
+                        "description": "",  # Agent fills this via vision
+                        "visual_type": "other",  # Agent classifies via vision
+                        "energy_level": "medium",
+                    }
+                )
             brief["structure_analysis"]["scenes"] = brief_scenes
 
             # Compute pacing profile
             durations = [
-                s.get("end_seconds", 0) - s.get("start_seconds", 0)
-                for s in scenes
+                s.get("end_seconds", 0) - s.get("start_seconds", 0) for s in scenes
             ]
             total_duration = brief["source"]["duration_seconds"] or sum(durations)
             if durations:
                 brief["structure_analysis"]["pacing_profile"] = {
-                    "avg_scene_duration_seconds": round(sum(durations) / len(durations), 2),
+                    "avg_scene_duration_seconds": round(
+                        sum(durations) / len(durations), 2
+                    ),
                     "shortest_scene_seconds": round(min(durations), 2),
                     "longest_scene_seconds": round(max(durations), 2),
-                    "cuts_per_minute": round(len(durations) / (total_duration / 60), 2) if total_duration > 0 else 0,
+                    "cuts_per_minute": round(len(durations) / (total_duration / 60), 2)
+                    if total_duration > 0
+                    else 0,
                     "pacing_style": self._classify_pacing(durations),
                 }
 
@@ -430,7 +462,9 @@ class VideoAnalyzer(BaseTool):
         if video_path and scenes:
             try:
                 motion_results = self._classify_scene_motion(video_path, scenes)
-                for bs, mr in zip(brief["structure_analysis"]["scenes"], motion_results):
+                for bs, mr in zip(
+                    brief["structure_analysis"]["scenes"], motion_results
+                ):
                     bs["motion_type"] = mr["motion_type"]
                     bs["flow_variance"] = mr["flow_variance"]
                 steps_completed.append("motion_classification")
@@ -443,30 +477,37 @@ class VideoAnalyzer(BaseTool):
         if video_path and scenes:
             try:
                 # Extract keyframes at scene boundaries + midpoints
-                timestamps = self._compute_keyframe_timestamps(scenes, max_keyframes, depth)
+                timestamps = self._compute_keyframe_timestamps(
+                    scenes, max_keyframes, depth
+                )
 
                 from tools.analysis.frame_sampler import FrameSampler
+
                 sampler = FrameSampler()
-                fs_result = sampler.execute({
-                    "input_path": video_path,
-                    "strategy": "timestamps",
-                    "timestamps": timestamps,
-                    "output_dir": str(keyframe_dir),
-                    "format": "jpg",
-                    "quality": 2,
-                })
+                fs_result = sampler.execute(
+                    {
+                        "input_path": video_path,
+                        "strategy": "timestamps",
+                        "timestamps": timestamps,
+                        "output_dir": str(keyframe_dir),
+                        "format": "jpg",
+                        "quality": 2,
+                    }
+                )
                 if fs_result.success:
                     for frame in fs_result.data.get("frames", []):
                         # Map each frame to its scene
                         scene_idx = self._timestamp_to_scene(
                             frame["timestamp_seconds"], scenes
                         )
-                        keyframes.append({
-                            "timestamp": frame["timestamp_seconds"],
-                            "scene_index": scene_idx,
-                            "path": frame["path"],
-                            "description": "",  # Agent fills via vision
-                        })
+                        keyframes.append(
+                            {
+                                "timestamp": frame["timestamp_seconds"],
+                                "scene_index": scene_idx,
+                                "path": frame["path"],
+                                "description": "",  # Agent fills via vision
+                            }
+                        )
                     steps_completed.append("keyframes")
             except Exception as e:
                 steps_failed.append(f"keyframes: {e}")
@@ -474,23 +515,28 @@ class VideoAnalyzer(BaseTool):
             # No scene detection — fall back to count-based extraction
             try:
                 from tools.analysis.frame_sampler import FrameSampler
+
                 sampler = FrameSampler()
-                fs_result = sampler.execute({
-                    "input_path": video_path,
-                    "strategy": "count",
-                    "count": min(max_keyframes, 15),
-                    "output_dir": str(keyframe_dir),
-                    "format": "jpg",
-                    "quality": 2,
-                })
+                fs_result = sampler.execute(
+                    {
+                        "input_path": video_path,
+                        "strategy": "count",
+                        "count": min(max_keyframes, 15),
+                        "output_dir": str(keyframe_dir),
+                        "format": "jpg",
+                        "quality": 2,
+                    }
+                )
                 if fs_result.success:
                     for frame in fs_result.data.get("frames", []):
-                        keyframes.append({
-                            "timestamp": frame["timestamp_seconds"],
-                            "scene_index": 0,
-                            "path": frame["path"],
-                            "description": "",
-                        })
+                        keyframes.append(
+                            {
+                                "timestamp": frame["timestamp_seconds"],
+                                "scene_index": 0,
+                                "path": frame["path"],
+                                "description": "",
+                            }
+                        )
                     steps_completed.append("keyframes_uniform")
             except Exception as e:
                 steps_failed.append(f"keyframes_uniform: {e}")
@@ -502,17 +548,22 @@ class VideoAnalyzer(BaseTool):
             audio_source = audio_path or video_path
             try:
                 from tools.analysis.audio_energy import AudioEnergy
+
                 energy = AudioEnergy()
-                ae_result = energy.execute({
-                    "input_path": audio_source,
-                    "video_duration_seconds": brief["source"]["duration_seconds"],
-                })
+                ae_result = energy.execute(
+                    {
+                        "input_path": audio_source,
+                        "video_duration_seconds": brief["source"]["duration_seconds"],
+                    }
+                )
                 if ae_result.success:
                     # Store energy profile summary in style_profile
                     if "style_profile" not in brief:
                         brief["style_profile"] = {}
                     brief["style_profile"]["audio_energy_profile"] = {
-                        "recommended_offset": ae_result.data.get("recommended_offset_seconds", 0),
+                        "recommended_offset": ae_result.data.get(
+                            "recommended_offset_seconds", 0
+                        ),
                         "has_energy_data": True,
                     }
                     steps_completed.append("audio_energy")
@@ -537,7 +588,11 @@ class VideoAnalyzer(BaseTool):
         # Narration style from transcript
         if transcript_data:
             duration = brief["source"]["duration_seconds"]
-            wc = transcript_data.get("word_count", 0) if isinstance(transcript_data, dict) else brief.get("narration_transcript", {}).get("word_count", 0)
+            wc = (
+                transcript_data.get("word_count", 0)
+                if isinstance(transcript_data, dict)
+                else brief.get("narration_transcript", {}).get("word_count", 0)
+            )
             wpm = round(wc / (duration / 60), 1) if duration > 0 else 0
             brief["style_profile"]["narration_style"] = {
                 "has_narration": wc > 20,
@@ -547,11 +602,14 @@ class VideoAnalyzer(BaseTool):
             }
 
         # Initialize remaining style fields for agent to fill
-        brief["style_profile"].setdefault("color_palette", {
-            "primary_colors": [],
-            "accent_colors": [],
-            "overall_mood": "",
-        })
+        brief["style_profile"].setdefault(
+            "color_palette",
+            {
+                "primary_colors": [],
+                "accent_colors": [],
+                "overall_mood": "",
+            },
+        )
         brief["style_profile"].setdefault("typography_observed", "")
         brief["style_profile"].setdefault("transition_types", [])
         brief["style_profile"].setdefault("music_style", "")
@@ -590,9 +648,13 @@ class VideoAnalyzer(BaseTool):
     def _get_duration(self, video_path: Path) -> float:
         """Get video duration via ffprobe."""
         cmd = [
-            "ffprobe", "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "json",
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
             str(video_path),
         ]
         result = self.run_command(cmd)
@@ -656,7 +718,11 @@ class VideoAnalyzer(BaseTool):
     def _suggest_pipeline(self, brief: dict) -> str:
         """Suggest the best pipeline based on content analysis."""
         platform = brief["source"]["type"]
-        pacing = brief["structure_analysis"].get("pacing_profile", {}).get("pacing_style", "")
+        pacing = (
+            brief["structure_analysis"]
+            .get("pacing_profile", {})
+            .get("pacing_style", "")
+        )
 
         if platform in ("shorts", "tiktok", "instagram"):
             return "animation"  # Short-form → animation pipeline works well
@@ -683,12 +749,14 @@ class VideoAnalyzer(BaseTool):
         if scenes and motion_scenes:
             return len(motion_scenes) / len(scenes) >= 0.3
         # Fallback to pacing heuristic
-        pacing = brief["structure_analysis"].get("pacing_profile", {}).get("pacing_style", "")
+        pacing = (
+            brief["structure_analysis"]
+            .get("pacing_profile", {})
+            .get("pacing_style", "")
+        )
         return pacing in ("dynamic_social", "rapid_fire")
 
-    def _classify_scene_motion(
-        self, video_path: str, scenes: list[dict]
-    ) -> list[dict]:
+    def _classify_scene_motion(self, video_path: str, scenes: list[dict]) -> list[dict]:
         """Classify each scene as static_image, animated_still, or motion_clip.
 
         Samples 2-3 frame pairs per scene and computes dense optical flow
@@ -720,7 +788,11 @@ class VideoAnalyzer(BaseTool):
 
             # Sample 2-3 frame pairs spaced across the scene
             gap = min(0.4, duration / 3)
-            sample_times = [start + duration * p for p in (0.25, 0.5, 0.75) if start + duration * p + gap <= end]
+            sample_times = [
+                start + duration * p
+                for p in (0.25, 0.5, 0.75)
+                if start + duration * p + gap <= end
+            ]
             if not sample_times:
                 sample_times = [start + 0.1]
 
@@ -745,9 +817,16 @@ class VideoAnalyzer(BaseTool):
                 gray_b = cv2.cvtColor(frame_b, cv2.COLOR_BGR2GRAY)
 
                 flow = cv2.calcOpticalFlowFarneback(
-                    gray_a, gray_b, None,
-                    pyr_scale=0.5, levels=3, winsize=15,
-                    iterations=3, poly_n=5, poly_sigma=1.2, flags=0,
+                    gray_a,
+                    gray_b,
+                    None,
+                    pyr_scale=0.5,
+                    levels=3,
+                    winsize=15,
+                    iterations=3,
+                    poly_n=5,
+                    poly_sigma=1.2,
+                    flags=0,
                 )
 
                 mag = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
@@ -773,10 +852,12 @@ class VideoAnalyzer(BaseTool):
             else:
                 motion_type = "motion_clip"
 
-            results.append({
-                "motion_type": motion_type,
-                "flow_variance": round(avg_variance, 3),
-            })
+            results.append(
+                {
+                    "motion_type": motion_type,
+                    "flow_variance": round(avg_variance, 3),
+                }
+            )
 
         cap.release()
         return results
@@ -784,6 +865,7 @@ class VideoAnalyzer(BaseTool):
     def _read_frame_at(self, cap, timestamp: float, fps: float):
         """Read a single frame at the given timestamp."""
         import cv2
+
         frame_num = int(timestamp * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
         ret, frame = cap.read()

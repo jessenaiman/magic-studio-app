@@ -41,8 +41,10 @@ def probe_duration(file_path: str | Path) -> float | None:
         result = subprocess.run(
             [
                 ffprobe,
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_format",
                 str(file_path),
             ],
@@ -123,8 +125,10 @@ class AudioProbe(BaseTool):
             result = subprocess.run(
                 [
                     ffprobe,
-                    "-v", "quiet",
-                    "-print_format", "json",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
                     "-show_format",
                     "-show_streams",
                     str(input_path),
@@ -150,7 +154,9 @@ class AudioProbe(BaseTool):
         streams = data.get("streams", [])
 
         # Find audio stream
-        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
+        audio_stream = next(
+            (s for s in streams if s.get("codec_type") == "audio"), None
+        )
 
         probe_data: dict[str, Any] = {
             "file": str(input_path),
@@ -168,7 +174,9 @@ class AudioProbe(BaseTool):
                 "sample_rate": int(audio_stream.get("sample_rate", 0)),
                 "channels": audio_stream.get("channels"),
                 "channel_layout": audio_stream.get("channel_layout"),
-                "bit_rate": int(audio_stream.get("bit_rate", 0)) if audio_stream.get("bit_rate") else None,
+                "bit_rate": int(audio_stream.get("bit_rate", 0))
+                if audio_stream.get("bit_rate")
+                else None,
             }
 
         return ToolResult(

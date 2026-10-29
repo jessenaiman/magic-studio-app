@@ -16,13 +16,11 @@ Command observation belongs to this registry. The pet controller consumes shared
 
 ## Discover every component
 
-Use the explicitly selected Studio endpoint:
+Select the intended window with `magic-cli studio open /absolute/Project.magic`; transport is automatic:
 
 ```sh
-mc --bridge PORT exec ui.controls limit=64
-mc --bridge PORT exec ui.controls offset=64 expected_instance=INSTANCE expected_revision=REVISION
-mc --bridge PORT panels --json
-mc --bridge PORT panels --check
+magic-cli exec ui.controls limit=64
+magic-cli exec ui.controls offset=64 expected_instance=INSTANCE expected_revision=REVISION
 ```
 
 `ui.controls` includes containers and noninteractive components, not just buttons.
@@ -50,9 +48,9 @@ Do not treat `commands: []` as a verified engine mapping. Generic `ui.click`/`ui
 Do not reuse an index after instance replacement. `@INDEX` actions require `instance=INSTANCE`:
 
 ```sh
-mc --bridge PORT exec ui.click id=@42 instance=INSTANCE
-mc --bridge PORT exec ui.set id=@43 instance=INSTANCE value=true
-mc --bridge PORT exec ui.key id=@44 instance=INSTANCE key=ArrowRight
+magic-cli exec ui.click id=@42 instance=INSTANCE
+magic-cli exec ui.set id=@43 instance=INSTANCE value=true
+magic-cli exec ui.key id=@44 instance=INSTANCE key=ArrowRight
 ```
 
 Hidden/disabled click targets refuse. Toggles accept Boolean values. Text/password drafts are not echoed by `ui.set`.
@@ -64,14 +62,14 @@ Hidden/disabled click targets refuse. Toggles accept Boolean values. Text/passwo
 Each item carries canonical ID, label/look, signal, busy, reason/source/request and observation/receipt metadata.
 Signals: 0 idle, 1 active/ready, 2 attention, 3 error. Busy distinguishes working from ready.
 The UI indicator and pets read the same record. No separate TUI colour/state inference.
-Missing/stale feedback means unavailable. Truncated observations cannot pass `panels --check` or claim universal health.
-`mc panels --json` includes the disk config, typed panel report and original feedback; offline static configuration remains inspectable.
+Missing/stale feedback means unavailable. Truncated observations cannot claim universal health.
+Inspect live state with `magic-cli exec ui.feedback`; static configuration remains in `components.json`.
 
 ## TUI requests UI attention
 
 ```sh
-mc --bridge PORT exec ui.attention project=/absolute/Song.magic id=COMPONENT reason='Review this result'
-mc --bridge PORT exec ui.attention project=/absolute/Song.magic id=COMPONENT clear=true
+magic-cli exec ui.attention project=/absolute/Song.magic id=COMPONENT reason='Review this result'
+magic-cli exec ui.attention project=/absolute/Song.magic id=COMPONENT clear=true
 ```
 
 The exact open project and registered target are required. Attention is separate from actual engine error state; clearing attention cannot clear an error. Dog/cat movement is a presentation of the resulting shared record, not a TUI-owned animation command.

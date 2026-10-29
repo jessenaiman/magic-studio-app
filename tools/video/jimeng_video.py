@@ -187,7 +187,8 @@ class JimengVideo(BaseTool):
         if not ak or not sk:
             return ToolResult(
                 success=False,
-                error="VOLC_ACCESSKEY or VOLC_SECRETKEY not set. " + self.install_instructions,
+                error="VOLC_ACCESSKEY or VOLC_SECRETKEY not set. "
+                + self.install_instructions,
             )
 
         operation = inputs.get("operation", "text_to_video")
@@ -217,7 +218,9 @@ class JimengVideo(BaseTool):
         payload = self._build_payload(inputs)
         task_id = self._submit_task(payload, ak=ak, sk=sk)
         video_url = self._poll_task(
-            task_id, ak=ak, sk=sk,
+            task_id,
+            ak=ak,
+            sk=sk,
             poll_interval=float(inputs.get("poll_interval_seconds", 5.0)),
             timeout_seconds=int(inputs.get("timeout_seconds", 600)),
         )
@@ -291,17 +294,25 @@ class JimengVideo(BaseTool):
         return task_id
 
     def _poll_task(
-        self, task_id: str, *, ak: str, sk: str,
-        poll_interval: float, timeout_seconds: int,
+        self,
+        task_id: str,
+        *,
+        ak: str,
+        sk: str,
+        poll_interval: float,
+        timeout_seconds: int,
     ) -> str:
         import requests
 
         query = {"Action": "CVSync2AsyncGetResult", "Version": _API_VERSION}
-        body = json.dumps({
-            "req_key": _REQ_KEY_VIDEO,
-            "task_id": task_id,
-            "req_json": json.dumps({"return_url": True}),
-        }, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(
+            {
+                "req_key": _REQ_KEY_VIDEO,
+                "task_id": task_id,
+                "req_json": json.dumps({"return_url": True}),
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
 
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
@@ -319,12 +330,19 @@ class JimengVideo(BaseTool):
                 return video_url
             if status in ("not_found", "expired"):
                 raise RuntimeError(f"Jimeng task invalid: status={status}")
-        raise TimeoutError(f"Jimeng task {task_id} did not finish within {timeout_seconds}s")
+        raise TimeoutError(
+            f"Jimeng task {task_id} did not finish within {timeout_seconds}s"
+        )
 
     @staticmethod
     def _sign(
-        method: str, path: str, query_params: dict,
-        headers: dict, body: bytes, ak: str, sk: str,
+        method: str,
+        path: str,
+        query_params: dict,
+        headers: dict,
+        body: bytes,
+        ak: str,
+        sk: str,
     ) -> dict:
         now = datetime.now(timezone.utc)
         x_date = now.strftime("%Y%m%dT%H%M%SZ")
@@ -339,10 +357,7 @@ class JimengVideo(BaseTool):
 
         lower_headers = {k.lower(): v.strip() for k, v in headers.items()}
         signed_names = sorted(lower_headers)
-        canonical_headers = "".join(
-            f"{k}:{lower_headers[k]}\n"
-            for k in signed_names
-        )
+        canonical_headers = "".join(f"{k}:{lower_headers[k]}\n" for k in signed_names)
         signed_str = ";".join(signed_names)
 
         canonical_query = "&".join(
@@ -350,23 +365,39 @@ class JimengVideo(BaseTool):
             for k, v in sorted(query_params.items())
         )
 
-        canonical_request = "\n".join([
-            method.upper(), path, canonical_query,
-            canonical_headers, signed_str, body_hash,
-        ])
+        canonical_request = "\n".join(
+            [
+                method.upper(),
+                path,
+                canonical_query,
+                canonical_headers,
+                signed_str,
+                body_hash,
+            ]
+        )
 
         credential_scope = f"{short_date}/{_REGION}/{_SERVICE}/request"
-        string_to_sign = "\n".join([
-            _ALGORITHM, x_date, credential_scope,
-            hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
-        ])
+        string_to_sign = "\n".join(
+            [
+                _ALGORITHM,
+                x_date,
+                credential_scope,
+                hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+            ]
+        )
 
-        k_date = hmac.new(sk.encode("utf-8"), short_date.encode("utf-8"), hashlib.sha256).digest()
+        k_date = hmac.new(
+            sk.encode("utf-8"), short_date.encode("utf-8"), hashlib.sha256
+        ).digest()
         k_region = hmac.new(k_date, _REGION.encode("utf-8"), hashlib.sha256).digest()
-        k_service = hmac.new(k_region, _SERVICE.encode("utf-8"), hashlib.sha256).digest()
+        k_service = hmac.new(
+            k_region, _SERVICE.encode("utf-8"), hashlib.sha256
+        ).digest()
         k_signing = hmac.new(k_service, b"request", hashlib.sha256).digest()
 
-        signature = hmac.new(k_signing, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+        signature = hmac.new(
+            k_signing, string_to_sign.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
 
         headers["Authorization"] = (
             f"{_ALGORITHM} Credential={ak}/{credential_scope}, "
@@ -402,4 +433,6 @@ class JimengVideo(BaseTool):
             raise RuntimeError(f"Jimeng API error: code={code}, msg={msg}")
         code = payload.get("code", "unknown")
         msg = payload.get("message", "unknown error")
-        raise RuntimeError(f"Jimeng API error: HTTP {http_status}, code={code}, msg={msg}")
+        raise RuntimeError(
+            f"Jimeng API error: HTTP {http_status}, code={code}, msg={msg}"
+        )

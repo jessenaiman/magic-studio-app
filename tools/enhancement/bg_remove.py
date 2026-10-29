@@ -78,9 +78,7 @@ class BgRemove(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=2048, vram_mb=0, disk_mb=500
-    )
+    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=2048, vram_mb=0, disk_mb=500)
 
     idempotency_key_fields = ["input_path", "model", "bg_color", "alpha_matting"]
     side_effects = ["writes background-removed image to output_path"]
@@ -92,6 +90,7 @@ class BgRemove(BaseTool):
     def get_status(self) -> ToolStatus:
         try:
             import rembg  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             return ToolStatus.UNAVAILABLE
@@ -102,7 +101,12 @@ class BgRemove(BaseTool):
             return ToolResult(success=False, error=f"Input not found: {input_path}")
 
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_nobg").with_suffix(".png")))
+            inputs.get(
+                "output_path",
+                str(
+                    input_path.with_stem(f"{input_path.stem}_nobg").with_suffix(".png")
+                ),
+            )
         )
         model_name = inputs.get("model", "u2net")
         bg_color = inputs.get("bg_color")
@@ -137,7 +141,11 @@ class BgRemove(BaseTool):
         # Composite onto a colored background if requested
         if bg_color:
             hex_color = bg_color.lstrip("#")
-            r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+            r, g, b = (
+                int(hex_color[0:2], 16),
+                int(hex_color[2:4], 16),
+                int(hex_color[4:6], 16),
+            )
             background = Image.new("RGBA", result_image.size, (r, g, b, 255))
             background.paste(result_image, mask=result_image.split()[3])
             result_image = background.convert("RGB")

@@ -55,15 +55,24 @@ class Transcriber(BaseTool):
         "type": "object",
         "required": ["input_path"],
         "properties": {
-            "input_path": {"type": "string", "description": "Path to audio or video file"},
+            "input_path": {
+                "type": "string",
+                "description": "Path to audio or video file",
+            },
             "model_size": {
                 "type": "string",
                 "enum": ["tiny", "base", "small", "medium", "large-v2", "large-v3"],
                 "default": "base",
             },
-            "language": {"type": "string", "description": "ISO 639-1 language code, or null for auto-detect"},
+            "language": {
+                "type": "string",
+                "description": "ISO 639-1 language code, or null for auto-detect",
+            },
             "diarize": {"type": "boolean", "default": False},
-            "output_dir": {"type": "string", "description": "Directory for output files"},
+            "output_dir": {
+                "type": "string",
+                "description": "Directory for output files",
+            },
         },
     }
 
@@ -98,6 +107,7 @@ class Transcriber(BaseTool):
     def get_status(self) -> ToolStatus:
         try:
             import faster_whisper  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             return ToolStatus.UNAVAILABLE
@@ -105,6 +115,7 @@ class Transcriber(BaseTool):
     def _has_diarization(self) -> bool:
         try:
             import whisperx  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -121,7 +132,9 @@ class Transcriber(BaseTool):
         output_dir = Path(inputs.get("output_dir", input_path.parent))
 
         if not input_path.exists():
-            return ToolResult(success=False, error=f"Input file not found: {input_path}")
+            return ToolResult(
+                success=False, error=f"Input file not found: {input_path}"
+            )
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -262,6 +275,7 @@ class Transcriber(BaseTool):
 
             # Diarize
             import os
+
             hf_token = os.environ.get("HF_TOKEN")
             if not hf_token:
                 # Can't diarize without HuggingFace token for pyannote

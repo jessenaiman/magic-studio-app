@@ -4,11 +4,15 @@ import socket
 from PIL import Image
 
 
-def send_blender_mcp_code(code: str, host: str = "127.0.0.1", port: int = 9876, timeout: float = 90.0) -> dict:
+def send_blender_mcp_code(
+    code: str, host: str = "127.0.0.1", port: int = 9876, timeout: float = 90.0
+) -> dict:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout)
     s.connect((host, port))
-    s.sendall(json.dumps({"type": "execute_code", "params": {"code": code}}).encode("utf-8"))
+    s.sendall(
+        json.dumps({"type": "execute_code", "params": {"code": code}}).encode("utf-8")
+    )
     chunks = []
     while True:
         data = s.recv(65536)
@@ -31,8 +35,16 @@ def _build_combined_turnaround_atlas(sliced: dict, out_dir: str) -> str:
     horizontally so world +X aligns in 3D) views into a single 1024x1024 UV atlas.
     """
     tv = sliced["turnaroundViews"]
-    front_dil = Image.open(tv["frontDilated"]).convert("RGBA").resize((512, 1024), Image.Resampling.LANCZOS)
-    back_dil = Image.open(tv["backDilated"]).convert("RGBA").resize((512, 1024), Image.Resampling.LANCZOS)
+    front_dil = (
+        Image.open(tv["frontDilated"])
+        .convert("RGBA")
+        .resize((512, 1024), Image.Resampling.LANCZOS)
+    )
+    back_dil = (
+        Image.open(tv["backDilated"])
+        .convert("RGBA")
+        .resize((512, 1024), Image.Resampling.LANCZOS)
+    )
     back_mirrored = back_dil.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
 
     atlas = Image.new("RGBA", (1024, 1024), (165, 140, 118, 255))
@@ -60,14 +72,21 @@ def execute_archetype_in_blender53(
 
     motion_range_summary = None
     char_hint = os.path.splitext(os.path.basename(image_path or "hopper"))[0].lower()
-    opt_slug = "whiskers" if ("whiskers" in char_hint or "20" in char_hint) else "hopper"
+    opt_slug = (
+        "whiskers" if ("whiskers" in char_hint or "20" in char_hint) else "hopper"
+    )
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    turnaround_cut_dir = os.path.join(repo_root, "exports", "pose_and_parts", f"{opt_slug}_turnaround")
-    poses_cut_dir = os.path.join(repo_root, "exports", "pose_and_parts", f"{opt_slug}_poses")
+    turnaround_cut_dir = os.path.join(
+        repo_root, "exports", "pose_and_parts", f"{opt_slug}_turnaround"
+    )
+    poses_cut_dir = os.path.join(
+        repo_root, "exports", "pose_and_parts", f"{opt_slug}_poses"
+    )
     opt_out_dir = os.path.join(repo_root, "exports", "pose_and_parts", opt_slug)
     if os.path.isdir(turnaround_cut_dir) and os.path.isdir(poses_cut_dir):
         try:
             from pipeline.codex_accuracy_optimizer import optimize, load_motion_range
+
             opt_rep = optimize(turnaround_cut_dir, poses_cut_dir, opt_out_dir)
             mr = load_motion_range(opt_rep["motionRangeFile"])
             motion_range_summary = mr.get("limits", {})
@@ -859,5 +878,6 @@ print(json.dumps(result))
         "outPreviewPng": out_preview_png,
         "blendPath": blend_path,
         "mp4Exists": os.path.exists(out_mp4) and os.path.getsize(out_mp4) > 0,
-        "pngExists": os.path.exists(out_preview_png) and os.path.getsize(out_preview_png) > 0,
+        "pngExists": os.path.exists(out_preview_png)
+        and os.path.getsize(out_preview_png) > 0,
     }

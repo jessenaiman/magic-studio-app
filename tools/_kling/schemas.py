@@ -88,7 +88,17 @@ VIDEO_MODES = ["std", "pro", "4k"]
 SOUND_VALUES = ["on", "off"]
 
 IMAGE_RESOLUTIONS = ["1k", "2k", "4k"]
-IMAGE_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9", "auto"]
+IMAGE_ASPECT_RATIOS = [
+    "16:9",
+    "9:16",
+    "1:1",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "21:9",
+    "auto",
+]
 IMAGE_REFERENCE_TYPES = ["subject", "face"]
 IMAGE_RESULT_TYPES = ["single", "series"]
 

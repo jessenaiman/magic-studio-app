@@ -34,7 +34,9 @@ def load_animation_into_filmcraft(
         "import",
         *import_files,
     ]
-    import_out = subprocess.check_output(cmd_import, stderr=subprocess.STDOUT, timeout=30).decode("utf-8")
+    import_out = subprocess.check_output(
+        cmd_import, stderr=subprocess.STDOUT, timeout=30
+    ).decode("utf-8")
 
     # Create active timeline sequence from the imported clip so Program Monitor & timeline have the clip
     subprocess.run(
@@ -113,9 +115,9 @@ def load_animation_into_filmcraft(
         "projectExists": proj_exists,
         "programFramePng": abs_frame,
         "frameExists": frame_exists,
-        "mediaProbe": json.loads(probe_raw) if probe_raw.strip().startswith("{") else probe_raw,
+        "mediaProbe": json.loads(probe_raw)
+        if probe_raw.strip().startswith("{")
+        else probe_raw,
         "importSummary": import_out.strip(),
         "inspectExcerpt": inspect_raw[:400],
     }
-
-

@@ -1,6 +1,6 @@
 # Image-to-animation pipeline review — 2026-10-18
 
-Reviewed against `docs/superpowers/specs/2026-10-18-modular-2d-3d-blender-filmcraft-pipeline-design.md`, which is marked Draft for Review. This is a code review, not a fresh Blender/FilmCraft end-to-end certification. The cutter was implemented separately; the findings below in the existing Track B pipeline remain open.
+Reviewed against the historical modular image-to-animation design proposal (retained in Git history at source baseline `f470029`). This is a code review, not a fresh Blender/FilmCraft end-to-end certification. The cutter was implemented separately; the findings below in the existing Track B pipeline remain open.
 
 ## Findings, in priority order
 

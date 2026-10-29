@@ -109,14 +109,22 @@ impl Clone for Session {
             preview_range: self.preview_range,
             last_result: self.last_result.clone(),
             blender_available: self.blender_available,
-            project_saves: std::sync::atomic::AtomicU64::new(self.project_saves.load(std::sync::atomic::Ordering::Relaxed)),
+            project_saves: std::sync::atomic::AtomicU64::new(
+                self.project_saves
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
             edits_since_save: self.edits_since_save,
         }
     }
 }
 
 impl Session {
-    pub fn user_session()->Self{Self{record_user_state:true,..Self::default()}}
+    pub fn user_session() -> Self {
+        Self {
+            record_user_state: true,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,26 +232,44 @@ pub struct LoadedCutoutRigPlan {
     pub effectcraft: Value,
 }
 
-fn load_control_bindings(raw: &Value, plan: &Path, parts: &[CutoutRigPart]) -> Result<crate::control_bindings::ControlBindings> {
+fn load_control_bindings(
+    raw: &Value,
+    plan: &Path,
+    parts: &[CutoutRigPart],
+) -> Result<crate::control_bindings::ControlBindings> {
     let mut bindings: crate::control_bindings::ControlBindings = serde_json::from_value(
-        raw.get("control_bindings").cloned().unwrap_or_else(|| serde_json::json!({}))
-    ).map_err(|e| EngineError::InvalidParams(format!("invalid control_bindings: {e}")))?;
+        raw.get("control_bindings")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({})),
+    )
+    .map_err(|e| EngineError::InvalidParams(format!("invalid control_bindings: {e}")))?;
     // Older plans explicitly declare a semantic kind. Preserve their face preview
     // only when there is one declared head; never infer it from the filename or position.
     if raw.get("control_bindings").is_none() {
         let mut heads = parts.iter().filter(|part| part.kind == "head");
-        if let Some(head) = heads.next() {
-            if heads.next().is_none() {
-                bindings.face = Some(crate::control_bindings::FaceBinding { part: head.id.clone(), landmarks: None });
-            }
+        if let Some(head) = heads.next()
+            && heads.next().is_none()
+        {
+            bindings.face = Some(crate::control_bindings::FaceBinding {
+                part: head.id.clone(),
+                landmarks: None,
+            });
         }
     }
-    bindings.validate(&parts.iter().map(|p| p.id.clone()).collect::<Vec<_>>())
+    bindings
+        .validate(&parts.iter().map(|p| p.id.clone()).collect::<Vec<_>>())
         .map_err(EngineError::InvalidParams)?;
-    if let Some(face) = &mut bindings.face {
-        if let Some(path) = &mut face.landmarks {
-            if path.is_relative() { *path = plan.parent().unwrap_or(Path::new(".")).join(&*path); }
-            if !path.is_file() { return Err(EngineError::InvalidParams(format!("face landmarks file does not exist: {}", path.display()))); }
+    if let Some(face) = &mut bindings.face
+        && let Some(path) = &mut face.landmarks
+    {
+        if path.is_relative() {
+            *path = plan.parent().unwrap_or(Path::new(".")).join(&*path);
+        }
+        if !path.is_file() {
+            return Err(EngineError::InvalidParams(format!(
+                "face landmarks file does not exist: {}",
+                path.display()
+            )));
         }
     }
     Ok(bindings)
@@ -255,7 +281,9 @@ impl LoadedCutoutRigPlan {
         let raw: Value = serde_json::from_str(&text).map_err(|e| {
             EngineError::InvalidParams(format!("invalid cutout rig plan JSON: {e}"))
         })?;
-        if let Some(layers)=raw.get("layers").and_then(Value::as_object){return Self::load_keyed_layers(path,&raw,layers);}
+        if let Some(layers) = raw.get("layers").and_then(Value::as_object) {
+            return Self::load_keyed_layers(path, &raw, layers);
+        }
         if let (Some(canvas_arr), Some(layers_arr)) = (
             raw.get("canvas").and_then(Value::as_array),
             raw.get("layers").and_then(Value::as_array),
@@ -359,39 +387,164 @@ impl LoadedCutoutRigPlan {
     }
 
     /// Older HyperFrames rigs store cropped PNGs as an explicitly ordered layer map.
-    fn load_keyed_layers(path:&Path,raw:&Value,layers:&serde_json::Map<String,Value>)->Result<Self>{
-        let invalid=|message:String|EngineError::InvalidParams(format!("Invalid keyed rig {}: {message}",path.display()));
-        let canvas=raw["canvas"].as_array().filter(|v|v.len()==2).ok_or_else(||invalid("canvas must contain two positive integers".into()))?;
-        let dims:Vec<u32>=canvas.iter().map(|v|v.as_u64().filter(|n|*n>0&&*n<=8192).map(|n|n as u32).ok_or_else(||invalid("canvas values must be 1..8192".into()))).collect::<Result<_>>()?;let(cw,ch)=(dims[0],dims[1]);
-        let order=raw["layer_order"].as_array().filter(|v|!v.is_empty()).ok_or_else(||invalid("nonempty layer_order is required".into()))?;
-        let ids:Vec<&str>=order.iter().map(|v|v.as_str().ok_or_else(||invalid("layer_order entries must be IDs".into()))).collect::<Result<_>>()?;
-        let unique:std::collections::BTreeSet<_>=ids.iter().copied().collect();
-        if layers.is_empty()||unique.len()!=ids.len()||unique.len()!=layers.len()||layers.keys().any(|k|!unique.contains(k.as_str())){return Err(invalid("layer_order must contain each nonempty layer ID exactly once".into()));}
-        let base=path.parent().ok_or_else(||invalid("manifest directory missing".into()))?;let mut decoded=Vec::new();
-        for id in &ids{
-            if id.is_empty()||!id.bytes().all(|b|b.is_ascii_alphanumeric()||b"_-".contains(&b)){return Err(invalid(format!("unsafe layer ID {id}")));}
-            let layer=&layers[*id];let b=layer["box"].as_array().filter(|v|v.len()==4).ok_or_else(||invalid(format!("{id}: box must be [x,y,width,height]")))?;
-            let b:Vec<u32>=b.iter().map(|v|v.as_u64().filter(|n|*n<=8192).map(|n|n as u32).ok_or_else(||invalid(format!("{id}: box requires nonnegative integers")))).collect::<Result<_>>()?;
-            if b[2]==0||b[3]==0||b[0]+b[2]>cw||b[1]+b[3]>ch{return Err(invalid(format!("{id}: box exceeds canvas or has zero size")));}
-            let p=layer["pivot"].as_array().filter(|v|v.len()==2).ok_or_else(||invalid(format!("{id}: pivot must be [x,y]")))?;
-            let p:Vec<f32>=p.iter().map(|v|v.as_f64().filter(|n|n.is_finite()).map(|n|n as f32).ok_or_else(||invalid(format!("{id}: pivot must be finite")))).collect::<Result<_>>()?;
-            if p[0]<0.0||p[1]<0.0||p[0]>cw as f32||p[1]>ch as f32{return Err(invalid(format!("{id}: pivot lies outside canvas")));}
-            let file=base.join(format!("{id}.png"));let image=image::open(&file).map_err(|e|invalid(format!("{id}: cannot decode {}: {e}",file.display())))?;
-            if image.width()!=b[2]||image.height()!=b[3]||!image.color().has_alpha(){return Err(invalid(format!("{id}: PNG dimensions/alpha do not match declared box {}x{}",b[2],b[3])));}
-            decoded.push((id.to_string(),file,b,p,image.into_rgba8()));
+    fn load_keyed_layers(
+        path: &Path,
+        raw: &Value,
+        layers: &serde_json::Map<String, Value>,
+    ) -> Result<Self> {
+        let invalid = |message: String| {
+            EngineError::InvalidParams(format!("Invalid keyed rig {}: {message}", path.display()))
+        };
+        let canvas = raw["canvas"]
+            .as_array()
+            .filter(|v| v.len() == 2)
+            .ok_or_else(|| invalid("canvas must contain two positive integers".into()))?;
+        let dims: Vec<u32> = canvas
+            .iter()
+            .map(|v| {
+                v.as_u64()
+                    .filter(|n| *n > 0 && *n <= 8192)
+                    .map(|n| n as u32)
+                    .ok_or_else(|| invalid("canvas values must be 1..8192".into()))
+            })
+            .collect::<Result<_>>()?;
+        let (cw, ch) = (dims[0], dims[1]);
+        let order = raw["layer_order"]
+            .as_array()
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| invalid("nonempty layer_order is required".into()))?;
+        let ids: Vec<&str> = order
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .ok_or_else(|| invalid("layer_order entries must be IDs".into()))
+            })
+            .collect::<Result<_>>()?;
+        let unique: std::collections::BTreeSet<_> = ids.iter().copied().collect();
+        if layers.is_empty()
+            || unique.len() != ids.len()
+            || unique.len() != layers.len()
+            || layers.keys().any(|k| !unique.contains(k.as_str()))
+        {
+            return Err(invalid(
+                "layer_order must contain each nonempty layer ID exactly once".into(),
+            ));
+        }
+        let base = path
+            .parent()
+            .ok_or_else(|| invalid("manifest directory missing".into()))?;
+        let mut decoded = Vec::new();
+        for id in &ids {
+            if id.is_empty()
+                || !id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+            {
+                return Err(invalid(format!("unsafe layer ID {id}")));
+            }
+            let layer = &layers[*id];
+            let b = layer["box"]
+                .as_array()
+                .filter(|v| v.len() == 4)
+                .ok_or_else(|| invalid(format!("{id}: box must be [x,y,width,height]")))?;
+            let b: Vec<u32> = b
+                .iter()
+                .map(|v| {
+                    v.as_u64()
+                        .filter(|n| *n <= 8192)
+                        .map(|n| n as u32)
+                        .ok_or_else(|| invalid(format!("{id}: box requires nonnegative integers")))
+                })
+                .collect::<Result<_>>()?;
+            if b[2] == 0 || b[3] == 0 || b[0] + b[2] > cw || b[1] + b[3] > ch {
+                return Err(invalid(format!(
+                    "{id}: box exceeds canvas or has zero size"
+                )));
+            }
+            let p = layer["pivot"]
+                .as_array()
+                .filter(|v| v.len() == 2)
+                .ok_or_else(|| invalid(format!("{id}: pivot must be [x,y]")))?;
+            let p: Vec<f32> = p
+                .iter()
+                .map(|v| {
+                    v.as_f64()
+                        .filter(|n| n.is_finite())
+                        .map(|n| n as f32)
+                        .ok_or_else(|| invalid(format!("{id}: pivot must be finite")))
+                })
+                .collect::<Result<_>>()?;
+            if p[0] < 0.0 || p[1] < 0.0 || p[0] > cw as f32 || p[1] > ch as f32 {
+                return Err(invalid(format!("{id}: pivot lies outside canvas")));
+            }
+            let file = base.join(format!("{id}.png"));
+            let image = image::open(&file)
+                .map_err(|e| invalid(format!("{id}: cannot decode {}: {e}", file.display())))?;
+            if image.width() != b[2] || image.height() != b[3] || !image.color().has_alpha() {
+                return Err(invalid(format!(
+                    "{id}: PNG dimensions/alpha do not match declared box {}x{}",
+                    b[2], b[3]
+                )));
+            }
+            decoded.push((id.to_string(), file, b, p, image.into_rgba8()));
         }
         // Derived canvas layers preserve every original PNG byte and declared placement.
-        let cache=base.join(".layered_preview_cache/keyed");std::fs::create_dir_all(&cache)?;
-        let mut rest=image::RgbaImage::new(cw,ch);let mut parts=Vec::new();let mut bbox=[cw,ch,0,0];let mut spec_layers=Vec::new();
-        for (index,(id,file,b,p,pixels)) in decoded.into_iter().enumerate(){
-            let mut full=image::RgbaImage::new(cw,ch);image::imageops::overlay(&mut full,&pixels,b[0] as i64,b[1] as i64);let full_path=cache.join(format!("{id}.png"));full.save(&full_path)?;
-            image::imageops::overlay(&mut rest,&pixels,b[0] as i64,b[1] as i64);bbox=[bbox[0].min(b[0]),bbox[1].min(b[1]),bbox[2].max(b[0]+b[2]),bbox[3].max(b[1]+b[3])];
+        let cache = base.join(".layered_preview_cache/keyed");
+        std::fs::create_dir_all(&cache)?;
+        let mut rest = image::RgbaImage::new(cw, ch);
+        let mut parts = Vec::new();
+        let mut bbox = [cw, ch, 0, 0];
+        let mut spec_layers = Vec::new();
+        for (index, (id, file, b, p, pixels)) in decoded.into_iter().enumerate() {
+            let mut full = image::RgbaImage::new(cw, ch);
+            image::imageops::overlay(&mut full, &pixels, b[0] as i64, b[1] as i64);
+            let full_path = cache.join(format!("{id}.png"));
+            full.save(&full_path)?;
+            image::imageops::overlay(&mut rest, &pixels, b[0] as i64, b[1] as i64);
+            bbox = [
+                bbox[0].min(b[0]),
+                bbox[1].min(b[1]),
+                bbox[2].max(b[0] + b[2]),
+                bbox[3].max(b[1] + b[3]),
+            ];
             spec_layers.push(serde_json::json!({"id":id,"file":full_path,"pivot":p}));
-            parts.push(CutoutRigPart{id:id.clone(),label:id,kind:"layered".into(),layer:index as i32,parent:None,pivot:[p[0],p[1]],pivot_uv:[(p[0]-b[0] as f32)/b[2] as f32,(p[1]-b[1] as f32)/b[3] as f32],crop_box:[b[0],b[1],b[0]+b[2],b[1]+b[3]],crop_size:[b[2],b[3]],cropped_path:file,full_layer_path:full_path,..Default::default()});
+            parts.push(CutoutRigPart {
+                id: id.clone(),
+                label: id,
+                kind: "layered".into(),
+                layer: index as i32,
+                parent: None,
+                pivot: [p[0], p[1]],
+                pivot_uv: [
+                    (p[0] - b[0] as f32) / b[2] as f32,
+                    (p[1] - b[1] as f32) / b[3] as f32,
+                ],
+                crop_box: [b[0], b[1], b[0] + b[2], b[1] + b[3]],
+                crop_size: [b[2], b[3]],
+                cropped_path: file,
+                full_layer_path: full_path,
+                ..Default::default()
+            });
         }
-        let source=cache.join("assembled-rest.png");rest.save(&source)?;
-        let controls=load_control_bindings(raw,path,&parts)?;
-        Ok(Self{control_bindings:controls,plan_path:path.into(),character_id:raw["fish"].as_str().or(raw["character_id"].as_str()).unwrap_or("keyed_subject").into(),rig_type:"layered_motion".into(),source_image:source,canvas_size:[cw,ch],character_bbox:bbox,parts,effectcraft:serde_json::json!({"canvas":[cw,ch],"fps":30,"layers":spec_layers,"tracks":[]}),..Default::default()})
+        let source = cache.join("assembled-rest.png");
+        rest.save(&source)?;
+        let controls = load_control_bindings(raw, path, &parts)?;
+        Ok(Self {
+            control_bindings: controls,
+            plan_path: path.into(),
+            character_id: raw["fish"]
+                .as_str()
+                .or(raw["character_id"].as_str())
+                .unwrap_or("keyed_subject")
+                .into(),
+            rig_type: "layered_motion".into(),
+            source_image: source,
+            canvas_size: [cw, ch],
+            character_bbox: bbox,
+            parts,
+            effectcraft: serde_json::json!({"canvas":[cw,ch],"fps":30,"layers":spec_layers,"tracks":[]}),
+            ..Default::default()
+        })
     }
 
     fn load_layered_motion_spec(
@@ -436,11 +589,7 @@ impl LoadedCutoutRigPlan {
                 .and_then(Value::as_str)
                 .map(|f| {
                     let p = PathBuf::from(f);
-                    if p.is_absolute() {
-                        p
-                    } else {
-                        base_dir.join(p)
-                    }
+                    if p.is_absolute() { p } else { base_dir.join(p) }
                 })
                 .unwrap_or_default();
             let parent = item
@@ -451,7 +600,10 @@ impl LoadedCutoutRigPlan {
                 root_file = Some(file_path.clone());
             }
 
-            let component_idx = item.get("component").and_then(Value::as_u64).map(|v| v as usize);
+            let component_idx = item
+                .get("component")
+                .and_then(Value::as_u64)
+                .map(|v| v as usize);
             let mut crop_box = [0, 0, cw, ch];
             let mut alpha_box = [0, 0, cw, ch];
             let mut cropped_path = file_path.clone();
@@ -516,10 +668,23 @@ impl LoadedCutoutRigPlan {
 
                     let cw_crop = crop_box[2] - crop_box[0];
                     let ch_crop = crop_box[3] - crop_box[1];
-                    let sub = image::imageops::crop_imm(&rgba, crop_box[0], crop_box[1], cw_crop, ch_crop).to_image();
+                    let sub = image::imageops::crop_imm(
+                        &rgba,
+                        crop_box[0],
+                        crop_box[1],
+                        cw_crop,
+                        ch_crop,
+                    )
+                    .to_image();
                     let safe_id: String = id
                         .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+                        .map(|c| {
+                            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                                c
+                            } else {
+                                '_'
+                            }
+                        })
                         .collect();
                     let dest = cache_dir.join(format!("{idx:02}_{safe_id}_crop.png"));
                     if sub.save(&dest).is_ok() {
@@ -694,11 +859,20 @@ fn render_layer_contact_sheet(
             sheet.put_pixel(x, y, image::Rgba([28, 34, 46, 255]));
         }
     }
-    draw_rect_border(&mut sheet, lx0, ly0, lx0 + lw - 1, ly0 + lh - 1, [68, 84, 112, 255]);
+    draw_rect_border(
+        &mut sheet,
+        lx0,
+        ly0,
+        lx0 + lw - 1,
+        ly0 + lh - 1,
+        [68, 84, 112, 255],
+    );
 
     let cw = comp_crop.width().max(1) as f32;
     let ch = comp_crop.height().max(1) as f32;
-    let comp_scale = ((lw - 48) as f32 / cw).min((lh - 48) as f32 / ch).clamp(0.1, 2.5);
+    let comp_scale = ((lw - 48) as f32 / cw)
+        .min((lh - 48) as f32 / ch)
+        .clamp(0.1, 2.5);
     let dw = (cw * comp_scale).round().max(1.0) as u32;
     let dh = (ch * comp_scale).round().max(1.0) as u32;
     let resized_comp =
@@ -1162,7 +1336,16 @@ impl LoadedManifest {
                     }
                 }
                 frames.push(ManifestFrame {
-                    qa_issues: item.pointer("/qa/issues").and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default(),
+                    qa_issues: item
+                        .pointer("/qa/issues")
+                        .and_then(Value::as_array)
+                        .map(|v| {
+                            v.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                     index,
                     label,
                     file,
@@ -1442,7 +1625,16 @@ impl MeasuredTurnaroundRegistration {
                     [x, y]
                 });
                 frames.push(ManifestFrame {
-                    qa_issues: item.pointer("/qa/issues").and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default(),
+                    qa_issues: item
+                        .pointer("/qa/issues")
+                        .and_then(Value::as_array)
+                        .map(|v| {
+                            v.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                     index,
                     label,
                     file,

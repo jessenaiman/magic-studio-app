@@ -311,6 +311,15 @@ def normalize_task_context(
     """Normalize loose task context into the scorer's expected shape."""
     context = dict(task_context or {})
 
+    # Preserve continuity preferences recorded before the first-party rename.
+    # This is not an authorization lock and does not rewrite saved projects.
+    locked = context.get("locked_providers")
+    if isinstance(locked, (list, tuple, set, frozenset)) and "openmontage" in locked:
+        context["locked_providers"] = type(locked)(
+            "magicstudio" if provider == "openmontage" else provider
+            for provider in locked
+        )
+
     needs = context.get("needs") or []
     if isinstance(needs, str):
         needs = [needs]

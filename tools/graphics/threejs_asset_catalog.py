@@ -63,8 +63,13 @@ def _sha256(path: Path) -> str:
 
 
 def _download(url: str, destination: Path) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "OpenMontage/threejs-asset-catalog"})
-    with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as output:
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "MagicStudio/threejs-asset-catalog"}
+    )
+    with (
+        urllib.request.urlopen(request, timeout=120) as response,
+        destination.open("wb") as output,
+    ):
         shutil.copyfileobj(response, output)
 
 
@@ -81,8 +86,15 @@ class ThreeJSAssetCatalog(BaseTool):
     determinism = Determinism.DETERMINISTIC
     runtime = ToolRuntime.HYBRID
     dependencies: list[str] = []
-    install_instructions = "Network access for install; no API key. Bundled catalogs are CC0."
-    agent_skills = ["threejs-world-generation", "threejs-loaders", "threejs-materials", "threejs-textures"]
+    install_instructions = (
+        "Network access for install; no API key. Bundled catalogs are CC0."
+    )
+    agent_skills = [
+        "threejs-world-generation",
+        "threejs-loaders",
+        "threejs-materials",
+        "threejs-textures",
+    ]
     best_for = [
         "Installing rights-safe GLTF/GLB libraries for detailed Three.js worlds",
         "Recording model-level provenance before asset-gate review",
@@ -103,11 +115,17 @@ class ThreeJSAssetCatalog(BaseTool):
     }
     output_schema = {"type": "object"}
     artifact_schema = {"artifact": "3d_world"}
-    resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=1000, network_required=True)
+    resource_profile = ResourceProfile(
+        cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=1000, network_required=True
+    )
     idempotency_key_fields = ["operation", "catalog_id", "output_path"]
-    side_effects = ["downloads and extracts a licensed asset archive for install operations"]
+    side_effects = [
+        "downloads and extracts a licensed asset archive for install operations"
+    ]
     fallback_tools: list[str] = []
-    user_visible_verification = ["Review catalog-manifest.json and the model inventory before production use"]
+    user_visible_verification = [
+        "Review catalog-manifest.json and the model inventory before production use"
+    ]
 
     def execute(self, params: dict[str, Any]) -> ToolResult:
         operation = params.get("operation")
@@ -116,21 +134,33 @@ class ThreeJSAssetCatalog(BaseTool):
 
         catalog_id = str(params.get("catalog_id") or "")
         if catalog_id not in CATALOGS:
-            return ToolResult(success=False, error=f"Unknown catalog_id {catalog_id!r}; choose one of {sorted(CATALOGS)}")
+            return ToolResult(
+                success=False,
+                error=f"Unknown catalog_id {catalog_id!r}; choose one of {sorted(CATALOGS)}",
+            )
 
         output_path = params.get("output_path")
         if not output_path:
-            return ToolResult(success=False, error="output_path is required for install and inspect")
+            return ToolResult(
+                success=False, error="output_path is required for install and inspect"
+            )
         root = Path(output_path).expanduser().resolve()
         manifest_path = root / "catalog-manifest.json"
 
         if operation == "inspect":
             if not manifest_path.exists():
-                return ToolResult(success=False, error=f"No installed catalog manifest at {manifest_path}")
-            return ToolResult(success=True, data=json.loads(manifest_path.read_text(encoding="utf-8")))
+                return ToolResult(
+                    success=False,
+                    error=f"No installed catalog manifest at {manifest_path}",
+                )
+            return ToolResult(
+                success=True, data=json.loads(manifest_path.read_text(encoding="utf-8"))
+            )
 
         if operation != "install":
-            return ToolResult(success=False, error=f"Unsupported operation {operation!r}")
+            return ToolResult(
+                success=False, error=f"Unsupported operation {operation!r}"
+            )
 
         source = CATALOGS[catalog_id]
         root.mkdir(parents=True, exist_ok=True)
@@ -144,12 +174,15 @@ class ThreeJSAssetCatalog(BaseTool):
                 package.extractall(extract_root)
 
         models = sorted(
-            path for path in extract_root.rglob("*")
+            path
+            for path in extract_root.rglob("*")
             if path.is_file() and path.suffix.lower() in {".gltf", ".glb"}
         )
         textures = sorted(
-            path for path in extract_root.rglob("*")
-            if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+            path
+            for path in extract_root.rglob("*")
+            if path.is_file()
+            and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
         )
         manifest = {
             "version": "1.0",

@@ -13,7 +13,23 @@ use crate::{EngineError, Result};
 
 /// Return the canonical current Tauri/engine workspace, independent of the caller working directory.
 pub fn workspace_root(s: &crate::Session) -> PathBuf {
-    let current_root = |root:&Path| root.join("Cargo.toml").is_file() && root.join("apps/magicstudio-shell/Cargo.toml").is_file();
+    // Installed binaries resolve their bundled runtime before any development checkout.
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(home) = exe.parent().and_then(|p| p.parent())
+    {
+        let runtime = home.join("runtime");
+        if runtime.join("studio_pipeline_cli.py").is_file()
+            && runtime
+                .join("pipeline/templates/studio-template.deckcraft")
+                .is_file()
+        {
+            return runtime;
+        }
+    }
+    let current_root = |root: &Path| {
+        root.join("Cargo.toml").is_file()
+            && root.join("apps/magicstudio-shell/Cargo.toml").is_file()
+    };
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()
         && current_root(&canon)
@@ -55,12 +71,10 @@ fn resolve_artcraft_launcher_cli(name: &str) -> Option<String> {
     let text = std::fs::read_to_string(installed_path).ok()?;
     let parsed: Value = serde_json::from_str(&text).ok()?;
     let app_entry = &parsed["apps"][app];
-    if !is_cli {
-        if let Some(appimage) = app_entry["path"].as_str() {
-            let p = Path::new(appimage);
-            if p.is_file() {
-                return Some(p.to_string_lossy().into_owned());
-            }
+    if !is_cli && let Some(appimage) = app_entry["path"].as_str() {
+        let p = Path::new(appimage);
+        if p.is_file() {
+            return Some(p.to_string_lossy().into_owned());
         }
     }
     let ver = app_entry["version"].as_str()?;
@@ -233,7 +247,10 @@ pub(crate) fn has_extension(path: &Path, allowed: &[&str]) -> bool {
 pub(crate) fn song_audio_path(s: &crate::Session, raw: &str) -> Result<PathBuf> {
     let path = resolve_workspace_path(s, raw);
     if !path.is_file() || !has_extension(&path, AUDIO_EXTENSIONS) {
-        return Err(EngineError::InvalidParams(format!("not an audio file: {}", path.display())));
+        return Err(EngineError::InvalidParams(format!(
+            "not an audio file: {}",
+            path.display()
+        )));
     }
     Ok(path)
 }

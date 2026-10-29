@@ -115,6 +115,7 @@ class CodeSnippet(BaseTool):
         try:
             import pygments  # noqa: F401
             from PIL import Image  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             return ToolStatus.UNAVAILABLE
@@ -195,7 +196,9 @@ class CodeSnippet(BaseTool):
         img = Image.open(image_path)
         bar_height = font_size + 20
 
-        new_img = Image.new("RGB", (img.width, img.height + bar_height), theme["bg_color"])
+        new_img = Image.new(
+            "RGB", (img.width, img.height + bar_height), theme["bg_color"]
+        )
 
         # Draw title bar
         draw = ImageDraw.Draw(new_img)

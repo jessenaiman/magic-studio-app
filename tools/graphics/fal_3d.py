@@ -40,7 +40,11 @@ def _download_file(file_info: dict[str, Any], destination: Path) -> Path:
     url = str(file_info["url"])
     suffix = Path(urlparse(url).path).suffix.lower()
     if suffix not in {".glb", ".gltf", ".obj", ".fbx", ".ply", ".zip"}:
-        suffix = ".glb" if file_info.get("content_type") == "model/gltf-binary" else destination.suffix
+        suffix = (
+            ".glb"
+            if file_info.get("content_type") == "model/gltf-binary"
+            else destination.suffix
+        )
     target = destination.with_suffix(suffix or ".glb")
     response = requests.get(url, timeout=180)
     response.raise_for_status()
@@ -62,7 +66,13 @@ class Fal3D(BaseTool):
     dependencies = ["env:FAL_KEY"]
     install_instructions = "Set FAL_KEY (or FAL_AI_API_KEY). Create a key at https://fal.ai/dashboard/keys."
     agent_skills = ["3d-asset-generation", "threejs-loaders", "threejs-materials"]
-    capabilities = ["text_to_3d", "image_to_3d", "multi_object_reconstruction", "textured_glb", "pbr_mesh"]
+    capabilities = [
+        "text_to_3d",
+        "image_to_3d",
+        "multi_object_reconstruction",
+        "textured_glb",
+        "pbr_mesh",
+    ]
     supports = {
         "text_to_3d": True,
         "image_to_3d": True,
@@ -76,7 +86,10 @@ class Fal3D(BaseTool):
         "Extracting multiple textured GLBs and placements from a regional concept image",
         "Rapid textured environment assets",
     ]
-    not_good_for = ["Rendering a complete cinematic world", "Large repeated scatter libraries"]
+    not_good_for = [
+        "Rendering a complete cinematic world",
+        "Large repeated scatter libraries",
+    ]
     input_schema = {
         "type": "object",
         "required": ["operation", "output_path"],
@@ -90,16 +103,38 @@ class Fal3D(BaseTool):
             "seed": {"type": "integer"},
             "export_textured_glb": {"type": "boolean", "default": True},
             "detection_threshold": {"type": "number", "minimum": 0.1, "maximum": 1.0},
-            "poll_timeout_seconds": {"type": "integer", "minimum": 30, "maximum": 1800, "default": 900},
+            "poll_timeout_seconds": {
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 1800,
+                "default": 900,
+            },
         },
     }
     output_schema = {"type": "object"}
     artifact_schema = {"artifact": "3d_asset"}
-    resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, disk_mb=2000, network_required=True)
-    retry_policy = RetryPolicy(max_retries=1, retryable_errors=["rate_limit", "timeout"])
-    idempotency_key_fields = ["operation", "prompt", "image_url", "image_path", "enable_pbr", "seed"]
-    side_effects = ["calls fal.ai", "may upload a local input image", "writes generated 3D assets and provenance"]
-    user_visible_verification = ["Inspect silhouette, back-side completion, topology, texture seams, and material response"]
+    resource_profile = ResourceProfile(
+        cpu_cores=1, ram_mb=512, disk_mb=2000, network_required=True
+    )
+    retry_policy = RetryPolicy(
+        max_retries=1, retryable_errors=["rate_limit", "timeout"]
+    )
+    idempotency_key_fields = [
+        "operation",
+        "prompt",
+        "image_url",
+        "image_path",
+        "enable_pbr",
+        "seed",
+    ]
+    side_effects = [
+        "calls fal.ai",
+        "may upload a local input image",
+        "writes generated 3D assets and provenance",
+    ]
+    user_visible_verification = [
+        "Inspect silhouette, back-side completion, topology, texture seams, and material response"
+    ]
     quality_score = 0.88
 
     def get_status(self) -> ToolStatus:
@@ -113,14 +148,22 @@ class Fal3D(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         key = _api_key()
         if not key:
-            return ToolResult(success=False, error="fal.ai API key not set. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="fal.ai API key not set. " + self.install_instructions,
+            )
         operation = str(inputs.get("operation") or "")
         if operation not in _MODELS:
             return ToolResult(success=False, error=f"Unknown operation {operation!r}")
         if operation == "text_to_3d" and not inputs.get("prompt"):
             return ToolResult(success=False, error="prompt is required for text_to_3d")
-        if operation != "text_to_3d" and not (inputs.get("image_url") or inputs.get("image_path")):
-            return ToolResult(success=False, error=f"image_url or image_path is required for {operation}")
+        if operation != "text_to_3d" and not (
+            inputs.get("image_url") or inputs.get("image_path")
+        ):
+            return ToolResult(
+                success=False,
+                error=f"image_url or image_path is required for {operation}",
+            )
 
         payload: dict[str, Any] = {}
         if operation == "text_to_3d":
@@ -130,12 +173,17 @@ class Fal3D(BaseTool):
             image_url = inputs.get("image_url")
             if not image_url:
                 from tools.video._shared import upload_image_fal
+
                 image_url = upload_image_fal(str(inputs["image_path"]))
-            payload["image_url" if operation == "reconstruct_objects" else "input_image_url"] = image_url
+            payload[
+                "image_url" if operation == "reconstruct_objects" else "input_image_url"
+            ] = image_url
             if operation == "image_to_3d":
                 payload["enable_pbr"] = bool(inputs.get("enable_pbr", True))
             else:
-                payload["export_textured_glb"] = bool(inputs.get("export_textured_glb", True))
+                payload["export_textured_glb"] = bool(
+                    inputs.get("export_textured_glb", True)
+                )
                 if inputs.get("prompt"):
                     payload["prompt"] = inputs["prompt"]
                 if inputs.get("detection_threshold") is not None:
@@ -147,7 +195,12 @@ class Fal3D(BaseTool):
         model = _MODELS[operation]
         started = time.time()
         try:
-            submit = requests.post(f"https://queue.fal.run/{model}", headers=headers, json=payload, timeout=45)
+            submit = requests.post(
+                f"https://queue.fal.run/{model}",
+                headers=headers,
+                json=payload,
+                timeout=45,
+            )
             submit.raise_for_status()
             queued = submit.json()
             status_url = queued["status_url"]
@@ -184,27 +237,46 @@ class Fal3D(BaseTool):
 
             artifacts: list[str] = []
             for index, file_info in enumerate(file_infos):
-                target = destination if index == 0 else destination.with_name(f"{destination.stem}-{index:02d}{destination.suffix}")
+                target = (
+                    destination
+                    if index == 0
+                    else destination.with_name(
+                        f"{destination.stem}-{index:02d}{destination.suffix}"
+                    )
+                )
                 artifacts.append(str(_download_file(file_info, target)))
             provenance = destination.with_suffix(".provenance.json")
-            provenance.write_text(json.dumps({
-                "version": "1.0",
-                "provider": "fal",
-                "model": model,
-                "request_id": queued.get("request_id"),
-                "operation": operation,
-                "prompt": inputs.get("prompt"),
-                "metadata": data.get("metadata"),
-                "source_url": f"https://fal.ai/models/{model}",
-                "outputs": artifacts,
-            }, indent=2), encoding="utf-8")
+            provenance.write_text(
+                json.dumps(
+                    {
+                        "version": "1.0",
+                        "provider": "fal",
+                        "model": model,
+                        "request_id": queued.get("request_id"),
+                        "operation": operation,
+                        "prompt": inputs.get("prompt"),
+                        "metadata": data.get("metadata"),
+                        "source_url": f"https://fal.ai/models/{model}",
+                        "outputs": artifacts,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             artifacts.append(str(provenance))
         except Exception as exc:
-            return ToolResult(success=False, error=f"fal.ai 3D generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"fal.ai 3D generation failed: {exc}"
+            )
 
         return ToolResult(
             success=True,
-            data={"provider": "fal", "model": model, "operation": operation, "outputs": artifacts[:-1]},
+            data={
+                "provider": "fal",
+                "model": model,
+                "operation": operation,
+                "outputs": artifacts[:-1],
+            },
             artifacts=artifacts,
             cost_usd=self.estimate_cost(inputs),
             duration_seconds=round(time.time() - started, 2),

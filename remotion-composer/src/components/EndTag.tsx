@@ -118,25 +118,25 @@ export const EndTag: React.FC<EndTagProps> = ({
     frame <= shimmerStartFrame + shimmerTravelFrames;
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         backgroundColor: overlay ? "transparent" : pal.background,
         justifyContent: "center",
         alignItems: "center",
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           opacity,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           maxWidth: "86%",
         }}
-      >
-        {/* The tag line */}
-        <div
-          style={{
+          >
+              {/* The tag line */}
+              <div
+                  style={{
             fontFamily:
               "'Space Grotesk', 'Inter', 'Helvetica Neue', system-ui, sans-serif",
             fontWeight: 900,
@@ -151,23 +151,23 @@ export const EndTag: React.FC<EndTagProps> = ({
             textShadow:
               "0 2px 12px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.6)",
           }}
-        >
-          {text}
-        </div>
+              >
+                  {text}
+              </div>
 
-        {/* The underline — draws in, then gets a single shimmer pass */}
-        <div
-          style={{
+              {/* The underline — draws in, then gets a single shimmer pass */}
+              <div
+                  style={{
             marginTop: 38,
             position: "relative",
             width: 820,
             maxWidth: "100%",
             height: 5,
           }}
-        >
-          {/* Underline body (width interpolates from 0 -> 100%) */}
-          <div
-            style={{
+              >
+                  {/* Underline body (width interpolates from 0 -> 100%) */}
+                  <div
+                      style={{
               position: "absolute",
               left: "50%",
               top: 0,
@@ -178,12 +178,12 @@ export const EndTag: React.FC<EndTagProps> = ({
               borderRadius: 3,
               boxShadow: `0 0 18px 0 ${pal.underline}33`,
             }}
-          />
+                  />
 
-          {/* Shimmer highlight travelling across the underline */}
-          {shimmerVisible && (
-            <div
-              style={{
+                  {/* Shimmer highlight travelling across the underline */}
+                  {shimmerVisible && (
+                  <div
+                      style={{
                 position: "absolute",
                 left: `${shimmerPosPct}%`,
                 top: -3,
@@ -194,10 +194,10 @@ export const EndTag: React.FC<EndTagProps> = ({
                 filter: "blur(2px)",
                 pointerEvents: "none",
               }}
-            />
+                  />
           )}
-        </div>
-      </div>
-    </AbsoluteFill>
+              </div>
+          </div>
+      </AbsoluteFill>
   );
 };

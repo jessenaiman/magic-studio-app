@@ -166,7 +166,14 @@ class AzureTTS(BaseTool):
         max_retries=2,
         retryable_errors=["ConnectionError", "Timeout", "429", "503"],
     )
-    idempotency_key_fields = ["text", "voice", "rate", "pitch", "style", "output_format"]
+    idempotency_key_fields = [
+        "text",
+        "voice",
+        "rate",
+        "pitch",
+        "style",
+        "output_format",
+    ]
     side_effects = ["writes audio file to output_path", "sends text to Azure AI Speech"]
     user_visible_verification = ["Listen to generated audio for natural speech quality"]
 
@@ -175,7 +182,8 @@ class AzureTTS(BaseTool):
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("AZURE_SPEECH_KEY") and (
-            os.environ.get("AZURE_SPEECH_REGION") or os.environ.get("AZURE_TTS_ENDPOINT")
+            os.environ.get("AZURE_SPEECH_REGION")
+            or os.environ.get("AZURE_TTS_ENDPOINT")
         ):
             return ToolStatus.AVAILABLE
         return ToolStatus.UNAVAILABLE
@@ -207,7 +215,9 @@ class AzureTTS(BaseTool):
         style = inputs.get("style")
         text = escape(inputs["text"])
 
-        inner = f"<prosody rate={quoteattr(rate)} pitch={quoteattr(pitch)}>{text}</prosody>"
+        inner = (
+            f"<prosody rate={quoteattr(rate)} pitch={quoteattr(pitch)}>{text}</prosody>"
+        )
         if style:
             inner = f"<mstts:express-as style={quoteattr(str(style))}>{inner}</mstts:express-as>"
         return (
@@ -221,7 +231,8 @@ class AzureTTS(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         api_key = os.environ.get("AZURE_SPEECH_KEY")
         if not api_key or not (
-            os.environ.get("AZURE_SPEECH_REGION") or os.environ.get("AZURE_TTS_ENDPOINT")
+            os.environ.get("AZURE_SPEECH_REGION")
+            or os.environ.get("AZURE_TTS_ENDPOINT")
         ):
             return ToolResult(
                 success=False,
@@ -252,7 +263,7 @@ class AzureTTS(BaseTool):
             "Ocp-Apim-Subscription-Key": api_key,
             "Content-Type": "application/ssml+xml",
             "X-Microsoft-OutputFormat": azure_format,
-            "User-Agent": "OpenMontage-azure-tts",
+            "User-Agent": "MagicStudio-azure-tts",
         }
 
         try:

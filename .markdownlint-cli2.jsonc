@@ -1,0 +1,11 @@
+{
+  "config": {
+    "default": false,
+    "MD013": true
+  },
+  "globs": [
+    ".agents/skills/magic-*/**/*.md",
+    "skills/**/magic-*/**/*.md"
+  ],
+  "fix": false
+}

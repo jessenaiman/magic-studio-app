@@ -41,17 +41,17 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
   const titleChars = title.split("");
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         justifyContent: "center",
         alignItems: "center",
         background: scrimBackground,
       }}
-    >
-      <div style={{ textAlign: "center", maxWidth: "85%" }}>
-        {/* Main title with per-character spring */}
-        <div
-          style={{
+      >
+          <div style={{ textAlign: "center", maxWidth: "85%" }}>
+              {/* Main title with per-character spring */}
+              <div
+                  style={{
             fontSize: 72,
             fontWeight: 800,
             fontFamily: "Space Grotesk, Inter, system-ui, sans-serif",
@@ -61,8 +61,8 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
             flexWrap: "wrap",
             gap: 0,
           }}
-        >
-          {titleChars.map((char, i) => {
+              >
+                  {titleChars.map((char, i) => {
             const delay = i * 1.2;
             const charSpring = spring({
               frame: frame - delay,
@@ -71,9 +71,9 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
             });
 
             return (
-              <span
-                key={i}
-                style={{
+                <span
+                    key={i}
+                    style={{
                   display: "inline-block",
                   opacity: charSpring,
                   transform: `translateY(${interpolate(charSpring, [0, 1], [30, 0])}px)`,
@@ -81,17 +81,17 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
                   whiteSpace: char === " " ? "pre" : undefined,
                   minWidth: char === " " ? "0.3em" : undefined,
                 }}
-              >
-                {char}
-              </span>
+                >
+                    {char}
+                </span>
             );
           })}
-        </div>
+              </div>
 
-        {/* Subtitle */}
-        {subtitle && (
-          <div
-            style={{
+              {/* Subtitle */}
+              {subtitle && (
+              <div
+                  style={{
               marginTop: 20,
               opacity: spring({
                 frame: frame - titleChars.length * 1.2 - 5,
@@ -105,14 +105,14 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
               letterSpacing: "0.1em",
               textTransform: "uppercase",
             }}
-          >
-            {subtitle}
-          </div>
+              >
+                  {subtitle}
+              </div>
         )}
 
-        {/* Animated underline */}
-        <div
-          style={{
+              {/* Animated underline */}
+              <div
+                  style={{
             margin: "24px auto 0",
             height: 3,
             backgroundColor: accentColor,
@@ -127,8 +127,8 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
               [0, 400]
             ),
           }}
-        />
-      </div>
-    </AbsoluteFill>
+              />
+          </div>
+      </AbsoluteFill>
   );
 };

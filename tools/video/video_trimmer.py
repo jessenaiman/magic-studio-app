@@ -81,8 +81,13 @@ class VideoTrimmer(BaseTool):
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["FFmpeg error"])
     resume_support = ResumeSupport.FROM_START
     idempotency_key_fields = [
-        "operation", "input_path", "start_seconds", "end_seconds",
-        "speed_factor", "segments", "codec",
+        "operation",
+        "input_path",
+        "start_seconds",
+        "end_seconds",
+        "speed_factor",
+        "segments",
+        "codec",
     ]
     side_effects = ["writes video file to output_path"]
     user_visible_verification = ["Play trimmed output and verify cut points"]
@@ -99,7 +104,9 @@ class VideoTrimmer(BaseTool):
             elif operation == "concat":
                 result = self._concat(inputs)
             else:
-                return ToolResult(success=False, error=f"Unknown operation: {operation}")
+                return ToolResult(
+                    success=False, error=f"Unknown operation: {operation}"
+                )
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -115,13 +122,18 @@ class VideoTrimmer(BaseTool):
         end_s = inputs.get("end_seconds")
         codec = inputs.get("codec", "copy")
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_cut")))
+            inputs.get(
+                "output_path", str(input_path.with_stem(f"{input_path.stem}_cut"))
+            )
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-ss", str(start_s),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-ss",
+            str(start_s),
         ]
         if end_s is not None:
             cmd.extend(["-to", str(end_s)])
@@ -152,21 +164,31 @@ class VideoTrimmer(BaseTool):
 
         factor = inputs.get("speed_factor", 1.0)
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_speed")))
+            inputs.get(
+                "output_path", str(input_path.with_stem(f"{input_path.stem}_speed"))
+            )
         )
 
         # Video: setpts adjusts presentation timestamps (inverse of speed)
         # Audio: atempo adjusts audio speed (must chain for >2x)
-        video_filter = f"setpts={1.0/factor}*PTS"
+        video_filter = f"setpts={1.0 / factor}*PTS"
         audio_filters = self._build_atempo_chain(factor)
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-filter:v", video_filter,
-            "-filter:a", audio_filters,
-            "-c:v", "libx264", "-preset", "fast",
-            "-c:a", "aac",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-filter:v",
+            video_filter,
+            "-filter:a",
+            audio_filters,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-c:a",
+            "aac",
             str(output_path),
         ]
 
@@ -193,12 +215,16 @@ class VideoTrimmer(BaseTool):
         # First, cut each segment to a temp file if start/end are specified
         temp_files: list[Path] = []
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=".concat-", dir=output_path.parent) as workspace:
+        with tempfile.TemporaryDirectory(
+            prefix=".concat-", dir=output_path.parent
+        ) as workspace:
             temp_dir = Path(workspace)
             for i, seg in enumerate(segments):
                 seg_input = Path(seg["input_path"])
                 if not seg_input.exists():
-                    return ToolResult(success=False, error=f"Segment input not found: {seg_input}")
+                    return ToolResult(
+                        success=False, error=f"Segment input not found: {seg_input}"
+                    )
 
                 seg_start = seg.get("start_seconds")
                 seg_end = seg.get("end_seconds")
@@ -225,10 +251,16 @@ class VideoTrimmer(BaseTool):
                     f.write(f"file '{safe_path}'\n")
 
             cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(list_path),
-                "-c", "copy",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(list_path),
+                "-c",
+                "copy",
                 str(output_path),
             ]
             self.run_command(cmd)

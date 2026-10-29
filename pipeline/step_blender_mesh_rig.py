@@ -6,9 +6,10 @@ loads `visual_hull.npz`, performs manifold voxel remeshing and arm-torso contact
 partitioning (`img2threejs` L0/L1/L3 separation), bakes view-projected reference
 textures into `baked_albedo.png`, and binds the `ARM_<slug>` armature.
 """
+
 from __future__ import annotations
 
-BLENDER_MESH_RIG_CODE = r'''
+BLENDER_MESH_RIG_CODE = r"""
 import bpy, math, json, os, subprocess, shutil
 import numpy as np
 from mathutils import Vector, Matrix
@@ -190,4 +191,4 @@ def build_character_rig(spec,col_char,col_rig):
     rig['measured_foot_lift_max_m']=spec['foot_lift_max_m'];rig['anatomy_status']='authored reference-fit landmarks, not measured joint angles'
     rig['rest_bones']=json.dumps(defs);rig['gait']=json.dumps(spec['gait'])
     return rig,obj
-'''
+"""

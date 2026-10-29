@@ -1,11 +1,11 @@
 // Analytics reads saved measurements on entry. Scanning is an explicit action, never a timer.
 const analyticsState = { data: null, section: 'overview', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
 const ANALYTICS_SECTIONS = [['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
-// Existing Archify exports, packaged byte-for-byte. They are references, not live system models.
+// Existing Archify references, not live system models. Upstream evidence links stay pinned.
 const ANALYTICS_DIAGRAMS = [
   {id:'magic-cli',file:'magic-cli-architecture.html',title:'Magic CLI & Studio architecture',source:'CLI-Anything magic harness · unified live Studio & headless engine routing',revision:null},
   {id:'creator',file:'creator-view.html',title:'Creator’s loop',source:'Existing Magic Studio creator workflow · saved 27 Oct 2026',revision:null},
-  {id:'openmontage',file:'openmontage-evidence.html',title:'OpenMontage pipeline',source:'calesthio/OpenMontage · evidence-linked reference',revision:'3cd5700b977bcd63644a3118cc1783df1cb002c8'},
+  {id:'pipeline',file:'pipeline-evidence.html',title:'Pipeline architecture · upstream evidence',source:'calesthio/OpenMontage · evidence-linked reference',revision:'3cd5700b977bcd63644a3118cc1783df1cb002c8'},
 ];
 function fmtCount(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
@@ -85,17 +85,17 @@ function analyticsRenderSurface() {
 }
 function analyticsScanLabel(comp) {
   if (!comp.available) return 'Not measured';
-  return {measured:'Explicit scan',saved:'Saved scan',stale:'Saved scan · revision changed',worktree_unverified:'Saved scan · worktree changes not verified'}[comp.state]||'Saved measurement';
+  return {measured:'Explicit scan',partial:'Partial scan',saved:'Saved scan',stale:'Saved scan · revision changed',worktree_unverified:'Saved scan · worktree changes not verified'}[comp.state]||'Saved measurement';
 }
 function analyticsRailReport(comp) {
-  const metrics=[['Files','files_analyzed'],['Functions','functions_analyzed'],['CCN > 15','functions_over_ccn_15'],['Max CCN','max_ccn'],['Long files','long_files'],['Source lines','total_source_lines']];
+  const metrics=[['Files with functions','files_analyzed'],['Functions','functions_analyzed'],['CCN > 15','functions_over_ccn_15'],['Max CCN','max_ccn'],['Long files with functions','long_files'],['Lines in files with functions','total_source_lines']];
   const failed=comp.scan_failures?.length||0;
   const total=comp.available?Number(comp.functions_analyzed):0;
   const hotspots=comp.available?Number(comp.functions_over_ccn_15):0;
   const ratio=total>0&&Number.isFinite(hotspots)?`${fmtCount(hotspots)} / ${fmtCount(total)} functions exceed CCN 15`:null;
   return el('section',{class:'analytics-rail-report','aria-label':'Last code scan report'},
     el('h3',{},'Last code scan'),
-    el('p',{class:'analytics-scan-state',role:'status','data-state':failed?'partial':comp.state||'not_measured'},analyticsScanLabel(comp)+(failed?` · partial (${failed} failed target${failed===1?'':'s'})`:'')),
+    el('p',{class:'analytics-scan-state',role:'status','data-state':failed?'partial':comp.state||'not_measured'},analyticsScanLabel(comp)+(failed?` · ${failed} failed target${failed===1?'':'s'}`:'')),
     el('small',{},comp.available?analyticsTime(comp.measured_at_unix_secs):(comp.reason||'Use Refresh scan to measure code.')),
     ratio?el('meter',{min:0,max:total,value:hotspots,'aria-label':ratio,title:ratio}):null,
     ratio?el('small',{},ratio):null,
@@ -106,16 +106,18 @@ function analyticsRailReport(comp) {
 }
 function analyticsComplexity(surface,comp,section) {
   surface.append(el('h2',{},'Code measurements · Lizard'));
+  surface.append(el('p',{class:'muted'},'CCN, NLOC, tokens and parameters are Lizard measurements; the CCN > 15 count is an application threshold. ',el('a',{href:'https://github.com/terryyin/lizard'},'Lizard documentation')));
   if(!comp.available){surface.append(el('p',{class:'panel-empty'},comp.reason||'No saved scan. Use Refresh scan to measure local source.'));return;}
   const stateLabel=analyticsScanLabel(comp);
   surface.append(el('p',{class:'muted'},`${stateLabel} · ${analyticsTime(comp.measured_at_unix_secs)} · ${comp.tool||'lizard'}${comp.tool_version?' '+comp.tool_version:''}`),
     el('details',{class:'analytics-provenance'},el('summary',{},'Measurement source and coverage'),
       el('code',{},`${comp.source_root||'Source root unavailable'}\nrevision ${comp.source_revision||'unavailable'}\nWorktree at scan: ${comp.source_dirty===true?'changed':comp.source_dirty===false?'clean':'unknown'}\n${comp.tool_path||'Tool path unavailable'}\nTargets: ${(comp.targets||[]).join(', ')}`)),
     analyticsGrid(analyticsCard('Functions over CCN 15',analyticsCode(comp,'functions_over_ccn_15'),`Max CCN ${analyticsCode(comp,'max_ccn')} · ${analyticsCode(comp,'functions_analyzed')} functions`),
-      analyticsCard('Source size',analyticsCode(comp,'total_source_lines'),`${analyticsCode(comp,'files_analyzed')} files · ${analyticsCode(comp,'total_nloc')} NLOC`),
-      analyticsCard('Long files',analyticsCode(comp,'long_files'),`Threshold ${fmtCount(comp.long_file_threshold_lines)} lines · ${analyticsCode(comp,'ui_files_analyzed')} UI modules`)));
+      analyticsCard('Source size',analyticsCode(comp,'total_source_lines'),`${analyticsCode(comp,'files_analyzed')} files with functions · ${analyticsCode(comp,'total_nloc')} function NLOC`),
+      analyticsCard('Long files with functions',analyticsCode(comp,'long_files'),`Threshold ${fmtCount(comp.long_file_threshold_lines)} lines · ${analyticsCode(comp,'ui_files_analyzed')} UI modules with functions`)));
   if(comp.last_error||comp.cache_error)surface.append(el('p',{role:'status'},comp.last_error||`Measured, but could not save scan: ${comp.cache_error}`));
   if(comp.scan_failures?.length)surface.append(el('p',{role:'status'},`Partial coverage / failed targets: ${comp.scan_failures.join(', ')}`));
+  if(comp.last_scan_failures?.length)surface.append(el('p',{role:'status'},`Latest scan failed for: ${comp.last_scan_failures.join(', ')}`));
   if(section!=='complexity')return;
   for(const [key,title] of [['longest_files','Longest measured files'],['largest_ccn_files','Highest complexity files']]) {
     surface.append(el('h3',{},title),analyticsGrid(...(comp[key]||[]).map((file,index)=>el('div',{class:'learning-summary',id:`analytics-${key}-${index}`},

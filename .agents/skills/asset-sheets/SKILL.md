@@ -7,10 +7,13 @@ description: Use whenever an agent must produce Magic Studio asset sheets — a 
 
 One imported, whole-body reference image goes in; three sheets come out. They are drawn by an
 image agent (Codex in Herdr, or the app's configured agent) and are then cut by PhotoCraft,
-registered and rigged without re-layout.
+prepared for registration and rigging.
 
-Every sheet follows **the same rules**. A sheet that breaks them is rejected by
-`pipeline/import_validator.py` (3–5 views, a side profile, stable height) and must be drawn again.
+Every sheet follows **the same artwork rules**, checked by visual review.
+`pipeline/import_validator.py` uses aspect ratio and filename heuristics, not profile, view-count
+or height verification. Its readiness threshold (`width / height >= 1.45`) rejects the required
+square template below. Report that validator mismatch; do not redraw or change the layout to
+satisfy it, and do not claim automated sheet acceptance.
 
 ## Before the first sheet
 
@@ -136,7 +139,7 @@ rig builds — the rig attaches to the in-session asset and is gone on reload un
   project anywhere else shows as `Could not load <name>` in the Animation pane — that reads like a
   broken sheet and is actually a path problem, so check the project location before redrawing art.
 
-## Reject and redraw when
+## Visual review criteria
 
 - a view is cropped, touches an edge, or the count is not four;
 - the profile is missing or faces left;

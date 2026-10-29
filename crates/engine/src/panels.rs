@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 #[repr(u8)]
@@ -32,7 +32,9 @@ impl Signal {
 }
 
 impl From<u64> for Signal {
-    fn from(v: u64) -> Self { Signal::from_u64(v) }
+    fn from(v: u64) -> Self {
+        Signal::from_u64(v)
+    }
 }
 
 impl Serialize for Signal {
@@ -118,20 +120,46 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&self) -> Result<(), String> {
-        if self.elements.is_empty() { return Err("no configured elements".into()); }
+        if self.elements.is_empty() {
+            return Err("no configured elements".into());
+        }
         for (id, entry) in &self.elements {
-            if let Some(target) = &entry.target {
-                if !self.elements.contains_key(target) || self.elements[target].target.is_some() { return Err(format!("{id}: target must name a canonical component")); }
+            if let Some(target) = &entry.target
+                && (!self.elements.contains_key(target) || self.elements[target].target.is_some())
+            {
+                return Err(format!("{id}: target must name a canonical component"));
             }
-            if let Some(rail) = &entry.rail {
-                if !self.rails.get(rail).is_some_and(Value::is_object) || !self.slots.get(rail).is_some_and(Value::is_object) { return Err(format!("{id}: missing configured rail or slot")); }
+            if let Some(rail) = &entry.rail
+                && (!self.rails.get(rail).is_some_and(Value::is_object)
+                    || !self.slots.get(rail).is_some_and(Value::is_object))
+            {
+                return Err(format!("{id}: missing configured rail or slot"));
             }
-            if entry.component.trim().is_empty() { return Err(format!("{id}: missing component")); }
-            if let Some(look) = &entry.look {
-                if !self.looks.get(&entry.component).is_some_and(|looks| looks.contains(look)) { return Err(format!("{id}: unknown look {look}")); }
+            if entry.component.trim().is_empty() {
+                return Err(format!("{id}: missing component"));
             }
-            if entry.density.as_ref().is_some_and(|d| !self.densities.contains(d)) { return Err(format!("{id}: unknown density")); }
-            if entry.indicator.as_ref().is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden")) { return Err(format!("{id}: unknown indicator")); }
+            if let Some(look) = &entry.look
+                && !self
+                    .looks
+                    .get(&entry.component)
+                    .is_some_and(|looks| looks.contains(look))
+            {
+                return Err(format!("{id}: unknown look {look}"));
+            }
+            if entry
+                .density
+                .as_ref()
+                .is_some_and(|d| !self.densities.contains(d))
+            {
+                return Err(format!("{id}: unknown density"));
+            }
+            if entry
+                .indicator
+                .as_ref()
+                .is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden"))
+            {
+                return Err(format!("{id}: unknown indicator"));
+            }
         }
         Ok(())
     }
@@ -150,14 +178,12 @@ impl Config {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum Reason {
     Unstyled,
     #[serde(other)]
+    #[default]
     Untracked,
-}
-
-impl Default for Reason {
-    fn default() -> Self { Reason::Untracked }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -200,35 +226,69 @@ impl PanelReport {
         let panels = feedback.get("panels").cloned().unwrap_or(Value::Null);
         let mut report: Self = match serde_json::from_value(panels.clone()) {
             Ok(report) => report,
-            Err(error) => Self { error: Some(if panels.is_null() { "No panel observation".into() } else { format!("Invalid panel observation: {error}") }), ..Default::default() },
+            Err(error) => Self {
+                error: Some(if panels.is_null() {
+                    "No panel observation".into()
+                } else {
+                    format!("Invalid panel observation: {error}")
+                }),
+                ..Default::default()
+            },
         };
         report.project = feedback["project"].as_str().map(str::to_owned);
         report.studio = feedback["identity"].clone();
         if feedback["connection"] == "not_observed_open" {
             report.available = false;
             report.error = None;
-        } else if feedback["ui_ready"] == false || feedback["frontend_report_age_ms"].as_u64().is_some_and(|age| age > 5000) {
+        } else if feedback["ui_ready"] == false
+            || feedback["frontend_report_age_ms"]
+                .as_u64()
+                .is_some_and(|age| age > 5000)
+        {
             report.available = false;
             report.error = Some("Studio observation is stale or not ready".into());
         }
-        for (key, actual) in [("total_items", report.items.len()), ("total_unconfigured", report.unconfigured.len())] {
-            if panels[key].as_u64().is_some_and(|total| total != actual as u64) { report.truncated = true; }
+        for (key, actual) in [
+            ("total_items", report.items.len()),
+            ("total_unconfigured", report.unconfigured.len()),
+        ] {
+            if panels[key]
+                .as_u64()
+                .is_some_and(|total| total != actual as u64)
+            {
+                report.truncated = true;
+            }
         }
         report
     }
     /// Aliases in CLI and TUI resolve through the same canonical state record.
     pub fn component<'a>(&'a self, config: &Config, id: &str) -> Option<&'a Panel> {
-        if !self.available { return None; }
-        let target = config.elements.get(id).and_then(|entry| entry.target.as_deref()).unwrap_or(id);
+        if !self.available {
+            return None;
+        }
+        let target = config
+            .elements
+            .get(id)
+            .and_then(|entry| entry.target.as_deref())
+            .unwrap_or(id);
         self.items.iter().find(|panel| panel.id == target)
     }
 
     pub fn worst(&self) -> Signal {
-        self.items.iter().map(|p| p.signal).fold(Signal::Idle, |acc, s| {
-            if (s as u8) > (acc as u8) { s } else { acc }
-        })
+        self.items
+            .iter()
+            .map(|p| p.signal)
+            .fold(
+                Signal::Idle,
+                |acc, s| {
+                    if (s as u8) > (acc as u8) { s } else { acc }
+                },
+            )
     }
     pub fn count(&self, reason: Reason) -> usize {
-        self.unconfigured.iter().filter(|u| u.reason == reason).count()
+        self.unconfigured
+            .iter()
+            .filter(|u| u.reason == reason)
+            .count()
     }
 }

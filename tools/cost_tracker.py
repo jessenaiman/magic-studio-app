@@ -29,11 +29,13 @@ class EntryStatus(str, Enum):
 
 class BudgetExceededError(Exception):
     """Raised when an operation would exceed the budget in cap mode."""
+
     pass
 
 
 class ApprovalRequiredError(Exception):
     """Raised when an operation needs user approval before proceeding."""
+
     pass
 
 
@@ -101,16 +103,18 @@ class CostTracker:
     def estimate(self, tool: str, operation: str, estimated_usd: float) -> str:
         """Record an estimate. Returns entry ID."""
         entry_id = self._new_id()
-        self.entries.append({
-            "id": entry_id,
-            "tool": tool,
-            "operation": operation,
-            "status": EntryStatus.ESTIMATED.value,
-            "estimated_usd": round(estimated_usd, 4),
-            "reserved_usd": 0.0,
-            "actual_usd": 0.0,
-            "timestamp": self._now(),
-        })
+        self.entries.append(
+            {
+                "id": entry_id,
+                "tool": tool,
+                "operation": operation,
+                "status": EntryStatus.ESTIMATED.value,
+                "estimated_usd": round(estimated_usd, 4),
+                "reserved_usd": 0.0,
+                "actual_usd": 0.0,
+                "timestamp": self._now(),
+            }
+        )
         self._save()
         return entry_id
 
@@ -166,7 +170,9 @@ class CostTracker:
         """Reconcile actual spend after tool execution."""
         entry = self._find(entry_id)
         self._require_status(entry, EntryStatus.RESERVED, "reconcile")
-        entry["status"] = EntryStatus.COMPLETED.value if success else EntryStatus.FAILED.value
+        entry["status"] = (
+            EntryStatus.COMPLETED.value if success else EntryStatus.FAILED.value
+        )
         entry["actual_usd"] = round(actual_usd, 4)
         entry["reserved_usd"] = 0.0
         entry["timestamp"] = self._now()
@@ -209,7 +215,9 @@ class CostTracker:
         structure = video_analysis_brief.get("structure_analysis", {})
         pacing = structure.get("pacing_profile", {})
         narration = video_analysis_brief.get("narration_transcript", {})
-        ref_duration = video_analysis_brief.get("source", {}).get("duration_seconds", 60)
+        ref_duration = video_analysis_brief.get("source", {}).get(
+            "duration_seconds", 60
+        )
         pacing_style = pacing.get("pacing_style", "steady_educational")
 
         # ── Scene count estimation ──
@@ -253,9 +261,7 @@ class CostTracker:
         )
 
         estimated_motion_scenes = (
-            max(1, round(estimated_scenes * motion_ratio))
-            if motion_ratio > 0
-            else 0
+            max(1, round(estimated_scenes * motion_ratio)) if motion_ratio > 0 else 0
         )
         estimated_still_scenes = estimated_scenes - estimated_motion_scenes
 
@@ -266,10 +272,11 @@ class CostTracker:
         vid_plan = tool_plan.get("video_generation", {})
         clip_duration = vid_plan.get("clip_duration_seconds", 5) if vid_plan else 5
         motion_seconds = target_duration_seconds * motion_ratio
-        clips_needed_for_coverage = max(
-            estimated_motion_scenes,
-            round(motion_seconds / clip_duration)
-        ) if vid_plan else 0
+        clips_needed_for_coverage = (
+            max(estimated_motion_scenes, round(motion_seconds / clip_duration))
+            if vid_plan
+            else 0
+        )
 
         # ── Retry/waste buffer ──
         # Not every generation succeeds or looks good. Add a buffer.
@@ -279,10 +286,11 @@ class CostTracker:
         # Images per scene depends on visual variety needs:
         # - Explainer: 1-2 images per scene
         # - Music video / cinematic: 2-3 images per scene (mood shifts, variety)
-        images_per_scene = 2.0 if pacing_style in ("dynamic_social", "rapid_fire") else 1.5
+        images_per_scene = (
+            2.0 if pacing_style in ("dynamic_social", "rapid_fire") else 1.5
+        )
         estimated_images = max(
-            estimated_scenes,
-            round(estimated_scenes * images_per_scene)
+            estimated_scenes, round(estimated_scenes * images_per_scene)
         )
 
         # Build line items
@@ -300,33 +308,37 @@ class CostTracker:
         if img_plan:
             img_count = round(estimated_images * retry_multiplier)
             unit_cost = img_plan.get("cost_per_unit", 0.05)
-            line_items.append({
-                "category": "image_generation",
-                "provider": img_plan.get("tool", "unknown"),
-                "quantity": img_count,
-                "unit_cost_usd": unit_cost,
-                "total_usd": round(img_count * unit_cost, 4),
-                "basis": (
-                    f"~{images_per_scene:.0f} images/scene x {estimated_scenes} scenes "
-                    f"+ {round((retry_multiplier - 1) * 100)}% retry buffer"
-                ),
-            })
+            line_items.append(
+                {
+                    "category": "image_generation",
+                    "provider": img_plan.get("tool", "unknown"),
+                    "quantity": img_count,
+                    "unit_cost_usd": unit_cost,
+                    "total_usd": round(img_count * unit_cost, 4),
+                    "basis": (
+                        f"~{images_per_scene:.0f} images/scene x {estimated_scenes} scenes "
+                        f"+ {round((retry_multiplier - 1) * 100)}% retry buffer"
+                    ),
+                }
+            )
 
         # Video generation
         if vid_plan and clips_needed_for_coverage > 0:
             clip_count = round(clips_needed_for_coverage * retry_multiplier)
             unit_cost = vid_plan.get("cost_per_unit", 0.30)
-            line_items.append({
-                "category": "video_generation",
-                "provider": vid_plan.get("tool", "unknown"),
-                "quantity": clip_count,
-                "unit_cost_usd": unit_cost,
-                "total_usd": round(clip_count * unit_cost, 4),
-                "basis": (
-                    f"{motion_seconds:.0f}s of motion / {clip_duration}s clips = "
-                    f"{clips_needed_for_coverage} clips + retry buffer"
-                ),
-            })
+            line_items.append(
+                {
+                    "category": "video_generation",
+                    "provider": vid_plan.get("tool", "unknown"),
+                    "quantity": clip_count,
+                    "unit_cost_usd": unit_cost,
+                    "total_usd": round(clip_count * unit_cost, 4),
+                    "basis": (
+                        f"{motion_seconds:.0f}s of motion / {clip_duration}s clips = "
+                        f"{clips_needed_for_coverage} clips + retry buffer"
+                    ),
+                }
+            )
             assumptions.append(
                 f"{round(motion_ratio * 100)}% motion ratio → "
                 f"{motion_seconds:.0f}s needs {clips_needed_for_coverage} clips "
@@ -338,14 +350,16 @@ class CostTracker:
         if tts_plan and estimated_words > 10:
             cost_per_word = tts_plan.get("cost_per_word", 0.00003)
             tts_cost = round(estimated_words * cost_per_word, 4)
-            line_items.append({
-                "category": "tts_narration",
-                "provider": tts_plan.get("tool", "unknown"),
-                "quantity": estimated_words,
-                "unit_cost_usd": cost_per_word,
-                "total_usd": tts_cost,
-                "basis": f"Narration at {round(actual_wpm)} WPM = ~{estimated_words} words",
-            })
+            line_items.append(
+                {
+                    "category": "tts_narration",
+                    "provider": tts_plan.get("tool", "unknown"),
+                    "quantity": estimated_words,
+                    "unit_cost_usd": cost_per_word,
+                    "total_usd": tts_cost,
+                    "basis": f"Narration at {round(actual_wpm)} WPM = ~{estimated_words} words",
+                }
+            )
             assumptions.append(
                 f"Narration at {round(actual_wpm)} WPM = ~{estimated_words} words "
                 f"for {target_duration_seconds} seconds"
@@ -355,14 +369,16 @@ class CostTracker:
         music_plan = tool_plan.get("music", {})
         if music_plan:
             music_cost = music_plan.get("cost_per_track", 0.0)
-            line_items.append({
-                "category": "music",
-                "provider": music_plan.get("tool", "unknown"),
-                "quantity": 1,
-                "unit_cost_usd": music_cost,
-                "total_usd": music_cost,
-                "basis": "1 background music track",
-            })
+            line_items.append(
+                {
+                    "category": "music",
+                    "provider": music_plan.get("tool", "unknown"),
+                    "quantity": 1,
+                    "unit_cost_usd": music_cost,
+                    "total_usd": music_cost,
+                    "basis": "1 background music track",
+                }
+            )
 
         subtotal = round(sum(item["total_usd"] for item in line_items), 4)
 
@@ -434,9 +450,8 @@ class CostTracker:
                     pacing_style=pacing_style,
                 )
                 ratio = (
-                    (sum(classified_weights) + fallback_ratio * unknown_count)
-                    / len(scenes_list)
-                )
+                    sum(classified_weights) + fallback_ratio * unknown_count
+                ) / len(scenes_list)
                 basis = (
                     "motion ratio blended from classified scene types and "
                     "reference-style fallback for unclassified scenes"

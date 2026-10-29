@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::session::{Asset, AttachedReference, LoadedManifest, LoadedCutoutRigPlan, MeasuredMotionRange, MeasuredTurnaroundRegistration};
+use crate::session::{
+    Asset, AttachedReference, LoadedCutoutRigPlan, LoadedManifest, MeasuredMotionRange,
+    MeasuredTurnaroundRegistration,
+};
 use crate::{EngineError, Result, Session};
 
 /// Classify an image via `studio_pipeline_cli.py validate`, matte it with PhotoCraft,
@@ -65,18 +68,25 @@ pub fn cmd_intake_validate(s: &mut Session, params: &Value) -> Result<Value> {
     // Background removal is PhotoCraft's job; if it cannot run, the import fails rather than
     // continuing with a hand-rolled or un-matted image.
     let (width, height) = image::image_dimensions(&resolved_path).map_err(|e| {
-        EngineError::InvalidParams(format!("cannot read image {}: {e}", resolved_path.display()))
+        EngineError::InvalidParams(format!(
+            "cannot read image {}: {e}",
+            resolved_path.display()
+        ))
     })?;
-    super::workspace::run_tool_in(&root, &super::workspace::resolve_craft_cli("photocraft-cli"), &[
-        "run".to_string(),
-        resolved_path.to_string_lossy().into_owned(),
-        "--cmd".to_string(),
-        "layer.removeBackground".to_string(),
-        "--params".to_string(),
-        "{\"refine\":true}".to_string(),
-        "--out".to_string(),
-        transparent_path.to_string_lossy().into_owned(),
-    ])?;
+    super::workspace::run_tool_in(
+        &root,
+        &super::workspace::resolve_craft_cli("photocraft-cli"),
+        &[
+            "run".to_string(),
+            resolved_path.to_string_lossy().into_owned(),
+            "--cmd".to_string(),
+            "layer.removeBackground".to_string(),
+            "--params".to_string(),
+            "{\"refine\":true}".to_string(),
+            "--out".to_string(),
+            transparent_path.to_string_lossy().into_owned(),
+        ],
+    )?;
     let (effective_path, matting_tool) = (transparent_path.clone(), "photocraft-cli");
 
     let resolved_str = effective_path.to_string_lossy().into_owned();
@@ -90,7 +100,11 @@ pub fn cmd_intake_validate(s: &mut Session, params: &Value) -> Result<Value> {
     let status = validation
         .get("status")
         .and_then(Value::as_str)
-        .unwrap_or(if valid { "ready" } else { "single_or_partial_sheet" });
+        .unwrap_or(if valid {
+            "ready"
+        } else {
+            "single_or_partial_sheet"
+        });
     let rows_detected = validation
         .get("rowsDetected")
         .and_then(Value::as_u64)
@@ -153,17 +167,15 @@ pub fn cmd_intake_validate(s: &mut Session, params: &Value) -> Result<Value> {
         asset
             .attached_references
             .retain(|r| r.kind != resolved_slot || resolved_slot == "reference");
-        asset
-            .attached_references
-            .push(AttachedReference {
-                label: ref_label,
-                kind: resolved_slot.to_string(),
-                path: effective_path.clone(),
-                raw_path: Some(resolved_path.clone()),
-                width,
-                height,
-                report: jev_cmp.clone(),
-            });
+        asset.attached_references.push(AttachedReference {
+            label: ref_label,
+            kind: resolved_slot.to_string(),
+            path: effective_path.clone(),
+            raw_path: Some(resolved_path.clone()),
+            width,
+            height,
+            report: jev_cmp.clone(),
+        });
     }
 
     s.assets.insert(asset_id.clone(), asset);
@@ -232,7 +244,9 @@ pub fn run_photocraft_transparent_step1(
     _tolerance: u32,
 ) -> std::result::Result<(), String> {
     if width < 8 || height < 8 {
-        return Err(format!("image is {width}x{height}; background removal needs at least 8x8"));
+        return Err(format!(
+            "image is {width}x{height}; background removal needs at least 8x8"
+        ));
     }
     let bin = super::workspace::resolve_craft_cli("photocraft-cli");
     let args = vec![
@@ -252,7 +266,11 @@ pub fn run_photocraft_transparent_step1(
         .map_err(|e| format!("cannot run {bin}: {e}"))?;
     if !out.status.success() || !output_path.is_file() {
         let msg = String::from_utf8_lossy(&out.stderr);
-        return Err(msg.lines().last().unwrap_or("PhotoCraft background removal produced no output").to_string());
+        return Err(msg
+            .lines()
+            .last()
+            .unwrap_or("PhotoCraft background removal produced no output")
+            .to_string());
     }
     Ok(())
 }
@@ -403,7 +421,9 @@ pub fn cmd_intake_three_question(s: &mut Session, params: &Value) -> Result<Valu
         .ok_or_else(|| EngineError::InvalidParams("no active asset in session".into()))?;
     let asset_id = asset.id.clone();
     let image = match params.get("image") {
-        Some(Value::String(path)) if !path.trim().is_empty() => super::workspace::resolve_workspace_path(s, path),
+        Some(Value::String(path)) if !path.trim().is_empty() => {
+            super::workspace::resolve_workspace_path(s, path)
+        }
         Some(_) => {
             return Err(EngineError::InvalidParams(
                 "'image' must be a nonempty path string".into(),
@@ -646,7 +666,10 @@ pub fn cmd_asset_cut_sheet(s: &mut Session, params: &Value) -> Result<Value> {
         .and_then(Value::as_u64)
         .map(|v| v.clamp(1, 100) as u32)
         .unwrap_or(25);
-    let use_ocr = params.get("use_ocr").and_then(Value::as_bool).unwrap_or(false);
+    let use_ocr = params
+        .get("use_ocr")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     let mut cut_args = vec![
         "cut-sheet".to_string(),
@@ -827,8 +850,7 @@ fn preset_paths(
         ),
         "whiskers" => (
             "whiskers".to_string(),
-            pose("whiskers_poses")
-                .or_else(|| pose("Create_pose_sheet_for_puppet_202607180130_20")),
+            pose("whiskers_poses").or_else(|| pose("Create_pose_sheet_for_puppet_202607180130_20")),
             resolve_turnaround(
                 "whiskers",
                 "Character_turnaround_sheet_anima\u{2026}_202607180130_17",
@@ -1244,7 +1266,10 @@ pub fn cmd_asset_make_transparent(s: &mut Session, params: &Value) -> Result<Val
 /// Where a step writes its results: beside the source when it lives in the open project
 /// (its destination folder), else the workspace's `exports/pose_and_parts/<id>/`.
 fn results_dir(s: &Session, source: &Path, root: &Path, id: &str) -> PathBuf {
-    match (s.project_path.as_ref().and_then(|p| p.parent()), source.parent()) {
+    match (
+        s.project_path.as_ref().and_then(|p| p.parent()),
+        source.parent(),
+    ) {
         (Some(dir), Some(parent)) if source.starts_with(dir) => parent.to_path_buf(),
         _ => root.join("exports/pose_and_parts").join(id),
     }
@@ -1278,19 +1303,33 @@ pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<V
     } else {
         ("select.object", select.to_string())
     };
-    let expand = params.get("expand").and_then(Value::as_u64).unwrap_or(6).clamp(1, 500);
+    let expand = params
+        .get("expand")
+        .and_then(Value::as_u64)
+        .unwrap_or(6)
+        .clamp(1, 500);
     let root = super::workspace::workspace_root(s);
     let out_dir = results_dir(s, &source, &root, &id);
     std::fs::create_dir_all(&out_dir)?;
-    let stem = source.file_stem().and_then(|st| st.to_str()).unwrap_or("image");
-    let (subject, background) =
-        (out_dir.join(format!("{stem}_subject.png")), out_dir.join(format!("{stem}_background.png")));
+    let stem = source
+        .file_stem()
+        .and_then(|st| st.to_str())
+        .unwrap_or("image");
+    let (subject, background) = (
+        out_dir.join(format!("{stem}_subject.png")),
+        out_dir.join(format!("{stem}_background.png")),
+    );
     let bin = super::workspace::resolve_craft_cli("photocraft-cli");
     let tool_version = super::workspace::run_tool_in(&root, &bin, &["--version".into()])?;
     let run = |steps: &[(&str, String)], out: &Path| -> Result<String> {
         let mut args = vec!["run".to_string(), source.to_string_lossy().into_owned()];
         for (cmd, p) in steps {
-            args.extend(["--cmd".to_string(), cmd.to_string(), "--params".to_string(), p.clone()]);
+            args.extend([
+                "--cmd".to_string(),
+                cmd.to_string(),
+                "--params".to_string(),
+                p.clone(),
+            ]);
         }
         args.extend(["--out".to_string(), out.to_string_lossy().into_owned()]);
         super::workspace::run_tool_in(&root, &bin, &args)
@@ -1307,8 +1346,14 @@ pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<V
     let fill = run(
         &[
             (select_cmd, select_params),
-            ("select.modify.expand", json!({"radius": expand}).to_string()),
-            ("edit.contentAwareFill", "{\"sampling\":\"auto\",\"output\":\"current\"}".into()),
+            (
+                "select.modify.expand",
+                json!({"radius": expand}).to_string(),
+            ),
+            (
+                "edit.contentAwareFill",
+                "{\"sampling\":\"auto\",\"output\":\"current\"}".into(),
+            ),
         ],
         &background,
     )?;
@@ -1322,7 +1367,8 @@ pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<V
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
         .find(|v| v["command"] == json!("edit.contentAwareFill"))
         .map(|v| v["result"]["filled"].clone());
-    Ok(json!({"ok": true, "asset": id, "source": source, "subject": subject, "background": background,
+    Ok(
+        json!({"ok": true, "asset": id, "source": source, "subject": subject, "background": background,
         "tool": {"executable": bin, "version": tool_version},
         "operations": [select_cmd, "select.inverse", "edit.clear", "select.modify.expand", "edit.contentAwareFill"],
         "selection": {"command": select_cmd, "params": select, "result": selection}, "filled_pixels": filled,
@@ -1330,7 +1376,8 @@ pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<V
             "Look at the subject on a solid colour and the background at full size before using them.",
             "Thin or see-through parts (wings, whiskers, antennae) may be missed: if they stay painted on the background, record it with assets.fixlist_add.",
             "Wrong object? Re-run with rect=[x,y,w,h] around the subject (or point=[x,y])."
-        ]}))
+        ]}),
+    )
 }
 
 /// Build a guided cutout rig plan via `pipeline/guided_cutout_rig_builder.py`.
@@ -1341,7 +1388,12 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
     {
         let _ = crate::project::ensure_default_asset_project(s)?;
     }
-    if let Some(asset_id) = params.get("asset").and_then(Value::as_str).map(str::trim).filter(|id| !id.is_empty()) {
+    if let Some(asset_id) = params
+        .get("asset")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
         if !s.assets.contains_key(asset_id) {
             let _ = crate::project::cmd_project_load_asset(s, &json!({"id": asset_id}));
         }
@@ -1357,7 +1409,11 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
     let ds_dir = super::workspace::workspace_root(s)
         .join("exports/design_share")
         .join(&id);
-    if src_path.is_dir() || src_path.to_string_lossy().contains(".layered_preview_cache") {
+    if src_path.is_dir()
+        || src_path
+            .to_string_lossy()
+            .contains(".layered_preview_cache")
+    {
         let candidate = ds_dir.join("registered_turnaround/frames/00_front.png");
         if candidate.is_file() {
             src_path = candidate;
@@ -1378,12 +1434,13 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
 
     let mode = s.preview_mode.clone();
     let speed = s.preview_speed as f64;
-    let default_dur =
-        ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
+    let default_dur = ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
     let duration = default_dur;
     let parts_csv = rec_parts_csv;
 
-    let out_dir = super::workspace::workspace_root(s).join("exports/pose_and_parts").join(&id);
+    let out_dir = super::workspace::workspace_root(s)
+        .join("exports/pose_and_parts")
+        .join(&id);
     let script = super::workspace::workspace_root(s).join("pipeline/guided_cutout_rig_builder.py");
     let mut args = vec![
         script.to_string_lossy().into_owned(),
@@ -1545,4 +1602,3 @@ pub fn decontaminate_sprite_rgba(
 
     (cleaned, [bx0, by0, bx1, by1])
 }
-

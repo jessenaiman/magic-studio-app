@@ -35,9 +35,7 @@ class FrameSampler(BaseTool):
     determinism = Determinism.DETERMINISTIC
 
     dependencies = ["cmd:ffmpeg"]
-    install_instructions = (
-        "Install FFmpeg: https://ffmpeg.org/download.html"
-    )
+    install_instructions = "Install FFmpeg: https://ffmpeg.org/download.html"
     agent_skills = ["ffmpeg"]
 
     capabilities = [
@@ -114,13 +112,21 @@ class FrameSampler(BaseTool):
 
         try:
             if strategy == "interval":
-                frames = self._extract_interval(input_path, output_dir, fmt, quality, inputs)
+                frames = self._extract_interval(
+                    input_path, output_dir, fmt, quality, inputs
+                )
             elif strategy == "count":
-                frames = self._extract_count(input_path, output_dir, fmt, quality, inputs)
+                frames = self._extract_count(
+                    input_path, output_dir, fmt, quality, inputs
+                )
             elif strategy == "timestamps":
-                frames = self._extract_timestamps(input_path, output_dir, fmt, quality, inputs)
+                frames = self._extract_timestamps(
+                    input_path, output_dir, fmt, quality, inputs
+                )
             elif strategy == "scene_guided":
-                frames = self._extract_scene_guided(input_path, output_dir, fmt, quality, inputs)
+                frames = self._extract_scene_guided(
+                    input_path, output_dir, fmt, quality, inputs
+                )
             else:
                 return ToolResult(success=False, error=f"Unknown strategy: {strategy}")
         except Exception as e:
@@ -152,9 +158,12 @@ class FrameSampler(BaseTool):
         output_pattern = str(output_dir / f"frame_%04d.{fmt}")
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", f"fps=1/{interval}",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"fps=1/{interval}",
         ]
         if fmt == "jpg":
             cmd.extend(["-qscale:v", str(quality)])
@@ -181,10 +190,14 @@ class FrameSampler(BaseTool):
         output_pattern = str(output_dir / f"frame_%04d.{fmt}")
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", f"fps=1/{interval}",
-            "-frames:v", str(count),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"fps=1/{interval}",
+            "-frames:v",
+            str(count),
         ]
         if fmt == "jpg":
             cmd.extend(["-qscale:v", str(quality)])
@@ -208,10 +221,14 @@ class FrameSampler(BaseTool):
         for i, ts in enumerate(timestamps):
             output_file = output_dir / f"frame_{i:04d}.{fmt}"
             cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(ts),
-                "-i", str(input_path),
-                "-frames:v", "1",
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(ts),
+                "-i",
+                str(input_path),
+                "-frames:v",
+                "1",
             ]
             if fmt == "jpg":
                 cmd.extend(["-qscale:v", str(quality)])
@@ -220,11 +237,13 @@ class FrameSampler(BaseTool):
             self.run_command(cmd)
 
             if output_file.exists():
-                frames.append({
-                    "path": str(output_file),
-                    "timestamp_seconds": ts,
-                    "index": i,
-                })
+                frames.append(
+                    {
+                        "path": str(output_file),
+                        "timestamp_seconds": ts,
+                        "index": i,
+                    }
+                )
 
         return frames
 
@@ -247,9 +266,15 @@ class FrameSampler(BaseTool):
 
         if not scene_boundaries:
             # No scene data — fall back to count-based
-            return self._extract_count(input_path, output_dir, fmt, quality, {
-                "count": min(max_frames, 15),
-            })
+            return self._extract_count(
+                input_path,
+                output_dir,
+                fmt,
+                quality,
+                {
+                    "count": min(max_frames, 15),
+                },
+            )
 
         # Compute timestamps: first frame + midpoint for long scenes
         timestamps = []
@@ -280,9 +305,12 @@ class FrameSampler(BaseTool):
         """Get video duration in seconds via ffprobe."""
         cmd = [
             "ffprobe",
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "json",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
             str(input_path),
         ]
         result = self.run_command(cmd)
@@ -296,9 +324,11 @@ class FrameSampler(BaseTool):
         frames = []
         pattern = f"frame_*.{fmt}"
         for i, path in enumerate(sorted(output_dir.glob(pattern))):
-            frames.append({
-                "path": str(path),
-                "timestamp_seconds": round(i * interval, 3),
-                "index": i,
-            })
+            frames.append(
+                {
+                    "path": str(path),
+                    "timestamp_seconds": round(i * interval, 3),
+                    "index": i,
+                }
+            )
         return frames

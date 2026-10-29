@@ -37,7 +37,9 @@ def _detect_audio_device_windows() -> str | None:
     try:
         result = subprocess.run(
             ["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         # dshow lists devices in stderr
         output = result.stderr
@@ -59,7 +61,9 @@ def _detect_audio_device_mac() -> str | None:
     try:
         result = subprocess.run(
             ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         output = result.stderr
         in_audio = False
@@ -167,7 +171,11 @@ class ScreenRecorder(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=512, vram_mb=0, disk_mb=500, network_required=False,
+        cpu_cores=2,
+        ram_mb=512,
+        vram_mb=0,
+        disk_mb=500,
+        network_required=False,
     )
 
     side_effects = ["creates_file"]
@@ -185,21 +193,28 @@ class ScreenRecorder(BaseTool):
 
         sys_platform = platform.system()
         cmd = self._build_command(
-            sys_platform, str(output_path), duration, fps,
-            capture_audio, region, screen_index,
+            sys_platform,
+            str(output_path),
+            duration,
+            fps,
+            capture_audio,
+            region,
+            screen_index,
         )
 
         if cmd is None:
             return ToolResult(
                 success=False,
                 error=f"Screen recording not supported on {sys_platform}. "
-                      f"Supported: Windows, macOS, Linux.",
+                f"Supported: Windows, macOS, Linux.",
             )
 
         start_time = time.time()
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True,
+                cmd,
+                capture_output=True,
+                text=True,
                 timeout=duration + 30,  # grace period
             )
             elapsed = time.time() - start_time
@@ -266,21 +281,38 @@ class ScreenRecorder(BaseTool):
 
         if sys_platform == "Windows":
             return self._build_windows_cmd(
-                output_path, duration, fps, capture_audio, region,
+                output_path,
+                duration,
+                fps,
+                capture_audio,
+                region,
             )
         elif sys_platform == "Darwin":
             return self._build_mac_cmd(
-                output_path, duration, fps, capture_audio, region, screen_index,
+                output_path,
+                duration,
+                fps,
+                capture_audio,
+                region,
+                screen_index,
             )
         elif sys_platform == "Linux":
             return self._build_linux_cmd(
-                output_path, duration, fps, capture_audio, region,
+                output_path,
+                duration,
+                fps,
+                capture_audio,
+                region,
             )
         return None
 
     def _build_windows_cmd(
-        self, output_path: str, duration: int, fps: int,
-        capture_audio: bool, region: dict | None,
+        self,
+        output_path: str,
+        duration: int,
+        fps: int,
+        capture_audio: bool,
+        region: dict | None,
     ) -> list[str]:
         cmd = ["ffmpeg", "-y"]
 
@@ -312,8 +344,13 @@ class ScreenRecorder(BaseTool):
         return cmd
 
     def _build_mac_cmd(
-        self, output_path: str, duration: int, fps: int,
-        capture_audio: bool, region: dict | None, screen_index: int,
+        self,
+        output_path: str,
+        duration: int,
+        fps: int,
+        capture_audio: bool,
+        region: dict | None,
+        screen_index: int,
     ) -> list[str]:
         cmd = ["ffmpeg", "-y"]
 
@@ -331,7 +368,10 @@ class ScreenRecorder(BaseTool):
         if region:
             # avfoundation doesn't support region directly — we crop in post
             cmd += ["-i", f"{screen_index}:{audio_idx}"]
-            cmd += ["-vf", f"crop={region['width']}:{region['height']}:{region.get('x', 0)}:{region.get('y', 0)}"]
+            cmd += [
+                "-vf",
+                f"crop={region['width']}:{region['height']}:{region.get('x', 0)}:{region.get('y', 0)}",
+            ]
         else:
             cmd += ["-i", f"{screen_index}:{audio_idx}"]
 
@@ -344,8 +384,12 @@ class ScreenRecorder(BaseTool):
         return cmd
 
     def _build_linux_cmd(
-        self, output_path: str, duration: int, fps: int,
-        capture_audio: bool, region: dict | None,
+        self,
+        output_path: str,
+        duration: int,
+        fps: int,
+        capture_audio: bool,
+        region: dict | None,
     ) -> list[str]:
         cmd = ["ffmpeg", "-y"]
 
@@ -378,13 +422,20 @@ class ScreenRecorder(BaseTool):
         try:
             result = subprocess.run(
                 [
-                    "ffprobe", "-v", "error",
-                    "-select_streams", "v:0",
-                    "-show_entries", "stream=width,height",
-                    "-of", "csv=p=0",
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=width,height",
+                    "-of",
+                    "csv=p=0",
                     path,
                 ],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             parts = result.stdout.strip().split(",")
             if len(parts) == 2:

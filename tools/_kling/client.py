@@ -32,8 +32,12 @@ class KlingClient:
         session: Any | None = None,
         max_retries: int = 2,
     ) -> None:
-        self.api_key = api_key if api_key is not None else os.environ.get("KLING_API_KEY")
-        self.base_url = (base_url or os.environ.get("KLING_API_BASE_URL") or DEFAULT_API_BASE_URL).rstrip("/")
+        self.api_key = (
+            api_key if api_key is not None else os.environ.get("KLING_API_KEY")
+        )
+        self.base_url = (
+            base_url or os.environ.get("KLING_API_BASE_URL") or DEFAULT_API_BASE_URL
+        ).rstrip("/")
         self.session = session or requests.Session()
         self.max_retries = max_retries
 
@@ -62,15 +66,19 @@ class KlingClient:
         self._raise_for_http_error(response)
         content = getattr(response, "content", None)
         if content is None and hasattr(response, "iter_content"):
-            content = b"".join(chunk for chunk in response.iter_content(chunk_size=1024 * 128) if chunk)
+            content = b"".join(
+                chunk for chunk in response.iter_content(chunk_size=1024 * 128) if chunk
+            )
         output_path.write_bytes(content or b"")
         return output_path
 
     def create_classic_task(self, path: str, payload: dict[str, Any]) -> str:
         data = self.post(path, payload)
-        task_id = ((data.get("data") or {}).get("task_id"))
+        task_id = (data.get("data") or {}).get("task_id")
         if not task_id:
-            raise KlingAPIError(f"Kling Classic create response missing data.task_id: {data}")
+            raise KlingAPIError(
+                f"Kling Classic create response missing data.task_id: {data}"
+            )
         return str(task_id)
 
     def poll_classic(
@@ -90,19 +98,31 @@ class KlingClient:
                 task_result = payload.get("task_result") or {}
                 outputs = task_result.get(result_key) or []
                 if not isinstance(outputs, list):
-                    raise KlingAPIError(f"Kling Classic result path data.task_result.{result_key} is not a list")
+                    raise KlingAPIError(
+                        f"Kling Classic result path data.task_result.{result_key} is not a list"
+                    )
                 return outputs
             if status == CLASSIC_FAILURE_STATUS:
-                message = payload.get("task_status_msg") or payload.get("message") or "Kling Classic task failed"
-                raise KlingAPIError(str(message), code=payload.get("task_status"), response=data)
+                message = (
+                    payload.get("task_status_msg")
+                    or payload.get("message")
+                    or "Kling Classic task failed"
+                )
+                raise KlingAPIError(
+                    str(message), code=payload.get("task_status"), response=data
+                )
             if status not in CLASSIC_PENDING_STATUSES:
-                raise KlingAPIError(f"Unexpected Kling Classic task status {status!r}", response=data)
+                raise KlingAPIError(
+                    f"Unexpected Kling Classic task status {status!r}", response=data
+                )
             time.sleep(min(poll_interval, max(0.0, deadline - time.time())))
-        raise TimeoutError(f"Kling Classic task {task_id} timed out after {timeout_seconds}s")
+        raise TimeoutError(
+            f"Kling Classic task {task_id} timed out after {timeout_seconds}s"
+        )
 
     def create_turbo(self, path: str, payload: dict[str, Any]) -> str:
         data = self.post(path, payload)
-        task_id = ((data.get("data") or {}).get("id"))
+        task_id = (data.get("data") or {}).get("id")
         if not task_id:
             raise KlingAPIError(f"Kling Turbo create response missing data.id: {data}")
         return str(task_id)
@@ -118,21 +138,38 @@ class KlingClient:
             data = self.get("/tasks", params={"task_ids": task_id})
             records = data.get("data") or []
             if not records:
-                raise KlingAPIError(f"Kling Turbo poll response missing data[0]: {data}")
+                raise KlingAPIError(
+                    f"Kling Turbo poll response missing data[0]: {data}"
+                )
             record = records[0]
             status = record.get("status") or record.get("task_status")
             if status == TURBO_SUCCESS_STATUS:
                 outputs = record.get("outputs") or []
                 if not isinstance(outputs, list):
-                    raise KlingAPIError("Kling Turbo result path data[0].outputs is not a list")
+                    raise KlingAPIError(
+                        "Kling Turbo result path data[0].outputs is not a list"
+                    )
                 return outputs
             if status == TURBO_FAILURE_STATUS:
-                message = record.get("message") or record.get("error") or "Kling Turbo task failed"
-                raise KlingAPIError(str(message), code=record.get("code"), request_id=record.get("request_id"), response=data)
+                message = (
+                    record.get("message")
+                    or record.get("error")
+                    or "Kling Turbo task failed"
+                )
+                raise KlingAPIError(
+                    str(message),
+                    code=record.get("code"),
+                    request_id=record.get("request_id"),
+                    response=data,
+                )
             if status not in TURBO_PENDING_STATUSES:
-                raise KlingAPIError(f"Unexpected Kling Turbo task status {status!r}", response=data)
+                raise KlingAPIError(
+                    f"Unexpected Kling Turbo task status {status!r}", response=data
+                )
             time.sleep(min(poll_interval, max(0.0, deadline - time.time())))
-        raise TimeoutError(f"Kling Turbo task {task_id} timed out after {timeout_seconds}s")
+        raise TimeoutError(
+            f"Kling Turbo task {task_id} timed out after {timeout_seconds}s"
+        )
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         url = self._url(path)
@@ -142,7 +179,9 @@ class KlingClient:
         max_retries = self.max_retries if method == "get" else 0
         for attempt in range(max_retries + 1):
             try:
-                response = getattr(self.session, method)(url, headers=self.headers, timeout=30, **kwargs)
+                response = getattr(self.session, method)(
+                    url, headers=self.headers, timeout=30, **kwargs
+                )
                 self._raise_for_http_error(response)
                 data = response.json()
                 self._raise_for_business_error(data)
@@ -194,7 +233,9 @@ class KlingClient:
             return
         raise self._format_error(
             code=code,
-            message=str(data.get("message") or data.get("msg") or "Kling API returned an error"),
+            message=str(
+                data.get("message") or data.get("msg") or "Kling API returned an error"
+            ),
             request_id=data.get("request_id") or data.get("requestId"),
             response=data,
         )
@@ -209,7 +250,9 @@ class KlingClient:
         response: dict[str, Any] | None = None,
     ) -> KlingAPIError:
         if str(code) == "1303" and "并发/资源包限制" not in message:
-            message = f"{message} (并发/资源包限制: parallel task over resource pack limit)"
+            message = (
+                f"{message} (并发/资源包限制: parallel task over resource pack limit)"
+            )
         return KlingAPIError(
             message=message,
             code=code,

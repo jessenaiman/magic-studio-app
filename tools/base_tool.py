@@ -1,6 +1,6 @@
 """Base tool class implementing the expanded ToolContract.
 
-Every tool in OpenMontage inherits from BaseTool. This enforces a uniform
+Every tool in MagicStudio inherits from BaseTool. This enforces a uniform
 interface for discovery, execution, cost estimation, and health reporting.
 """
 
@@ -316,13 +316,18 @@ def _result_from_cache(restored: dict[str, Any], dest: Any) -> "ToolResult":
     # Repoint only the declared local-output references. Cache admission is
     # single-artifact; remote URLs, input paths, and other provenance stay put.
     original_outputs = {
-        data[name] for name in ("output", "output_path")
+        data[name]
+        for name in ("output", "output_path")
         if isinstance(data.get(name), str)
     }
     for name in ("outputs", "video_paths", "image_paths", "audio_paths"):
         values = data.get(name)
-        if (isinstance(values, list) and len(values) == 1
-                and isinstance(values[0], str) and values[0] in original_outputs):
+        if (
+            isinstance(values, list)
+            and len(values) == 1
+            and isinstance(values[0], str)
+            and values[0] in original_outputs
+        ):
             data[name] = [str(dest)]
     for name in ("output", "output_path"):
         if name in data:
@@ -407,7 +412,7 @@ def _cache_execute(fn: Callable) -> Callable:
 
 
 class BaseTool(ABC):
-    """Abstract base class for all OpenMontage tools."""
+    """Abstract base class for all MagicStudio tools."""
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Auto-instrument every concrete execute() with Backlot events."""
@@ -434,7 +439,7 @@ class BaseTool(ABC):
 
     # --- Capabilities ---
     capability: str = "generic"
-    provider: str = "openmontage"
+    provider: str = "magicstudio"
     capabilities: list[str] = []
     input_schema: dict = {}
     output_schema: dict = {}

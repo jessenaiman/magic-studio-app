@@ -4,6 +4,7 @@ Unsplash is image-only in this pipeline. It widens the corpus for
 modern, polished, lifestyle, and product-adjacent scenes where a
 high-quality still can still be valuable to the edit.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,7 +17,7 @@ from .base import Candidate, SearchFilters
 
 _SEARCH_URL = "https://api.unsplash.com/search/photos"
 _UNSPLASH_LICENSE = "Unsplash License (use returned hotlinked image URLs)"
-_USER_AGENT = "OpenMontageBot/0.1 (https://github.com/calesthio/OpenMontage)"
+_USER_AGENT = "MagicStudioBot/0.1 (https://github.com/calesthio/OpenMontage)"
 
 
 class UnsplashSource:
@@ -105,12 +106,16 @@ class UnsplashSource:
         }
 
 
-def _photo_to_candidate(photo: dict[str, Any], filters: SearchFilters) -> Candidate | None:
+def _photo_to_candidate(
+    photo: dict[str, Any], filters: SearchFilters
+) -> Candidate | None:
     width = int(photo.get("width") or 0)
     height = int(photo.get("height") or 0)
     if filters.min_width is not None and width and width < filters.min_width:
         return None
-    if filters.orientation and not _matches_orientation(filters.orientation, width, height):
+    if filters.orientation and not _matches_orientation(
+        filters.orientation, width, height
+    ):
         return None
 
     user = photo.get("user") or {}
@@ -133,7 +138,9 @@ def _photo_to_candidate(photo: dict[str, Any], filters: SearchFilters) -> Candid
         source=UnsplashSource.name,
         source_id=str(photo.get("id") or ""),
         source_url=links.get("html", "") or "",
-        download_url=_build_download_url(raw_url, target_width=max(filters.min_width or 0, 1920)),
+        download_url=_build_download_url(
+            raw_url, target_width=max(filters.min_width or 0, 1920)
+        ),
         kind="image",
         width=width,
         height=height,

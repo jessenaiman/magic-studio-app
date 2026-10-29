@@ -22,7 +22,9 @@ fn long_file_limit(root: &Path) -> u64 {
     let Ok(value) = serde_json::from_str::<Value>(&text) else {
         return COMPLEXITY_LONG_FILE_LINES;
     };
-    value["max_file_lines"].as_u64().unwrap_or(COMPLEXITY_LONG_FILE_LINES)
+    value["max_file_lines"]
+        .as_u64()
+        .unwrap_or(COMPLEXITY_LONG_FILE_LINES)
 }
 
 /// The sources worth measuring: the Rust engine and CLIs, the Python pipeline and
@@ -46,12 +48,8 @@ fn scan_targets(root: &Path) -> Vec<String> {
             if path.extension().and_then(|ext| ext.to_str()) != Some("js") {
                 return None;
             }
-            path.file_name().map(|name| {
-                format!(
-                    "apps/magicstudio-shell/ui/{}",
-                    name.to_string_lossy()
-                )
-            })
+            path.file_name()
+                .map(|name| format!("apps/magicstudio-shell/ui/{}", name.to_string_lossy()))
         })
         .collect();
     ui_files.sort();
@@ -114,7 +112,8 @@ pub fn read(root: &Path, scan: bool) -> Value {
     let cache = root.join("target/analytics/lizard.json");
     let revision = source_revision(root);
     let dirty = source_dirty(root);
-    let previous = std::fs::read(&cache).ok()
+    let previous = std::fs::read(&cache)
+        .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         .filter(|v| v["available"] == true && v["source_root"] == root.to_string_lossy().as_ref());
     if !scan {
@@ -124,60 +123,136 @@ pub fn read(root: &Path, scan: bool) -> Value {
     let mut result = measure(root);
     result["tool"] = json!("lizard");
     let executable = resolve_craft_cli("lizard");
-    let executable_path = if Path::new(&executable).is_file() {Some(std::path::PathBuf::from(&executable))} else {
-        std::env::var_os("PATH").and_then(|paths|std::env::split_paths(&paths).map(|path|path.join(&executable)).find(|path|path.is_file()))
+    let executable_path = if Path::new(&executable).is_file() {
+        Some(std::path::PathBuf::from(&executable))
+    } else {
+        std::env::var_os("PATH").and_then(|paths| {
+            std::env::split_paths(&paths)
+                .map(|path| path.join(&executable))
+                .find(|path| path.is_file())
+        })
     };
     result["tool_path"] = json!(executable_path);
-    result["tool_version"] = json!(std::process::Command::new(&executable).arg("--version").output().ok().filter(|o|o.status.success()).map(|o|String::from_utf8_lossy(&o.stdout).trim().to_string()));
+    result["tool_version"] = json!(
+        std::process::Command::new(&executable)
+            .arg("--version")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    );
     result["targets"] = json!(scan_targets(root));
     result["source_root"] = json!(root);
     result["source_revision"] = json!(revision);
     result["source_dirty"] = json!(dirty);
-    result["measured_at_unix_secs"] = json!(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|v|v.as_secs()));
+    result["measured_at_unix_secs"] = json!(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|v| v.as_secs())
+    );
     result["cached"] = json!(false);
-    result["state"] = json!(if result["available"] == true {"measured"} else {"error"});
+    let partial = result["scan_failures"]
+        .as_array()
+        .is_some_and(|failures| !failures.is_empty());
+    result["state"] = json!(if result["available"] != true {
+        "error"
+    } else if partial {
+        "partial"
+    } else {
+        "measured"
+    });
     if result["available"] != true {
         let error = "Lizard returned no measurements; check tool availability and scan_failures.";
         if let Some(value) = previous {
             let mut saved = cached_result(value, &revision, dirty);
             saved["last_error"] = json!(error);
-            saved["scan_failures"] = result["scan_failures"].clone();
+            saved["last_scan_failures"] = result["scan_failures"].clone();
             return saved;
         }
         result["reason"] = json!(error);
         return result;
     }
+    // A partial scan must not replace the last complete saved measurement.
+    if partial {
+        return result;
+    }
     let save = || -> std::io::Result<()> {
-        std::fs::create_dir_all(cache.parent().expect("cache has parent"))?;
+        let parent = cache
+            .parent()
+            .ok_or_else(|| std::io::Error::other("cache has no parent"))?;
+        std::fs::create_dir_all(parent)?;
         // A unique temporary file prevents concurrent scans from truncating the saved result.
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|v|v.as_nanos()).unwrap_or(0);
-        let temporary = cache.with_extension(format!("{}-{stamp}.tmp",std::process::id()));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|v| v.as_nanos())
+            .unwrap_or(0);
+        let temporary = cache.with_extension(format!("{}-{stamp}.tmp", std::process::id()));
         let bytes = serde_json::to_vec(&result).map_err(std::io::Error::other)?;
         std::fs::write(&temporary, bytes)?;
-        if let Err(error) = std::fs::rename(&temporary, &cache) {let _=std::fs::remove_file(temporary);return Err(error);}
+        if let Err(error) = std::fs::rename(&temporary, &cache) {
+            let _ = std::fs::remove_file(temporary);
+            return Err(error);
+        }
         Ok(())
     };
-    if let Err(error) = save() {result["cache_error"] = json!(error.to_string());}
+    if let Err(error) = save() {
+        result["cache_error"] = json!(error.to_string());
+    }
     result
 }
 
 fn source_revision(root: &Path) -> Option<String> {
-    std::process::Command::new("git").args(["rev-parse","HEAD"]).current_dir(root).output().ok()
-        .filter(|o|o.status.success()).map(|o|String::from_utf8_lossy(&o.stdout).trim().to_string())
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
 fn source_dirty(root: &Path) -> Option<bool> {
-    std::process::Command::new("git").args(["status","--porcelain","--untracked-files=normal","--",
-        "crates/engine/src","agent-harness/cli_anything/magic","apps/magicstudio-shell/src","apps/magicstudio-shell/ui","pipeline","scripts","code-limits.json"])
-        .current_dir(root).output().ok().filter(|o|o.status.success()).map(|o|!o.stdout.is_empty())
+    std::process::Command::new("git")
+        .args([
+            "status",
+            "--porcelain",
+            "--untracked-files=normal",
+            "--",
+            "crates/engine/src",
+            "agent-harness/cli_anything/magic",
+            "apps/magicstudio-shell/src",
+            "apps/magicstudio-shell/ui",
+            "pipeline",
+            "scripts",
+            "code-limits.json",
+        ])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| !o.stdout.is_empty())
 }
 
 fn cached_result(mut value: Value, revision: &Option<String>, dirty: Option<bool>) -> Value {
     value["cached"] = json!(true);
     value["current_revision"] = json!(revision);
-    value["state"] = json!(if revision.is_none() || dirty.is_none() || dirty == Some(true) || value["source_dirty"] != false {
+    value["state"] = json!(if value["scan_failures"]
+        .as_array()
+        .is_some_and(|failures| !failures.is_empty())
+    {
+        "partial"
+    } else if revision.is_none()
+        || dirty.is_none()
+        || dirty == Some(true)
+        || value["source_dirty"] != false
+    {
         "worktree_unverified"
-    } else if value["source_revision"] != json!(revision) {"stale"} else {"saved"});
+    } else if value["source_revision"] != json!(revision) {
+        "stale"
+    } else {
+        "saved"
+    });
     value
 }
 
@@ -185,7 +260,7 @@ fn measure(root: &Path) -> Value {
     let lizard_bin = resolve_craft_cli("lizard");
     let long_file_limit = long_file_limit(root);
     let targets = scan_targets(root);
-    let (stdout, scan_failures) = lizard_csv(&lizard_bin, root, &targets);
+    let (stdout, mut scan_failures) = lizard_csv(&lizard_bin, root, &targets);
     let mut functions = Vec::new();
     let mut files = std::collections::HashSet::new();
     let mut per_file: std::collections::BTreeMap<String, (u64, usize, u64)> =
@@ -200,10 +275,18 @@ fn measure(root: &Path) -> Value {
         if fields.len() < 11 {
             continue;
         }
-        let Ok(nloc) = fields[0].parse::<u64>() else { continue };
-        let Ok(ccn) = fields[1].parse::<u64>() else { continue };
-        let Ok(tokens) = fields[2].parse::<u64>() else { continue };
-        let Ok(params) = fields[3].parse::<u64>() else { continue };
+        let Ok(nloc) = fields[0].parse::<u64>() else {
+            continue;
+        };
+        let Ok(ccn) = fields[1].parse::<u64>() else {
+            continue;
+        };
+        let Ok(tokens) = fields[2].parse::<u64>() else {
+            continue;
+        };
+        let Ok(params) = fields[3].parse::<u64>() else {
+            continue;
+        };
         let file = fields[6].clone();
         let name = fields[7].clone();
         let start_line = fields[9].parse::<u64>().unwrap_or(1);
@@ -233,7 +316,12 @@ fn measure(root: &Path) -> Value {
             "params": params,
         }));
     }
-    functions.sort_by_key(|f| (std::cmp::Reverse(f["ccn"].as_u64().unwrap_or(0)), std::cmp::Reverse(f["nloc"].as_u64().unwrap_or(0))));
+    functions.sort_by_key(|f| {
+        (
+            std::cmp::Reverse(f["ccn"].as_u64().unwrap_or(0)),
+            std::cmp::Reverse(f["nloc"].as_u64().unwrap_or(0)),
+        )
+    });
     let hotspots: Vec<Value> = functions.iter().take(25).cloned().collect();
 
     // Per-file cost: physical lines (what an agent has to read) next to cyclomatic
@@ -241,16 +329,20 @@ fn measure(root: &Path) -> Value {
     let mut file_rows: Vec<Value> = per_file
         .iter()
         .map(|(file, (ccn, functions, max_file_ccn))| {
-            let lines = std::fs::read_to_string(root.join(file))
-                .map(|text| text.lines().count() as u64)
-                .unwrap_or(0);
+            let lines = match std::fs::read_to_string(root.join(file)) {
+                Ok(text) => Some(text.lines().count() as u64),
+                Err(_) => {
+                    scan_failures.push(file.clone());
+                    None
+                }
+            };
             json!({
                 "file": file,
                 "lines": lines,
                 "ccn": ccn,
                 "functions": functions,
                 "max_ccn": max_file_ccn,
-                "long": lines >= long_file_limit,
+                "long": lines.map(|value| value >= long_file_limit),
             })
         })
         .collect();
@@ -277,7 +369,12 @@ fn measure(root: &Path) -> Value {
     let largest_ccn_files: Vec<Value> = by_ccn.iter().take(15).cloned().collect();
     let ui_files_analyzed = file_rows
         .iter()
-        .filter(|row| row["file"].as_str().unwrap_or("").starts_with("apps/magicstudio-shell/ui/"))
+        .filter(|row| {
+            row["file"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("apps/magicstudio-shell/ui/")
+        })
         .count();
     let total_lines: u64 = file_rows
         .iter()

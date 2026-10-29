@@ -93,7 +93,9 @@ class ImageGen(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=100, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "width", "height", "seed"]
     side_effects = ["writes image file to output_path", "calls external API"]
     user_visible_verification = [
@@ -113,6 +115,7 @@ class ImageGen(BaseTool):
             return "flux"
         try:
             import diffusers  # noqa: F401
+
             return "local"
         except ImportError:
             pass
@@ -131,7 +134,8 @@ class ImageGen(BaseTool):
         if not provider:
             return ToolResult(
                 success=False,
-                error="No image generation provider available. " + self.install_instructions,
+                error="No image generation provider available. "
+                + self.install_instructions,
             )
 
         start = time.time()
@@ -204,7 +208,10 @@ class ImageGen(BaseTool):
 
         response = requests.post(
             "https://fal.run/fal-ai/flux/dev",
-            headers={"Authorization": f"Key {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Key {api_key}",
+                "Content-Type": "application/json",
+            },
             json=payload,
             timeout=120,
         )

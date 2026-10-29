@@ -1,6 +1,6 @@
 """Account usage diagnostics for Kling official API.
 
-This module is a low-frequency helper, not an OpenMontage registry tool.
+This module is a low-frequency helper, not an MagicStudio registry tool.
 """
 
 from __future__ import annotations
@@ -56,7 +56,11 @@ def get_account_costs(
 
     if _LAST_QUERY_AT and timestamp - _LAST_QUERY_AT < min_interval_seconds:
         if cached:
-            return {**cached["payload"], "cached": True, "throttle_status": "throttled_cache"}
+            return {
+                **cached["payload"],
+                "cached": True,
+                "throttle_status": "throttled_cache",
+            }
         return {
             "provider": "kling_official",
             "queried_range": {

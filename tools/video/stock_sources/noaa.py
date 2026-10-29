@@ -17,6 +17,7 @@ What NOAA is good for
 - Weather satellite imagery
 - Coastal and oceanic research footage
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,6 +49,7 @@ class NOAASource:
     def is_available(self) -> bool:
         try:
             import bs4  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -69,13 +71,13 @@ class NOAASource:
                 "https://www.noaa.gov/search",
                 params={"query": query, "type": "video"},
                 timeout=30,
-                headers={"User-Agent": "OpenMontage/1.0"},
+                headers={"User-Agent": "MagicStudio/1.0"},
             )
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
 
             cards = soup.select(".views-row, .search-result, article, .media-item")
-            for card in cards[:filters.per_page]:
+            for card in cards[: filters.per_page]:
                 link_el = card.select_one("a[href]")
                 if not link_el:
                     continue
@@ -143,8 +145,9 @@ class NOAASource:
         # Scrape detail page
         try:
             r = requests.get(
-                detail_url, timeout=30,
-                headers={"User-Agent": "OpenMontage/1.0"},
+                detail_url,
+                timeout=30,
+                headers={"User-Agent": "MagicStudio/1.0"},
             )
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
@@ -171,8 +174,13 @@ class NOAASource:
                 for iframe in soup.select("iframe[src]"):
                     src = iframe.get("src", "")
                     if "youtube" in src or "vimeo" in src:
-                        _log.warning("NOAA video is embedded from %s — cannot download directly", src)
-                        raise ValueError(f"Video is embedded from external platform: {src}")
+                        _log.warning(
+                            "NOAA video is embedded from %s — cannot download directly",
+                            src,
+                        )
+                        raise ValueError(
+                            f"Video is embedded from external platform: {src}"
+                        )
 
             if not download_url:
                 raise ValueError(f"Could not find video URL on NOAA page: {detail_url}")
@@ -189,8 +197,10 @@ class NOAASource:
         import requests
 
         with requests.get(
-            url, stream=True, timeout=180,
-            headers={"User-Agent": "OpenMontage/1.0"},
+            url,
+            stream=True,
+            timeout=180,
+            headers={"User-Agent": "MagicStudio/1.0"},
         ) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:

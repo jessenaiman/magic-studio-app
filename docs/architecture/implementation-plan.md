@@ -8,7 +8,7 @@
 
 **Stack:** existing Rust engine, Tauri shell, vanilla JavaScript, Ratatui, native storyboard tools and HyperFrames. Reuse the existing tool adapters.
 
-**Sources:** [recovered diagram](panel-contract.html), [panel contract](../superpowers/plans/2026-10-23-unified-panel-reporting.md), [video wiring plan](../superpowers/plans/2026-10-23-magic-studio-wiring-refactor.md), and Jesse's six steps below.
+**Sources:** [recovered diagram](panel-contract.html), [shared UI/CLI/TUI contract](tui-contract.md), and Jesse's six steps below.
 
 ## Binding architecture — updated from Jesse's corrections
 
@@ -149,7 +149,7 @@ Backend follow-up: configuration validation now runs during loading for both CLI
 
 ## Final functional acceptance — shared refactor and two pets
 
-Jesse's latest instruction is to complete the partially implemented refactor and pets while preserving Claude's page design. The pending mechanical stylesheet cleanup was retained: no pixel or hex literals remain outside root tokens; obsolete panel selectors were removed. Live computed-style comparisons covered 1,985 lyrics DOM nodes and 2,156 animation DOM nodes across 22 properties. No displayed component changed; only the deliberately hidden retired part bar lost unused properties. Selector count is 666 versus the original 673 target. CSS/JS source-line targets remain exceeded (1,042/4,524 versus 911/4,227); these measurements must remain visible in delivery and must not be described as met.
+The pending mechanical stylesheet cleanup was retained: no pixel or hex literals remain outside root tokens; obsolete panel selectors were removed. Live computed-style comparisons covered 1,985 lyrics DOM nodes and 2,156 animation DOM nodes across 22 properties. No displayed component changed; only the deliberately hidden retired part bar lost unused properties. Selector count is 666 versus the original 673 target. CSS/JS source-line targets remain exceeded (1,042/4,524 versus 911/4,227); these measurements must remain visible in delivery and must not be described as met.
 
 The manifest now activates the original honey dog and orange cat, with ten decoded SVG poses. Default-on respects explicit opt-out. Live acceptance proves TUI attention and clearing, actual engine failure and recovery, missing-state red detection, most-recent command tracking, disable/re-enable, separate idle homes, and positions within measured configured slots. Both pets fit a shared slot at 700/941/1261 pixels. Regression coverage additionally proves reduced-motion cancellation, stale project events and errors beyond the first 64 states. `mc panels --check` exits 0 and full indexed inspection reports 295 unique components with finite positions in the live fixture.
 

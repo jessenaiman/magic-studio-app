@@ -67,7 +67,9 @@ def _normalize_style(style: Any) -> dict[str, Any]:
     return normalized
 
 
-def _render_preview_mp4(preview_path: Path, video_path: Path, duration_seconds: float, fps: int) -> None:
+def _render_preview_mp4(
+    preview_path: Path, video_path: Path, duration_seconds: float, fps: int
+) -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg is required to render preview MP4")
     try:
@@ -103,7 +105,9 @@ def _render_preview_mp4(preview_path: Path, video_path: Path, duration_seconds: 
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "ffmpeg failed to render preview MP4")
+        raise RuntimeError(
+            result.stderr.strip() or "ffmpeg failed to render preview MP4"
+        )
 
 
 class CharacterSpecGenerator(BaseTool):
@@ -111,14 +115,16 @@ class CharacterSpecGenerator(BaseTool):
     version = "0.1.0"
     tier = ToolTier.CORE
     capability = "character_animation"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.BETA
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
     resource_profile = ResourceProfile(cpu_cores=1, ram_mb=128, vram_mb=0, disk_mb=10)
     agent_skills = ["character-rigging", "pose-library-design"]
     capabilities = ["draft_character_design", "normalize_character_specs"]
-    best_for = ["Converting approved concepts into structured character_design artifacts"]
+    best_for = [
+        "Converting approved concepts into structured character_design artifacts"
+    ]
     not_good_for = ["Generating artwork pixels or finished animation"]
     input_schema = {
         "type": "object",
@@ -129,10 +135,15 @@ class CharacterSpecGenerator(BaseTool):
             "output_path": {"type": "string"},
         },
     }
-    output_schema = {"type": "object", "properties": {"character_design": {"type": "object"}}}
+    output_schema = {
+        "type": "object",
+        "properties": {"character_design": {"type": "object"}},
+    }
     artifact_schema = {"artifact": "character_design"}
     side_effects = ["optionally writes character_design JSON to output_path"]
-    user_visible_verification = ["Review character count, action list, and emotional range"]
+    user_visible_verification = [
+        "Review character count, action list, and emotional range"
+    ]
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         start = time.time()
@@ -148,17 +159,30 @@ class CharacterSpecGenerator(BaseTool):
         ]
         characters: list[dict[str, Any]] = []
         for raw in raw_characters:
-            name = raw.get("id") or raw.get("name") or raw.get("display_name") or "character"
+            name = (
+                raw.get("id")
+                or raw.get("name")
+                or raw.get("display_name")
+                or "character"
+            )
             characters.append(
                 {
                     "id": _slug(str(name)),
-                    "display_name": raw.get("display_name", str(name).replace("_", " ").title()),
+                    "display_name": raw.get(
+                        "display_name", str(name).replace("_", " ").title()
+                    ),
                     "role": raw.get("role", "supporting character"),
                     "body_type": raw.get("body_type", "simple cartoon body"),
-                    "style": raw.get("style", inputs.get("style", {}).get("visual_style", "cartoon")),
+                    "style": raw.get(
+                        "style", inputs.get("style", {}).get("visual_style", "cartoon")
+                    ),
                     "silhouette_notes": raw.get("silhouette_notes", ""),
-                    "required_emotions": raw.get("required_emotions", ["neutral", "happy", "surprised"]),
-                    "required_actions": raw.get("required_actions", ["idle", "blink", "look"]),
+                    "required_emotions": raw.get(
+                        "required_emotions", ["neutral", "happy", "surprised"]
+                    ),
+                    "required_actions": raw.get(
+                        "required_actions", ["idle", "blink", "look"]
+                    ),
                     "required_views": raw.get("required_views", ["front", "side"]),
                     "props": raw.get("props", []),
                     "constraints": raw.get("constraints", []),
@@ -187,12 +211,17 @@ class SvgRigBuilder(BaseTool):
     version = "0.1.0"
     tier = ToolTier.CORE
     capability = "character_animation"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.BETA
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
     resource_profile = ResourceProfile(cpu_cores=1, ram_mb=128, vram_mb=0, disk_mb=10)
-    agent_skills = ["character-rigging", "svg-character-animation", "gsap-core", "gsap-timeline"]
+    agent_skills = [
+        "character-rigging",
+        "svg-character-animation",
+        "gsap-core",
+        "gsap-timeline",
+    ]
     capabilities = ["draft_svg_rig_plan", "define_parts_pivots_layers"]
     input_schema = {
         "type": "object",
@@ -261,7 +290,9 @@ class SvgRigBuilder(BaseTool):
                     "rig_type": "svg_rig",
                     "parts": parts,
                     "joints": joints,
-                    "layers": [p["id"] for p in sorted(parts, key=lambda p: p["layer"])],
+                    "layers": [
+                        p["id"] for p in sorted(parts, key=lambda p: p["layer"])
+                    ],
                     "views": character.get("required_views", ["front", "side"]),
                     "required_poses": required_poses,
                     "required_actions": actions,
@@ -270,7 +301,11 @@ class SvgRigBuilder(BaseTool):
                     ],
                 }
             )
-        artifact = {"version": "1.0", "characters": rig_characters, "metadata": {"source": self.name}}
+        artifact = {
+            "version": "1.0",
+            "characters": rig_characters,
+            "metadata": {"source": self.name},
+        }
         artifacts = _write_json(inputs.get("output_path"), artifact)
         return ToolResult(
             success=True,
@@ -285,17 +320,24 @@ class PoseLibraryBuilder(BaseTool):
     version = "0.1.0"
     tier = ToolTier.CORE
     capability = "character_animation"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.BETA
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
     resource_profile = ResourceProfile(cpu_cores=1, ram_mb=128, vram_mb=0, disk_mb=10)
-    agent_skills = ["pose-library-design", "character-rigging", "svg-character-animation"]
+    agent_skills = [
+        "pose-library-design",
+        "character-rigging",
+        "svg-character-animation",
+    ]
     capabilities = ["draft_pose_library", "draft_action_cycles"]
     input_schema = {
         "type": "object",
         "required": ["rig_plan"],
-        "properties": {"rig_plan": {"type": "object"}, "output_path": {"type": "string"}},
+        "properties": {
+            "rig_plan": {"type": "object"},
+            "output_path": {"type": "string"},
+        },
     }
     artifact_schema = {"artifact": "pose_library"}
     side_effects = ["optionally writes pose_library JSON to output_path"]
@@ -306,10 +348,17 @@ class PoseLibraryBuilder(BaseTool):
         for rig in inputs["rig_plan"].get("characters", []):
             cid = rig["character_id"]
             poses = {
-                "idle": {"description": "Neutral readable hold", "parts": {}, "hold_frames": 24},
+                "idle": {
+                    "description": "Neutral readable hold",
+                    "parts": {},
+                    "hold_frames": 24,
+                },
                 "blink": {
                     "description": "Quick eye close/open",
-                    "parts": {"eye_left": {"scaleY": 0.08}, "eye_right": {"scaleY": 0.08}},
+                    "parts": {
+                        "eye_left": {"scaleY": 0.08},
+                        "eye_right": {"scaleY": 0.08},
+                    },
                     "hold_frames": 3,
                     "transition": "power1.inOut",
                 },
@@ -325,7 +374,10 @@ class PoseLibraryBuilder(BaseTool):
                 },
                 "surprised": {
                     "description": "Head lifts, eyes widen, mouth opens",
-                    "parts": {"head": {"y": -4, "rotation": -4}, "mouth": {"shape": "small_o"}},
+                    "parts": {
+                        "head": {"y": -4, "rotation": -4},
+                        "mouth": {"shape": "small_o"},
+                    },
                     "expression": "surprised",
                     "hold_frames": 24,
                     "transition": "back.out",
@@ -347,7 +399,9 @@ class PoseLibraryBuilder(BaseTool):
                     "poses": poses,
                     "mouth_shapes": {
                         "closed": {"description": "Neutral closed mouth"},
-                        "small_o": {"description": "Small open mouth for surprise or vowel"},
+                        "small_o": {
+                            "description": "Small open mouth for surprise or vowel"
+                        },
                         "wide": {"description": "Wide open mouth"},
                         "smile": {"description": "Smile shape"},
                     },
@@ -357,7 +411,11 @@ class PoseLibraryBuilder(BaseTool):
                     },
                 }
             )
-        artifact = {"version": "1.0", "characters": characters, "metadata": {"source": self.name}}
+        artifact = {
+            "version": "1.0",
+            "characters": characters,
+            "metadata": {"source": self.name},
+        }
         artifacts = _write_json(inputs.get("output_path"), artifact)
         return ToolResult(
             success=True,
@@ -372,7 +430,7 @@ class ActionTimelineCompiler(BaseTool):
     version = "0.1.0"
     tier = ToolTier.CORE
     capability = "character_animation"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.BETA
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
@@ -468,7 +526,7 @@ class CharacterRigRenderer(BaseTool):
     version = "0.1.0"
     tier = ToolTier.CORE
     capability = "character_animation"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.BETA
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
@@ -514,11 +572,15 @@ class CharacterRigRenderer(BaseTool):
         "writes a HyperFrames workspace/package",
         "optionally writes preview MP4",
     ]
-    user_visible_verification = ["Open preview and check character visibility and motion"]
+    user_visible_verification = [
+        "Open preview and check character visibility and motion"
+    ]
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         start = time.time()
-        output_path = Path(inputs.get("output_path", "projects/character-preview/preview.html"))
+        output_path = Path(
+            inputs.get("output_path", "projects/character-preview/preview.html")
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         timeline_json = json.dumps(inputs["action_timeline"])
         rig_characters = (inputs.get("rig_plan") or {}).get("characters", [])
@@ -573,7 +635,7 @@ class CharacterRigRenderer(BaseTool):
 <body>
   <div id=\"stage\">
     <svg viewBox=\"0 0 640 640\" role=\"img\" aria-label=\"Character preview\">
-{''.join(character_svgs)}
+{"".join(character_svgs)}
     </svg>
   </div>
   <div id=\"note\">Local character preview. Characters: <span id=\"characters\"></span> · Scenes: <span id=\"count\"></span></div>
@@ -613,8 +675,7 @@ class CharacterRigRenderer(BaseTool):
             or [float(inputs.get("duration_seconds", 3))]
         )
         workspace_path = Path(
-            inputs.get("workspace_path")
-            or output_path.parent / "hyperframes"
+            inputs.get("workspace_path") or output_path.parent / "hyperframes"
         )
         composition_dir = workspace_path / "compositions"
         composition_dir.mkdir(parents=True, exist_ok=True)
@@ -635,7 +696,7 @@ class CharacterRigRenderer(BaseTool):
         )
         (workspace_path / "DESIGN.md").write_text(
             "# DESIGN\n\n"
-            "Generated for OpenMontage character animation.\n\n"
+            "Generated for MagicStudio character animation.\n\n"
             "- Background: `#9bd7ff` sky and `#75c878` ground\n"
             "- Foreground: `#202632` ink outlines\n"
             "- Accent: saturated cartoon body colors\n"
@@ -652,7 +713,7 @@ class CharacterRigRenderer(BaseTool):
       [data-composition-id=\"character-scene\"] .outline {{ stroke: #202632; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }}
     </style>
     <svg viewBox=\"0 0 640 640\" role=\"img\" aria-label=\"Character animation scene\">
-{''.join(character_svgs)}
+{"".join(character_svgs)}
     </svg>
     <script src=\"https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js\"></script>
     <script>
@@ -722,12 +783,17 @@ class CharacterRigRenderer(BaseTool):
             "asset_manifest": asset_manifest,
             "edit_decisions": edit_decisions,
         }
-        artifacts = [str(output_path), str(workspace_path / "hyperframes.json"), str(composition_path)]
-        render_video = bool(inputs.get("render_video") or inputs.get("video_output_path"))
+        artifacts = [
+            str(output_path),
+            str(workspace_path / "hyperframes.json"),
+            str(composition_path),
+        ]
+        render_video = bool(
+            inputs.get("render_video") or inputs.get("video_output_path")
+        )
         if render_video:
             video_path = Path(
-                inputs.get("video_output_path")
-                or output_path.with_suffix(".mp4")
+                inputs.get("video_output_path") or output_path.with_suffix(".mp4")
             )
             video_path.parent.mkdir(parents=True, exist_ok=True)
             duration_seconds = float(inputs.get("duration_seconds", 3))
@@ -790,7 +856,7 @@ class CharacterAnimationReviewer(BaseTool):
     version = "0.1.0"
     tier = ToolTier.ANALYZE
     capability = "character_animation"
-    provider = "openmontage"
+    provider = "magicstudio"
     stability = ToolStability.BETA
     execution_mode = ExecutionMode.SYNC
     determinism = Determinism.DETERMINISTIC
@@ -804,7 +870,11 @@ class CharacterAnimationReviewer(BaseTool):
             "pose_library": {"type": "object"},
             "action_timeline": {"type": "object"},
             "preview_path": {"type": "string"},
-            "review_level": {"type": "string", "enum": ["static", "browser", "final"], "default": "static"},
+            "review_level": {
+                "type": "string",
+                "enum": ["static", "browser", "final"],
+                "default": "static",
+            },
             "browser_preview_checked": {"type": "boolean", "default": False},
             "frame_samples_checked": {"type": "boolean", "default": False},
             "output_path": {"type": "string"},
@@ -830,20 +900,30 @@ class CharacterAnimationReviewer(BaseTool):
         elif not Path(preview_path).exists():
             assets_exist = False
             issues.append(f"Preview path does not exist: {preview_path}")
-        pivots_defined = all(
-            bool(character.get("joints"))
-            for character in rig.get("characters", [])
-        ) if rig else False
-        poses_defined = all(
-            bool(character.get("poses"))
-            for character in poses.get("characters", [])
-        ) if poses else False
-        actions_timed = all(
-            bool(scene.get("actions"))
-            for scene in timeline.get("scenes", [])
-        ) if timeline else False
+        pivots_defined = (
+            all(
+                bool(character.get("joints")) for character in rig.get("characters", [])
+            )
+            if rig
+            else False
+        )
+        poses_defined = (
+            all(
+                bool(character.get("poses"))
+                for character in poses.get("characters", [])
+            )
+            if poses
+            else False
+        )
+        actions_timed = (
+            all(bool(scene.get("actions")) for scene in timeline.get("scenes", []))
+            if timeline
+            else False
+        )
         if not pivots_defined:
-            issues.append("Rig plan is missing joints/pivots for one or more characters.")
+            issues.append(
+                "Rig plan is missing joints/pivots for one or more characters."
+            )
         if not poses_defined:
             issues.append("Pose library is missing poses for one or more characters.")
         if not actions_timed:

@@ -100,7 +100,11 @@ class GreenScreenProcessor(BaseTool):
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["FFmpeg error"])
     resume_support = ResumeSupport.FROM_START
     idempotency_key_fields = [
-        "input_path", "method", "fps", "bg_color", "max_frames",
+        "input_path",
+        "method",
+        "fps",
+        "bg_color",
+        "max_frames",
     ]
     side_effects = ["writes keyed video to output_path"]
     user_visible_verification = [
@@ -147,13 +151,9 @@ class GreenScreenProcessor(BaseTool):
             # Step 4: Extract frames at target fps
             frames_dir = temp_dir / "frames"
             frames_dir.mkdir(exist_ok=True)
-            frame_count = self._extract_frames(
-                input_path, frames_dir, fps, max_frames
-            )
+            frame_count = self._extract_frames(input_path, frames_dir, fps, max_frames)
             if frame_count == 0:
-                return ToolResult(
-                    success=False, error="No frames extracted from input"
-                )
+                return ToolResult(success=False, error="No frames extracted from input")
 
             # Step 5: Process frames
             processed_dir = temp_dir / "processed"
@@ -178,9 +178,7 @@ class GreenScreenProcessor(BaseTool):
             self._reconstruct_video(processed_dir, output_path, fps, width, height)
 
             if not output_path.exists() or output_path.stat().st_size == 0:
-                return ToolResult(
-                    success=False, error="Output video was not created"
-                )
+                return ToolResult(success=False, error="Output video was not created")
 
             elapsed = time.time() - start
 
@@ -200,7 +198,9 @@ class GreenScreenProcessor(BaseTool):
             )
 
         except Exception as e:
-            return ToolResult(success=False, error=f"Green screen processing failed: {e}")
+            return ToolResult(
+                success=False, error=f"Green screen processing failed: {e}"
+            )
         finally:
             # Clean up temp directory
             self._cleanup_dir(temp_dir)
@@ -208,10 +208,15 @@ class GreenScreenProcessor(BaseTool):
     def _probe_video(self, input_path: Path) -> dict[str, Any] | None:
         """Probe video for duration, dimensions, and fps."""
         cmd = [
-            "ffprobe", "-v", "quiet",
-            "-show_entries", "format=duration:stream=width,height,r_frame_rate",
-            "-select_streams", "v:0",
-            "-of", "json",
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration:stream=width,height,r_frame_rate",
+            "-select_streams",
+            "v:0",
+            "-of",
+            "json",
             str(input_path),
         ]
         try:
@@ -259,10 +264,14 @@ class GreenScreenProcessor(BaseTool):
                 ts = interval * (i + 1)
                 out = temp_dir / f"sample_{i}.png"
                 cmd = [
-                    "ffmpeg", "-y",
-                    "-ss", f"{ts:.3f}",
-                    "-i", str(input_path),
-                    "-frames:v", "1",
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    f"{ts:.3f}",
+                    "-i",
+                    str(input_path),
+                    "-frames:v",
+                    "1",
                     str(out),
                 ]
                 try:
@@ -303,11 +312,17 @@ class GreenScreenProcessor(BaseTool):
         green_votes = 0
         for sample in sample_paths:
             cmd = [
-                "ffmpeg", "-y",
-                "-i", str(sample),
-                "-vf", "signalstats=stat=tout+vrep+brng,metadata=mode=print",
-                "-frames:v", "1",
-                "-f", "null", self._null_device,
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(sample),
+                "-vf",
+                "signalstats=stat=tout+vrep+brng,metadata=mode=print",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                self._null_device,
             ]
             try:
                 result = self.run_command(cmd, timeout=15)
@@ -317,29 +332,41 @@ class GreenScreenProcessor(BaseTool):
                 # Alternative: use FFmpeg to count green-ish pixels
                 # Run a simpler hue check with colorchannelmixer
                 cmd2 = [
-                    "ffmpeg", "-y",
-                    "-i", str(sample),
-                    "-vf", (
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(sample),
+                    "-vf",
+                    (
                         "split[a][b];"
                         "[a]colorchannelmixer=rr=0:gg=1:bb=0,"
                         "threshold=threshold=0.3:similarity=0.3[mask];"
                         "[mask]blackframe=amount=0:threshold=32"
                     ),
-                    "-frames:v", "1",
-                    "-f", "null", self._null_device,
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "null",
+                    self._null_device,
                 ]
                 # This is complex; use a simpler approach: check raw pixels
                 # via a green-range filter
                 cmd_green = [
-                    "ffmpeg", "-y",
-                    "-i", str(sample),
-                    "-vf", (
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(sample),
+                    "-vf",
+                    (
                         "colorkey=color=0x00FF00:similarity=0.4:blend=0.0,"
                         "alphaextract,"
                         "blackframe=amount=0:threshold=128"
                     ),
-                    "-frames:v", "1",
-                    "-f", "null", self._null_device,
+                    "-frames:v",
+                    "1",
+                    "-f",
+                    "null",
+                    self._null_device,
                 ]
                 try:
                     result2 = self.run_command(cmd_green, timeout=15)
@@ -348,6 +375,7 @@ class GreenScreenProcessor(BaseTool):
                     # If many pixels became transparent (black in alpha), there's green
                     if "pblack:" in stderr:
                         import re
+
                         pblack_matches = re.findall(r"pblack:(\d+)", stderr)
                         if pblack_matches:
                             pblack = int(pblack_matches[0])
@@ -372,9 +400,12 @@ class GreenScreenProcessor(BaseTool):
 
         # Apply chromakey and output with alpha
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(test_frame),
-            "-vf", "chromakey=color=0x00FF00:similarity=0.3:blend=0.08",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(test_frame),
+            "-vf",
+            "chromakey=color=0x00FF00:similarity=0.3:blend=0.08",
             str(keyed_out),
         ]
         try:
@@ -387,16 +418,23 @@ class GreenScreenProcessor(BaseTool):
 
         # Count transparent pixels via alphaextract + blackframe
         cmd2 = [
-            "ffmpeg", "-y",
-            "-i", str(keyed_out),
-            "-vf", "alphaextract,blackframe=amount=0:threshold=32",
-            "-frames:v", "1",
-            "-f", "null", self._null_device,
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(keyed_out),
+            "-vf",
+            "alphaextract,blackframe=amount=0:threshold=32",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            self._null_device,
         ]
         try:
             result = self.run_command(cmd2, timeout=15)
             stderr = result.stderr or ""
             import re
+
             pblack_matches = re.findall(r"pblack:(\d+)", stderr)
             if pblack_matches:
                 # pblack = percentage of black pixels in alpha = transparent pixels
@@ -411,9 +449,12 @@ class GreenScreenProcessor(BaseTool):
     ) -> int:
         """Extract frames from video at target fps."""
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", f"fps={fps}",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"fps={fps}",
             str(frames_dir / "frame_%06d.png"),
         ]
 
@@ -461,14 +502,19 @@ class GreenScreenProcessor(BaseTool):
         for i, frame in enumerate(frame_files):
             out_path = processed_dir / frame.name
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
+                "-y",
                 # Background sized to the frame up front. The old code used a 1x1
                 # color source and `[0:v]scale=iw:ih` — a no-op (iw/ih were the
                 # 1x1 source's own size) — and overlay takes the size of its
                 # FIRST input, so every frame was clipped to a single pixel and
                 # the whole video came out a solid color with the subject gone.
-                "-f", "lavfi", "-i", f"color=c={ffmpeg_bg}:size={width}x{height}",
-                "-i", str(frame),
+                "-f",
+                "lavfi",
+                "-i",
+                f"color=c={ffmpeg_bg}:size={width}x{height}",
+                "-i",
+                str(frame),
                 "-filter_complex",
                 (
                     # Force an explicit alpha format after chromakey so the keyed
@@ -480,7 +526,8 @@ class GreenScreenProcessor(BaseTool):
                     f"format=yuva420p[fg];"
                     f"[0:v][fg]overlay=0:0:format=auto,format=yuv420p"
                 ),
-                "-frames:v", "1",
+                "-frames:v",
+                "1",
                 str(out_path),
             ]
             try:
@@ -491,22 +538,28 @@ class GreenScreenProcessor(BaseTool):
                 # Try with the frame size explicitly to fix scale
                 try:
                     cmd_retry = [
-                        "ffmpeg", "-y",
-                        "-i", str(frame),
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(frame),
                         "-vf",
                         f"chromakey=color=0x00FF00:similarity=0.3:blend=0.08,"
                         f"split[fg][alpha];"
                         f"[alpha]alphaextract[a];"
                         f"color=c={ffmpeg_bg}[bg];"
                         f"[bg][fg][a]maskedmerge",
-                        "-frames:v", "1",
+                        "-frames:v",
+                        "1",
                         str(out_path),
                     ]
                     # Simpler fallback: just apply chromakey without compositing
                     cmd_simple = [
-                        "ffmpeg", "-y",
-                        "-i", str(frame),
-                        "-vf", f"chromakey=color=0x00FF00:similarity=0.3:blend=0.08",
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(frame),
+                        "-vf",
+                        f"chromakey=color=0x00FF00:similarity=0.3:blend=0.08",
                         str(out_path),
                     ]
                     self.run_command(cmd_simple, timeout=30)
@@ -576,9 +629,7 @@ class GreenScreenProcessor(BaseTool):
                 continue
 
             if frame_count > 100 and (i + 1) % 50 == 0:
-                print(
-                    f"[green_screen_processor] rembg: {i + 1}/{frame_count} frames"
-                )
+                print(f"[green_screen_processor] rembg: {i + 1}/{frame_count} frames")
 
         return processed > 0
 
@@ -592,14 +643,22 @@ class GreenScreenProcessor(BaseTool):
     ) -> None:
         """Reconstruct video from processed frames using FFmpeg."""
         cmd = [
-            "ffmpeg", "-y",
-            "-framerate", str(fps),
-            "-i", str(frames_dir / "frame_%06d.png"),
-            "-vf", f"scale={width}:{height}:flags=lanczos",
-            "-c:v", "libx264",
-            "-crf", "18",
-            "-preset", "fast",
-            "-pix_fmt", "yuv420p",
+            "ffmpeg",
+            "-y",
+            "-framerate",
+            str(fps),
+            "-i",
+            str(frames_dir / "frame_%06d.png"),
+            "-vf",
+            f"scale={width}:{height}:flags=lanczos",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-preset",
+            "fast",
+            "-pix_fmt",
+            "yuv420p",
             str(output_path),
         ]
         self.run_command(cmd, timeout=600)

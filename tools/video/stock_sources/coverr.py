@@ -15,6 +15,7 @@ What Coverr is good for
 - High production quality (curated library)
 - Quick establishing shots and mood-setters
 """
+
 from __future__ import annotations
 
 import os
@@ -25,7 +26,9 @@ from .base import Candidate, SearchFilters
 
 
 _SEARCH_URL = "https://api.coverr.co/videos"
-_LICENSE = "Coverr License (free for commercial and personal use, no attribution required)"
+_LICENSE = (
+    "Coverr License (free for commercial and personal use, no attribution required)"
+)
 
 
 class CoverrSource:
@@ -108,13 +111,16 @@ class CoverrSource:
                 Candidate(
                     source=self.name,
                     source_id=str(v.get("id") or v.get("slug", "")),
-                    source_url=v.get("url", "") or f"https://coverr.co/videos/{v.get('slug', '')}",
+                    source_url=v.get("url", "")
+                    or f"https://coverr.co/videos/{v.get('slug', '')}",
                     download_url=download_url,
                     kind="video",
                     width=width,
                     height=height,
                     duration=duration,
-                    creator=v.get("creator", {}).get("name", "") if isinstance(v.get("creator"), dict) else "",
+                    creator=v.get("creator", {}).get("name", "")
+                    if isinstance(v.get("creator"), dict)
+                    else "",
                     license=_LICENSE,
                     source_tags=source_tags,
                     thumbnail_url=urls.get("poster") or urls.get("thumbnail") or "",
@@ -132,9 +138,7 @@ class CoverrSource:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with requests.get(
-            candidate.download_url, stream=True, timeout=120
-        ) as r:
+        with requests.get(candidate.download_url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):

@@ -67,10 +67,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
-    let scan = params
-        .get("scan")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let scan = params.get("scan").and_then(Value::as_bool).unwrap_or(false);
     let doctor = cmd_app_doctor(s, &json!({ "clean": false }))?;
     let host = read_host_telemetry();
     let usage = read_omarchy_usage();
@@ -102,9 +99,13 @@ fn read_host_telemetry() -> Value {
                 .and_then(|l| l.split_whitespace().nth(1))
                 .and_then(|v| v.parse::<u64>().ok())
         });
-    let load = std::fs::read_to_string("/proc/loadavg")
-        .ok()
-        .and_then(|s| s.split_whitespace().take(3).collect::<Vec<_>>().join(" ").into());
+    let load = std::fs::read_to_string("/proc/loadavg").ok().and_then(|s| {
+        s.split_whitespace()
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(" ")
+            .into()
+    });
     let mut mem_total_kb: Option<u64> = None;
     let mut mem_avail_kb: Option<u64> = None;
     if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
@@ -128,7 +129,9 @@ fn read_host_telemetry() -> Value {
 fn read_omarchy_usage() -> Value {
     let base = std::env::var_os("XDG_STATE_HOME")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/state")));
+        .or_else(|| {
+            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/state"))
+        });
     let Some(dir) = base.map(|b| b.join("omarchy/agents/usage")) else {
         return json!({ "available": false, "agents": [], "totals": {} });
     };
@@ -147,8 +150,12 @@ fn read_omarchy_usage() -> Value {
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let Ok(bytes) = std::fs::read(&path) else { continue };
-        let Ok(v) = serde_json::from_slice::<Value>(&bytes) else { continue };
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_slice::<Value>(&bytes) else {
+            continue;
+        };
         let today_tokens = v["todayTotalTokens"].as_u64().unwrap_or(0);
         let today_prompts = v["todayPrompts"].as_u64().unwrap_or(0);
         let total_prompts = v["totalPrompts"].as_u64().unwrap_or(0);
@@ -177,7 +184,9 @@ fn read_omarchy_usage() -> Value {
             }
         }
         models.sort_by_key(|m| std::cmp::Reverse(m["total_tokens"].as_u64().unwrap_or(0)));
-        let total_agent_tokens = input_sum.saturating_add(output_sum).saturating_add(cache_sum);
+        let total_agent_tokens = input_sum
+            .saturating_add(output_sum)
+            .saturating_add(cache_sum);
         if today_tokens == 0 && total_prompts == 0 && total_agent_tokens == 0 {
             continue;
         }
@@ -202,7 +211,14 @@ fn read_omarchy_usage() -> Value {
             "models": models,
         }));
     }
-    agents.sort_by_key(|a| std::cmp::Reverse(a["today_tokens"].as_u64().unwrap_or(0).max(a["total_tokens"].as_u64().unwrap_or(0) / 100)));
+    agents.sort_by_key(|a| {
+        std::cmp::Reverse(
+            a["today_tokens"]
+                .as_u64()
+                .unwrap_or(0)
+                .max(a["total_tokens"].as_u64().unwrap_or(0) / 100),
+        )
+    });
     json!({
         "available": true,
         "agents": agents,
@@ -245,7 +261,6 @@ fn read_project_analytics(s: &Session) -> Value {
 }
 
 fn which_in_path(bin: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file())
-    })
+    std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
 }

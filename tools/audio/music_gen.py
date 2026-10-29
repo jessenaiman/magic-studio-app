@@ -86,7 +86,9 @@ class MusicGen(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=50, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "duration_seconds"]
     side_effects = ["writes audio file to output_path", "calls ElevenLabs API"]
     user_visible_verification = [
@@ -165,9 +167,7 @@ class MusicGen(BaseTool):
             "force_instrumental": bool(inputs.get("force_instrumental", True)),
         }
 
-        response = requests.post(
-            url, headers=headers, json=payload, timeout=180
-        )
+        response = requests.post(url, headers=headers, json=payload, timeout=180)
         response.raise_for_status()
 
         output_path = Path(inputs.get("output_path", "music_output.mp3"))

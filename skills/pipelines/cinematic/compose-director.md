@@ -23,7 +23,7 @@ and already-selected video clips—with no reference matching, narration, titles
 or semantic clip selection—use `bgm_montage_lite` as the complete render path.
 Pass the source audio, all intended source clips, the project directory, and the
 requested aspect ratio (`auto` by default). The tool returns the MP4, timeline,
-audiomap, and an OpenMontage render report after stream, dimension, duration,
+audiomap, and an Magic Studio render report after stream, dimension, duration,
 and full-decode checks.
 
 This is distinct from the professional reference-guided BGM Montage integration:

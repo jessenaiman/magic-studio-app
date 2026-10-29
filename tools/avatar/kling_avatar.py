@@ -135,8 +135,13 @@ class KlingAvatar(BaseTool):
         "prompt",
         "mode",
     ]
-    side_effects = ["paid remote generation via official Kling API", "writes avatar video to output_path"]
-    user_visible_verification = ["Watch generated avatar video for identity preservation and mouth motion"]
+    side_effects = [
+        "paid remote generation via official Kling API",
+        "writes avatar video to output_path",
+    ]
+    user_visible_verification = [
+        "Watch generated avatar video for identity preservation and mouth motion"
+    ]
     quality_score = 0.82
     latency_p50_seconds = 240.0
 
@@ -157,7 +162,7 @@ class KlingAvatar(BaseTool):
             {
                 "paid_api": True,
                 "cost_estimate_confidence": "low",
-                "cost_estimate_basis": "Conservative OpenMontage avatar estimate pending official account-usage reconciliation.",
+                "cost_estimate_basis": "Conservative MagicStudio avatar estimate pending official account-usage reconciliation.",
             }
         )
         return result
@@ -182,7 +187,13 @@ class KlingAvatar(BaseTool):
             )
             paths = self._download_videos(client, outputs, inputs)
             probed = probe_output(paths[0])
-        except (KlingAPIError, TimeoutError, ValueError, KeyError, FileNotFoundError) as exc:
+        except (
+            KlingAPIError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+            FileNotFoundError,
+        ) as exc:
             data: dict[str, Any] = {"provider": self.provider}
             if isinstance(exc, KlingAPIError):
                 data.update(
@@ -193,9 +204,17 @@ class KlingAvatar(BaseTool):
                         "account_usage_diagnostic": account_usage_hint_for_error(exc),
                     }
                 )
-            return ToolResult(success=False, data=data, error=f"Kling official avatar generation failed: {exc}")
+            return ToolResult(
+                success=False,
+                data=data,
+                error=f"Kling official avatar generation failed: {exc}",
+            )
         except Exception as exc:
-            return ToolResult(success=False, data={"provider": self.provider}, error=f"Kling official avatar generation failed: {exc}")
+            return ToolResult(
+                success=False,
+                data={"provider": self.provider},
+                error=f"Kling official avatar generation failed: {exc}",
+            )
 
         return ToolResult(
             success=True,
@@ -254,7 +273,9 @@ class KlingAvatar(BaseTool):
         }
 
     @staticmethod
-    def _copy_audio_input(inputs: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    def _copy_audio_input(
+        inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> dict[str, Any]:
         audio_id = str(inputs.get("audio_id") or "").strip()
         if audio_id:
             payload["audio_id"] = audio_id
@@ -268,7 +289,9 @@ class KlingAvatar(BaseTool):
             label="Avatar audio file",
         )
         if not sound_file:
-            raise ValueError("Kling avatar requires audio_id, sound_file, sound_file_url, sound_file_path, or audio_path")
+            raise ValueError(
+                "Kling avatar requires audio_id, sound_file, sound_file_url, sound_file_path, or audio_path"
+            )
         payload["sound_file"] = sound_file
         return {
             "type": "sound_file",
@@ -288,7 +311,9 @@ class KlingAvatar(BaseTool):
         for index, item in enumerate(outputs):
             url = self._output_url(item)
             suffix = extension_from_url(url, ".mp4")
-            output_path = numbered_output_path(output_path_with_suffix(base_path, suffix), index, suffix)
+            output_path = numbered_output_path(
+                output_path_with_suffix(base_path, suffix), index, suffix
+            )
             client.download(url, output_path)
             paths.append(output_path)
         return paths
@@ -301,10 +326,14 @@ class KlingAvatar(BaseTool):
         resource = item.get("resource") or {}
         if isinstance(resource, dict) and resource.get("url"):
             return str(resource["url"])
-        raise ValueError(f"Kling avatar response item contained no downloadable URL: {item}")
+        raise ValueError(
+            f"Kling avatar response item contained no downloadable URL: {item}"
+        )
 
     @staticmethod
-    def _copy_common_task_fields(inputs: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _copy_common_task_fields(
+        inputs: dict[str, Any], payload: dict[str, Any]
+    ) -> None:
         callback_url = validate_callback_url(inputs.get("callback_url"))
         if callback_url:
             payload["callback_url"] = callback_url
@@ -324,7 +353,9 @@ class KlingAvatar(BaseTool):
         }
 
     @staticmethod
-    def _account_usage_result(inputs: dict[str, Any], client: KlingClient) -> dict[str, Any]:
+    def _account_usage_result(
+        inputs: dict[str, Any], client: KlingClient
+    ) -> dict[str, Any]:
         if not inputs.get("include_account_usage"):
             return {}
         try:

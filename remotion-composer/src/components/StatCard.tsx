@@ -37,16 +37,16 @@ export const StatCard: React.FC<StatCardProps> = ({
   });
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         justifyContent: "center",
         alignItems: "center",
         background: backgroundColor,
       }}
-    >
-      <div style={{ textAlign: "center" }}>
-        <div
-          style={{
+      >
+          <div style={{ textAlign: "center" }}>
+              <div
+                  style={{
             transform: `scale(${scale})`,
             fontSize: statFontSize,
             color: accentColor,
@@ -54,12 +54,12 @@ export const StatCard: React.FC<StatCardProps> = ({
             fontWeight: 800,
             lineHeight: 1.1,
           }}
-        >
-          {stat}
-        </div>
-        {subtitle && (
-          <div
-            style={{
+              >
+                  {stat}
+              </div>
+              {subtitle && (
+              <div
+                  style={{
               opacity: subtitleOpacity,
               fontSize: subtitleFontSize,
               color,
@@ -67,11 +67,11 @@ export const StatCard: React.FC<StatCardProps> = ({
               fontWeight: 400,
               marginTop: 16,
             }}
-          >
-            {subtitle}
-          </div>
+              >
+                  {subtitle}
+              </div>
         )}
-      </div>
-    </AbsoluteFill>
+          </div>
+      </AbsoluteFill>
   );
 };

@@ -16,7 +16,13 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
-from tools.video._shared import COGVIDEO_VARIANTS, estimate_local_runtime, generate_local_video, local_generation_status, local_install_instructions
+from tools.video._shared import (
+    COGVIDEO_VARIANTS,
+    estimate_local_runtime,
+    generate_local_video,
+    local_generation_status,
+    local_install_instructions,
+)
 
 
 class CogVideoVideo(BaseTool):
@@ -47,15 +53,26 @@ class CogVideoVideo(BaseTool):
         "teams that want an explicit CogVideo family path in the registry",
     ]
     not_good_for = ["best-in-class local quality targets"]
-    provider_matrix = {key: {"tool": "cogvideo_video", **value, "mode": "local_gpu"} for key, value in COGVIDEO_VARIANTS.items()}
+    provider_matrix = {
+        key: {"tool": "cogvideo_video", **value, "mode": "local_gpu"}
+        for key, value in COGVIDEO_VARIANTS.items()
+    }
 
     input_schema = {
         "type": "object",
         "required": ["prompt"],
         "properties": {
             "prompt": {"type": "string"},
-            "operation": {"type": "string", "enum": ["text_to_video", "image_to_video"], "default": "text_to_video"},
-            "model_variant": {"type": "string", "enum": sorted(COGVIDEO_VARIANTS), "default": "cogvideo-5b"},
+            "operation": {
+                "type": "string",
+                "enum": ["text_to_video", "image_to_video"],
+                "default": "text_to_video",
+            },
+            "model_variant": {
+                "type": "string",
+                "enum": sorted(COGVIDEO_VARIANTS),
+                "default": "cogvideo-5b",
+            },
             "reference_image_url": {"type": "string"},
             "reference_image_path": {"type": "string"},
             "width": {"type": "integer"},
@@ -68,11 +85,15 @@ class CogVideoVideo(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=16000, vram_mb=6000, disk_mb=4000, network_required=False)
+    resource_profile = ResourceProfile(
+        cpu_cores=2, ram_mb=16000, vram_mb=6000, disk_mb=4000, network_required=False
+    )
     retry_policy = RetryPolicy(max_retries=1)
     idempotency_key_fields = ["prompt", "model_variant", "operation", "seed"]
     side_effects = ["writes video file to output_path", "may download model weights"]
-    user_visible_verification = ["Watch generated clip for motion coherence and artifacts"]
+    user_visible_verification = [
+        "Watch generated clip for motion coherence and artifacts"
+    ]
 
     def get_status(self) -> ToolStatus:
         return local_generation_status()
@@ -106,12 +127,18 @@ class CogVideoVideo(BaseTool):
         return 0.0
 
     def estimate_runtime(self, inputs: dict[str, object]) -> float:
-        variant = COGVIDEO_VARIANTS.get(inputs.get("model_variant", "cogvideo-5b"), COGVIDEO_VARIANTS["cogvideo-5b"])
+        variant = COGVIDEO_VARIANTS.get(
+            inputs.get("model_variant", "cogvideo-5b"), COGVIDEO_VARIANTS["cogvideo-5b"]
+        )
         return estimate_local_runtime(variant["speed"])
 
     def execute(self, inputs: dict[str, object]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
-            return ToolResult(success=False, error="CogVideo local generation is unavailable. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="CogVideo local generation is unavailable. "
+                + self.install_instructions,
+            )
 
         # Consult the variant flag the selector cannot see: the 2B variant is
         # t2v-only (i2v=False), so an image_to_video brief against it would
@@ -130,7 +157,12 @@ class CogVideoVideo(BaseTool):
 
         start = time.time()
         try:
-            result = generate_local_video(tool_name=self.name, variants=COGVIDEO_VARIANTS, default_variant="cogvideo-5b", inputs=inputs)
+            result = generate_local_video(
+                tool_name=self.name,
+                variants=COGVIDEO_VARIANTS,
+                default_variant="cogvideo-5b",
+                inputs=inputs,
+            )
         except Exception as exc:
             return ToolResult(success=False, error=f"CogVideo generation failed: {exc}")
         result.duration_seconds = round(time.time() - start, 2)

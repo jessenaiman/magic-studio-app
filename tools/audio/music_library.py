@@ -179,7 +179,11 @@ class MusicLibrary(BaseTool):
     # ---- Status ----
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if self._list_tracks(self._library_dir()) else ToolStatus.UNAVAILABLE
+        return (
+            ToolStatus.AVAILABLE
+            if self._list_tracks(self._library_dir())
+            else ToolStatus.UNAVAILABLE
+        )
 
     # ---- Execution ----
 
@@ -214,7 +218,9 @@ class MusicLibrary(BaseTool):
                 "library_dir": str(library_dir),
                 "exists": library_dir.is_dir(),
                 "track_count": len(tracks),
-                "total_duration_seconds": round(total_duration, 2) if have_any_duration else None,
+                "total_duration_seconds": round(total_duration, 2)
+                if have_any_duration
+                else None,
                 "tracks": tracks,
             },
             duration_seconds=round(time.time() - start, 2),

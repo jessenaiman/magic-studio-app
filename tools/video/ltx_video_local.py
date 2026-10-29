@@ -16,7 +16,13 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
-from tools.video._shared import LTX_LOCAL_VARIANTS, estimate_local_runtime, generate_local_video, local_generation_status, local_install_instructions
+from tools.video._shared import (
+    LTX_LOCAL_VARIANTS,
+    estimate_local_runtime,
+    generate_local_video,
+    local_generation_status,
+    local_install_instructions,
+)
 
 
 class LTXVideoLocal(BaseTool):
@@ -32,7 +38,13 @@ class LTXVideoLocal(BaseTool):
 
     install_instructions = local_install_instructions()
     fallback = "wan_video"
-    fallback_tools = ["wan_video", "hunyuan_video", "cogvideo_video", "ltx_video_modal", "image_selector"]
+    fallback_tools = [
+        "wan_video",
+        "hunyuan_video",
+        "cogvideo_video",
+        "ltx_video_modal",
+        "image_selector",
+    ]
     agent_skills = ["ltx2"]
 
     capabilities = ["text_to_video", "image_to_video"]
@@ -47,15 +59,26 @@ class LTXVideoLocal(BaseTool):
         "teams that want one dedicated LTX local path in the registry",
     ]
     not_good_for = ["CPU-only machines"]
-    provider_matrix = {key: {"tool": "ltx_video_local", **value, "mode": "local_gpu"} for key, value in LTX_LOCAL_VARIANTS.items()}
+    provider_matrix = {
+        key: {"tool": "ltx_video_local", **value, "mode": "local_gpu"}
+        for key, value in LTX_LOCAL_VARIANTS.items()
+    }
 
     input_schema = {
         "type": "object",
         "required": ["prompt"],
         "properties": {
             "prompt": {"type": "string"},
-            "operation": {"type": "string", "enum": ["text_to_video", "image_to_video"], "default": "text_to_video"},
-            "model_variant": {"type": "string", "enum": ["ltx2-local"], "default": "ltx2-local"},
+            "operation": {
+                "type": "string",
+                "enum": ["text_to_video", "image_to_video"],
+                "default": "text_to_video",
+            },
+            "model_variant": {
+                "type": "string",
+                "enum": ["ltx2-local"],
+                "default": "ltx2-local",
+            },
             "reference_image_url": {"type": "string"},
             "reference_image_path": {"type": "string"},
             "width": {"type": "integer"},
@@ -68,11 +91,15 @@ class LTXVideoLocal(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=16000, vram_mb=12000, disk_mb=4000, network_required=False)
+    resource_profile = ResourceProfile(
+        cpu_cores=2, ram_mb=16000, vram_mb=12000, disk_mb=4000, network_required=False
+    )
     retry_policy = RetryPolicy(max_retries=1)
     idempotency_key_fields = ["prompt", "model_variant", "operation", "seed"]
     side_effects = ["writes video file to output_path", "may download model weights"]
-    user_visible_verification = ["Watch generated clip for motion coherence and artifacts"]
+    user_visible_verification = [
+        "Watch generated clip for motion coherence and artifacts"
+    ]
 
     def get_status(self) -> ToolStatus:
         return local_generation_status()
@@ -85,11 +112,22 @@ class LTXVideoLocal(BaseTool):
 
     def execute(self, inputs: dict[str, object]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
-            return ToolResult(success=False, error="Local LTX video generation is unavailable. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="Local LTX video generation is unavailable. "
+                + self.install_instructions,
+            )
         start = time.time()
         try:
-            result = generate_local_video(tool_name=self.name, variants=LTX_LOCAL_VARIANTS, default_variant="ltx2-local", inputs=inputs)
+            result = generate_local_video(
+                tool_name=self.name,
+                variants=LTX_LOCAL_VARIANTS,
+                default_variant="ltx2-local",
+                inputs=inputs,
+            )
         except Exception as exc:
-            return ToolResult(success=False, error=f"Local LTX video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Local LTX video generation failed: {exc}"
+            )
         result.duration_seconds = round(time.time() - start, 2)
         return result

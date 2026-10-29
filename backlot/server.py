@@ -19,7 +19,13 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from backlot.state import PROJECTS_DIR, REPO_ROOT, list_projects, load_board_state, summarize_project
+from backlot.state import (
+    PROJECTS_DIR,
+    REPO_ROOT,
+    list_projects,
+    load_board_state,
+    summarize_project,
+)
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 THUMB_CACHE_DIR = REPO_ROOT / ".backlot" / "thumbs"
@@ -96,12 +102,20 @@ def _cached_summaries() -> list[dict]:
                 cached = summarize_project(entry)
             except Exception:
                 cached = {
-                    "project_id": entry.name, "title": entry.name,
-                    "pipeline_type": "unknown", "has_pipeline_state": False,
-                    "poster": None, "live": False, "last_activity": 0,
-                    "active_stage": None, "awaiting_human": False,
-                    "stage_states": [], "completed_count": 0,
-                    "render_count": 0, "scene_count": 0, "error": "unreadable",
+                    "project_id": entry.name,
+                    "title": entry.name,
+                    "pipeline_type": "unknown",
+                    "has_pipeline_state": False,
+                    "poster": None,
+                    "live": False,
+                    "last_activity": 0,
+                    "active_stage": None,
+                    "awaiting_human": False,
+                    "stage_states": [],
+                    "completed_count": 0,
+                    "render_count": 0,
+                    "scene_count": 0,
+                    "error": "unreadable",
                 }
             _summary_cache[entry.name] = cached
         summaries.append(cached)
@@ -121,7 +135,7 @@ def _project_of_change(path_str: str) -> Optional[str]:
     norm = _os.path.normcase(_os.path.normpath(path_str))
     if not norm.startswith(_PROJECTS_ROOT_STR):
         return None
-    rel = norm[len(_PROJECTS_ROOT_STR):].lstrip("\\/")
+    rel = norm[len(_PROJECTS_ROOT_STR) :].lstrip("\\/")
     if not rel:
         return None
     parts = rel.replace("\\", "/").split("/")
@@ -207,10 +221,14 @@ def create_app() -> FastAPI:
             finally:
                 hub.unsubscribe(q)
 
-        return StreamingResponse(stream(), media_type="text/event-stream", headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        })
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/api/library/events")
     async def library_events(request: Request) -> StreamingResponse:
@@ -222,7 +240,9 @@ def create_app() -> FastAPI:
                     if await request.is_disconnected():
                         return
                     try:
-                        changed = await asyncio.wait_for(q.get(), timeout=SSE_HEARTBEAT_SECONDS)
+                        changed = await asyncio.wait_for(
+                            q.get(), timeout=SSE_HEARTBEAT_SECONDS
+                        )
                     except asyncio.TimeoutError:
                         yield _sse({"type": "heartbeat", "ts": time.time()})
                         continue
@@ -235,10 +255,14 @@ def create_app() -> FastAPI:
             finally:
                 hub.unsubscribe(q)
 
-        return StreamingResponse(stream(), media_type="text/event-stream", headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        })
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # ---- Thumbnails (downscaled, cached on disk) ------------------------
 
@@ -307,7 +331,9 @@ def create_app() -> FastAPI:
 
     # Loopback binding alone does not prevent browser DNS-rebinding requests.
     app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"], www_redirect=False,
+        TrustedHostMiddleware,
+        allowed_hosts=["127.0.0.1", "localhost"],
+        www_redirect=False,
     )
     return app
 
@@ -336,6 +362,7 @@ def _thumbnail_for(source: Path, width: int) -> Optional[Path]:
         return None
     try:
         import hashlib
+
         stat = source.stat()
         key = hashlib.sha1(
             f"{source}|{stat.st_mtime_ns}|{stat.st_size}|{width}".encode()
@@ -347,19 +374,35 @@ def _thumbnail_for(source: Path, width: int) -> Optional[Path]:
         # Unique temp per request — concurrent misses for the same source
         # must not write (and replace from) the same temp file.
         import uuid
+
         tmp = THUMB_CACHE_DIR / f"{key}.{uuid.uuid4().hex[:8]}.tmp.jpg"
         if is_video:
             import subprocess
+
             result = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error", "-ss", "1.5",
-                 "-i", str(source), "-frames:v", "1",
-                 "-vf", f"scale={width}:-2", str(tmp)],
-                capture_output=True, timeout=30,
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    "1.5",
+                    "-i",
+                    str(source),
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    f"scale={width}:-2",
+                    str(tmp),
+                ],
+                capture_output=True,
+                timeout=30,
             )
             if result.returncode != 0 or not tmp.is_file():
                 return None
         else:
             from PIL import Image
+
             with Image.open(source) as img:
                 img = img.convert("RGB")
                 img.thumbnail((width, width * 3))

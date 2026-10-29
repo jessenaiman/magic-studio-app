@@ -240,7 +240,9 @@ class HyperFramesCompose(BaseTool):
     # ------------------------------------------------------------------
 
     _NODE_FLOOR_MAJOR = 22
-    _NPM_PACKAGE = "hyperframes"  # published npm name (NOT @hyperframes/cli — that's 404)
+    _NPM_PACKAGE = (
+        "hyperframes"  # published npm name (NOT @hyperframes/cli — that's 404)
+    )
     # Process-level cache for the npm resolve check. Shape:
     #   {"version": "0.4.5"}   → package resolves
     #   {"error": "<short>"}   → resolution failed (offline, unpublished, etc.)
@@ -298,7 +300,9 @@ class HyperFramesCompose(BaseTool):
                 timeout=5,
             )
         except subprocess.TimeoutExpired:
-            cls._npm_resolve_cache = {"error": "timeout (5s) — offline or slow registry"}
+            cls._npm_resolve_cache = {
+                "error": "timeout (5s) — offline or slow registry"
+            }
             return cls._npm_resolve_cache
         except (OSError, subprocess.SubprocessError) as e:
             cls._npm_resolve_cache = {"error": f"npm view failed: {type(e).__name__}"}
@@ -312,7 +316,11 @@ class HyperFramesCompose(BaseTool):
                     "error": f"npm package `{cls._NPM_PACKAGE}` not found (404)"
                 }
             else:
-                tail = stderr.splitlines()[-1][:200] if stderr else f"exit {proc.returncode}"
+                tail = (
+                    stderr.splitlines()[-1][:200]
+                    if stderr
+                    else f"exit {proc.returncode}"
+                )
                 cls._npm_resolve_cache = {"error": f"npm view failed: {tail}"}
             return cls._npm_resolve_cache
 
@@ -356,7 +364,9 @@ class HyperFramesCompose(BaseTool):
 
         if proc.returncode != 0:
             output = "\n".join(filter(None, [proc.stderr, proc.stdout])).strip()
-            tail = output.splitlines()[-1][:200] if output else f"exit {proc.returncode}"
+            tail = (
+                output.splitlines()[-1][:200] if output else f"exit {proc.returncode}"
+            )
             cls._cli_probe_cache = {"error": f"doctor failed: {tail}"}
         else:
             cls._cli_probe_cache = {"status": "ok"}
@@ -418,7 +428,11 @@ class HyperFramesCompose(BaseTool):
 
     def get_status(self) -> ToolStatus:
         check = self._runtime_check()
-        return ToolStatus.AVAILABLE if check["runtime_available"] else ToolStatus.UNAVAILABLE
+        return (
+            ToolStatus.AVAILABLE
+            if check["runtime_available"]
+            else ToolStatus.UNAVAILABLE
+        )
 
     def get_info(self) -> dict[str, Any]:
         info = super().get_info()
@@ -479,7 +493,9 @@ class HyperFramesCompose(BaseTool):
             elif operation == "add_block":
                 result = self._add_block(inputs)
             else:
-                return ToolResult(success=False, error=f"Unknown operation: {operation}")
+                return ToolResult(
+                    success=False, error=f"Unknown operation: {operation}"
+                )
         except Exception as e:
             log.exception("hyperframes_compose failed")
             return ToolResult(success=False, error=f"{type(e).__name__}: {e}")
@@ -500,8 +516,7 @@ class HyperFramesCompose(BaseTool):
             return ToolResult(
                 success=False,
                 error=(
-                    "HyperFrames runtime floor not met: "
-                    + "; ".join(check["reasons"])
+                    "HyperFrames runtime floor not met: " + "; ".join(check["reasons"])
                 ),
                 data=out,
             )
@@ -530,7 +545,7 @@ class HyperFramesCompose(BaseTool):
             )
 
     def _scaffold(self, inputs: dict[str, Any]) -> ToolResult:
-        """Materialize the HyperFrames workspace from OpenMontage artifacts.
+        """Materialize the HyperFrames workspace from MagicStudio artifacts.
 
         This does NOT call `hyperframes init` — we want full control over the
         generated files so they map cleanly to edit_decisions. `init` is
@@ -548,7 +563,9 @@ class HyperFramesCompose(BaseTool):
                 error="edit_decisions with non-empty cuts[] is required for scaffold_workspace",
             )
 
-        width, height, fps = self._resolve_dimensions(profile_name, inputs.get("fps", 30))
+        width, height, fps = self._resolve_dimensions(
+            profile_name, inputs.get("fps", 30)
+        )
 
         workspace.mkdir(parents=True, exist_ok=True)
         (workspace / "compositions").mkdir(exist_ok=True)
@@ -601,7 +618,7 @@ class HyperFramesCompose(BaseTool):
             total_duration=total_duration,
             css_vars=css_vars,
             title=edit_decisions.get("metadata", {}).get("title")
-            or f"OpenMontage {edit_decisions.get('renderer_family', 'composition')}",
+            or f"MagicStudio {edit_decisions.get('renderer_family', 'composition')}",
         )
         (workspace / "index.html").write_text(html, encoding="utf-8")
 
@@ -675,7 +692,9 @@ class HyperFramesCompose(BaseTool):
                 success=False,
                 error=f"No index.html in {workspace}.",
             )
-        proc = self._run_hf(["inspect", "--json"], cwd=workspace, timeout=300, check=False)
+        proc = self._run_hf(
+            ["inspect", "--json"], cwd=workspace, timeout=300, check=False
+        )
         data: dict[str, Any] = {"exit_code": proc.returncode}
         payload = self._parse_json_output(proc.stdout)
         if payload is not None:
@@ -779,9 +798,11 @@ class HyperFramesCompose(BaseTool):
             )
 
         workspace = self._require_workspace(inputs)
-        output_path = Path(
-            inputs.get("output_path") or (workspace / "renders" / "final.mp4")
-        ).expanduser().resolve()
+        output_path = (
+            Path(inputs.get("output_path") or (workspace / "renders" / "final.mp4"))
+            .expanduser()
+            .resolve()
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         steps: dict[str, Any] = {}
@@ -806,7 +827,9 @@ class HyperFramesCompose(BaseTool):
                     error=f"Lint failed (strict mode): {lint.error}",
                     data={"steps": steps},
                 )
-            log.warning("hyperframes lint reported issues (non-strict mode, continuing)")
+            log.warning(
+                "hyperframes lint reported issues (non-strict mode, continuing)"
+            )
 
         # 3. Validate — browser-based contract + contrast.
         validate = self._validate(
@@ -833,9 +856,12 @@ class HyperFramesCompose(BaseTool):
         quality = inputs.get("quality", "standard")
         args = [
             "render",
-            "--output", str(output_path),
-            "--fps", str(fps),
-            "--quality", quality,
+            "--output",
+            str(output_path),
+            "--fps",
+            str(fps),
+            "--quality",
+            quality,
         ]
         proc = self._run_hf(args, cwd=workspace, timeout=1800, check=False)
         steps["render"] = {
@@ -902,9 +928,11 @@ class HyperFramesCompose(BaseTool):
                 error=f"No authored index.html in {workspace}.",
             )
         original_digest = self._file_digest(entry)
-        output_path = Path(
-            inputs.get("output_path") or (workspace / "renders" / "final.mp4")
-        ).expanduser().resolve()
+        output_path = (
+            Path(inputs.get("output_path") or (workspace / "renders" / "final.mp4"))
+            .expanduser()
+            .resolve()
+        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         steps: dict[str, Any] = {}
 
@@ -930,9 +958,12 @@ class HyperFramesCompose(BaseTool):
         quality = inputs.get("quality", "standard")
         args = [
             "render",
-            "--output", str(output_path),
-            "--fps", str(fps),
-            "--quality", quality,
+            "--output",
+            str(output_path),
+            "--fps",
+            str(fps),
+            "--quality",
+            quality,
             "--strict",
         ]
         proc = self._run_hf(args, cwd=workspace, timeout=1800, check=False)
@@ -999,6 +1030,7 @@ class HyperFramesCompose(BaseTool):
         if profile_name:
             try:
                 from lib.media_profiles import get_profile  # type: ignore
+
                 p = get_profile(profile_name)
                 return int(p.width), int(p.height), int(p.fps)
             except Exception:
@@ -1033,8 +1065,14 @@ class HyperFramesCompose(BaseTool):
             resolved_cut = dict(cut)
             if source in asset_lookup:
                 resolved_cut["source"] = asset_lookup[source].get("path", source)
-            src_path = Path(resolved_cut["source"]) if resolved_cut.get("source") else None
-            if src_path and src_path.exists() and not self._is_inside(src_path, workspace):
+            src_path = (
+                Path(resolved_cut["source"]) if resolved_cut.get("source") else None
+            )
+            if (
+                src_path
+                and src_path.exists()
+                and not self._is_inside(src_path, workspace)
+            ):
                 dest = assets_dir / src_path.name
                 if not dest.exists() or dest.stat().st_size != src_path.stat().st_size:
                     shutil.copy2(src_path, dest)
@@ -1108,7 +1146,7 @@ class HyperFramesCompose(BaseTool):
         playbook: dict[str, Any],
         edit_decisions: dict[str, Any],
     ) -> tuple[dict[str, str], str]:
-        """Bridge OpenMontage playbook → HyperFrames CSS vars + DESIGN.md.
+        """Bridge MagicStudio playbook → HyperFrames CSS vars + DESIGN.md.
 
         Delegates to `lib/hyperframes_style_bridge.py` so the logic is
         shareable and testable. Falls back to a safe built-in default when
@@ -1116,6 +1154,7 @@ class HyperFramesCompose(BaseTool):
         """
         try:
             from lib.hyperframes_style_bridge import style_bridge  # type: ignore
+
             return style_bridge(playbook, edit_decisions)
         except Exception as e:
             log.debug("style_bridge fallback: %s", e)
@@ -1135,8 +1174,16 @@ class HyperFramesCompose(BaseTool):
         fg = _first(palette.get("text"), "#F5F5F5")
         accent = _first(palette.get("accent"), "#F59E0B")
         primary = _first(palette.get("primary"), "#2563EB")
-        heading = typo.get("heading", {}).get("font") or typo.get("heading", {}).get("family") or "Inter"
-        body = typo.get("body", {}).get("font") or typo.get("body", {}).get("family") or "Inter"
+        heading = (
+            typo.get("heading", {}).get("font")
+            or typo.get("heading", {}).get("family")
+            or "Inter"
+        )
+        body = (
+            typo.get("body", {}).get("font")
+            or typo.get("body", {}).get("family")
+            or "Inter"
+        )
 
         css_vars = {
             "--color-bg": bg,
@@ -1150,7 +1197,7 @@ class HyperFramesCompose(BaseTool):
         }
         design_md = (
             "# DESIGN\n\n"
-            "Generated by OpenMontage HyperFrames style bridge (fallback).\n\n"
+            "Generated by MagicStudio HyperFrames style bridge (fallback).\n\n"
             f"- Background: `{bg}`\n"
             f"- Foreground: `{fg}`\n"
             f"- Accent: `{accent}`\n"
@@ -1202,7 +1249,9 @@ class HyperFramesCompose(BaseTool):
             src = self._rel_from_workspace(nar["src"])
             start = nar.get("start_seconds", 0)
             end = nar.get("end_seconds")
-            duration = (end - start) if end and end > start else (total_duration - start)
+            duration = (
+                (end - start) if end and end > start else (total_duration - start)
+            )
             audio_html.append(
                 f'<audio id="nar-{j}" '
                 f'data-start="{self._f(start)}" data-duration="{self._f(duration)}" '
@@ -1220,7 +1269,9 @@ class HyperFramesCompose(BaseTool):
                 f'data-volume="{self._f(music["volume"])}"></audio>'
             )
 
-        tween_block = "\n        ".join(entrance_tweens) if entrance_tweens else "// no tweens"
+        tween_block = (
+            "\n        ".join(entrance_tweens) if entrance_tweens else "// no tweens"
+        )
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1279,7 +1330,7 @@ class HyperFramesCompose(BaseTool):
 
         # Decide scene shape
         if cut_type in {"text_card", "hero_title", "callout"} or (not source and text):
-            inner = f'<h1>{self._escape_text(text or f"Scene {index + 1}")}</h1>'
+            inner = f"<h1>{self._escape_text(text or f'Scene {index + 1}')}</h1>"
             subtitle = cut.get("subtitle") or cut.get("caption")
             if subtitle:
                 inner += f'<div class="subtitle">{self._escape_text(subtitle)}</div>'
@@ -1334,7 +1385,9 @@ class HyperFramesCompose(BaseTool):
             )
             return html, None
 
-        placeholder = self._escape_text(text or cut.get("reason") or f"Scene {index + 1}")
+        placeholder = self._escape_text(
+            text or cut.get("reason") or f"Scene {index + 1}"
+        )
         html = (
             f'<div id="{cut_id}" class="clip text-card" '
             f'data-start="{self._f(in_s)}" data-duration="{self._f(duration)}" '
@@ -1406,11 +1459,7 @@ class HyperFramesCompose(BaseTool):
 
     @staticmethod
     def _escape_text(s: str) -> str:
-        return (
-            s.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     @staticmethod
     def _escape_attr(s: str) -> str:

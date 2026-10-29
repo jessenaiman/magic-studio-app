@@ -12,11 +12,22 @@ from typing import Any
 
 SEEDANCE_RATIOS = ("16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive")
 SEEDANCE_25_RESOLUTIONS = (
-    "480p", "720p", "720p-esr", "1080p-esr", "1440p-esr", "4k-esr",
+    "480p",
+    "720p",
+    "720p-esr",
+    "1080p-esr",
+    "1440p-esr",
+    "4k-esr",
     "1080p-esr & 60fps",
 )
 SEEDANCE_20_RESOLUTIONS = (
-    "480p", "720p", "720p-SR", "1080p", "1080p-SR", "1440p-SR", "4k",
+    "480p",
+    "720p",
+    "720p-SR",
+    "1080p",
+    "1080p-SR",
+    "1440p-SR",
+    "4k",
 )
 H3_RATIOS = ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16")
 
@@ -71,7 +82,11 @@ for version, rate, durations, resolutions in (
         model_id = f"{family}/{suffix}"
         limits = {}
         if operation == "reference_to_video":
-            limits = {"images": 30, "videos": 10, "audios": 10} if version == "2.5" else {"images": 9, "videos": 3, "audios": 3}
+            limits = (
+                {"images": 30, "videos": 10, "audios": 10}
+                if version == "2.5"
+                else {"images": 9, "videos": 3, "audios": 3}
+            )
         VIDEO_MODELS[model_id] = _video_spec(
             family,
             operation,
@@ -80,7 +95,9 @@ for version, rate, durations, resolutions in (
             resolution=resolutions,
             default_resolution="720p",
             ratio_key="ratio",
-            ratios=("adaptive",) if operation == "image_to_video" and version == "2.5" else SEEDANCE_RATIOS,
+            ratios=("adaptive",)
+            if operation == "image_to_video" and version == "2.5"
+            else SEEDANCE_RATIOS,
             default_ratio="adaptive",
             media_style=media_style,
             optional_fields=common,
@@ -106,7 +123,9 @@ for operation, suffix, rate, media_style in (
         default_ratio="16:9",
         media_style=media_style,
         optional_fields=("thinking_level", "seed"),
-        media_limits={"images": 10} if operation in {"reference_to_video", "video_edit"} else {},
+        media_limits={"images": 10}
+        if operation in {"reference_to_video", "video_edit"}
+        else {},
     )
 
 for operation, suffix, rate, media_style in (
@@ -152,53 +171,100 @@ for operation, suffix, media_style in (
 
 IMAGE_MODELS: dict[str, dict[str, Any]] = {
     "bytedance/seedream-v5.0-pro/text-to-image": {
-        "family": "bytedance/seedream-v5.0-pro", "operation": "generate",
-        "cost_per_image": 0.045, "size_style": "star", "media_style": "none",
-        "optional_fields": ("thinking", "prompt_optimization_mode", "enable_base64_output"),
+        "family": "bytedance/seedream-v5.0-pro",
+        "operation": "generate",
+        "cost_per_image": 0.045,
+        "size_style": "star",
+        "media_style": "none",
+        "optional_fields": (
+            "thinking",
+            "prompt_optimization_mode",
+            "enable_base64_output",
+        ),
     },
     "bytedance/seedream-v5.0-pro/edit": {
-        "family": "bytedance/seedream-v5.0-pro", "operation": "edit",
-        "cost_per_image": 0.045, "size_style": "star", "media_style": "images",
+        "family": "bytedance/seedream-v5.0-pro",
+        "operation": "edit",
+        "cost_per_image": 0.045,
+        "size_style": "star",
+        "media_style": "images",
         "max_images": 10,
-        "optional_fields": ("thinking", "prompt_optimization_mode", "enable_base64_output"),
+        "optional_fields": (
+            "thinking",
+            "prompt_optimization_mode",
+            "enable_base64_output",
+        ),
     },
     "bytedance/seedream-v5.0-pro/layer-decomposition": {
-        "family": "bytedance/seedream-v5.0-pro", "operation": "decompose",
-        "cost_per_image": 0.022, "size_style": "tier", "media_style": "image",
+        "family": "bytedance/seedream-v5.0-pro",
+        "operation": "decompose",
+        "cost_per_image": 0.022,
+        "size_style": "tier",
+        "media_style": "image",
         "max_images": 1,
-        "optional_fields": ("optimize_prompt_options", "enable_sync_mode", "enable_base64_output"),
+        "optional_fields": (
+            "optimize_prompt_options",
+            "enable_sync_mode",
+            "enable_base64_output",
+        ),
     },
     "bytedance/seedream-v5.0-lite/edit": {
-        "family": "bytedance/seedream-v5.0-lite", "operation": "edit",
-        "cost_per_image": 0.032, "size_style": "star", "media_style": "images",
-        "max_images": 14, "optional_fields": ("enable_base64_output",),
+        "family": "bytedance/seedream-v5.0-lite",
+        "operation": "edit",
+        "cost_per_image": 0.032,
+        "size_style": "star",
+        "media_style": "images",
+        "max_images": 14,
+        "optional_fields": ("enable_base64_output",),
     },
     "openai/gpt-image-2/text-to-image": {
-        "family": "openai/gpt-image-2", "operation": "generate",
-        "cost_per_image": 0.009, "size_style": "x", "media_style": "none",
+        "family": "openai/gpt-image-2",
+        "operation": "generate",
+        "cost_per_image": 0.009,
+        "size_style": "x",
+        "media_style": "none",
         "optional_fields": ("quality", "enable_sync_mode", "enable_base64_output"),
     },
     "openai/gpt-image-2/edit": {
-        "family": "openai/gpt-image-2", "operation": "edit",
-        "cost_per_image": 0.010, "size_style": "x", "media_style": "images",
+        "family": "openai/gpt-image-2",
+        "operation": "edit",
+        "cost_per_image": 0.010,
+        "size_style": "x",
+        "media_style": "images",
         "max_images": 10,
         "optional_fields": ("quality", "enable_sync_mode", "enable_base64_output"),
     },
     "google/nano-banana-2/text-to-image": {
-        "family": "google/nano-banana-2", "operation": "generate",
-        "cost_per_image": 0.080, "size_style": "ratio", "media_style": "none",
+        "family": "google/nano-banana-2",
+        "operation": "generate",
+        "cost_per_image": 0.080,
+        "size_style": "ratio",
+        "media_style": "none",
         "optional_fields": (
-            "resolution", "thinking_level", "media_resolution", "enable_web_search",
-            "enable_image_search", "enable_sync_mode", "enable_base64_output",
+            "resolution",
+            "thinking_level",
+            "media_resolution",
+            "enable_web_search",
+            "enable_image_search",
+            "enable_sync_mode",
+            "enable_base64_output",
         ),
     },
     "google/nano-banana-2/edit": {
-        "family": "google/nano-banana-2", "operation": "edit",
-        "cost_per_image": 0.080, "size_style": "ratio", "media_style": "images",
+        "family": "google/nano-banana-2",
+        "operation": "edit",
+        "cost_per_image": 0.080,
+        "size_style": "ratio",
+        "media_style": "images",
         "max_images": 14,
         "optional_fields": (
-            "resolution", "thinking_level", "media_resolution", "enable_web_search",
-            "enable_image_search", "enable_sync_mode", "enable_base64_output",
+            "resolution",
+            "thinking_level",
+            "media_resolution",
+            "enable_web_search",
+            "enable_image_search",
+            "enable_sync_mode",
+            "enable_base64_output",
         ),
     },
 }

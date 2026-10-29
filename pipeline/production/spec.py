@@ -4,6 +4,7 @@ One JSON file drives voice generation, the FilmCraft timeline and the evidence
 ledger. `import_script` builds the first version from a screenplay in the
 "## NN · Title — mm:ss–mm:ss" / `SPEAKER, direction: “text”` format.
 """
+
 from __future__ import annotations
 
 import json
@@ -72,8 +73,16 @@ def import_script(text: str) -> list[Chapter]:
             cid, title = m.group(1), m.group(2)
             start = int(m.group(3)) * 60 + int(m.group(4))
             end = int(m.group(5)) * 60 + int(m.group(6))
-            chapters.append(Chapter(cid, title, "", float(start), float(end),
-                                    [Shot(f"{cid}a", float(end - start))]))
+            chapters.append(
+                Chapter(
+                    cid,
+                    title,
+                    "",
+                    float(start),
+                    float(end),
+                    [Shot(f"{cid}a", float(end - start))],
+                )
+            )
             i += 1
             continue
         if chapters:
@@ -94,8 +103,14 @@ def import_script(text: str) -> list[Chapter]:
                         parts.append(rows[i])
                     body = "\n".join(parts).strip()[1:-1]
                     shot = chapter.shots[0]
-                    shot.lines.append(Line(f"{chapter.id}-{len(shot.lines) + 1:02d}",
-                                           m.group(1).strip(), body, (m.group(2) or "").strip()))
+                    shot.lines.append(
+                        Line(
+                            f"{chapter.id}-{len(shot.lines) + 1:02d}",
+                            m.group(1).strip(),
+                            body,
+                            (m.group(2) or "").strip(),
+                        )
+                    )
         i += 1
     return chapters
 
@@ -108,7 +123,9 @@ def assign_techniques(chapters: list[Chapter], ledger_target: str) -> None:
         if not m or int(m.group(1)) not in by_number:
             continue
         chapter = by_number[int(m.group(1))]
-        chapter.shots[0].techniques = [f"T{int(n):02d}" for n in TECH_RE.findall(m.group(2))]
+        chapter.shots[0].techniques = [
+            f"T{int(n):02d}" for n in TECH_RE.findall(m.group(2))
+        ]
         chapter.tools = [t.strip() for t in m.group(3).split(",")]
 
 
@@ -124,7 +141,10 @@ def load_spec(path: str | Path) -> Spec:
     raw = json.loads(Path(path).read_text())
     chapters = []
     for c in raw.pop("chapters"):
-        shots = [Shot(**{**s, "lines": [Line(**l) for l in s["lines"]]}) for s in c.pop("shots")]
+        shots = [
+            Shot(**{**s, "lines": [Line(**l) for l in s["lines"]]})
+            for s in c.pop("shots")
+        ]
         chapters.append(Chapter(**c, shots=shots))
     return Spec(**raw, chapters=chapters)
 
@@ -135,7 +155,9 @@ def main(argv: list[str]) -> int:
     path = Path(argv[0])
     if "--import" in argv:
         k = argv.index("--import")
-        title = argv[argv.index("--title") + 1] if "--title" in argv else path.parent.name
+        title = (
+            argv[argv.index("--title") + 1] if "--title" in argv else path.parent.name
+        )
         chapters = import_script(Path(argv[k + 1]).read_text())
         assign_techniques(chapters, Path(argv[k + 2]).read_text())
         save_spec(Spec(title, 30, 1920, 1080, chapters), path)
@@ -143,8 +165,17 @@ def main(argv: list[str]) -> int:
     shots = [s for c in spec.chapters for s in c.shots]
     techniques = {t for s in shots for t in s.techniques}
     lines = sum(len(s.lines) for s in shots)
-    print(json.dumps({"chapters": len(spec.chapters), "shots": len(shots), "lines": lines,
-                      "techniques": len(techniques), "duration_s": total_duration(spec)}))
+    print(
+        json.dumps(
+            {
+                "chapters": len(spec.chapters),
+                "shots": len(shots),
+                "lines": lines,
+                "techniques": len(techniques),
+                "duration_s": total_duration(spec),
+            }
+        )
+    )
     return 0
 
 

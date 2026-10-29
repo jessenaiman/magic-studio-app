@@ -117,35 +117,35 @@ const OverlayContent: React.FC<{ overlay: TalkingHeadOverlay }> = ({
 
   if (overlay.type === "text_card" && overlay.text) {
     return (
-      <TextCard
-        text={overlay.text}
-        fontSize={overlay.fontSize}
-        color={overlay.color}
-        backgroundColor={bgColor}
-      />
+        <TextCard
+            text={overlay.text}
+            fontSize={overlay.fontSize}
+            color={overlay.color}
+            backgroundColor={bgColor}
+        />
     );
   }
   if (overlay.type === "stat_card" && overlay.stat) {
     return (
-      <StatCard
-        stat={overlay.stat}
-        subtitle={overlay.subtitle}
-        accentColor={overlay.accentColor}
-        backgroundColor={bgColor}
-      />
+        <StatCard
+            stat={overlay.stat}
+            subtitle={overlay.subtitle}
+            accentColor={overlay.accentColor}
+            backgroundColor={bgColor}
+        />
     );
   }
   if (overlay.type === "callout" && overlay.text) {
     return (
-      <CalloutBox
-        text={overlay.text}
-        type={overlay.callout_type}
-        title={overlay.title}
-        borderColor={overlay.accentColor}
-        backgroundColor={overlay.backgroundColor}
-        textColor={overlay.color}
-        containerBackgroundColor={bgColor}
-      />
+        <CalloutBox
+            text={overlay.text}
+            type={overlay.callout_type}
+            title={overlay.title}
+            borderColor={overlay.accentColor}
+            backgroundColor={overlay.backgroundColor}
+            textColor={overlay.color}
+            containerBackgroundColor={bgColor}
+        />
     );
   }
   if (
@@ -154,68 +154,68 @@ const OverlayContent: React.FC<{ overlay: TalkingHeadOverlay }> = ({
     overlay.rightLabel
   ) {
     return (
-      <ComparisonCard
-        leftLabel={overlay.leftLabel}
-        rightLabel={overlay.rightLabel}
-        leftValue={overlay.leftValue || ""}
-        rightValue={overlay.rightValue || ""}
-        title={overlay.title}
-        backgroundColor={bgColor}
-        textColor={overlay.color}
-      />
+        <ComparisonCard
+            leftLabel={overlay.leftLabel}
+            rightLabel={overlay.rightLabel}
+            leftValue={overlay.leftValue || ""}
+            rightValue={overlay.rightValue || ""}
+            title={overlay.title}
+            backgroundColor={bgColor}
+            textColor={overlay.color}
+        />
     );
   }
   if (overlay.type === "bar_chart" && overlay.chartData) {
     return (
-      <BarChart
-        data={overlay.chartData}
-        title={overlay.title}
-        colors={overlay.chartColors}
-        animationStyle={(overlay.chartAnimation as any) || "grow-up"}
-        showValues={overlay.showValues}
-        backgroundColor={bgColor}
-      />
+        <BarChart
+            data={overlay.chartData}
+            title={overlay.title}
+            colors={overlay.chartColors}
+            animationStyle={(overlay.chartAnimation as any) || "grow-up"}
+            showValues={overlay.showValues}
+            backgroundColor={bgColor}
+        />
     );
   }
   if (overlay.type === "line_chart" && overlay.chartSeries) {
     return (
-      <LineChart
-        series={overlay.chartSeries}
-        title={overlay.title}
-        colors={overlay.chartColors}
-        animationStyle={(overlay.chartAnimation as any) || "draw"}
-        showGrid={overlay.showGrid}
-        showMarkers={overlay.showMarkers}
-        showLegend={overlay.showLegend}
-        backgroundColor={bgColor}
-      />
+        <LineChart
+            series={overlay.chartSeries}
+            title={overlay.title}
+            colors={overlay.chartColors}
+            animationStyle={(overlay.chartAnimation as any) || "draw"}
+            showGrid={overlay.showGrid}
+            showMarkers={overlay.showMarkers}
+            showLegend={overlay.showLegend}
+            backgroundColor={bgColor}
+        />
     );
   }
   if (overlay.type === "pie_chart" && overlay.chartData) {
     return (
-      <PieChart
-        data={overlay.chartData}
-        title={overlay.title}
-        colors={overlay.chartColors}
-        animationStyle={(overlay.chartAnimation as any) || "expand"}
-        donut={overlay.donut}
-        centerLabel={overlay.centerLabel}
-        centerValue={overlay.centerValue}
-        showLegend={overlay.showLegend}
-        backgroundColor={bgColor}
-      />
+        <PieChart
+            data={overlay.chartData}
+            title={overlay.title}
+            colors={overlay.chartColors}
+            animationStyle={(overlay.chartAnimation as any) || "expand"}
+            donut={overlay.donut}
+            centerLabel={overlay.centerLabel}
+            centerValue={overlay.centerValue}
+            showLegend={overlay.showLegend}
+            backgroundColor={bgColor}
+        />
     );
   }
   if (overlay.type === "kpi_grid" && overlay.chartData) {
     return (
-      <KPIGrid
-        metrics={overlay.chartData}
-        title={overlay.title}
-        columns={overlay.columns}
-        colors={overlay.chartColors}
-        animationStyle={(overlay.chartAnimation as any) || "count-up"}
-        backgroundColor={bgColor}
-      />
+        <KPIGrid
+            metrics={overlay.chartData}
+            title={overlay.title}
+            columns={overlay.columns}
+            colors={overlay.chartColors}
+            animationStyle={(overlay.chartAnimation as any) || "count-up"}
+            backgroundColor={bgColor}
+        />
     );
   }
   if (overlay.type === "hero_title" && overlay.text) {
@@ -223,22 +223,22 @@ const OverlayContent: React.FC<{ overlay: TalkingHeadOverlay }> = ({
   }
   if (overlay.type === "section_title" && overlay.text) {
     return (
-      <SectionTitle
-        title={overlay.text}
-        subtitle={overlay.subtitle}
-        accentColor={overlay.accentColor}
-        position="top-left"
-      />
+        <SectionTitle
+            title={overlay.text}
+            subtitle={overlay.subtitle}
+            accentColor={overlay.accentColor}
+            position="top-left"
+        />
     );
   }
   if (overlay.type === "stat_reveal" && overlay.text) {
     return (
-      <StatReveal
-        stat={overlay.text}
-        label={overlay.subtitle}
-        accentColor={overlay.accentColor}
-        position="bottom-right"
-      />
+        <StatReveal
+            stat={overlay.text}
+            label={overlay.subtitle}
+            accentColor={overlay.accentColor}
+            position="bottom-right"
+        />
     );
   }
   return null;
@@ -272,8 +272,8 @@ const PositionedOverlay: React.FC<{ overlay: TalkingHeadOverlay }> = ({
   const isFullOverlay = position === "full_overlay";
 
   return (
-    <div
-      style={{
+      <div
+          style={{
         ...posStyle,
         opacity,
         overflow: "hidden",
@@ -282,12 +282,12 @@ const PositionedOverlay: React.FC<{ overlay: TalkingHeadOverlay }> = ({
           ? "none"
           : "0 8px 32px rgba(0, 0, 0, 0.4)",
       }}
-    >
-      {isFullOverlay && (
-        <AbsoluteFill style={{ background: "rgba(0, 0, 0, 0.7)" }} />
+      >
+          {isFullOverlay && (
+          <AbsoluteFill style={{ background: "rgba(0, 0, 0, 0.7)" }} />
       )}
-      <OverlayContent overlay={overlay} />
-    </div>
+          <OverlayContent overlay={overlay} />
+      </div>
   );
 };
 
@@ -325,41 +325,41 @@ export const TalkingHead: React.FC<TalkingHeadProps> = ({
   const { fps } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      {/* Layer 1: Video background */}
-      <OffthreadVideo
-        src={resolveAsset(videoSrc)}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-      />
+      <AbsoluteFill style={{ backgroundColor: "#000" }}>
+          {/* Layer 1: Video background */}
+          <OffthreadVideo
+              src={resolveAsset(videoSrc)}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
 
-      {/* Layer 2: Overlays (charts, stats, callouts, etc.) */}
-      {overlays?.map((overlay, i) => {
+          {/* Layer 2: Overlays (charts, stats, callouts, etc.) */}
+          {overlays?.map((overlay, i) => {
         const from = Math.round(overlay.in_seconds * fps);
         const duration = Math.round(
           (overlay.out_seconds - overlay.in_seconds) * fps
         );
         return (
-          <Sequence
-            key={overlay.id || `overlay-${i}`}
-            from={from}
-            durationInFrames={duration}
-          >
-            <PositionedOverlay overlay={overlay} />
-          </Sequence>
+            <Sequence
+                key={overlay.id || `overlay-${i}`}
+                from={from}
+                durationInFrames={duration}
+            >
+                <PositionedOverlay overlay={overlay} />
+            </Sequence>
         );
       })}
 
-      {/* Layer 3: Captions (topmost — always visible above overlays) */}
-      <CaptionOverlay
-        words={captions}
-        wordsPerPage={wordsPerPage}
-        fontSize={fontSize}
-        highlightColor={highlightColor}
-        backgroundColor={captionBackgroundColor}
-        color={captionColor}
-        {...(captionFontFamily ? { fontFamily: captionFontFamily } : {})}
-        {...(captionWordSeparator !== undefined ? { wordSeparator: captionWordSeparator } : {})}
-      />
-    </AbsoluteFill>
+          {/* Layer 3: Captions (topmost — always visible above overlays) */}
+          <CaptionOverlay
+              words={captions}
+              wordsPerPage={wordsPerPage}
+              fontSize={fontSize}
+              highlightColor={highlightColor}
+              backgroundColor={captionBackgroundColor}
+              color={captionColor}
+              {...(captionFontFamily ? { fontFamily: captionFontFamily } : {})}
+              {...(captionWordSeparator !== undefined ? { wordSeparator: captionWordSeparator } : {})}
+          />
+      </AbsoluteFill>
   );
 };

@@ -135,7 +135,9 @@ class VisualQA(BaseTool):
             elif operation == "audio_levels":
                 result = self._audio_levels(inputs)
             else:
-                return ToolResult(success=False, error=f"Unknown operation: {operation}")
+                return ToolResult(
+                    success=False, error=f"Unknown operation: {operation}"
+                )
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -168,26 +170,35 @@ class VisualQA(BaseTool):
             ts_label = f"{ts:.1f}".replace(".", "_")
             frame_path = str(Path(output_dir) / f"frame_{ts_label}s.jpg")
             cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(ts),
-                "-i", input_path,
-                "-frames:v", "1",
-                "-q:v", "2",
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(ts),
+                "-i",
+                input_path,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
                 frame_path,
             ]
             try:
                 self.run_command(cmd)
                 if Path(frame_path).exists():
-                    frames.append({
-                        "timestamp": ts,
-                        "path": frame_path,
-                    })
+                    frames.append(
+                        {
+                            "timestamp": ts,
+                            "path": frame_path,
+                        }
+                    )
             except Exception:
-                frames.append({
-                    "timestamp": ts,
-                    "path": None,
-                    "error": f"Failed to extract frame at {ts}s",
-                })
+                frames.append(
+                    {
+                        "timestamp": ts,
+                        "path": None,
+                        "error": f"Failed to extract frame at {ts}s",
+                    }
+                )
 
         return ToolResult(
             success=True,
@@ -207,14 +218,18 @@ class VisualQA(BaseTool):
 
         # Get comprehensive probe data
         cmd = [
-            "ffprobe", "-v", "error",
+            "ffprobe",
+            "-v",
+            "error",
             "-show_entries",
             "format=duration,size:stream=width,height,codec_name,pix_fmt,"
             "r_frame_rate,sample_rate,channels,codec_type",
-            "-of", "json",
+            "-of",
+            "json",
             input_path,
         ]
         import json
+
         probe_result = self.run_command(cmd)
         probe_out = probe_result.stdout
         probe_data = json.loads(probe_out)
@@ -236,26 +251,34 @@ class VisualQA(BaseTool):
             "has_audio": audio_stream is not None,
         }
         if video_stream:
-            info.update({
-                "width": video_stream.get("width"),
-                "height": video_stream.get("height"),
-                "pixel_format": video_stream.get("pix_fmt"),
-                "video_codec": video_stream.get("codec_name"),
-                "frame_rate": video_stream.get("r_frame_rate"),
-            })
+            info.update(
+                {
+                    "width": video_stream.get("width"),
+                    "height": video_stream.get("height"),
+                    "pixel_format": video_stream.get("pix_fmt"),
+                    "video_codec": video_stream.get("codec_name"),
+                    "frame_rate": video_stream.get("r_frame_rate"),
+                }
+            )
         if audio_stream:
-            info.update({
-                "audio_codec": audio_stream.get("codec_name"),
-                "sample_rate": audio_stream.get("sample_rate"),
-                "channels": audio_stream.get("channels"),
-            })
+            info.update(
+                {
+                    "audio_codec": audio_stream.get("codec_name"),
+                    "sample_rate": audio_stream.get("sample_rate"),
+                    "channels": audio_stream.get("channels"),
+                }
+            )
 
         # Validate against expectations
         issues = []
         if "width" in expected and info.get("width") != expected["width"]:
-            issues.append(f"Width: expected {expected['width']}, got {info.get('width')}")
+            issues.append(
+                f"Width: expected {expected['width']}, got {info.get('width')}"
+            )
         if "height" in expected and info.get("height") != expected["height"]:
-            issues.append(f"Height: expected {expected['height']}, got {info.get('height')}")
+            issues.append(
+                f"Height: expected {expected['height']}, got {info.get('height')}"
+            )
         if "min_duration" in expected and info["duration"] < expected["min_duration"]:
             issues.append(
                 f"Duration too short: {info['duration']:.1f}s < {expected['min_duration']}s"
@@ -264,7 +287,10 @@ class VisualQA(BaseTool):
             issues.append(
                 f"Duration too long: {info['duration']:.1f}s > {expected['max_duration']}s"
             )
-        if "pixel_format" in expected and info.get("pixel_format") != expected["pixel_format"]:
+        if (
+            "pixel_format" in expected
+            and info.get("pixel_format") != expected["pixel_format"]
+        ):
             issues.append(
                 f"Pixel format: expected {expected['pixel_format']}, got {info.get('pixel_format')}"
             )
@@ -298,12 +324,20 @@ class VisualQA(BaseTool):
         levels = []
         for ts in timestamps:
             cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(ts),
-                "-t", "3",
-                "-i", input_path,
-                "-vn", "-af", "volumedetect",
-                "-f", "null", "NUL" if __import__("sys").platform == "win32" else "/dev/null",
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(ts),
+                "-t",
+                "3",
+                "-i",
+                input_path,
+                "-vn",
+                "-af",
+                "volumedetect",
+                "-f",
+                "null",
+                "NUL" if __import__("sys").platform == "win32" else "/dev/null",
             ]
             try:
                 cmd_result = self.run_command(cmd)
@@ -312,19 +346,25 @@ class VisualQA(BaseTool):
                 max_vol = None
                 for line in output.split("\n"):
                     if "mean_volume" in line:
-                        mean_vol = float(line.split("mean_volume:")[1].strip().split()[0])
+                        mean_vol = float(
+                            line.split("mean_volume:")[1].strip().split()[0]
+                        )
                     elif "max_volume" in line:
                         max_vol = float(line.split("max_volume:")[1].strip().split()[0])
-                levels.append({
-                    "timestamp": ts,
-                    "mean_volume_db": mean_vol,
-                    "max_volume_db": max_vol,
-                })
+                levels.append(
+                    {
+                        "timestamp": ts,
+                        "mean_volume_db": mean_vol,
+                        "max_volume_db": max_vol,
+                    }
+                )
             except Exception as e:
-                levels.append({
-                    "timestamp": ts,
-                    "error": str(e),
-                })
+                levels.append(
+                    {
+                        "timestamp": ts,
+                        "error": str(e),
+                    }
+                )
 
         return ToolResult(
             success=True,
@@ -337,9 +377,13 @@ class VisualQA(BaseTool):
 
     def _get_duration(self, path: str) -> float:
         cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             path,
         ]
         dur_result = self.run_command(cmd)

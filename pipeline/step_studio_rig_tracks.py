@@ -5,6 +5,7 @@ Writes a Magic Studio native `rig.json` (`schemaVersion: 1`, `canvas`, `layers`,
 compatible with `crates/engine/src/motion.rs` (`eval_keys_term`), `project.add_asset kind=cutout_rig`,
 `motion.tracks`, `motion.part.set`, and `motion.theatre` for interactive human fine-tuning in the app.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -89,7 +90,9 @@ def compile_studio_rig_json(
         parent = item.get("parent")
         if not parent and root_id is None:
             root_id = pid
-        bind_pos = item.get("bindPosition") or item.get("center") or [cw / 2.0, ch / 2.0]
+        bind_pos = (
+            item.get("bindPosition") or item.get("center") or [cw / 2.0, ch / 2.0]
+        )
         local_piv = item.get("pivot") or [0.0, 0.0]
         canvas_piv = list(bind_pos)
 
@@ -114,17 +117,22 @@ def compile_studio_rig_json(
                     canvas_arrays[pid] = np.array(rgba)
                     file_rel = full_rel
 
-        studio_layers.append({
-            "id": pid,
-            "file": file_rel,
-            "center": [round(float(bind_pos[0]), 1), round(float(bind_pos[1]), 1)],
-            "pivot": [round(float(canvas_piv[0]), 1), round(float(canvas_piv[1]), 1)],
-            "parent": parent,
-            "scale": 100.0,
-            "rotation": 0.0,
-            "opacity": 100.0,
-            "_already_extended": already_ext,
-        })
+        studio_layers.append(
+            {
+                "id": pid,
+                "file": file_rel,
+                "center": [round(float(bind_pos[0]), 1), round(float(bind_pos[1]), 1)],
+                "pivot": [
+                    round(float(canvas_piv[0]), 1),
+                    round(float(canvas_piv[1]), 1),
+                ],
+                "parent": parent,
+                "scale": 100.0,
+                "rotation": 0.0,
+                "opacity": 100.0,
+                "_already_extended": already_ext,
+            }
+        )
 
     # Reorder layers back-to-front (`ears`, `leg_L`, `leg_R`, `torso`, `head`, `arm_L`, `arm_R`)
     # and extend lower-z layers underneath higher-z layers at each joint pivot so rotation never opens slits.
@@ -156,7 +164,11 @@ def compile_studio_rig_json(
         for lyr in studio_layers:
             child_id = lyr["id"]
             parent_id = lyr.get("parent")
-            if not parent_id or child_id not in canvas_arrays or parent_id not in canvas_arrays:
+            if (
+                not parent_id
+                or child_id not in canvas_arrays
+                or parent_id not in canvas_arrays
+            ):
                 continue
             piv = lyr["pivot"]
             if lyr.get("_already_extended"):
@@ -164,11 +176,19 @@ def compile_studio_rig_json(
             if z_by_id[child_id] < z_by_id[parent_id]:
                 ext_iters = 8 if child_id in ("ear_left", "ear_right") else 12
                 canvas_arrays[child_id] = _extend_back_under_front(
-                    canvas_arrays[child_id], canvas_arrays[parent_id], full_rgba, piv, dilate_iters=ext_iters
+                    canvas_arrays[child_id],
+                    canvas_arrays[parent_id],
+                    full_rgba,
+                    piv,
+                    dilate_iters=ext_iters,
                 )
             else:
                 canvas_arrays[parent_id] = _extend_back_under_front(
-                    canvas_arrays[parent_id], canvas_arrays[child_id], full_rgba, piv, dilate_iters=12
+                    canvas_arrays[parent_id],
+                    canvas_arrays[child_id],
+                    full_rgba,
+                    piv,
+                    dilate_iters=12,
                 )
         for lyr in studio_layers:
             lyr.pop("_already_extended", None)
@@ -196,37 +216,53 @@ def compile_studio_rig_json(
             pid = lyr["id"]
             low = pid.lower()
             if pid == root_id:
-                pos_keys = [[float(kf["t"]), [0.0, float(kf.get("rootDyPx", 0.0))]] for kf in kfs]
+                pos_keys = [
+                    [float(kf["t"]), [0.0, float(kf.get("rootDyPx", 0.0))]]
+                    for kf in kfs
+                ]
                 motion_map[pid] = {
                     "position": [{"kind": "keys", "ease": "smooth", "keys": pos_keys}],
                 }
             elif "head" in low:
-                rot_keys = [[float(kf["t"]), float(kf.get("headRotDeg", 0.0))] for kf in kfs]
+                rot_keys = [
+                    [float(kf["t"]), float(kf.get("headRotDeg", 0.0))] for kf in kfs
+                ]
                 motion_map[pid] = {
                     "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
                 }
             elif "arm" in low or "wing" in low or "hand" in low:
                 is_right = "_r" in low or "right" in low
                 key_field = "armRRotDeg" if is_right else "armLRotDeg"
-                rot_keys = [[float(kf["t"]), round(0.65 * float(kf.get(key_field, 0.0)), 2)] for kf in kfs]
+                rot_keys = [
+                    [float(kf["t"]), round(0.65 * float(kf.get(key_field, 0.0)), 2)]
+                    for kf in kfs
+                ]
                 motion_map[pid] = {
                     "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
                 }
             elif "leg" in low:
                 is_right = "_r" in low or "right" in low
                 key_field = "legRRotDeg" if is_right else "legLRotDeg"
-                rot_keys = [[float(kf["t"]), round(0.55 * float(kf.get(key_field, 0.0)), 2)] for kf in kfs]
+                rot_keys = [
+                    [float(kf["t"]), round(0.55 * float(kf.get(key_field, 0.0)), 2)]
+                    for kf in kfs
+                ]
                 motion_map[pid] = {
                     "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
                 }
             elif "foot" in low:
                 is_right = "_r" in low or "right" in low
                 key_field = "legRRotDeg" if is_right else "legLRotDeg"
-                rot_keys = [[float(kf["t"]), round(0.25 * float(kf.get(key_field, 0.0)), 2)] for kf in kfs]
+                rot_keys = [
+                    [float(kf["t"]), round(0.25 * float(kf.get(key_field, 0.0)), 2)]
+                    for kf in kfs
+                ]
                 motion_map[pid] = {
                     "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
                 }
-            elif any(tag in low for tag in ("ear", "tail", "hair", "prop", "hat", "cape")):
+            elif any(
+                tag in low for tag in ("ear", "tail", "hair", "prop", "hat", "cape")
+            ):
                 # If `ear_left` and `ear_right` share a close center crown pivot (< 12% canvas width apart),
                 # rotate them in the same direction so a center tuft/crest sways together without splitting.
                 ear_l = next((x for x in studio_layers if x["id"] == "ear_left"), None)
@@ -234,20 +270,33 @@ def compile_studio_rig_json(
                 shared_crest = (
                     ear_l is not None
                     and ear_r is not None
-                    and abs(float(ear_r["pivot"][0]) - float(ear_l["pivot"][0])) < 0.12 * cw
+                    and abs(float(ear_r["pivot"][0]) - float(ear_l["pivot"][0]))
+                    < 0.12 * cw
                 )
-                sign = 1.0 if shared_crest else (-1.0 if ("_r" in low or "right" in low) else 1.0)
-                rot_keys = [[float(kf["t"]), round(0.45 * sign * float(kf.get("secondaryRotDeg", 0.0)), 2)] for kf in kfs]
+                sign = (
+                    1.0
+                    if shared_crest
+                    else (-1.0 if ("_r" in low or "right" in low) else 1.0)
+                )
+                rot_keys = [
+                    [
+                        float(kf["t"]),
+                        round(0.45 * sign * float(kf.get("secondaryRotDeg", 0.0)), 2),
+                    ]
+                    for kf in kfs
+                ]
                 motion_map[pid] = {
                     "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
                 }
-        studio_tracks.append({
-            "id": act_id,
-            "label": act_id.replace("_", " ").title(),
-            "duration": dur,
-            "loop": bool(t_spec.get("loop", True)),
-            "motion": motion_map,
-        })
+        studio_tracks.append(
+            {
+                "id": act_id,
+                "label": act_id.replace("_", " ").title(),
+                "duration": dur,
+                "loop": bool(t_spec.get("loop", True)),
+                "motion": motion_map,
+            }
+        )
 
     rig_doc = {
         "schemaVersion": 1,
@@ -271,13 +320,23 @@ def compile_studio_rig_json(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--character", required=True)
-    ap.add_argument("--timeline-json", required=True, help="Path to <slug>_6actions_timeline.json")
-    ap.add_argument("--timed-trajectories", default=None, help="Optional path to timed_trajectories.json")
+    ap.add_argument(
+        "--timeline-json", required=True, help="Path to <slug>_6actions_timeline.json"
+    )
+    ap.add_argument(
+        "--timed-trajectories",
+        default=None,
+        help="Optional path to timed_trajectories.json",
+    )
     ap.add_argument("--out", required=True, help="Output rig.json path")
     args = ap.parse_args(argv)
 
     tl = json.loads(Path(args.timeline_json).read_text())
-    traj = json.loads(Path(args.timed_trajectories).read_text()) if args.timed_trajectories else None
+    traj = (
+        json.loads(Path(args.timed_trajectories).read_text())
+        if args.timed_trajectories
+        else None
+    )
     sheet_path = tl.get("outputs", {}).get("layersSheet")
     canvas = [560, 720]
     if sheet_path and Path(sheet_path).is_file():
@@ -290,8 +349,21 @@ def main(argv: list[str] | None = None) -> int:
         timed_trajectories=traj,
         out_path=args.out,
     )
-    track_ids = [t.get("id") for t in doc["tracks"]] if isinstance(doc["tracks"], list) else list(doc["tracks"].keys())
-    print(json.dumps({"ok": True, "rig": args.out, "tracks": track_ids, "layers": len(doc["layers"])}))
+    track_ids = (
+        [t.get("id") for t in doc["tracks"]]
+        if isinstance(doc["tracks"], list)
+        else list(doc["tracks"].keys())
+    )
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "rig": args.out,
+                "tracks": track_ids,
+                "layers": len(doc["layers"]),
+            }
+        )
+    )
     return 0
 
 

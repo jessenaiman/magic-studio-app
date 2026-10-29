@@ -52,7 +52,13 @@ fn pair(value: Option<&Value>, what: &str) -> Result<[f64; 2]> {
 
 /// The keys one side of an entrance or exit contributes, by kind, for one property.
 /// Values are offsets from the resting state (position px, scale %, rotation deg, opacity %).
-fn side_keys(kind: &str, start: f64, end: f64, canvas: [f64; 2], entering: bool) -> Vec<(String, Vec<Value>)> {
+fn side_keys(
+    kind: &str,
+    start: f64,
+    end: f64,
+    canvas: [f64; 2],
+    entering: bool,
+) -> Vec<(String, Vec<Value>)> {
     let (w, h) = (canvas[0], canvas[1]);
     let travel = 0.12;
     // `from` is the state at `start`, `to` the resting state at `end` (reversed for an exit).
@@ -80,7 +86,10 @@ fn side_keys(kind: &str, start: f64, end: f64, canvas: [f64; 2], entering: bool)
         "zoom_in" | "zoom_out" => {
             let scale = if kind == "zoom_in" { -25.0 } else { 25.0 };
             vec![
-                ("scale".into(), order(json!([scale, scale]), json!([0.0, 0.0]))),
+                (
+                    "scale".into(),
+                    order(json!([scale, scale]), json!([0.0, 0.0])),
+                ),
                 ("opacity".into(), order(json!(-100.0), json!(0.0))),
             ]
         }
@@ -98,34 +107,59 @@ fn term(ease: &str, keys: Vec<Value>) -> Value {
 
 /// Compose the per-property motion terms of one layer from its entry and exit.
 fn layer_motion(entry: &Value, exit: &Value, duration: f64, canvas: [f64; 2]) -> Value {
-    let mut props: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
+    let mut props: std::collections::BTreeMap<String, Vec<Value>> =
+        std::collections::BTreeMap::new();
     let sides: [(&Value, bool); 2] = [(entry, true), (exit, false)];
     for (side, entering) in sides {
         let kind = side.get("kind").and_then(Value::as_str).unwrap_or("none");
         if kind == "none" {
             continue;
         }
-        let secs = side.get("duration").and_then(Value::as_f64).unwrap_or(0.6).max(0.01);
-        let delay = side.get("delay").and_then(Value::as_f64).unwrap_or(if entering { 0.0 } else { (duration - secs).max(0.0) });
-        let start = if entering { delay } else { delay };
-        let end = if entering { (delay + secs).min(duration) } else { (delay + secs).min(duration) };
+        let secs = side
+            .get("duration")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.6)
+            .max(0.01);
+        let delay = side
+            .get("delay")
+            .and_then(Value::as_f64)
+            .unwrap_or(if entering {
+                0.0
+            } else {
+                (duration - secs).max(0.0)
+            });
+        let start = delay;
+        let end = (delay + secs).min(duration);
         let ease = side.get("ease").and_then(Value::as_str).unwrap_or("smooth");
         for (prop, keys) in side_keys(kind, start, end, canvas, entering) {
             props.entry(prop).or_default().push(term(ease, keys));
         }
     }
-    Value::Object(props.into_iter().map(|(k, v)| (k, Value::Array(v))).collect())
+    Value::Object(
+        props
+            .into_iter()
+            .map(|(k, v)| (k, Value::Array(v)))
+            .collect(),
+    )
 }
 
 /// Place one image on a transparent canvas of the sequence size with PhotoCraft.
-fn prepare_layer(root: &Path, bin: &str, canvas: [u32; 2], layer: &Value, out: &Path) -> Result<()> {
+fn prepare_layer(
+    root: &Path,
+    bin: &str,
+    canvas: [u32; 2],
+    layer: &Value,
+    out: &Path,
+) -> Result<()> {
     let file = layer
         .get("file")
         .and_then(Value::as_str)
         .ok_or_else(|| EngineError::InvalidParams("each layer needs `file`".into()))?;
     let source = Path::new(file);
     if !source.is_file() {
-        return Err(EngineError::InvalidParams(format!("layer image not found: {file}")));
+        return Err(EngineError::InvalidParams(format!(
+            "layer image not found: {file}"
+        )));
     }
     let center = layer
         .get("center")
@@ -134,8 +168,10 @@ fn prepare_layer(root: &Path, bin: &str, canvas: [u32; 2], layer: &Value, out: &
         .cloned()
         .unwrap_or_else(|| vec![json!(canvas[0] as f64 / 2.0), json!(canvas[1] as f64 / 2.0)]);
     let scale = layer.get("scale").and_then(Value::as_f64).unwrap_or(100.0);
-    let new_doc = json!({"width": canvas[0], "height": canvas[1], "background": "transparent"}).to_string();
-    let place = json!({"path": source.to_string_lossy(), "center": center, "scale": scale}).to_string();
+    let new_doc =
+        json!({"width": canvas[0], "height": canvas[1], "background": "transparent"}).to_string();
+    let place =
+        json!({"path": source.to_string_lossy(), "center": center, "scale": scale}).to_string();
     let args = vec![
         "run".to_string(),
         "--new".to_string(),
@@ -149,7 +185,10 @@ fn prepare_layer(root: &Path, bin: &str, canvas: [u32; 2], layer: &Value, out: &
     ];
     run_tool_in(root, bin, &args)?;
     if !out.is_file() {
-        return Err(EngineError::InvalidParams(format!("PhotoCraft wrote no layer: {}", out.display())));
+        return Err(EngineError::InvalidParams(format!(
+            "PhotoCraft wrote no layer: {}",
+            out.display()
+        )));
     }
     Ok(())
 }
@@ -160,17 +199,30 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
     let canvas = pair(params.get("canvas"), "canvas")?;
     let (w, h) = (canvas[0].round(), canvas[1].round());
     if !(16.0..=8192.0).contains(&w) || !(16.0..=8192.0).contains(&h) {
-        return Err(EngineError::InvalidParams("canvas sides must be between 16 and 8192 pixels".into()));
+        return Err(EngineError::InvalidParams(
+            "canvas sides must be between 16 and 8192 pixels".into(),
+        ));
     }
     let canvas_f = [w, h];
     let fps = number(params.get("fps"), "fps", 30.0)?.clamp(1.0, 120.0);
     let duration = number(params.get("duration"), "duration", 4.0)?;
     if duration <= 0.0 || duration > 600.0 {
-        return Err(EngineError::InvalidParams("duration must be between 0 and 600 seconds".into()));
+        return Err(EngineError::InvalidParams(
+            "duration must be between 0 and 600 seconds".into(),
+        ));
     }
-    let name = params.get("name").and_then(Value::as_str).unwrap_or("sequence").to_string();
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err(EngineError::InvalidParams("name must be letters, digits, - or _".into()));
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("sequence")
+        .to_string();
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(EngineError::InvalidParams(
+            "name must be letters, digits, - or _".into(),
+        ));
     }
     let layers = params
         .get("layers")
@@ -179,7 +231,11 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
         .ok_or_else(|| EngineError::InvalidParams("layers must be a non-empty array".into()))?;
 
     let root = base_root(s);
-    let out_dir = match params.get("out_dir").and_then(Value::as_str).filter(|d| !d.trim().is_empty()) {
+    let out_dir = match params
+        .get("out_dir")
+        .and_then(Value::as_str)
+        .filter(|d| !d.trim().is_empty())
+    {
         Some(dir) => resolve_workspace_path(s, dir),
         _ => root.join("sequence").join(&name),
     };
@@ -193,9 +249,14 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
     let mut spec_motion = serde_json::Map::new();
     let mut prepared: Vec<Value> = Vec::new();
 
-    if let Some(colour) = params.get("background").and_then(Value::as_str).filter(|c| !c.trim().is_empty()) {
+    if let Some(colour) = params
+        .get("background")
+        .and_then(Value::as_str)
+        .filter(|c| !c.trim().is_empty())
+    {
         let bg = prep_dir.join("background.png");
-        let new_doc = json!({"width": canvas_px[0], "height": canvas_px[1], "background": colour}).to_string();
+        let new_doc = json!({"width": canvas_px[0], "height": canvas_px[1], "background": colour})
+            .to_string();
         let args = vec![
             "run".to_string(),
             "--new".to_string(),
@@ -205,7 +266,9 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
         ];
         run_tool_in(&root, &bin, &args)?;
         if !bg.is_file() {
-            return Err(EngineError::InvalidParams("PhotoCraft wrote no background layer".into()));
+            return Err(EngineError::InvalidParams(
+                "PhotoCraft wrote no background layer".into(),
+            ));
         }
         spec_layers.push(json!({"id": "background", "file": "work/layers/background.png", "pivot": [w / 2.0, h / 2.0]}));
         prepared.push(json!({"id": "background", "file": bg.to_string_lossy(), "width": canvas_px[0], "height": canvas_px[1]}));
@@ -215,11 +278,23 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
         let raw_id = layer.get("id").and_then(Value::as_str).unwrap_or("layer");
         let id: String = raw_id
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
-        let id = if id.is_empty() { format!("layer{index}") } else { id };
+        let id = if id.is_empty() {
+            format!("layer{index}")
+        } else {
+            id
+        };
         if prepared.iter().any(|p| p["id"] == json!(id)) {
-            return Err(EngineError::InvalidParams(format!("duplicate layer id `{id}`")));
+            return Err(EngineError::InvalidParams(format!(
+                "duplicate layer id `{id}`"
+            )));
         }
         let out = prep_dir.join(format!("{id}.png"));
         prepare_layer(&root, &bin, canvas_px, layer, &out)?;
@@ -247,8 +322,12 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
         "tracks": [{"id": name, "duration": duration, "motion": spec_motion}],
     });
     let spec_path = out_dir.join("sequence.json");
-    std::fs::write(&spec_path, serde_json::to_string_pretty(&spec).map_err(|e| EngineError::InvalidParams(e.to_string()))?)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    std::fs::write(
+        &spec_path,
+        serde_json::to_string_pretty(&spec)
+            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+    )
+    .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
 
     let stills = params.get("stills").and_then(Value::as_u64).unwrap_or(0);
     let video = params.get("video").and_then(Value::as_bool).unwrap_or(true);
@@ -267,12 +346,19 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
 
     // A background fills the canvas, so the transparent-clip checks do not describe this result.
     // Keep the verdict honest: report which checks do not apply and judge the rest.
-    if let Some(colour) = params.get("background").and_then(Value::as_str).filter(|c| !c.trim().is_empty()) {
+    if let Some(colour) = params
+        .get("background")
+        .and_then(Value::as_str)
+        .filter(|c| !c.trim().is_empty())
+    {
         let skipped = ["alpha_channel", "not_clipped_by_canvas"];
         let mut all_ok = true;
         if let Some(outputs) = export.get_mut("outputs").and_then(Value::as_array_mut) {
             for out in outputs.iter_mut() {
-                let Some(validation) = out.get_mut("validation").and_then(Value::as_object_mut) else { continue };
+                let Some(validation) = out.get_mut("validation").and_then(Value::as_object_mut)
+                else {
+                    continue;
+                };
                 let failed = validation
                     .remove("failed")
                     .and_then(|v| v.as_array().cloned())

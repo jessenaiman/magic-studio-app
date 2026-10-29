@@ -72,14 +72,14 @@ const SceneVideo: React.FC<{ scene: CinematicVideoScene }> = ({ scene }) => {
       : undefined;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#020407", opacity }}>
-      <OffthreadVideo
-        muted
-        src={resolveAsset(scene.src)}
-        trimBefore={trimBefore}
-        trimAfter={trimAfter}
-        playbackRate={scene.playbackRate}
-        style={{
+      <AbsoluteFill style={{ backgroundColor: "#020407", opacity }}>
+          <OffthreadVideo
+              muted
+              src={resolveAsset(scene.src)}
+              trimBefore={trimBefore}
+              trimAfter={trimAfter}
+              playbackRate={scene.playbackRate}
+              style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
@@ -87,27 +87,27 @@ const SceneVideo: React.FC<{ scene: CinematicVideoScene }> = ({ scene }) => {
           filter:
             scene.filter ?? "contrast(1.06) saturate(0.88) brightness(0.92)",
         }}
-      />
-      <AbsoluteFill
-        style={{
+          />
+          <AbsoluteFill
+              style={{
           background: toneGradient(scene.tone ?? "cold"),
           mixBlendMode: "multiply",
         }}
-      />
-      <AbsoluteFill
-        style={{
+          />
+          <AbsoluteFill
+              style={{
           background:
             "radial-gradient(circle at center, transparent 52%, rgba(0,0,0,0.52) 100%)",
         }}
-      />
-      <AbsoluteFill
-        style={{
+          />
+          <AbsoluteFill
+              style={{
           background:
             "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 8%, transparent 92%, rgba(255,255,255,0.02) 100%)",
           opacity: 0.6,
         }}
-      />
-    </AbsoluteFill>
+          />
+      </AbsoluteFill>
   );
 };
 
@@ -121,8 +121,8 @@ const SignalTexture: React.FC<{
   const { width: frameWidth } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {new Array(lineCount).fill(true).map((_, index) => {
+      <AbsoluteFill style={{ pointerEvents: "none" }}>
+          {new Array(lineCount).fill(true).map((_, index) => {
         const pulse = Math.max(0, Math.sin(frame * 0.06 + index * 0.85));
         const opacity = (0.025 + pulse * 0.07) * intensity;
         const width = 18 + ((index * 37) % 56);
@@ -130,9 +130,9 @@ const SignalTexture: React.FC<{
         const left = index % 2 === 0 ? 0 : frameWidth - width;
 
         return (
-          <div
-            key={index}
-            style={{
+            <div
+                key={index}
+                style={{
               position: "absolute",
               top,
               left,
@@ -142,19 +142,19 @@ const SignalTexture: React.FC<{
               boxShadow: `0 0 16px ${accent}`,
               opacity,
             }}
-          />
+            />
         );
       })}
-      <div
-        style={{
+          <div
+              style={{
           position: "absolute",
           inset: 0,
           background:
             "repeating-linear-gradient(180deg, rgba(255,255,255,0.028) 0px, rgba(255,255,255,0.028) 1px, transparent 2px, transparent 6px)",
           opacity: 0.12 * intensity,
         }}
-      />
-    </AbsoluteFill>
+          />
+      </AbsoluteFill>
   );
 };
 
@@ -233,53 +233,53 @@ const TitleCard: React.FC<{
       : "radial-gradient(ellipse at 50% 50%, rgba(8,14,22,0.78) 0%, rgba(2,4,8,0.92) 58%, rgba(0,0,0,1) 100%)";
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: "#000",
         justifyContent: "center",
         alignItems: "center",
       }}
-    >
-      {backgroundSrc ? (
-        <>
-          <AbsoluteFill style={{ transform: `scale(${bgScale})`, opacity: 0.62 }}>
-            <OffthreadVideo
-              muted
-              src={resolveAsset(backgroundSrc)}
-              trimBefore={bgTrimBefore}
-              trimAfter={bgTrimAfter}
-              style={{
+      >
+          {backgroundSrc ? (
+              <>
+                  <AbsoluteFill style={{ transform: `scale(${bgScale})`, opacity: 0.62 }}>
+                      <OffthreadVideo
+                          muted
+                          src={resolveAsset(backgroundSrc)}
+                          trimBefore={bgTrimBefore}
+                          trimAfter={bgTrimAfter}
+                          style={{
                 width: "100%",
                 height: "100%",
                 objectFit: "cover",
                 filter: "contrast(1.08) saturate(0.55) brightness(0.55) blur(4px)",
               }}
-            />
-          </AbsoluteFill>
-          <AbsoluteFill
-            style={{
+                      />
+                  </AbsoluteFill>
+                  <AbsoluteFill
+                      style={{
               background:
                 "linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.35) 40%, rgba(0,0,0,0.35) 60%, rgba(0,0,0,0.78) 100%)",
             }}
-          />
-        </>
+                  />
+              </>
       ) : null}
 
-      <AbsoluteFill
-        style={{
+          <AbsoluteFill
+              style={{
           background: plateBg,
         }}
-      />
+          />
 
-      <SignalTexture
-        accent={accent}
-        intensity={intensity * 0.7}
-        lineCount={signalLineCount}
-      />
+          <SignalTexture
+              accent={accent}
+              intensity={intensity * 0.7}
+              lineCount={signalLineCount}
+          />
 
-      {/* Top accent line — grows from center outwards */}
-      <div
-        style={{
+          {/* Top accent line — grows from center outwards */}
+          <div
+              style={{
           position: "absolute",
           width: 1100 * lineGrow,
           height: 1,
@@ -288,9 +288,9 @@ const TitleCard: React.FC<{
           opacity: flareOpacity * lineExit,
           transform: "translateY(-118px)",
         }}
-      />
-      <div
-        style={{
+          />
+          <div
+              style={{
           position: "absolute",
           width: 1100 * lineGrow,
           height: 1,
@@ -299,11 +299,11 @@ const TitleCard: React.FC<{
           opacity: flareOpacity * 0.75 * lineExit,
           transform: "translateY(118px)",
         }}
-      />
+          />
 
-      {/* Word-stagger text reveal */}
-      <div
-        style={{
+          {/* Word-stagger text reveal */}
+          <div
+              style={{
           opacity: exit,
           width: titleWidth,
           textAlign: "center",
@@ -316,14 +316,14 @@ const TitleCard: React.FC<{
           textTransform: "uppercase",
           textShadow: "0 0 34px rgba(255,255,255,0.10), 0 0 2px rgba(0,0,0,0.8)",
         }}
-      >
-        {(() => {
+          >
+              {(() => {
           let wordCounter = 0;
           return lines.map((line, lineIdx) => {
             const tokens = line.split(/(\s+)/).filter((w) => w.length > 0);
             return (
-              <div key={lineIdx} style={{ display: "block" }}>
-                {tokens.map((w, ti) => {
+                <div key={lineIdx} style={{ display: "block" }}>
+                    {tokens.map((w, ti) => {
                   if (/^\s+$/.test(w)) {
                     return <span key={ti}>&nbsp;</span>;
                   }
@@ -348,28 +348,28 @@ const TitleCard: React.FC<{
                     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
                   );
                   return (
-                    <span
-                      key={ti}
-                      style={{
+                      <span
+                          key={ti}
+                          style={{
                         display: "inline-block",
                         opacity: wordOpacity,
                         filter: `blur(${blur}px)`,
                         transform: `translateY(${ty}px)`,
                       }}
-                    >
-                      {w}
-                    </span>
+                      >
+                          {w}
+                      </span>
                   );
                 })}
-              </div>
+                </div>
             );
           });
         })()}
-      </div>
+          </div>
 
-      {/* Subtle accent dot centered under text */}
-      <div
-        style={{
+          {/* Subtle accent dot centered under text */}
+          <div
+              style={{
           position: "absolute",
           width: 6,
           height: 6,
@@ -379,8 +379,8 @@ const TitleCard: React.FC<{
           opacity: 0.55 * container * lineExit,
           transform: "translateY(172px)",
         }}
-      />
-    </AbsoluteFill>
+          />
+      </AbsoluteFill>
   );
 };
 
@@ -428,12 +428,12 @@ const Soundtrack: React.FC<{
   );
 
   return (
-    <Audio
-      src={resolveAsset(src)}
-      trimBefore={trimBefore}
-      trimAfter={trimAfter}
-      volume={() => Math.min(fadeIn, fadeOut)}
-    />
+      <Audio
+          src={resolveAsset(src)}
+          trimBefore={trimBefore}
+          trimAfter={trimAfter}
+          volume={() => Math.min(fadeIn, fadeOut)}
+      />
   );
 };
 
@@ -464,65 +464,65 @@ export const CinematicRenderer: React.FC<CinematicRendererProps> = ({
   captions,
 }) => {
   return (
-    <AbsoluteFill style={{ backgroundColor: "#000000" }}>
-      {/* Layer 1: Narration audio */}
-      {soundtrack ? (
-        <Soundtrack
-          src={soundtrack.src}
-          volume={soundtrack.volume ?? 1}
-          trimBeforeSeconds={soundtrack.trimBeforeSeconds}
-          trimAfterSeconds={soundtrack.trimAfterSeconds}
-          fadeInSeconds={soundtrack.fadeInSeconds ?? 0.3}
-          fadeOutSeconds={soundtrack.fadeOutSeconds ?? 0.5}
-        />
+      <AbsoluteFill style={{ backgroundColor: "#000000" }}>
+          {/* Layer 1: Narration audio */}
+          {soundtrack ? (
+              <Soundtrack
+                  src={soundtrack.src}
+                  volume={soundtrack.volume ?? 1}
+                  trimBeforeSeconds={soundtrack.trimBeforeSeconds}
+                  trimAfterSeconds={soundtrack.trimAfterSeconds}
+                  fadeInSeconds={soundtrack.fadeInSeconds ?? 0.3}
+                  fadeOutSeconds={soundtrack.fadeOutSeconds ?? 0.5}
+              />
       ) : null}
-      {/* Layer 2: Music bed (separate track, ducked) */}
-      {music ? (
-        <Soundtrack
-          src={music.src}
-          volume={music.volume ?? 0.15}
-          trimBeforeSeconds={music.trimBeforeSeconds}
-          trimAfterSeconds={music.trimAfterSeconds}
-          fadeInSeconds={music.fadeInSeconds ?? 2}
-          fadeOutSeconds={music.fadeOutSeconds ?? 3}
-        />
+          {/* Layer 2: Music bed (separate track, ducked) */}
+          {music ? (
+              <Soundtrack
+                  src={music.src}
+                  volume={music.volume ?? 0.15}
+                  trimBeforeSeconds={music.trimBeforeSeconds}
+                  trimAfterSeconds={music.trimAfterSeconds}
+                  fadeInSeconds={music.fadeInSeconds ?? 2}
+                  fadeOutSeconds={music.fadeOutSeconds ?? 3}
+              />
       ) : null}
-      {/* Layer 3: Video scenes */}
-      {scenes.map((scene) => (
-        <Sequence
-          key={scene.id}
-          from={Math.round(scene.startSeconds * FPS)}
-          durationInFrames={Math.round(scene.durationSeconds * FPS)}
-        >
-          {scene.kind === "video" ? (
-            <SceneVideo scene={scene} />
+          {/* Layer 3: Video scenes */}
+          {scenes.map((scene) => (
+              <Sequence
+                  key={scene.id}
+                  from={Math.round(scene.startSeconds * FPS)}
+                  durationInFrames={Math.round(scene.durationSeconds * FPS)}
+              >
+                  {scene.kind === "video" ? (
+                      <SceneVideo scene={scene} />
           ) : (
-            <TitleCard
-              text={scene.text}
-              accent={scene.accent ?? "#86d8ff"}
-              intensity={scene.intensity ?? 1}
-              titleFontSize={titleFontSize}
-              titleWidth={titleWidth}
-              signalLineCount={signalLineCount}
-              backgroundSrc={scene.backgroundSrc}
-              backgroundTrimBeforeSeconds={scene.backgroundTrimBeforeSeconds}
-              backgroundTrimAfterSeconds={scene.backgroundTrimAfterSeconds}
-              variant={scene.variant}
-            />
+              <TitleCard
+                  text={scene.text}
+                  accent={scene.accent ?? "#86d8ff"}
+                  intensity={scene.intensity ?? 1}
+                  titleFontSize={titleFontSize}
+                  titleWidth={titleWidth}
+                  signalLineCount={signalLineCount}
+                  backgroundSrc={scene.backgroundSrc}
+                  backgroundTrimBeforeSeconds={scene.backgroundTrimBeforeSeconds}
+                  backgroundTrimAfterSeconds={scene.backgroundTrimAfterSeconds}
+                  variant={scene.variant}
+              />
           )}
-        </Sequence>
+              </Sequence>
       ))}
-      {/* Layer 4: TikTok-style captions */}
-      {captions?.words ? (
-        <CaptionOverlay
-          words={captions.words}
-          wordsPerPage={captions.wordsPerPage ?? 5}
-          fontSize={captions.fontSize ?? 48}
-          color={captions.color ?? "#F8FAFC"}
-          highlightColor={captions.highlightColor ?? "#FBBF24"}
-          backgroundColor={captions.backgroundColor ?? "rgba(0, 0, 0, 0.6)"}
-        />
+          {/* Layer 4: TikTok-style captions */}
+          {captions?.words ? (
+              <CaptionOverlay
+                  words={captions.words}
+                  wordsPerPage={captions.wordsPerPage ?? 5}
+                  fontSize={captions.fontSize ?? 48}
+                  color={captions.color ?? "#F8FAFC"}
+                  highlightColor={captions.highlightColor ?? "#FBBF24"}
+                  backgroundColor={captions.backgroundColor ?? "rgba(0, 0, 0, 0.6)"}
+              />
       ) : null}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

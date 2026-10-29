@@ -10,12 +10,9 @@ use crate::{EngineError, Result, Session};
 
 use crate::control_bindings::CONTROLS;
 use crate::project::cmd_project_add_asset;
-use crate::storyboard::{
-    SceneDoc, clock, panel_spans, read_scene_doc, scene_doc_path, scenes,
-};
+use crate::storyboard::{SceneDoc, clock, panel_spans, read_scene_doc, scene_doc_path, scenes};
 use crate::video_target::{
-    ensure_video_target_project, target_project_chip, target_project_path,
-    video_server_info,
+    ensure_video_target_project, target_project_chip, target_project_path, video_server_info,
 };
 use crate::workspace::{
     has_extension, resolve_workspace_path, run_tool_in, song_audio_path, workspace_root,
@@ -23,13 +20,13 @@ use crate::workspace::{
 
 // Re-export storyboard and video target command handlers so `crate::workshop::*` callers continue to work.
 pub use crate::storyboard::{
-    cmd_storyboard_approve, cmd_storyboard_edit, cmd_storyboard_import_openmontage,
-    cmd_storyboard_init, cmd_storyboard_read,
-    cmd_storyboard_toc, cmd_workshop_build_storyboard, cmd_workshop_storyboard,
+    cmd_storyboard_approve, cmd_storyboard_edit, cmd_storyboard_import_magicstudio,
+    cmd_storyboard_init, cmd_storyboard_read, cmd_storyboard_toc, cmd_workshop_build_storyboard,
+    cmd_workshop_storyboard,
 };
 pub use crate::video_target::{
-    cmd_video_init, cmd_video_place_track, cmd_video_render,
-    cmd_video_server_start, cmd_video_server_stop, cmd_video_snapshot,
+    cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start,
+    cmd_video_server_stop, cmd_video_snapshot,
 };
 
 /// Image file extensions recognized by the workshop.
@@ -47,7 +44,14 @@ pub(crate) const FILMCRAFT_TICKS_PER_SECOND: f64 = 254_016_000_000.0;
 pub(crate) const FIXLIST: &str = "asset-fixes.json";
 
 pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
-    if let Some(duration)=std::fs::read(dir.join("transcript-provenance.json")).ok().and_then(|b|serde_json::from_slice::<Value>(&b).ok()).and_then(|v|v["recording_duration_sec"].as_f64()).filter(|v|v.is_finite()&&*v>0.0){return Some(duration);}
+    if let Some(duration) = std::fs::read(dir.join("transcript-provenance.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| v["recording_duration_sec"].as_f64())
+        .filter(|v| v.is_finite() && *v > 0.0)
+    {
+        return Some(duration);
+    }
     let fcproj = video_project_path(dir)?;
     let out = run_tool_in(
         dir,
@@ -191,7 +195,9 @@ pub(crate) fn files_in(dir: &Path, only: Option<&[&str]>) -> Vec<PathBuf> {
 
 pub(crate) fn transcript_files(dir: &Path) -> Vec<PathBuf> {
     let native = dir.join("hyperframes/transcript.json");
-    if native.is_file() { return vec![native]; }
+    if native.is_file() {
+        return vec![native];
+    }
     files_in(dir, Some(&["json"]))
         .into_iter()
         .filter(|p| {
@@ -203,15 +209,26 @@ pub(crate) fn transcript_files(dir: &Path) -> Vec<PathBuf> {
 }
 
 pub(crate) fn transcript_document(path: &Path) -> Result<Value> {
-    let mut doc: Value = serde_json::from_slice(&std::fs::read(path)?)
-        .map_err(|e| EngineError::InvalidParams(format!("Invalid transcript {}: {e}", path.display())))?;
-    if doc.is_array() { doc = json!({"words":doc}); }
-    if !doc.is_object() { return Err(EngineError::InvalidParams("Transcript must be a word array or object with words".into())); }
+    let mut doc: Value = serde_json::from_slice(&std::fs::read(path)?).map_err(|e| {
+        EngineError::InvalidParams(format!("Invalid transcript {}: {e}", path.display()))
+    })?;
+    if doc.is_array() {
+        doc = json!({"words":doc});
+    }
+    if !doc.is_object() {
+        return Err(EngineError::InvalidParams(
+            "Transcript must be a word array or object with words".into(),
+        ));
+    }
     if !doc["paragraphs"].is_array() {
         let captions = path.with_file_name("transcript.srt");
         doc["paragraphs"] = if captions.is_file() {
-            json!(import_caption_paragraphs(&std::fs::read_to_string(captions)?)?)
-        } else { doc["words"].clone() };
+            json!(import_caption_paragraphs(&std::fs::read_to_string(
+                captions
+            )?)?)
+        } else {
+            doc["words"].clone()
+        };
     }
     Ok(doc)
 }
@@ -232,7 +249,10 @@ pub(crate) fn video_project_path(dir: &Path) -> Option<PathBuf> {
     transcript_files(dir)
         .iter()
         .find_map(|t| {
-            let name = t.file_name()?.to_str()?.replace(".transcript.json", ".fcproj");
+            let name = t
+                .file_name()?
+                .to_str()?
+                .replace(".transcript.json", ".fcproj");
             let fcproj = t.with_file_name(name);
             fcproj.is_file().then_some(fcproj)
         })
@@ -368,7 +388,9 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .unwrap_or(Value::Null);
     let transcript_source = transcripts.first().cloned().or_else(|| {
-        loaded_board["source_transcript"].as_str().map(PathBuf::from)
+        loaded_board["source_transcript"]
+            .as_str()
+            .map(PathBuf::from)
     });
     let supplied_transcript = transcript_source
         .as_ref()
@@ -376,14 +398,21 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         .unwrap_or(Value::Null);
     let mut transcript_errors = transcript_problems(&supplied_transcript);
     if loaded_board["timing_valid"] == false {
-        transcript_errors.push(loaded_board["timing_warning"].as_str()
-            .unwrap_or("Storyboard timing has not passed validation").to_string());
+        transcript_errors.push(
+            loaded_board["timing_warning"]
+                .as_str()
+                .unwrap_or("Storyboard timing has not passed validation")
+                .to_string(),
+        );
     }
     let transcript_valid = transcript_errors.is_empty();
     let transcript_why = if transcript_source.is_none() {
         "Import existing timed lyrics, or transcribe the linked song.".to_string()
     } else if !transcript_valid {
-        format!("Transcript needs repair: {}. Original inputs are retained.", transcript_errors.join("; "))
+        format!(
+            "Transcript needs repair: {}. Original inputs are retained.",
+            transcript_errors.join("; ")
+        )
     } else if let Some(source) = loaded_board["source_transcript"].as_str() {
         format!(
             "Storyboard uses native output {source} directly ({} words); no transcription rerun. Archive label: {} (producer executable/version not recorded). {}",
@@ -483,7 +512,10 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
     ];
     let complete = stages.iter().take(3).all(|st| st["done"] == json!(true));
     let studio_info = studio(&dir);
-    let effective_video_project = s.video_project_path.clone().or_else(|| active_target_path.clone());
+    let effective_video_project = s
+        .video_project_path
+        .clone()
+        .or_else(|| active_target_path.clone());
     Ok(json!({
         "ok": true,
         "project_dir": dir,
@@ -552,10 +584,19 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
                     .and_then(Value::as_str)
                     .is_some_and(|t| !t.trim().is_empty());
                 match (text_ok, timed(w)) {
-                    (true, Some((a, b))) if a>=0.0 && a.is_finite() && b.is_finite() && b >= a && a >= last - 0.001 => last = a,
-                    (true, Some(_)) => {
-                        problems.push(format!("word {} is out of order or ends before it starts", i + 1))
+                    (true, Some((a, b)))
+                        if a >= 0.0
+                            && a.is_finite()
+                            && b.is_finite()
+                            && b >= a
+                            && a >= last - 0.001 =>
+                    {
+                        last = a
                     }
+                    (true, Some(_)) => problems.push(format!(
+                        "word {} is out of order or ends before it starts",
+                        i + 1
+                    )),
                     _ => problems.push(format!("word {} needs text, start and end", i + 1)),
                 }
                 if problems.len() > 5 {
@@ -569,16 +610,37 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
             "missing \"paragraphs\": [{text, start, end}] (the sung lines or stanzas)".into(),
         ),
         Some(lines) => {
-            let mut previous=0.0;
-            if lines.is_empty() || lines.iter().any(|p| match timed(p){Some((a,b)) if a.is_finite()&&b.is_finite()&&a>=previous&&a>=0.0&&b>=a&&p["text"].as_str().is_some_and(|t|!t.trim().is_empty())=>{previous=a;false},_=>true}){
-                problems.push("paragraphs need ordered nonnegative start/end and nonempty text".into());
+            let mut previous = 0.0;
+            if lines.is_empty()
+                || lines.iter().any(|p| match timed(p) {
+                    Some((a, b))
+                        if a.is_finite()
+                            && b.is_finite()
+                            && a >= previous
+                            && a >= 0.0
+                            && b >= a
+                            && p["text"].as_str().is_some_and(|t| !t.trim().is_empty()) =>
+                    {
+                        previous = a;
+                        false
+                    }
+                    _ => true,
+                })
+            {
+                problems
+                    .push("paragraphs need ordered nonnegative start/end and nonempty text".into());
             }
         }
     }
-    if let Some(duration)=doc["recording_duration_sec"].as_f64().filter(|v|v.is_finite()&&*v>=0.0){
-        for key in ["words","paragraphs"]{
-            for (i,v) in doc[key].as_array().into_iter().flatten().enumerate(){
-                if v["end"].as_f64().is_some_and(|end|end>duration+0.001){problems.push(format!("{key} item {} ends after the recording ({duration:.6}s). Check matching audio/transcript; original received bytes retained.",i+1));}
+    if let Some(duration) = doc["recording_duration_sec"]
+        .as_f64()
+        .filter(|v| v.is_finite() && *v >= 0.0)
+    {
+        for key in ["words", "paragraphs"] {
+            for (i, v) in doc[key].as_array().into_iter().flatten().enumerate() {
+                if v["end"].as_f64().is_some_and(|end| end > duration + 0.001) {
+                    problems.push(format!("{key} item {} ends after the recording ({duration:.6}s). Check matching audio/transcript; original received bytes retained.",i+1));
+                }
             }
         }
     }
@@ -634,9 +696,12 @@ pub fn cmd_project_search(s: &mut Session, params: &Value) -> Result<Value> {
             q_lower.is_empty()
                 || a.id.to_ascii_lowercase().contains(&q_lower)
                 || a.name.to_ascii_lowercase().contains(&q_lower)
-                || a.path
-                    .as_ref()
-                    .is_some_and(|p| p.display().to_string().to_ascii_lowercase().contains(&q_lower))
+                || a.path.as_ref().is_some_and(|p| {
+                    p.display()
+                        .to_string()
+                        .to_ascii_lowercase()
+                        .contains(&q_lower)
+                })
         })
         .map(|a| {
             let parts: Vec<String> = s
@@ -696,18 +761,49 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
         .and_then(Value::as_str)
         .ok_or_else(|| EngineError::InvalidParams("missing audio 'path'".into()))?;
     let audio = song_audio_path(s, raw)?;
-    let exists=ensure_video_target_project(s, &dir, "hyperframes").is_ok();
-    let connected=s.song_audio.clone().filter(|path|path.is_file()).or_else(||audio.file_name().map(|name|dir.join("hyperframes").join(name)).filter(|path|path.is_file()));
-    let unchanged=connected.as_ref().is_some_and(|old|old==&audio || std::fs::read(old).ok().zip(std::fs::read(&audio).ok()).is_some_and(|(old,new)|old==new));
+    let exists = ensure_video_target_project(s, &dir, "hyperframes").is_ok();
+    let connected = s
+        .song_audio
+        .clone()
+        .filter(|path| path.is_file())
+        .or_else(|| {
+            audio
+                .file_name()
+                .map(|name| dir.join("hyperframes").join(name))
+                .filter(|path| path.is_file())
+        });
+    let unchanged = connected.as_ref().is_some_and(|old| {
+        old == &audio
+            || std::fs::read(old)
+                .ok()
+                .zip(std::fs::read(&audio).ok())
+                .is_some_and(|(old, new)| old == new)
+    });
     if exists && !unchanged {
         return Err(EngineError::InvalidParams("This HyperFrames project already has a timeline. Update its audio in HyperFrames before relinking the recording; the existing project was preserved".into()));
     }
-    let previous = (s.song_audio.clone(), s.video_target.clone(), s.video_project_path.clone());
-    s.song_audio = Some(if exists && unchanged { connected.unwrap() } else { audio });
+    let previous = (
+        s.song_audio.clone(),
+        s.video_target.clone(),
+        s.video_project_path.clone(),
+    );
+    s.song_audio = Some(if exists && unchanged {
+        connected.ok_or_else(|| {
+            EngineError::InvalidParams("Existing audio connection is unavailable".into())
+        })?
+    } else {
+        audio
+    });
     s.video_target = "hyperframes".into();
     let setup = (|| {
-        let video = crate::video_target::cmd_video_init(s, &json!({"target":"hyperframes","captions":false,"hyperframes_cli":params["hyperframes_cli"]}))?;
-        let preview = crate::video_target::cmd_video_server_start(s, &json!({"hyperframes_cli":params["hyperframes_cli"]}))?;
+        let video = crate::video_target::cmd_video_init(
+            s,
+            &json!({"target":"hyperframes","captions":false,"hyperframes_cli":params["hyperframes_cli"]}),
+        )?;
+        let preview = crate::video_target::cmd_video_server_start(
+            s,
+            &json!({"hyperframes_cli":params["hyperframes_cli"]}),
+        )?;
         crate::project::write_project_file(s)?;
         Ok(json!({"ok":true,"video":video,"preview":preview}))
     })();
@@ -720,7 +816,10 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
 
 pub fn cmd_workshop_set_target(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    let target = params.get("target").and_then(Value::as_str).unwrap_or_default();
+    let target = params
+        .get("target")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if !VIDEO_TARGETS.contains(&target) {
         return Err(EngineError::InvalidParams(format!(
             "target must be one of {VIDEO_TARGETS:?}"
@@ -743,7 +842,7 @@ pub fn cmd_workshop_add(s: &mut Session, params: &Value) -> Result<Value> {
         _ => {
             return Err(EngineError::InvalidParams(
                 "kind must be liner_notes, panels or assets".into(),
-            ))
+            ));
         }
     };
     let paths: Vec<PathBuf> = params
@@ -788,10 +887,15 @@ pub fn cmd_workshop_add(s: &mut Session, params: &Value) -> Result<Value> {
             )
         };
         if dest != *path {
-            if dest.is_file() && std::fs::read(&dest)?!=std::fs::read(path)? {
-                return Err(EngineError::InvalidParams(format!("Material destination exists with different bytes: {}. Rename or explicitly resolve the collision; original retained.",dest.display())));
+            if dest.is_file() && std::fs::read(&dest)? != std::fs::read(path)? {
+                return Err(EngineError::InvalidParams(format!(
+                    "Material destination exists with different bytes: {}. Rename or explicitly resolve the collision; original retained.",
+                    dest.display()
+                )));
             }
-            if !dest.exists(){std::fs::copy(path, &dest)?;}
+            if !dest.exists() {
+                std::fs::copy(path, &dest)?;
+            }
         }
         added.push(dest);
     }
@@ -837,8 +941,16 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
         .and_then(Value::as_str)
         .map(|p| resolve_workspace_path(s, p))
         .ok_or_else(|| EngineError::InvalidParams("missing storyboard grid 'image'".into()))?;
-    let columns = params.get("columns").and_then(Value::as_u64).unwrap_or(3).max(1) as u32;
-    let rows = params.get("rows").and_then(Value::as_u64).unwrap_or(2).max(1) as u32;
+    let columns = params
+        .get("columns")
+        .and_then(Value::as_u64)
+        .unwrap_or(3)
+        .max(1) as u32;
+    let rows = params
+        .get("rows")
+        .and_then(Value::as_u64)
+        .unwrap_or(2)
+        .max(1) as u32;
     let inset = params.get("inset").and_then(Value::as_u64).unwrap_or(8) as u32;
     let (w, h) = image::image_dimensions(&image)?;
     let (cw, ch) = (w / columns, h / rows);
@@ -892,7 +1004,10 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
                     format!(
                         "{text}\n\nSource: {source} (panel {} of {})\n",
                         i + 1,
-                        image.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+                        image
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_default()
                     ),
                 )?;
                 prompts_written.push(out);
@@ -909,38 +1024,85 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
 fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
     let time = |raw: &str| -> Option<f64> {
         let value = raw.trim().replace(',', ".");
-        let p = value.split(':').map(str::parse::<f64>).collect::<std::result::Result<Vec<_>, _>>().ok()?;
-        if p.len()!=3 || p.iter().any(|n|!n.is_finite() || *n<0.0) || p[1]>=60.0 || p[2]>=60.0 { return None; }
-        Some(p[0]*3600.0+p[1]*60.0+p[2])
+        let p = value
+            .split(':')
+            .map(str::parse::<f64>)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .ok()?;
+        if p.len() != 3
+            || p.iter().any(|n| !n.is_finite() || *n < 0.0)
+            || p[1] >= 60.0
+            || p[2] >= 60.0
+        {
+            return None;
+        }
+        Some(p[0] * 3600.0 + p[1] * 60.0 + p[2])
     };
-    let mut cues=Vec::new(); let mut previous=0.0;
-    for block in text.trim_start_matches('\u{feff}').replace("\r\n","\n").split("\n\n").filter(|b|!b.trim().is_empty()) {
-        let lines=block.lines().collect::<Vec<_>>();
-        let cue=lines.iter().position(|l|l.contains("-->"));
-        let parsed=cue.and_then(|i| { let (a,b)=lines[i].split_once("-->")?; Some((time(a)?,time(b)?,lines[i+1..].join(" "))) });
-        let Some((start,end,text))=parsed else {return Err(EngineError::InvalidParams("invalid SRT cue timing".into()));};
-        if start<previous || end<start || text.trim().is_empty() {return Err(EngineError::InvalidParams("SRT cues must be ordered, timed and nonempty".into()));}
-        previous=start; cues.push(json!({"text":text,"start":start,"end":end}));
+    let mut cues = Vec::new();
+    let mut previous = 0.0;
+    for block in text
+        .trim_start_matches('\u{feff}')
+        .replace("\r\n", "\n")
+        .split("\n\n")
+        .filter(|b| !b.trim().is_empty())
+    {
+        let lines = block.lines().collect::<Vec<_>>();
+        let cue = lines.iter().position(|l| l.contains("-->"));
+        let parsed = cue.and_then(|i| {
+            let (a, b) = lines[i].split_once("-->")?;
+            Some((time(a)?, time(b)?, lines[i + 1..].join(" ")))
+        });
+        let Some((start, end, text)) = parsed else {
+            return Err(EngineError::InvalidParams("invalid SRT cue timing".into()));
+        };
+        if start < previous || end < start || text.trim().is_empty() {
+            return Err(EngineError::InvalidParams(
+                "SRT cues must be ordered, timed and nonempty".into(),
+            ));
+        }
+        previous = start;
+        cues.push(json!({"text":text,"start":start,"end":end}));
     }
-    if cues.is_empty() {return Err(EngineError::InvalidParams("caption file is empty".into()));}
+    if cues.is_empty() {
+        return Err(EngineError::InvalidParams("caption file is empty".into()));
+    }
     Ok(cues)
 }
 
 /// Supplies a transcript made earlier instead of transcribing again.
-pub fn cmd_workshop_import_transcript(s: &mut Session, params:&Value)->Result<Value>{
- let dir=project_dir(s)?;let mut adjusted=params.clone();
- let mut received=std::fs::read(dir.join("intake-state.json")).ok().and_then(|b|serde_json::from_slice::<Value>(&b).ok()).and_then(|v|v["received"].as_array().cloned()).unwrap_or_default();
- for (key,original) in [("path","original_source"),("captions","original_captions"),("audiomap","original_audiomap")] {
-  if let Some(raw)=params[key].as_str(){
-   let source=resolve_workspace_path(s,raw);
-   let record=crate::command_center::receive(&dir,&source)?;
-   adjusted[original]=json!(source);adjusted[key]=record["path"].clone();if !received.iter().any(|v|v["path"]==record["path"]){received.push(record);}
-  }
- }
- let result=import_transcript_inner(s,&adjusted);
- let errors=match &result{Ok(_)=>vec![],Err(e)=>vec![e.to_string()]};
- crate::command_center::write_state(&dir,&json!({"received":received,"problems":errors,"valid":result.is_ok(),"command":"workshop.import_transcript","manual":"magic-cli commands workshop.import_transcript; crates/engine/src/workshop.rs"}))?;
- result
+pub fn cmd_workshop_import_transcript(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    let mut adjusted = params.clone();
+    let mut received = std::fs::read(dir.join("intake-state.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| v["received"].as_array().cloned())
+        .unwrap_or_default();
+    for (key, original) in [
+        ("path", "original_source"),
+        ("captions", "original_captions"),
+        ("audiomap", "original_audiomap"),
+    ] {
+        if let Some(raw) = params[key].as_str() {
+            let source = resolve_workspace_path(s, raw);
+            let record = crate::command_center::receive(&dir, &source)?;
+            adjusted[original] = json!(source);
+            adjusted[key] = record["path"].clone();
+            if !received.iter().any(|v| v["path"] == record["path"]) {
+                received.push(record);
+            }
+        }
+    }
+    let result = import_transcript_inner(s, &adjusted);
+    let errors = match &result {
+        Ok(_) => vec![],
+        Err(e) => vec![e.to_string()],
+    };
+    crate::command_center::write_state(
+        &dir,
+        &json!({"received":received,"problems":errors,"valid":result.is_ok(),"command":"workshop.import_transcript","manual":"magic-cli commands workshop.import_transcript; crates/engine/src/workshop.rs"}),
+    )?;
+    result
 }
 
 fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
@@ -952,25 +1114,56 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
         .ok_or_else(|| EngineError::InvalidParams("missing transcript 'path'".into()))?;
     let mut doc: Value = serde_json::from_str(&std::fs::read_to_string(&source)?)
         .map_err(|e| EngineError::InvalidParams(format!("not a JSON transcript: {e}")))?;
-    let captions = params["captions"].as_str().map(|p| resolve_workspace_path(s,p));
+    let captions = params["captions"]
+        .as_str()
+        .map(|p| resolve_workspace_path(s, p));
     let mut caption_text = captions.as_ref().map(std::fs::read_to_string).transpose()?;
-    if doc.is_array() { doc=json!({"words":doc}); }
-    if let Some(text)=&caption_text {
-        doc["paragraphs"]=json!(import_caption_paragraphs(text)?);
+    if doc.is_array() {
+        doc = json!({"words":doc});
+    }
+    if let Some(text) = &caption_text {
+        doc["paragraphs"] = json!(import_caption_paragraphs(text)?);
     }
 
-    let mut grouping="provided paragraphs";
-    if doc.get("paragraphs").and_then(Value::as_array).is_none() {
-        if let Some(words)=doc["words"].as_array(){
-            doc["paragraphs"]=json!(words.iter().map(|w|json!({"text":w["text"],"start":w["start"],"end":w["end"]})).collect::<Vec<_>>());
-            grouping="provisional word fallback; original word timestamps";
-        }
+    let mut grouping = "provided paragraphs";
+    if doc.get("paragraphs").and_then(Value::as_array).is_none()
+        && let Some(words) = doc["words"].as_array()
+    {
+        doc["paragraphs"] = json!(
+            words
+                .iter()
+                .map(|w| json!({"text":w["text"],"start":w["start"],"end":w["end"]}))
+                .collect::<Vec<_>>()
+        );
+        grouping = "provisional word fallback; original word timestamps";
     }
-    if caption_text.is_none(){
-        let stamp=|v:f64|{let ms=(v*1000.0).round() as u64;format!("{:02}:{:02}:{:02},{:03}",ms/3600000,(ms/60000)%60,(ms/1000)%60,ms%1000)};
-        caption_text=doc["paragraphs"].as_array().map(|ps|ps.iter().enumerate().map(|(i,p)|format!("{}\n{} --> {}\n{}\n\n",i+1,stamp(p["start"].as_f64().unwrap_or(0.0)),stamp(p["end"].as_f64().unwrap_or(0.0)),p["text"].as_str().unwrap_or_default())).collect::<String>());
+    if caption_text.is_none() {
+        let stamp = |v: f64| {
+            let ms = (v * 1000.0).round() as u64;
+            format!(
+                "{:02}:{:02}:{:02},{:03}",
+                ms / 3600000,
+                (ms / 60000) % 60,
+                (ms / 1000) % 60,
+                ms % 1000
+            )
+        };
+        caption_text = doc["paragraphs"].as_array().map(|ps| {
+            ps.iter()
+                .enumerate()
+                .map(|(i, p)| {
+                    format!(
+                        "{}\n{} --> {}\n{}\n\n",
+                        i + 1,
+                        stamp(p["start"].as_f64().unwrap_or(0.0)),
+                        stamp(p["end"].as_f64().unwrap_or(0.0)),
+                        p["text"].as_str().unwrap_or_default()
+                    )
+                })
+                .collect::<String>()
+        });
     }
-    doc["grouping"]=json!(grouping);
+    doc["grouping"] = json!(grouping);
 
     let mut problems = transcript_problems(&doc);
     if let (Some(recorded), Some(song)) = (doc.get("audio").and_then(Value::as_str), &s.song_audio)
@@ -981,17 +1174,53 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
             song.display()
         ));
     }
-    let mapped_duration=params["audiomap"].as_str().map(|v|resolve_workspace_path(s,v)).and_then(|p|std::fs::read(p).ok()).and_then(|b|serde_json::from_slice::<Value>(&b).ok()).and_then(|v|v["audio"]["duration_sec"].as_f64()).filter(|v|v.is_finite()&&*v>=0.0);
-    let probe_output=s.song_audio.as_ref().map(|p|std::process::Command::new("ffprobe").args(["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1"]).arg(p).output());
-    let probed_duration=probe_output.as_ref().and_then(|r|r.as_ref().ok()).filter(|o|o.status.success()).and_then(|o|std::str::from_utf8(&o.stdout).ok()).and_then(|v|v.trim().parse::<f64>().ok()).filter(|v|v.is_finite()&&*v>=0.0);
-    doc["recording_duration_sec"]=json!(probed_duration);
-    problems.extend(transcript_problems(&doc).into_iter().filter(|e|e.contains("recording")));
-    if let (Some(recording),Some(mapped))=(probed_duration,mapped_duration){
-        if (recording-mapped).abs()>0.001{problems.push(format!("Audiomap duration {mapped:.6}s disagrees with recording {recording:.6}s. Supply the matching map or omit it; recording duration will not be extended."));}
+    let mapped_duration = params["audiomap"]
+        .as_str()
+        .map(|v| resolve_workspace_path(s, v))
+        .and_then(|p| std::fs::read(p).ok())
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| v["audio"]["duration_sec"].as_f64())
+        .filter(|v| v.is_finite() && *v >= 0.0);
+    let probe_output = s.song_audio.as_ref().map(|p| {
+        std::process::Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+            ])
+            .arg(p)
+            .output()
+    });
+    let probed_duration = probe_output
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .filter(|o| o.status.success())
+        .and_then(|o| std::str::from_utf8(&o.stdout).ok())
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0);
+    doc["recording_duration_sec"] = json!(probed_duration);
+    problems.extend(
+        transcript_problems(&doc)
+            .into_iter()
+            .filter(|e| e.contains("recording")),
+    );
+    if let (Some(recording), Some(mapped)) = (probed_duration, mapped_duration)
+        && (recording - mapped).abs() > 0.001
+    {
+        problems.push(format!("Audiomap duration {mapped:.6}s disagrees with recording {recording:.6}s. Supply the matching map or omit it; recording duration will not be extended."));
     }
     // The recording is authoritative. A supplied map is explicitly unverified when no probe succeeded.
-    let duration=probed_duration.or(mapped_duration);
-    let duration_warning=if probed_duration.is_none(){Some("Recording duration is unknown: provide readable matching audio and a working ffprobe. Supplied map duration, if any, is unverified; transcript endpoints are not recording-length evidence.")}else{None};
+    let duration = probed_duration.or(mapped_duration);
+    let duration_warning = if probed_duration.is_none() {
+        Some(
+            "Recording duration is unknown: provide readable matching audio and a working ffprobe. Supplied map duration, if any, is unverified; transcript endpoints are not recording-length evidence.",
+        )
+    } else {
+        None
+    };
     if !problems.is_empty() {
         return Err(EngineError::InvalidParams(format!(
             "transcript does not match: {}",
@@ -1006,7 +1235,9 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
             .unwrap_or("song"),
     );
     for old in transcript_files(&dir) {
-        if old != dir.join(format!("{stem}.transcript.json")) && old != dir.join("hyperframes/transcript.json") {
+        if old != dir.join(format!("{stem}.transcript.json"))
+            && old != dir.join("hyperframes/transcript.json")
+        {
             return Err(EngineError::InvalidParams(format!(
                 "project already has a transcript: {} (remove it first)",
                 old.display()
@@ -1014,21 +1245,24 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
         }
     }
     let dest = dir.join("hyperframes/transcript.json");
-    let serialized=serde_json::to_vec_pretty(&doc["words"]).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
+    let serialized = serde_json::to_vec_pretty(&doc["words"])
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     if dest.is_file() && !params["replace"].as_bool().unwrap_or(false) {
-        let old=transcript_document(&dest)?;
-        if old["words"]!=doc["words"] || old["paragraphs"]!=doc["paragraphs"] {
+        let old = transcript_document(&dest)?;
+        if old["words"] != doc["words"] || old["paragraphs"] != doc["paragraphs"] {
             return Err(EngineError::InvalidParams("Transcript differs from existing authored data. Inspect received files; pass replace=true only to replace explicitly.".into()));
         }
     }
-    std::fs::create_dir_all(dest.parent().unwrap())?;
+    std::fs::create_dir_all(dest.parent().ok_or_else(|| {
+        EngineError::InvalidParams("Transcript destination has no parent directory".into())
+    })?)?;
     std::fs::write(&dest, serialized)?;
     let mut copied = vec![dest];
-    if let Some(text)=caption_text {
-        let folder=dir.join(&s.video_target);
+    if let Some(text) = caption_text {
+        let folder = dir.join(&s.video_target);
         std::fs::create_dir_all(&folder)?;
-        let path=folder.join("transcript.srt");
-        std::fs::write(&path,text)?;
+        let path = folder.join("transcript.srt");
+        std::fs::write(&path, text)?;
         copied.push(path);
     }
     if let Some(fcproj) = params
@@ -1046,31 +1280,46 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
         std::fs::copy(&fcproj, &to)?;
         copied.push(to);
     }
-    let mut provenance=json!({"mode":"reused existing transcript; no ASR or transcoding","source":params["original_source"],"captions_source":params["original_captions"],"duration_sec":duration,"duration_source":if probed_duration.is_some(){"authoritative recording probe"}else{"unverified supplied audiomap or unknown"},"duration_warning":duration_warning, "recording_duration_sec":probed_duration,"audiomap_duration_sec":mapped_duration,"provider":"unknown; not recorded by source","model":"unknown; not recorded by source","manual":"~/.agents/skills/media-use/audio/references/transcribe.md","executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"tool":"workshop.import_transcript (native Rust; ASR not called)","grouping":grouping});
+    let mut provenance = json!({"mode":"reused existing transcript; no ASR or transcoding","source":params["original_source"],"captions_source":params["original_captions"],"duration_sec":duration,"duration_source":if probed_duration.is_some(){"authoritative recording probe"}else{"unverified supplied audiomap or unknown"},"duration_warning":duration_warning, "recording_duration_sec":probed_duration,"audiomap_duration_sec":mapped_duration,"provider":"unknown; not recorded by source","model":"unknown; not recorded by source","manual":"~/.agents/skills/media-use/audio/references/transcribe.md","executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"tool":"workshop.import_transcript (native Rust; ASR not called)","grouping":grouping});
     {
         use sha2::Digest;
-        let raw_hash=std::fs::read(&source).ok().map(|bytes|format!("{:x}",sha2::Sha256::digest(bytes)));
-        let prior=std::fs::read(dir.join("transcript-provenance.json")).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok());
-        if let Some(prior)=prior.filter(|v|raw_hash.is_some()&&v["producer"]["transcript_sha256"]==json!(raw_hash)) {
-            provenance["producer"]=prior["producer"].clone();
+        let raw_hash = std::fs::read(&source)
+            .ok()
+            .map(|bytes| format!("{:x}", sha2::Sha256::digest(bytes)));
+        let prior = std::fs::read(dir.join("transcript-provenance.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+        if let Some(prior) = prior
+            .filter(|v| raw_hash.is_some() && v["producer"]["transcript_sha256"] == json!(raw_hash))
+        {
+            provenance["producer"] = prior["producer"].clone();
         }
     }
-    std::fs::write(dir.join("transcript-provenance.json"),serde_json::to_vec_pretty(&provenance).map_err(|e|EngineError::InvalidParams(e.to_string()))?)?;
+    std::fs::write(
+        dir.join("transcript-provenance.json"),
+        serde_json::to_vec_pretty(&provenance)
+            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+    )?;
     let captions = if ensure_video_target_project(s, &dir, &s.video_target).is_ok() {
         crate::video_target::ensure_native_captions(s, &dir)?
-    } else { json!({"ready":false,"reason":"Create the contained HyperFrames project to display these timed lyrics"}) };
+    } else {
+        json!({"ready":false,"reason":"Create the contained HyperFrames project to display these timed lyrics"})
+    };
     let mut status = workshop_status(s)?;
     status["captions"] = captions;
     status["imported"] = json!(copied);
-    status["recording_duration_sec"]=json!(probed_duration);
-    status["duration_warning"]=json!(duration_warning);
+    status["recording_duration_sec"] = json!(probed_duration);
+    status["duration_warning"] = json!(duration_warning);
     Ok(status)
 }
 
 /// Approve or unapprove the workshop draft.
 pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    let approved = params.get("approved").and_then(Value::as_bool).unwrap_or(true);
+    let approved = params
+        .get("approved")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
     if approved && !dir.join(STORYBOARD_DIR).join(STORYBOARD_PDF).is_file() {
         return Err(EngineError::InvalidParams(
             "build the storyboard first (workshop.build_storyboard)".into(),
@@ -1222,7 +1471,9 @@ fn fixlist_next(items: &[Value]) -> Vec<String> {
         ));
     }
     if next.is_empty() {
-        next.push("Nothing open. Assess new or changed assets with assets.assess path=<png>".into());
+        next.push(
+            "Nothing open. Assess new or changed assets with assets.assess path=<png>".into(),
+        );
     }
     next
 }
@@ -1273,10 +1524,16 @@ pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
     let joints: Vec<&str> = match params.get("joints") {
         None | Some(Value::Null) => Vec::new(),
         Some(Value::Array(list)) => list.iter().filter_map(Value::as_str).collect(),
-        Some(_) => return Err(EngineError::InvalidParams("joints is a list of sides: left, right, top, bottom".into())),
+        Some(_) => {
+            return Err(EngineError::InvalidParams(
+                "joints is a list of sides: left, right, top, bottom".into(),
+            ));
+        }
     };
     if let Some(bad) = joints.iter().find(|j| !sides.contains(j)) {
-        return Err(EngineError::InvalidParams(format!("unknown joint side '{bad}' (left, right, top, bottom)")));
+        return Err(EngineError::InvalidParams(format!(
+            "unknown joint side '{bad}' (left, right, top, bottom)"
+        )));
     }
     let mut cuts = measured_cuts;
     for (i, side) in sides.iter().enumerate() {
@@ -1301,7 +1558,9 @@ pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
         ));
     }
     if raggedness > 9.0 {
-        reasons.push(format!("ragged edge ({raggedness:.1} edge px per sqrt(area))"));
+        reasons.push(format!(
+            "ragged edge ({raggedness:.1} edge px per sqrt(area))"
+        ));
     }
     if smear >= 0.02 && smear_aspect >= 3.0 {
         reasons.push(format!(
@@ -1345,7 +1604,9 @@ pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
 /// either. A long edge inside the canvas is never full-bleed evidence.
 fn straight_cuts(img: &image::RgbaImage) -> ([u32; 4], bool) {
     let (w, h) = (i64::from(img.width()), i64::from(img.height()));
-    let solid = |x: i64, y: i64| x >= 0 && y >= 0 && x < w && y < h && img.get_pixel(x as u32, y as u32)[3] > 128;
+    let solid = |x: i64, y: i64| {
+        x >= 0 && y >= 0 && x < w && y < h && img.get_pixel(x as u32, y as u32)[3] > 128
+    };
     let (mut x0, mut y0, mut x1, mut y1) = (w, h, -1, -1);
     for (x, y, p) in img.enumerate_pixels() {
         if p[3] > 128 {
@@ -1359,12 +1620,23 @@ fn straight_cuts(img: &image::RgbaImage) -> ([u32; 4], bool) {
     // Each side as (lines inward from the bounds, outward step, span along the side, is the
     // side vertical). Points are (across, along) and map back to (x, y) through `at`.
     let sides = [
-        ((x0..=(x0 + 3).min(x1)).collect::<Vec<_>>(), -1, (y0, y1), true),
+        (
+            (x0..=(x0 + 3).min(x1)).collect::<Vec<_>>(),
+            -1,
+            (y0, y1),
+            true,
+        ),
         (((x1 - 3).max(x0)..=x1).rev().collect(), 1, (y0, y1), true),
         ((y0..=(y0 + 3).min(y1)).collect(), -1, (x0, x1), false),
         (((y1 - 3).max(y0)..=y1).rev().collect(), 1, (x0, x1), false),
     ];
-    let at = |vertical: bool, across: i64, along: i64| if vertical { (across, along) } else { (along, across) };
+    let at = |vertical: bool, across: i64, along: i64| {
+        if vertical {
+            (across, along)
+        } else {
+            (along, across)
+        }
+    };
     // A full-bleed side has to be the frame itself: on the canvas edge, solid for 90% of it.
     let on_canvas_edge = [x0 == 0, x1 == w - 1, y0 == 0, y1 == h - 1];
     let mut runs = [0u32; 4];
@@ -1394,10 +1666,14 @@ fn straight_cuts(img: &image::RgbaImage) -> ([u32; 4], bool) {
                         } else {
                             // Furthest the outline pulls away within 7 px past an end (None: gone).
                             let away = |end: i64, step: i64| {
-                                (1..=7).map(|k| recede(line, end + step * k).unwrap_or(13)).max().unwrap_or(0)
+                                (1..=7)
+                                    .map(|k| recede(line, end + step * k).unwrap_or(13))
+                                    .max()
+                                    .unwrap_or(0)
                             };
                             let (before, after) = (away(s, -1), away(along - 1, 1));
-                            let pulls_away = (before >= 3 && after >= 2) || (before >= 2 && after >= 3);
+                            let pulls_away =
+                                (before >= 3 && after >= 2) || (before >= 2 && after >= 3);
                             if run > 16 && f64::from(run) > length * 0.02 && pulls_away {
                                 runs[i] = runs[i].max(run);
                             }
@@ -1549,7 +1825,10 @@ pub fn cmd_assets_request_sheet(s: &mut Session, _: &Value) -> Result<Value> {
         ));
     }
     let studio = studio(&dir);
-    let mut brief = format!("# Asset sheet request — {} item(s), ONE pass\n\n", items.len());
+    let mut brief = format!(
+        "# Asset sheet request — {} item(s), ONE pass\n\n",
+        items.len()
+    );
     if let Some(intent) = studio.intent {
         brief.push_str(&format!("Studio intent:\n{intent}\n\n"));
     }
@@ -1561,9 +1840,7 @@ pub fn cmd_assets_request_sheet(s: &mut Session, _: &Value) -> Result<Value> {
             i["asset"].as_str().unwrap_or_default(),
             i["problem"].as_str().unwrap_or("(not given)"),
             i["path"].as_str().unwrap_or("(none)"),
-            i["reference"]
-                .as_str()
-                .unwrap_or("match the current file")
+            i["reference"].as_str().unwrap_or("match the current file")
         ));
     }
     brief.push_str("\nSave the sheet as `assets/asset-sheet-<date>.png` with its exact prompt as `.prompt.md` beside it, then stop and report.\n");
@@ -1581,7 +1858,10 @@ pub fn cmd_assets_request_sheet(s: &mut Session, _: &Value) -> Result<Value> {
 /// One row in the workshop file listing: group, name, path, size, exists, removable.
 fn file_entry(group: &str, path: &Path, removable: bool) -> Value {
     let size = std::fs::metadata(path).map(|m| m.len()).ok();
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
     json!({"group": group, "name": name, "path": path, "size": size, "exists": path.exists(), "removable": removable})
 }
 
@@ -1590,15 +1870,27 @@ fn file_entry(group: &str, path: &Path, removable: bool) -> Value {
 /// Use HyperFrames transcription and music analysis on the selected original recording.
 pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     if s.video_target != "hyperframes" {
-        return Err(EngineError::InvalidParams("Magic Studio uses HyperFrames for song analysis".into()));
+        return Err(EngineError::InvalidParams(
+            "Magic Studio uses HyperFrames for song analysis".into(),
+        ));
     }
-    let audio = params["audio"].as_str().map(|p| resolve_workspace_path(s, p))
-        .or_else(|| s.song_audio.clone()).filter(|p| p.is_file())
-        .ok_or_else(|| EngineError::InvalidParams("no song audio: pass audio=<file> or workshop.set_audio".into()))?;
+    let audio = params["audio"]
+        .as_str()
+        .map(|p| resolve_workspace_path(s, p))
+        .or_else(|| s.song_audio.clone())
+        .filter(|p| p.is_file())
+        .ok_or_else(|| {
+            EngineError::InvalidParams(
+                "no song audio: pass audio=<file> or workshop.set_audio".into(),
+            )
+        })?;
     let dir = project_dir(s)?;
     let hf = dir.join("hyperframes");
-    let runtime = crate::video_target::hyperframes_cli(params["hyperframes_cli"].as_str(), Some(&hf))?;
-    let runtime = runtime.to_str().ok_or_else(|| EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into()))?;
+    let runtime =
+        crate::video_target::hyperframes_cli(params["hyperframes_cli"].as_str(), Some(&hf))?;
+    let runtime = runtime.to_str().ok_or_else(|| {
+        EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
+    })?;
     let overwrite = params["overwrite"].as_bool().unwrap_or(false);
     let model = params["model"].as_str().unwrap_or("large-v3");
     std::fs::create_dir_all(&hf)?;
@@ -1607,31 +1899,91 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let arg = |p: &Path| p.to_string_lossy().into_owned();
     let mut trace = crate::audio_trace::AudioTrace::new(&dir, &audio, params)?;
     let mut ran = Vec::new();
-    if trace.run("transcription", overwrite || !transcript.is_file(), &hf, runtime,
-        &["transcribe".into(), arg(&audio), "-d".into(), arg(&hf), "--json".into(), "--model".into(), model.into()], &[transcript.clone()])?.is_some() {
+    if trace
+        .run(
+            "transcription",
+            overwrite || !transcript.is_file(),
+            &hf,
+            runtime,
+            &[
+                "transcribe".into(),
+                arg(&audio),
+                "-d".into(),
+                arg(&hf),
+                "--json".into(),
+                "--model".into(),
+                model.into(),
+            ],
+            std::slice::from_ref(&transcript),
+        )?
+        .is_some()
+    {
         ran.push("hyperframes transcribe original recording → transcript.json");
     }
-    if trace.run("caption_export", overwrite || !srt.is_file(), &hf, runtime,
-        &["transcribe".into(), arg(&transcript), "--to".into(), "srt".into(), "-o".into(), arg(&srt)], &[srt.clone()])?.is_some() {
+    if trace
+        .run(
+            "caption_export",
+            overwrite || !srt.is_file(),
+            &hf,
+            runtime,
+            &[
+                "transcribe".into(),
+                arg(&transcript),
+                "--to".into(),
+                "srt".into(),
+                "-o".into(),
+                arg(&srt),
+            ],
+            std::slice::from_ref(&srt),
+        )?
+        .is_some()
+    {
         ran.push("hyperframes transcribe --to srt → transcript.srt");
     }
     let words = trace.read_json("read_transcript", &transcript)?;
-    let word_count = words.as_array().or_else(|| words["words"].as_array()).map_or(0, Vec::len);
+    let word_count = words
+        .as_array()
+        .or_else(|| words["words"].as_array())
+        .map_or(0, Vec::len);
     let mut analysis = Value::Null;
     if params["analyze_beats"] != false {
-        let output = trace.run("music_analysis", true, &hf, runtime,
-            &["audio".into(), arg(&audio), "--only".into(), "sections,onsets,moments".into(), "--json".into()], &[])?;
-        analysis = serde_json::from_str(output.as_deref().unwrap_or_default())
-            .map_err(|e| EngineError::InvalidParams(format!("HyperFrames audio returned invalid JSON: {e}")))?;
+        let output = trace.run(
+            "music_analysis",
+            true,
+            &hf,
+            runtime,
+            &[
+                "audio".into(),
+                arg(&audio),
+                "--only".into(),
+                "sections,onsets,moments".into(),
+                "--json".into(),
+            ],
+            &[],
+        )?;
+        analysis = serde_json::from_str(output.as_deref().unwrap_or_default()).map_err(|e| {
+            EngineError::InvalidParams(format!("HyperFrames audio returned invalid JSON: {e}"))
+        })?;
         if analysis["items"].as_array().is_none_or(Vec::is_empty) {
-            return Err(EngineError::InvalidParams(format!("HyperFrames audio returned no recording analysis: {analysis}")));
+            return Err(EngineError::InvalidParams(format!(
+                "HyperFrames audio returned no recording analysis: {analysis}"
+            )));
         }
-        std::fs::write(hf.join("audio-analysis.json"), serde_json::to_vec_pretty(&analysis).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
+        std::fs::write(
+            hf.join("audio-analysis.json"),
+            serde_json::to_vec_pretty(&analysis)
+                .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+        )?;
         ran.push("hyperframes audio → audio-analysis.json");
     }
-    trace.import(s, json!({"path":transcript,"captions":srt,"replace":overwrite}))?;
-    Ok(json!({"ok":true,"target":"hyperframes","ran":ran,"analysis_attempt":trace.data,
+    trace.import(
+        s,
+        json!({"path":transcript,"captions":srt,"replace":overwrite}),
+    )?;
+    Ok(
+        json!({"ok":true,"target":"hyperframes","ran":ran,"analysis_attempt":trace.data,
         "provenance_receipt":dir.join("transcript-provenance.json"),"words":word_count,
         "files":{"audio":audio,"transcript":transcript,"captions":srt},"music_analysis":analysis,
-        "next":["Review the words against the recording, then create scene pages from the selected storyboard template"]}))
+        "next":["Review the words against the recording, then create scene pages from the selected storyboard template"]}),
+    )
 }

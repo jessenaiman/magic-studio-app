@@ -33,7 +33,9 @@ def normalize_element_list(element_list: Any | None) -> list[dict[str, int]]:
         try:
             element_id = int(raw_id)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"element_id must be an integer-compatible value: {raw_id!r}") from exc
+            raise ValueError(
+                f"element_id must be an integer-compatible value: {raw_id!r}"
+            ) from exc
         if element_id <= 0:
             raise ValueError("element_id must be positive")
         normalized.append({"element_id": element_id})
@@ -46,7 +48,9 @@ def element_ids(element_list: Any | None) -> list[int]:
     return [item["element_id"] for item in normalize_element_list(element_list)]
 
 
-def get_custom_element(element_id: int, client: KlingClient | None = None) -> dict[str, Any]:
+def get_custom_element(
+    element_id: int, client: KlingClient | None = None
+) -> dict[str, Any]:
     """Fetch one custom element for validation or diagnostics."""
 
     api = client or KlingClient()
