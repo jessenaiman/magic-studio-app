@@ -487,14 +487,13 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
 /// Current storyboard build state: PDF exists, previews, staleness.
 pub fn cmd_workshop_storyboard(s: &mut Session, _: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    if let Ok(text)=std::fs::read_to_string(dir.join("storyboard/movie-board.json")) {
-        if let Ok(mut board)=serde_json::from_str::<Value>(&text) {
+    if let Ok(text)=std::fs::read_to_string(dir.join("storyboard/movie-board.json"))
+        && let Ok(mut board)=serde_json::from_str::<Value>(&text) {
             if board["design"]["placements"].is_array(){let base=crate::storyboard_design::base(&board);board["previews"]=base["previews"].clone();}
             board["layout"]=json!({"page_size":board["page_size"],"links":board["links"]});
             board["exists"]=json!(true);board["ok"]=json!(true);
             return Ok(board);
         }
-    }
     let pdf = dir.join(STORYBOARD_DIR).join(STORYBOARD_PDF);
     let preview_dir = dir.join(STORYBOARD_DIR).join(".preview");
     let previews = files_in(&preview_dir, Some(&["png"]));
@@ -527,9 +526,9 @@ pub fn cmd_storyboard_init(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     // The editable DeckCraft document is authoritative once created. Reopening never regenerates it.
     let active=dir.join("storyboard/movie-board.json");
-    if let Ok(bytes)=std::fs::read(&active) {
-        if let Ok(board)=serde_json::from_slice::<Value>(&bytes) {
-            if board["deck"].as_str().is_some_and(|p|Path::new(p).is_file()) {
+    if let Ok(bytes)=std::fs::read(&active)
+        && let Ok(board)=serde_json::from_slice::<Value>(&bytes)
+            && board["deck"].as_str().is_some_and(|p|Path::new(p).is_file()) {
                 if board["empty_template"]==true && params["empty"]!=true && !transcript_files(&dir).is_empty() {
                     let design=crate::storyboard_design::inspect(s,&json!({}))?;
                     return cmd_workshop_build_storyboard(s,&json!({"_previous_board":board,"_page_content":design["text_fields"]}));
@@ -537,8 +536,6 @@ pub fn cmd_storyboard_init(s: &mut Session, params: &Value) -> Result<Value> {
                 let mut result=cmd_workshop_storyboard(s,&json!({}))?;
                 result["reused_existing_document"]=json!(true);return Ok(result);
             }
-        }
-    }
     for folder in [STORYBOARD_DIR, ASSETS_DIR, "liner-notes"] {std::fs::create_dir_all(dir.join(folder))?;}
     if params["empty"]==true {
         let selected=cmd_storyboard_template(s,&json!({}))?;
@@ -635,8 +632,8 @@ pub fn cmd_storyboard_read(s: &mut Session, params: &Value) -> Result<Value> {
     let mut result=json!({"target":format!("scene-{n}"),"ok": true, "scene": n, "title": scene_label(n - 1, scene), "kind": scene["kind"], "start": scene["start"], "end": scene["end"],
         "status": scene["status"], "notes": scene["notes"], "reference": scene["reference"], "teaching_reference": scene["teaching_reference"],
         "sections": scene["sections"], "lines": lines, "source": scene_doc_path(&dir, n), "page": first_scene_page(&dir) + n - 1});
-    if let Ok(text)=std::fs::read_to_string(dir.join("storyboard/movie-board.json")) {
-        if let Ok(board)=serde_json::from_str::<Value>(&text) {
+    if let Ok(text)=std::fs::read_to_string(dir.join("storyboard/movie-board.json"))
+        && let Ok(board)=serde_json::from_str::<Value>(&text) {
             let page=board["first_scene_page"].as_u64().unwrap_or(1)+n as u64-1;
             // The board's spans describe the scenes it was built from. After the song's scenes change
             // (new captions), a stale board must not hand its old spans back to the rebuild.
@@ -653,7 +650,6 @@ pub fn cmd_storyboard_read(s: &mut Session, params: &Value) -> Result<Value> {
             result["text_fields"]=json!(design["text_fields"].as_array().map(|xs|xs.iter().filter(|f|f["page"].as_u64()==Some(page)).cloned().collect::<Vec<_>>()).unwrap_or_default());
             result["draft_placements"]=json!(design["placements"].as_array().map(|xs|xs.iter().filter(|p|p["page"].as_u64()==Some(page)).cloned().collect::<Vec<_>>()).unwrap_or_default());
         }
-    }
     Ok(result)
 }
 

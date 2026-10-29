@@ -246,12 +246,11 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         serde_json::from_value(doc.get("assets").cloned().unwrap_or_else(|| json!([])))
             .map_err(|e| EngineError::InvalidParams(format!("invalid project assets: {e}")))?;
     for asset in &mut assets {
-        if let Some(source) = &asset.path {
-            if !source.is_absolute() {
+        if let Some(source) = &asset.path
+            && !source.is_absolute() {
                 let parent = path.parent().ok_or_else(|| EngineError::InvalidParams("Project path has no parent directory".into()))?;
                 asset.path = Some(parent.join(source));
             }
-        }
     }
     let animation_sources = serde_json::from_value(doc.get("animation_sources").filter(|v|!v.is_null()).cloned().unwrap_or_else(||json!({})))
         .map_err(|e|EngineError::InvalidParams(format!("invalid animation sources: {e}")))?;
@@ -757,7 +756,7 @@ pub fn cmd_project_identity(s:&mut Session,p:&Value)->Result<Value>{
  Ok(json!({"ok":true,"project":path,"project_id":path,"identity_kind":"canonical path"}))
 }
 pub(crate) fn claim(s:&Session,path:&Path)->Result<std::sync::Arc<std::fs::File>>{
- if s.project_path.as_deref()==Some(path){if let Some(owner)=&s.project_owner{return Ok(owner.clone());}}
+ if s.project_path.as_deref()==Some(path)&& let Some(owner)=&s.project_owner{return Ok(owner.clone());}
  let file=std::fs::OpenOptions::new().read(true).write(true).open(path)?;
  file.try_lock().map_err(|_|EngineError::InvalidParams(format!("Project is owned by another live writer: {}. Inspect project.catalog and attach to its existing Studio; no competing write performed.",path.display())))?;
  Ok(std::sync::Arc::new(file))

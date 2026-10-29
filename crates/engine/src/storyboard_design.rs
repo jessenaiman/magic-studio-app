@@ -133,11 +133,10 @@ fn writing_area(shape:&Value,shapes:&Value)->Value{
  let role=shape["altText"].as_str().unwrap_or_default();
  let field=role.strip_prefix("user.scene.").or_else(||role.strip_prefix("user."));
  let mut rect=shape["box"].clone();
- if let Some(card)=field.and_then(|f|shapes.as_array()?.iter().find(|s|s["altText"]==format!("layout.card.{f}"))){
-  if let (Some(y),Some(bottom),Some(height))=(rect[1].as_f64(),card["box"][1].as_f64(),card["box"][3].as_f64()){
+ if let Some(card)=field.and_then(|f|shapes.as_array()?.iter().find(|s|s["altText"]==format!("layout.card.{f}")))
+  && let (Some(y),Some(bottom),Some(height))=(rect[1].as_f64(),card["box"][1].as_f64(),card["box"][3].as_f64()){
    rect[3]=json!((bottom+height-18.0-y).max(rect[3].as_f64().unwrap_or(0.0)));
   }
- }
  rect
 }
 
@@ -164,9 +163,8 @@ pub(crate) fn edit_text(s:&mut Session,p:&Value)->Result<Value>{
 
 pub(crate) fn base(board:&Value)->Value{
  if board["design_base"].is_object(){return board["design_base"].clone();}
- if let Some(parent)=board["parent_deck"].as_str(){
-  if let Some(folder)=Path::new(parent).parent(){if let Ok(b)=read(&folder.join("manifest.json")){return b;}}
- }
+ if let Some(parent)=board["parent_deck"].as_str()
+  && let Some(folder)=Path::new(parent).parent()&& let Ok(b)=read(&folder.join("manifest.json")){return b;}
  board.clone()
 }
 

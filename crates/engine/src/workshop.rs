@@ -960,12 +960,11 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
     }
 
     let mut grouping="provided paragraphs";
-    if doc.get("paragraphs").and_then(Value::as_array).is_none() {
-        if let Some(words)=doc["words"].as_array(){
+    if doc.get("paragraphs").and_then(Value::as_array).is_none()
+        && let Some(words)=doc["words"].as_array(){
             doc["paragraphs"]=json!(words.iter().map(|w|json!({"text":w["text"],"start":w["start"],"end":w["end"]})).collect::<Vec<_>>());
             grouping="provisional word fallback; original word timestamps";
         }
-    }
     if caption_text.is_none(){
         let stamp=|v:f64|{let ms=(v*1000.0).round() as u64;format!("{:02}:{:02}:{:02},{:03}",ms/3600000,(ms/60000)%60,(ms/1000)%60,ms%1000)};
         caption_text=doc["paragraphs"].as_array().map(|ps|ps.iter().enumerate().map(|(i,p)|format!("{}\n{} --> {}\n{}\n\n",i+1,stamp(p["start"].as_f64().unwrap_or(0.0)),stamp(p["end"].as_f64().unwrap_or(0.0)),p["text"].as_str().unwrap_or_default())).collect::<String>());
@@ -986,9 +985,8 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
     let probed_duration=probe_output.as_ref().and_then(|r|r.as_ref().ok()).filter(|o|o.status.success()).and_then(|o|std::str::from_utf8(&o.stdout).ok()).and_then(|v|v.trim().parse::<f64>().ok()).filter(|v|v.is_finite()&&*v>=0.0);
     doc["recording_duration_sec"]=json!(probed_duration);
     problems.extend(transcript_problems(&doc).into_iter().filter(|e|e.contains("recording")));
-    if let (Some(recording),Some(mapped))=(probed_duration,mapped_duration){
-        if (recording-mapped).abs()>0.001{problems.push(format!("Audiomap duration {mapped:.6}s disagrees with recording {recording:.6}s. Supply the matching map or omit it; recording duration will not be extended."));}
-    }
+    if let (Some(recording),Some(mapped))=(probed_duration,mapped_duration)
+        && (recording-mapped).abs()>0.001{problems.push(format!("Audiomap duration {mapped:.6}s disagrees with recording {recording:.6}s. Supply the matching map or omit it; recording duration will not be extended."));}
     // The recording is authoritative. A supplied map is explicitly unverified when no probe succeeded.
     let duration=probed_duration.or(mapped_duration);
     let duration_warning=if probed_duration.is_none(){Some("Recording duration is unknown: provide readable matching audio and a working ffprobe. Supplied map duration, if any, is unverified; transcript endpoints are not recording-length evidence.")}else{None};
@@ -1608,11 +1606,11 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let mut trace = crate::audio_trace::AudioTrace::new(&dir, &audio, params)?;
     let mut ran = Vec::new();
     if trace.run("transcription", overwrite || !transcript.is_file(), &hf, runtime,
-        &["transcribe".into(), arg(&audio), "-d".into(), arg(&hf), "--json".into(), "--model".into(), model.into()], &[transcript.clone()])?.is_some() {
+        &["transcribe".into(), arg(&audio), "-d".into(), arg(&hf), "--json".into(), "--model".into(), model.into()], std::slice::from_ref(&transcript))?.is_some() {
         ran.push("hyperframes transcribe original recording → transcript.json");
     }
     if trace.run("caption_export", overwrite || !srt.is_file(), &hf, runtime,
-        &["transcribe".into(), arg(&transcript), "--to".into(), "srt".into(), "-o".into(), arg(&srt)], &[srt.clone()])?.is_some() {
+        &["transcribe".into(), arg(&transcript), "--to".into(), "srt".into(), "-o".into(), arg(&srt)], std::slice::from_ref(&srt))?.is_some() {
         ran.push("hyperframes transcribe --to srt → transcript.srt");
     }
     let words = trace.read_json("read_transcript", &transcript)?;

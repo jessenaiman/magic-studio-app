@@ -78,9 +78,8 @@ pub fn backgrounds(s:&mut Session,_:&Value)->Result<Value>{
         let sheet=plan["sheet"].as_array().into_iter().flatten().map(|record|(record["id"].as_str(),record["file"].as_str()));
         let placed=board["design"]["placements"].as_array().into_iter().flatten().filter(|p|p["page"]==page+1).map(|p|(p["asset"].as_str(),p["path"].as_str()));
         for (id,path) in sheet.chain(placed){
-            if let Some(asset)=s.project_assets.iter().find(|a|Some(a.id.as_str())==id && a.path.as_ref().is_some_and(|p|p.is_file() && p.to_str()==path)){
-                if seen.insert(asset.id.clone()){images.push(json!({"asset_id":asset.id,"name":asset.name,"path":asset.path}));}
-            }
+            if let Some(asset)=s.project_assets.iter().find(|a|Some(a.id.as_str())==id && a.path.as_ref().is_some_and(|p|p.is_file() && p.to_str()==path))
+                && seen.insert(asset.id.clone()){images.push(json!({"asset_id":asset.id,"name":asset.name,"path":asset.path}));}
         }
     }
     Ok(json!({"images":images}))

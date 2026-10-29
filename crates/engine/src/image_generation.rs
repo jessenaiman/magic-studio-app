@@ -266,11 +266,10 @@ fn rig_sheet(s: &Session, p: &Value, has_references: bool) -> Result<Option<(Str
         ids.push(id);
     }
     for part in parts {
-        if let Some(parent) = part.get("parent").filter(|v| !v.is_null()) {
-            if !parent.as_str().is_some_and(|parent| ids.contains(&parent) && parent != part["id"]) {
+        if let Some(parent) = part.get("parent").filter(|v| !v.is_null())
+            && !parent.as_str().is_some_and(|parent| ids.contains(&parent) && parent != part["id"]) {
                 return Err(invalid("A rig part's parent must be another listed part id"));
             }
-        }
         if let Some(pivot) = part.get("pivot").filter(|v| !v.is_null()) {
             let ok = pivot.as_array().is_some_and(|a| a.len() == 2 && a.iter().all(|v| v.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v))));
             if !ok { return Err(invalid("A rig part's pivot is [u, v] inside its bounds, each 0 to 1")); }

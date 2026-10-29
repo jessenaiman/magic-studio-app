@@ -197,7 +197,7 @@ pub fn cmd_skills_import(s:&mut Session,p:&Value)->Result<Value>{
 // JSON is valid YAML frontmatter. Unknown fields remain part of the same task file.
 fn frontmatter(md:&str)->(&str,Option<Value>){
     let plain=md.trim_start_matches('\u{feff}');
-    if let Some(rest)=plain.strip_prefix("---\n") {if let Some(end)=rest.find("\n---\n") {let meta=serde_json::from_str::<Value>(&rest[..end]).ok().filter(Value::is_object);return (&rest[end+5..],meta);}}
+    if let Some(rest)=plain.strip_prefix("---\n")&& let Some(end)=rest.find("\n---\n") {let meta=serde_json::from_str::<Value>(&rest[..end]).ok().filter(Value::is_object);return (&rest[end+5..],meta);}
     (md,None)
 }
 fn parse_task(md:&str)->Value {
@@ -216,7 +216,7 @@ fn validate_task(block:&Value,policy:&Value)->Vec<String>{
     for (key,label) in [("title","title"),("input","Input"),("output","Output"),("check","observable Check")]{if block[key].as_str().unwrap_or("").is_empty(){errors.push(format!("A task needs {label}"));}}
     if block["action"]["ref"].as_str().unwrap_or("").is_empty(){errors.push("A task needs an exact Command, Skill or Source".into());}
     if block["action"]["ref"].as_str().is_some_and(|v|v.chars().count()>2048){errors.push("Action reference exceeds 2048 characters".into());}
-    for (actual,limit,label) in [("word_count","max_words","word"),("step_count","max_steps","step")] {if let Some(max)=policy[limit].as_u64(){if block[actual].as_u64().unwrap_or(0)>max{errors.push(format!("Task exceeds {max} {label} limit; shorten explicitly. Nothing was truncated"));}}}
+    for (actual,limit,label) in [("word_count","max_words","word"),("step_count","max_steps","step")] {if let Some(max)=policy[limit].as_u64()&& block[actual].as_u64().unwrap_or(0)>max{errors.push(format!("Task exceeds {max} {label} limit; shorten explicitly. Nothing was truncated"));}}
     errors
 }
 fn limits(s:&Session)->Result<Value>{let v=read_json(&root(s).join("limits.json"))?;if v["max_words"].is_u64()&&v["max_steps"].is_u64(){Ok(v)}else{Ok(json!({"confirmed":false,"max_words":null,"max_steps":null}))}}

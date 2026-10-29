@@ -567,8 +567,8 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
             let _ = crate::project::write_project_file(s);
             res["theatre_synced"] = json!(true);
         }
-        if p["sync_video"].as_bool().unwrap_or(true) {
-            if let Ok(synced) = crate::video_target::sync_placed_tracks_duration(
+        if p["sync_video"].as_bool().unwrap_or(true)
+            && let Ok(synced) = crate::video_target::sync_placed_tracks_duration(
                 s,
                 &edit.character,
                 &track_id,
@@ -576,7 +576,6 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
             ) {
                 res["video_tracks_synced"] = synced;
             }
-        }
     }
     Ok(res)
 }

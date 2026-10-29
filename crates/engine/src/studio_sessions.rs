@@ -159,8 +159,8 @@ pub fn open_with_options(
     character: Option<&str>,
 ) -> Result<Value, String> {
     let project = project.map(Path::new).map(canonical).transpose()?;
-    if let Some(path) = &project {
-        if let Some(existing) = for_project(path)? {
+    if let Some(path) = &project
+        && let Some(existing) = for_project(path)? {
             let endpoint = existing["endpoint"].as_str().ok_or("Studio endpoint missing")?;
             let socket = Path::new(endpoint.trim_start_matches("unix:"));
             match request(socket, "ui.focus", json!({"_expected_instance":existing["instance"],"_expected_project":path})) {
@@ -169,7 +169,6 @@ pub fn open_with_options(
                 Err(error) => return Err(error),
             }
         }
-    }
     let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR missing")?;
     let dir = PathBuf::from(runtime).join("magicstudio-studio");
     let mut command = std::process::Command::new(executable);

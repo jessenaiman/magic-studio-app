@@ -212,9 +212,8 @@ pub fn cmd_sprocket_use(s:&mut Session,p:&Value)->Result<Value>{
 }
 pub fn cmd_agent_config(s: &mut Session, p: &Value) -> Result<Value> {
     let mut value=match &s.agent_selection{Some(v)=>v.clone(),None=>settings()?};
-    if p.get("selection").is_none() {
-        if let Some(error)=value["selection_error"].as_str(){return Err(invalid(error));}
-    }
+    if p.get("selection").is_none()
+        && let Some(error)=value["selection_error"].as_str(){return Err(invalid(error));}
     if let Some(patch)=p.get("selection") {
         let fields=patch.as_object().ok_or_else(||invalid("Active selection must be an object"))?;
         if fields.keys().any(|k|!matches!(k.as_str(),"agent"|"provider"|"model"|"thinking"|"extra_args")){return Err(invalid("Only active chat selection can be changed; credentials remain untouched"));}
@@ -316,7 +315,7 @@ fn models(dir:&Path)->Result<Vec<Value>> {
 pub fn cmd_sprocket_send(s:&mut Session, params:&Value)->Result<Value>{
     let selection=cmd_agent_config(s,&json!({}))?;
     let mut send=params.clone();
-    if !send.get("free_only").is_some(){send["free_only"]=json!(true);}
+    if send.get("free_only").is_none(){send["free_only"]=json!(true);}
     let mut result=cmd_agent_send(s,&send)?;
     result["sprocket"]=json!({"name":"Sprocket","role":"the app's own in-app agent","selection":selection,"selection_repaired":null,"selection_persisted":null});
     Ok(result)
@@ -363,7 +362,8 @@ fn archive(s:&Session)->Result<()> {
 fn bounded_task_cli() -> Result<std::path::PathBuf> {
     let exe=std::env::current_exe()?;
     let folder=exe.parent().ok_or_else(||invalid("Cannot locate the installed magic CLI"))?;
-    for name in ["magic-cli"] {
+    {
+        let name = "magic-cli";
         let candidate=folder.join(name);
         let candidate=if candidate.is_file(){candidate}else{folder.parent().unwrap_or(folder).join(name)};
         if let Ok(resolved) = fs::canonicalize(&candidate) {

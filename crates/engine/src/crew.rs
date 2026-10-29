@@ -69,9 +69,8 @@ fn validate(doc: &Document, id: &str) -> Result<()> {
     }
     if id=="review" {
         if d.lead.as_deref()!=Some("human") { return Err(invalid("Jesse remains the human lead of the Review Desk")); }
-    } else if let Some(lead)=&d.lead {
-        if !d.candidates.iter().any(|c|&c.id==lead && c.status=="cast") { return Err(invalid("Choose a cast member as department lead")); }
-    }
+    } else if let Some(lead)=&d.lead
+        && !d.candidates.iter().any(|c|&c.id==lead && c.status=="cast") { return Err(invalid("Choose a cast member as department lead")); }
     Ok(())
 }
 fn parse(markdown: &str, id: &str) -> Result<Document> {

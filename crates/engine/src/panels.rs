@@ -120,16 +120,13 @@ impl Config {
     pub fn validate(&self) -> Result<(), String> {
         if self.elements.is_empty() { return Err("no configured elements".into()); }
         for (id, entry) in &self.elements {
-            if let Some(target) = &entry.target {
-                if !self.elements.contains_key(target) || self.elements[target].target.is_some() { return Err(format!("{id}: target must name a canonical component")); }
-            }
-            if let Some(rail) = &entry.rail {
-                if !self.rails.get(rail).is_some_and(Value::is_object) || !self.slots.get(rail).is_some_and(Value::is_object) { return Err(format!("{id}: missing configured rail or slot")); }
-            }
+            if let Some(target) = &entry.target
+                && (!self.elements.contains_key(target) || self.elements[target].target.is_some()) { return Err(format!("{id}: target must name a canonical component")); }
+            if let Some(rail) = &entry.rail
+                && (!self.rails.get(rail).is_some_and(Value::is_object) || !self.slots.get(rail).is_some_and(Value::is_object)) { return Err(format!("{id}: missing configured rail or slot")); }
             if entry.component.trim().is_empty() { return Err(format!("{id}: missing component")); }
-            if let Some(look) = &entry.look {
-                if !self.looks.get(&entry.component).is_some_and(|looks| looks.contains(look)) { return Err(format!("{id}: unknown look {look}")); }
-            }
+            if let Some(look) = &entry.look
+                && !self.looks.get(&entry.component).is_some_and(|looks| looks.contains(look)) { return Err(format!("{id}: unknown look {look}")); }
             if entry.density.as_ref().is_some_and(|d| !self.densities.contains(d)) { return Err(format!("{id}: unknown density")); }
             if entry.indicator.as_ref().is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden")) { return Err(format!("{id}: unknown indicator")); }
         }
@@ -150,15 +147,14 @@ impl Config {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum Reason {
     Unstyled,
     #[serde(other)]
+    #[default]
     Untracked,
 }
 
-impl Default for Reason {
-    fn default() -> Self { Reason::Untracked }
-}
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Unconfigured {

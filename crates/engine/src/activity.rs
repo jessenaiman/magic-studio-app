@@ -122,20 +122,18 @@ fn retain(rows: Vec<Value>) -> Vec<Value> {
         if event["stage"] == "handler_dispatch" && event["request_id"].is_null() {
             continue;
         }
-        if let Some(id) = event["request_id"].as_str() {
-            if let Some(p) = destinations.get(id) {
+        if let Some(id) = event["request_id"].as_str()
+            && let Some(p) = destinations.get(id) {
                 event["project"] = json!(p);
             }
-        }
-        if event["stage"] == "frontend_ack" && event["request_id"].is_null() {
-            if let Some(prior) = assigned.iter().rev().find(|p| {
+        if event["stage"] == "frontend_ack" && event["request_id"].is_null()
+            && let Some(prior) = assigned.iter().rev().find(|p| {
                 p["command"] == event["command"]
                     && project(p) == project(&event)
                     && p["request_id"].is_string()
             }) {
                 event["request_id"] = prior["request_id"].clone();
             }
-        }
         let p = project(&event);
         event["project"] = if p == "unassigned" {
             Value::Null
@@ -219,15 +217,14 @@ pub fn append(mut event: Value) {
         event["sequence"] = json!(sequence);
         event["unix_micros"] = json!(now());
         // Legacy acknowledgements can be associated only when command and project match a retained root.
-        if event["request_id"].is_null() && event["stage"] == "frontend_ack" {
-            if let Some(previous) = rows.iter().rev().find(|v| {
+        if event["request_id"].is_null() && event["stage"] == "frontend_ack"
+            && let Some(previous) = rows.iter().rev().find(|v| {
                 v["command"] == event["command"]
                     && project(v) == project(&event)
                     && v["request_id"].is_string()
             }) {
                 event["request_id"] = previous["request_id"].clone();
             }
-        }
         if let Some(request) = event["request_id"].as_str() {
             let p = project(&event);
             if p != "unassigned" {

@@ -556,14 +556,13 @@ fn graphic_cues(doc: &Value, lib: &Value, times: &std::collections::HashMap<Stri
                 "draw_end":start + duration}));
         }
         if k.is_object() {
-            if let Some(key) = k["overlay"].as_str().filter(|key| *key != "none") {
-                if let Some(overlay) = lib["overlays"].get(key) {
+            if let Some(key) = k["overlay"].as_str().filter(|key| *key != "none")
+                && let Some(overlay) = lib["overlays"].get(key) {
                     let start=(anchor+k["overlay_offset"].as_f64().unwrap_or(0.0)).max(0.0);
                     let duration=k["overlay_duration"].as_f64().unwrap_or(section_end-anchor);
                     cues.push(json!({"id":format!("{}-overlay",anim["animation_id"].as_str().unwrap_or("words")),"kind":"overlay",
                         "animation_id":anim["animation_id"],"name":overlay["name"],"overlay":key,"anchor":anchor,"start":start,"end":start+duration,"word_ids":[]}));
                 }
-            }
         } else {
             for (line_id,design) in anim["design"].as_object().into_iter().flatten() {
                 let line: Vec<_> = words.iter().filter(|w| w["line_id"] == *line_id).collect();

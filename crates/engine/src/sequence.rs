@@ -107,8 +107,8 @@ fn layer_motion(entry: &Value, exit: &Value, duration: f64, canvas: [f64; 2]) ->
         }
         let secs = side.get("duration").and_then(Value::as_f64).unwrap_or(0.6).max(0.01);
         let delay = side.get("delay").and_then(Value::as_f64).unwrap_or(if entering { 0.0 } else { (duration - secs).max(0.0) });
-        let start = if entering { delay } else { delay };
-        let end = if entering { (delay + secs).min(duration) } else { (delay + secs).min(duration) };
+        let start = delay;
+        let end = (delay + secs).min(duration);
         let ease = side.get("ease").and_then(Value::as_str).unwrap_or("smooth");
         for (prop, keys) in side_keys(kind, start, end, canvas, entering) {
             props.entry(prop).or_default().push(term(ease, keys));

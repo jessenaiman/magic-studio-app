@@ -294,11 +294,10 @@ pub fn plan(s: &Session, p: &Value) -> Result<Value> {
     let info = scene_info(&scene)?;
     // tcomposer has no FPS or size qualifier: a requested value must already be the scene's.
     for (key, have) in [("fps", info["fps"].as_f64()), ("width", None), ("height", None)] {
-        if let Some(want) = p.get(key).filter(|v| !v.is_null()) {
-            if key != "fps" || have.is_none_or(|h| want.as_f64().is_none_or(|w| (w - h).abs() > 1e-6)) {
+        if let Some(want) = p.get(key).filter(|v| !v.is_null())
+            && (key != "fps" || have.is_none_or(|h| want.as_f64().is_none_or(|w| (w - h).abs() > 1e-6))) {
                 return Err(invalid(format!("tcomposer cannot override {key}; change the scene's output settings in OpenToonz (scene {key}: {})", have.map_or("unknown".into(), |h| h.to_string()))));
             }
-        }
     }
     let (first, last, step) = resolve_range(&info, p)?;
     let shrink = match p.get("shrink") { None | Some(Value::Null) => info["shrink"].as_u64().filter(|s| *s >= 1).unwrap_or(1),

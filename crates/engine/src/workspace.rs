@@ -55,14 +55,13 @@ fn resolve_artcraft_launcher_cli(name: &str) -> Option<String> {
     let text = std::fs::read_to_string(installed_path).ok()?;
     let parsed: Value = serde_json::from_str(&text).ok()?;
     let app_entry = &parsed["apps"][app];
-    if !is_cli {
-        if let Some(appimage) = app_entry["path"].as_str() {
+    if !is_cli
+        && let Some(appimage) = app_entry["path"].as_str() {
             let p = Path::new(appimage);
             if p.is_file() {
                 return Some(p.to_string_lossy().into_owned());
             }
         }
-    }
     let ver = app_entry["version"].as_str()?;
     let cli_name = format!("{app}-cli");
     let extracted = Path::new(&home)

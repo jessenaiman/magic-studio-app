@@ -232,20 +232,18 @@ fn load_control_bindings(raw: &Value, plan: &Path, parts: &[CutoutRigPart]) -> R
     // only when there is one declared head; never infer it from the filename or position.
     if raw.get("control_bindings").is_none() {
         let mut heads = parts.iter().filter(|part| part.kind == "head");
-        if let Some(head) = heads.next() {
-            if heads.next().is_none() {
+        if let Some(head) = heads.next()
+            && heads.next().is_none() {
                 bindings.face = Some(crate::control_bindings::FaceBinding { part: head.id.clone(), landmarks: None });
             }
-        }
     }
     bindings.validate(&parts.iter().map(|p| p.id.clone()).collect::<Vec<_>>())
         .map_err(EngineError::InvalidParams)?;
-    if let Some(face) = &mut bindings.face {
-        if let Some(path) = &mut face.landmarks {
+    if let Some(face) = &mut bindings.face
+        && let Some(path) = &mut face.landmarks {
             if path.is_relative() { *path = plan.parent().unwrap_or(Path::new(".")).join(&*path); }
             if !path.is_file() { return Err(EngineError::InvalidParams(format!("face landmarks file does not exist: {}", path.display()))); }
         }
-    }
     Ok(bindings)
 }
 

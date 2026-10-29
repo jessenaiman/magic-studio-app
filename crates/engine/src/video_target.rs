@@ -283,8 +283,8 @@ pub fn sync_placed_tracks_media_and_duration(
     for item in existing {
         let item_char = item["character"].as_str().unwrap_or("");
         let item_track = item["track"].as_str().unwrap_or("").trim_start_matches('@');
-        if item_char == character && item_track == clean_track {
-            if let Some(id) = item["id"].as_str() {
+        if item_char == character && item_track == clean_track
+            && let Some(id) = item["id"].as_str() {
                 let mut req = json!({
                     "id": id,
                     "start": item["start"].as_f64().unwrap_or(0.0),
@@ -301,7 +301,6 @@ pub fn sync_placed_tracks_media_and_duration(
                     updated.push(placed["id"].clone());
                 }
             }
-        }
     }
     Ok(json!(updated))
 }

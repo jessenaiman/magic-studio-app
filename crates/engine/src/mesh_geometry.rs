@@ -31,8 +31,8 @@ pub fn load_views(asset: &Asset) -> Vec<(String, image::RgbaImage)> {
             }
         }
     }
-    if views.is_empty() {
-        if let Some(manifest) = &asset.pose_manifest {
+    if views.is_empty()
+        && let Some(manifest) = &asset.pose_manifest {
             for frame in &manifest.frames {
                 if let Ok(img) = image::open(&frame.resolved_path) {
                     let target = asset
@@ -48,15 +48,13 @@ pub fn load_views(asset: &Asset) -> Vec<(String, image::RgbaImage)> {
                 }
             }
         }
-    }
-    if views.is_empty() {
-        if let Ok(img) = image::open(&asset.path) {
+    if views.is_empty()
+        && let Ok(img) = image::open(&asset.path) {
             views.push((
                 "front".into(),
                 crate::commands::decontaminate_sprite_rgba(&img.into_rgba8(), None).0,
             ));
         }
-    }
     views.retain(|(_, image)| image.pixels().any(|pixel| pixel[3] >= 96));
     views
 }
