@@ -120,6 +120,8 @@ fn row(f: &mut Frame, area: Rect, selected: bool, odd: bool, outlined: bool) {
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     app.outlined_controls = area.height >= 46;
+    app.mops_rows.clear();
+    app.mops_actions.clear();
     app.audit_rows.clear();
     app.tabs.clear();
     app.project_rows.clear();
@@ -180,58 +182,31 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ),
         IVORY,
     );
-    let tabs = Layout::horizontal([Constraint::Percentage(20); 5]).split(sections[1]);
-    for (i, label) in [
-        "◉  WORKSHOP  F1",
-        "▰▣  BOOTH  F2",
-        "▥▥  MOPS  F3",
-        "✂  MAYHEM  F4",
-        "⚙  SETTINGS  F5",
-    ]
-    .iter()
-    .enumerate()
+    let tab_area = if app.view == View::Mops {
+        Rect::new(
+            sections[1].x,
+            sections[1].y,
+            sections[1].width * 62 / 100,
+            sections[1].height,
+        )
+    } else {
+        sections[1]
+    };
+    navigation_tabs(f, app, tab_area);
+    if app.view == View::Mops {
+        crate::mops::draw(
+            f,
+            Rect::new(
+                0,
+                sections[3].y,
+                area.width,
+                sections[3].height + sections[4].height,
+            ),
+            app,
+        );
+    } else if app.view == View::Mayhem
+        && (app.audit_inputs.is_some() || app.audit_pr_context.is_some())
     {
-        let view = match i {
-            0 => Some(View::Workshop),
-            3 => Some(View::Mayhem),
-            4 => Some(View::Settings),
-            _ => None,
-        };
-        if let Some(view) = view {
-            app.tabs.push((tabs[i], view));
-        }
-        let active = view == Some(app.view);
-        f.render_widget(
-            Block::bordered()
-                .border_style(Style::default().fg(CORAL))
-                .style(Style::default().bg(BG)),
-            tabs[i],
-        );
-        let inside = Rect::new(
-            tabs[i].x + 1,
-            tabs[i].y + 1,
-            tabs[i].width.saturating_sub(2),
-            1,
-        );
-        f.render_widget(
-            Paragraph::new(*label)
-                .alignment(ratatui::layout::Alignment::Center)
-                .style(
-                    Style::default()
-                        .fg(if active {
-                            BG
-                        } else if view.is_none() {
-                            MUTED
-                        } else {
-                            IVORY
-                        })
-                        .bg(if active { GOLD } else { BG })
-                        .add_modifier(Modifier::BOLD),
-                ),
-            inside,
-        );
-    }
-    if app.view == View::Mayhem && app.audit_inputs.is_some() {
         crate::mayhem::draw_audit(
             f,
             Rect::new(
@@ -268,12 +243,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             .border_style(Style::default().fg(CORAL)),
         foot,
     );
-    text(
-        f,
-        Rect::new(1, foot.y + 1, area.width.saturating_sub(2), 1),
-        "CAST : Unavailable".to_string(),
-        GOLD,
-    );
+    if app.view == View::Mops {
+        mops_source_summary(f, app, foot, tab_area, area.width);
+    } else {
+        text(
+            f,
+            Rect::new(1, foot.y + 1, area.width.saturating_sub(2), 1),
+            "CAST : Unavailable",
+            GOLD,
+        );
+    }
     let help = if app.view == View::Mayhem
         && app.audit_inputs.is_some()
         && app.audit_error.is_none()
@@ -287,15 +266,109 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     } else {
         "Notice available • d details"
     };
-    text(
-        f,
-        Rect::new(40, foot.y + 1, area.width.saturating_sub(41), 1),
-        help,
-        MUTED,
-    );
+    if app.view != View::Mops {
+        text(
+            f,
+            Rect::new(40, foot.y + 1, area.width.saturating_sub(41), 1),
+            help,
+            MUTED,
+        );
+    }
     if app.details {
         details(f, app, area);
     }
+}
+fn mops_source_summary(f: &mut Frame, app: &App, foot: Rect, tab_area: Rect, width: u16) {
+    let source = app
+        .mops
+        .source
+        .split(" • ")
+        .next()
+        .unwrap_or("Unknown source");
+    text(
+        f,
+        Rect::new(1, foot.y + 1, width.saturating_sub(2), 1),
+        format!(
+            "{} | retrieved {} | R explicit reread; snapshots do not fetch GitHub",
+            source, app.mops.retrieved
+        ),
+        CYAN,
+    );
+    let x = tab_area.right() + 2;
+    let counts = format!(
+        "{} TASKS | {} NEED DECISION | {} BLOCKED",
+        if app.mops.complete {
+            app.mops.tasks.len().to_string()
+        } else {
+            "Unknown".into()
+        },
+        app.mops
+            .decisions()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "Unknown".into()),
+        app.mops
+            .blocked()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "Unknown".into())
+    );
+    text(
+        f,
+        Rect::new(x, tab_area.y + 1, width.saturating_sub(x), 1),
+        counts,
+        GOLD,
+    );
+}
+fn navigation_tabs(f: &mut Frame, app: &mut App, tab_area: Rect) {
+    let tabs = Layout::horizontal([Constraint::Percentage(20); 5]).split(tab_area);
+    for (i, label) in [
+        "◉  WORKSHOP  F1",
+        "▰▣  BOOTH  F2",
+        "▥▥  MOPS  F3",
+        "✂  MAYHEM  F4",
+        "⚙  SETTINGS  F5",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let view = match i {
+            0 => Some(View::Workshop),
+            2 => Some(View::Mops),
+            3 => Some(View::Mayhem),
+            4 => Some(View::Settings),
+            _ => None,
+        };
+        navigation_tab(f, app, tabs[i], label, view);
+    }
+}
+fn navigation_tab(f: &mut Frame, app: &mut App, area: Rect, label: &str, view: Option<View>) {
+    if let Some(view) = view {
+        app.tabs.push((area, view));
+    }
+    let active = view == Some(app.view);
+    f.render_widget(
+        Block::bordered()
+            .border_style(Style::default().fg(CORAL))
+            .style(Style::default().bg(BG)),
+        area,
+    );
+    let inside = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), 1);
+    f.render_widget(
+        Paragraph::new(label)
+            .alignment(ratatui::layout::Alignment::Center)
+            .style(
+                Style::default()
+                    .fg(if active {
+                        BG
+                    } else if view.is_none() {
+                        MUTED
+                    } else {
+                        IVORY
+                    })
+                    .bg(if active { GOLD } else { BG })
+                    .add_modifier(Modifier::BOLD),
+            ),
+        inside,
+    );
 }
 fn audit(f: &mut Frame, app: &mut App, area: Rect) {
     let inner = panel(f, area, "CONFIGURATION AUDIT");
@@ -598,6 +671,7 @@ fn workshop_shell(f: &mut Frame, app: &mut App, area: Rect) {
         };
         let view = match i {
             0 => Some(View::Workshop),
+            2 => Some(View::Mops),
             3 => Some(View::Mayhem),
             4 => Some(View::Settings),
             _ => None,
@@ -666,6 +740,10 @@ fn workshop_shell(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 fn project_details(f: &mut Frame, app: &App, area: Rect) {
+    if app.view == View::Mops {
+        mops_details(f, app, area);
+        return;
+    }
     if app.view == View::Mayhem && app.audit_inputs.is_some() {
         audit_details(f, app, area);
         return;
@@ -794,6 +872,50 @@ fn audit_details(f: &mut Frame, app: &App, area: Rect) {
             app.message
         )
     };
+    scrollable_details(f, inner, &content, app.detail_scroll);
+}
+
+fn mops_details(f: &mut Frame, app: &App, area: Rect) {
+    let modal = Rect::new(
+        3,
+        3,
+        area.width.saturating_sub(6),
+        area.height.saturating_sub(6),
+    );
+    f.render_widget(Clear, modal);
+    let inner = panel(
+        f,
+        modal,
+        "PR HANDOFF DETAILS • PgUp/PgDn scroll • d/Esc close",
+    );
+    let content=app.mops.tasks.get(app.mops_selected).map(|task|format!("PR #{} {}\n{}\nAuthor: {}\nHead SHA: {}\nBase SHA: {}\n{}\nCI (not review approval): {}\n{}\n\nImplementation role: {}\nHarness: {}\nSession: {}\nWorktree: {}\nRole: {}\nResume command (copy only; never executes): {}\nAuthor verified: {}\nNext action: {}\nBlocker: {}\n\nWarnings:\n{}\n\nNative PR body:\n{}\n\nReview feedback:\n{}",task.pr_number,task.name.as_deref().unwrap_or("Unknown"),task.pr_url,task.author.as_deref().unwrap_or("Unknown"),task.head_sha.as_deref().unwrap_or("Unknown"),task.base_sha.as_deref().unwrap_or("Unknown"),task.source,task.ci,task.review_note,task.implementation_role.as_deref().unwrap_or("Unknown"),task.harness.as_deref().unwrap_or("Unknown"),task.session_id.as_deref().unwrap_or("Unknown"),task.worktree.as_deref().unwrap_or("Unknown"),task.role_path.as_deref().unwrap_or("Unknown"),task.resume_command.as_deref().unwrap_or("Unknown"),task.verified_resume,task.next_action.as_deref().unwrap_or("Unknown"),task.blocker.as_deref().unwrap_or("Unknown"),task.warnings.join("\n"),task.body,task.feedback.join("\n\n"))).unwrap_or_else(||"No PR metadata read".into());
+    let state = app
+        .mops
+        .tasks
+        .get(app.mops_selected)
+        .map(|task| {
+            format!(
+                "Native PR state: {} • merged: {}",
+                task.state.as_deref().unwrap_or("Unknown"),
+                task.merged
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "Unknown".into())
+            )
+        })
+        .unwrap_or_default();
+    let content = format!("{}\n{}", state, content);
+    let content = format!(
+        "{}\nRetrieved: {}\n{}\n\n{}\n\n{}",
+        app.mops.source,
+        app.mops.retrieved,
+        app.mops.error.as_deref().unwrap_or(""),
+        content,
+        app.message
+    );
+    scrollable_details(f, inner, &content, app.detail_scroll);
+}
+
+fn scrollable_details(f: &mut Frame, area: Rect, content: &str, scroll: u16) {
     let content = content
         .chars()
         .map(|c| {
@@ -808,7 +930,7 @@ fn audit_details(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(content)
             .style(Style::default().fg(IVORY))
             .wrap(Wrap { trim: false })
-            .scroll((app.detail_scroll, 0)),
-        inner,
+            .scroll((scroll, 0)),
+        area,
     );
 }
