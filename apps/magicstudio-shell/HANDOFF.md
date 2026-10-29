@@ -33,7 +33,7 @@ Coordinate overlapping files before editing; this historical handoff assigns no 
 11. Process: `~/.agents/skills/brainstorming/SKILL.md` before each new feature (describe the design,
     then build it live), and `~/.agents/skills/systematic-debugging/SKILL.md` for bugs.
 
-## The user's rules (non-negotiable)
+## Historical implementation notes
 
 - **Animation happens in Magic Studio's Animation view, never in HyperFrames or Remotion.** Video targets
   (HyperFrames/Remotion/FilmCraft) only assemble the final video.
@@ -42,15 +42,11 @@ Coordinate overlapping files before editing; this historical handoff assigns no 
 - Generic, never character-specific code. Creative choices (style, audience, artist) live in `intent.md` /
   `STUDIO.md`, not in code.
 - Projects are self-contained: outputs go inside the song folder (never `/tmp`, `.codex`, `~/Documents`).
-- Rig and Matting become automated CLI chains, not manual slider screens. In the shell they appear as
-  steps: run, green/red light, result picture.
 - Upgrade a dependency you touch to its latest **stable** release (never alpha or beta: e.g. Tauri stays on
   2.x while 3.0 is in alpha) and note the version change in the commit. Don't start unrelated upgrade sweeps.
 - Commit at every pause, with messages that read as a memory trace. Never push merriweather to upstream.
 - Delete only your own files, by exact path. Use `gio trash` and `xdg-open`.
 - Don't start the studio server unless it's needed (it's the red/green switch in the top bar).
-- UI: focused, tasteful, icons over words (words go in tooltips). The user wants to spend their time designing with
-  the agent, on timing and polish. Keep setup out of their way.
 - Never touch other people's servers (ports 3002 and 3021–3023).
 - Claude's memory notes with more context: `~/.claude/projects/-home-jesse-Work-omhas-animation/memory/*.md`.
 
@@ -108,8 +104,7 @@ Coordinate overlapping files before editing; this historical handoff assigns no 
   handoff does not establish today's installed command, authorization, reload or restart state.
   Coordinate with the inner agent through the session API, not its composer.
 - Design proposal and all 76 review acceptance criteria: `.agents/skills/magicstudio-shell-ui/research.md`.
-  User requires the animation inspector on the left and useful artwork after import. Full Animation
-  frame approved on 2026-10-21; implementation is in progress. Permanent app knowledge is `apps/magicstudio-shell/agent.md`; keep
+  Permanent app knowledge is `apps/magicstudio-shell/agent.md`; keep
   earlier-app/migration instructions here and in coordinator messages, never in that permanent file.
 
 - A project with no storyboard shows a broken image. It needs an empty state with the next step.
@@ -194,9 +189,7 @@ a manual screen, or part of the rig/matting CLI chain? Don't decide it yourself.
 
 ## The agent inside, and cua-style integration (core product, not a side panel)
 
-The user wants to spend their time designing with an agent: timing, matching song and visuals, polish.
-The agent drawer is where that happens. Every feature must work for the agent too, and whatever the agent
-does must be visible to the user.
+Agent actions must be visible to the user.
 
 - **Cua-style, from the inside.** Cua Driver (github.com/trycua/cua) gives agents background computer use
   over MCP without taking the user's mouse. The shell owns its UI, so `--control` already does this natively:
@@ -214,12 +207,12 @@ does must be visible to the user.
 
 ## Current next slice
 
-Animation layout approved. Shell has the bee stage, engine track playback/scrub and layer visibility.
+Shell has the bee stage, engine track playback/scrub and layer visibility.
 Pen path + grid + start/end scale and colored sliders are live in `8dbf449`.
 Inner validator checked endpoints, scale/exporter parity and byte-exact undo on a copy.
 Visual evidence: Bumble Bee `.agent/looks/look-1792566893867.png`. Reference app 19898 closed after comparison. Remaining controls are not implied complete by section headings. Keep the user's
-drawn path, slider values and composer draft across any restart. User now prioritizes 2D; defer 3D
-techniques. The in-app agent validates operations and CLI configuration; coordinator owns UI changes.
+drawn path, slider values and composer draft across any restart. The in-app agent validates operations
+and CLI configuration; coordinator owns UI changes.
 
 ## Nelly import and native layout checkpoint (2026-10-21)
 
@@ -227,7 +220,7 @@ techniques. The in-app agent validates operations and CLI configuration; coordin
   Imported the existing full HyperFrames composition with dereferenced local media from
   `merriweather-videos/projects/kathy-cd-track-01/hyperframes`; server is managed on 3058.
   The registered front reference image is connected and visible in Animation (one image, not yet an articulated rig).
-- User removed Split as a top-level concept: Project / Animation / Studio. Linux Studio now uses a GTK
+- Top-level views: Project / Animation / Studio. Linux Studio now uses a GTK
   overlay allocation under the bar, beside the docked agent, instead of vertically stacked webviews.
   `ui.look` composites both native webviews so agents see Studio too.
 - Inner validator found the raw transcript is not the approved wording and an alternative transcription
@@ -255,8 +248,7 @@ Source CLI preparation audit remains work to do; no new Nelly segmentation or ar
 
 ## Visual movie document and new chat
 
-User rejected the form-packet template and asked for the prior Backlot movie design. Built and
-visually inspected an editable DeckCraft landscape document (38 slides: 3 contents + 35 scenes),
+Built and visually inspected an editable DeckCraft landscape document (38 slides: 3 contents + 35 scenes),
 with existing revision-03 reference art, approved transcript lyrics and script enhancement cues.
 `workshop.build_storyboard template=magic-studio source=<OpenMontage folder>` reproduces it through
 `pipeline/movie_board.py`. `.storyboard/movie-board.json` is actually `storyboard/movie-board.json`
@@ -279,8 +271,7 @@ through shared CLI/MCP commands; this flow is NOT yet implemented.
 
 ## Recovered friend cast (2026-10-21)
 
-User wants ONE character at a time, starting with a harder friend, not Nelly. Found mouse, bear,
-fox in `merriweather-videos/projects/kathy-cd-track-01/revision-03/opening/remotion/`:
+Found mouse, bear, fox in `merriweather-videos/projects/kathy-cd-track-01/revision-03/opening/remotion/`:
 - `public/corrections/friends-ready-v2.png`: viewed actual group reference (holding hands).
 - `src/puppet-assets.json`: nine part entries for each mouse/bear/fox, all referenced files exist
   under `public/full/puppets/<name>/`, with source provenance and joint/end coordinates.

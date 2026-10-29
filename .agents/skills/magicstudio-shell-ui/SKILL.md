@@ -15,8 +15,6 @@ token before you add a color.
 Read [research.md](research.md): official tool references, the proposed Animation frame, the ordered
 agent integration work and the 76-finding prevention ledger. Distinguish proposals from approved
 requirements. Present a new screen's layout and behavior and wait for user approval before building.
-The Animation layout was approved on 2026-10-21. The user has specified controls on the **left** and a
-useful main canvas immediately after import. Progressive disclosure preserves features, not removes them.
 
 The app's permanent agent instructions are `apps/magicstudio-shell/agent.md`. Keep that document
 focused on the current app's design, technical ownership, tools and verification.
@@ -143,8 +141,7 @@ retain input across refreshes. Jobs report progress/cancellation without blockin
 The engine owns the Rust motion evaluator; no additional evaluator.
 Compare samples to `pipeline/layered_motion.py`, the export truth. JS only draws engine samples.
 Pose controls are capability-driven, with units/limits and an explicit distinction between audition
-and writing keys. Unknown measurements stay unknown. Rig/matting remain CLI chains; ask the user
-about the ❓ intake, pose-sheet and 3D items instead of choosing their UI form.
+and writing keys. Unknown measurements stay unknown.
 
 When a workflow requires scripts or repeated tool calls, make its reusable capability a typed engine/
 CLI/MCP command, verify it, document a one-line example and use it from the UI. Keep commands generic.
@@ -168,21 +165,19 @@ and verify state and undo. Check stale-context behavior, failed sends, typing du
 in-progress question answers. Do not claim the six-step agent contract is implemented merely because
 MCP connects. With an open project, `ui.look` defaults to `<project>/.agent/looks/`; open the actual PNG.
 
-## Approved visual refinement (2026-10-21)
+## Visual refinement (2026-10-21)
 
-The user likes the shell overall and explicitly asks to retain the useful colored-slider/section
-separation concept. Keep layout and density; refine rather than redesign. Teal remains the primary
-action accent. Inspector categories may use motion blue `--motion-blue` (#70c4ff), pose purple
+Teal remains the primary action accent. Inspector categories may use motion blue `--motion-blue`
+(#70c4ff), pose purple
 `--pose-purple` (#c3a4ff), path/depth gold `--depth-gold` (#f0be70), check green `--check-green`
 (#80da9a), and neutral layers. Pair color with names and SVG icons; it never substitutes for status.
 Use a faint border tint, a colored small icon/title, a quiet value badge with units and an outlined
 slider handle. Avoid large colored panels. Sliders replace spinners and keep keyboard/touch control.
-This user-approved category coding supersedes the earlier restriction to one heading color.
 Craft processing runs headlessly by default; show previews/results inside this app.
 
 ## Native Studio and project transitions
 
-User removed the Split tab: top-level views are Project, Animation, Studio. Studio fills the content
+Top-level views are Project, Animation, Studio. Studio fills the content
 area below the 48px bar; an open drawer moves Studio below its measured height. On Linux use the shared GTK
 allocation, not vertically packed webviews. `ui.look` must include Studio's native webview as well as
 the shell, otherwise an agent sees a blank canvas while the user sees Studio. Verify with the drawer

@@ -8,9 +8,9 @@
 
 **Tech Stack:** Vanilla JS shell UI (node:vm tests in `apps/magicstudio-shell/tests/*.mjs`), Rust workspace (`magicstudio-engine`, `mc` with ratatui), Tauri shell bridge.
 
-**Spec:** this document (the design was agreed in chat with Jesse on 2026-10-23).
+**Spec:** this document.
 
-## Definition of done (Jesse returns to real work when all are true)
+## Definition of done
 
 1. `components.json` is the one config file; `mc panels` and the TUI read it **directly from disk** (no Studio needed) and list every element with its component and look.
 2. A running Studio adds only live state per element: `signal` (0-3) and `busy`. `open` and `dirty` are **dropped** from the record until something needs them; if an element should start collapsed or hidden, that becomes a field in its config entry, not JS logic.
@@ -19,8 +19,6 @@
 5. TUI colours come from one theme read from `style.css` `:root`.
 6. Statler's Words panel is on main, on the contract.
 7. The app builds and the coordinator has screenshotted Project, Animation and Design views from a fresh build.
-
-Out of scope until then: new features, the probe rig, OpenDesign.
 
 ## Agent brief (read this first, every session)
 
@@ -58,7 +56,7 @@ The design is locked by a ratchet, not by a big-bang rewrite. Any commit that to
 - Every count in `tests/ui-lint.mjs` is tracked **per file** in `ui-lint.baseline.json`. A commit may never raise a file's count, and a commit that edits a file with a non-zero count must lower at least one of that file's counts (`--write-baseline` records the new floor in the same commit).
 - Converting means using the contract, not inventing: the element gets an entry in `components.json` with a `look` from the fixed list, sizes come from the scale tokens, colours from palette tokens, lights from `dot(state)`, data geometry from custom properties. No inline styling.
 - Code that builds UI goes through `el()` with a `box`/`id` so it registers; `mc panels --check` must stay at 0 unconfigured for any view you touched.
-- **When a component comes out generic, give it a new look** (Jesse's rule): add a named look to that component's list in `components.json` and its token set inside the component's one rule in `style.css`, reusing `:root` tokens. No need to stop and ask for that. Never accept a plain default and never write a one-off class.
+- Component looks are named in `components.json`, with their token sets inside the component's one rule in `style.css`, reusing `:root` tokens.
 - A new **component**, **token** or **state** still goes through the coordinator, so it is added once, for everyone.
 
 ## Who does what
@@ -101,7 +99,7 @@ Companion plan: `docs/superpowers/plans/2026-10-23-magic-studio-wiring-refactor.
 - `dot(state, variant?)` takes the box **state string** (idle / working / ready / needs-attention / failed) and derives the signal from `SIGNAL`; callers never pass numbers or class names.
 - `register(id, opts)` **extends** the existing signature (`project`, `context`, `priority`, `title` stay); `label`, `look`, `density` are added (no `on` handlers).
 - "Configured" = the element or an ancestor carries `data-box-id` (set by `el()` in `app.js`) for an id the registry knows.
-- Live state is only `signal` and `busy` (work in flight). `open`/`dirty` are dropped (see Definition of done). Default set chosen in chat; Jesse may change it. Adding a flag later = one field in JS + one field in `Panel`.
+- Live state is only `signal` and `busy` (work in flight). `open`/`dirty` are dropped (see Definition of done). Adding a flag later = one field in JS + one field in `Panel`.
 - `revision` increments only when an item's flags or the unconfigured list actually change. The 1 s feedback heartbeat must NOT bump it.
 - `items` and `unconfigured` are each capped at 64.
 - `reason` is one of: `untracked` (no entry in `components.json` for it or an ancestor), `unstyled` (a visual inline style on it). Look validity is checked at commit time against `components.json`, not at runtime. The TUI and `mc panels` show a count per reason; this is the map of random, untracked and unstyled UI.

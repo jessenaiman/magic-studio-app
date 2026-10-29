@@ -38,12 +38,10 @@ not as a substitute for missing product commands. Avoid global mouse/focus autom
 - Sproket chat and Gaffer artwork open from the top bar through one shared drawer controller.
   Opening either hides the other without rebuilding its contents. The creative surface stays full
   width; the native Studio moves below an open drawer. Part artwork belongs in the left Animation
-  inspector. Do not restore the right workstation, float controls or resize bars.
+  inspector.
 - Reuse `ui/style.css` tokens and existing components. Calm surfaces, teal primary actions, restrained functional section accents, system sans.
 - Secondary actions are SVG icons with matching tooltips and accessible names. One primary action
   per place. Preserve readable names, numeric values, field labels and timecodes.
-- The user requires animation controls on the left and a useful main stage after import. Timing
-  below the stage was approved on 2026-10-21. Collaborative agent access is core product.
 - Import should select and show the artwork, fit it in view and expose only supported controls.
   Missing rig data gets an inline preparation step; it must not produce a contradictory empty stage.
 - Empty states show one short explanation and one useful next action. Errors on load stay with the

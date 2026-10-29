@@ -6,7 +6,7 @@
 - **Worktree**: `/run/media/jesse/Speedy/Work/omhas-animation`
 - **Base commit**: `5775e1e2c524fd4a988101c1343217c42df9a42f`
 - **Implementation commits**: `0c0795d7f9a64e62c9876fc1faa47f33c836a5e8` .. `HEAD`
-- **PR URL**: No PR exists yet — committed directly on canonical `main` per Jesse's instruction (*"I want you to begin by implementing magic and when you visually can confirm the new magic mcp and cli works you delegate the deletion to Bunzen"*).
+- **PR URL**: No PR existed at this checkpoint; changes were committed directly on `main`.
 
 ## 1. What Was Implemented & Verified
 
@@ -36,9 +36,8 @@
 ## 3. Scope Decision for Bunzen (Answered)
 
 - **Backstage / `apps/mc` TUI (`center`, `tui`, `workshop` TUI)**:
-  - Jesse explicitly stated in the initial task scope: *"Backstage is outside this review."* and *"1. I want you to begin by implementing magic and when you visually can confirm the new magic mcp and cli works you delegate the deletion to Bunzen 2. I think that's all the live preview and manipulation I really need. All ui should be driven with /cli-anything"*.
   - Furthermore, `magic run` and `magic doctor` are now present on `magic` (`agent-harness/cli_anything/magic/magic_cli.py`).
-  - Therefore: **Do NOT preserve or migrate the old Ratatui `center`/`tui` from `apps/mc` — delete `apps/mc` completely along with its TUI modules.**
+  - The old Ratatui `center`/`tui` modules in `apps/mc` were scheduled for deletion in this handoff.
 
 ## 4. Bunzen's Bounded Task
 
