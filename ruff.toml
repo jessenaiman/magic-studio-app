@@ -1,5 +1,6 @@
 # Preserve the native Ruff rule selection used by the current Codacy audit.
 line-length = 88
+force-exclude = true
 extend-exclude = [
   "**/vendor/**", "**/third_party/**", "**/third-party/**",
   "**/generated/**", "**/node_modules/**", "**/.runtime/**",
