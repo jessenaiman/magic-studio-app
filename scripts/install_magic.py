@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Install this built Magic Studio checkout's GUI/CLI and desktop entry locally.
 
-Prepare dependencies with: uv pip install --python .venv/bin/python -e agent-harness
+Runtime dependencies are installed from agent-harness into an application-owned environment.
 Build with: cargo build -p magicstudio-shell
 This installs Magic only; it never installs or configures other Craft apps.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
 from pathlib import Path
 import shutil
+import subprocess
 
 
 def migrate_legacy(root: Path, prefix: Path) -> None:
@@ -77,9 +79,41 @@ def main():
     root = Path(__file__).resolve().parent.parent
     build = root / 'target' / args.profile
     shell = build / 'magicstudio-shell'
-    python = args.python.expanduser().absolute() if args.python else root / '.venv/bin/python'
-    if not shell.is_file() or not python.is_file():
-        parser.error('Build the native shell and prepare the project virtual environment first')
+    python = args.python.expanduser().absolute() if args.python else args.prefix / 'share/magic-studio/.venv/bin/python'
+    if not shell.is_file():
+        parser.error('Build the native shell first')
+    if not python.is_file():
+        if args.python:
+            parser.error('The explicitly selected Python environment does not exist')
+        subprocess.run(['uv', 'venv', str(python.parent.parent)], check=True)
+    # Ship the CLI as an ordinary installed package, never an editable source link.
+    subprocess.run(["uv", "pip", "install", "--python", str(python),
+                    str(root / "agent-harness")], check=True)
+    # Only tracked runtime resources are included; never projects, Git objects or build caches.
+    runtime = args.prefix / "share/magic-studio/runtime"
+    runtime.mkdir(parents=True, exist_ok=True)
+    prefixes = ("pipeline/", "lib/", "schemas/", "automation/", "crew/", "backlot/",
+                "tools/", ".agents/skills/")
+    root_files = {"studio_pipeline_cli.py", "config.yaml", "SOURCE-ATTRIBUTION.md", "LICENSE"}
+    tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")
+    for name in tracked:
+        if not name or not (name.startswith(prefixes) or name in root_files):
+            continue
+        relative = Path(name)
+        if "tests" in relative.parts or relative.name.startswith("test_"):
+            continue
+        source = root / name
+        if not source.is_file() or source.is_symlink():
+            continue
+        target = runtime / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    dirty = subprocess.check_output(["git", "diff", "--name-only", "HEAD"], cwd=root, text=True).splitlines()
+    (runtime / "installation.json").write_text(json.dumps({
+        "source_revision": revision, "modified_source_files": dirty,
+        "native_sha256": hashlib.sha256(shell.read_bytes()).hexdigest(),
+    }, indent=2))
     destination = args.prefix / 'share/magic-studio/bin'
     destination.mkdir(parents=True, exist_ok=True)
     # Replace the directory entry, not the running executable's inode.
@@ -108,7 +142,7 @@ def main():
     icon.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(root / 'apps/magicstudio-shell/icons/icon.png', icon)
     template = (root / 'apps/magicstudio-shell/magic.desktop').read_text()
-    desktop.write_text(template.replace('Exec=magic %f', f'Exec="{args.prefix / "bin/magic"}" %f'))
+    desktop.write_text(template.replace('Name=Magic Studio', 'Name=Magic ✨').replace('Exec=magic %f', f'Exec="{args.prefix / "bin/magic"}" %f'))
     if args.migrate_legacy:
         migrate_legacy(root, args.prefix)
     print(f'Installed Magic GUI, CLI and desktop entry under {args.prefix}')
