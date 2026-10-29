@@ -134,8 +134,10 @@ pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> f64 {
 /// The official caption component bound to timed words (`{text,start,end}`) shown in the given index groups.
 pub(crate) fn write_caption_source(dest:&Path,words:&[Value],groups:&[[usize;2]],duration:f64)->Result<()>{
     let text=serde_json::to_string(words).map_err(|e|EngineError::InvalidParams(e.to_string()))?.replace('<',"\\u003c");
-    let html=include_str!("../../../pipeline/templates/hyperframes-captions.html").replace("__AC_WORDS__",&text).replace("__AC_GROUPS__",&serde_json::to_string(groups).unwrap()).replace("__AC_DURATION__",&duration.to_string());
-    std::fs::create_dir_all(dest.parent().unwrap())?;std::fs::write(dest,html)?;Ok(())
+    let groups=serde_json::to_string(groups).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
+    let html=include_str!("../../../pipeline/templates/hyperframes-captions.html").replace("__AC_WORDS__",&text).replace("__AC_GROUPS__",&groups).replace("__AC_DURATION__",&duration.to_string());
+    let parent=dest.parent().ok_or_else(||EngineError::InvalidParams(format!("Caption destination has no parent: {}",dest.display())))?;
+    std::fs::create_dir_all(parent)?;std::fs::write(dest,html)?;Ok(())
 }
 
 /// Deterministic binding of native timed words into the official reusable caption component.
@@ -170,7 +172,8 @@ pub(crate) fn ensure_native_captions(s:&Session, dir:&Path) -> Result<Value> {
         let groups:Vec<[usize;2]>=(0..words.len()).step_by(5).map(|start|[start,(start+4).min(words.len()-1)]).collect();
         write_caption_source(&dest,words,&groups,duration)?;
         let source_hash=format!("{:x}",Sha256::digest(std::fs::read(&dest)?));
-        std::fs::write(&receipt,serde_json::to_vec_pretty(&json!({"input_sha256":digest,"source_sha256":source_hash,"transcript":transcript,"word_count":words.len(),"duration":duration,"grouping":"provisional deterministic batches of five; no semantic or listening review claimed","source":"official caption-highlight; native caption-group classes"})).unwrap())?;
+        let receipt_bytes=serde_json::to_vec_pretty(&json!({"input_sha256":digest,"source_sha256":source_hash,"transcript":transcript,"word_count":words.len(),"duration":duration,"grouping":"provisional deterministic batches of five; no semantic or listening review claimed","source":"official caption-highlight; native caption-group classes"})).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
+        std::fs::write(&receipt,receipt_bytes)?;
     }
     let marker="data-composition-src=\"compositions/captions.html\"";
     if !host.contains(marker) {

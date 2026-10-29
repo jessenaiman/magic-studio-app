@@ -703,7 +703,7 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
         return Err(EngineError::InvalidParams("This HyperFrames project already has a timeline. Update its audio in HyperFrames before relinking the recording; the existing project was preserved".into()));
     }
     let previous = (s.song_audio.clone(), s.video_target.clone(), s.video_project_path.clone());
-    s.song_audio = Some(if exists && unchanged { connected.unwrap() } else { audio });
+    s.song_audio = Some(if exists && unchanged { connected.ok_or_else(|| EngineError::InvalidParams("Existing audio connection is unavailable".into()))? } else { audio });
     s.video_target = "hyperframes".into();
     let setup = (|| {
         let video = crate::video_target::cmd_video_init(s, &json!({"target":"hyperframes","captions":false,"hyperframes_cli":params["hyperframes_cli"]}))?;
@@ -1021,7 +1021,7 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
             return Err(EngineError::InvalidParams("Transcript differs from existing authored data. Inspect received files; pass replace=true only to replace explicitly.".into()));
         }
     }
-    std::fs::create_dir_all(dest.parent().unwrap())?;
+    std::fs::create_dir_all(dest.parent().ok_or_else(|| EngineError::InvalidParams("Transcript destination has no parent directory".into()))?)?;
     std::fs::write(&dest, serialized)?;
     let mut copied = vec![dest];
     if let Some(text)=caption_text {

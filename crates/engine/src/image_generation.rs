@@ -149,10 +149,12 @@ fn staged_image(stdout: &str, stderr: &str) -> Result<(PathBuf, usize)> {
     if threads.len()!=1||calls.is_empty(){
         return Err(invalid("Cannot resolve native staged image: expected one current thread ID and a successful built-in image call ID. Inspect events.jsonl and stderr.log; no image retry was performed."));
     }
+    let thread = threads.first().ok_or_else(|| invalid("Cannot resolve native staged image: current thread ID is missing"))?;
+    let call = calls.first().ok_or_else(|| invalid("Cannot resolve native staged image: successful built-in image call ID is missing"))?;
     let home = std::env::var_os("CODEX_HOME").map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")))
         .ok_or_else(|| invalid("Cannot locate Codex staged image: CODEX_HOME and HOME are unset; inspect the existing Codex launcher environment"))?;
-    Ok((home.join("generated_images").join(threads.first().unwrap()).join(format!("{}.png", calls.first().unwrap())),calls.len()))
+    Ok((home.join("generated_images").join(thread).join(format!("{call}.png")),calls.len()))
 }
 
 fn validated_png(path: &Path) -> Result<(u32, u32, String)> {

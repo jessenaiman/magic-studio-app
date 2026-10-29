@@ -246,7 +246,12 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         serde_json::from_value(doc.get("assets").cloned().unwrap_or_else(|| json!([])))
             .map_err(|e| EngineError::InvalidParams(format!("invalid project assets: {e}")))?;
     for asset in &mut assets {
-        asset.path = asset.path.as_ref().map(|source| if source.is_absolute() { source.clone() } else { path.parent().unwrap().join(source) });
+        if let Some(source) = &asset.path {
+            if !source.is_absolute() {
+                let parent = path.parent().ok_or_else(|| EngineError::InvalidParams("Project path has no parent directory".into()))?;
+                asset.path = Some(parent.join(source));
+            }
+        }
     }
     let animation_sources = serde_json::from_value(doc.get("animation_sources").filter(|v|!v.is_null()).cloned().unwrap_or_else(||json!({})))
         .map_err(|e|EngineError::InvalidParams(format!("invalid animation sources: {e}")))?;
@@ -491,7 +496,7 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
             doc["files"] = json!([]);
         }
         let assets_dir = folder.ancestors().nth(2).unwrap_or(folder);
-        doc["files"].as_array_mut().unwrap().push(json!({
+        doc["files"].as_array_mut().ok_or_else(|| EngineError::InvalidParams("Invalid provenance files list".into()))?.push(json!({
             "file": copy.strip_prefix(assets_dir).unwrap_or(&copy), "source": source, "bytes": meta.len(),
             "modified_unix": meta.modified().map(unix).unwrap_or(0),
             "copied_unix": unix(std::time::SystemTime::now())}));

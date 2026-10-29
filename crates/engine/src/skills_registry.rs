@@ -6,6 +6,9 @@ use sha2::{Digest, Sha256};
 use std::{fs::{self, File, OpenOptions}, io::Write, net::{IpAddr, ToSocketAddrs}, path::{Path, PathBuf}, process::Command};
 
 fn invalid(message: impl Into<String>) -> EngineError { EngineError::InvalidParams(message.into()) }
+fn object<'a>(value: &'a Value, context: &str) -> Result<&'a serde_json::Map<String, Value>> {
+    value.as_object().ok_or_else(|| invalid(format!("{context} must be an object")))
+}
 fn id(p: &Value) -> Result<&str> {
     let id=p["id"].as_str().unwrap_or("");
     if id.is_empty() || id.len()>96 || id.contains("..") || !id.bytes().all(|b|b.is_ascii_alphanumeric()||b"-_.".contains(&b)) {return Err(invalid("Learning id must be 1–96 letters, digits, - _ or .; no path components"));}
@@ -56,15 +59,15 @@ const TASKS: &[(&str,&str)] = &[
 ];
 fn records(s: &Session) -> Result<Value> {
     let mut all=seeds();
-    if let Some(p)=legacy_file() {for (k,v) in read_json(&p)?.as_object().unwrap(){all[k]=v.clone();}}
-    for (k,v) in read_json(&root(s).join("index.json"))?.as_object().unwrap(){all[k]=v.clone();}
+    if let Some(p)=legacy_file() {for (k,v) in object(&read_json(&p)?, "Legacy Learning registry")?{all[k]=v.clone();}}
+    for (k,v) in object(&read_json(&root(s).join("index.json"))?, "Learning index")?{all[k]=v.clone();}
     match fs::read_dir(root(s)) {
         Ok(entries)=>for entry in entries {
             let path=entry?.path();if path.extension().and_then(|v|v.to_str())!=Some("md"){continue;}
             let Some(ident)=path.file_stem().and_then(|v|v.to_str()) else {continue;};
             if id(&json!({"id":ident})).is_err(){continue;}
             let md=fs::read_to_string(&path)?;let (_,meta)=frontmatter(&md);
-            if let Some(meta)=meta {let mut record=all.get(ident).cloned().unwrap_or_else(||json!({}));for (k,v) in meta.as_object().unwrap(){record[k]=v.clone();}record["name"]=json!(title(&md).unwrap_or(ident));all[ident]=record;}
+            if let Some(meta)=meta {let mut record=all.get(ident).cloned().unwrap_or_else(||json!({}));object(&record, "Learning record")?;for (k,v) in object(&meta, "Learning frontmatter")?{record[k]=v.clone();}record["name"]=json!(title(&md).unwrap_or(ident));all[ident]=record;}
         },
         Err(e) if e.kind()==std::io::ErrorKind::NotFound=>{},Err(e)=>return Err(e.into())
     }
@@ -84,7 +87,7 @@ fn revision(record: &Value, markdown: &str) -> String {
     let mut hash=Sha256::new();hash.update(record.to_string());hash.update([0]);hash.update(markdown);format!("{:x}",hash.finalize())
 }
 fn rendered(s: &Session, ident: &str, record: &Value) -> Result<Value> {
-    let md=markdown(s,record,ident)?;let mut v=record.clone();
+    object(record, "Learning record")?;let md=markdown(s,record,ident)?;let mut v=record.clone();
     v["id"]=json!(ident);v["revision"]=json!(revision(record,&md));v["markdown"]=json!(&md);
     v["block"]=parse_task(&md);v["limits"]=limits(s)?;v["validation"]=json!(validate_task(&v["block"],&v["limits"]));
     v["document_path"]=json!(root(s).join(format!("{ident}.md")));v["removed"]=json!(record["removed"].as_bool().unwrap_or(false));
@@ -95,7 +98,7 @@ fn read_lock(s: &Session) -> Result<Option<File>> {
 }
 pub fn cmd_skills_list(s: &mut Session, _: &Value) -> Result<Value> {
     let _lock=read_lock(s)?;let all=records(s)?;let mut out=vec![];
-    for (id,v) in all.as_object().unwrap(){if v["removed"]!=true {out.push(rendered(s,id,v)?);}}
+    for (id,v) in object(&all, "Learning records")?{if v["removed"]!=true {out.push(rendered(s,id,v)?);}}
     out.sort_by_key(|v|(v["id"]!="resolve-project",v["name"].as_str().unwrap_or("").to_lowercase()));
     Ok(json!({"ok":true,"count":out.len(),"skills":out,"directory":root(s)}))
 }
@@ -118,7 +121,7 @@ fn mutate(s: &mut Session,p: &Value,action: &str) -> Result<Value> {
     let ident=id(p)?.to_string();let dir=root(s);
     if p["_expected_directory"].as_str().is_some_and(|v|Path::new(v)!=dir){return Err(invalid("Learning project changed; draft retained"));}fs::create_dir_all(&dir)?;
     let lock=OpenOptions::new().create(true).truncate(false).read(true).write(true).open(dir.join("index.lock"))?;lock.lock()?;
-    let all=records(s)?;let previous=all.get(&ident);let mut record=previous.cloned().unwrap_or_else(||json!({"id":ident,"status":"researching","verification":"draft"}));
+    let all=records(s)?;let previous=all.get(&ident);let mut record=previous.cloned().unwrap_or_else(||json!({"id":ident,"status":"researching","verification":"draft"}));object(&record, "Learning record")?;
     let old_md=markdown(s,&record,&ident)?;
     // Managed writes require the revision from info/list; legacy metadata-only adds remain compatible.
     let needs_guard=previous.is_some()&&(action!="add"||dir.join(format!("{ident}.md")).exists());
@@ -139,14 +142,15 @@ fn mutate(s: &mut Session,p: &Value,action: &str) -> Result<Value> {
     }
     let (_, header)=frontmatter(&md);
     let structured=record["kind"]=="task" || header.as_ref().is_some_and(|v|v["kind"]=="task");
-    if let Some(meta)=header {for (k,v) in meta.as_object().unwrap(){if !["removed","name"].contains(&k.as_str()) && !p.as_object().unwrap().contains_key(k){record[k]=v.clone();}}}
+    if let Some(meta)=header {let params=object(p, "Learning parameters")?;for (k,v) in object(&meta, "Learning frontmatter")?{if !["removed","name"].contains(&k.as_str()) && !params.contains_key(k){record[k]=v.clone();}}}
     if structured {
         record["kind"]=json!("task");
         if action!="remove" && action!="restore" {
             let errors=validate_task(&parse_task(&md),&limits(s)?);if !errors.is_empty(){return Err(invalid(errors.join("; ")));}
         }
         let (body, _)=frontmatter(&md);let mut metadata=record.clone();
-        for k in ["name","description","markdown","revision","document_path","block","limits","validation"]{metadata.as_object_mut().unwrap().remove(k);}
+        let metadata_object=metadata.as_object_mut().ok_or_else(||invalid("Learning record must be an object"))?;
+        for k in ["name","description","markdown","revision","document_path","block","limits","validation"]{metadata_object.remove(k);}
         md=format!("---\n{}\n---\n{}",serde_json::to_string_pretty(&metadata).map_err(|e|invalid(e.to_string()))?,body);
         atomic_write(&dir.join(format!("{ident}.md")),md.as_bytes())?;
         return Ok(json!({"ok":true,"skill":rendered(s,&ident,&record)?}));
@@ -220,7 +224,7 @@ pub fn cmd_skills_limits(s:&mut Session,p:&Value)->Result<Value>{
     if p.get("max_words").is_some()||p.get("max_steps").is_some(){
         let words=p["max_words"].as_u64().filter(|v|(1..=1000).contains(v)).ok_or_else(||invalid("Set max_words explicitly between 1 and 1000"))?;
         let steps=p["max_steps"].as_u64().filter(|v|(1..=100).contains(v)).ok_or_else(||invalid("Set max_steps explicitly between 1 and 100"))?;
-        let dir=root(s);fs::create_dir_all(&dir)?;atomic_write(&dir.join("limits.json"),serde_json::to_string_pretty(&json!({"max_words":words,"max_steps":steps,"confirmed":true})).unwrap().as_bytes())?;
+        let dir=root(s);fs::create_dir_all(&dir)?;let bytes=serde_json::to_vec_pretty(&json!({"max_words":words,"max_steps":steps,"confirmed":true})).map_err(|e|invalid(e.to_string()))?;atomic_write(&dir.join("limits.json"),&bytes)?;
     }
     Ok(json!({"ok":true,"limits":limits(s)?}))
 }
@@ -250,7 +254,8 @@ pub fn cmd_skills_diagram(s:&mut Session,p:&Value)->Result<Value>{
     if !script.is_file(){return Err(invalid("Archify is unavailable. Set ARCHIFY_SCRIPT to the existing installed bin/archify.mjs; nothing was installed"));}
     let candidate=dir.join(format!("{kind}.workflow.json"));let bytes=serde_json::to_vec_pretty(&spec).map_err(|e|invalid(e.to_string()))?;atomic_write(&candidate,&bytes)?;
     let evidence=dir.join(".archify-evidence").join(kind).join(format!("{:x}",Sha256::digest(&bytes)));
-    let result=Command::new("node").arg(&script).args(["finalize","workflow"]).arg(candidate.file_name().unwrap()).arg(&output).args(["--quality","showcase","--json","--out-dir"]).arg(&evidence).current_dir(&dir).output()?;
+    let candidate_name=candidate.file_name().ok_or_else(||invalid("Archify candidate has no file name"))?;
+    let result=Command::new("node").arg(&script).args(["finalize","workflow"]).arg(candidate_name).arg(&output).args(["--quality","showcase","--json","--out-dir"]).arg(&evidence).current_dir(&dir).output()?;
     if !result.status.success(){return Err(invalid(format!("Archify finalize failed; candidate retained at {}. {} {}",candidate.display(),String::from_utf8_lossy(&result.stdout).chars().take(1600).collect::<String>(),String::from_utf8_lossy(&result.stderr).chars().take(400).collect::<String>())));}
     let html=fs::read_to_string(dir.join(&output))?;
     Ok(json!({"ok":true,"spec":spec,"source":candidate,"output":dir.join(output),"html":html,"verified":"Archify finalize exit 0; visual review remains separate"}))

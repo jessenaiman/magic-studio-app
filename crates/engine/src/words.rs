@@ -104,7 +104,7 @@ fn aligned(s: &mut Session) -> Result<Value> {
         let (rs, fs) = (w["start"].as_f64()?, forced[0].as_f64()?);
         ((rs - fs).abs() > 0.5).then(|| json!({"word_id":w["word_id"],"text":w["text"],"reference":[w["start"], w["end"]],"measured":forced}))
     }).collect();
-    for word in &mut words { word.as_object_mut().unwrap().remove("forced"); }
+    for word in &mut words { word.as_object_mut().ok_or_else(|| invalid("Aligned word is not an object"))?.remove("forced"); }
     let heard_used: Vec<usize> = map.iter().flatten().copied().collect();
     let unmatched_heard: Vec<Value> = (0..heard.len()).filter(|j| !heard_used.contains(j))
         .map(|j| json!({"ref_index":j,"heard":heard[j]["text"]})).collect();
@@ -260,7 +260,7 @@ fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
     let bytes = fs::read(asset)?;
     let name = format!("{:x}.{}",Sha256::digest(&bytes),asset.extension().and_then(|e|e.to_str()).unwrap_or("png"));
     let path = dir.join("hyperframes/compositions/words/backdrops").join(&name);
-    fs::create_dir_all(path.parent().unwrap())?;
+    fs::create_dir_all(path.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
     if !path.is_file() { fs::write(&path,bytes)?; }
     let mut out = without_video_media(html);
     let root = out.find("data-composition-id=\"main\"").or_else(||out.find("id=\"root\""))
@@ -292,7 +292,7 @@ pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
     let file = hf.join(&src);
     let written = fs::read_to_string(&file).ok().as_deref() != Some(derived.as_str());
     if written {
-        fs::create_dir_all(file.parent().unwrap())?;
+        fs::create_dir_all(file.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
         fs::write(&file, &derived)?;
     }
     Ok(json!({"src":src,"file":file,"written":written,"video_sha256":format!("{:x}", Sha256::digest(html.as_bytes()))}))
@@ -325,8 +325,8 @@ pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
 /// One animation per printed section occurrence; nothing styled or moving until edited.
 /// A saved document gains the sung section occurrences it lacks (a repeat added to the sheet later), in
 /// sung order; its existing sections and designs stay as they are.
-fn with_sung_sections(mut doc: Value, report: &Value) -> Value {
-    let fresh = default_document(report)["animations"].as_array().cloned().unwrap_or_default();
+fn with_sung_sections(mut doc: Value, report: &Value) -> Result<Value> {
+    let fresh = default_document(report)?["animations"].as_array().cloned().unwrap_or_default();
     let ids: Vec<Value> = fresh.iter().map(|a| a["animation_id"].clone()).collect();
     if let Some(list) = doc["animations"].as_array_mut() {
         for (k, anim) in fresh.into_iter().enumerate() {
@@ -335,10 +335,10 @@ fn with_sung_sections(mut doc: Value, report: &Value) -> Value {
             list.insert(at, anim);
         }
     }
-    doc
+    Ok(doc)
 }
 
-fn default_document(report: &Value) -> Value {
+fn default_document(report: &Value) -> Result<Value> {
     let mut animations: Vec<Value> = Vec::new();
     for w in report["words"].as_array().into_iter().flatten() {
         let id = format!("words-{}-{}", w["section"].as_str().unwrap_or("lyrics").replace('_', "-"), w["occurrence"].as_u64().unwrap_or(1));
@@ -346,17 +346,18 @@ fn default_document(report: &Value) -> Value {
             animations.push(json!({"animation_id":id,"scope":{"kind":"section","section":w["section"],"occurrence":w["occurrence"],"line_ids":[],"sung_ids":[]},
                 "source_revision":0,"origin":null,"style":{},"words":[]}));
         }
-        let anim = animations.last_mut().unwrap();
+        let anim = animations.last_mut().ok_or_else(|| invalid("Missing generated animation"))?;
         for (key, field) in [("line_ids", "line_id"), ("sung_ids", "sung_id")] {
-            if !anim["scope"][key].as_array().unwrap().contains(&w[field]) { anim["scope"][key].as_array_mut().unwrap().push(w[field].clone()); }
+            let scope = anim["scope"][key].as_array_mut().ok_or_else(|| invalid("Generated animation scope is not an array"))?;
+            if !scope.contains(&w[field]) { scope.push(w[field].clone()); }
         }
-        anim["words"].as_array_mut().unwrap().push(json!({"word_id":w["word_id"],"text":w["text"],"line_id":w["line_id"],"sung_id":w["sung_id"],
+        anim["words"].as_array_mut().ok_or_else(|| invalid("Generated animation words are not an array"))?.push(json!({"word_id":w["word_id"],"text":w["text"],"line_id":w["line_id"],"sung_id":w["sung_id"],
             "ref_index":w["ref_index"],"start":w["start"],"end":w["end"],"timing_source":w["timing_source"],
             "emphasis":false,"action":"none","entrance":"pop","exit":"fade"}));
     }
     for anim in &mut animations { timing(anim); }
-    json!({"format":"magicstudio.words","version":1,"reference":report["reference"],"canonical":report["canonical"],
-        "mismatches":report["mismatches"],"animations":animations})
+    Ok(json!({"format":"magicstudio.words","version":1,"reference":report["reference"],"canonical":report["canonical"],
+        "mismatches":report["mismatches"],"animations":animations}))
 }
 
 /// Untrimmed authored span. Word times stay song seconds; the composition's local time zero sits
@@ -482,7 +483,7 @@ fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Result<Value> 
         return Ok(json!({"ok":true,"caption_track":"removed: every section is designed","source":dest,"designed":designed}));
     }
     let kept = if dest.is_file() {
-        let version = (1..).map(|n| comp.join(format!("captions.v{n}.html"))).find(|p| !p.exists()).unwrap();
+        let version = (1..).map(|n| comp.join(format!("captions.v{n}.html"))).find(|p| !p.exists()).ok_or_else(|| invalid("No available caption version"))?;
         fs::copy(&dest, &version)?;
         Some(version)
     } else { None };
@@ -510,7 +511,7 @@ pub fn cmd_words_captions(s: &mut Session, p: &Value) -> Result<Value> {
     for (i, w) in heard.iter().enumerate() {
         let line = line_of.get(&(i as u64)).cloned().or_else(|| cues.last().map(|(id, _)| id.clone())).unwrap_or_default();
         if cues.last().is_none_or(|(id, _)| *id != line) { cues.push((line, Vec::new())); }
-        cues.last_mut().unwrap().1.push(w);
+        cues.last_mut().ok_or_else(|| invalid("Missing caption group"))?.1.push(w);
     }
     let clock = |t: f64| { let ms = (t * 1000.0).round() as u64; format!("{:02}:{:02}:{:02},{:03}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000) };
     let mut srt = String::new();
@@ -588,7 +589,7 @@ fn graphic_cues(doc: &Value, lib: &Value, times: &std::collections::HashMap<Stri
 /// Reports when the hidden reference changed since the document was saved.
 pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
-    let (mut doc, saved) = match load(&dir)? { Some(doc) => (with_sung_sections(doc, &aligned(s)?), true), None => (default_document(&aligned(s)?), false) };
+    let (mut doc, saved) = match load(&dir)? { Some(doc) => (with_sung_sections(doc, &aligned(s)?)?, true), None => (default_document(&aligned(s)?)?, false) };
     let (_, current_sha, _) = reference(&dir)?;
     let stale = saved && doc["reference"]["sha256"].as_str() != Some(current_sha.as_str());
     if let Some(id) = p["animation_id"].as_str() {
@@ -633,7 +634,7 @@ pub fn cmd_words_save(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let id = p["animation_id"].as_str().ok_or_else(|| invalid("animation_id is required"))?;
     let expected = p["expected_source_revision"].as_u64().ok_or_else(|| invalid("expected_source_revision is required"))?;
-    let mut doc = match load(&dir)? { Some(doc) => with_sung_sections(doc, &aligned(s)?), None => default_document(&aligned(s)?) };
+    let mut doc = match load(&dir)? { Some(doc) => with_sung_sections(doc, &aligned(s)?)?, None => default_document(&aligned(s)?)? };
     let anim = doc["animations"].as_array_mut().and_then(|a| a.iter_mut().find(|x| x["animation_id"] == id))
         .ok_or_else(|| invalid(format!("No Words animation {id}")))?;
     let current = anim["source_revision"].as_u64().unwrap_or(0);
@@ -694,7 +695,7 @@ pub fn cmd_words_save(s: &mut Session, p: &Value) -> Result<Value> {
     anim["origin"] = p.get("origin").filter(|v| v.is_string()).cloned().unwrap_or(json!("magicstudio"));
     let saved = anim.clone();
     let path = document_path(&dir);
-    fs::create_dir_all(path.parent().unwrap())?;
+    fs::create_dir_all(path.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, serde_json::to_vec_pretty(&doc).map_err(|e| invalid(e.to_string()))?)?;
     fs::rename(&temporary, &path)?;
@@ -731,9 +732,9 @@ pub fn cmd_words_link(s: &mut Session, p: &Value) -> Result<Value> {
     if si==ti {
         doc["animations"][si]["kinetic"]["draws"][index]=drawing;target_index=index;
     }else{
-        doc["animations"][si]["kinetic"]["draws"].as_array_mut().unwrap().remove(index);
+        doc["animations"][si]["kinetic"]["draws"].as_array_mut().ok_or_else(|| invalid("Source drawings are not an array"))?.remove(index);
         if !doc["animations"][ti]["kinetic"]["draws"].is_array(){doc["animations"][ti]["kinetic"]["draws"]=json!([]);}
-        let draws=doc["animations"][ti]["kinetic"]["draws"].as_array_mut().unwrap();target_index=draws.len();draws.push(drawing);
+        let draws=doc["animations"][ti]["kinetic"]["draws"].as_array_mut().ok_or_else(|| invalid("Target drawings are not an array"))?;target_index=draws.len();draws.push(drawing);
     }
     for i in if si==ti {vec![si]}else{vec![si,ti]} {
         let a=&mut doc["animations"][i];a["kinetic"]=kinetic_design(&a["words"],&a["kinetic"])?;
@@ -900,25 +901,27 @@ fn group_words_by_line(anim: &Value) -> Vec<(String, Vec<&Value>)> {
     let mut lines: Vec<(String, Vec<&Value>)> = Vec::new();
     for w in anim["words"].as_array().into_iter().flatten() {
         let line = w["line_id"].as_str().unwrap_or_default().to_owned();
-        if lines.last().is_none_or(|(id, _)| *id != line) {
-            lines.push((line, Vec::new()));
+        match lines.last_mut() {
+            Some((id, group)) if *id == line => group.push(w),
+            _ => lines.push((line, vec![w])),
         }
-        lines.last_mut().unwrap().1.push(w);
     }
     lines
 }
 
 /// The section composed with its text effect: one mount per sung line, at the line's time, with
 /// the line's text and (when the effect takes them) each word's landing as cues from the mount start.
-fn effect_composition(anim: &Value, composition_id: &str, width: u64, height: u64, duration: f64, local: &dyn Fn(f64) -> f64) -> String {
+fn effect_composition(anim: &Value, composition_id: &str, width: u64, height: u64, duration: f64, local: &dyn Fn(f64) -> f64) -> Result<String> {
     let effect = &anim["effects"]["text"];
     let name = effect["name"].as_str().unwrap_or_default();
     let lines = group_words_by_line(anim);
     let attr = |v: &str| v.replace('&', "&amp;").replace('\'', "&#39;").replace('<', "&lt;");
     let mut mounts = String::new();
     for (i, (_, words)) in lines.iter().enumerate() {
-        let start = local(words[0]["start"].as_f64().unwrap_or(0.0));
-        let last = local(words.last().unwrap()["end"].as_f64().unwrap_or(0.0)) + HOLD;
+        let first_word = words.first().ok_or_else(|| invalid("Empty lyric line"))?;
+        let start = local(first_word["start"].as_f64().unwrap_or(0.0));
+        let last_word = words.last().ok_or_else(|| invalid("Empty lyric line"))?;
+        let last = local(last_word["end"].as_f64().unwrap_or(0.0)) + HOLD;
         let end = lines.get(i + 1).map_or(last, |(_, next)| last.min(local(next[0]["start"].as_f64().unwrap_or(last))));
         let text = words.iter().filter_map(|w| w["text"].as_str()).collect::<Vec<_>>().join(" ");
         let mut values = effect["variables"].as_object().cloned().unwrap_or_default();
@@ -930,10 +933,10 @@ fn effect_composition(anim: &Value, composition_id: &str, width: u64, height: u6
         mounts.push_str(&format!("  <div class=\"line\" data-composition-id=\"{name}\" data-composition-src=\"../components/{name}.html\" data-start=\"{start:.6}\" data-duration=\"{:.6}\" data-variable-values='{}'></div>\n",
             (end - start).max(0.1), attr(&Value::Object(values).to_string())));
     }
-    format!("<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\" /></head>\n<body>\n<!-- Derived by `magic-cli exec words.compose` from design/words.json with the {name} effect; regenerate rather than hand-edit. -->\n\
+    Ok(format!("<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\" /></head>\n<body>\n<!-- Derived by `magic-cli exec words.compose` from design/words.json with the {name} effect; regenerate rather than hand-edit. -->\n\
 <div data-composition-id=\"{composition_id}\" data-width=\"{width}\" data-height=\"{height}\" data-duration=\"{duration:.6}\" class=\"words-track\">\n\
   <style>[data-composition-id=\"{composition_id}\"] {{ position: relative; width: {width}px; height: {height}px; overflow: hidden; }}\n\
-  [data-composition-id=\"{composition_id}\"] > .line {{ position: absolute; left: 6%; right: 6%; top: 62%; height: 26%; }}</style>\n{mounts}</div>\n</body>\n</html>\n")
+  [data-composition-id=\"{composition_id}\"] > .line {{ position: absolute; left: 6%; right: 6%; top: 62%; height: 26%; }}</style>\n{mounts}</div>\n</body>\n</html>\n"))
 }
 
 /// The section composed from its line designs: each designed line's items, moves and strokes on the
@@ -944,7 +947,8 @@ fn design_composition(anim: &Value, composition_id: &str, width: u64, height: u6
     let mut out = Vec::new();
     for (i, (line_id, words)) in lines.iter().enumerate() {
         let start = start_of(words[0]);
-        let end = lines.get(i + 1).map_or(local(words.last().unwrap()["end"].as_f64().unwrap_or(0.0)) + HOLD, |(_, next)| start_of(next[0]));
+        let last_word = words.last().ok_or_else(|| invalid("Empty lyric line"))?;
+        let end = lines.get(i + 1).map_or(local(last_word["end"].as_f64().unwrap_or(0.0)) + HOLD, |(_, next)| start_of(next[0]));
         let design = &anim["design"][line_id];
         if !design.is_object() {
             let text = words.iter().filter_map(|w| w["text"].as_str()).collect::<Vec<_>>().join(" ");
@@ -1193,22 +1197,26 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     let duration = anim["authored_duration"].as_f64().ok_or_else(|| invalid("Animation has no authored_duration"))?;
     // Song seconds become local seconds exactly once, here (rounded to microseconds).
     let local = |t: f64| ((t - anchor) * 1e6).round() / 1e6;
-    let words: Vec<Value> = anim["words"].as_array().into_iter().flatten().map(|w| json!({"word_id":w["word_id"],"line_id":w["line_id"],"text":w["text"],
-        "start":local(w["start"].as_f64().unwrap()),"end":local(w["end"].as_f64().unwrap()),
-        "emphasis":w["emphasis"],"action":w["action"],"entrance":w["entrance"],"exit":w["exit"]})).collect();
+    let words: Vec<Value> = anim["words"].as_array().into_iter().flatten().map(|w| {
+        let start = w["start"].as_f64().ok_or_else(|| invalid("Word has no numeric start"))?;
+        let end = w["end"].as_f64().ok_or_else(|| invalid("Word has no numeric end"))?;
+        Ok(json!({"word_id":w["word_id"],"line_id":w["line_id"],"text":w["text"],
+        "start":local(start),"end":local(end),
+        "emphasis":w["emphasis"],"action":w["action"],"entrance":w["entrance"],"exit":w["exit"]}))
+    }).collect::<Result<Vec<_>>>()?;
     let (width, height) = composition_size(&hf);
     let data = json!({"composition_id":composition_id,"animation_id":id,"source_revision":anim["source_revision"],"duration":duration,
         "hold":anim["hold"],"style":anim["style"],"words":words});
     let designed = anim["design"].as_object().is_some_and(|d| d.values().any(Value::is_object));
     let html = if anim["kinetic"].is_object() { kinetic_composition(anim, &composition_id, width, height, duration, &words, "text")? }
         else if designed { design_composition(anim, &composition_id, width, height, duration, &local)? }
-        else if anim["effects"]["text"].is_object() { effect_composition(anim, &composition_id, width, height, duration, &local) }
+        else if anim["effects"]["text"].is_object() { effect_composition(anim, &composition_id, width, height, duration, &local)? }
         else { include_str!("../../../pipeline/templates/words-composition.html")
         .replace("__COMPOSITION_ID__", &composition_id).replace("__WIDTH__", &width.to_string()).replace("__HEIGHT__", &height.to_string())
         .replace("__DURATION__", &format!("{duration:.6}"))
         .replace("__DATA__", &serde_json::to_string(&data).map_err(|e| invalid(e.to_string()))?.replace("</", "<\\/")) };
     let file = hf.join("compositions/words").join(format!("{composition_id}.html"));
-    fs::create_dir_all(file.parent().unwrap())?;
+    fs::create_dir_all(file.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
     fs::write(&file, &html)?;
     let drawing_cues: Vec<&Value> = read["graphics"].as_array().into_iter().flatten().filter(|c| c["kind"] == "drawing").collect();
     let mut drawings = Vec::new();

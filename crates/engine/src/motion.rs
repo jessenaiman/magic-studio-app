@@ -33,7 +33,7 @@ fn eval_envelope(term: &Value, t: f64) -> f64 {
         .iter()
         .filter_map(|p| {
             let a = p.as_array()?;
-            Some((a.first()?.as_f64()? as f64, a.get(1)?.as_f64()? as f64))
+            Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?))
         })
         .collect();
     if pts.is_empty() {
@@ -57,10 +57,10 @@ fn eval_envelope(term: &Value, t: f64) -> f64 {
 fn eval_vec_at(val: &Value, dim: usize) -> Vec<f64> {
     if let Some(arr) = val.as_array() {
         (0..dim)
-            .map(|i| arr.get(i).and_then(Value::as_f64).unwrap_or(0.0) as f64)
+            .map(|i| arr.get(i).and_then(Value::as_f64).unwrap_or(0.0))
             .collect()
     } else if let Some(n) = val.as_f64() {
-        vec![n as f64; dim]
+        vec![n; dim]
     } else {
         vec![0.0; dim]
     }
@@ -75,7 +75,7 @@ fn eval_keys_term(term: &Value, t: f64, dim: usize) -> Vec<f64> {
         .iter()
         .filter_map(|k| {
             let a = k.as_array()?;
-            let kt = a.first()?.as_f64()? as f64;
+            let kt = a.first()?.as_f64()?;
             let kv = eval_vec_at(a.get(1)?, dim);
             Some((kt, kv))
         })
@@ -106,23 +106,23 @@ fn eval_keys_term(term: &Value, t: f64, dim: usize) -> Vec<f64> {
 }
 
 fn eval_ellipse_term(term: &Value, t: f64) -> [f64; 2] {
-    let t0 = term.get("from").and_then(Value::as_f64).unwrap_or(0.0) as f64;
-    let t1 = term.get("to").and_then(Value::as_f64).unwrap_or(1.0) as f64;
+    let t0 = term.get("from").and_then(Value::as_f64).unwrap_or(0.0);
+    let t1 = term.get("to").and_then(Value::as_f64).unwrap_or(1.0);
     let ease_name = term.get("ease").and_then(Value::as_str).unwrap_or("smooth");
     let u = if t1 > t0 {
         eval_ease(ease_name, (t - t0) / (t1 - t0))
     } else {
         1.0
     };
-    let start = term.get("start").and_then(Value::as_f64).unwrap_or(0.0) as f64;
-    let turns = term.get("turns").and_then(Value::as_f64).unwrap_or(1.0) as f64;
+    let start = term.get("start").and_then(Value::as_f64).unwrap_or(0.0);
+    let turns = term.get("turns").and_then(Value::as_f64).unwrap_or(1.0);
     let ang = start + std::f64::consts::TAU * turns * u;
     let centre = term
         .get("centre")
         .map(|v| eval_vec_at(v, 2))
         .unwrap_or_else(|| vec![0.0, 0.0]);
-    let rx = term.get("rx").and_then(Value::as_f64).unwrap_or(0.0) as f64;
-    let ry = term.get("ry").and_then(Value::as_f64).unwrap_or(0.0) as f64;
+    let rx = term.get("rx").and_then(Value::as_f64).unwrap_or(0.0);
+    let ry = term.get("ry").and_then(Value::as_f64).unwrap_or(0.0);
     let def_orig = [centre[0] + rx * start.cos(), centre[1] + ry * start.sin()];
     let orig = term
         .get("relativeTo")
@@ -143,9 +143,9 @@ fn eval_oscillate_term(term: &Value, t: f64, dim: usize) -> Vec<f64> {
     if axis >= dim {
         return out;
     }
-    let amp = term.get("amplitude").and_then(Value::as_f64).unwrap_or(0.0) as f64;
-    let hz = term.get("hz").and_then(Value::as_f64).unwrap_or(1.0) as f64;
-    let phase = term.get("phase").and_then(Value::as_f64).unwrap_or(0.0) as f64;
+    let amp = term.get("amplitude").and_then(Value::as_f64).unwrap_or(0.0);
+    let hz = term.get("hz").and_then(Value::as_f64).unwrap_or(1.0);
+    let phase = term.get("phase").and_then(Value::as_f64).unwrap_or(0.0);
     out[axis] = amp * (std::f64::consts::TAU * hz * t + phase).sin() * eval_envelope(term, t);
     out
 }
@@ -326,17 +326,17 @@ fn evaluate_layered_motion_spec(
                     "oscillate" => rot_deg += eval_oscillate_term(term, t, 1)[0],
                     "follow" => {
                         let target_lid = term.get("layer").and_then(Value::as_str).unwrap_or(lid);
-                        let gain = term.get("gain").and_then(Value::as_f64).unwrap_or(0.0) as f64;
+                        let gain = term.get("gain").and_then(Value::as_f64).unwrap_or(0.0);
                         let limit = term
                             .get("limit")
                             .and_then(Value::as_f64)
                             .unwrap_or(45.0)
-                            .abs() as f64;
+                            .abs();
                         let smooth = term
                             .get("smooth")
                             .and_then(Value::as_f64)
                             .unwrap_or(0.15)
-                            .max(0.0) as f64;
+                            .max(0.0);
                         rot_deg += eval_follow_lean_at(
                             motion_obj, target_lid, gain, limit, smooth, fps, duration, t,
                         );
@@ -457,10 +457,10 @@ fn validate(rig: &LoadedCutoutRigPlan) -> Result<()> {
                         if !["keys", "ellipse", "oscillate", "follow"].contains(&kind) {
                             return Err(invalid("Unknown motion term"));
                         }
-                        if let Some(ease) = term["ease"].as_str() {
-                            if !["smooth", "linear", "in", "out"].contains(&ease) {
-                                return Err(invalid("Unknown easing"));
-                            }
+                        if let Some(ease) = term["ease"].as_str()
+                            && !["smooth", "linear", "in", "out"].contains(&ease)
+                        {
+                            return Err(invalid("Unknown easing"));
                         }
                         if kind == "ellipse" && prop != "position" {
                             return Err(invalid("Ellipse applies to position only"));
@@ -694,28 +694,28 @@ fn summarize_track_channels(
             }));
         }
     }
-    if let Some(sh) = sheet {
-        if let Some(tracks_by_obj) = sh.pointer("/sequence/tracksByObject").and_then(Value::as_object) {
-            for layer in tracks_by_obj.keys() {
-                if seen_layers.contains(layer) {
-                    continue;
-                }
-                let mut th_keys = crate::character::theatre_part_key_times(sh, layer);
-                if th_keys.is_empty() {
-                    continue;
-                }
-                th_keys.sort_by(f64::total_cmp);
-                th_keys.dedup();
-                let mut key_times = serde_json::Map::new();
-                key_times.insert("rotation".to_string(), json!(th_keys));
-                out.push(json!({
-                    "layer": layer,
-                    "properties": ["rotation"],
-                    "summary": "keys",
-                    "keys": key_times,
-                    "rotation_bound": true,
-                }));
+    if let Some(sh) = sheet
+        && let Some(tracks_by_obj) = sh.pointer("/sequence/tracksByObject").and_then(Value::as_object)
+    {
+        for layer in tracks_by_obj.keys() {
+            if seen_layers.contains(layer) {
+                continue;
             }
+            let mut th_keys = crate::character::theatre_part_key_times(sh, layer);
+            if th_keys.is_empty() {
+                continue;
+            }
+            th_keys.sort_by(f64::total_cmp);
+            th_keys.dedup();
+            let mut key_times = serde_json::Map::new();
+            key_times.insert("rotation".to_string(), json!(th_keys));
+            out.push(json!({
+                "layer": layer,
+                "properties": ["rotation"],
+                "summary": "keys",
+                "keys": key_times,
+                "rotation_bound": true,
+            }));
         }
     }
     out
@@ -746,8 +746,15 @@ pub fn cmd_motion_action_track(s: &mut Session, params: &Value) -> Result<Value>
     } else {
         cmd_motion_tracks(s, &json!({"character":id}))?
     };
-    let resolved = action_track(meta["tracks"].as_array().unwrap(), action, params)?;
-    meta.as_object_mut().unwrap().extend(resolved.as_object().unwrap().clone());
+    let tracks = meta["tracks"].as_array()
+        .ok_or_else(|| invalid("Motion track response is missing its tracks array"))?;
+    let resolved = action_track(tracks, action, params)?;
+    let Value::Object(resolved) = resolved else {
+        return Err(invalid("Action track response must be an object"));
+    };
+    let metadata = meta.as_object_mut()
+        .ok_or_else(|| invalid("Motion track response must be an object"))?;
+    metadata.extend(resolved);
     Ok(meta)
 }
 
@@ -853,11 +860,13 @@ pub fn cmd_motion_tracks(s: &mut Session, params: &Value) -> Result<Value> {
     let preflight = crate::character::preflight_rig_summary(rig);
     let character_config = crate::character::load_character_config(s, &id, project_root.as_deref());
     let actions: Vec<_> = tracks.iter().filter(|t| t["standard"] == true && t["id"] != "@rest").map(|t| {
-        let action = t["id"].as_str().unwrap().trim_start_matches('@');
-        let mut resolved = action_track(&tracks, action, &Value::Null).unwrap();
+        let track_id = t["id"].as_str()
+            .ok_or_else(|| invalid("Standard motion track is missing its string id"))?;
+        let action = track_id.trim_start_matches('@');
+        let mut resolved = action_track(&tracks, action, &Value::Null)?;
         resolved["label"] = t["label"].clone();
-        resolved
-    }).collect();
+        Ok(resolved)
+    }).collect::<Result<Vec<_>>>()?;
     let panel = crate::character::animation_panel(&character_config);
     let configured = character_config["active_pose"].as_str()
         .and_then(|pose| action_track(&tracks, pose, &Value::Null).ok());

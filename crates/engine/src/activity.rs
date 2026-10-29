@@ -353,7 +353,7 @@ pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
             action["last_sequence"] = event["sequence"].clone();
             action["events"]
                 .as_array_mut()
-                .expect("action events")
+                .ok_or_else(|| crate::EngineError::InvalidParams("Activity action events are not an array".into()))?
                 .push(event.clone());
         } else {
             actions.push(json!({"root_request_id":key,"project":event["project"],"first_sequence":event["sequence"],"last_sequence":event["sequence"],"events":[event]}));

@@ -135,20 +135,24 @@ pub fn read(root: &Path, scan: bool) -> Value {
     result["source_dirty"] = json!(dirty);
     result["measured_at_unix_secs"] = json!(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|v|v.as_secs()));
     result["cached"] = json!(false);
-    result["state"] = json!(if result["available"] == true {"measured"} else {"error"});
+    let partial = result["scan_failures"].as_array().is_some_and(|failures| !failures.is_empty());
+    result["state"] = json!(if result["available"] != true {"error"} else if partial {"partial"} else {"measured"});
     if result["available"] != true {
         let error = "Lizard returned no measurements; check tool availability and scan_failures.";
         if let Some(value) = previous {
             let mut saved = cached_result(value, &revision, dirty);
             saved["last_error"] = json!(error);
-            saved["scan_failures"] = result["scan_failures"].clone();
+            saved["last_scan_failures"] = result["scan_failures"].clone();
             return saved;
         }
         result["reason"] = json!(error);
         return result;
     }
+    // A partial scan must not replace the last complete saved measurement.
+    if partial { return result; }
     let save = || -> std::io::Result<()> {
-        std::fs::create_dir_all(cache.parent().expect("cache has parent"))?;
+        let parent = cache.parent().ok_or_else(|| std::io::Error::other("cache has no parent"))?;
+        std::fs::create_dir_all(parent)?;
         // A unique temporary file prevents concurrent scans from truncating the saved result.
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|v|v.as_nanos()).unwrap_or(0);
         let temporary = cache.with_extension(format!("{}-{stamp}.tmp",std::process::id()));
@@ -175,7 +179,9 @@ fn source_dirty(root: &Path) -> Option<bool> {
 fn cached_result(mut value: Value, revision: &Option<String>, dirty: Option<bool>) -> Value {
     value["cached"] = json!(true);
     value["current_revision"] = json!(revision);
-    value["state"] = json!(if revision.is_none() || dirty.is_none() || dirty == Some(true) || value["source_dirty"] != false {
+    value["state"] = json!(if value["scan_failures"].as_array().is_some_and(|failures| !failures.is_empty()) {
+        "partial"
+    } else if revision.is_none() || dirty.is_none() || dirty == Some(true) || value["source_dirty"] != false {
         "worktree_unverified"
     } else if value["source_revision"] != json!(revision) {"stale"} else {"saved"});
     value
@@ -185,7 +191,7 @@ fn measure(root: &Path) -> Value {
     let lizard_bin = resolve_craft_cli("lizard");
     let long_file_limit = long_file_limit(root);
     let targets = scan_targets(root);
-    let (stdout, scan_failures) = lizard_csv(&lizard_bin, root, &targets);
+    let (stdout, mut scan_failures) = lizard_csv(&lizard_bin, root, &targets);
     let mut functions = Vec::new();
     let mut files = std::collections::HashSet::new();
     let mut per_file: std::collections::BTreeMap<String, (u64, usize, u64)> =
@@ -241,16 +247,17 @@ fn measure(root: &Path) -> Value {
     let mut file_rows: Vec<Value> = per_file
         .iter()
         .map(|(file, (ccn, functions, max_file_ccn))| {
-            let lines = std::fs::read_to_string(root.join(file))
-                .map(|text| text.lines().count() as u64)
-                .unwrap_or(0);
+            let lines = match std::fs::read_to_string(root.join(file)) {
+                Ok(text) => Some(text.lines().count() as u64),
+                Err(_) => { scan_failures.push(file.clone()); None }
+            };
             json!({
                 "file": file,
                 "lines": lines,
                 "ccn": ccn,
                 "functions": functions,
                 "max_ccn": max_file_ccn,
-                "long": lines >= long_file_limit,
+                "long": lines.map(|value| value >= long_file_limit),
             })
         })
         .collect();

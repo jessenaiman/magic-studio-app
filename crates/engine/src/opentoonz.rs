@@ -343,7 +343,7 @@ fn png_header(path: &Path) -> Result<(u32, u32, u8)> {
     let mut head = [0u8; 26];
     fs::File::open(path)?.read_exact(&mut head).map_err(|_| invalid(format!("{} is not a PNG", path.display())))?;
     if &head[..8] != b"\x89PNG\r\n\x1a\n" || &head[12..16] != b"IHDR" { return Err(invalid(format!("{} is not a PNG", path.display()))); }
-    Ok((u32::from_be_bytes(head[16..20].try_into().unwrap()), u32::from_be_bytes(head[20..24].try_into().unwrap()), head[25]))
+    Ok((u32::from_be_bytes([head[16], head[17], head[18], head[19]]), u32::from_be_bytes([head[20], head[21], head[22], head[23]]), head[25]))
 }
 
 /// Map rendered files to scene frames. Gaps, extra files and mixed sizes are failures.

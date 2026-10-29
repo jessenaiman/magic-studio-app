@@ -530,7 +530,7 @@ pub fn cmd_part_replace_image(s: &mut Session, params: &Value) -> Result<Value> 
         .into_iter()
         .flat_map(|layers| layers.keys())
     {
-        let binding = spec.parent().unwrap().join(format!("{layer}.png"));
+        let binding = spec.parent().ok_or_else(|| invalid("Part specification has no parent directory"))?.join(format!("{layer}.png"));
         let meta = std::fs::symlink_metadata(&binding)?;
         if meta.file_type().is_symlink() {
             return Err(invalid(
