@@ -9,9 +9,9 @@ limits, progress, cancellation and receipts. Design background and acceptance ga
 ## Commands
 
 ```text
-mc exec opentoonz.discover                                   # tool availability, no rendering
-mc exec opentoonz.discover scene=/abs/project/scenes/a.tnz   # plus the exact render plan
-mc exec opentoonz.render scene=/abs/project/scenes/a.tnz out=/abs/job/frames first=1 last=24
+magic-cli exec opentoonz.discover                                   # tool availability, no rendering
+magic-cli exec opentoonz.discover scene=/abs/project/scenes/a.tnz   # plus the exact render plan
+magic-cli exec opentoonz.render scene=/abs/project/scenes/a.tnz out=/abs/job/frames first=1 last=24
 ```
 
 - `opentoonz.discover` reports the `tcomposer` path and SHA-256, the `stuff` folder,
@@ -112,12 +112,12 @@ The same fields are supplied by the Synfig snapshot receipt.
 ### Readiness preflight
 
 `render_capable` requires an executable renderer, a readable nonempty stuff directory,
-executable adjacent `mc`, FFmpeg on PATH, and a successful Pillow import in the worker's
+executable adjacent `magic-cli`, FFmpeg on PATH, and a successful Pillow import in the worker's
 `/usr/bin/python3`. Invalid explicit renderer/resource overrides never fall back to
 another installation. Start uses this same preflight and pins resolved tool paths.
 Discovery does not render; `native_render_verified:null` explicitly separates this
 prerequisite check from native source/plugin compatibility. `prerequisites` reports
-mc/ffmpeg paths and Python/Pillow checked/available/error; Python is unprobed/null
+magic_cli/ffmpeg paths and Python/Pillow checked/available/error; Python is unprobed/null
 when another prerequisite is already missing. Its import-only probe is limited to
 five seconds. Current native jobs remain the authority for actual render success.
 
@@ -138,12 +138,10 @@ render child use that same package layout, preserving inherited library search
 paths after it. Only those children receive the environment; Studio, the worker
 and the host configuration are not modified. Both children use offscreen Qt.
 
-
 Native dependency discovery decodes the quoted filename strings written by
 OpenToonz (`"+drawings/A B.png"`, including native quote/backslash escapes) before
 resolving and hashing them. Source bytes remain unchanged. This metadata support
 does not constitute successful native-render acceptance.
-
 
 Portable native scenes may use `$scenefolder` and backslash separators; both are
 resolved against the frozen scene directory. OpenToonz TIStream strings permit

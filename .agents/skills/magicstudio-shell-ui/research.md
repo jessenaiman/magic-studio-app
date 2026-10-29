@@ -467,28 +467,10 @@ Additional live shell finding: `ui.elements` currently reports descendants of co
 offscreen scroll items as visible because nonzero DOM rectangles alone do not establish visibility.
 The agent contract needs clipping/occlusion-aware visibility or an explicit reveal operation.
 
-## Port, verify and stop points
-
-For each feature read its mapped implementation in HANDOFF, run the reference on 19898 beside the
-shell on 19897, compare behavior and engine calls, and port into the shell's design. Do not edit or
-maintain the reference UI. Record the port's commit beside the checklist entry only after verification.
-Close the reference after comparison; the user's explicit request to keep both beside each other
-during active work takes precedence while that comparison continues. The user alone authorizes deletion.
-
-First approved slice should include rest/selection/import recovery, transport, track selection,
-layers/states and song timing. Subsequent slices preserve the rest of the checklist; do not call
-the migration complete after that first slice. Animate and export the bee, inspect stills/motion,
-validate the clip, then check the imported result in the chosen Craft design/video app. Export
-target choice remains a user decision; no target is silently substituted.
-
-Pending approval questions: (1) approve this Animation frame, (2) intake as screen or CLI chain,
-(3) pose-sheet viewer as screen or CLI chain, (4) 3D shape controls as screen or CLI chain.
-No Animation screen implementation is authorized by this document alone.
-
 ## Historical runtime investigation / operational evidence
 
 The following observations describe commit `e1cac3a` and its pre-rename paths. They are not current
-build or file-location instructions; use `magicstudio-shell`, `.magic` and `mc` for current work.
+build or file-location instructions; use the current shell skill for commands.
 
 - Rebuilt historical commit `e1cac3a` using `cargo build -p animationcraft-shell`; relaunched its
   shell on 19897.
@@ -518,7 +500,6 @@ build or file-location instructions; use `magicstudio-shell`, `.magic` and `mc` 
   references/helpers were restored from `tools/CLI-Anything/cli-anything-plugin`. No official Tauri
   design skill was found in installed crates or official Tauri/tauri-docs trees and organization
   repository inventory; community packages were not mislabeled or installed as official ones.
-
 
 ## Refinement: section color and sliders
 

@@ -122,8 +122,9 @@ feature needs that reference; use the current shell and shared engine for implem
 no runnable older-UI package in this checkout, and this map is not an instruction to recreate one.
 
 Former source locations in the older UI (`crates/ui-egui/src/`):
+
 - Home, recent, new project: `panels/start.rs`, `panels/workshop.rs` (`new_project_dialog`)
-- Menus (every File/Edit/View/Export entry): `menus.rs`, plus the engine's command list (`mc exec command.list`)
+- Menus (every File/Edit/View/Export entry): `menus.rs`, plus the engine's command list (`magic-cli commands`)
 - Workshop stages, actions, briefs, subjects, storyboard pane: `panels/workshop.rs`
 - Asset header (load, rename, manage), import: `panels/header.rs`, `panels/asset_browser.rs`
 - Parts list (visibility, solo, reviewed, anchors, labels, separation), turnaround views: `panels/asset_browser.rs`
@@ -142,14 +143,16 @@ For each ported feature: tick it in the checklist below, with the commit hash.
 Legend: ✅ in the shell · ◻ to do · ⚙ becomes a CLI chain (the shell shows a step) · ❓ ask the user first:
 a manual screen, or part of the rig/matting CLI chain? Don't decide it yourself.
 
-**Home and project**
+### Home and project
+
 - ✅ Home: New song (name, audio, folder), Open, Recent (remove from list)
 - ◻ Community links (Discord, ArtCraft) and the workflow steps strip from the older Home
 - ◻ "Open AnimationStudio" without a project (standalone stage)
 - ◻ Save / Close project (File menu; the engine saves on change, so check what is still needed)
 - ✅ Agent pane: opencode session or Herdr agent, permissions, questions, model, Point, paste or drop pictures
 
-**Workshop (Project view)**
+### Workshop (Project view)
+
 - ✅ Song, Lyrics & notes, Transcription, Animate blocks; storyboard pages; studio switch; Split/Studio views
 - ◻ Stage actions per block: set audio, set target, add liner notes, panels or assets (`workshop.add`), import
   transcript, split panels (PhotoCraft), build storyboard, approve draft and scenes, remove a file (with confirmation)
@@ -158,7 +161,8 @@ a manual screen, or part of the rig/matting CLI chain? Don't decide it yourself.
 - ◻ Storyboard: click a lyric line to open its scene; per-scene edit and approve (`storyboard.*`)
 - ◻ Search everything (`project.search`)
 
-**Assets**
+### Assets
+
 - ◻ Import with "Goes to" (character/background) → `project.add_asset`
 - ◻ Asset list: load, rename/reorder, remove (`project.load_asset`, `project.update_asset`, `project.remove_asset`)
 - ⚙ Make transparent (`asset.make_transparent`, PhotoCraft), extract background, assess, fix list, request sheet
@@ -167,7 +171,8 @@ a manual screen, or part of the rig/matting CLI chain? Don't decide it yourself.
 - ❓ Pose sheet viewer: slice kinds, sheet tools, OCR labels, overlays (anchors, crops, names), fit/100%
 - ◻ Turnaround views (front/right/back/left), optimize accuracy
 
-**Animation view**
+### Animation view
+
 - ✅ `964aba3` Stage with rest pose; zoom (fit, 100%, ±), center (fit centers the artwork)
 - ✅ `8dbf449` Pen path, show/hide guide, grid, duration/start/end scale sliders, path undo; refined section colors/icons
 - ◻ Actions (idle, walk, run, jump, wave, talk, track), jump height, run lock, WASD roam
@@ -176,12 +181,14 @@ a manual screen, or part of the rig/matting CLI chain? Don't decide it yourself.
 - ◻ Parts: show/hide, solo, show all, mark reviewed, joint anchors, labels, separation preview
 - ❓ 3D: mesh detail, depth, view blending, surface relief and bump; 4-direction mesh (`mesh.build_4dir`)
 
-**Exports and checks**
+### Exports and checks
+
 - ◻ Exports menu: layered motion video, cutout MP4, EffectCraft (.jsx, run script), FilmCraft, Blender 5.3,
   2D layers + 6-action track, agent rig prompt, Farm School lineup
 - ◻ Validate motion clip, vision analysis, Doctor (`app.doctor`)
 
-**Tools and MCP (last step)**
+### Tools and MCP (last step)
+
 - ✅ `--control` bridge in the shell (same protocol)
 - ◻ `mc` help, MCP instructions, `ui_look`/`app_quit` errors and AGENTS.md/README/skills:
   point to `magicstudio-shell --control <port>` and remove references to the older app
@@ -196,7 +203,7 @@ Agent actions must be visible to the user.
   `ui.look` (picture, state, ids), `ui.click`/`ui.set`/`ui.key`/`ui.elements`, plus every engine command on the
   live session. Screen-scraping and global input on Wayland are the fallback we don't need.
 - **Next improvements, in order:** (1) the inner opencode session gets the shell's MCP permanently
-  (`mc --bridge <port> mcp`; propose the `opencode.json` change to the user); (2) the agent's
+  (`magic-cli --project /absolute/Project.magic mcp`; propose the `opencode.json` change to the user); (2) the agent's
   actions are visible (agent cursor/highlight, action trail, undo); (3) pointing works both ways, with drawing and
   comments on the stage or storyboard sent as notes, like HyperFrames Studio desktop, and the agent can point back;
   (4) shared context goes with every message (view, selection, time on the timeline), so "make this blink
@@ -272,6 +279,7 @@ through shared CLI/MCP commands; this flow is NOT yet implemented.
 ## Recovered friend cast (2026-10-21)
 
 Found mouse, bear, fox in `merriweather-videos/projects/kathy-cd-track-01/revision-03/opening/remotion/`:
+
 - `public/corrections/friends-ready-v2.png`: viewed actual group reference (holding hands).
 - `src/puppet-assets.json`: nine part entries for each mouse/bear/fox, all referenced files exist
   under `public/full/puppets/<name>/`, with source provenance and joint/end coordinates.

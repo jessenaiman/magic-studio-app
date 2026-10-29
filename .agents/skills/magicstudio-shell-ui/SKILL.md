@@ -113,8 +113,9 @@ lifts, a 90° chevron); nothing bounces. Respect `prefers-reduced-motion` (alrea
 ## Code conventions
 
 - One file per view or feature in `ui/` (`app.js`, `home.js`, `agent.js`, `bridge.js`). Use the shared `$`,
-  `el()`, `toast()` and `invoke`. No frameworks or build step. Vendor a library (exact version) only when
-  writing it yourself would be hand-rolling, e.g. markdown rendering.
+  `el()`, `toast()` and `invoke`. The vanilla UI files are embedded in the shell; `build.rs` uses Bun to generate
+  the Theatre and Milkdown bundles from `frontend/` when missing or stale. Vendor a library
+  (exact version) only when writing it yourself would be hand-rolling.
 - Data comes from the engine through Tauri commands in `src/main.rs`, on the window's one `Engine`
   session. The page never computes what the engine knows (motion, layout, status).
 - Every interactive element has a DOM `id` or an `aria-label`, because that's how the bridge, the CLI and

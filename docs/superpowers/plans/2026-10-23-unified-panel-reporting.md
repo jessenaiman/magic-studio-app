@@ -1,6 +1,7 @@
 # Unified Panel Reporting Implementation Plan
 
-> **For agentic workers:** Each task names its owner. Claim your paths in the Sam ledger before editing (single main checkout, serialized commits). Run the tests that match the change and report the real result. Steps use checkbox (`- [ ]`) syntax.
+> Historical implementation plan (2026-10-23). Current workflow instructions are in
+> [CONTRIBUTING.md](../../../CONTRIBUTING.md); task names and commands below record the original design.
 
 **Goal:** Every UI panel carries one standard record with a few flags, so the TUI and CLI read (and check) the whole UI generically: no per-switch commands, no DOM scraping, no per-panel Rust code.
 
@@ -19,20 +20,6 @@
 5. TUI colours come from one theme read from `style.css` `:root`.
 6. Statler's Words panel is on main, on the contract.
 7. The app builds and the coordinator has screenshotted Project, Animation and Design views from a fresh build.
-
-## Agent brief (read this first, every session)
-
-You are one of several agents in ONE shared checkout. This file is the contract.
-
-- Do only your task number. Claim its paths in `design/coordination/handoff-ledger.md` (C35) before editing.
-- Commit with `git commit --only <your paths>`. Never stage, revert, stash or merge files you did not write.
-- Write the failing test first, then run it and report the real result.
-- Use the names in "The contract" and "The style contract" exactly. Do not invent fields, classes, tokens or commands.
-- No per-panel or per-character logic: code loops over panels and looks.
-- No silent fallbacks: a missing registry, look or Studio is reported, never drawn as a default.
-- If the plan is wrong or a step fails, stop and report `file:line` to the coordinator (Claude, pane wG:pS). Do not improvise.
-- Run the test that matches the change and report the real command and result. Do not claim an unrun check passed.
-- Report each commit SHA to the coordinator in one line.
 
 ```mermaid
 flowchart LR
@@ -243,7 +230,7 @@ The panel record carries `look` from the entry. The TUI signal colours come from
 
 **Produces:** `dot(state, variant?)` is the only indicator builder; CSS `.dot[data-signal="0|1|2|3"]` + `[data-variant="pulse|ring|hollow"]` (shape only), size via `--dot-size`; tokens `--signal-0..3`, plus `--danger`, `--info`, `--surface-3` (for `#212631`) in `:root`. Panel component classes `.panel-head`, `.panel-empty`, `.panel-status` replace `.agent-head .block-head .magic-pane-head .motion-object-head .sb-head .song-section-head .theatre-head`, `.home-empty .magic-compare-empty .motion-empty .sb-empty .studio-empty .theatre-empty`, `.agent-status .magic-part-status .footer-status`; size/density differences become modifiers (`.panel-head.compact`), not new families. Duplicate rules (`.magic-pane-head` ×2, `.motion-object-head` ×2, `.sb-empty` ×4, `.agent-toggle` ×2) merge.
 
-- [ ] `ui-lint.mjs` counts: hex literals outside `:root`; `class: 'dot ` / `className = \`dot` outside `companion-boxes.js`; retired class names in CSS/JS. Fails when any count exceeds `ui-lint.baseline.json`. Start baseline at today's counts.
+- [ ] `ui-lint.mjs` counts: hex literals outside `:root`; `class: 'dot` / ``className = `dot`` outside `companion-boxes.js`; retired class names in CSS/JS. Fails when any count exceeds `ui-lint.baseline.json`. Start baseline at today's counts.
 - [ ] Migrate family by family (dot → head → empty → status), lowering the baseline in the same commit each time. Visual check of each view with the live-window screenshot recipe before each commit.
 - [ ] Final baseline: retired names 0, hand-built dots 0, hex outside `:root` 0.
 - [ ] Commits `refactor(ui): one indicator …`, `refactor(ui): one panel head …`, etc. (#23).
@@ -296,8 +283,6 @@ The TUI is the Rust side's UI and has the same problem: 31 `Color::Rgb(…)` lit
 | `550162d` | Words view controls out of the unsaved-edit guard (`words.js` only) | **no** |
 
 The unmerged UI predates the contract and would fail `ui-lint` as is: 3 hex + 55 px outside `:root`, own `.design-*` classes, 5 inline style writes in `words.js`, 2 hand-built dots, no panel registration. That is expected, not a defect; it is good work written before the rules.
-
-Statler keeps ownership of its code. Nobody else rewrites `songSection()`, `lyricModel`/`lyricSheet`/`lyricsBody`, `words.js` or the Design tab.
 
 **Consumes:** Task 8's first commit (`components.json` + `el()` reading it). **Files:** Statler's: `ui/words.js`, the Song/Words region of `ui/app.js` (`songSection()`, lyric model/sheet/body), the Design tab in `ui/index.html`, `crates/engine/src/words.rs`; entries in `ui/components.json`; component rules in `ui/style.css` (coordinate the file with Beaker: one owner at a time).
 

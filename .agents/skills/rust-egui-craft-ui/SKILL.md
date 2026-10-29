@@ -1,11 +1,12 @@
 ---
 name: rust-egui-craft-ui
-description: Use when building, redesigning, or polishing native Rust + egui desktop UIs in the Craft suite (Magic Studio, FilmCraft, PhotoCraft, EffectCraft). Covers Craft design tokens, custom pro-app widgets (scrubbable hot-numbers, collapsible section headers, compact pill/icon toggles, vector icons), mode-based top headers, 4px-gap panel cards, background job orchestration, and live --control visual verification.
+description: Use when building, redesigning, or polishing native Rust + egui desktop UIs in egui-based Craft apps (FilmCraft, PhotoCraft, EffectCraft). Covers Craft design tokens, custom pro-app widgets (scrubbable hot-numbers, collapsible section headers, compact pill/icon toggles, vector icons), mode-based top headers, 4px-gap panel cards, background job orchestration, and live --control visual verification.
 ---
 
 # Rust `egui` Craft-Suite UI Skill (`rust-egui-craft-ui`)
 
-Use this skill whenever designing, refactoring, or fixing UI in `crates/ui-egui` for `Magic Studio` (or any sibling Craft app). Default `egui` widgets (`ui.button`, `ui.slider`, `ui.horizontal_wrapped` with emoji labels) look like debug overlays and quickly turn into unorganized button soup. Pro creative tools in `egui` require a disciplined token system, custom painter-drawn controls, and mode-scoped layout hierarchy.
+Use this skill for existing egui-based Craft apps. Magic Studio uses the Tauri shell; see
+`../magicstudio-shell-ui/SKILL.md` for its UI. Default `egui` widgets (`ui.button`, `ui.slider`, `ui.horizontal_wrapped` with emoji labels) look like debug overlays and quickly turn into unorganized button soup. Pro creative tools in `egui` require a disciplined token system, custom painter-drawn controls, and mode-scoped layout hierarchy.
 
 ---
 
@@ -53,6 +54,7 @@ pub struct Tokens {
 ```
 
 ### Typography Hierarchy
+
 - **UI Body (`Proportional`, 12.0pt)**: Panel tabs, property labels, buttons.
 - **Section Headers (`Proportional`, 11.5pt Semibold)**: Collapsible inspector groups.
 - **Numeric / Timecode / Topology Badges (`Monospace`, 11.0pt)**: Hot numbers, `X/Y/Rot/Z`, vertex counts, FPS.
@@ -102,10 +104,10 @@ Structure `Magic Studio` around **3 clear workflow modes** in the top `38pt` hea
 
 ## 5. Engineering & Verification Rules
 
-1. **Zero Unwraps in Production (`crates/ui-egui` & `crates/engine`)**:
+1. **Zero Unwraps in Production**:
    - Keep `#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]` intact.
 2. **Automation Registry (`AutomationRegistry`)**:
    - Every interactive widget must remain addressable via the TCP `--control` bridge (`ui.state`, `ui.click`, `ui.set`) or engine CLI commands so automated tests and agents can drive every workflow deterministically.
 3. **Visual Verification Loop (Mandatory after every UI edit)**:
-   - Build the canonical app (`CARGO_BUILD_JOBS=1 cargo build -p magicstudio-shell -p mc`) and verify project/UI state through `mc` before claiming any UI change is complete.
+   - Build the app being edited with its documented build command and inspect its live UI before claiming a UI change is complete.
    - Check specifically for: text truncation, cramped row spacing, overlapping labels, low contrast, and cognitive overload.
