@@ -1,6 +1,6 @@
-PYTHON_VERSION ?= 3.10
 VENV_DIR ?= .venv
-BASE_PYTHON ?= $(shell command -v python$(PYTHON_VERSION) 2>/dev/null || command -v python3 2>/dev/null || command -v python 2>/dev/null)
+PYTHON ?= python3
+BASE_PYTHON ?= $(shell command -v "$(PYTHON)" 2>/dev/null)
 RUN_PYTHON = $(shell for dir in "$$VIRTUAL_ENV" "$$CONDA_PREFIX" "$(VENV_DIR)"; do if [ -n "$$dir" ] && [ -x "$$dir/bin/python" ]; then printf "%s/bin/python" "$$dir"; exit 0; elif [ -n "$$dir" ] && [ -x "$$dir/Scripts/python.exe" ]; then printf "%s/Scripts/python.exe" "$$dir"; exit 0; fi; done; if [ "$(OS)" = "Windows_NT" ]; then printf "%s/Scripts/python.exe" "$(VENV_DIR)"; else printf "%s/bin/python" "$(VENV_DIR)"; fi)
 PIP = $(RUN_PYTHON) -m pip
 
@@ -17,31 +17,22 @@ ensure-venv:
 		echo "==> Using active conda environment: $$CONDA_PREFIX"; \
 	elif [ -x "$(VENV_DIR)/bin/python" ] || [ -x "$(VENV_DIR)/Scripts/python.exe" ]; then \
 		echo "==> Using existing virtual environment: $(VENV_DIR)"; \
-	elif command -v uv >/dev/null 2>&1; then \
-		echo "==> Creating virtual environment with uv (Python $(PYTHON_VERSION)+): $(VENV_DIR)"; \
-		uv venv --python $(PYTHON_VERSION) "$(VENV_DIR)"; \
 	else \
 		if [ -z "$(BASE_PYTHON)" ]; then \
-			echo "ERROR: Python $(PYTHON_VERSION)+ is required, but no python executable was found."; \
+			echo "ERROR: Python executable not found: $(PYTHON). Set PYTHON to an existing interpreter."; \
 			exit 1; \
 		fi; \
-		"$(BASE_PYTHON)" -c "import sys; required=tuple(map(int, '$(PYTHON_VERSION)'.split('.')[:2])); raise SystemExit(0 if sys.version_info[:2] >= required else 1)" || { \
-			echo "ERROR: OpenMontage requires Python $(PYTHON_VERSION)+."; \
-			echo "Install uv or Python $(PYTHON_VERSION)+, then run make again."; \
-			exit 1; \
-		}; \
-		echo "==> Creating virtual environment with Python venv: $(VENV_DIR)"; \
-		"$(BASE_PYTHON)" -m venv "$(VENV_DIR)" || { \
-			echo "ERROR: Could not create $(VENV_DIR). Install uv or ensure python venv support is available."; \
-			exit 1; \
-		}; \
+		if command -v uv >/dev/null 2>&1; then \
+			echo "==> Creating virtual environment with uv and $(BASE_PYTHON): $(VENV_DIR)"; \
+			uv venv --python "$(BASE_PYTHON)" --no-python-downloads "$(VENV_DIR)"; \
+		else \
+			echo "==> Creating virtual environment with $(BASE_PYTHON): $(VENV_DIR)"; \
+			"$(BASE_PYTHON)" -m venv "$(VENV_DIR)" || { \
+				echo "ERROR: Could not create $(VENV_DIR). Install uv or ensure python venv support is available."; \
+				exit 1; \
+			}; \
+		fi; \
 	fi
-	@$(RUN_PYTHON) -c "import sys; required=tuple(map(int, '$(PYTHON_VERSION)'.split('.')[:2])); raise SystemExit(0 if sys.version_info[:2] >= required else 1)" || { \
-		echo "ERROR: OpenMontage requires Python $(PYTHON_VERSION)+."; \
-		echo "Current interpreter is $$($(RUN_PYTHON) -c 'import sys; print(\".\".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo unavailable): $(RUN_PYTHON)"; \
-		echo "Activate a compatible environment or remove it so make can create $(VENV_DIR)."; \
-		exit 1; \
-	}
 	@$(RUN_PYTHON) -m pip --version >/dev/null 2>&1 || $(RUN_PYTHON) -m ensurepip --upgrade >/dev/null
 
 venv: ensure-venv
