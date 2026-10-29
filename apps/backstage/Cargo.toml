@@ -1,0 +1,19 @@
+[package]
+name = "backstage"
+description = "Read-only Technicolor Workshop settings observer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29"] }
+crossterm = "0.29"
+serde_json.workspace = true
+time = { version = "0.3", features = ["formatting"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.31.3", features = ["signal", "process"] }
