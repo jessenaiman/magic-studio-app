@@ -17,6 +17,7 @@ pub struct Inputs {
     pub candidate_supplement: Option<PathBuf>,
     pub baseline_sha: Option<String>,
     pub candidate_sha: Option<String>,
+    pub tool_filter: Option<String>,
 }
 pub struct Report {
     pub path: PathBuf,
@@ -43,6 +44,7 @@ impl Inputs {
                 "--audit-candidate-supplement" => Some(3),
                 "--audit-baseline-sha" => Some(4),
                 "--audit-candidate-sha" => Some(5),
+                "--audit-tool" => Some(6),
                 _ => None,
             };
             if let Some(slot) = slot {
@@ -50,7 +52,7 @@ impl Inputs {
                 let value = args
                     .get(i)
                     .ok_or_else(|| format!("{} requires a value", args[i - 1]))?;
-                if slot >= 4
+                if matches!(slot, 4 | 5)
                     && !(value.len() >= 7
                         && value.len() <= 64
                         && value.chars().all(|c| c.is_ascii_hexdigit()))
@@ -63,7 +65,8 @@ impl Inputs {
                     2 => input.baseline_supplement = Some(value.into()),
                     3 => input.candidate_supplement = Some(value.into()),
                     4 => input.baseline_sha = Some(value.clone()),
-                    _ => input.candidate_sha = Some(value.clone()),
+                    5 => input.candidate_sha = Some(value.clone()),
+                    _ => input.tool_filter = Some(value.clone()),
                 };
             }
             i += 1;
@@ -209,6 +212,16 @@ impl Report {
     }
 }
 impl Comparison {
+    pub fn validate_tool(&self, id: &str) -> Result<(), String> {
+        if self.tool_ids().iter().any(|tool| tool == id) {
+            Ok(())
+        } else {
+            Err(format!(
+                "Native toolId not present in supplied reports: {}",
+                cell(id)
+            ))
+        }
+    }
     pub fn tool_ids(&self) -> Vec<String> {
         let mut ids = Vec::new();
         for tool in self.baseline.tools().iter().chain(self.candidate.tools()) {
@@ -365,7 +378,7 @@ impl Comparison {
     }
 }
 fn tools_table(out: &mut String, title: &str, a: &Report, b: &Report) {
-    writeln!(out,"\n## {title}\n\n| toolId | issueCount before → after | Δ | errorCount before → after |\n|---|---:|---:|---:|").unwrap();
+    writeln!(out,"\n## {title}\n\n| Tool / native toolId | issueCount before → after | Δ | errorCount before → after |\n|---|---:|---:|---:|").unwrap();
     let mut ids = Vec::new();
     for tool in a.tools().iter().chain(b.tools()) {
         if let Some(id) = tool["toolId"].as_str()
@@ -388,7 +401,7 @@ fn tools_table(out: &mut String, title: &str, a: &Report, b: &Report) {
         writeln!(
             out,
             "| {} | {} → {} | {} | {} → {} |",
-            cell(id),
+            tool_cell(id),
             n(number(av, "issueCount")),
             n(number(bv, "issueCount")),
             delta(number(av, "issueCount"), number(bv, "issueCount")),
@@ -397,7 +410,7 @@ fn tools_table(out: &mut String, title: &str, a: &Report, b: &Report) {
         )
         .unwrap();
     }
-    writeln!(out,"\nNative errorCount remains visible; status success is not a completeness claim. {}\n\n### {title} — coverage and status\n\n| toolId | filesAnalyzed before → after | status before → after |\n|---|---:|---|",agent_note(a,b)).unwrap();
+    writeln!(out,"\nNative errorCount remains visible; status success is not a completeness claim. {}\n\n### {title} — coverage and status\n\n| Tool / native toolId | filesAnalyzed before → after | status before → after |\n|---|---:|---|",agent_note(a,b)).unwrap();
     for id in ids {
         let av = a
             .tools()
@@ -412,7 +425,7 @@ fn tools_table(out: &mut String, title: &str, a: &Report, b: &Report) {
         writeln!(
             out,
             "| {} | {} → {} | {} → {} |",
-            cell(id),
+            tool_cell(id),
             n(number(av, "filesAnalyzed")),
             n(number(bv, "filesAnalyzed")),
             field(av, "status"),
@@ -462,5 +475,144 @@ fn agent_note(a: &Report, b: &Report) -> &'static str {
         "Agentlinter native results are included; no checker was run by Backstage."
     } else {
         "Agentlinter: not present in supplied native toolResults; not run or verified by Backstage."
+    }
+}
+
+fn tool_cell(id: &str) -> String {
+    format!("{} · `{}`", cell(tool_label(id)), cell(id))
+}
+/// Display-only labels; native JSON keys and counts are never rewritten.
+pub fn tool_label(id: &str) -> &str {
+    match id {
+        "ESLint9" => "JavaScript quality",
+        "Ruff" => "Python style",
+        "markdownlint" => "Markdown style",
+        "shellcheck" => "Shell review",
+        "Trivy" => "Package security",
+        "Semgrep" => "Security patterns",
+        "Stylelint" => "Stylesheet quality",
+        "spectral" => "API schema",
+        "Bandit" => "Python security",
+        "PyLintPython3" => "Python quality",
+        "Checkov" => "Config security",
+        "Lizard" => "Code complexity",
+        "PMD7" => "Java review",
+        "Prospector" => "Python review",
+        "jackson" => "JSON quality",
+        _ => id,
+    }
+}
+pub fn rule_label(id: &str) -> &str {
+    match id {
+        "ESLint9_no-undef" => "Unknown names",
+        "ESLint9_react_prop-types" => "Prop validation",
+        "ESLint9_react_jsx-sort-props" | "ESLint9_@stylistic_jsx-sort-props" => "Property order",
+        "ESLint9_security_detect-object-injection" => "Dynamic keys",
+        "ESLint9_react_react-in-jsx-scope" => "React scope",
+        "ESLint9_react-perf_jsx-no-new-object-as-prop" => "Inline objects",
+        "ESLint9_react_jsx-newline" | "ESLint9_@stylistic_jsx-newline" => "JSX spacing",
+        "ESLint9_react_forbid-component-props" => "Restricted props",
+        "ESLint9_react_jsx-indent" | "ESLint9_@stylistic_jsx-indent" => "JSX indentation",
+        "ESLint9_react_jsx-indent-props" | "ESLint9_@stylistic_jsx-indent-props" => {
+            "JSX prop indent"
+        }
+        "Ruff_E501_line-too-long" => "Long lines",
+        "markdownlint_MD032" => "Blank lines",
+        _ => id,
+    }
+}
+fn rule_doc(id: &str) -> Option<String> {
+    if id == "ESLint9_no-undef" {
+        return Some("https://eslint.org/docs/latest/rules/no-undef".into());
+    }
+    if id == "ESLint9_security_detect-object-injection" {
+        return Some("https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-object-injection.md".into());
+    }
+    if id == "ESLint9_react-perf_jsx-no-new-object-as-prop" {
+        return Some("https://github.com/cvazac/eslint-plugin-react-perf/blob/main/docs/rules/jsx-no-new-object-as-prop.md".into());
+    }
+    match id {
+        "ESLint9_react_prop-types"
+        | "ESLint9_react_jsx-sort-props"
+        | "ESLint9_react_react-in-jsx-scope"
+        | "ESLint9_react_jsx-newline"
+        | "ESLint9_react_forbid-component-props"
+        | "ESLint9_react_jsx-indent"
+        | "ESLint9_react_jsx-indent-props" => Some(format!(
+            "https://github.com/jsx-eslint/eslint-plugin-react/blob/master/docs/rules/{}.md",
+            id.strip_prefix("ESLint9_react_").unwrap()
+        )),
+        "ESLint9_@stylistic_jsx-sort-props"
+        | "ESLint9_@stylistic_jsx-newline"
+        | "ESLint9_@stylistic_jsx-indent"
+        | "ESLint9_@stylistic_jsx-indent-props" => Some(format!(
+            "https://v4.eslint.style/rules/jsx/{}",
+            id.strip_prefix("ESLint9_@stylistic_").unwrap()
+        )),
+        _ => None,
+    }
+}
+impl Comparison {
+    pub fn markdown_tool(&self, id: &str) -> Result<String, String> {
+        self.validate_tool(id)?;
+        let mut out = String::new();
+        writeln!(
+            out,
+            "# MAYHEM — remaining native findings\n\n**{}**  \nNative toolId: `{}`\n",
+            cell(tool_label(id)),
+            cell(id)
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "Candidate report: `{}`  \nCaller-supplied candidate SHA: `{}`\n",
+            cell(self.candidate.path.display().to_string()),
+            self.candidate.sha.as_deref().unwrap_or("Unavailable")
+        )
+        .unwrap();
+        let before = self
+            .baseline
+            .tools()
+            .iter()
+            .find(|t| t["toolId"] == id)
+            .unwrap_or(&Value::Null);
+        let after = self
+            .candidate
+            .tools()
+            .iter()
+            .find(|t| t["toolId"] == id)
+            .unwrap_or(&Value::Null);
+        writeln!(out,"Native issueCount: {} → {}; errorCount: {} → {}; filesAnalyzed: {} → {}; status: {} → {}.\n",n(number(before,"issueCount")),n(number(after,"issueCount")),n(number(before,"errorCount")),n(number(after,"errorCount")),n(number(before,"filesAnalyzed")),n(number(after,"filesAnalyzed")),field(before,"status"),field(after,"status")).unwrap();
+        let a = rules(&self.baseline);
+        let b = rules(&self.candidate);
+        let mut remaining: Vec<_> = b
+            .iter()
+            .filter(|((tool, _), count)| tool == id && **count > 0)
+            .collect();
+        remaining.sort_by(|(ak, av), (bk, bv)| bv.cmp(av).then(ak.cmp(bk)));
+        writeln!(out,"Showing {} of {} remaining native patternId groups, sorted by candidate issue-record count (descending). Unchanged rules remain visible; these are not independent bug counts.\n\n| Meaning | Native patternId | Candidate records | Baseline records | Δ |\n|---|---|---:|---:|---:|",remaining.len().min(10),remaining.len()).unwrap();
+        for (key, count) in remaining.iter().take(10) {
+            let prior = a.get(*key).copied().unwrap_or(0);
+            let label = cell(rule_label(&key.1));
+            let meaning = rule_doc(&key.1)
+                .map(|url| format!("[{label}]({url})"))
+                .unwrap_or(label);
+            writeln!(
+                out,
+                "| {} | `{}` | {} | {} | {:+} |",
+                meaning,
+                cell(&key.1),
+                count,
+                prior,
+                **count - prior
+            )
+            .unwrap();
+        }
+        writeln!(out,"\nFriendly labels are display-only; native toolId, patternId and counts are unchanged. Unknown IDs fall back to their raw name.\n").unwrap();
+        if id == "ESLint9" {
+            writeln!(out,"- Unknown names: review declarations **and lint scope/configuration**; shared/browser globals can cause findings without proving a runtime bug.\n- React scope: review JSX runtime configuration; automatic runtimes may not require a React variable in scope.\n- Dynamic keys: review key provenance; a finding alone does not prove injection.\n- Property order / JSX spacing: react and @stylistic may report the same location separately. Their native records remain separate, not silently deduplicated or called separate bugs.\n- Inline objects is a performance heuristic; restricted props is a policy check. Neither is automatically a runtime failure.\n").unwrap();
+        }
+        writeln!(out,"Primary report errors remain {} → {}. {} No audits, agents, models or inference were run by this read-only view.",self.baseline.errors(),self.candidate.errors(),agent_note(&self.baseline,&self.candidate)).unwrap();
+        Ok(out)
     }
 }

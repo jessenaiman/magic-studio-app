@@ -119,3 +119,13 @@ In the artifact TUI: arrows/j/k select native toolId; [/] select that tool's can
 finding; d opens native details, PgUp/PgDn scroll, Enter/o requests an observed source
 file externally. Artifact and source links are bounded metadata observations, not a
 report archive. Existing JSON files are never modified or rewritten.
+
+For an unchanged-rule-inclusive readout, add `--audit-tool ESLint9` with
+`--mayhem-report`. This prints the ten largest remaining native patternId groups by
+candidate issue-record count, including unchanged groups—not only largest deltas.
+The filter also selects that native toolId initially in the artifact TUI. Display
+labels are a bounded static mapping: e.g. JavaScript quality / ESLint9 and Unknown
+names / ESLint9_no-undef. Technical IDs stay indented/dim on the next terminal row
+(same cell size), and are retained alongside labels in Markdown. No counts, fields,
+rule identities or original JSON files are rewritten; unknown IDs use their raw
+name. Official rule documentation links accompany known remaining-rule labels.

@@ -1040,7 +1040,7 @@ fn audit_tools(
         &format!("{title} • NATIVE TOOLRESULTS"),
         &format!("issues {} • errors {}", report.issues(), report.errors()),
     );
-    let widths = [3, 20, 17, 17, 22, 13, 8];
+    let widths = [3, 26, 15, 15, 19, 13, 9];
     header(
         f,
         Rect::new(body.x, body.y, body.width, 1),
@@ -1093,9 +1093,19 @@ fn audit_tools(
         label(
             f,
             cells[1],
-            id,
+            crate::audit::tool_label(id),
             if index == selected { GOLD } else { IVORY },
             index == selected,
+        );
+        f.render_widget(
+            Paragraph::new(crate::data::clean(id))
+                .style(Style::default().fg(MUTED).add_modifier(Modifier::DIM)),
+            Rect::new(
+                cells[1].x + 1,
+                row.y + 1,
+                cells[1].width.saturating_sub(1),
+                1,
+            ),
         );
         label(
             f,
@@ -1201,10 +1211,27 @@ fn audit_finding(
         label(
             f,
             Rect::new(split[0].x + 15, y, split[0].width.saturating_sub(17), 1),
-            &native_field(issue, key),
+            &match *key {
+                "toolId" => {
+                    crate::audit::tool_label(issue["toolId"].as_str().unwrap_or("Unavailable"))
+                        .into()
+                }
+                "patternId" => {
+                    crate::audit::rule_label(issue["patternId"].as_str().unwrap_or("Unavailable"))
+                        .into()
+                }
+                _ => native_field(issue, key),
+            },
             if *key == "severity" { GOLD } else { CYAN },
             false,
         );
+        if matches!(*key, "toolId" | "patternId") && body.height >= 7 {
+            f.render_widget(
+                Paragraph::new(format!("  {}", native_field(issue, key)))
+                    .style(Style::default().fg(MUTED).add_modifier(Modifier::DIM)),
+                Rect::new(split[0].x + 15, y + 1, split[0].width.saturating_sub(17), 1),
+            );
+        }
     }
     label(
         f,

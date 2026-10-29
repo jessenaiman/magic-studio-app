@@ -315,7 +315,11 @@ fn main() -> io::Result<()> {
     if args.iter().any(|a| a == "--mayhem-report") {
         let input = audit::Inputs::parse(&args).map_err(io::Error::other)?;
         let report = input.load().map_err(io::Error::other)?;
-        print!("{}", report.markdown());
+        let output = match input.tool_filter.as_deref() {
+            Some(tool) => report.markdown_tool(tool).map_err(io::Error::other)?,
+            None => report.markdown(),
+        };
+        print!("{output}");
         return Ok(());
     }
 
@@ -373,10 +377,25 @@ fn main() -> io::Result<()> {
                 app.refreshing = false;
                 match result {
                     Ok(report) => {
+                        if let Some(requested) = app
+                            .audit_inputs
+                            .as_ref()
+                            .and_then(|input| input.tool_filter.as_deref())
+                            && let Err(error) = report.validate_tool(requested)
+                        {
+                            app.audit_error = Some(error.clone());
+                            app.message = error;
+                            continue;
+                        }
                         let id = app
                             .audit
                             .as_ref()
                             .and_then(|a| a.tool_ids().get(app.audit_selected).cloned());
+                        let id = id.or_else(|| {
+                            app.audit_inputs
+                                .as_ref()
+                                .and_then(|input| input.tool_filter.clone())
+                        });
                         app.audit_selected = id
                             .and_then(|id| report.tool_ids().iter().position(|t| *t == id))
                             .unwrap_or_else(|| {
