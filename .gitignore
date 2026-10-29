@@ -162,3 +162,5 @@ docs/codacy-report.md
 
 # Native acceptance diagnostics/projects are disposable and never source.
 apps/magicstudio-shell/acceptance/artifacts/
+
+/apps/magicstudio-shell/ui/vendor/backstage/

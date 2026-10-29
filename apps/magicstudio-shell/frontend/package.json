@@ -1,13 +1,16 @@
 {
   "private": true,
   "scripts": {
-    "build": "bun run build:theatre && bun run build:learning",
+    "build": "bun run build:theatre && bun run build:learning && bun run build:backstage",
     "build:theatre": "bun build theatre-frame.js --target browser --format iife --banner 'var __require;' --outfile ../ui/vendor/theatre.bundle.js",
-    "build:learning": "bun build learning-editor.js --target browser --format iife --outdir ../ui/vendor/learning"
+    "build:learning": "bun build learning-editor.js --target browser --format iife --outdir ../ui/vendor/learning",
+    "build:backstage": "bun build backstage-terminal.js --target browser --format iife --outdir ../ui/vendor/backstage && cp node_modules/@xterm/xterm/LICENSE ../ui/vendor/backstage/xterm-LICENSE && cp node_modules/@xterm/addon-fit/LICENSE ../ui/vendor/backstage/addon-fit-LICENSE"
   },
   "dependencies": {
+    "@milkdown/crepe": "7.22.3",
     "@theatre/core": "0.7.0",
     "@theatre/studio": "0.7.0",
-    "@milkdown/crepe": "7.22.3"
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0"
   }
 }

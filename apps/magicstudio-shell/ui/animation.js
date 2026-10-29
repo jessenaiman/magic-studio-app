@@ -86,7 +86,7 @@ async function animationOpen(){
   const list=assets.assets||assets.project_assets||[];
   motion.assets=list;
   if(!list.some(a=>a.id===motion.character))motion.character=list[0]?.id;
-  if(!motion.character){animationEmpty('Bring in your artwork','Choose an object from the Project view.');return;}
+  if(!motion.character){animationEmpty('Bring in your artwork','Choose an object from the Storyboard view.');return;}
   await animationLoad();
  }catch(e){animationEmpty('Artwork needs attention',String(e));}
 }
@@ -415,7 +415,7 @@ async function animationRefresh(){
  if(state.project!==project||request!==motion.request)return;
  motion.assets=catalog.assets||catalog.project_assets||[];
  const character=catalog.active_asset&&motion.assets.some(a=>a.id===catalog.active_asset)?catalog.active_asset:motion.assets.some(a=>a.id===motion.character)?motion.character:motion.assets[0]?.id||null;
- if(!character){Object.assign(motion,{character:null,selected:null,track:'',meta:null,sample:null,images:[]});$('motion-inspector')?.replaceChildren();animationEmpty('Bring in your artwork','Choose an object from the Project view.');if(typeof timelineRender==='function')timelineRender();return;}
+ if(!character){Object.assign(motion,{character:null,selected:null,track:'',meta:null,sample:null,images:[]});$('motion-inspector')?.replaceChildren();animationEmpty('Bring in your artwork','Choose an object from the Storyboard view.');if(typeof timelineRender==='function')timelineRender();return;}
  const changed=character!==motion.character;
  if(changed)theatreRequireSaved();
  const meta=await motionCommand('motion.tracks',{character});

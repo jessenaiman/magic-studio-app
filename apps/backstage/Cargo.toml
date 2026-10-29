@@ -15,5 +15,8 @@ crossterm = { version = "0.29", features = ["osc52"] }
 serde_json.workspace = true
 time = { version = "0.3", features = ["formatting"] }
 
+[target.'cfg(unix)'.dependencies]
+signal-hook = "0.3.18"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.31.3", features = ["signal", "process"] }

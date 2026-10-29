@@ -1,65 +1,30 @@
-# Magic Studio onboarding — meta skill
+# Magic Studio onboarding
 
-## When to use
+## What and Where
 
-Use for a first greeting or an open-ended request such as “what can I make?”
-If the user already gave an actionable request, begin that work instead of
-repeating onboarding or installing anything.
+Start with the installed `magic-cli` and the user's existing `.magic` project.
+The agent can load it, read/edit its storyboard, and open/focus the app.
+The app's Studio view embeds the project's linked HyperFrames workspace.
 
-## Orient to the installed app
+## Why
 
-1. Start with `magic` for the desktop application, not a source bootstrap.
-2. Discover actual operations with `magic-cli --help` and `magic-cli commands`.
-3. If a project is involved, select it explicitly with `magic-cli studio open
-   /absolute/Song.magic`; inspect its state and current view before editing.
-4. Explain the four creative areas in a few sentences:
-   **Storyboard** plans scenes and artwork, **Animation** prepares movement,
-   **Lyrics** designs timed words, and **Studio** composes the HyperFrames video.
-5. Explain Sproket/Gaffer only when conversation or artwork is relevant.
-   Backstage is the separate observer, not another production step.
+Help the user continue their production without a source bootstrap or another
+studio. If the request is already actionable, begin that work immediately.
 
-For the exact CLI/MCP contract, read
-[the Magic skill](../../agent-harness/cli_anything/magic/skills/SKILL.md).
-If Magic is absent or the user explicitly wants a development installation, use
-[Magic Studio setup](../../agent-harness/cli_anything/magic/README.md).
-Do not reinstall Python, download models, or configure paid providers merely to
-introduce the app.
+## How
 
-## Begin with what the user has
+Read [the Magic Studio entry skill](../../.agents/skills/magic/SKILL.md).
+Use its verified project-selection, storyboard, and Studio steps. Use configured
+production roots and supplied/saved paths; report missing paths without a
+machine-wide search. Do not migrate folders, install Python, or start models.
 
-Ask one useful question if the intended result is unclear: what song, recording,
-footage, storyboard, or finished format are they starting with?
-Preserve supplied lyrics, timestamps, artwork, and original media. Existing
-transcription should be imported rather than silently regenerated. A prepared
-project is not creative approval or a finished video.
+For an open-ended greeting, ask one useful question about the song, footage,
+lyrics, or existing project. Preserve supplied media, timing, and artwork.
+Only read [pipeline guidance](../../AGENT_GUIDE.md) and the
+[runtime matrix](../core/hyperframes.md) when that production workflow is requested.
 
-Offer at most three short starters appropriate to the actual project:
+## Success Criteria
 
-- “Use my song and timed lyrics to prepare a storyboard draft.”
-- “Help me prepare this character for animation.”
-- “Design the lettering for this song section.”
-
-Describe the next visible result and any required choice. Do not promise an
-unverified provider, free output, completion time, or automatic full production.
-
-## When a reusable production pipeline is requested
-
-Python tools, YAML manifests, and stage skills are part of Magic Studio's
-production toolkit. Use them when the task calls for that workflow, not as a
-mandatory app-launch check. Read [the agent guide](../../AGENT_GUIDE.md), choose
-the relevant `pipeline_defs/` manifest, then run its capability discovery in the
-prepared source environment:
-
-```sh
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.provider_menu_summary(), indent=2))"
-```
-
-Lead with observed working capabilities. Read missing-tool setup instructions
-from the registry and offer only relevant unlocks; installations, credentials,
-model downloads, and paid work need the user's applicable authorization.
-Do not infer availability from the presence of source files.
-
-For pipeline composition, distinguish Remotion and HyperFrames when both are
-available; select the runtime at proposal, with brief-specific tradeoffs and
-approval. The desktop Studio remains HyperFrames. See
-[the runtime decision matrix](../core/hyperframes.md).
+The user knows how to select their existing project, access its storyboard, and
+reach the linked HyperFrames workspace in Studio, with missing state stated
+honestly. A draft or prepared project is not creative approval or a finished video.

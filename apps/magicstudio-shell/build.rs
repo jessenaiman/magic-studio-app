@@ -56,6 +56,7 @@ fn main() {
 fn theatre_bundle() {
     let sources = [
         "frontend/theatre-frame.js",
+        "frontend/backstage-terminal.js",
         "frontend/project-id.mjs",
         "frontend/package.json",
         "frontend/bun.lock",
@@ -69,8 +70,10 @@ fn theatre_bundle() {
     let bundle = modified("ui/vendor/theatre.bundle.js");
     if bundle.is_some()
         && modified("ui/vendor/learning/learning-editor.js").is_some()
+        && modified("ui/vendor/backstage/backstage-terminal.js").is_some()
         && sources.iter().all(|s| {
-            modified(s) <= bundle
+            modified(s) <= modified("ui/vendor/backstage/backstage-terminal.js")
+                && modified(s) <= bundle
                 && modified(s) <= modified("ui/vendor/learning/learning-editor.js")
         })
     {
@@ -90,6 +93,7 @@ fn theatre_bundle() {
     };
     if !std::path::Path::new("frontend/node_modules/@theatre/studio").exists()
         || !std::path::Path::new("frontend/node_modules/@milkdown/crepe").exists()
+        || !std::path::Path::new("frontend/node_modules/@xterm/xterm").exists()
     {
         bun(&["install"]);
     }

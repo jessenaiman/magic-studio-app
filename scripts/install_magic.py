@@ -2,7 +2,7 @@
 """Install this built Magic Studio checkout's GUI/CLI and desktop entry locally.
 
 Runtime dependencies from agent-harness use an application-owned environment.
-Build with: cargo build -p magicstudio-shell
+Build with: cargo build -p magicstudio-shell -p backstage
 This installs Magic only; it never installs or configures other Craft apps.
 """
 
@@ -253,6 +253,9 @@ def main():
     shell = build / "magicstudio-shell"
     if not shell.is_file():
         parser.error("Build the native shell first")
+    backstage = build / "backstage"
+    if not backstage.is_file():
+        parser.error("Build the Backstage companion first: cargo build -p backstage")
     uv = require_executable("uv", parser)
     git = require_executable("git", parser)
     python = install_environment(root, args, parser, uv)
@@ -263,6 +266,9 @@ def main():
     staged = destination / "magicstudio-shell.new"
     shutil.copy2(shell, staged)
     staged.replace(destination / "magicstudio-shell")
+    staged = destination / "backstage.new"
+    shutil.copy2(backstage, staged)
+    staged.replace(destination / "backstage")
     for name, module in [("magic", "gui"), ("magic-cli", "magic_cli")]:
         entry = destination / name
         staged = destination / (name + ".new")

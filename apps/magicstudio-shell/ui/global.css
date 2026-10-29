@@ -1,0 +1,63 @@
+/* Shared panel content. The host owns available space; each body owns its inset.
+   Nested field groups own their fields, never another inset or scroll viewport. */
+.panel-body {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+}
+
+.panel-body[data-look="scroll"],
+.panel-body[data-scroll="auto"],
+.panel-body[data-scroll="bounded"] {
+  overflow: auto;
+}
+
+.panel-body[data-scroll="bounded"] {
+  max-height: var(--panel-body-limit, none);
+  flex: none;
+}
+
+.panel-body[data-look="form"] {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.panel-body[data-look="composer"] {
+  flex: none;
+  padding: var(--space-3);
+  border-top: thin solid var(--line);
+}
+
+.panel-fields,
+.panel-body[data-look="settings"] {
+  display: grid;
+  gap: var(--space-2);
+  border-bottom: thin solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.panel-fields label,
+.panel-body[data-look="settings"] label {
+  display: grid;
+  gap: var(--size-3);
+}
+
+.panel-fields input,
+.panel-fields select,
+.panel-body[data-look="settings"] input,
+.panel-body[data-look="settings"] select {
+  width: 100%;
+  min-width: 0;
+}
+
+.panel-fields .start,
+.panel-body[data-look="settings"] .start {
+  margin-top: var(--size-2);
+  width: 100%;
+}
+
+.panel-body[hidden],
+.panel-fields[hidden] {
+  display: none;
+}

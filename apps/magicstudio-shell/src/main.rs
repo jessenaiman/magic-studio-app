@@ -100,6 +100,8 @@ fn startup(app: tauri::AppHandle) -> Value {
     start
 }
 
+mod backstage_pty;
+mod backstage_terminal;
 mod bridge;
 mod feedback;
 mod menu;
@@ -1153,6 +1155,7 @@ fn main() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(backstage_pty::TerminalState::default())
         .manage(View::default())
         .manage(DrawerHeight::default())
         .manage(ControlPort::default())
@@ -1160,7 +1163,7 @@ fn main() {
         .manage(project_dispatch::Pending::default())
         .manage(feedback::Feedback::default())
         .manage(bridge::Pending::default())
-        .invoke_handler(tauri::generate_handler![startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
+        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
         .setup(|app| {
             #[cfg(unix)]
             if let Some(path)=launch_options()["project"].as_str() {
@@ -1200,5 +1203,5 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("Magic Studio shell failed to start")
-        .run(|app,event|{if matches!(event,tauri::RunEvent::Exit){#[cfg(unix)] bridge::cleanup(app);}});
+        .run(|app,event|{if matches!(event,tauri::RunEvent::Exit){backstage_terminal::cleanup(app);#[cfg(unix)] bridge::cleanup(app);}});
 }

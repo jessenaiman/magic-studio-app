@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Magic Studio</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="global.css" />
   <link rel="stylesheet" href="cast.css" />
   <link rel="stylesheet" href="drawers.css" />
   <link rel="stylesheet" href="menu.css" />
+  <link rel="stylesheet" href="mayhem.css" />
+  <link rel="stylesheet" href="vendor/backstage/backstage-terminal.css" />
 </head>
 <body>
   <header id="app-bar" class="bar">
@@ -24,7 +27,7 @@
       <button class="tab" data-view="design" role="tab" aria-selected="false" title="Lyrics and motion graphics timed to the lyrics">Lyrics</button>
       <button class="tab" data-view="studio" role="tab" aria-selected="false">Studio</button>
       <button class="tab" id="tab-skills" data-view="skills" role="tab" aria-selected="false" title="Knowledge skills and tech tools discovered for this project">Learning</button>
-      <button class="tab" id="tab-analytics" data-view="analytics" role="tab" aria-selected="false" title="Code complexity, token spend, and app status">Analytics</button>
+      <button class="tab" id="tab-analytics" data-view="analytics" role="tab" aria-selected="false" title="Mayhem · health unknown. Check observations here first." data-health="unknown"><svg class="mayhem-siren" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 19h14M7 19v-7a5 5 0 0 1 10 0v7M12 2v2M3 6l2 2M21 6l-2 2M1 13h3M20 13h3"/></svg><span>Mayhem</span><small id="mayhem-health">Unknown</small></button>
       <span class="tab-ink" aria-hidden="true"></span>
     </nav>
     <div class="drawer-toggles" aria-label="Studio assistants">
@@ -71,7 +74,7 @@
           </div>
         </form>
     </section>
-    <section class="view active" id="view-project" aria-label="Project workspace">
+    <section class="view active" id="view-project" aria-label="Storyboard workspace">
       <div class="project-body">
         <!-- Left rail: collapsible blocks (song workflow) -->
         <aside class="blocks" id="blocks" aria-label="Song workflow"></aside>
@@ -109,7 +112,7 @@
     </section>
 
     <section class="view" id="view-skills" aria-label="Learning production manual"></section>
-    <section class="view" id="view-analytics" aria-label="Analytics and complexity metrics"></section>
+    <section class="view" id="view-analytics" aria-label="Mayhem observations and Backstage terminal"></section>
 
   </main>
   <!-- One footer for every tab: workflow stages · what the active tab shows · save and studio state. -->
@@ -197,6 +200,8 @@
   <script src="vendor/learning/learning-editor.js"></script>
   <script src="cast.js"></script>
   <script src="skills.js"></script>
+  <script src="vendor/backstage/backstage-terminal.js"></script>
+  <script src="backstage-terminal.js"></script>
   <script src="analytics.js"></script>
   <script src="bridge.js"></script>
   <script src="companions.js"></script>

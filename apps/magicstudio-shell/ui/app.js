@@ -102,7 +102,7 @@ function footerContext() {
     return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
   }
   if (state.view === 'studio') { const project = videoProject(); return project ? `Video project: ${project}` : 'No video project yet'; }
-  if (state.view === 'analytics') return 'Analytics · Code complexity, token spend & app status';
+  if (state.view === 'analytics') return 'Mayhem · Backstage, code complexity & app observations';
   const pages = state.data?.storyboard?.previews?.length || 0;
   const objects = (state.data?.assets?.assets || []).length;
   return [pages ? `Storyboard · Page ${state.page + 1} / ${pages}` : 'Storyboard · not built yet', pages ? state.pageTitles?.[state.page] : null,
@@ -192,6 +192,7 @@ function applyEntry(node, entry, id = node.id) {
   if (entry.component) node.className = [...new Set(`${node.className || ''} ${entry.component}`.trim().split(/\s+/))].join(' ');
   if (entry.look) node.dataset.look = entry.look;
   if (entry.density) node.dataset.density = entry.density;
+  if (entry.scroll) node.dataset.scroll = entry.scroll;
   if (entry.component === 'panel' && entry.rail && !node.querySelector('[data-companion-slot]')) {
     const head = node.querySelector('.panel-head');
     if (!head) { node.dataset.contractError = 'Panel has no shared header'; return node; }

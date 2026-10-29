@@ -1,6 +1,6 @@
 // Analytics reads saved measurements on entry. Scanning is an explicit action, never a timer.
-const analyticsState = { data: null, section: 'overview', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
-const ANALYTICS_SECTIONS = [['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
+const analyticsState = { data: null, section: 'backstage', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
+const ANALYTICS_SECTIONS = [['backstage','Backstage'],['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
 // Existing Archify references, not live system models. Upstream evidence links stay pinned.
 const ANALYTICS_DIAGRAMS = [
   {id:'magic-cli',file:'magic-cli-architecture.html',title:'Magic CLI & Studio architecture',source:'CLI-Anything magic harness · unified live Studio & headless engine routing',revision:null},
@@ -25,20 +25,21 @@ async function renderAnalytics(scan = false) {
   catch(error){analyticsState.error=String(error);}
   finally {
     analyticsState.loading=false;$('analytics-refresh').disabled=false;$('analytics-scan').disabled=false;
-    analyticsRenderSurface();
+    mayhemHealthIndicator();analyticsRenderSurface();
   }
 }
 function analyticsMount() {
   if ($('analytics-layout')) return;
-  const nav=el('nav',{class:'learning-categories','aria-label':'Analytics sections'},...ANALYTICS_SECTIONS.map(([id,label])=>el('button',{
+  const nav=el('nav',{class:'learning-categories','aria-label':'Mayhem sections'},...ANALYTICS_SECTIONS.map(([id,label])=>el('button',{
     id:`analytics-nav-${id}`,class:'ghost',onclick:()=>{analyticsState.section=id;analyticsRenderSurface();},
   },label)));
-  const rail=el('aside',{class:'learning-rail','aria-label':'Analytics navigation'},el('h2',{},'Analytics'),nav,el('div',{id:'analytics-rail-summary',class:'learning-task-list'}));
+  const rail=el('aside',{class:'learning-rail','aria-label':'Mayhem navigation'},el('h2',{},'Mayhem'),nav,el('div',{id:'analytics-rail-summary',class:'learning-task-list'}));
   const actions=el('div',{class:'learning-actions'},
     el('button',{id:'analytics-refresh',class:'ghost',title:'Read saved scan and current telemetry without running Lizard','data-commands':'app.analytics',onclick:()=>renderAnalytics(false)},'Refresh data'),
     el('button',{id:'analytics-scan',class:'start',title:'Explicitly measure local Rust, Python and shell JavaScript with Lizard','data-commands':'app.analytics',onclick:()=>renderAnalytics(true)},'Refresh scan'));
   const main=el('main',{class:'learning-main',id:'analytics-main'},
-    el('header',{class:'learning-bar'},el('h2',{id:'analytics-breadcrumb',class:'learning-breadcrumb'},'Analytics'),actions),
+    el('header',{class:'learning-bar'},el('h2',{id:'analytics-breadcrumb',class:'learning-breadcrumb'},'Mayhem'),actions),
+    window.magicBackstageTerminal.mount(),
     el('p',{id:'analytics-message',class:'learning-message',role:'status'}),el('div',{id:'analytics-surface',class:'learning-surface'}));
   $('view-analytics').replaceChildren(el('div',{class:'learning-layout',id:'analytics-layout'},rail,main));
 }
@@ -59,7 +60,9 @@ function analyticsRenderSurface() {
   const surface=$('analytics-surface');if(!surface)return;
   const d=analyticsState.data||{},comp=d.complexity||{},usage=d.usage||{},totals=usage.available?usage.totals||{}:{},host=d.host||{},project=d.project||{};
   const section=analyticsState.section;
-  for(const [id,label] of ANALYTICS_SECTIONS){const button=$(`analytics-nav-${id}`);button.classList.toggle('active',id===section);button.setAttribute('aria-pressed',String(id===section));if(id===section)$('analytics-breadcrumb').textContent=`Analytics · ${label}`;}
+  document.getElementById('backstage-panel').hidden=section!=='backstage';
+  if(section==='backstage')window.dispatchEvent(new Event('backstage-visible'));
+  for(const [id,label] of ANALYTICS_SECTIONS){const button=$(`analytics-nav-${id}`);button.classList.toggle('active',id===section);button.setAttribute('aria-pressed',String(id===section));if(id===section)$('analytics-breadcrumb').textContent=`Mayhem · ${label}`;}
   $('analytics-message').textContent=analyticsState.error?`Could not refresh: ${analyticsState.error}. Previous results, if any, remain below.`:
     `Read ${analyticsTime(d.sampled_at_unix_secs)} · no background scans or polling`;
   $('analytics-rail-summary').replaceChildren(analyticsRailReport(comp));
@@ -141,4 +144,22 @@ function analyticsCommandRows(commands) {
   for(const [name,items]of groups)root.append(el('details',{class:'analytics-command-group'},el('summary',{},`${name} · ${items.length}`),
     ...items.map(command=>el('article',{class:'learning-summary'},el('h3',{},command.label),el('code',{},`magic exec ${command.id} [key=value ...]`),
       el('p',{},`Menu: ${(command.menu||[]).join(' / ')||'no menu placement'} · Shortcut: ${command.shortcut||'none'}`),el('pre',{},command.params)))));
+}
+
+// Saved measurements and observed executable presence are evidence, not a health score.
+function mayhemHealthIndicator() {
+  const d=analyticsState.data, comp=d?.complexity, tools=d?.tools;
+  const missing=Array.isArray(tools)?tools.filter(tool=>tool.available===false).length:0;
+  const failed=comp?.scan_failures?.length||0;
+  const hotspots=comp?.available===true&&Number.isFinite(comp.functions_over_ccn_15)?comp.functions_over_ccn_15:0;
+  const warnings=[];
+  if(missing)warnings.push(`${missing} tools not found`);
+  if(failed)warnings.push(`${failed} scan targets failed`);
+  if(hotspots)warnings.push(`${hotspots} functions over CCN 15 in saved scan`);
+  if(comp?.last_error||comp?.cache_error)warnings.push('scan error recorded');
+  const button=document.getElementById('tab-analytics');
+  const stale=Boolean(analyticsState.error);
+  button.dataset.health=warnings.length?'warning':'unknown';
+  document.getElementById('mayhem-health').textContent=warnings.length?`${stale?'Previous · ':''}${warnings.length} signal${warnings.length===1?'':'s'}`:'Unknown';
+  button.title=`Mayhem · check here first. ${warnings.length?warnings.join('; '):'Overall health unknown; no connected audit result.'}${stale?' Refresh failed; previous observations retained.':''} Executable presence is not runtime health.`;
 }

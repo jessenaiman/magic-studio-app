@@ -320,15 +320,10 @@ input:focus-visible,textarea:focus-visible,select:focus-visible { outline:thin s
 .panel { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: thin solid var(--line); border-inline-start: var(--panel-border) solid var(--panel-tone, var(--line)); border-radius: var(--radius); transition: border-color var(--fast) var(--ease); overflow: hidden; }
 .panel:hover { border-color: var(--panel-tone, var(--line)); }
 .panel-rail { flex: none; display: block; width: var(--panel-rail-width); height: var(--space-5); pointer-events: none; }
-.panel-body { min-height: 0; padding: var(--space-2) var(--space-3); }
-.panel-body[data-look="scroll"] { overflow: auto; }
-.panel-body[data-look="form"] { display: grid; gap: var(--space-2); }
-.panel-body[hidden] { display:none; }
 .field { width: 100%; min-width: 0; color: var(--text); background: var(--bg); border: thin solid var(--line); border-radius: var(--radius); padding: var(--space-2); font: inherit; }
 .field:focus { outline: thin solid var(--accent); }
 textarea.field { resize: vertical; }
 .field[type="color"] { flex: none; width: calc(var(--space-3) * 3); height: var(--space-5); padding: var(--space-1); }
-.panel-body[data-look="composer"] { flex: none; border-top: thin solid var(--line); }
 .panel[data-look="song"], .panel[data-look="chat"] { --panel-tone: var(--tone-song); }
 .panel[data-look="lyrics"] { --panel-tone: var(--tone-lyrics); }
 .panel[data-look="transcript"] { --panel-tone: var(--tone-transcript); }
@@ -438,7 +433,7 @@ summary.panel-head::-webkit-details-marker { display: none; }
 .agent-head-actions { display: flex; gap: var(--size-6); }
 .agent-title { font-weight: 600; font-size: var(--size-13); }
 .agent select { width: 100%; background: var(--surface-2); color: var(--text); border: var(--size-1) solid var(--line); border-radius: var(--size-8); padding: var(--size-6) var(--size-8); font: inherit; }
-.agent-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--size-8); padding: var(--size-8) var(--size-12); scrollbar-width: thin; }
+.agent-log { flex: 1; display: flex; flex-direction: column; gap: var(--size-8); scrollbar-width: thin; }
 .msg { line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; animation: fade var(--slow) var(--ease); }
 .msg.user { align-self: flex-end; max-width: 88%; background: color-mix(in srgb, var(--accent) 10%, transparent); border: var(--size-1) solid color-mix(in srgb, var(--accent) 25%, transparent); color: var(--text); padding: var(--size-8) var(--size-10); border-radius: var(--size-12) var(--size-12) var(--size-4) var(--size-12); }
 .msg.assistant { color: var(--text); }
@@ -750,11 +745,6 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .agent-head-actions .ghost { padding:var(--size-4) var(--size-9); font-size:var(--size-11); }
 #agent-config-toggle[aria-expanded="true"] { border-color:var(--accent); color:var(--text); }
 .panel-body[data-look="settings"] .agent-runtime { color:var(--muted); font-size:var(--size-11); overflow-wrap:anywhere; }
-.panel-body[data-look="settings"] { display:grid; gap:var(--size-7); padding:var(--size-8) var(--size-9); border-bottom:var(--size-1) solid var(--line); flex:none; max-height:45%; overflow-y:auto; font-size:var(--size-11); color:var(--muted); }
-.panel-body[data-look="settings"][hidden] { display:none; }
-.panel-body[data-look="settings"] label { display:grid; gap:var(--size-3); }
-.panel-body[data-look="settings"] input, .panel-body[data-look="settings"] select { width:100%; min-width:0; box-sizing:border-box; }
-.panel-body[data-look="settings"] .start { margin-top:var(--size-2); width:100%; }
 
 /* Parts & Assets drawer: Compare | All parts. */
 /* Parts & Assets drawer tabs now use the shared .segmented component. */
@@ -1168,8 +1158,8 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 #words-main .words-preview > .transport { margin-top: 0; border-top: 0; }
 #words-main .words-timing-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 #words-main .words-timing-summary input[type="number"] { width: 6em; }
-/* The shared settings body is non-shrinking; this inspector must use only the space below the surface. */
-#words-main > #words-workspace-controls { flex: 1 1 0; max-height: none; min-height: 0; }
+/* The inspector gets the remaining space below the surface; its body owns scrolling. */
+#words-main > #words-workspace-controls { flex: 1 1 0; }
 
 #words-workspace-controls .words-option-preview { height: var(--size-48); width: 100%; }
 #words-workspace-controls .words-effects { grid-template-columns: repeat(3,minmax(0,1fr)); }
