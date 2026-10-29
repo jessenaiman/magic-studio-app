@@ -1,4 +1,4 @@
-use crate::{App, data::clean};
+use crate::{App, View, data::clean};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -120,6 +120,13 @@ fn row(f: &mut Frame, area: Rect, selected: bool, odd: bool, outlined: bool) {
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
     app.outlined_controls = area.height >= 46;
+    app.audit_rows.clear();
+    app.tabs.clear();
+    app.project_rows.clear();
+    app.project_file_rows.clear();
+    app.worktree_rows.clear();
+    app.project_buttons.clear();
+    app.group_rows.clear();
     app.buttons.clear();
     app.rows.clear();
     f.render_widget(
@@ -128,10 +135,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
     if area.width < 90 || area.height < 28 {
         let inner = panel(f, area, "MAGIC / BACKSTAGE • SETTINGS");
-        f.render_widget(Paragraph::new("Enlarge terminal to at least 90 × 28 for the Settings grid.\n↑/↓ select files • Enter/o open • d details • r refresh • q quit\n\nOnly Settings is implemented. No agents or models are contacted.").wrap(Wrap{trim:false}).style(Style::default().fg(IVORY)),inner);
+        f.render_widget(Paragraph::new("Enlarge terminal to at least 90 × 28 for the observer grid.\n↑/↓ select files • Enter/o open • d details • r refresh • q quit\n\nWorkshop, Mayhem and Settings are available. No agents or models are contacted.").wrap(Wrap{trim:false}).style(Style::default().fg(IVORY)),inner);
         if app.details {
             details(f, app, area);
         }
+        return;
+    }
+    if app.view == View::Workshop {
+        workshop_shell(f, app, area);
         return;
     }
     let sections = Layout::vertical([
@@ -150,11 +161,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     text(
         f,
         Rect::new(1, 0, area.width.saturating_sub(38), 1),
-        "▪ ▪ ▪  MAGIC / BACKSTAGE",
+        "▪ ▪ ▪  M A G I C  /  B A C K S T A G E",
         IVORY,
     );
     if area.width > 115 {
-        text(f, Rect::new(43, 0, 30, 1), "Technicolor Workshop", GOLD);
+        text(f, Rect::new(49, 0, 30, 1), "Technicolor Workshop", GOLD);
     }
     let now = OffsetDateTime::now_utc();
     text(
@@ -180,7 +191,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     .iter()
     .enumerate()
     {
-        let active = i == 4;
+        let view = match i {
+            0 => Some(View::Workshop),
+            3 => Some(View::Mayhem),
+            4 => Some(View::Settings),
+            _ => None,
+        };
+        if let Some(view) = view {
+            app.tabs.push((tabs[i], view));
+        }
+        let active = view == Some(app.view);
         f.render_widget(
             Block::bordered()
                 .border_style(Style::default().fg(CORAL))
@@ -198,19 +218,49 @@ pub fn draw(f: &mut Frame, app: &mut App) {
                 .alignment(ratatui::layout::Alignment::Center)
                 .style(
                     Style::default()
-                        .fg(if active { BG } else { IVORY })
+                        .fg(if active {
+                            BG
+                        } else if view.is_none() {
+                            MUTED
+                        } else {
+                            IVORY
+                        })
                         .bg(if active { GOLD } else { BG })
                         .add_modifier(Modifier::BOLD),
                 ),
             inside,
         );
     }
-    let upper = Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)])
-        .spacing(1)
-        .split(sections[3]);
-    audit(f, app, upper[0]);
-    inspector(f, app, upper[1]);
-    files(f, app, sections[4]);
+    if app.view == View::Mayhem && app.audit_inputs.is_some() {
+        crate::mayhem::draw_audit(
+            f,
+            Rect::new(
+                0,
+                sections[3].y,
+                area.width,
+                sections[3].height + sections[4].height,
+            ),
+            app,
+        );
+    } else if app.view == View::Mayhem {
+        crate::mayhem::draw(
+            f,
+            Rect::new(
+                0,
+                sections[3].y,
+                area.width,
+                sections[3].height + sections[4].height,
+            ),
+            app,
+        );
+    } else {
+        let upper = Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)])
+            .spacing(1)
+            .split(sections[3]);
+        audit(f, app, upper[0]);
+        inspector(f, app, upper[1]);
+        files(f, app, sections[4]);
+    }
     let foot = sections[5];
     f.render_widget(
         Block::default()
@@ -224,7 +274,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         "CAST : Unavailable".to_string(),
         GOLD,
     );
-    let help = if app.refreshing {
+    let help = if app.view == View::Mayhem
+        && app.audit_inputs.is_some()
+        && app.audit_error.is_none()
+        && !app.refreshing
+    {
+        "↑↓ tool • [/] finding • d native details • B/C JSON • Enter source • r reread"
+    } else if app.refreshing {
         "Observing config… • q cancels safely"
     } else if app.message.is_empty() {
         "↑↓ select  Enter/o open  p project folder  d details  r refresh  q quit"
@@ -459,6 +515,10 @@ fn files(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn details(f: &mut Frame, app: &App, area: Rect) {
+    if app.view != View::Settings {
+        project_details(f, app, area);
+        return;
+    }
     let modal = Rect::new(
         area.x + 3,
         area.y + 3,
@@ -500,4 +560,255 @@ fn dividers(f: &mut Frame, columns: &[Rect]) {
             Rect::new(column.x.saturating_sub(2), column.y, 1, 1),
         );
     }
+}
+
+fn workshop_shell(f: &mut Frame, app: &mut App, area: Rect) {
+    f.render_widget(
+        Paragraph::new("╭●╮\n╰●╯").style(Style::default().fg(GOLD).add_modifier(Modifier::BOLD)),
+        Rect::new(1, 0, 3, 2),
+    );
+    f.render_widget(
+        Paragraph::new("MAGIC / BACKSTAGE")
+            .style(Style::default().fg(GOLD).add_modifier(Modifier::BOLD)),
+        Rect::new(7, 1, 24, 1),
+    );
+    if area.width >= 150 {
+        text(f, Rect::new(31, 1, 30, 1), "│ Technicolor Workshop", IVORY);
+    }
+    let tab_start = if area.width >= 150 { 62 } else { 42 };
+    let tab_width = area.width.saturating_sub(tab_start + 23);
+    let tabs = Layout::horizontal([Constraint::Percentage(20); 5])
+        .split(Rect::new(tab_start, 0, tab_width, 3));
+    for (i, label) in [
+        "WORKSHOP F1",
+        "BOOTH F2",
+        "MOPS F3",
+        "MAYHEM F4",
+        "SETTINGS F5",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let label = if tab_width < 35 {
+            ["F1", "F2", "F3", "F4", "F5"][i]
+        } else if tab_width < 60 {
+            ["W F1", "B F2", "M F3", "Y F4", "S F5"][i]
+        } else {
+            label
+        };
+        let view = match i {
+            0 => Some(View::Workshop),
+            3 => Some(View::Mayhem),
+            4 => Some(View::Settings),
+            _ => None,
+        };
+        if let Some(view) = view {
+            app.tabs.push((tabs[i], view));
+        }
+        f.render_widget(
+            Block::bordered().border_style(Style::default().fg(CORAL)),
+            tabs[i],
+        );
+        f.render_widget(
+            Paragraph::new(label)
+                .alignment(ratatui::layout::Alignment::Center)
+                .style(
+                    Style::default()
+                        .fg(if i == 0 {
+                            BG
+                        } else if view.is_none() {
+                            MUTED
+                        } else {
+                            IVORY
+                        })
+                        .bg(if i == 0 { GOLD } else { BG })
+                        .add_modifier(Modifier::BOLD),
+                ),
+            Rect::new(tabs[i].x + 1, 1, tabs[i].width.saturating_sub(2), 1),
+        );
+    }
+    let now = OffsetDateTime::now_utc();
+    text(
+        f,
+        Rect::new(area.width.saturating_sub(22), 1, 22, 1),
+        format!("{} {:02}:{:02} UTC", now.date(), now.hour(), now.minute()),
+        CYAN,
+    );
+    f.render_widget(
+        Paragraph::new("─".repeat(area.width as usize)).style(Style::default().fg(CORAL)),
+        Rect::new(0, 2, area.width, 1),
+    );
+    crate::workshop::draw(
+        f,
+        Rect::new(0, 3, area.width, area.height.saturating_sub(6)),
+        app,
+    );
+    let y = area.height.saturating_sub(3);
+    f.render_widget(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(CORAL)),
+        Rect::new(0, y, area.width, 3),
+    );
+    text(f, Rect::new(1, y + 1, 27, 1), "CAST : Unavailable", GOLD);
+    text(
+        f,
+        Rect::new(30, y + 1, area.width.saturating_sub(31), 1),
+        if app.refreshing {
+            "Observing saved refs / Git… q cancels"
+        } else {
+            "Tab focus • ↑↓ select • 1–4 collapse • Enter open • p folder • d details • r refresh"
+        },
+        MUTED,
+    );
+    if app.details {
+        project_details(f, app, area);
+    }
+}
+fn project_details(f: &mut Frame, app: &App, area: Rect) {
+    if app.view == View::Mayhem && app.audit_inputs.is_some() {
+        audit_details(f, app, area);
+        return;
+    }
+    let modal = Rect::new(
+        3,
+        3,
+        area.width.saturating_sub(6),
+        area.height.saturating_sub(6),
+    );
+    f.render_widget(Clear, modal);
+    let inner = panel(
+        f,
+        modal,
+        "OBSERVATION DETAILS • PgUp/PgDn scroll • d/Esc close",
+    );
+    let selected = if app.view == View::Mayhem {
+        app.project_data
+            .worktrees
+            .get(app.worktree_selected)
+            .map(|w| {
+                format!(
+                    "{} / {}\nPath: {}\nBranch: {}\nTracked files: {:?} • bytes {:?} • partial: {}\n{}",
+                    w.project,
+                    w.name,
+                    clean(&w.path.display().to_string()),
+                    w.branch,
+                    w.files,
+                    w.bytes,
+                    w.partial,
+                    w.error.as_deref().unwrap_or("No observation error")
+                )
+            })
+    } else {
+        app.project_data
+            .projects
+            .get(app.project_selected)
+            .map(|p| {
+                let file = p.files.get(app.project_file_selected);
+                format!(
+                    "{}\nFolder: {}\n{}\n{}",
+                    p.name,
+                    clean(&p.path.display().to_string()),
+                    file.map(|f| format!(
+                        "File: {}\nType: {}\nSource group: {}\nModified: {}",
+                        clean(&f.path.display().to_string()),
+                        f.kind,
+                        f.group,
+                        f.modified
+                    ))
+                    .unwrap_or_else(|| "Selected file unavailable".into()),
+                    p.error
+                        .as_deref()
+                        .unwrap_or("Saved references only; external folder inventory unavailable")
+                )
+            })
+    };
+    let content = format!(
+        "{}\n\nProject source: {}\n{}\n\nGit source: {}\n{}\n\n{}",
+        selected.unwrap_or_else(|| "Selection unavailable".into()),
+        app.project_data.source,
+        app.project_data.error.as_deref().unwrap_or(""),
+        app.project_data.worktree_source,
+        app.project_data.worktree_error.as_deref().unwrap_or(""),
+        app.message
+    );
+    f.render_widget(
+        Paragraph::new(content)
+            .style(Style::default().fg(IVORY))
+            .wrap(Wrap { trim: false })
+            .scroll((app.detail_scroll, 0)),
+        inner,
+    );
+}
+
+fn audit_details(f: &mut Frame, app: &App, area: Rect) {
+    let modal = Rect::new(
+        3,
+        3,
+        area.width.saturating_sub(6),
+        area.height.saturating_sub(6),
+    );
+    f.render_widget(Clear, modal);
+    let inner = panel(
+        f,
+        modal,
+        "NATIVE AUDIT DETAILS • PgUp/PgDn scroll • d/Esc close",
+    );
+    let content = if let Some(audit) = &app.audit {
+        let finding = audit
+            .finding(app.audit_selected, app.audit_finding_selected)
+            .map(|i| serde_json::to_string_pretty(i).unwrap_or_else(|e| e.to_string()))
+            .unwrap_or_else(|| "No candidate issue for selected tool".into());
+        let id = audit.tool_ids().get(app.audit_selected).cloned();
+        let errors: Vec<_> = [
+            ("baseline", &audit.baseline),
+            ("candidate", &audit.candidate),
+        ]
+        .into_iter()
+        .flat_map(|(source, r)| {
+            r.native["errors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| id.as_deref().is_some_and(|id| e["toolId"] == id))
+                .map(move |e| serde_json::json!({"source":source,"native":e}))
+        })
+        .collect();
+        let finding = format!(
+            "{}\n\nSelected-tool native error records (complete):\n{}",
+            finding,
+            serde_json::to_string_pretty(&errors).unwrap_or_else(|e| e.to_string())
+        );
+        format!(
+            "Selected candidate native finding:\n{}\n\n{}\n\n{}",
+            finding,
+            audit.markdown(),
+            app.message
+        )
+    } else {
+        format!(
+            "Audit artifact unavailable: {}\n{}",
+            app.audit_error
+                .as_deref()
+                .unwrap_or("Loading bounded JSON report files"),
+            app.message
+        )
+    };
+    let content = content
+        .chars()
+        .map(|c| {
+            if c.is_control() && c != '\n' && c != '\t' {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect::<String>();
+    f.render_widget(
+        Paragraph::new(content)
+            .style(Style::default().fg(IVORY))
+            .wrap(Wrap { trim: false })
+            .scroll((app.detail_scroll, 0)),
+        inner,
+    );
 }

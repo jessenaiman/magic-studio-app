@@ -1,13 +1,15 @@
-# Backstage — Settings first
+# Backstage — observer views
 
-A clean Rust/Ratatui Settings-only visual draft. F1–F4 remain disabled until their
-individual design reviews. No old Backstage implementation was reused.
+A clean Rust/Ratatui observer draft with Workshop (F1), Mayhem (F4) and Settings
+(F5). Booth and MOPS remain disabled. No old Backstage implementation was reused.
+Workshop populated-runtime acceptance is in progress; Mayhem acceptance follows it.
 
 ```sh
 cargo run -p backstage
 ```
 
-Recommended: 166×56, truecolor and Unicode. Arrows/j/k select files; Enter/o or
+Recommended: 166×54, truecolor and Unicode. Use `--color=always` to explicitly
+override a process-inherited NO_COLOR setting without changing the desktop theme. Arrows/j/k select files; Enter/o or
 mouse Open requests the desktop association; p opens the observed project folder; d shows wrapped observations and
 provider outcomes (PgUp/PgDn scroll); r refreshes deliberately; q quits. Smaller
 grids scroll; below 90×28 compact help preserves keyboard selection/open/details.
@@ -15,7 +17,7 @@ Selection/navigation never launches an app or contacts agents/models.
 
 ## Observation boundary
 
-On Linux, startup and explicit refresh each attempt exactly these three official
+On Linux, startup and explicit refresh attempt these three Settings-specific official
 current-main CLI calls, in one background observation, without blocking UI input:
 
 ```
@@ -61,9 +63,59 @@ The adapter is implemented from verified source contracts, but **real successful
 CLI/native runtime verification remains blocked**: neither is installed in this
 cloud workspace. The command-absent state can be exercised honestly; no fake
 provider or records are used. External Open also remains unverified here. This is
-not an exact visual-match/full-acceptance claim, and no later view is implemented.
+not an exact visual-match/full-acceptance claim, and acceptance is not implied by navigation availability.
 
 References: [Ratatui initialization](https://docs.rs/ratatui/latest/ratatui/init/index.html),
 [Crossterm event handling](https://ratatui.rs/tutorials/counter-app/_multiple-files/event/),
 [Rust process groups](https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#method.process_group),
 [safe nix killpg](https://docs.rs/nix/latest/nix/sys/signal/fn.killpg.html).
+
+## Project and worktree scope
+
+Workshop also reads `project.catalog` (newest-ten history, not a filesystem census)
+and `backstage.observe` for each listed project using the same isolated CLI and
+bounded child lifecycle. Saved response identity/source must match the requested
+canonical project. File rows are existing saved references and their local metadata,
+not a guessed complete inventory. Four creative-area headers remain present;
+unclassified saved asset references are explicitly separated. No filename or model
+assignment is fabricated. Tab changes, selection and collapse never start queries.
+Tab changes keyboard focus between project/sidebar and file/worktree list; 1–4
+collapse Workshop groups. Enter/o opens the selected file/folder only explicitly;
+p matches selected-file folder Open, or project folder with project focus.
+
+Mayhem observes only the explicit current-directory Git repository using native
+`git worktree list --porcelain -z` and `git ls-files -z --cached`. Commands disable
+pager, fsmonitor and hooks, inherit no caller project binding, and use the same
+bounded process-group lifecycle. Metadata is sampled only on startup/explicit R:
+3000 tracked references / 200ms per worktree, maximum16 worktrees; missing/unsafe
+paths and limits are partial/error states. No recursive home/temp scan is used.
+Symlink escapes are excluded; hardlinked bytes are deduplicated within each path.
+Counts/bytes exclude .git and untracked files and are never summed across worktrees.
+Folder names come from observed tracked paths, not assumed source/build categories.
+Token usage remains unavailable without a real saved usage provider; no inference,
+provider calls, agent connections or subscriptions are used to populate it.
+
+Git contracts: https://git-scm.com/docs/git-worktree and
+https://git-scm.com/docs/git-ls-files .
+
+## MAYHEM native audit artifacts
+
+No checker runs on browse. Supply existing native Codacy JSON report files using
+`--audit-baseline PATH --audit-candidate PATH`, optionally paired
+`--audit-baseline-supplement PATH --audit-candidate-supplement PATH`. Source Git
+provenance can be caller-supplied with `--audit-baseline-sha HEX` and
+`--audit-candidate-sha HEX`; it is labeled external input, never invented from HEAD.
+Reports are bounded regular JSON files (32MiB each), parsed outside the TUI loop.
+Audit artifact sessions do not start native project queries; other views explicitly
+show that project observation was not requested.
+
+Add `--mayhem-report` to print the same read-only audit comparison as plain Markdown
+and exit without initializing the terminal or launching any process. Tool names and
+native issueCount/errorCount/filesAnalyzed/status fields are retained. Supplement
+counts/errors remain separate; count deltas are not quality scores. Primary errors,
+skipped files, missing tools and changed scope are not erased by retries.
+
+In the artifact TUI: arrows/j/k select native toolId; [/] select that tool's candidate
+finding; d opens native details, PgUp/PgDn scroll, Enter/o requests an observed source
+file externally. Artifact and source links are bounded metadata observations, not a
+report archive. Existing JSON files are never modified or rewritten.

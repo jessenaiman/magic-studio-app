@@ -1,7 +1,11 @@
 //! Settings-only observer. No engine linkage, agent connections, sockets or model clients.
+mod audit;
 mod data;
+mod mayhem;
+mod project_data;
 mod provider;
 mod ui;
+mod workshop;
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
@@ -13,10 +17,36 @@ use ratatui::layout::Rect;
 use std::{io, path::Path, process::Command};
 
 enum Wake {
+    AuditObserved(Result<Box<audit::Comparison>, String>),
     Terminal(io::Result<Event>),
-    Observed(Box<data::Snapshot>),
+    Observed(Box<data::Snapshot>, Box<project_data::ProjectSnapshot>),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum View {
+    Workshop,
+    Mayhem,
+    Settings,
 }
 struct App {
+    audit: Option<audit::Comparison>,
+    audit_error: Option<String>,
+    audit_inputs: Option<audit::Inputs>,
+    audit_selected: usize,
+    audit_finding_selected: usize,
+    audit_rows: Vec<(Rect, usize)>,
+    view: View,
+    project_data: project_data::ProjectSnapshot,
+    project_selected: usize,
+    project_file_selected: usize,
+    worktree_selected: usize,
+    focus_projects: bool,
+    collapsed: [bool; 4],
+    project_rows: Vec<(Rect, usize)>,
+    project_file_rows: Vec<(Rect, usize)>,
+    worktree_rows: Vec<(Rect, usize)>,
+    group_rows: Vec<(Rect, usize)>,
+    project_buttons: Vec<(Rect, std::path::PathBuf)>,
+    tabs: Vec<(Rect, View)>,
     data: data::Snapshot,
     refreshing: bool,
     selected: usize,
@@ -30,8 +60,31 @@ struct App {
     rows: Vec<(Rect, usize)>,
 }
 impl App {
-    fn new() -> Self {
+    fn new(audit_inputs: Option<audit::Inputs>) -> Self {
         Self {
+            view: if audit_inputs.is_some() {
+                View::Mayhem
+            } else {
+                View::Workshop
+            },
+            audit: None,
+            audit_error: None,
+            audit_inputs,
+            audit_selected: 0,
+            audit_finding_selected: 0,
+            audit_rows: vec![],
+            project_data: project_data::ProjectSnapshot::default(),
+            project_selected: 0,
+            project_file_selected: 0,
+            worktree_selected: 0,
+            focus_projects: false,
+            collapsed: [false; 4],
+            project_rows: vec![],
+            project_file_rows: vec![],
+            worktree_rows: vec![],
+            group_rows: vec![],
+            project_buttons: vec![],
+            tabs: vec![],
             data: data::Snapshot::read(),
             refreshing: false,
             selected: 0,
@@ -51,11 +104,145 @@ impl App {
             return;
         }
         self.refreshing = true;
+        if let Some(inputs) = self.audit_inputs.clone() {
+            std::thread::spawn(move || {
+                let _ = sender.send(Wake::AuditObserved(inputs.load().map(Box::new)));
+            });
+            return;
+        }
         std::thread::spawn(move || {
             let mut snapshot = data::Snapshot::read();
             snapshot.apply(provider::read(&control));
-            let _ = sender.send(Wake::Observed(Box::new(snapshot)));
+            let projects = project_data::ProjectSnapshot::read(&control);
+            let _ = sender.send(Wake::Observed(Box::new(snapshot), Box::new(projects)));
         });
+    }
+    fn launch(&mut self, path: &Path) {
+        self.message = match open_external(path) {
+            Ok(receiver) => {
+                self.opener_result = Some(receiver);
+                "External opener started; application outcome unknown".into()
+            }
+            Err(error) => format!("External opener failed: {error}"),
+        };
+    }
+    fn open_current(&mut self, folder: bool) {
+        if self.view == View::Mayhem && self.audit_inputs.is_some() {
+            let path = self
+                .audit
+                .as_ref()
+                .and_then(|a| a.finding_link(self.audit_selected, self.audit_finding_selected))
+                .map(Path::to_path_buf);
+            if let Some(path) = path {
+                self.launch(&path)
+            } else {
+                self.message =
+                    "Native finding source link unavailable/unverified; report remains inspectable"
+                        .into();
+            }
+            return;
+        }
+        if self.view == View::Settings {
+            self.open(if folder { usize::MAX } else { self.selected });
+            return;
+        }
+        let path = if self.view == View::Mayhem && self.focus_projects {
+            self.project_data
+                .projects
+                .get(self.project_selected)
+                .filter(|p| p.exists)
+                .map(|p| p.path.clone())
+                .or_else(|| {
+                    self.project_data
+                        .worktrees
+                        .first()
+                        .filter(|w| w.available)
+                        .map(|w| w.path.clone())
+                })
+        } else if self.view == View::Mayhem {
+            self.project_data
+                .worktrees
+                .get(self.worktree_selected)
+                .filter(|w| w.available)
+                .map(|w| w.path.clone())
+        } else if folder && !self.focus_projects {
+            self.project_data
+                .projects
+                .get(self.project_selected)
+                .and_then(|p| p.files.get(self.project_file_selected))
+                .filter(|f| f.available)
+                .and_then(|f| f.path.parent())
+                .map(Path::to_path_buf)
+        } else if folder {
+            self.project_data
+                .projects
+                .get(self.project_selected)
+                .filter(|p| p.exists)
+                .map(|p| p.path.clone())
+        } else {
+            self.project_data
+                .projects
+                .get(self.project_selected)
+                .and_then(|p| p.files.get(self.project_file_selected))
+                .filter(|f| f.available)
+                .map(|f| f.path.clone())
+        };
+        if let Some(path) = path {
+            self.launch(&path)
+        } else {
+            self.message = "Unavailable: no observed accessible target".into();
+        }
+    }
+    fn move_selection(&mut self, down: bool) {
+        if self.view == View::Mayhem && self.audit_inputs.is_some() {
+            let len = self.audit.as_ref().map_or(0, |a| a.tool_ids().len());
+            self.audit_selected = if down {
+                self.audit_selected
+                    .saturating_add(1)
+                    .min(len.saturating_sub(1))
+            } else {
+                self.audit_selected.saturating_sub(1)
+            };
+            self.audit_finding_selected = 0;
+            return;
+        }
+        let (selected, len) = if self.view == View::Settings {
+            (&mut self.selected, self.data.files.len())
+        } else if self.focus_projects {
+            (&mut self.project_selected, self.project_data.projects.len())
+        } else if self.view == View::Mayhem {
+            (
+                &mut self.worktree_selected,
+                self.project_data.worktrees.len(),
+            )
+        } else {
+            (
+                &mut self.project_file_selected,
+                self.project_data
+                    .projects
+                    .get(self.project_selected)
+                    .map_or(0, |p| p.files.len()),
+            )
+        };
+        *selected = if down {
+            selected.saturating_add(1).min(len.saturating_sub(1))
+        } else {
+            selected.saturating_sub(1)
+        };
+        if self.focus_projects {
+            self.project_file_selected = 0;
+        } else if self.view == View::Workshop
+            && let Some(file) = self
+                .project_data
+                .projects
+                .get(self.project_selected)
+                .and_then(|p| p.files.get(self.project_file_selected))
+            && let Some(group) = ["Storyboard", "Animations", "Lyrics", "Studio"]
+                .iter()
+                .position(|g| *g == file.group)
+        {
+            self.collapsed[group] = false;
+        }
     }
     fn open(&mut self, index: usize) {
         if index == usize::MAX {
@@ -124,7 +311,35 @@ fn open_external(path: &Path) -> io::Result<std::sync::mpsc::Receiver<String>> {
     Ok(receiver)
 }
 fn main() -> io::Result<()> {
-    let mut app = App::new();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--mayhem-report") {
+        let input = audit::Inputs::parse(&args).map_err(io::Error::other)?;
+        let report = input.load().map_err(io::Error::other)?;
+        print!("{}", report.markdown());
+        return Ok(());
+    }
+
+    match std::env::args()
+        .find(|a| a.starts_with("--color="))
+        .as_deref()
+    {
+        Some("--color=always") => crossterm::style::force_color_output(true),
+        Some("--color=never") => crossterm::style::force_color_output(false),
+        _ => {}
+    }
+    let audit_inputs = if args.iter().any(|a| a.starts_with("--audit-")) {
+        Some(audit::Inputs::parse(&args).map_err(io::Error::other)?)
+    } else {
+        None
+    };
+    let mut app = App::new(audit_inputs);
+    if app.audit_inputs.is_some() {
+        app.project_data.source =
+            "Audit artifact session; native project observation not requested".into();
+        app.project_data.error = Some("Launch without audit flags for project observation".into());
+        app.data.provider_detail =
+            "Audit artifact session; configuration query not requested".into();
+    }
     let mut terminal = ratatui::init();
     execute!(io::stdout(), EnableMouseCapture)?;
     let control = provider::Control::default();
@@ -154,7 +369,79 @@ fn main() -> io::Result<()> {
             .recv()
             .map_err(|_| io::Error::other("UI event channel closed"))?
         {
-            Wake::Observed(snapshot) => {
+            Wake::AuditObserved(result) => {
+                app.refreshing = false;
+                match result {
+                    Ok(report) => {
+                        let id = app
+                            .audit
+                            .as_ref()
+                            .and_then(|a| a.tool_ids().get(app.audit_selected).cloned());
+                        app.audit_selected = id
+                            .and_then(|id| report.tool_ids().iter().position(|t| *t == id))
+                            .unwrap_or_else(|| {
+                                (0..report.tool_ids().len())
+                                    .find(|i| report.finding_count(*i) > 0)
+                                    .unwrap_or(0)
+                            });
+                        app.audit_finding_selected = app
+                            .audit_finding_selected
+                            .min(report.finding_count(app.audit_selected).saturating_sub(1));
+                        app.audit = Some(*report);
+                        app.audit_error = None;
+                        app.message = "Native audit artifacts read; no checks run".into();
+                    }
+                    Err(error) => {
+                        app.audit_error = Some(error.clone());
+                        app.message = error;
+                    }
+                }
+                continue;
+            }
+            Wake::Observed(snapshot, projects) => {
+                let project_identity = app
+                    .project_data
+                    .projects
+                    .get(app.project_selected)
+                    .map(|p| p.identity.clone());
+                let file_identity = app
+                    .project_data
+                    .projects
+                    .get(app.project_selected)
+                    .and_then(|p| p.files.get(app.project_file_selected))
+                    .map(|f| f.path.clone());
+                let worktree_identity = app
+                    .project_data
+                    .worktrees
+                    .get(app.worktree_selected)
+                    .map(|w| w.path.clone());
+                app.project_data = *projects;
+                app.project_selected = project_identity
+                    .and_then(|id| {
+                        app.project_data
+                            .projects
+                            .iter()
+                            .position(|p| p.identity == id)
+                    })
+                    .unwrap_or(
+                        app.project_selected
+                            .min(app.project_data.projects.len().saturating_sub(1)),
+                    );
+                let files = app
+                    .project_data
+                    .projects
+                    .get(app.project_selected)
+                    .map(|p| p.files.as_slice())
+                    .unwrap_or(&[]);
+                app.project_file_selected = file_identity
+                    .and_then(|id| files.iter().position(|f| f.path == id))
+                    .unwrap_or(app.project_file_selected.min(files.len().saturating_sub(1)));
+                app.worktree_selected = worktree_identity
+                    .and_then(|id| app.project_data.worktrees.iter().position(|w| w.path == id))
+                    .unwrap_or(
+                        app.worktree_selected
+                            .min(app.project_data.worktrees.len().saturating_sub(1)),
+                    );
                 let name = app.data.files.get(app.selected).map(|f| f.name.clone());
                 app.data = *snapshot;
                 app.selected = name
@@ -177,19 +464,49 @@ fn main() -> io::Result<()> {
                     app.detail_scroll = app.detail_scroll.saturating_sub(5)
                 }
                 _ if app.details && !matches!(k.code, KeyCode::Char('d')) => {}
-                KeyCode::Down | KeyCode::Char('j') => {
-                    app.selected = (app.selected + 1).min(app.data.files.len().saturating_sub(1))
+                KeyCode::Down | KeyCode::Char('j') => app.move_selection(true),
+                KeyCode::Up | KeyCode::Char('k') => app.move_selection(false),
+                KeyCode::Char(c @ ('B' | 'C'))
+                    if app.view == View::Mayhem && app.audit_inputs.is_some() =>
+                {
+                    let path = app.audit.as_ref().map(|a| {
+                        if c == 'B' {
+                            a.baseline.path.clone()
+                        } else {
+                            a.candidate.path.clone()
+                        }
+                    });
+                    if let Some(path) = path {
+                        app.launch(&path);
+                    }
                 }
-                KeyCode::Up | KeyCode::Char('k') => app.selected = app.selected.saturating_sub(1),
-                KeyCode::Enter | KeyCode::Char('o') => app.open(app.selected),
-                KeyCode::Char('p') => app.open(usize::MAX),
+                KeyCode::Char('[') if app.view == View::Mayhem && app.audit_inputs.is_some() => {
+                    app.audit_finding_selected = app.audit_finding_selected.saturating_sub(1)
+                }
+                KeyCode::Char(']') if app.view == View::Mayhem && app.audit_inputs.is_some() => {
+                    let n = app
+                        .audit
+                        .as_ref()
+                        .map_or(0, |a| a.finding_count(app.audit_selected));
+                    app.audit_finding_selected = app
+                        .audit_finding_selected
+                        .saturating_add(1)
+                        .min(n.saturating_sub(1));
+                }
+                KeyCode::Tab => app.focus_projects = !app.focus_projects,
+                KeyCode::Enter | KeyCode::Char('o') => app.open_current(false),
+                KeyCode::Char('p') => app.open_current(true),
+                KeyCode::Char(c @ '1'..='4') if app.view == View::Workshop => {
+                    let i = c as usize - '1' as usize;
+                    app.collapsed[i] = !app.collapsed[i];
+                }
                 KeyCode::Char('r') => {
                     app.refresh(control.clone(), sender.clone());
                 }
-                KeyCode::F(1..=4) => {
-                    app.message = "Not implemented: Settings is the only available view".into()
-                }
-                KeyCode::F(5) => app.message.clear(),
+                KeyCode::F(1) => app.view = View::Workshop,
+                KeyCode::F(4) => app.view = View::Mayhem,
+                KeyCode::F(5) => app.view = View::Settings,
+                KeyCode::F(2 | 3) => app.message = "Booth and MOPS are not implemented".into(),
                 KeyCode::Char('d') => {
                     app.details = !app.details;
                     app.detail_scroll = 0;
@@ -200,12 +517,34 @@ fn main() -> io::Result<()> {
                 if !app.details && m.kind == MouseEventKind::Down(MouseButton::Left) =>
             {
                 let p = ratatui::layout::Position::new(m.column, m.row);
-                if let Some((_, i)) = app.buttons.iter().find(|(r, _)| r.contains(p)) {
+                if let Some((_, i)) = app.audit_rows.iter().find(|(r, _)| r.contains(p)) {
+                    app.audit_selected = *i;
+                    app.audit_finding_selected = 0;
+                } else if let Some((_, view)) = app.tabs.iter().find(|(r, _)| r.contains(p)) {
+                    app.view = *view;
+                } else if let Some((_, path)) =
+                    app.project_buttons.iter().find(|(r, _)| r.contains(p))
+                {
+                    let path = path.clone();
+                    app.launch(&path);
+                } else if let Some((_, i)) = app.group_rows.iter().find(|(r, _)| r.contains(p)) {
+                    app.collapsed[*i] = !app.collapsed[*i];
+                } else if let Some((_, i)) = app.worktree_rows.iter().find(|(r, _)| r.contains(p)) {
+                    app.worktree_selected = *i;
+                    app.focus_projects = false;
+                } else if let Some((_, i)) =
+                    app.project_file_rows.iter().find(|(r, _)| r.contains(p))
+                {
+                    app.project_file_selected = *i;
+                    app.focus_projects = false;
+                } else if let Some((_, i)) = app.project_rows.iter().find(|(r, _)| r.contains(p)) {
+                    app.project_selected = *i;
+                    app.project_file_selected = 0;
+                    app.focus_projects = true;
+                } else if let Some((_, i)) = app.buttons.iter().find(|(r, _)| r.contains(p)) {
                     app.open(*i);
                 } else if let Some((_, i)) = app.rows.iter().find(|(r, _)| r.contains(p)) {
                     app.selected = *i;
-                } else if m.row >= 2 && m.row < 5 {
-                    app.message = "Only Settings is implemented; other tabs are disabled".into();
                 }
             }
             _ => {}

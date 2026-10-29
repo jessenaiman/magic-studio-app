@@ -59,18 +59,28 @@ fn stop(group: i32) {
 }
 #[cfg(not(target_os = "linux"))]
 fn stop(_: i32) {}
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum Query {
     Template,
     Root,
     Crew,
+    Catalog,
+    Observe(std::path::PathBuf),
 }
 impl Query {
-    fn id(self) -> &'static str {
+    fn params(&self) -> String {
+        match self {
+            Self::Observe(path) => serde_json::json!({"path":path}).to_string(),
+            _ => "{}".into(),
+        }
+    }
+    fn id(&self) -> &'static str {
         match self {
             Self::Template => "storyboard.template",
             Self::Root => "project.root",
             Self::Crew => "crew.list",
+            Self::Catalog => "project.catalog",
+            Self::Observe(_) => "backstage.observe",
         }
     }
 }
@@ -92,24 +102,43 @@ fn query(_: &Control, _: Query) -> Result<Value, String> {
 }
 #[cfg(target_os = "linux")]
 fn query(control: &Control, query: Query) -> Result<Value, String> {
-    use std::os::unix::{fs::FileTypeExt, process::CommandExt};
+    use std::os::unix::fs::FileTypeExt;
     if !std::fs::symlink_metadata("/dev/null").is_ok_and(|m| m.file_type().is_char_device()) {
         return Err("Provider isolation unavailable: /dev/null is not a character device".into());
     }
+    let params = query.params();
+    let mut command = Command::new("magic-cli");
+    command.args([
+        "--session-file",
+        "/dev/null",
+        "exec",
+        query.id(),
+        "--params",
+        &params,
+    ]);
+    let stdout = run(control, command).map_err(|e| e.replace("native executable", "magic-cli"))?;
+    let value: Value =
+        serde_json::from_slice(&stdout).map_err(|e| format!("Provider invalid JSON: {e}"))?;
+    if !value.is_object() || value.get("ok") == Some(&Value::Bool(false)) {
+        return Err(format!(
+            "Provider rejected response: {}",
+            crate::data::clean(&value.to_string())
+                .chars()
+                .take(1000)
+                .collect::<String>()
+        ));
+    }
+    Ok(value)
+}
+#[cfg(target_os = "linux")]
+fn run(control: &Control, mut command: Command) -> Result<Vec<u8>, String> {
+    use std::os::unix::process::CommandExt;
     // Hold the lifecycle lock through spawn+registration: quit cannot miss a child.
     let mut state = control.0.lock().unwrap_or_else(|e| e.into_inner());
     if state.closed {
         return Err("Provider cancelled".into());
     }
-    let mut child = Command::new("magic-cli")
-        .args([
-            "--session-file",
-            "/dev/null",
-            "exec",
-            query.id(),
-            "--params",
-            "{}",
-        ])
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -117,7 +146,7 @@ fn query(control: &Control, query: Query) -> Result<Value, String> {
         .spawn()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                "Command absent: magic-cli is not installed".into()
+                "Command absent: native executable is not installed".into()
             } else {
                 format!("Provider launch error: {e}")
             }
@@ -183,19 +212,9 @@ fn query(control: &Control, query: Query) -> Result<Value, String> {
             detail.chars().take(1000).collect::<String>()
         ));
     }
-    let value: Value =
-        serde_json::from_slice(&stdout).map_err(|e| format!("Provider invalid JSON: {e}"))?;
-    if !value.is_object() || value.get("ok") == Some(&Value::Bool(false)) {
-        return Err(format!(
-            "Provider rejected response: {}",
-            crate::data::clean(&value.to_string())
-                .chars()
-                .take(1000)
-                .collect::<String>()
-        ));
-    }
-    Ok(value)
+    Ok(stdout)
 }
+
 fn bounded(input: impl Read) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     input
@@ -211,4 +230,54 @@ fn read_pipe(input: impl Read + Send + 'static) -> mpsc::Receiver<Result<Vec<u8>
         let _ = sender.send(bounded(input));
     });
     receiver
+}
+
+pub fn catalog(control: &Control) -> Result<Value, String> {
+    query(control, Query::Catalog)
+}
+pub fn observe(control: &Control, path: &std::path::Path) -> Result<Value, String> {
+    query(control, Query::Observe(path.to_path_buf()))
+}
+
+#[cfg(target_os = "linux")]
+pub fn git_worktrees(control: &Control, root: &std::path::Path) -> Result<Vec<u8>, String> {
+    let mut command = Command::new("git");
+    command
+        .args([
+            "--no-pager",
+            "--no-optional-locks",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+        ])
+        .arg(root)
+        .args(["worktree", "list", "--porcelain", "-z"]);
+    run(control, command)
+}
+#[cfg(target_os = "linux")]
+pub fn git_tracked(control: &Control, root: &std::path::Path) -> Result<Vec<u8>, String> {
+    let mut command = Command::new("git");
+    command
+        .args([
+            "--no-pager",
+            "--no-optional-locks",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+        ])
+        .arg(root)
+        .args(["ls-files", "-z", "--cached"]);
+    run(control, command)
+}
+#[cfg(not(target_os = "linux"))]
+pub fn git_worktrees(_: &Control, _: &std::path::Path) -> Result<Vec<u8>, String> {
+    Err("Native Git observer supports Linux only".into())
+}
+#[cfg(not(target_os = "linux"))]
+pub fn git_tracked(_: &Control, _: &std::path::Path) -> Result<Vec<u8>, String> {
+    Err("Native Git observer supports Linux only".into())
 }
