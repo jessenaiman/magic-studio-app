@@ -133,6 +133,25 @@ def install_environment(
     return python
 
 
+def seed_crew_file(source: Path, target: Path) -> None:
+    """Publish a complete seed without replacing an existing user file."""
+    if target.exists() or target.is_symlink():
+        return
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as dst:
+            temporary = Path(dst.name)
+            with source.open("rb") as src:
+                shutil.copyfileobj(src, dst)
+        shutil.copystat(source, temporary)
+        os.link(temporary, target)
+    except FileExistsError:
+        pass
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def install_resources(
     root: Path, args: argparse.Namespace, shell: Path, git: str
 ) -> None:
@@ -170,24 +189,7 @@ def install_resources(
         target = runtime / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if relative.parts[0] == "crew":
-            if target.exists() or target.is_symlink():
-                continue
-            # Publish a complete seed without replacing a file created concurrently.
-            temporary = None
-            try:
-                with tempfile.NamedTemporaryFile(
-                    dir=target.parent, delete=False
-                ) as dst:
-                    temporary = Path(dst.name)
-                    with source.open("rb") as src:
-                        shutil.copyfileobj(src, dst)
-                shutil.copystat(source, temporary)
-                os.link(temporary, target)
-            except FileExistsError:
-                pass
-            finally:
-                if temporary is not None:
-                    temporary.unlink(missing_ok=True)
+            seed_crew_file(source, target)
         else:
             shutil.copy2(source, target)
     revision = subprocess.check_output(
