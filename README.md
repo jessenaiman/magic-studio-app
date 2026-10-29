@@ -6,6 +6,7 @@ Tauri shell, a shared Rust engine, and the same operations available to its agen
 CLI, and MCP clients.
 
 [Repository](https://github.com/jessenaiman/magic-studio-app) ·
+[Documentation](docs/README.md) ·
 [中文](README_zh-CN.md) · [Production guide](MAGIC-STUDIO.md) ·
 [Source installation](agent-harness/cli_anything/magic/README.md)
 
@@ -77,6 +78,11 @@ Reusable Python tools, pipeline YAML, stage directors, schemas, and skills remai
 part of Magic Studio. [Project context](PROJECT_CONTEXT.md) maps the desktop and
 production layers; [the agent guide](AGENT_GUIDE.md) explains when to use each.
 Follow [contribution guidance](CONTRIBUTING.md) before changing the app.
+
+Start with the [architecture reading guide](docs/architecture/README.md) to trace
+the shell, shared command engine, and separate Backstage observer. Build the
+[searchable Rust API reference](docs/RUSTDOC.md) locally with the standard Rust
+toolchain; the documentation guide states exactly which crates are covered.
 
 ## License and credits
 

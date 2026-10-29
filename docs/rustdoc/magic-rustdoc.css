@@ -1,0 +1,50 @@
+/* Styles only the standalone Rustdoc landing page; crate pages use native Rustdoc. */
+:root {
+  color-scheme: light dark;
+  --paper: #f8fafb;
+  --ink: #20313e;
+  --muted: #526573;
+  --accent: #096957;
+  --line: #cbd8de;
+  --panel: #edf3f5;
+}
+* { box-sizing: border-box; }
+body {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 48px 28px 64px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 17px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+h1, h2 { line-height: 1.2; letter-spacing: -.025em; }
+h1 { margin: 0 0 28px; font-size: clamp(2rem, 5vw, 3.2rem); }
+h2 { margin: 44px 0 18px; font-size: 1.5rem; }
+h1::before {
+  content: "MAGIC STUDIO / DEVELOPER DOCUMENTATION";
+  display: block;
+  margin-bottom: 16px;
+  color: var(--accent);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+p { max-width: 82ch; }
+a { color: var(--accent); text-underline-offset: .18em; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.doc-anchor { margin-right: .4em; font-size: .8em; text-decoration: none; }
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+th, td { padding: 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: var(--panel); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+td:first-child { min-width: 145px; font-weight: 600; }
+div:has(> table) { overflow-x: auto; }
+pre { overflow-x: auto; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+code { font-size: .9em; }
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #17242d; --ink: #e8eff3; --muted: #a8bac5; --accent: #83d9c5; --line: #425763; --panel: #20343f; }
+}
+@media (max-width: 600px) {
+  body { padding: 28px 18px 44px; font-size: 16px; }
+  th, td { padding: 12px; }
+}

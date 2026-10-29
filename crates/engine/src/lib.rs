@@ -1,10 +1,52 @@
-//! Magic Studio engine façade.
+//! Shared project state and command dispatch for Magic Studio's creative workspace.
 //!
-//! Every user-visible action is a command with a stable id
-//! (`sheet.slice`, `turnaround.register`, `mesh.build4dir`, `export.blender`…)
-//! and JSON parameters, dispatched through [`Session::execute`].
-//! The Tauri UI, CLI, and MCP server all use
-//! this one entry point; that is what makes the UI swappable and agent-drivable.
+//! The desktop Tauri shell, CLI, and MCP clients share the same command registry
+//! and [`Session::execute`] entry point. This crate owns project state and domain
+//! validation; frontends should not implement a second persistence model.
+//!
+//! # Start here
+//!
+//! - [`Session`] holds the selected project, connected assets, and measurements.
+//! - [`command_specs`] and [`CommandSpec`] expose stable command IDs, parameter
+//!   descriptions, enablement, journaling, and long-running metadata.
+//! - [`find_command`] locates a command; [`Session::execute`] checks parameters
+//!   and enablement before dispatching its handler and recording applicable edits.
+//! - [`EngineError`] describes dispatch, validation, I/O, and external-tool failures.
+//!
+//! Inspect the registry without opening a project or invoking a production tool:
+//!
+//! ```no_run
+//! use magicstudio_engine::{Session, command_specs, find_command};
+//!
+//! let session = Session::default();
+//! for command in command_specs() {
+//!     println!("{}: {}", command.id, command.params);
+//! }
+//! if let Some(command) = find_command("project.open") {
+//!     println!("{} enabled: {:?}", command.label, (command.enabled)(&session));
+//! }
+//! ```
+//!
+//! # Responsibility map
+//!
+//! | Area | Modules |
+//! |---|---|
+//! | Project lifecycle, paths, settings | [`project`], [`workspace`], [`project_settings`] |
+//! | Storyboard and song workspace | [`storyboard`], [`storyboard_crud`], [`storyboard_design`], [`workshop`] |
+//! | Character, rig, motion, sequence | [`character`], [`rig`], [`motion`], [`motion_authoring`], [`sequence`] |
+//! | Lyrics, timing, native animation sources | [`lyrics`], [`words`], [`theatre`], [`animation_links`] |
+//! | Production adapters and exports | [`exports`], [`blender`], [`image_generation`], [`agent`] |
+//!
+//! Commands may write project files, launch installed production tools, or call
+//! configured providers. A default session is not a sandbox for arbitrary command
+//! execution. Discover the command contract and use explicit project selection.
+//! Backstage is a separate observer binary, not an engine dependency or controller.
+//!
+//! For the non-Rust layers and existing diagrams, see the repository's
+//! [documentation index](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/README.md)
+//! and [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md).
+//! Repository links track the default branch; new guides appear after this
+//! documentation change merges.
 
 #![cfg_attr(
     not(test),

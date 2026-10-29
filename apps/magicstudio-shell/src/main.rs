@@ -1,8 +1,29 @@
-//! Magic Studio shell: one window holding the project view (a webview fed by
-//! `magicstudio-engine`) and, as a tab, the project's video studio (HyperFrames or Remotion
-//! Studio) in a second webview of the same window.
+//! Native Tauri desktop shell for Magic Studio's Storyboard, Animation, Lyrics, and Studio.
 //!
-//!   magicstudio-shell [<project.magic>] [<studio url>] [--view project|studio] [--open <block>|agent] [--control <port>]
+//! Embedded webviews present the creative workspace; the shared
+//! [`magicstudio_engine::Session`] owns project state and validated domain commands.
+//! The CLI and MCP use native transport to the same command implementation rather
+//! than a separate Python project model. Studio uses the project's HyperFrames video.
+//!
+//! # Implementation entry points
+//!
+//! - [`Engine`] holds the live window's shared session; [`Engine::with`] rejects
+//!   an unrequested switch to a different project.
+//! - [`execute_engine_command`] dispatches registry commands and moves eligible
+//!   long-running work off the UI thread; [`merge_back`] preserves concurrent edits.
+//! - [`project_dispatch`] routes UI project transitions through guarded native dispatch.
+//! - [`bridge`] serves supported native control transport; [`menu`] handles menus.
+//! - [`feedback`] presents command outcomes; [`state_of`] assembles project state.
+//!
+//! This is a binary implementation reference, including private items. Generating
+//! it requires the shell's platform Tauri prerequisites and locked dependencies;
+//! the standard engine + Backstage reference does not imply shell coverage.
+//! Read the maintained
+//! [setup guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/agent-harness/cli_anything/magic/README.md)
+//! and [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md)
+//! for supported entry points and ownership boundaries.
+//! Repository links track the default branch; new guides appear after this
+//! documentation change merges.
 
 use magicstudio_engine::Session;
 use serde_json::{Value, json};

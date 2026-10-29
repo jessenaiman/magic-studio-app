@@ -1,4 +1,29 @@
-//! Settings-only observer. No engine linkage, agent connections, sockets or model clients.
+//! Backstage: Magic Studio's separate Rust/Ratatui production and engineering observer.
+//!
+//! Workshop shows saved project references, MOPS shows PR-owned handoffs, Mayhem
+//! shows worktrees and existing native audit evidence, and Settings shows bounded
+//! observations of production paths and crew documents. Unavailable, stale, and
+//! imported observations remain labeled; they are not inferred live session state.
+//!
+//! # Read the implementation
+//!
+//! - [`App`] coordinates view state and completion events through [`Wake`].
+//! - [`provider`] bounds supported observation processes and their lifecycle.
+//! - [`project_data`] reads saved references; [`data`] observes repository files.
+//! - [`handoff`] interprets explicitly selected PR metadata without resuming agents.
+//! - [`audit`] reads supplied native report artifacts without running a checker.
+//! - [`workshop`], [`mops`], [`mayhem`], and [`ui`] render observed evidence.
+//!
+//! This is a binary implementation reference: Rustdoc includes its private items,
+//! not a stable public library API. Backstage has no engine linkage or model client.
+//! Selection/navigation does not contact agents; explicit refresh and Open actions
+//! have the read/process boundaries described in the
+//! [observer guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/backstage/README.md).
+//! See the repository's
+//! [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md)
+//! for its separation from the desktop shell and shared engine.
+//! Repository links track the default branch; new guides appear after this
+//! documentation change merges.
 mod audit;
 mod data;
 mod handoff;
