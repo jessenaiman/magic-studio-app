@@ -213,6 +213,12 @@ impl Report {
     pub fn errors(&self) -> usize {
         self.native["errors"].as_array().map_or(0, Vec::len)
     }
+    fn skipped_files(&self) -> String {
+        self.native["skippedFiles"]
+            .as_array()
+            .map(|v| v.len().to_string())
+            .unwrap_or_else(|| "Unavailable".into())
+    }
     pub fn tools(&self) -> &[Value] {
         self.native["toolResults"]
             .as_array()
@@ -296,7 +302,7 @@ impl Comparison {
             b.sha.as_deref().unwrap_or("Unavailable")
         )
         .unwrap();
-        writeln!(out,"| issues records | {} | {} |\n| errors records | {} | {} |\n| skippedFiles records | {} | {} |",a.issues(),b.issues(),a.errors(),b.errors(),a.native["skippedFiles"].as_array().map(|v|v.len().to_string()).unwrap_or_else(||"Unavailable".into()),b.native["skippedFiles"].as_array().map(|v|v.len().to_string()).unwrap_or_else(||"Unavailable".into())).unwrap();
+        writeln!(out,"| issues records | {} | {} |\n| errors records | {} | {} |\n| skippedFiles records | {} | {} |",a.issues(),b.issues(),a.errors(),b.errors(),a.skipped_files(),b.skipped_files()).unwrap();
         writeln!(
             out,
             "\n**Primary issues: {} → {} (Δ {:+}). Primary errors: {} → {} (Δ {:+}).**",

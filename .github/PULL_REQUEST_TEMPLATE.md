@@ -32,7 +32,10 @@ Closes #
 
 ## MOPS handoff
 <!-- Record this at agent check-in. Unknown is honest; no session discovery or resume script is required. Resume verified means the author verified the exact command for this session. Backstage only displays/copies it and never executes it. -->
+- Task: Unknown
+- Issue: Unknown
 - Department: Unknown
+- Implementation role: Unknown
 - Agent: Unknown
 - Harness: Unknown
 - Session ID: Unknown

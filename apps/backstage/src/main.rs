@@ -79,6 +79,11 @@ struct App {
     buttons: Vec<(Rect, usize)>,
     rows: Vec<(Rect, usize)>,
 }
+struct ProjectSelection {
+    project: Option<std::path::PathBuf>,
+    file: Option<std::path::PathBuf>,
+    worktree: Option<std::path::PathBuf>,
+}
 impl App {
     fn new(audit_inputs: Option<audit::Inputs>) -> Self {
         Self {
@@ -126,45 +131,198 @@ impl App {
             rows: vec![],
         }
     }
+    // Completion transitions preserve identity independently of terminal dispatch.
+    fn mops_observed(&mut self, mut snapshot: handoff::Snapshot) {
+        let number = self
+            .mops
+            .tasks
+            .get(self.mops_selected)
+            .map(|task| task.pr_number);
+        if snapshot.tasks.is_empty() && !self.mops.tasks.is_empty() && snapshot.error.is_some() {
+            snapshot.tasks = std::mem::take(&mut self.mops.tasks);
+            snapshot.source = format!(
+                "STALE: previous imported/observed metadata retained; {}",
+                snapshot.source
+            );
+        }
+        self.mops = snapshot;
+        self.mops_selected = number
+            .and_then(|number| {
+                self.mops
+                    .tasks
+                    .iter()
+                    .position(|task| task.pr_number == number)
+            })
+            .unwrap_or(0);
+        self.refreshing = false;
+        self.message = self
+            .mops
+            .error
+            .clone()
+            .unwrap_or_else(|| "PR metadata read; no harness contacted".into());
+    }
+    fn audit_observed(&mut self, result: Result<Box<audit::Comparison>, String>) {
+        self.refreshing = false;
+        if !self.audit_completion_matches(&result) {
+            return;
+        }
+        match result {
+            Ok(report) => {
+                if self.audit_tool_accepted(&report) {
+                    self.install_audit(*report);
+                }
+            }
+            Err(error) => {
+                self.audit_error = Some(error.clone());
+                self.message = error;
+            }
+        }
+    }
+    fn audit_completion_matches(
+        &mut self,
+        result: &Result<Box<audit::Comparison>, String>,
+    ) -> bool {
+        let Some(scope) = &self.audit_pr_context else {
+            return true;
+        };
+        if result.as_ref().is_ok_and(|report| {
+            scope.matches(
+                report.baseline.sha.as_deref(),
+                report.candidate.sha.as_deref(),
+            )
+        }) {
+            return true;
+        }
+        self.audit = None;
+        self.audit_error = Some(scope.markdown());
+        self.message =
+            "Discarded artifact result: it does not match the selected PR base/head".into();
+        false
+    }
+    fn audit_tool_accepted(&mut self, report: &audit::Comparison) -> bool {
+        let Some(requested) = self
+            .audit_inputs
+            .as_ref()
+            .and_then(|input| input.tool_filter.as_deref())
+        else {
+            return true;
+        };
+        if let Err(error) = report.validate_tool(requested) {
+            self.audit_error = Some(error.clone());
+            self.message = error;
+            return false;
+        }
+        true
+    }
+    fn install_audit(&mut self, report: audit::Comparison) {
+        self.audit_selected = self.preferred_audit_tool(&report);
+        self.audit_finding_selected = self
+            .audit_finding_selected
+            .min(report.finding_count(self.audit_selected).saturating_sub(1));
+        self.audit = Some(report);
+        self.audit_error = None;
+        self.message = "Native audit artifacts read; no checks run".into();
+    }
+    fn preferred_audit_tool(&self, report: &audit::Comparison) -> usize {
+        let id = self
+            .audit
+            .as_ref()
+            .and_then(|audit| audit.tool_ids().get(self.audit_selected).cloned());
+        let id = id.or_else(|| {
+            self.audit_inputs
+                .as_ref()
+                .and_then(|input| input.tool_filter.clone())
+        });
+        id.and_then(|id| report.tool_ids().iter().position(|tool| *tool == id))
+            .unwrap_or_else(|| {
+                (0..report.tool_ids().len())
+                    .find(|index| report.finding_count(*index) > 0)
+                    .unwrap_or(0)
+            })
+    }
+    fn observed(&mut self, snapshot: data::Snapshot, projects: project_data::ProjectSnapshot) {
+        let selection = self.project_selection();
+        self.project_data = projects;
+        self.restore_project_selection(selection);
+        self.settings_observed(snapshot);
+        self.refreshing = false;
+        self.message = "Passive observation complete • d details".into();
+    }
+    fn project_selection(&self) -> ProjectSelection {
+        let project = self.project_data.projects.get(self.project_selected);
+        ProjectSelection {
+            project: project.map(|project| project.identity.clone()),
+            file: project
+                .and_then(|project| project.files.get(self.project_file_selected))
+                .map(|file| file.path.clone()),
+            worktree: self
+                .project_data
+                .worktrees
+                .get(self.worktree_selected)
+                .map(|worktree| worktree.path.clone()),
+        }
+    }
+    fn restore_project_selection(&mut self, selection: ProjectSelection) {
+        self.project_selected = selection
+            .project
+            .and_then(|id| {
+                self.project_data
+                    .projects
+                    .iter()
+                    .position(|project| project.identity == id)
+            })
+            .unwrap_or(
+                self.project_selected
+                    .min(self.project_data.projects.len().saturating_sub(1)),
+            );
+        let files = self
+            .project_data
+            .projects
+            .get(self.project_selected)
+            .map(|project| project.files.as_slice())
+            .unwrap_or(&[]);
+        self.project_file_selected = selection
+            .file
+            .and_then(|id| files.iter().position(|file| file.path == id))
+            .unwrap_or(
+                self.project_file_selected
+                    .min(files.len().saturating_sub(1)),
+            );
+        self.worktree_selected = selection
+            .worktree
+            .and_then(|id| {
+                self.project_data
+                    .worktrees
+                    .iter()
+                    .position(|worktree| worktree.path == id)
+            })
+            .unwrap_or(
+                self.worktree_selected
+                    .min(self.project_data.worktrees.len().saturating_sub(1)),
+            );
+    }
+    fn settings_observed(&mut self, snapshot: data::Snapshot) {
+        let name = self
+            .data
+            .files
+            .get(self.selected)
+            .map(|file| file.name.clone());
+        self.data = snapshot;
+        self.selected = name
+            .and_then(|name| self.data.files.iter().position(|file| file.name == name))
+            .unwrap_or(self.selected.min(self.data.files.len().saturating_sub(1)));
+    }
     fn refresh(&mut self, control: provider::Control, sender: std::sync::mpsc::Sender<Wake>) {
         if self.refreshing {
             self.message = "Passive observation already in progress".into();
             return;
         }
         if self.view == View::Mops {
-            let Some(inputs) = self.mops_inputs.clone() else {
-                self.mops.error=Some("Configure --mops-repo OWNER/REPO and explicit --mops-pr NUMBER / --mops-pr-file PATH".into());
-                return;
-            };
-            let roles = self
-                .data
-                .files
-                .iter()
-                .filter(|f| f.group == "OpenMontage agent roles" && f.found)
-                .filter_map(|f| f.path.clone())
-                .collect::<Vec<_>>();
-            self.refreshing = true;
-            std::thread::spawn(move || {
-                let snapshot = handoff::Snapshot::read(&inputs, &roles, &control);
-                let _ = sender.send(Wake::MopsObserved(Box::new(snapshot)));
-            });
+            self.refresh_mops(control, sender);
             return;
         }
-        if self.view == View::Mayhem
-            && let Some(scope) = &self.audit_pr_context
-        {
-            let matches = self.audit_inputs.as_ref().is_some_and(|input| {
-                scope.matches(
-                    input.baseline_sha.as_deref(),
-                    input.candidate_sha.as_deref(),
-                )
-            });
-            if !matches {
-                self.audit = None;
-                self.audit_error = Some(scope.markdown());
-                self.message = "No audit artifacts matching this exact PR base/head".into();
-                return;
-            }
+        if !self.audit_scope_ready() {
+            return;
         }
         self.refreshing = true;
         if let Some(inputs) = self.audit_inputs.clone() {
@@ -180,6 +338,46 @@ impl App {
             let _ = sender.send(Wake::Observed(Box::new(snapshot), Box::new(projects)));
         });
     }
+    // A PR-selected view may only load artifacts attributed to that exact base/head.
+    fn audit_scope_ready(&mut self) -> bool {
+        let Some(scope) = self
+            .audit_pr_context
+            .as_ref()
+            .filter(|_| self.view == View::Mayhem)
+        else {
+            return true;
+        };
+        if self.audit_inputs.as_ref().is_some_and(|input| {
+            scope.matches(
+                input.baseline_sha.as_deref(),
+                input.candidate_sha.as_deref(),
+            )
+        }) {
+            return true;
+        }
+        self.audit = None;
+        self.audit_error = Some(scope.markdown());
+        self.message = "No audit artifacts matching this exact PR base/head".into();
+        false
+    }
+    fn refresh_mops(&mut self, control: provider::Control, sender: std::sync::mpsc::Sender<Wake>) {
+        let Some(inputs) = self.mops_inputs.clone() else {
+            self.mops.error=Some("Configure --mops-repo OWNER/REPO and explicit --mops-pr NUMBER / --mops-pr-file PATH".into());
+            return;
+        };
+        let roles = self
+            .data
+            .files
+            .iter()
+            .filter(|f| f.group == "OpenMontage agent roles" && f.found)
+            .filter_map(|f| f.path.clone())
+            .collect::<Vec<_>>();
+        self.refreshing = true;
+        std::thread::spawn(move || {
+            let snapshot = handoff::Snapshot::read(&inputs, &roles, &control);
+            let _ = sender.send(Wake::MopsObserved(Box::new(snapshot)));
+        });
+    }
     fn mops_action(&mut self, action: MopsAction) {
         let Some(task) = self.mops.tasks.get(self.mops_selected) else {
             self.message = "No selected PR handoff".into();
@@ -188,13 +386,7 @@ impl App {
         match action {
             MopsAction::OpenPr => {
                 let url = task.pr_url.clone();
-                self.message = match open_url(&url) {
-                    Ok(receiver) => {
-                        self.opener_result = Some(receiver);
-                        "Browser opener requested; outcome unknown".into()
-                    }
-                    Err(error) => error.to_string(),
-                };
+                self.open_pr_url(&url);
             }
             MopsAction::OpenRole => {
                 let path = task
@@ -202,11 +394,10 @@ impl App {
                     .as_ref()
                     .filter(|_| task.role_available)
                     .map(std::path::PathBuf::from);
-                if let Some(path) = path {
-                    self.launch(&path)
-                } else {
-                    self.message = "Role path unavailable / not verified against crew.list".into();
-                }
+                self.open_recorded_path(
+                    path,
+                    "Role path unavailable / not verified against crew.list",
+                );
             }
             MopsAction::OpenWorktree => {
                 let path = task
@@ -214,24 +405,10 @@ impl App {
                     .as_ref()
                     .filter(|_| task.worktree_available)
                     .map(std::path::PathBuf::from);
-                if let Some(path) = path {
-                    self.launch(&path)
-                } else {
-                    self.message = "Recorded worktree unavailable".into();
-                }
+                self.open_recorded_path(path, "Recorded worktree unavailable");
             }
             MopsAction::CopyResume => {
-                let command = task
-                    .resume_command
-                    .as_ref()
-                    .filter(|_| task.verified_resume)
-                    .cloned();
-                if let Some(command) = command {
-                    self.message = copy_text(&command)
-                } else {
-                    self.message =
-                        "No author-verified resume command; nothing copied or executed".into();
-                }
+                self.message = copy_resume(task);
             }
             MopsAction::CopyFeedback => {
                 let feedback = task.feedback.join("\n");
@@ -250,6 +427,21 @@ impl App {
                 self.view = View::Mayhem;
             }
         }
+    }
+    fn open_recorded_path(&mut self, path: Option<std::path::PathBuf>, unavailable: &str) {
+        match path {
+            Some(path) => self.launch(&path),
+            None => self.message = unavailable.into(),
+        }
+    }
+    fn open_pr_url(&mut self, url: &str) {
+        self.message = match open_url(url) {
+            Ok(receiver) => {
+                self.opener_result = Some(receiver);
+                "Browser opener requested; outcome unknown".into()
+            }
+            Err(error) => error.to_string(),
+        };
     }
     fn launch(&mut self, path: &Path) {
         self.message = match open_external(path) {
@@ -491,32 +683,66 @@ fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receive
     });
     Ok(receiver)
 }
+fn copy_resume(task: &handoff::Task) -> String {
+    match task
+        .resume_command
+        .as_deref()
+        .filter(|_| task.verified_resume)
+    {
+        Some(command) => copy_text(command),
+        None => "No author-verified resume command; nothing copied or executed".into(),
+    }
+}
+fn print_pr_report(args: &[String], index: usize) -> io::Result<()> {
+    let number = args
+        .get(index + 1)
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| io::Error::other("--mayhem-pr-report requires a PR number"))?;
+    let inputs = handoff::Inputs::parse(args)
+        .map_err(io::Error::other)?
+        .ok_or_else(|| io::Error::other("PR inputs required"))?;
+    let control = provider::Control::default();
+    let _lifecycle = provider::Owner(control.clone());
+    let snapshot = handoff::Snapshot::read(&inputs, &[], &control);
+    let task = snapshot
+        .tasks
+        .iter()
+        .find(|t| t.pr_number == number)
+        .ok_or_else(|| {
+            io::Error::other(
+                snapshot
+                    .error
+                    .unwrap_or_else(|| "Requested PR unavailable".into()),
+            )
+        })?;
+    print!("{}", task.audit_unavailable());
+    Ok(())
+}
+fn configured_app(args: &[String]) -> io::Result<App> {
+    let audit_inputs = if args.iter().any(|a| a.starts_with("--audit-")) {
+        Some(audit::Inputs::parse(args).map_err(io::Error::other)?)
+    } else {
+        None
+    };
+    let mops_inputs = handoff::Inputs::parse(args).map_err(io::Error::other)?;
+    let mut app = App::new(audit_inputs);
+    if mops_inputs.is_some() {
+        app.view = View::Mops;
+        app.mops_inputs = mops_inputs;
+    }
+    if app.audit_inputs.is_some() {
+        app.project_data.source =
+            "Audit artifact session; native project observation not requested".into();
+        app.project_data.error = Some("Launch without audit flags for project observation".into());
+        app.data.provider_detail =
+            "Audit artifact session; configuration query not requested".into();
+    }
+    Ok(app)
+}
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(index) = args.iter().position(|a| a == "--mayhem-pr-report") {
-        let number = args
-            .get(index + 1)
-            .and_then(|s| s.parse::<u64>().ok())
-            .ok_or_else(|| io::Error::other("--mayhem-pr-report requires a PR number"))?;
-        let inputs = handoff::Inputs::parse(&args)
-            .map_err(io::Error::other)?
-            .ok_or_else(|| io::Error::other("PR inputs required"))?;
-        let control = provider::Control::default();
-        let _lifecycle = provider::Owner(control.clone());
-        let snapshot = handoff::Snapshot::read(&inputs, &[], &control);
-        let task = snapshot
-            .tasks
-            .iter()
-            .find(|t| t.pr_number == number)
-            .ok_or_else(|| {
-                io::Error::other(
-                    snapshot
-                        .error
-                        .unwrap_or_else(|| "Requested PR unavailable".into()),
-                )
-            })?;
-        print!("{}", task.audit_unavailable());
-        return Ok(());
+        return print_pr_report(&args, index);
     }
     if args.iter().any(|a| a == "--mayhem-report") {
         let input = audit::Inputs::parse(&args).map_err(io::Error::other)?;
@@ -537,24 +763,7 @@ fn main() -> io::Result<()> {
         Some("--color=never") => crossterm::style::force_color_output(false),
         _ => {}
     }
-    let audit_inputs = if args.iter().any(|a| a.starts_with("--audit-")) {
-        Some(audit::Inputs::parse(&args).map_err(io::Error::other)?)
-    } else {
-        None
-    };
-    let mops_inputs = handoff::Inputs::parse(&args).map_err(io::Error::other)?;
-    let mut app = App::new(audit_inputs);
-    if mops_inputs.is_some() {
-        app.view = View::Mops;
-        app.mops_inputs = mops_inputs;
-    }
-    if app.audit_inputs.is_some() {
-        app.project_data.source =
-            "Audit artifact session; native project observation not requested".into();
-        app.project_data.error = Some("Launch without audit flags for project observation".into());
-        app.data.provider_detail =
-            "Audit artifact session; configuration query not requested".into();
-    }
+    let mut app = configured_app(&args)?;
     let mut terminal = ratatui::init();
     execute!(io::stdout(), EnableMouseCapture)?;
     let control = provider::Control::default();
@@ -587,139 +796,15 @@ fn main() -> io::Result<()> {
             .map_err(|_| io::Error::other("UI event channel closed"))?
         {
             Wake::MopsObserved(snapshot) => {
-                let number = app.mops.tasks.get(app.mops_selected).map(|t| t.pr_number);
-                let mut snapshot = *snapshot;
-                if snapshot.tasks.is_empty()
-                    && !app.mops.tasks.is_empty()
-                    && snapshot.error.is_some()
-                {
-                    snapshot.tasks = std::mem::take(&mut app.mops.tasks);
-                    snapshot.source = format!(
-                        "STALE: previous imported/observed metadata retained; {}",
-                        snapshot.source
-                    );
-                }
-                app.mops = snapshot;
-                app.mops_selected = number
-                    .and_then(|n| app.mops.tasks.iter().position(|t| t.pr_number == n))
-                    .unwrap_or(0);
-                app.refreshing = false;
-                app.message = app
-                    .mops
-                    .error
-                    .clone()
-                    .unwrap_or_else(|| "PR metadata read; no harness contacted".into());
+                app.mops_observed(*snapshot);
                 continue;
             }
             Wake::AuditObserved(result) => {
-                app.refreshing = false;
-                if let Some(scope) = &app.audit_pr_context {
-                    let matches = result.as_ref().is_ok_and(|report| {
-                        scope.matches(
-                            report.baseline.sha.as_deref(),
-                            report.candidate.sha.as_deref(),
-                        )
-                    });
-                    if !matches {
-                        app.audit = None;
-                        app.audit_error = Some(scope.markdown());
-                        app.message="Discarded artifact result: it does not match the selected PR base/head".into();
-                        continue;
-                    }
-                }
-                match result {
-                    Ok(report) => {
-                        if let Some(requested) = app
-                            .audit_inputs
-                            .as_ref()
-                            .and_then(|input| input.tool_filter.as_deref())
-                            && let Err(error) = report.validate_tool(requested)
-                        {
-                            app.audit_error = Some(error.clone());
-                            app.message = error;
-                            continue;
-                        }
-                        let id = app
-                            .audit
-                            .as_ref()
-                            .and_then(|a| a.tool_ids().get(app.audit_selected).cloned());
-                        let id = id.or_else(|| {
-                            app.audit_inputs
-                                .as_ref()
-                                .and_then(|input| input.tool_filter.clone())
-                        });
-                        app.audit_selected = id
-                            .and_then(|id| report.tool_ids().iter().position(|t| *t == id))
-                            .unwrap_or_else(|| {
-                                (0..report.tool_ids().len())
-                                    .find(|i| report.finding_count(*i) > 0)
-                                    .unwrap_or(0)
-                            });
-                        app.audit_finding_selected = app
-                            .audit_finding_selected
-                            .min(report.finding_count(app.audit_selected).saturating_sub(1));
-                        app.audit = Some(*report);
-                        app.audit_error = None;
-                        app.message = "Native audit artifacts read; no checks run".into();
-                    }
-                    Err(error) => {
-                        app.audit_error = Some(error.clone());
-                        app.message = error;
-                    }
-                }
+                app.audit_observed(result);
                 continue;
             }
             Wake::Observed(snapshot, projects) => {
-                let project_identity = app
-                    .project_data
-                    .projects
-                    .get(app.project_selected)
-                    .map(|p| p.identity.clone());
-                let file_identity = app
-                    .project_data
-                    .projects
-                    .get(app.project_selected)
-                    .and_then(|p| p.files.get(app.project_file_selected))
-                    .map(|f| f.path.clone());
-                let worktree_identity = app
-                    .project_data
-                    .worktrees
-                    .get(app.worktree_selected)
-                    .map(|w| w.path.clone());
-                app.project_data = *projects;
-                app.project_selected = project_identity
-                    .and_then(|id| {
-                        app.project_data
-                            .projects
-                            .iter()
-                            .position(|p| p.identity == id)
-                    })
-                    .unwrap_or(
-                        app.project_selected
-                            .min(app.project_data.projects.len().saturating_sub(1)),
-                    );
-                let files = app
-                    .project_data
-                    .projects
-                    .get(app.project_selected)
-                    .map(|p| p.files.as_slice())
-                    .unwrap_or(&[]);
-                app.project_file_selected = file_identity
-                    .and_then(|id| files.iter().position(|f| f.path == id))
-                    .unwrap_or(app.project_file_selected.min(files.len().saturating_sub(1)));
-                app.worktree_selected = worktree_identity
-                    .and_then(|id| app.project_data.worktrees.iter().position(|w| w.path == id))
-                    .unwrap_or(
-                        app.worktree_selected
-                            .min(app.project_data.worktrees.len().saturating_sub(1)),
-                    );
-                let name = app.data.files.get(app.selected).map(|f| f.name.clone());
-                app.data = *snapshot;
-                app.selected = name
-                    .and_then(|name| app.data.files.iter().position(|f| f.name == name))
-                    .unwrap_or(app.selected.min(app.data.files.len().saturating_sub(1)));
-                app.refreshing = false;
-                app.message = "Passive observation complete • d details".into();
+                app.observed(*snapshot, *projects);
                 continue;
             }
             Wake::Terminal(input) => input?,
