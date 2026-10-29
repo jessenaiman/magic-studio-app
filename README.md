@@ -6,14 +6,11 @@ Canonical repository: [jessenaiman/magic-studio-app](https://github.com/jessenai
 
 The application is the Tauri shell in `apps/magicstudio-shell`. Its embedded UI, CLI and MCP share the Rust engine command registry and domain types.
 
-## Run and discover
+## Start here
 
-```bash
-CARGO_BUILD_JOBS=1 cargo build -p magicstudio-shell
-./target/debug/magicstudio-shell
-magic-cli --help
-magic-cli commands
-```
+Open `magic`. Use `magic-cli --help` and `magic-cli commands` to discover operations;
+ask when the intended result or a choice is unclear.
+For source installation, see [Magic setup](agent-harness/cli_anything/magic/README.md).
 
 The Omarchy menu entry is **Magic Studio**. Rebuild the shell after changing `apps/magicstudio-shell/ui/`; those files are embedded. Keep generated song projects and media on the user-selected Speedy location, outside this source repository.
 

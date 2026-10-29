@@ -1,19 +1,14 @@
 # Magic Studio CLI
 
-`magic` opens the GUI. `magic-cli --help` describes terminal commands. `magic-cli mcp` starts the MCP stdio server. No REPL.
+Open the app with `magic`. Discover operations with `magic-cli --help` and
+`magic-cli commands`; ask about unclear goals or choices.
 
-Read [the Magic skill](skills/SKILL.md) for command discovery, project/window targeting and MCP configuration, and [the architecture](../../../MAGIC.md) for ownership boundaries.
+For source installation, run `python3 scripts/install_magic.py --help` from the
+repository root. It uses a built shell and an existing Python environment with
+[the Magic package](../../setup.py), installed from `agent-harness`.
+The root `setup.py` is OpenMontage's production package, not the Magic CLI.
+Do not bootstrap OpenMontage or reinstall Python just to start Magic.
 
-For a source checkout, build and register Magic itself:
-
-```bash
-cargo build -p magicstudio-shell
-uv pip install --python .venv/bin/python -e agent-harness
-python3 scripts/install_magic.py
-```
-
-Run these from the repository root with its virtual environment prepared. The installer uses this checkout's Python environment, copies the built native shell, and installs `magic`, `magic-cli` and a desktop entry under `~/.local`. It does not install ArtCraft or register MCP servers automatically. Installed users should inspect command paths and errors before changing their installation.
-
-For an existing installation with the retired Magic entry points, `python3 scripts/install_magic.py --migrate-legacy` updates recognized existing Codex/OpenCode Magic MCP entries and removes obsolete Magic executables and the duplicate desktop entry. Other Craft servers are untouched. Run `mise reshim` if a retired Python entry point had a mise shim. Existing agent processes may retain their already-loaded MCP connection until their next reconnect.
-
-When reusing an existing Python environment after moving the source checkout, register only this app with `uv pip install --python /existing/environment/bin/python --no-deps --no-build-isolation -e agent-harness`, then pass that interpreter to `scripts/install_magic.py --python /existing/environment/bin/python`. This updates the app source mapping without reinstalling dependencies. Build the native shell from the authoritative checkout so its embedded source location also matches.
+See [the Magic skill](skills/SKILL.md) and [command contract](../../MAGIC.md) when
+needed. OpenMontage's reusable production guidance, [credit](../../../SOURCE-ATTRIBUTION.md)
+and [license](../../../LICENSE) remain intact.

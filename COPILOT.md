@@ -1,4 +1,7 @@
-# OpenMontage - Copilot Agent Instructions
+# Magic Studio
 
-> **Start here:** See [`AGENT_GUIDE.md`](AGENT_GUIDE.md) — the complete operating guide and agent contract.
-> **Project context:** See [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md) for architecture, key files, and conventions.
+Use `magic` for the app. Discover operations with `magic-cli --help` and
+`magic-cli commands`. Ask when the goal or a choice is unclear.
+For coding, follow [CONTRIBUTING](CONTRIBUTING.md).
+Consult [the command contract](agent-harness/MAGIC.md) and
+[reusable production context](PROJECT_CONTEXT.md) only when relevant.

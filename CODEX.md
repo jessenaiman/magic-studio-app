@@ -1,8 +1,7 @@
-> Follow [the contribution workflow](CONTRIBUTING.md): Moppet-named worktree/branch, PR review before merge, no direct implementation commits to main, and Jesse’s UI approval before adding behavioral tests.
+# Magic Studio
 
-> Magic Studio entry-point and command architecture: [current contract](agent-harness/MAGIC.md). `magic` opens the GUI; `magic-cli` and `magic-cli mcp` share the application registry. Do not restore retired `mc`, REPL or duplicated routing from historical instructions.
-
-# OpenMontage - Codex Agent Instructions
-
-> **Start here:** See [`AGENT_GUIDE.md`](AGENT_GUIDE.md) — the complete operating guide and agent contract.
-> **Project context:** See [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md) for architecture, key files, and conventions.
+Use `magic` for the app. Discover operations with `magic-cli --help` and
+`magic-cli commands`. Ask when the goal or a choice is unclear.
+For coding, follow [CONTRIBUTING](CONTRIBUTING.md).
+Consult [the command contract](agent-harness/MAGIC.md) and
+[reusable production context](PROJECT_CONTEXT.md) only when relevant.
