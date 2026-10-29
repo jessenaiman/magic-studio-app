@@ -1,38 +1,37 @@
 name: Feature request
-description: Suggest a new tool, pipeline, integration, or improvement
+description: Suggest a Magic Studio improvement
 labels: ["enhancement"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Have an idea? If it's open-ended or you want to discuss direction first, consider posting in
-        [Discussions → Ideas](https://github.com/calesthio/OpenMontage/discussions/categories/ideas).
-        Use this form for a concrete, actionable request.
   - type: textarea
-    id: problem
+    id: what_where
     attributes:
-      label: Problem / motivation
-      description: What problem does this solve, or what is missing today?
+      label: What and Where
+      placeholder: |
+        - Requested capability and affected area.
     validations:
       required: true
   - type: textarea
-    id: solution
+    id: why
     attributes:
-      label: Proposed solution
-      description: Describe the tool, pipeline, or change you'd like.
+      label: Why
+      placeholder: |
+        - User need and expected benefit.
     validations:
       required: true
   - type: textarea
-    id: alternatives
+    id: how
     attributes:
-      label: Alternatives considered
-      description: Any other approaches you've thought about.
+      label: How
+      placeholder: |
+        - Proposed approach or example workflow.
+        - Relevant references or alternatives.
     validations:
-      required: false
+      required: true
   - type: textarea
-    id: context
+    id: success_criteria
     attributes:
-      label: Additional context
-      description: Links, mockups, references, or examples.
+      label: Success criteria
+      placeholder: |
+        - Observable outcomes that make this request complete.
     validations:
-      required: false
+      required: true

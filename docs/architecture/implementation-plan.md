@@ -8,7 +8,7 @@
 
 **Stack:** existing Rust engine, Tauri shell, vanilla JavaScript, Ratatui, native storyboard tools and HyperFrames. Reuse the existing tool adapters.
 
-**Sources:** [recovered diagram](panel-contract.html), [panel contract](../superpowers/plans/2026-10-23-unified-panel-reporting.md), [video wiring plan](../superpowers/plans/2026-10-23-magic-studio-wiring-refactor.md), and Jesse's six steps below.
+**Sources:** [recovered diagram](panel-contract.html), [shared UI/CLI/TUI contract](tui-contract.md), and Jesse's six steps below.
 
 ## Binding architecture — updated from Jesse's corrections
 

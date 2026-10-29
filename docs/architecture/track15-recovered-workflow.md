@@ -28,7 +28,6 @@ Source: Grok session `01a16e65-5099-7572-9be0-010a885aad89`, `chat_history.jsonl
 - Grok chat: `/home/jesse/.grok/sessions/%2Frun%2Fmedia%2Fjesse%2FSpeedy%2FWork%2Fomhas-animation/01a16e65-5099-7572-9be0-010a885aad89/chat_history.jsonl`.
 - Grok plan: same directory, `plan.md`. That plan proposed restoring live Blender; the exact user workflow above does not establish that Blender is the best backend.
 - Rizzo chat: `/home/jesse/.claude/projects/-run-media-jesse-Speedy-Work-omhas-animation/03fc8a53-4d50-42c7-b40d-ba8ef42209a5.jsonl`. Lines 5000 (Track 15 handoff), 5436 (proposed second sheet workflow), 6255 (acknowledged duplication/missing controls), 6466 (stop and historical bee findings).
-- Earlier animator-order plan: `docs/superpowers/plans/2026-10-23-character-motion-pipeline.md`.
 - Architecture: `docs/architecture/panel-contract.html`, with newer binding corrections in `docs/architecture/implementation-plan.md`. Old agent names do not assign today's work.
 - Song: `/run/media/jesse/Speedy/media/three-times-around/project/Three Times Around.magic`; current creative authority: adjacent `intent.md`.
 - Rizzo's checkout: `/run/media/jesse/Speedy/Work/omhas-animation/.worktrees/song-lyrics-reader`, branch `feature/lyrics-design-timeline`; working binary `target/debug/mc`, live bridge 19971. Do not restart or switch it for this review.

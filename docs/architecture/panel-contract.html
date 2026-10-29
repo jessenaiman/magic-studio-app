@@ -60,7 +60,7 @@ td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); white-spa
 
 <main>
   <header style="display:grid;gap:12px">
-    <div class="eyebrow">Issue #23 · plan docs/superpowers/plans/2026-10-23-unified-panel-reporting.md · HEAD 08974b0</div>
+    <div class="eyebrow">Issue #23 · historical diagram · HEAD 08974b0</div>
     <h1>Magic Studio Panel Contract</h1>
     <p class="lede">Every panel in the Studio carries the same small record. The TUI and the CLI read that record for every panel, so a new panel needs no new command, no new feedback field and no new Rust code, and anything on screen without a record is reported as unconfigured.</p>
     <div class="strip">
@@ -269,7 +269,7 @@ flowchart LR
       <li>Colours only as <code>:root</code> tokens. No silent fallbacks, such as a default green dot when the registry is missing.</li>
       <li>Pets never move on their own clock: finite bursts, one timer each, a cooldown between bursts.</li>
       <li>The TUI reports UI health: every flagged element carries a reason, <code>untracked</code> (no config entry) or <code>unstyled</code> (inline visual style), so random UI shows up as a count. Bad looks in <code>components.json</code> fail at commit time.</li>
-      <li>Source of truth: <code>docs/superpowers/plans/2026-10-23-unified-panel-reporting.md</code> (starts with the agent brief every session reads) and <code>…-magic-studio-wiring-refactor.md</code>. This page summarises them.</li>
+      <li>Current requirements: <a href="implementation-plan.md">completion plan</a> and <a href="tui-contract.md">shared UI/CLI/TUI contract</a>. This diagram is historical.</li>
     </ul>
   </section>
 </main>

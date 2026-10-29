@@ -1,10 +1,35 @@
 name: Change or problem
-description: A sentence is enough. Technical details are the maintainer's job.
+description: Describe a concrete change or problem
 body:
   - type: textarea
-    id: change
+    id: what_where
     attributes:
-      label: What should change?
-      description: Say what you need or what went wrong.
+      label: What and Where
+      placeholder: |
+        - What needs to change, and where?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      placeholder: |
+        - Why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How
+      placeholder: |
+        - Suggested approach or steps to observe the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success criteria
+      placeholder: |
+        - Observable checks that show the change is complete.
     validations:
       required: true
