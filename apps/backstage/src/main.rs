@@ -1,7 +1,9 @@
 //! Settings-only observer. No engine linkage, agent connections, sockets or model clients.
 mod audit;
 mod data;
+mod handoff;
 mod mayhem;
+mod mops;
 mod project_data;
 mod provider;
 mod ui;
@@ -17,6 +19,7 @@ use ratatui::layout::Rect;
 use std::{io, path::Path, process::Command};
 
 enum Wake {
+    MopsObserved(Box<handoff::Snapshot>),
     AuditObserved(Result<Box<audit::Comparison>, String>),
     Terminal(io::Result<Event>),
     Observed(Box<data::Snapshot>, Box<project_data::ProjectSnapshot>),
@@ -25,9 +28,26 @@ enum Wake {
 enum View {
     Workshop,
     Mayhem,
+    Mops,
     Settings,
 }
+#[derive(Clone, Copy)]
+enum MopsAction {
+    OpenPr,
+    OpenRole,
+    OpenWorktree,
+    CopyResume,
+    CopyFeedback,
+    ViewMayhem,
+}
 struct App {
+    clipboard_supported: bool,
+    mops: handoff::Snapshot,
+    mops_inputs: Option<handoff::Inputs>,
+    mops_selected: usize,
+    mops_rows: Vec<(Rect, usize)>,
+    mops_actions: Vec<(Rect, MopsAction)>,
+    audit_pr_context: Option<handoff::PrScope>,
     audit: Option<audit::Comparison>,
     audit_error: Option<String>,
     audit_inputs: Option<audit::Inputs>,
@@ -62,6 +82,14 @@ struct App {
 impl App {
     fn new(audit_inputs: Option<audit::Inputs>) -> Self {
         Self {
+            clipboard_supported: std::env::var("TERM")
+                .is_ok_and(|term| !term.is_empty() && !matches!(term.as_str(), "dumb" | "linux")),
+            mops: handoff::Snapshot::default(),
+            mops_inputs: None,
+            mops_selected: 0,
+            mops_rows: vec![],
+            mops_actions: vec![],
+            audit_pr_context: None,
             view: if audit_inputs.is_some() {
                 View::Mayhem
             } else {
@@ -103,6 +131,41 @@ impl App {
             self.message = "Passive observation already in progress".into();
             return;
         }
+        if self.view == View::Mops {
+            let Some(inputs) = self.mops_inputs.clone() else {
+                self.mops.error=Some("Configure --mops-repo OWNER/REPO and explicit --mops-pr NUMBER / --mops-pr-file PATH".into());
+                return;
+            };
+            let roles = self
+                .data
+                .files
+                .iter()
+                .filter(|f| f.group == "OpenMontage agent roles" && f.found)
+                .filter_map(|f| f.path.clone())
+                .collect::<Vec<_>>();
+            self.refreshing = true;
+            std::thread::spawn(move || {
+                let snapshot = handoff::Snapshot::read(&inputs, &roles, &control);
+                let _ = sender.send(Wake::MopsObserved(Box::new(snapshot)));
+            });
+            return;
+        }
+        if self.view == View::Mayhem
+            && let Some(scope) = &self.audit_pr_context
+        {
+            let matches = self.audit_inputs.as_ref().is_some_and(|input| {
+                scope.matches(
+                    input.baseline_sha.as_deref(),
+                    input.candidate_sha.as_deref(),
+                )
+            });
+            if !matches {
+                self.audit = None;
+                self.audit_error = Some(scope.markdown());
+                self.message = "No audit artifacts matching this exact PR base/head".into();
+                return;
+            }
+        }
         self.refreshing = true;
         if let Some(inputs) = self.audit_inputs.clone() {
             std::thread::spawn(move || {
@@ -117,6 +180,77 @@ impl App {
             let _ = sender.send(Wake::Observed(Box::new(snapshot), Box::new(projects)));
         });
     }
+    fn mops_action(&mut self, action: MopsAction) {
+        let Some(task) = self.mops.tasks.get(self.mops_selected) else {
+            self.message = "No selected PR handoff".into();
+            return;
+        };
+        match action {
+            MopsAction::OpenPr => {
+                let url = task.pr_url.clone();
+                self.message = match open_url(&url) {
+                    Ok(receiver) => {
+                        self.opener_result = Some(receiver);
+                        "Browser opener requested; outcome unknown".into()
+                    }
+                    Err(error) => error.to_string(),
+                };
+            }
+            MopsAction::OpenRole => {
+                let path = task
+                    .role_path
+                    .as_ref()
+                    .filter(|_| task.role_available)
+                    .map(std::path::PathBuf::from);
+                if let Some(path) = path {
+                    self.launch(&path)
+                } else {
+                    self.message = "Role path unavailable / not verified against crew.list".into();
+                }
+            }
+            MopsAction::OpenWorktree => {
+                let path = task
+                    .worktree
+                    .as_ref()
+                    .filter(|_| task.worktree_available)
+                    .map(std::path::PathBuf::from);
+                if let Some(path) = path {
+                    self.launch(&path)
+                } else {
+                    self.message = "Recorded worktree unavailable".into();
+                }
+            }
+            MopsAction::CopyResume => {
+                let command = task
+                    .resume_command
+                    .as_ref()
+                    .filter(|_| task.verified_resume)
+                    .cloned();
+                if let Some(command) = command {
+                    self.message = copy_text(&command)
+                } else {
+                    self.message =
+                        "No author-verified resume command; nothing copied or executed".into();
+                }
+            }
+            MopsAction::CopyFeedback => {
+                let feedback = task.feedback.join("\n");
+                if feedback.is_empty() {
+                    self.message = "No review feedback supplied".into()
+                } else {
+                    self.message = copy_text(&feedback)
+                }
+            }
+            MopsAction::ViewMayhem => {
+                let scope = task.audit_scope();
+                let message = scope.markdown();
+                self.audit_pr_context = Some(scope);
+                self.audit = None;
+                self.audit_error = Some(message);
+                self.view = View::Mayhem;
+            }
+        }
+    }
     fn launch(&mut self, path: &Path) {
         self.message = match open_external(path) {
             Ok(receiver) => {
@@ -127,7 +261,9 @@ impl App {
         };
     }
     fn open_current(&mut self, folder: bool) {
-        if self.view == View::Mayhem && self.audit_inputs.is_some() {
+        if self.view == View::Mayhem
+            && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
+        {
             let path = self
                 .audit
                 .as_ref()
@@ -194,7 +330,19 @@ impl App {
         }
     }
     fn move_selection(&mut self, down: bool) {
-        if self.view == View::Mayhem && self.audit_inputs.is_some() {
+        if self.view == View::Mops {
+            self.mops_selected = if down {
+                self.mops_selected
+                    .saturating_add(1)
+                    .min(self.mops.tasks.len().saturating_sub(1))
+            } else {
+                self.mops_selected.saturating_sub(1)
+            };
+            return;
+        }
+        if self.view == View::Mayhem
+            && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
+        {
             let len = self.audit.as_ref().map_or(0, |a| a.tool_ids().len());
             self.audit_selected = if down {
                 self.audit_selected
@@ -280,6 +428,39 @@ impl App {
 fn open_external(path: &Path) -> io::Result<std::sync::mpsc::Receiver<String>> {
     // Canonical absolute filesystem arguments cannot become shell commands or URL schemes.
     let path = path.canonicalize()?;
+    spawn_opener(path.as_os_str())
+}
+fn open_url(url: &str) -> io::Result<std::sync::mpsc::Receiver<String>> {
+    if !url.starts_with("https://github.com/") || url.chars().any(char::is_control) {
+        return Err(io::Error::other(
+            "Only validated GitHub HTTPS links are supported",
+        ));
+    }
+    spawn_opener(std::ffi::OsStr::new(url))
+}
+fn copy_text(text: &str) -> String {
+    if text.len() > 65536 {
+        return "Clipboard payload exceeds64KiB; inspect full native details".into();
+    }
+    if std::env::var("TERM").is_ok_and(|t| matches!(t.as_str(), "dumb" | "linux")) {
+        return "Clipboard unavailable: terminal OSC52 support required".into();
+    }
+    use crossterm::clipboard::{ClipboardSelection, ClipboardType, CopyToClipboard};
+    match execute!(
+        io::stdout(),
+        CopyToClipboard {
+            content: text,
+            destination: ClipboardSelection(vec![ClipboardType::Clipboard])
+        }
+    ) {
+        Ok(()) => {
+            "OSC52 copy requested; terminal permission/support not verified. Nothing executed."
+                .into()
+        }
+        Err(error) => format!("Clipboard request failed: {error}"),
+    }
+}
+fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receiver<String>> {
     #[cfg(target_os = "linux")]
     let mut cmd = Command::new("xdg-open");
     #[cfg(target_os = "macos")]
@@ -291,7 +472,7 @@ fn open_external(path: &Path) -> io::Result<std::sync::mpsc::Receiver<String>> {
         c
     };
     let mut child = cmd
-        .arg(path)
+        .arg(target)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -312,6 +493,31 @@ fn open_external(path: &Path) -> io::Result<std::sync::mpsc::Receiver<String>> {
 }
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(index) = args.iter().position(|a| a == "--mayhem-pr-report") {
+        let number = args
+            .get(index + 1)
+            .and_then(|s| s.parse::<u64>().ok())
+            .ok_or_else(|| io::Error::other("--mayhem-pr-report requires a PR number"))?;
+        let inputs = handoff::Inputs::parse(&args)
+            .map_err(io::Error::other)?
+            .ok_or_else(|| io::Error::other("PR inputs required"))?;
+        let control = provider::Control::default();
+        let _lifecycle = provider::Owner(control.clone());
+        let snapshot = handoff::Snapshot::read(&inputs, &[], &control);
+        let task = snapshot
+            .tasks
+            .iter()
+            .find(|t| t.pr_number == number)
+            .ok_or_else(|| {
+                io::Error::other(
+                    snapshot
+                        .error
+                        .unwrap_or_else(|| "Requested PR unavailable".into()),
+                )
+            })?;
+        print!("{}", task.audit_unavailable());
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--mayhem-report") {
         let input = audit::Inputs::parse(&args).map_err(io::Error::other)?;
         let report = input.load().map_err(io::Error::other)?;
@@ -336,7 +542,12 @@ fn main() -> io::Result<()> {
     } else {
         None
     };
+    let mops_inputs = handoff::Inputs::parse(&args).map_err(io::Error::other)?;
     let mut app = App::new(audit_inputs);
+    if mops_inputs.is_some() {
+        app.view = View::Mops;
+        app.mops_inputs = mops_inputs;
+    }
     if app.audit_inputs.is_some() {
         app.project_data.source =
             "Audit artifact session; native project observation not requested".into();
@@ -359,7 +570,9 @@ fn main() -> io::Result<()> {
             }
         }
     });
-    app.refresh(control.clone(), sender.clone());
+    if app.view != View::Mops {
+        app.refresh(control.clone(), sender.clone());
+    }
     let result = (|| loop {
         // Inspect only our explicit opener result on terminal input, never on a timer.
         if let Some(receiver) = &app.opener_result
@@ -373,8 +586,47 @@ fn main() -> io::Result<()> {
             .recv()
             .map_err(|_| io::Error::other("UI event channel closed"))?
         {
+            Wake::MopsObserved(snapshot) => {
+                let number = app.mops.tasks.get(app.mops_selected).map(|t| t.pr_number);
+                let mut snapshot = *snapshot;
+                if snapshot.tasks.is_empty()
+                    && !app.mops.tasks.is_empty()
+                    && snapshot.error.is_some()
+                {
+                    snapshot.tasks = std::mem::take(&mut app.mops.tasks);
+                    snapshot.source = format!(
+                        "STALE: previous imported/observed metadata retained; {}",
+                        snapshot.source
+                    );
+                }
+                app.mops = snapshot;
+                app.mops_selected = number
+                    .and_then(|n| app.mops.tasks.iter().position(|t| t.pr_number == n))
+                    .unwrap_or(0);
+                app.refreshing = false;
+                app.message = app
+                    .mops
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "PR metadata read; no harness contacted".into());
+                continue;
+            }
             Wake::AuditObserved(result) => {
                 app.refreshing = false;
+                if let Some(scope) = &app.audit_pr_context {
+                    let matches = result.as_ref().is_ok_and(|report| {
+                        scope.matches(
+                            report.baseline.sha.as_deref(),
+                            report.candidate.sha.as_deref(),
+                        )
+                    });
+                    if !matches {
+                        app.audit = None;
+                        app.audit_error = Some(scope.markdown());
+                        app.message="Discarded artifact result: it does not match the selected PR base/head".into();
+                        continue;
+                    }
+                }
                 match result {
                     Ok(report) => {
                         if let Some(requested) = app
@@ -513,6 +765,24 @@ fn main() -> io::Result<()> {
                         .min(n.saturating_sub(1));
                 }
                 KeyCode::Tab => app.focus_projects = !app.focus_projects,
+                KeyCode::Enter | KeyCode::Char('o') if app.view == View::Mops => {
+                    app.mops_action(MopsAction::OpenPr)
+                }
+                KeyCode::Char('c') if app.view == View::Mops => {
+                    app.mops_action(MopsAction::CopyResume)
+                }
+                KeyCode::Char('f') if app.view == View::Mops => {
+                    app.mops_action(MopsAction::CopyFeedback)
+                }
+                KeyCode::Char('p') if app.view == View::Mops => {
+                    app.mops_action(MopsAction::OpenWorktree)
+                }
+                KeyCode::Char('l') if app.view == View::Mops => {
+                    app.mops_action(MopsAction::OpenRole)
+                }
+                KeyCode::Char('m') if app.view == View::Mops => {
+                    app.mops_action(MopsAction::ViewMayhem)
+                }
                 KeyCode::Enter | KeyCode::Char('o') => app.open_current(false),
                 KeyCode::Char('p') => app.open_current(true),
                 KeyCode::Char(c @ '1'..='4') if app.view == View::Workshop => {
@@ -525,7 +795,8 @@ fn main() -> io::Result<()> {
                 KeyCode::F(1) => app.view = View::Workshop,
                 KeyCode::F(4) => app.view = View::Mayhem,
                 KeyCode::F(5) => app.view = View::Settings,
-                KeyCode::F(2 | 3) => app.message = "Booth and MOPS are not implemented".into(),
+                KeyCode::F(3) => app.view = View::Mops,
+                KeyCode::F(2) => app.message = "Booth is not implemented".into(),
                 KeyCode::Char('d') => {
                     app.details = !app.details;
                     app.detail_scroll = 0;
@@ -536,7 +807,11 @@ fn main() -> io::Result<()> {
                 if !app.details && m.kind == MouseEventKind::Down(MouseButton::Left) =>
             {
                 let p = ratatui::layout::Position::new(m.column, m.row);
-                if let Some((_, i)) = app.audit_rows.iter().find(|(r, _)| r.contains(p)) {
+                if let Some((_, action)) = app.mops_actions.iter().find(|(r, _)| r.contains(p)) {
+                    app.mops_action(*action);
+                } else if let Some((_, i)) = app.mops_rows.iter().find(|(r, _)| r.contains(p)) {
+                    app.mops_selected = *i;
+                } else if let Some((_, i)) = app.audit_rows.iter().find(|(r, _)| r.contains(p)) {
                     app.audit_selected = *i;
                     app.audit_finding_selected = 0;
                 } else if let Some((_, view)) = app.tabs.iter().find(|(r, _)| r.contains(p)) {

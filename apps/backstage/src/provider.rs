@@ -281,3 +281,24 @@ pub fn git_worktrees(_: &Control, _: &std::path::Path) -> Result<Vec<u8>, String
 pub fn git_tracked(_: &Control, _: &std::path::Path) -> Result<Vec<u8>, String> {
     Err("Native Git observer supports Linux only".into())
 }
+
+/// Explicit, read-only PR metadata query. No --web, extension, shell or PR command execution.
+#[cfg(target_os = "linux")]
+pub fn pull_request(control: &Control, repo: &str, number: u64) -> Result<Value, String> {
+    let mut command = Command::new("gh");
+    command
+        .args(["api", "--method", "GET"])
+        .arg(format!("repos/{repo}/pulls/{number}"))
+        .env("GH_HOST", "github.com")
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("GH_PAGER", "cat")
+        .env("PAGER", "cat")
+        .env("GH_NO_UPDATE_NOTIFIER", "1")
+        .env("GH_NO_EXTENSION_UPDATE_NOTIFIER", "1");
+    let bytes = run(control, command)?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("GitHub CLI returned invalid JSON: {e}"))
+}
+#[cfg(not(target_os = "linux"))]
+pub fn pull_request(_: &Control, _: &str, _: u64) -> Result<Value, String> {
+    Err("Native GitHub reader supports Linux only; use a supplied PR JSON file".into())
+}

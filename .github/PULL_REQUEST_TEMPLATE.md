@@ -29,3 +29,18 @@ Closes #
 - [ ] Native behavioral coverage uses only human-approved workflows through `apps/magicstudio-shell/acceptance`; pending approval or unavailable runs are not reported as passes.
 - [ ] I updated docs/README if behavior or usage changed.
 - [ ] No unrelated files (build artifacts, local config) are included in the diff.
+
+## MOPS handoff
+<!-- Record this at agent check-in. Unknown is honest; no session discovery or resume script is required. Resume verified means the author verified the exact command for this session. Backstage only displays/copies it and never executes it. -->
+- Department: Unknown
+- Agent: Unknown
+- Harness: Unknown
+- Session ID: Unknown
+- Worktree: Unknown
+- Role source: Unknown
+- Resume command: Unknown
+- Resume verified: no
+- Model / provider: Unknown
+- Your action: Unknown
+- Next action: Unknown
+- Blocker: None

@@ -1,7 +1,7 @@
 # Backstage — observer views
 
-A clean Rust/Ratatui observer draft with Workshop (F1), Mayhem (F4) and Settings
-(F5). Booth and MOPS remain disabled. No old Backstage implementation was reused.
+A clean Rust/Ratatui observer draft with Workshop (F1), MOPS (F3), Mayhem (F4)
+and Settings (F5). Booth remains disabled. No old Backstage implementation was reused.
 Workshop populated-runtime acceptance is in progress; Mayhem acceptance follows it.
 
 ```sh
@@ -129,3 +129,50 @@ names / ESLint9_no-undef. Technical IDs stay indented/dim on the next terminal r
 (same cell size), and are retained alongside labels in Markdown. No counts, fields,
 rule identities or original JSON files are rewritten; unknown IDs use their raw
 name. Official rule documentation links accompany known remaining-rule labels.
+
+## MOPS — PR-owned handoff, never a session controller
+
+The approved visual reference is versioned at
+`references/backstage/mops-task-handoff-v2.png`. MOPS reads only explicitly selected
+PR metadata. It never contacts a harness, discovers sessions, resumes an agent or
+executes a command supplied by a PR. Navigation does not fetch GitHub data. Press R
+explicitly to read the configured source; a single in-flight read is not duplicated.
+
+Live source: `--mops-repo OWNER/REPO --mops-pr NUMBER` (repeat PR flags, maximum20).
+The supported native `gh api --method GET repos/OWNER/REPO/pulls/NUMBER` route is
+read-only and uses the existing bounded child lifecycle. This cloud's gh is not
+authenticated; no login, token injection or credential changes were performed.
+
+Acceptance/import source: `--mops-pr-file PATH` consumes an untouched native GitHub
+REST PR JSON object (or bounded object array). Optional native auxiliary inputs are
+`--mops-reviews-file NUMBER=PATH`, `--mops-checks-file NUMBER=PATH` and repeatable
+`--mops-provenance PATH`. Inputs are regular JSON files bounded to4MiB, not an app
+archive. Head identity/provenance gates review/check attachment. The screen labels
+**imported GitHub snapshot**, retrieval time and the limitation that R rereads files,
+not the network. This is not fully connected/live MOPS. Missing metadata is Unknown.
+
+The single canonical PR rule is `.github/PULL_REQUEST_TEMPLATE.md`'s `## MOPS
+handoff` section. The obsolete lowercase duplicate template was examined, found
+unreferenced, and removed. Agents record their own harness, session ID, worktree,
+author-verified resume command and next action/blocker there. No session logging or
+extra session script is needed. Existing role files are neither moved nor created;
+role Open is enabled only for a discovered existing crew role target. A reported
+worktree is a resolved directory, not proof of its branch or live session state.
+
+Controls: arrows/j/k select PR; Enter/o opens its validated GitHub URL; l opens the
+verified role; p opens the recorded available folder; c requests copy of an
+**author-verified** resume command; f requests copying actual review feedback;
+m opens the same PR's Mayhem evidence scope; d exposes full source fields, warnings
+and original PR body. Copy uses Crossterm OSC52 only and reports a request, not
+confirmed host clipboard success. Unknown/unverified resume commands and known
+unsupported terminals disable copy. No copied command is ever executed by Backstage.
+
+`--mayhem-pr-report NUMBER` with the same explicit MOPS inputs prints native PR
+base/head scope and missing matching audit-artifact evidence. It never substitutes
+unrelated whole-project counts, never treats CI as reviewer approval/code-audit
+coverage, and never starts a checker. A late audit result is checked against the
+currently selected PR revisions before it can replace the visible evidence.
+
+Native manual acceptance has used real imported PR22/PR30 snapshots. Those runs
+are not production acceptance, live GitHub integration, clipboard confirmation,
+GUI/full-video evidence or successful session resume. No tests were added or run.

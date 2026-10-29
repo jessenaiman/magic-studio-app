@@ -908,6 +908,10 @@ fn bar_with_percent(
 /// Read-only presentation of caller-supplied native reports; never executes an audit.
 pub fn draw_audit(f: &mut Frame, area: Rect, app: &mut App) {
     let Some(comparison) = app.audit.as_ref() else {
+        if let Some(scope) = &app.audit_pr_context {
+            draw_missing_pr(f, area, scope);
+            return;
+        }
         let body = panel(
             f,
             area,
@@ -1521,4 +1525,66 @@ fn audit_scope(
         );
         opens.push((*action, report.path.clone()));
     }
+}
+
+fn draw_missing_pr(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope) {
+    let bands = Layout::vertical([
+        Constraint::Percentage(34),
+        Constraint::Percentage(36),
+        Constraint::Percentage(30),
+    ])
+    .spacing(1)
+    .split(area);
+    let upper = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .spacing(1)
+        .split(bands[0]);
+    for (slot, (title, sha)) in upper.iter().zip([
+        ("BASELINE CODE FINDINGS", scope.base.as_deref()),
+        ("CANDIDATE CODE FINDINGS", scope.head.as_deref()),
+    ]) {
+        let body = panel(f, *slot, title, "exact PR revision scope");
+        let content = format!(
+            "Native SHA: {}\n\nNative toolResults: Unavailable\nissueCount: Unknown    errorCount: Unknown\n\nNo matching native audit artifact supplied.\nNot zero findings; not an audit pass.",
+            sha.unwrap_or("Unknown")
+        );
+        f.render_widget(
+            Paragraph::new(content)
+                .style(Style::default().fg(IVORY))
+                .wrap(Wrap { trim: false }),
+            body,
+        );
+    }
+    let body = panel(
+        f,
+        bands[1],
+        &format!("PR #{} — AUDIT SCOPE", scope.number),
+        "imported GitHub metadata • not a code audit",
+    );
+    let content = format!(
+        "{}\n{}\n\n{}\n\nUnrelated whole-project reports are not substituted for this PR.\nMOPS shows ownership, review state, blockers and recorded session handoff.",
+        scope.title, scope.url, scope.source
+    );
+    f.render_widget(
+        Paragraph::new(content)
+            .style(Style::default().fg(CYAN))
+            .wrap(Wrap { trim: false }),
+        body,
+    );
+    let lower = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .spacing(1)
+        .split(bands[2]);
+    let left = panel(
+        f,
+        lower[0],
+        "AUDIT COVERAGE",
+        "unsupported fields remain Unknown",
+    );
+    f.render_widget(Paragraph::new("Baseline/head native findings and audit errors: Unknown.\nNo checker, agent or model was started.\nNo inference or unrelated historical totals are used.\nPress d for full PR-scoped evidence text; F3 returns to MOPS.").style(Style::default().fg(GOLD)).wrap(Wrap{trim:false}),left);
+    let right = panel(
+        f,
+        lower[1],
+        "NATIVE CI — SEPARATE EVIDENCE",
+        "not review approval or full-video acceptance",
+    );
+    f.render_widget(Paragraph::new(format!("{}\n\nThis is supplied check-run metadata, not Codacy findings.\nMissing matching code-audit artifacts remain explicit.",scope.ci)).style(Style::default().fg(IVORY)).wrap(Wrap{trim:false}),right);
 }

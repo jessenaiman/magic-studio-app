@@ -119,10 +119,19 @@ fn load(path: &PathBuf, sha: Option<String>) -> Result<Report, String> {
     }
     let native: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("{}: invalid native JSON: {e}", path.display()))?;
-    for key in ["issues", "errors", "toolResults", "skippedFiles"] {
+    for key in ["issues", "errors", "toolResults"] {
         if !native[key].is_array() {
             return Err(format!("{}: missing native {key} array", path.display()));
         }
+    }
+    if native
+        .get("skippedFiles")
+        .is_some_and(|value| !value.is_array())
+    {
+        return Err(format!(
+            "{}: native skippedFiles must be an array when supplied",
+            path.display()
+        ));
     }
     if !native["metadata"].is_object() {
         return Err(format!(
@@ -287,7 +296,7 @@ impl Comparison {
             b.sha.as_deref().unwrap_or("Unavailable")
         )
         .unwrap();
-        writeln!(out,"| issues records | {} | {} |\n| errors records | {} | {} |\n| skippedFiles records | {} | {} |",a.issues(),b.issues(),a.errors(),b.errors(),a.native["skippedFiles"].as_array().map_or(0,Vec::len),b.native["skippedFiles"].as_array().map_or(0,Vec::len)).unwrap();
+        writeln!(out,"| issues records | {} | {} |\n| errors records | {} | {} |\n| skippedFiles records | {} | {} |",a.issues(),b.issues(),a.errors(),b.errors(),a.native["skippedFiles"].as_array().map(|v|v.len().to_string()).unwrap_or_else(||"Unavailable".into()),b.native["skippedFiles"].as_array().map(|v|v.len().to_string()).unwrap_or_else(||"Unavailable".into())).unwrap();
         writeln!(
             out,
             "\n**Primary issues: {} → {} (Δ {:+}). Primary errors: {} → {} (Δ {:+}).**",
