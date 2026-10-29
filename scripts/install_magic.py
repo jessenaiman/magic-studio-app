@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -124,10 +125,30 @@ def install_environment(
     if not python.is_file():
         if args.python:
             parser.error("The explicitly selected Python environment does not exist")
-        subprocess.run([uv, "venv", str(python.parent.parent)], check=True)
+        if not sys.executable:
+            parser.error("Cannot locate the Python interpreter running this installer")
+        subprocess.run(
+            [
+                uv,
+                "venv",
+                "--python",
+                sys.executable,
+                "--no-python-downloads",
+                str(python.parent.parent),
+            ],
+            check=True,
+        )
     # Ship the CLI as an ordinary installed package, never an editable source link.
     subprocess.run(
-        [uv, "pip", "install", "--python", str(python), str(root / "agent-harness")],
+        [
+            uv,
+            "pip",
+            "install",
+            "--no-python-downloads",
+            "--python",
+            str(python),
+            str(root / "agent-harness"),
+        ],
         check=True,
     )
     return python
@@ -227,6 +248,8 @@ def main():
     )
     parser.add_argument("--profile", choices=["debug", "release"], default="debug")
     args = parser.parse_args()
+    if sys.version_info < (3, 10):
+        parser.error("The installer requires Python 3.10 or newer")
     root = Path(__file__).resolve().parent.parent
     build = root / "target" / args.profile
     shell = build / "magicstudio-shell"
