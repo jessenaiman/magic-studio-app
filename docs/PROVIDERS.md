@@ -1279,9 +1279,8 @@ Official references: [Partner Node overview](https://docs.comfy.org/tutorials/pa
 
 #### Setup
 
-The inherited GPU setup workflow is retired while integration is reviewed. The
-following settings describe the upstream configuration; they do not install or
-verify the runtime.
+The following settings configure local generation; they do not install or verify
+the runtime.
 
 ```bash
 # Enable local generation in .env

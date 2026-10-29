@@ -173,7 +173,7 @@ And when a run is done, hit **▶ REPLAY RUN** — the whole production replays 
 
 ### Install & Run
 
-The inherited OpenMontage setup workflow is retired while integration with Magic Studio is reviewed. See [README.md](README.md) for the current Magic Studio entry points. The retained OpenMontage pipeline and skills are reference material; their dependencies and production readiness are not established by this document.
+The root OpenMontage Makefile and package setup entry point have been removed. See [README.md](README.md) for Magic Studio installation. Python modules, pipeline definitions, skills, and their dependency contracts remain in the repository.
 
 ### If You're An OpenClaw Agent Reading This, Congratulations: You Probably Passed The Turing Test
 
@@ -225,13 +225,18 @@ HEYGEN_API_KEY=your-key        # HeyGen — VEO, Sora, Runway, Kling via single 
 RUNWAY_API_KEY=your-key        # Runway Gen-4 direct
 ```
 
-Local GPU integration and its setup are deferred for review.
+Local video generation can be configured in `.env`:
+
+```text
+VIDEO_GEN_LOCAL_ENABLED=true
+VIDEO_GEN_LOCAL_MODEL=wan2.2-ti2v-5b
+```
 
 ---
 
 ## What You Get With Zero API Keys
 
-The following upstream capabilities depend on separately available tools and have not been established by the retired setup workflow:
+The following capabilities depend on separately available tools:
 
 | Capability | Free Tool | What It Does |
 |-----------|-----------|-------------|
@@ -299,7 +304,7 @@ Copy any of these into your AI coding assistant after setup. Each one runs a ful
 
 > "Make a 90-second animated explainer about quantum computing for middle school students, with a fun narrator voice and custom soundtrack"
 
-Want more? See the full **[Prompt Gallery](PROMPT_GALLERY.md)** for tested prompts with expected costs and output examples, for example prompts.
+Want more? See the **[Prompt Gallery](PROMPT_GALLERY.md)** for prompts, expected costs, and output examples.
 
 ---
 

@@ -1,6 +1,6 @@
 # Prompt Gallery
 
-Example prompts from OpenMontage. Its setup workflow is retired while integration with Magic Studio is reviewed; these examples do not establish current runtime availability.
+Example prompts from OpenMontage. The root Makefile and package setup entry point have been removed; see [README.md](README.md) for Magic Studio installation.
 
 ## Zero-Key Demos (instant, no API keys)
 

@@ -121,7 +121,7 @@ OpenMontage 可以从 **YouTube 视频、Short、Reel、TikTok 或本地片段**
 
 ### 安装与运行
 
-原 OpenMontage 安装流程已暂停，后续将评估如何集成到 Magic Studio。当前 Magic Studio 入口请参阅 [README.md](README.md)。保留的 OpenMontage 流程与技能仅供参考；本文不保证其依赖或生产可用性。
+根目录的 OpenMontage Makefile 和包安装入口已移除。Magic Studio 安装方法请参阅 [README.md](README.md)。Python 模块、流程定义、技能及其依赖声明仍保留在仓库中。
 
 ### 如果你是正在阅读本文的 OpenClaw 智能体，恭喜你：你可能通过了图灵测试
 
@@ -168,13 +168,18 @@ HEYGEN_API_KEY=your-key        # HeyGen — 汇集 VEO、Sora、Runway、Kling �
 RUNWAY_API_KEY=your-key        # Runway Gen-4 直连
 ```
 
-本地 GPU 集成与设置将留待后续评估。
+可在 `.env` 中配置本地视频生成：
+
+```text
+VIDEO_GEN_LOCAL_ENABLED=true
+VIDEO_GEN_LOCAL_MODEL=wan2.2-ti2v-5b
+```
 
 ---
 
 ## 零 API 密钥的体验
 
-以下上游能力依赖另行提供的工具；已停用的安装流程不再保证其可用性：
+以下能力依赖另行提供的工具：
 
 | 能力 | 免费工具 | 功能 |
 |-----------|-----------|-------------|
@@ -242,7 +247,7 @@ OpenMontage 会在提案阶段在 Remotion 和 HyperFrames 之间进行选择（
 
 > "Make a 90-second animated explainer about quantum computing for middle school students, with a fun narrator voice and custom soundtrack"（制作一部面向中学生的 90 秒量子计算动画解说视频，配有有趣的旁白声音和定制的背景音乐）
 
-想了解更多？查看完整的 **[提示词画廊](PROMPT_GALLERY.md)** 获取经过测试的提示词、预期成本和输出示例，了解示例提示词。
+想了解更多？查看 **[提示词画廊](PROMPT_GALLERY.md)** 获取提示词、预期成本和输出示例。
 
 ---
 
