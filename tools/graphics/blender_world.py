@@ -195,7 +195,7 @@ class BlenderWorld(BaseTool):
                     str(blender),
                     "--background",
                     "--python-expr",
-                    "import bpy; print('OPENMONTAGE_BLENDER=' + bpy.app.version_string)",
+                    "import bpy; print('MAGICSTUDIO_BLENDER=' + bpy.app.version_string)",
                 ],
                 capture_output=True,
                 text=True,
@@ -203,7 +203,7 @@ class BlenderWorld(BaseTool):
                 errors="replace",
                 timeout=60,
             )
-            ok = process.returncode == 0 and "OPENMONTAGE_BLENDER=" in process.stdout
+            ok = process.returncode == 0 and "MAGICSTUDIO_BLENDER=" in process.stdout
             return ToolResult(
                 success=ok,
                 data={
@@ -212,7 +212,7 @@ class BlenderWorld(BaseTool):
                         (
                             line
                             for line in process.stdout.splitlines()
-                            if line.startswith("OPENMONTAGE_BLENDER=")
+                            if line.startswith("MAGICSTUDIO_BLENDER=")
                         ),
                         "",
                     ),

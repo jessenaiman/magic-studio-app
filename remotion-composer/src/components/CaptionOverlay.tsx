@@ -43,7 +43,7 @@ const LTR_CHAR = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/;
 
 function detectDirection(words: WordCaption[]): "ltr" | "rtl" {
   // Count words, not first letter: Arabic captions often open with a Latin
-  // brand name ("OpenMontage يحوّل ...") and must still read right-to-left.
+  // brand name ("MagicStudio يحوّل ...") and must still read right-to-left.
   let rtl = 0;
   let ltr = 0;
   for (const w of words) {

@@ -1,11 +1,11 @@
 // Analytics reads saved measurements on entry. Scanning is an explicit action, never a timer.
 const analyticsState = { data: null, section: 'overview', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
 const ANALYTICS_SECTIONS = [['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
-// Existing Archify exports, packaged byte-for-byte. They are references, not live system models.
+// Existing Archify references, not live system models. Upstream evidence links stay pinned.
 const ANALYTICS_DIAGRAMS = [
   {id:'magic-cli',file:'magic-cli-architecture.html',title:'Magic CLI & Studio architecture',source:'CLI-Anything magic harness · unified live Studio & headless engine routing',revision:null},
   {id:'creator',file:'creator-view.html',title:'Creator’s loop',source:'Existing Magic Studio creator workflow · saved 27 Oct 2026',revision:null},
-  {id:'openmontage',file:'openmontage-evidence.html',title:'OpenMontage pipeline',source:'calesthio/OpenMontage · evidence-linked reference',revision:'3cd5700b977bcd63644a3118cc1783df1cb002c8'},
+  {id:'pipeline',file:'pipeline-evidence.html',title:'Pipeline architecture · upstream evidence',source:'calesthio/OpenMontage · evidence-linked reference',revision:'3cd5700b977bcd63644a3118cc1783df1cb002c8'},
 ];
 function fmtCount(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';

@@ -197,7 +197,7 @@ class FreesoundMusic(BaseTool):
 
         request = urllib.request.Request(
             url,
-            headers={"User-Agent": "OpenMontage/0.1 (music acquisition tool)"},
+            headers={"User-Agent": "MagicStudio/0.1 (music acquisition tool)"},
         )
 
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -228,7 +228,7 @@ class FreesoundMusic(BaseTool):
 
         request = urllib.request.Request(
             audio_url,
-            headers={"User-Agent": "OpenMontage/0.1 (music acquisition tool)"},
+            headers={"User-Agent": "MagicStudio/0.1 (music acquisition tool)"},
         )
 
         with urllib.request.urlopen(request, timeout=60) as response:

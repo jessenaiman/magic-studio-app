@@ -517,7 +517,11 @@ pub(crate) fn standard_tracks(rig: &LoadedCutoutRigPlan) -> Vec<Value> {
     ];
     // Sway: the largest part (by pixels, never by name) only bobs; every other part also turns
     // on its own pivot, phased by where that pivot sits so the motion ripples across the rig.
-    let anchor = rig.parts.iter().max_by_key(|p| u64::from(p.crop_size[0]) * u64::from(p.crop_size[1])).map(|p| p.id.as_str());
+    let anchor = rig
+        .parts
+        .iter()
+        .max_by_key(|p| u64::from(p.crop_size[0]) * u64::from(p.crop_size[1]))
+        .map(|p| p.id.as_str());
     definitions.into_iter().map(|(id,label,duration,repeat)|{
         let mut motion=json!({});
         for part in &rig.parts {
@@ -641,8 +645,18 @@ fn summarize_track_channels(
                             "follow" => has_follow = true,
                             "keys" | "ellipse" => {
                                 has_keys = true;
-                                let times = key_times.entry(prop_name.clone()).or_insert_with(|| json!([]));
-                                times.as_array_mut().into_iter().for_each(|list| list.extend(term["keys"].as_array().into_iter().flatten().filter_map(|key| key.get(0).cloned())));
+                                let times = key_times
+                                    .entry(prop_name.clone())
+                                    .or_insert_with(|| json!([]));
+                                times.as_array_mut().into_iter().for_each(|list| {
+                                    list.extend(
+                                        term["keys"]
+                                            .as_array()
+                                            .into_iter()
+                                            .flatten()
+                                            .filter_map(|key| key.get(0).cloned()),
+                                    )
+                                });
                             }
                             _ => {}
                         }
@@ -656,7 +670,9 @@ fn summarize_track_channels(
                     if !properties.iter().any(|p| p == "rotation") {
                         properties.push("rotation".to_string());
                     }
-                    let times = key_times.entry("rotation".to_string()).or_insert_with(|| json!([]));
+                    let times = key_times
+                        .entry("rotation".to_string())
+                        .or_insert_with(|| json!([]));
                     if let Some(list) = times.as_array_mut() {
                         for k in th_keys {
                             list.push(json!(k));
@@ -680,7 +696,12 @@ fn summarize_track_channels(
                 parts.join(" + ")
             };
             for times in key_times.values_mut() {
-                let mut list: Vec<f64> = times.as_array().into_iter().flatten().filter_map(Value::as_f64).collect();
+                let mut list: Vec<f64> = times
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_f64)
+                    .collect();
                 list.sort_by(f64::total_cmp);
                 list.dedup();
                 *times = json!(list);
@@ -695,7 +716,9 @@ fn summarize_track_channels(
         }
     }
     if let Some(sh) = sheet
-        && let Some(tracks_by_obj) = sh.pointer("/sequence/tracksByObject").and_then(Value::as_object)
+        && let Some(tracks_by_obj) = sh
+            .pointer("/sequence/tracksByObject")
+            .and_then(Value::as_object)
     {
         for layer in tracks_by_obj.keys() {
             if seen_layers.contains(layer) {
@@ -721,38 +744,49 @@ fn summarize_track_channels(
     out
 }
 
-
 // Action identity and rest semantics are shared by inspection and playback.
 fn action_track(tracks: &[Value], action: &str, params: &Value) -> Result<Value> {
     let standard_id = format!("@{action}");
     let requested = params.get("track").and_then(Value::as_str);
     let preferred = requested.unwrap_or(action);
     let fallback = requested.unwrap_or(&standard_id);
-    let track = tracks.iter().find(|t| t["id"] == preferred)
+    let track = tracks
+        .iter()
+        .find(|t| t["id"] == preferred)
         .or_else(|| tracks.iter().find(|t| t["id"] == fallback))
         .ok_or_else(|| invalid(format!("No playable track for action '{action}'")))?;
-    Ok(json!({"action":action,"track":track["id"],"standard":track["standard"],
-        "rest":params.get("rest").and_then(Value::as_bool).unwrap_or(action == "rest" && track["standard"] == true)}))
+    Ok(
+        json!({"action":action,"track":track["id"],"standard":track["standard"],
+        "rest":params.get("rest").and_then(Value::as_bool).unwrap_or(action == "rest" && track["standard"] == true)}),
+    )
 }
 
 pub fn cmd_motion_action_track(s: &mut Session, params: &Value) -> Result<Value> {
-    let action = params["action"].as_str().filter(|v| !v.is_empty())
+    let action = params["action"]
+        .as_str()
+        .filter(|v| !v.is_empty())
         .ok_or_else(|| invalid("Specify action=<id>"))?;
     let id = load_character(s, params)?;
-    let cfg = crate::character::cmd_character_assets(s, &json!({"character":id}))?["character_config"].clone();
-    let mut meta = if cfg["poses"][action]["angle"].as_str()
-        .is_some_and(|angle| cfg["active_angle"] != angle) {
+    let cfg =
+        crate::character::cmd_character_assets(s, &json!({"character":id}))?["character_config"]
+            .clone();
+    let mut meta = if cfg["poses"][action]["angle"]
+        .as_str()
+        .is_some_and(|angle| cfg["active_angle"] != angle)
+    {
         crate::character::cmd_character_configure(s, &json!({"character":id,"pose":action}))?
     } else {
         cmd_motion_tracks(s, &json!({"character":id}))?
     };
-    let tracks = meta["tracks"].as_array()
+    let tracks = meta["tracks"]
+        .as_array()
         .ok_or_else(|| invalid("Motion track response is missing its tracks array"))?;
     let resolved = action_track(tracks, action, params)?;
     let Value::Object(resolved) = resolved else {
         return Err(invalid("Action track response must be an object"));
     };
-    let metadata = meta.as_object_mut()
+    let metadata = meta
+        .as_object_mut()
         .ok_or_else(|| invalid("Motion track response must be an object"))?;
     metadata.extend(resolved);
     Ok(meta)
@@ -859,19 +893,28 @@ pub fn cmd_motion_tracks(s: &mut Session, params: &Value) -> Result<Value> {
     }).collect();
     let preflight = crate::character::preflight_rig_summary(rig);
     let character_config = crate::character::load_character_config(s, &id, project_root.as_deref());
-    let actions: Vec<_> = tracks.iter().filter(|t| t["standard"] == true && t["id"] != "@rest").map(|t| {
-        let track_id = t["id"].as_str()
-            .ok_or_else(|| invalid("Standard motion track is missing its string id"))?;
-        let action = track_id.trim_start_matches('@');
-        let mut resolved = action_track(&tracks, action, &Value::Null)?;
-        resolved["label"] = t["label"].clone();
-        Ok(resolved)
-    }).collect::<Result<Vec<_>>>()?;
+    let actions: Vec<_> = tracks
+        .iter()
+        .filter(|t| t["standard"] == true && t["id"] != "@rest")
+        .map(|t| {
+            let track_id = t["id"]
+                .as_str()
+                .ok_or_else(|| invalid("Standard motion track is missing its string id"))?;
+            let action = track_id.trim_start_matches('@');
+            let mut resolved = action_track(&tracks, action, &Value::Null)?;
+            resolved["label"] = t["label"].clone();
+            Ok(resolved)
+        })
+        .collect::<Result<Vec<_>>>()?;
     let panel = crate::character::animation_panel(&character_config);
-    let configured = character_config["active_pose"].as_str()
+    let configured = character_config["active_pose"]
+        .as_str()
         .and_then(|pose| action_track(&tracks, pose, &Value::Null).ok());
-    let opening = tracks.iter().find(|t| t["standard"] == false)
-        .or_else(|| tracks.iter().find(|t| t["id"] == "@sway")).map(|t| &t["id"]);
+    let opening = tracks
+        .iter()
+        .find(|t| t["standard"] == false)
+        .or_else(|| tracks.iter().find(|t| t["id"] == "@sway"))
+        .map(|t| &t["id"]);
     Ok(
         json!({"ok":true,"character":id,"canvas":rig.canvas_size,"bounds":rig.character_bbox,"source_image":rig.source_image,"original_reference":original_reference,"layers":layers,"tracks":tracks,"fps":rig.effectcraft["fps"],"spec":rig.plan_path,
         "rig_sha256":metadata.as_ref().map(|(_,hash,_)|hash),"image_revision":metadata.as_ref().and_then(|(_,_,revision)|*revision),
@@ -902,8 +945,13 @@ fn validate_local_png(path: std::path::PathBuf, root: Option<&std::path::Path>) 
     Some(path.to_string_lossy().into_owned())
 }
 
-fn effective_parent<'a>(part: &'a crate::session::CutoutRigPart, names: Option<&Vec<Value>>) -> Option<&'a str> {
-    part.parent.as_deref().filter(|parent| names.is_none_or(|ns| ns.is_empty() || ns.iter().any(|name| name.as_str()==Some(*parent))))
+fn effective_parent<'a>(
+    part: &'a crate::session::CutoutRigPart,
+    names: Option<&Vec<Value>>,
+) -> Option<&'a str> {
+    part.parent.as_deref().filter(|parent| {
+        names.is_none_or(|ns| ns.is_empty() || ns.iter().any(|name| name.as_str() == Some(*parent)))
+    })
 }
 
 // Compose canvas-space parent transforms; opacity is deliberately independent of ancestors.
@@ -1000,7 +1048,14 @@ pub fn cmd_motion_sample(s: &mut Session, params: &Value) -> Result<Value> {
         return Err(invalid("fps must be 1–120 and amount 0–100"));
     }
     let duration = track["duration"].as_f64().unwrap_or(1.0);
-    let sample_time = params.get("time").map(|v|v.as_f64().filter(|v|v.is_finite() && *v>=0.0 && *v<=duration).ok_or_else(||invalid("time must be within the action duration"))).transpose()?;
+    let sample_time = params
+        .get("time")
+        .map(|v| {
+            v.as_f64()
+                .filter(|v| v.is_finite() && *v >= 0.0 && *v <= duration)
+                .ok_or_else(|| invalid("time must be within the action duration"))
+        })
+        .transpose()?;
     let count = if rest || sample_time.is_some() {
         1
     } else {
@@ -1234,7 +1289,11 @@ fn sampled_export_layers(rig: &LoadedCutoutRigPlan, sample: &Value) -> Vec<Value
 
 pub fn cmd_motion_export_track(s: &mut Session, p: &Value) -> Result<Value> {
     let id = load_character(s, p)?;
-    crate::motion_authoring::theatre_guard(s, &id, p["track"].as_str().filter(|id| !id.is_empty()))?;
+    crate::motion_authoring::theatre_guard(
+        s,
+        &id,
+        p["track"].as_str().filter(|id| !id.is_empty()),
+    )?;
     // Preserve all sampler preview parameters, including rest and amount.
     let sample = cmd_motion_sample(s, p)?;
     let rig = preview_rig(
@@ -1336,8 +1395,13 @@ pub fn cmd_motion_export_track(s: &mut Session, p: &Value) -> Result<Value> {
 /// One song section in one call: the drawn path becomes a clip the motion gate passed, placed at the
 /// section's time in the HyperFrames video. A clip that fails the gate is reported, never placed.
 pub fn cmd_motion_place_section(s: &mut Session, p: &Value) -> Result<Value> {
-    let clip = p["id"].as_str().filter(|id| !id.is_empty()).ok_or_else(|| invalid("Name the video clip id"))?;
-    let duration = p["duration"].as_f64().ok_or_else(|| invalid("Give the section duration"))?;
+    let clip = p["id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| invalid("Name the video clip id"))?;
+    let duration = p["duration"]
+        .as_f64()
+        .ok_or_else(|| invalid("Give the section duration"))?;
     let mut path = p.clone();
     if let Some(obj) = path.as_object_mut() {
         obj.remove("id");
@@ -1350,14 +1414,20 @@ pub fn cmd_motion_place_section(s: &mut Session, p: &Value) -> Result<Value> {
         &json!({"character":character,"track":track,"duration":duration,"amount":p["amount"].as_f64().unwrap_or(100.0)}),
     )?;
     let output = &exported["outputs"][0];
-    let file = output["file"].as_str().ok_or_else(|| invalid("The export wrote no clip"))?;
+    let file = output["file"]
+        .as_str()
+        .ok_or_else(|| invalid("The export wrote no clip"))?;
     if output["validation"]["ok"] != json!(true) {
-        return Ok(json!({"ok":false,"placed":false,"character":character,"track":track,"file":file,"validation":output["validation"]}));
+        return Ok(
+            json!({"ok":false,"placed":false,"character":character,"track":track,"file":file,"validation":output["validation"]}),
+        );
     }
     let mut place = json!({"id":clip,"path":file,"start":p["start"].as_f64().unwrap_or(0.0),"duration":duration,"character":character,"track":track});
     if let Some(rect) = p.get("rect") {
         place["rect"] = rect.clone();
     }
     let placed = crate::video_target::cmd_video_place_track(s, &place)?;
-    Ok(json!({"ok":true,"placed":true,"character":character,"track":track,"file":file,"validation":output["validation"],"placement":placed}))
+    Ok(
+        json!({"ok":true,"placed":true,"character":character,"track":track,"file":file,"validation":output["validation"],"placement":placed}),
+    )
 }

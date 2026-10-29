@@ -9,7 +9,7 @@ use crate::{EngineError, Result, Session};
 
 use crate::workspace::{
     build_blender_check_args, build_effectcraft_script_args, build_filmcraft_load_args,
-    resolve_craft_cli, resolve_workspace_path, run_tool_in, run_pipeline, workspace_root,
+    resolve_craft_cli, resolve_workspace_path, run_pipeline, run_tool_in, workspace_root,
 };
 
 /// Resolve the active cutout rig plan path (asset's plan or the default on-disk location).
@@ -47,8 +47,7 @@ fn resolve_preview_export_timing(s: &Session, params: &Value) -> (String, f64, f
         .get("speed")
         .and_then(Value::as_f64)
         .unwrap_or(s.preview_speed as f64);
-    let default_dur =
-        ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
+    let default_dur = ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
     let duration = params
         .get("duration")
         .and_then(Value::as_f64)
@@ -121,7 +120,10 @@ pub fn cmd_export_effectcraft(s: &mut Session, params: &Value) -> Result<Value> 
     if !output_path.is_file() {
         return Err(EngineError::CommandFailed(
             "export.effectcraft".into(),
-            format!("EffectCraft JSX script was not created at {}", output_path.display()),
+            format!(
+                "EffectCraft JSX script was not created at {}",
+                output_path.display()
+            ),
         ));
     }
     Ok(json!({
@@ -167,7 +169,10 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
         let mut candidates: Vec<PathBuf> = Vec::new();
         // Prefer transparent RGBA WebM overlay tracks first so FilmCraft video tracks preserve alpha
         if let Some(rig) = &asset.cutout_rig
-            && let Some(webm) = rig.effectcraft.get("webm_alpha_path").and_then(Value::as_str)
+            && let Some(webm) = rig
+                .effectcraft
+                .get("webm_alpha_path")
+                .and_then(Value::as_str)
         {
             candidates.push(resolve_workspace_path(s, webm));
         }
@@ -180,7 +185,10 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
         {
             candidates.push(resolve_workspace_path(s, mp4));
         }
-        candidates.push(resolve_workspace_path(s, &format!("exports/{id}_cutout.mp4")));
+        candidates.push(resolve_workspace_path(
+            s,
+            &format!("exports/{id}_cutout.mp4"),
+        ));
         candidates.push(resolve_workspace_path(
             s,
             &format!("exports/pose_and_parts/{id}/{id}_effectcraft_cutout.mp4"),
@@ -190,7 +198,10 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
             &format!("exports/blender_characters/{id}/{id}_blender53.mp4"),
         ));
         if id == "hopper" {
-            candidates.push(resolve_workspace_path(s, "exports/hopper_4dir_blender53.mp4"));
+            candidates.push(resolve_workspace_path(
+                s,
+                "exports/hopper_4dir_blender53.mp4",
+            ));
         }
         candidates
             .into_iter()
@@ -475,8 +486,7 @@ pub fn cmd_export_cutout_mp4(s: &mut Session, params: &Value) -> Result<Value> {
         .get("speed")
         .and_then(Value::as_f64)
         .unwrap_or(s.preview_speed as f64);
-    let default_dur =
-        ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
+    let default_dur = ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
     let duration = params
         .get("duration")
         .and_then(Value::as_f64)
@@ -556,7 +566,10 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
             spec_path.display()
         )));
     }
-    let stem = spec_path.file_stem().and_then(|v| v.to_str()).unwrap_or("layered_motion");
+    let stem = spec_path
+        .file_stem()
+        .and_then(|v| v.to_str())
+        .unwrap_or("layered_motion");
     let root = workspace_root(s);
     let out_dir = match params.get("out_dir").and_then(Value::as_str) {
         Some(dir) if !dir.trim().is_empty() => resolve_workspace_path(s, dir),
@@ -572,7 +585,11 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
     ];
     if let Some(tracks) = params.get("tracks") {
         let list = match tracks {
-            Value::Array(items) => items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","),
+            Value::Array(items) => items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","),
             other => other.as_str().unwrap_or_default().to_string(),
         };
         if !list.is_empty() {
@@ -607,7 +624,10 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
         .rev()
         .find_map(|line| serde_json::from_str(line).ok())
         .ok_or_else(|| {
-            EngineError::CommandFailed("export.layered_motion".into(), "layered_motion.py returned no result".into())
+            EngineError::CommandFailed(
+                "export.layered_motion".into(),
+                "layered_motion.py returned no result".into(),
+            )
         })?;
     if let Some(obj) = result.as_object_mut() {
         obj.insert("command".into(), json!("export.layered_motion"));
@@ -619,15 +639,24 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
 /// Validate a rendered motion clip via `pipeline/motion_validate.py`.
 pub fn cmd_validate_motion(s: &mut Session, params: &Value) -> Result<Value> {
     let video_raw = params.get("video").and_then(Value::as_str).ok_or_else(|| {
-        EngineError::InvalidParams("validate.motion requires `video`: a rendered transparent clip".into())
+        EngineError::InvalidParams(
+            "validate.motion requires `video`: a rendered transparent clip".into(),
+        )
     })?;
     let video = resolve_workspace_path(s, video_raw);
     if !video.is_file() {
-        return Err(EngineError::InvalidParams(format!("clip not found: {}", video.display())));
+        return Err(EngineError::InvalidParams(format!(
+            "clip not found: {}",
+            video.display()
+        )));
     }
     let root = workspace_root(s);
     let script = root.join("pipeline/motion_validate.py");
-    let mut args = vec![script.to_string_lossy().into_owned(), "--video".into(), video.to_string_lossy().into_owned()];
+    let mut args = vec![
+        script.to_string_lossy().into_owned(),
+        "--video".into(),
+        video.to_string_lossy().into_owned(),
+    ];
     if let Some(frames) = params.get("frames").and_then(Value::as_u64) {
         args.extend(["--frames".into(), frames.to_string()]);
     }
@@ -641,16 +670,27 @@ pub fn cmd_validate_motion(s: &mut Session, params: &Value) -> Result<Value> {
         if let Some(path) = params.get(key).and_then(Value::as_str)
             && !path.trim().is_empty()
         {
-            args.extend([format!("--{key}"), resolve_workspace_path(s, path).to_string_lossy().into_owned()]);
+            args.extend([
+                format!("--{key}"),
+                resolve_workspace_path(s, path)
+                    .to_string_lossy()
+                    .into_owned(),
+            ]);
         }
     }
     let stdout = run_tool_in(&root, "python3", &args)?;
-    let mut report: Value = stdout.lines().rev().find_map(|line| serde_json::from_str(line).ok()).ok_or_else(|| {
-        EngineError::CommandFailed("validate.motion".into(), "motion_validate.py returned no result".into())
-    })?;
+    let mut report: Value = stdout
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .ok_or_else(|| {
+            EngineError::CommandFailed(
+                "validate.motion".into(),
+                "motion_validate.py returned no result".into(),
+            )
+        })?;
     if let Some(obj) = report.as_object_mut() {
         obj.insert("command".into(), json!("validate.motion"));
     }
     Ok(report)
 }
-

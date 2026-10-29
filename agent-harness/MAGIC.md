@@ -21,7 +21,7 @@ The renderer uses installed `magic-cli` and project selection, preserving its re
 
 See [the packaged Magic skill](cli_anything/magic/skills/SKILL.md) for executable usage and MCP configuration. The matching repo skill is `.agents/skills/magic/SKILL.md`. Historical architecture/handoff documents describe retired implementations and must not be used to restore them.
 
-References: [CLI-Anything HARNESS](https://github.com/HKUDS/CLI-Anything/blob/main/cli-anything-plugin/HARNESS.md), [MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture), [official Python SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x), [PhotoCraft's discovery/execution adapter](https://github.com/storytold/photocraft/blob/main/crates/automation/src/server.rs). PhotoCraft is a reference only, not a dependency or integration target for this refactor.
+References: [CLI-Anything HARNESS](https://github.com/HKUDS/CLI-Anything/blob/main/cli-anything-plugin/HARNESS.md), [MCP architecture](https://modelcontextprotocol.io/docs/learn/architecture), [official Python SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x), [PhotoCraft's discovery/execution adapter](https://github.com/storytold/photocraft/blob/main/crates/automation/src/server.rs).
 
 MCP dispatch uses an AnyIO lock and non-abandoning workers. Cancellation of a client request does not release the lock before native work and binding updates finish. Live transport uses registry long-running metadata for reply deadlines; a lost reply after submission is explicitly an unknown outcome and is never retried automatically.
 

@@ -75,10 +75,11 @@ pub(crate) fn image_edit_capability(s: &Session, spec: &Path, raw: &Value, part:
     })();
     match checked {
         Ok(()) => json!({"supported":true,"source":"part image edit preflight"}),
-        Err(error) => json!({"supported":false,"source":"part image edit preflight","reason":error.to_string()}),
+        Err(error) => {
+            json!({"supported":false,"source":"part image edit preflight","reason":error.to_string()})
+        }
     }
 }
-
 
 fn keyed_geometry_matches(plan: &crate::session::LoadedCutoutRigPlan, raw: &Value) -> Result<()> {
     let layers = raw
@@ -530,7 +531,10 @@ pub fn cmd_part_replace_image(s: &mut Session, params: &Value) -> Result<Value> 
         .into_iter()
         .flat_map(|layers| layers.keys())
     {
-        let binding = spec.parent().ok_or_else(|| invalid("Part specification has no parent directory"))?.join(format!("{layer}.png"));
+        let binding = spec
+            .parent()
+            .ok_or_else(|| invalid("Part specification has no parent directory"))?
+            .join(format!("{layer}.png"));
         let meta = std::fs::symlink_metadata(&binding)?;
         if meta.file_type().is_symlink() {
             return Err(invalid(
@@ -857,7 +861,8 @@ fn photocraft_desktop_entry() -> Option<PathBuf> {
     let data_home = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")));
-    let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let data_dirs =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     data_home
         .into_iter()
         .chain(std::env::split_paths(&data_dirs))
@@ -868,7 +873,9 @@ fn photocraft_desktop_entry() -> Option<PathBuf> {
 /// A project-local copy of `source` for PhotoCraft to edit, so saving there never
 /// bypasses `part.replace_image`. An existing draft is kept: it may hold unsaved work.
 fn draft_path(history: &Path, part: &str) -> PathBuf {
-    history.join("drafts").join(format!("{}.png", safe_id(part)))
+    history
+        .join("drafts")
+        .join(format!("{}.png", safe_id(part)))
 }
 
 fn png_size(bytes: &[u8]) -> Result<(u32, u32)> {
@@ -918,7 +925,10 @@ fn original_backup(root: &Path, history: &Path, part: &str) -> Result<Option<Pat
         let backup = record["backup"]
             .as_str()
             .ok_or_else(|| invalid("Part-image receipt has no original image"))?;
-        let digest = record["before_sha256"].as_str().unwrap_or_default().to_owned();
+        let digest = record["before_sha256"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
         if earliest.as_ref().is_none_or(|(r, _, _)| revision < *r) {
             earliest = Some((revision, PathBuf::from(backup), digest));
         }
@@ -1010,7 +1020,9 @@ pub fn cmd_part_open_photocraft(s: &mut Session, params: &Value) -> Result<Value
     } else {
         Value::Null
     };
-    Ok(json!({"ok":true,"command":"part.open_photocraft","part":part,"which":which,"file":file,
+    Ok(
+        json!({"ok":true,"command":"part.open_photocraft","part":part,"which":which,"file":file,
         "original_file":original,"width":width,"height":height,"sha256":sha(&bytes),
-        "photocraft_cli":photocraft_cli,"spawned":spawn,"draft":draft}))
+        "photocraft_cli":photocraft_cli,"spawned":spawn,"draft":draft}),
+    )
 }

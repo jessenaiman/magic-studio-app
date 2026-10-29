@@ -52,14 +52,50 @@ fn history_path() -> Option<PathBuf> {
 const HISTORY_LIMIT: usize = 512;
 fn notable(event: &Value) -> bool {
     let stage = event["stage"].as_str().unwrap_or_default();
-    matches!(stage, "saved_state" | "engine_error" | "handler_error" | "selection_changed" | "clip_switched" | "theatre_selection" | "theatre_saved" | "theatre_error" | "clip_sheet_started" | "clip_sheet_converted" | "clip_sheet_failed" | "theatre_keyframes")
-        || (matches!(event["command"].as_str(), Some("image.generate" | "motion.path" | "motion.undo_path" | "motion.recipe" | "export.layered_motion" | "video.place_track"))
-            && matches!(stage, "dispatch_running" | "command_result" | "engine_success" | "engine_needs_work"))
+    matches!(
+        stage,
+        "saved_state"
+            | "engine_error"
+            | "handler_error"
+            | "selection_changed"
+            | "clip_switched"
+            | "theatre_selection"
+            | "theatre_saved"
+            | "theatre_error"
+            | "clip_sheet_started"
+            | "clip_sheet_converted"
+            | "clip_sheet_failed"
+            | "theatre_keyframes"
+    ) || (matches!(
+        event["command"].as_str(),
+        Some(
+            "image.generate"
+                | "motion.path"
+                | "motion.undo_path"
+                | "motion.recipe"
+                | "export.layered_motion"
+                | "video.place_track"
+        )
+    ) && matches!(
+        stage,
+        "dispatch_running" | "command_result" | "engine_success" | "engine_needs_work"
+    ))
 }
 
 /// Page selection reports would each become a root action; they live only in the history.
 fn history_only(event: &Value) -> bool {
-    matches!(event["stage"].as_str(), Some("selection_changed" | "clip_switched" | "theatre_selection" | "clip_sheet_started" | "clip_sheet_converted" | "clip_sheet_failed" | "theatre_keyframes"))
+    matches!(
+        event["stage"].as_str(),
+        Some(
+            "selection_changed"
+                | "clip_switched"
+                | "theatre_selection"
+                | "clip_sheet_started"
+                | "clip_sheet_converted"
+                | "clip_sheet_failed"
+                | "theatre_keyframes"
+        )
+    )
 }
 fn read_rows(path: &std::path::Path) -> Vec<Value> {
     fs::read_to_string(path)
@@ -71,12 +107,19 @@ fn read_rows(path: &std::path::Path) -> Vec<Value> {
 /// Called with the journal lock held, so sequences stay ordered across both files.
 fn remember(path: &std::path::Path, event: &Value) -> std::io::Result<()> {
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
-        return Err(std::io::Error::other("activity history must not be a symlink"));
+        return Err(std::io::Error::other(
+            "activity history must not be a symlink",
+        ));
     }
     let mut rows = read_rows(path);
     rows.push(event.clone());
     let excess = rows.len().saturating_sub(HISTORY_LIMIT);
-    let bytes = rows[excess..].iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n";
+    let bytes = rows[excess..]
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     fs::write(path, bytes)?;
     #[cfg(unix)]
     {
@@ -123,17 +166,20 @@ fn retain(rows: Vec<Value>) -> Vec<Value> {
             continue;
         }
         if let Some(id) = event["request_id"].as_str()
-            && let Some(p) = destinations.get(id) {
-                event["project"] = json!(p);
-            }
-        if event["stage"] == "frontend_ack" && event["request_id"].is_null()
+            && let Some(p) = destinations.get(id)
+        {
+            event["project"] = json!(p);
+        }
+        if event["stage"] == "frontend_ack"
+            && event["request_id"].is_null()
             && let Some(prior) = assigned.iter().rev().find(|p| {
                 p["command"] == event["command"]
                     && project(p) == project(&event)
                     && p["request_id"].is_string()
-            }) {
-                event["request_id"] = prior["request_id"].clone();
-            }
+            })
+        {
+            event["request_id"] = prior["request_id"].clone();
+        }
         let p = project(&event);
         event["project"] = if p == "unassigned" {
             Value::Null
@@ -217,14 +263,16 @@ pub fn append(mut event: Value) {
         event["sequence"] = json!(sequence);
         event["unix_micros"] = json!(now());
         // Legacy acknowledgements can be associated only when command and project match a retained root.
-        if event["request_id"].is_null() && event["stage"] == "frontend_ack"
+        if event["request_id"].is_null()
+            && event["stage"] == "frontend_ack"
             && let Some(previous) = rows.iter().rev().find(|v| {
                 v["command"] == event["command"]
                     && project(v) == project(&event)
                     && v["request_id"].is_string()
-            }) {
-                event["request_id"] = previous["request_id"].clone();
-            }
+            })
+        {
+            event["request_id"] = previous["request_id"].clone();
+        }
         if let Some(request) = event["request_id"].as_str() {
             let p = project(&event);
             if p != "unassigned" {
@@ -293,13 +341,50 @@ pub fn command(
     );
 }
 /// Measured output evidence supplements the existing started/completed lifecycle, never a UI ack.
-pub fn result(project:Option<&std::path::Path>,id:&str,value:&Value,elapsed_ms:u128){
- let context=CONTEXT.with(|v|v.borrow().clone());
- let mut outputs=json!({});
- for key in ["ok","project","path","deck","pdf","output","files","intake_ready","video_ready","captions","observation","prerequisites","metrics","status","tasks","assessed","unassessed","scope_assessed","scope_unassessed","healthy","storyboard","storyboard_revision","assessed_at_unix_ms","diagnostic_only","request_id","session","native_message_id"] {
-  if let Some(v)=value.get(key){let bytes=v.to_string();outputs[key]=if bytes.len()<=16000{v.clone()}else{json!({"summary":"output exceeds receipt bound; inspect command result","bytes":bytes.len()})};}
- }
- append(json!({"project":project,"project_id":project,"command":id,"command_id":context["_request_id"],"request_id":context["_request_id"],"stage":"command_result","elapsed_ms":elapsed_ms,"outputs":outputs,"ui_ack":"not implied by engine completion"}));
+pub fn result(project: Option<&std::path::Path>, id: &str, value: &Value, elapsed_ms: u128) {
+    let context = CONTEXT.with(|v| v.borrow().clone());
+    let mut outputs = json!({});
+    for key in [
+        "ok",
+        "project",
+        "path",
+        "deck",
+        "pdf",
+        "output",
+        "files",
+        "intake_ready",
+        "video_ready",
+        "captions",
+        "observation",
+        "prerequisites",
+        "metrics",
+        "status",
+        "tasks",
+        "assessed",
+        "unassessed",
+        "scope_assessed",
+        "scope_unassessed",
+        "healthy",
+        "storyboard",
+        "storyboard_revision",
+        "assessed_at_unix_ms",
+        "diagnostic_only",
+        "request_id",
+        "session",
+        "native_message_id",
+    ] {
+        if let Some(v) = value.get(key) {
+            let bytes = v.to_string();
+            outputs[key] = if bytes.len() <= 16000 {
+                v.clone()
+            } else {
+                json!({"summary":"output exceeds receipt bound; inspect command result","bytes":bytes.len()})
+            };
+        }
+    }
+    append(
+        json!({"project":project,"project_id":project,"command":id,"command_id":context["_request_id"],"request_id":context["_request_id"],"stage":"command_result","elapsed_ms":elapsed_ms,"outputs":outputs,"ui_ack":"not implied by engine completion"}),
+    );
 }
 pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
     let (text, history) = if let Some(path) = path() {
@@ -307,7 +392,10 @@ pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
             file.lock_shared()?;
             let mut text = String::new();
             file.read_to_string(&mut text)?;
-            (text, history_path().map(|p| read_rows(&p)).unwrap_or_default())
+            (
+                text,
+                history_path().map(|p| read_rows(&p)).unwrap_or_default(),
+            )
         } else {
             (String::new(), Vec::new())
         }
@@ -350,7 +438,11 @@ pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
             action["last_sequence"] = event["sequence"].clone();
             action["events"]
                 .as_array_mut()
-                .ok_or_else(|| crate::EngineError::InvalidParams("Activity action events are not an array".into()))?
+                .ok_or_else(|| {
+                    crate::EngineError::InvalidParams(
+                        "Activity action events are not an array".into(),
+                    )
+                })?
                 .push(event.clone());
         } else {
             actions.push(json!({"root_request_id":key,"project":event["project"],"first_sequence":event["sequence"],"last_sequence":event["sequence"],"events":[event]}));

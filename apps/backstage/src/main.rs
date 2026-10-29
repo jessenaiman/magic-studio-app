@@ -369,7 +369,7 @@ impl App {
             .data
             .files
             .iter()
-            .filter(|f| f.group == "OpenMontage agent roles" && f.found)
+            .filter(|f| f.group == "MagicStudio agent roles" && f.found)
             .filter_map(|f| f.path.clone())
             .collect::<Vec<_>>();
         self.refreshing = true;

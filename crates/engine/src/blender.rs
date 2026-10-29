@@ -451,8 +451,14 @@ pub fn cmd_blender_start(s: &mut Session, p: &Value) -> Result<Value> {
         }
         request["blend"] = json!(path);
     } else {
-        let character = p["character"].as_str().ok_or_else(||invalid("character is required for legacy migration"))?;
-        crate::motion_authoring::theatre_guard(s, character, p["track"].as_str().filter(|id| !id.is_empty()))?;
+        let character = p["character"]
+            .as_str()
+            .ok_or_else(|| invalid("character is required for legacy migration"))?;
+        crate::motion_authoring::theatre_guard(
+            s,
+            character,
+            p["track"].as_str().filter(|id| !id.is_empty()),
+        )?;
         let actions = cmd_blender_actions(s, p)?;
         if !p["track"].is_string()
             || !actions["tracks"]
@@ -476,7 +482,9 @@ pub fn cmd_blender_start(s: &mut Session, p: &Value) -> Result<Value> {
         let executable = [exe.with_file_name("magic-cli")]
             .into_iter()
             .find(|p| p.is_file())
-            .ok_or_else(|| invalid("Install magic beside Magic Studio to prepare legacy animations"))?;
+            .ok_or_else(|| {
+                invalid("Install magic beside Magic Studio to prepare legacy animations")
+            })?;
         request["magic_cli"] = json!(executable);
     }
     submit(s, p, request, "blender")
@@ -549,7 +557,10 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
         ]
     } else {
         if backend == "mlt" {
-            fs::write(dir.join("mlt_worker.py"), include_str!("../../../pipeline/mlt_animation_worker.py"))?;
+            fs::write(
+                dir.join("mlt_worker.py"),
+                include_str!("../../../pipeline/mlt_animation_worker.py"),
+            )?;
         }
         let native = dir.join("native_worker.py");
         fs::write(

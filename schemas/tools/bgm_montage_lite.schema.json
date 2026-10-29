@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "openmontage/tools/bgm_montage_lite",
+  "$id": "magicstudio/tools/bgm_montage_lite",
   "title": "BGM Montage Lite",
   "description": "Create a reference-free, full-song beat montage from one audio file and supplied video clips.",
   "type": "object",
@@ -20,7 +20,7 @@
     },
     "project_dir": {
       "type": "string",
-      "description": "Optional OpenMontage project root; defaults output to its renders folder."
+      "description": "Optional MagicStudio project root; defaults output to its renders folder."
     },
     "output_path": {
       "type": "string",

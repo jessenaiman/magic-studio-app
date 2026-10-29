@@ -7,67 +7,152 @@ use sha2::{Digest, Sha256};
 
 use crate::{EngineError, Result, Session};
 
-use crate::workspace::{build_photocraft_run_args, resolve_craft_cli, resolve_workspace_path, run_tool_in, workspace_root};
+use crate::workspace::{
+    build_photocraft_run_args, resolve_craft_cli, resolve_workspace_path, run_tool_in,
+    workspace_root,
+};
 
 /// Register a reviewed pose onto a shared canvas without distorting or clipping its silhouette.
 pub fn cmd_image_register_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let invalid = |message: &str| EngineError::InvalidParams(message.into());
     let pair = |value: &Value| -> Result<[f64; 2]> {
-        let a = value.as_array().filter(|a| a.len() == 2)
+        let a = value
+            .as_array()
+            .filter(|a| a.len() == 2)
             .ok_or_else(|| invalid("Pivots and canvas must be two-number arrays"))?;
-        let number = |v: &Value| v.as_f64().filter(|v| v.is_finite())
-            .ok_or_else(|| invalid("Coordinates must be finite numbers"));
+        let number = |v: &Value| {
+            v.as_f64()
+                .filter(|v| v.is_finite())
+                .ok_or_else(|| invalid("Coordinates must be finite numbers"))
+        };
         Ok([number(&a[0])?, number(&a[1])?])
     };
-    let source = resolve_workspace_path(s, p["source"].as_str().ok_or_else(|| invalid("source image is required"))?);
-    let out = resolve_workspace_path(s, p["out"].as_str().ok_or_else(|| invalid("out is required; originals are never overwritten"))?);
-    if !out.extension().and_then(|v| v.to_str()).is_some_and(|v| v.eq_ignore_ascii_case("png")) {
+    let source = resolve_workspace_path(
+        s,
+        p["source"]
+            .as_str()
+            .ok_or_else(|| invalid("source image is required"))?,
+    );
+    let out = resolve_workspace_path(
+        s,
+        p["out"]
+            .as_str()
+            .ok_or_else(|| invalid("out is required; originals are never overwritten"))?,
+    );
+    if !out
+        .extension()
+        .and_then(|v| v.to_str())
+        .is_some_and(|v| v.eq_ignore_ascii_case("png"))
+    {
         return Err(invalid("out must be PNG to preserve pose transparency"));
     }
     let receipt = out.with_extension("registration.json");
-    if out.exists() || receipt.exists() { return Err(invalid("Registration output already exists; choose a new version")); }
+    if out.exists() || receipt.exists() {
+        return Err(invalid(
+            "Registration output already exists; choose a new version",
+        ));
+    }
     let canvas = pair(&p["canvas"])?;
-    if canvas.iter().any(|v| v.fract() != 0.0 || !(16.0..=8192.0).contains(v)) || canvas[0]*canvas[1] > 16_777_216.0 {
-        return Err(invalid("canvas must use integer dimensions 16..8192 and at most 16777216 pixels"));
+    if canvas
+        .iter()
+        .any(|v| v.fract() != 0.0 || !(16.0..=8192.0).contains(v))
+        || canvas[0] * canvas[1] > 16_777_216.0
+    {
+        return Err(invalid(
+            "canvas must use integer dimensions 16..8192 and at most 16777216 pixels",
+        ));
     }
     let from = pair(&p["source_pivot"])?;
-    let to = if p.get("target_pivot").is_some() { pair(&p["target_pivot"])? } else { [canvas[0]/2.0, canvas[1]/2.0] };
-    let scale = p.get("scale").map(|v| v.as_f64().filter(|v| v.is_finite() && *v > 0.0 && *v <= 16.0)
-        .ok_or_else(|| invalid("scale must be in (0,16]"))).transpose()?.unwrap_or(1.0);
+    let to = if p.get("target_pivot").is_some() {
+        pair(&p["target_pivot"])?
+    } else {
+        [canvas[0] / 2.0, canvas[1] / 2.0]
+    };
+    let scale = p
+        .get("scale")
+        .map(|v| {
+            v.as_f64()
+                .filter(|v| v.is_finite() && *v > 0.0 && *v <= 16.0)
+                .ok_or_else(|| invalid("scale must be in (0,16]"))
+        })
+        .transpose()?
+        .unwrap_or(1.0);
     let (w, h) = image::image_dimensions(&source)?;
-    if u64::from(w)*u64::from(h) > 16_777_216 { return Err(invalid("Source exceeds 16777216 pixels")); }
+    if u64::from(w) * u64::from(h) > 16_777_216 {
+        return Err(invalid("Source exceeds 16777216 pixels"));
+    }
     let pixels = image::open(&source)?.to_rgba8();
     let mut bounds = [w, h, 0, 0];
-    for (x, y, _) in pixels.enumerate_pixels().filter(|(_,_,p)| p[3] > 0) {
-        bounds = [bounds[0].min(x), bounds[1].min(y), bounds[2].max(x+1), bounds[3].max(y+1)];
+    for (x, y, _) in pixels.enumerate_pixels().filter(|(_, _, p)| p[3] > 0) {
+        bounds = [
+            bounds[0].min(x),
+            bounds[1].min(y),
+            bounds[2].max(x + 1),
+            bounds[3].max(y + 1),
+        ];
     }
-    if bounds[2] == 0 { return Err(invalid("Source has no visible pixels")); }
-    let placed = [to[0]+(bounds[0] as f64-from[0])*scale, to[1]+(bounds[1] as f64-from[1])*scale,
-        to[0]+(bounds[2] as f64-from[0])*scale, to[1]+(bounds[3] as f64-from[1])*scale];
+    if bounds[2] == 0 {
+        return Err(invalid("Source has no visible pixels"));
+    }
+    let placed = [
+        to[0] + (bounds[0] as f64 - from[0]) * scale,
+        to[1] + (bounds[1] as f64 - from[1]) * scale,
+        to[0] + (bounds[2] as f64 - from[0]) * scale,
+        to[1] + (bounds[3] as f64 - from[1]) * scale,
+    ];
     if placed[0] < 0.0 || placed[1] < 0.0 || placed[2] > canvas[0] || placed[3] > canvas[1] {
-        return Err(invalid("Registered silhouette would be clipped; enlarge canvas or adjust target_pivot/scale"));
+        return Err(invalid(
+            "Registered silhouette would be clipped; enlarge canvas or adjust target_pivot/scale",
+        ));
     }
-    let center = [to[0]+(w as f64/2.0-from[0])*scale, to[1]+(h as f64/2.0-from[1])*scale];
-    if let Some(parent) = out.parent() { std::fs::create_dir_all(parent)?; }
+    let center = [
+        to[0] + (w as f64 / 2.0 - from[0]) * scale,
+        to[1] + (h as f64 / 2.0 - from[1]) * scale,
+    ];
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let root = workspace_root(s);
-    run_tool_in(&root, "photocraft-cli", &[
-        "run".into(), "--new".into(), json!({"width":canvas[0] as u32,"height":canvas[1] as u32,"background":"transparent"}).to_string(),
-        "--cmd".into(), "file.placeEmbedded".into(), "--params".into(), json!({"path":source,"scale":scale*100.0,"fit":false,"center":center}).to_string(),
-        "--out".into(), out.to_string_lossy().into_owned(),
-    ])?;
+    run_tool_in(
+        &root,
+        "photocraft-cli",
+        &[
+            "run".into(),
+            "--new".into(),
+            json!({"width":canvas[0] as u32,"height":canvas[1] as u32,"background":"transparent"})
+                .to_string(),
+            "--cmd".into(),
+            "file.placeEmbedded".into(),
+            "--params".into(),
+            json!({"path":source,"scale":scale*100.0,"fit":false,"center":center}).to_string(),
+            "--out".into(),
+            out.to_string_lossy().into_owned(),
+        ],
+    )?;
     let decoded = image::open(&out)?;
-    if [decoded.width(), decoded.height()] != [canvas[0] as u32, canvas[1] as u32] || !decoded.color().has_alpha() {
-        return Err(invalid("PhotoCraft output does not match the requested transparent canvas; inspect retained output"));
+    if [decoded.width(), decoded.height()] != [canvas[0] as u32, canvas[1] as u32]
+        || !decoded.color().has_alpha()
+    {
+        return Err(invalid(
+            "PhotoCraft output does not match the requested transparent canvas; inspect retained output",
+        ));
     }
     let result = json!({"ok":true,"source":source,"output":out,"canvas":canvas,"source_pivot":from,
         "target_pivot":to,"scale":scale,"source_bounds":bounds,"placed_bounds":placed,
         "source_sha256":format!("{:x}",Sha256::digest(std::fs::read(&source)?)),"receipt":receipt});
-    std::fs::write(&receipt, serde_json::to_vec_pretty(&result).map_err(|e| invalid(&e.to_string()))?)?;
+    std::fs::write(
+        &receipt,
+        serde_json::to_vec_pretty(&result).map_err(|e| invalid(&e.to_string()))?,
+    )?;
     Ok(result)
 }
 
 /// Resolve the target asset ID and validated source image path for an `image.*` command.
-fn resolve_asset_source(s: &Session, params: &Value, verb: &str) -> Result<(String, std::path::PathBuf)> {
+fn resolve_asset_source(
+    s: &Session,
+    params: &Value,
+    verb: &str,
+) -> Result<(String, std::path::PathBuf)> {
     let asset_id = params
         .get("asset")
         .and_then(Value::as_str)
@@ -102,7 +187,8 @@ pub fn cmd_image_break_apart(s: &mut Session, params: &Value) -> Result<Value> {
     let out_dir = if let Some(dir_str) = params.get("out_dir").and_then(Value::as_str) {
         resolve_workspace_path(s, dir_str)
     } else {
-        root.join("exports/pose_and_parts").join(format!("{asset_id}_broken_apart"))
+        root.join("exports/pose_and_parts")
+            .join(format!("{asset_id}_broken_apart"))
     };
     std::fs::create_dir_all(&out_dir)?;
 
@@ -157,7 +243,8 @@ pub fn cmd_image_break_apart(s: &mut Session, params: &Value) -> Result<Value> {
                 "--cmd".to_string(),
                 "select.lasso".to_string(),
                 "--params".to_string(),
-                json!({"points": polygon, "mode": if i == 0 { "replace" } else { "add" }}).to_string(),
+                json!({"points": polygon, "mode": if i == 0 { "replace" } else { "add" }})
+                    .to_string(),
             ]);
         }
         if !keep_outside {
@@ -193,8 +280,13 @@ pub fn cmd_image_break_apart(s: &mut Session, params: &Value) -> Result<Value> {
     // pivot starts at its part's centre (refined later in the Animation view). It carries a gentle
     // "rest" track for motion.path to draw on.
     let rig = match params.get("rig_order").and_then(Value::as_array) {
-        Some(order) if errors.is_empty() => Some(write_parts_rig(&out_dir, &asset_id, order, None)?),
-        Some(_) => { errors.push("rig.json not written: some parts failed".into()); None }
+        Some(order) if errors.is_empty() => {
+            Some(write_parts_rig(&out_dir, &asset_id, order, None)?)
+        }
+        Some(_) => {
+            errors.push("rig.json not written: some parts failed".into());
+            None
+        }
         None => None,
     };
 
@@ -214,25 +306,56 @@ pub fn cmd_image_break_apart(s: &mut Session, params: &Value) -> Result<Value> {
 /// `joints` (rig.from_sheet's placed parts: id, parent, pivot) replaces the centre pivots and the
 /// largest-part root with the placed joints and parents, and seeds initial timed 2D tracks
 /// (`rest`, `walk`, `wave`, `jump`) so the cutout rig immediately has fluid multi-part motion.
-fn write_parts_rig(out_dir: &std::path::Path, asset_id: &str, order: &[Value], joints: Option<&[Value]>) -> Result<std::path::PathBuf> {
+fn write_parts_rig(
+    out_dir: &std::path::Path,
+    asset_id: &str,
+    order: &[Value],
+    joints: Option<&[Value]>,
+) -> Result<std::path::PathBuf> {
     let mut layers = Vec::new();
     let mut canvas = (0, 0);
     for id in order {
-        let id = id.as_str().ok_or_else(|| EngineError::InvalidParams("rig_order holds part ids".into()))?;
+        let id = id
+            .as_str()
+            .ok_or_else(|| EngineError::InvalidParams("rig_order holds part ids".into()))?;
         let file = out_dir.join(format!("{id}.png"));
-        let image = image::open(&file).map_err(|e| EngineError::InvalidParams(format!("rig_order: {id}: {e}")))?.into_rgba8();
+        let image = image::open(&file)
+            .map_err(|e| EngineError::InvalidParams(format!("rig_order: {id}: {e}")))?
+            .into_rgba8();
         canvas = image.dimensions();
         let (mut min, mut max, mut area) = ((u32::MAX, u32::MAX), (0, 0), 0u64);
         for (x, y, _) in image.enumerate_pixels().filter(|(_, _, p)| p[3] > 16) {
-            min = (min.0.min(x), min.1.min(y)); max = (max.0.max(x), max.1.max(y)); area += 1;
+            min = (min.0.min(x), min.1.min(y));
+            max = (max.0.max(x), max.1.max(y));
+            area += 1;
         }
-        if area == 0 { return Err(EngineError::InvalidParams(format!("rig_order: part {id} is empty"))); }
-        layers.push((id.to_string(), file, [(min.0 + max.0) as f64 / 2.0, (min.1 + max.1) as f64 / 2.0], area));
+        if area == 0 {
+            return Err(EngineError::InvalidParams(format!(
+                "rig_order: part {id} is empty"
+            )));
+        }
+        layers.push((
+            id.to_string(),
+            file,
+            [(min.0 + max.0) as f64 / 2.0, (min.1 + max.1) as f64 / 2.0],
+            area,
+        ));
     }
     let joint = |id: &str| joints.and_then(|j| j.iter().find(|p| p["id"].as_str() == Some(id)));
     let root = joints
-        .and_then(|j| j.iter().find(|p| p["parent"].is_null()).and_then(|p| p["id"].as_str()).map(str::to_string))
-        .unwrap_or_else(|| layers.iter().max_by_key(|l| l.3).map(|l| l.0.clone()).unwrap_or_default());
+        .and_then(|j| {
+            j.iter()
+                .find(|p| p["parent"].is_null())
+                .and_then(|p| p["id"].as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| {
+            layers
+                .iter()
+                .max_by_key(|l| l.3)
+                .map(|l| l.0.clone())
+                .unwrap_or_default()
+        });
 
     let mut rest_motion = serde_json::Map::new();
     let mut walk_motion = serde_json::Map::new();
@@ -263,9 +386,17 @@ fn write_parts_rig(out_dir: &std::path::Path, asset_id: &str, order: &[Value], j
             walk_motion.insert(id.clone(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 3.0, "hz": 1.0, "phase": 0.2}]}));
             wave_motion.insert(id.clone(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 4.5, "hz": 1.2, "phase": 0.1}]}));
             jump_motion.insert(id.clone(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 5.0, "hz": 1.0, "phase": 0.25}]}));
-        } else if low.contains("ear") || low.contains("tail") || low.contains("hair") || low.contains("prop") {
+        } else if low.contains("ear")
+            || low.contains("tail")
+            || low.contains("hair")
+            || low.contains("prop")
+        {
             // Secondary follow-through with phase lag relative to parent gesture
-            let phase = if low.contains("_r") || low.contains("right") { 0.42 } else { 0.32 };
+            let phase = if low.contains("_r") || low.contains("right") {
+                0.42
+            } else {
+                0.32
+            };
             rest_motion.insert(id.clone(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 3.5, "hz": 0.5, "phase": phase}]}));
             walk_motion.insert(id.clone(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 9.0, "hz": 1.0, "phase": phase}]}));
             wave_motion.insert(id.clone(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 6.5, "hz": 1.2, "phase": phase}]}));
@@ -298,7 +429,10 @@ fn write_parts_rig(out_dir: &std::path::Path, asset_id: &str, order: &[Value], j
             None => json!({"id": id, "file": file, "pivot": pivot, "parent": if *id == root { Value::Null } else { json!(root) }}),
         }).collect::<Vec<_>>()});
     let path = out_dir.join("rig.json");
-    std::fs::write(&path, serde_json::to_vec_pretty(&rig).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&rig).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+    )?;
     Ok(path)
 }
 
@@ -308,9 +442,18 @@ fn write_parts_rig(out_dir: &std::path::Path, asset_id: &str, order: &[Value], j
 /// written with initial timed 2D tracks (`rest`, `walk`, `wave`, `jump`). Connect it with `project.add_asset kind=cutout_rig`.
 pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
     let invalid = |message: String| EngineError::InvalidParams(message);
-    let sheet_ref = p["sheet"].as_str().filter(|v| !v.is_empty())
-        .ok_or_else(|| invalid("rig.from_sheet needs sheet=<rig sheet asset id or PNG path>".into()))?;
-    let sheet = match s.project_assets.iter().find(|a| a.id == sheet_ref).and_then(|a| a.path.clone()) {
+    let sheet_ref = p["sheet"]
+        .as_str()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| {
+            invalid("rig.from_sheet needs sheet=<rig sheet asset id or PNG path>".into())
+        })?;
+    let sheet = match s
+        .project_assets
+        .iter()
+        .find(|a| a.id == sheet_ref)
+        .and_then(|a| a.path.clone())
+    {
         Some(path) => path,
         None => resolve_workspace_path(s, sheet_ref),
     };
@@ -318,7 +461,10 @@ pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(invalid(format!("rig sheet not found: {}", sheet.display())));
     }
     let receipt = sheet.with_file_name("generation.json");
-    let explicit_parts = p.get("parts").or_else(|| p.get("rig_parts")).filter(|v| !v.is_null());
+    let explicit_parts = p
+        .get("parts")
+        .or_else(|| p.get("rig_parts"))
+        .filter(|v| !v.is_null());
     if !receipt.is_file() && explicit_parts.is_none() {
         return Err(invalid(format!(
             "{} has no adjacent generation.json; pass `parts=[{{\"id\":...,\"parent\":...,\"pivot\":[u,v]}}]` for an existing user sheet, or generate one with `image.generate rig_parts=...`",
@@ -328,7 +474,10 @@ pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
     let name = crate::workspace::sanitize_asset_id(p["name"].as_str().unwrap_or("rig"));
     let out_dir = match p["out_dir"].as_str() {
         Some(dir) => resolve_workspace_path(s, dir),
-        None => crate::workshop::project_dir(s)?.join("assets/characters").join(&name).join("rig"),
+        None => crate::workshop::project_dir(s)?
+            .join("assets/characters")
+            .join(&name)
+            .join("rig"),
     };
     let root = workspace_root(s);
     let script = root.join("pipeline/rig_from_sheet.py");
@@ -343,62 +492,121 @@ pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
         args.extend(["--receipt".into(), receipt.to_string_lossy().into_owned()]);
     }
     if let Some(parts) = explicit_parts {
-        if !parts.as_array().is_some_and(|a| (2..=15).contains(&a.len()) && a.iter().all(|item| item.get("id").and_then(Value::as_str).is_some_and(|id| !id.is_empty()))) {
-            return Err(invalid("parts must be an array of 2 to 15 part objects with non-empty `id`".into()));
+        if !parts.as_array().is_some_and(|a| {
+            (2..=15).contains(&a.len())
+                && a.iter().all(|item| {
+                    item.get("id")
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| !id.is_empty())
+                })
+        }) {
+            return Err(invalid(
+                "parts must be an array of 2 to 15 part objects with non-empty `id`".into(),
+            ));
         }
         args.extend(["--parts".into(), parts.to_string()]);
     }
     if let Some(ref_raw) = p["reference"].as_str().filter(|v| !v.is_empty()) {
         let ref_path = resolve_workspace_path(s, ref_raw);
         if !ref_path.is_file() {
-            return Err(invalid(format!("reference image not found: {}", ref_path.display())));
+            return Err(invalid(format!(
+                "reference image not found: {}",
+                ref_path.display()
+            )));
         }
-        args.extend(["--reference".into(), ref_path.to_string_lossy().into_owned()]);
+        args.extend([
+            "--reference".into(),
+            ref_path.to_string_lossy().into_owned(),
+        ]);
     }
     if let Some(pivots) = p.get("pivots").filter(|v| !v.is_null()) {
-        if !pivots.as_object().is_some_and(|m| m.values().all(|v| v.as_array().is_some_and(|a| a.len() == 2 && a.iter().all(|n| n.as_f64().is_some_and(|n| (0.0..=1.0).contains(&n)))))) {
-            return Err(invalid("pivots maps part ids to [u, v] inside the part, each 0 to 1".into()));
+        if !pivots.as_object().is_some_and(|m| {
+            m.values().all(|v| {
+                v.as_array().is_some_and(|a| {
+                    a.len() == 2
+                        && a.iter()
+                            .all(|n| n.as_f64().is_some_and(|n| (0.0..=1.0).contains(&n)))
+                })
+            })
+        }) {
+            return Err(invalid(
+                "pivots maps part ids to [u, v] inside the part, each 0 to 1".into(),
+            ));
         }
         args.extend(["--pivots".into(), pivots.to_string()]);
     }
     if let Some(places) = p.get("places").filter(|v| !v.is_null()) {
-        if !places.as_object().is_some_and(|m| m.values().all(|v| v.as_array().is_some_and(|a| a.len() == 2 && a.iter().all(|n| n.as_f64().is_some_and(f64::is_finite))))) {
-            return Err(invalid("places maps part ids to [cx, cy], the part's centre in canvas pixels".into()));
+        if !places.as_object().is_some_and(|m| {
+            m.values().all(|v| {
+                v.as_array().is_some_and(|a| {
+                    a.len() == 2 && a.iter().all(|n| n.as_f64().is_some_and(f64::is_finite))
+                })
+            })
+        }) {
+            return Err(invalid(
+                "places maps part ids to [cx, cy], the part's centre in canvas pixels".into(),
+            ));
         }
         args.extend(["--places".into(), places.to_string()]);
     }
     if let Some(order) = p.get("order").filter(|v| !v.is_null()) {
-        if !order.as_array().is_some_and(|a| a.iter().all(Value::is_string)) {
+        if !order
+            .as_array()
+            .is_some_and(|a| a.iter().all(Value::is_string))
+        {
             return Err(invalid("order lists part ids back to front".into()));
         }
         args.extend(["--order".into(), order.to_string()]);
     }
     let stdout = run_tool_in(&root, "python3", &args)?;
-    let mut placement: Value = stdout.lines().rev().find_map(|line| serde_json::from_str(line).ok())
-        .ok_or_else(|| EngineError::CommandFailed("rig.from_sheet".into(), "rig_from_sheet.py returned no result".into()))?;
+    let mut placement: Value = stdout
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .ok_or_else(|| {
+            EngineError::CommandFailed(
+                "rig.from_sheet".into(),
+                "rig_from_sheet.py returned no result".into(),
+            )
+        })?;
     let order = placement["order"].as_array().cloned().unwrap_or_default();
     let joints = placement["parts"].as_array().cloned().unwrap_or_default();
     let rig = write_parts_rig(&out_dir, &name, &order, Some(&joints))?;
     placement["command"] = json!("rig.from_sheet");
     placement["rig"] = json!(rig);
-    placement["next"] = json!(format!("project.add_asset path={} kind=cutout_rig id={name} name={name}", rig.display()));
+    placement["next"] = json!(format!(
+        "project.add_asset path={} kind=cutout_rig id={name} name={name}",
+        rig.display()
+    ));
     Ok(placement)
 }
 
 /// Surgical PhotoCraft recut of a single rigged part from its clean source art (`pipeline/recut_part.py`).
 pub fn cmd_part_recut(s: &mut Session, p: &Value) -> Result<Value> {
     let invalid = |msg: String| EngineError::InvalidParams(msg);
-    let source_raw = p["source"].as_str().filter(|v| !v.is_empty())
+    let source_raw = p["source"]
+        .as_str()
+        .filter(|v| !v.is_empty())
         .ok_or_else(|| invalid("part.recut needs source=<clean source PNG>".into()))?;
-    let part_raw = p["part"].as_str().filter(|v| !v.is_empty())
+    let part_raw = p["part"]
+        .as_str()
+        .filter(|v| !v.is_empty())
         .ok_or_else(|| invalid("part.recut needs part=<existing part PNG>".into()))?;
-    let out_raw = p["out"].as_str().filter(|v| !v.is_empty())
+    let out_raw = p["out"]
+        .as_str()
+        .filter(|v| !v.is_empty())
         .ok_or_else(|| invalid("part.recut needs out=<output part PNG>".into()))?;
-    let at_val = p.get("at").ok_or_else(|| invalid("part.recut needs at=[x,y] or \"x,y\"".into()))?;
+    let at_val = p
+        .get("at")
+        .ok_or_else(|| invalid("part.recut needs at=[x,y] or \"x,y\"".into()))?;
     let at_str = if let Some(s_at) = at_val.as_str() {
         s_at.to_string()
     } else if let Some(arr) = at_val.as_array().filter(|a| a.len() == 2) {
-        format!("{},{}", arr[0].as_f64().unwrap_or(0.0) as i64, arr[1].as_f64().unwrap_or(0.0) as i64)
+        format!(
+            "{},{}",
+            arr[0].as_f64().unwrap_or(0.0) as i64,
+            arr[1].as_f64().unwrap_or(0.0) as i64
+        )
     } else {
         return Err(invalid("`at` must be [x, y] or \"x,y\"".into()));
     };
@@ -406,7 +614,10 @@ pub fn cmd_part_recut(s: &mut Session, p: &Value) -> Result<Value> {
     let part = resolve_workspace_path(s, part_raw);
     let out = resolve_workspace_path(s, out_raw);
     if !source.is_file() {
-        return Err(invalid(format!("source PNG not found: {}", source.display())));
+        return Err(invalid(format!(
+            "source PNG not found: {}",
+            source.display()
+        )));
     }
     if !part.is_file() {
         return Err(invalid(format!("part PNG not found: {}", part.display())));
@@ -441,8 +652,13 @@ pub fn cmd_part_recut(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     let stdout = run_tool_in(&root, "python3", &args)?;
-    let mut res: Value = stdout.lines().rev().find_map(|line| serde_json::from_str(line).ok())
-        .ok_or_else(|| EngineError::CommandFailed("part.recut".into(), "recut_part.py returned no JSON".into()))?;
+    let mut res: Value = stdout
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .ok_or_else(|| {
+            EngineError::CommandFailed("part.recut".into(), "recut_part.py returned no JSON".into())
+        })?;
     res["command"] = json!("part.recut");
     Ok(res)
 }
@@ -452,17 +668,25 @@ pub fn cmd_part_recut(s: &mut Session, p: &Value) -> Result<Value> {
 /// reorders into canonical slots, and expands directional walk_right/walk_left slots.
 pub fn cmd_sheet_normalize(s: &mut Session, p: &Value) -> Result<Value> {
     let invalid = |msg: String| EngineError::InvalidParams(msg);
-    let source_raw = p["source"].as_str().filter(|v| !v.is_empty())
+    let source_raw = p["source"]
+        .as_str()
+        .filter(|v| !v.is_empty())
         .ok_or_else(|| invalid("sheet.normalize needs source=<sheet PNG/JPEG path>".into()))?;
     let source = resolve_workspace_path(s, source_raw);
     if !source.is_file() {
-        return Err(invalid(format!("sheet source not found: {}", source.display())));
+        return Err(invalid(format!(
+            "sheet source not found: {}",
+            source.display()
+        )));
     }
-    let character = crate::workspace::sanitize_asset_id(p["character"].as_str().unwrap_or("character"));
+    let character =
+        crate::workspace::sanitize_asset_id(p["character"].as_str().unwrap_or("character"));
     let kind = p["kind"].as_str().unwrap_or("auto");
     let out_dir = match p["out_dir"].as_str().filter(|v| !v.is_empty()) {
         Some(dir) => resolve_workspace_path(s, dir),
-        None => workspace_root(s).join("exports/pose_and_parts").join(format!("{character}_{kind}_normalized")),
+        None => workspace_root(s)
+            .join("exports/pose_and_parts")
+            .join(format!("{character}_{kind}_normalized")),
     };
     let root = workspace_root(s);
     let script = root.join("pipeline/step_sheet_normalizer.py");
@@ -491,8 +715,19 @@ pub fn cmd_sheet_normalize(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let stdout = run_tool_in(&root, "python3", &args)?;
     let mut res: Value = serde_json::from_str(&stdout)
-        .or_else(|_| stdout.lines().rev().find_map(|line| serde_json::from_str(line).ok()).ok_or(()))
-        .map_err(|_| EngineError::CommandFailed("sheet.normalize".into(), "step_sheet_normalizer.py returned invalid JSON".into()))?;
+        .or_else(|_| {
+            stdout
+                .lines()
+                .rev()
+                .find_map(|line| serde_json::from_str(line).ok())
+                .ok_or(())
+        })
+        .map_err(|_| {
+            EngineError::CommandFailed(
+                "sheet.normalize".into(),
+                "step_sheet_normalizer.py returned invalid JSON".into(),
+            )
+        })?;
     res["command"] = json!("sheet.normalize");
     Ok(res)
 }
@@ -505,7 +740,8 @@ pub fn cmd_image_puppet_warp(s: &mut Session, params: &Value) -> Result<Value> {
     let out_path = if let Some(out_raw) = params.get("out").and_then(Value::as_str) {
         resolve_workspace_path(s, out_raw)
     } else {
-        root.join("exports/pose_and_parts").join(format!("{asset_id}_warped.png"))
+        root.join("exports/pose_and_parts")
+            .join(format!("{asset_id}_warped.png"))
     };
     std::fs::create_dir_all(out_path.parent().unwrap_or(&root))?;
 
@@ -563,7 +799,8 @@ pub fn cmd_image_color_to_alpha(s: &mut Session, params: &Value) -> Result<Value
     let out_path = if let Some(out_raw) = params.get("out").and_then(Value::as_str) {
         resolve_workspace_path(s, out_raw)
     } else {
-        root.join("exports/pose_and_parts").join(format!("{asset_id}_alpha.png"))
+        root.join("exports/pose_and_parts")
+            .join(format!("{asset_id}_alpha.png"))
     };
     std::fs::create_dir_all(out_path.parent().unwrap_or(&root))?;
 
@@ -626,7 +863,8 @@ pub fn cmd_image_content_aware_fill(s: &mut Session, params: &Value) -> Result<V
     let out_path = if let Some(out_raw) = params.get("out").and_then(Value::as_str) {
         resolve_workspace_path(s, out_raw)
     } else {
-        root.join("exports/pose_and_parts").join(format!("{asset_id}_filled.png"))
+        root.join("exports/pose_and_parts")
+            .join(format!("{asset_id}_filled.png"))
     };
     std::fs::create_dir_all(out_path.parent().unwrap_or(&root))?;
 
@@ -641,7 +879,10 @@ pub fn cmd_image_content_aware_fill(s: &mut Session, params: &Value) -> Result<V
             )
         })?;
     let select_id = select["id"].as_str().unwrap_or_default();
-    let fill_contents = params.get("contents").and_then(Value::as_str).unwrap_or("contentAware");
+    let fill_contents = params
+        .get("contents")
+        .and_then(Value::as_str)
+        .unwrap_or("contentAware");
     let color = params.get("color").and_then(Value::as_str);
 
     let mut fill_params = serde_json::Map::new();
@@ -703,24 +944,50 @@ pub fn cmd_image_image_size(s: &mut Session, params: &Value) -> Result<Value> {
         .ok_or_else(|| EngineError::InvalidParams("image.image_size requires `source`".into()))?;
     let source_path = resolve_workspace_path(s, source);
     if !source_path.is_file() {
-        return Err(EngineError::InvalidParams(format!("image not found: {}", source_path.display())));
+        return Err(EngineError::InvalidParams(format!(
+            "image not found: {}",
+            source_path.display()
+        )));
     }
-    let width = params.get("width").and_then(Value::as_u64).unwrap_or(2048).clamp(16, 8192);
-    let height = params.get("height").and_then(Value::as_u64).unwrap_or(2048).clamp(16, 8192);
-    let anchor = params.get("anchor").and_then(Value::as_str).unwrap_or("center");
-    let extension = params.get("extensionColor").and_then(Value::as_str).unwrap_or("#ffffff");
-    let out_path = match params.get("out").and_then(Value::as_str).filter(|o| !o.is_empty()) {
+    let width = params
+        .get("width")
+        .and_then(Value::as_u64)
+        .unwrap_or(2048)
+        .clamp(16, 8192);
+    let height = params
+        .get("height")
+        .and_then(Value::as_u64)
+        .unwrap_or(2048)
+        .clamp(16, 8192);
+    let anchor = params
+        .get("anchor")
+        .and_then(Value::as_str)
+        .unwrap_or("center");
+    let extension = params
+        .get("extensionColor")
+        .and_then(Value::as_str)
+        .unwrap_or("#ffffff");
+    let out_path = match params
+        .get("out")
+        .and_then(Value::as_str)
+        .filter(|o| !o.is_empty())
+    {
         Some(out) => resolve_workspace_path(s, out),
         None => source_path.with_file_name(format!(
             "{}-{width}x{height}.png",
-            source_path.file_stem().and_then(|v| v.to_str()).unwrap_or("image")
+            source_path
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .unwrap_or("image")
         )),
     };
     let root = workspace_root(s);
     if let Some(dir) = out_path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let body = json!({"width": width, "height": height, "anchor": anchor, "extensionColor": extension}).to_string();
+    let body =
+        json!({"width": width, "height": height, "anchor": anchor, "extensionColor": extension})
+            .to_string();
     let args = build_photocraft_run_args(
         &source_path.to_string_lossy(),
         "image.imageSize",

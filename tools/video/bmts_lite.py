@@ -1,4 +1,4 @@
-"""OpenMontage adapter for the standalone BMTS-Lite rendering engine."""
+"""MagicStudio adapter for the standalone BMTS-Lite rendering engine."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ class BgmMontageLite(BaseTool):
             },
             "project_dir": {
                 "type": "string",
-                "description": "Optional OpenMontage project root; defaults output to its renders folder.",
+                "description": "Optional MagicStudio project root; defaults output to its renders folder.",
             },
             "output_path": {
                 "type": "string",
@@ -373,7 +373,7 @@ class BgmMontageLite(BaseTool):
                     or abs(output_duration - float(summary["duration"])) > 0.15
                 ):
                     raise RuntimeError(
-                        "BMTS-Lite output failed OpenMontage's independent ffprobe checks."
+                        "BMTS-Lite output failed MagicStudio's independent ffprobe checks."
                     )
 
                 fps = _fraction(video_stream.get("avg_frame_rate")) or _fraction(
@@ -396,7 +396,7 @@ class BgmMontageLite(BaseTool):
                     "render_time_seconds": round(time.monotonic() - started, 2),
                     "verification_notes": [
                         "BMTS-Lite passed its ffprobe and full FFmpeg decode checks.",
-                        "OpenMontage independently confirmed video/audio streams, dimensions, and duration.",
+                        "MagicStudio independently confirmed video/audio streams, dimensions, and duration.",
                         "No reference video, API key, semantic asset selection, or agent visual review was used by this tool.",
                     ],
                     "metadata": {

@@ -62,7 +62,7 @@ class SoraVideo(BaseTool):
     best_for = [
         "OpenAI Sora 2 / Sora 2 Pro clips from the project .env credentials",
         "short cinematic product-ad inserts with native ambience or dialogue",
-        "4, 8, or 12 second social-video clips that OpenMontage can stitch and compose",
+        "4, 8, or 12 second social-video clips that MagicStudio can stitch and compose",
     ]
     not_good_for = [
         "offline generation",

@@ -42,19 +42,22 @@ fn update(path: &str, forget: bool) -> Result<(), String> {
             != path
     });
     // Never persist test/fixture or temp paths as the user's recent project.
-    if path.contains("/.agent/") || path.contains("/tmp/")
-        || Path::new(&path).starts_with(std::env::temp_dir()) {
+    if path.contains("/.agent/")
+        || path.contains("/tmp/")
+        || Path::new(&path).starts_with(std::env::temp_dir())
+    {
         return Ok(());
     }
     if !forget {
         items.insert(0, path);
         items.truncate(10);
     }
-    let result=(|| {
+    let result = (|| {
         file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
         let bytes = serde_json::to_vec(&items).map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
-        file.set_len(bytes.len() as u64).map_err(|e| e.to_string())?;
+        file.set_len(bytes.len() as u64)
+            .map_err(|e| e.to_string())?;
         Ok(())
     })();
     // Even a failed write may have changed a prefix of the catalog.
@@ -126,7 +129,8 @@ fn readiness(path: &Path) -> Value {
     let audio = doc["workshop"]["audio"]
         .as_str()
         .is_some_and(|a| !a.is_empty() && (dir.join(a).is_file() || Path::new(a).is_file()));
-    let transcript = dir.join("transcript.json").is_file() || dir.join("lyrics/words.json").is_file();
+    let transcript =
+        dir.join("transcript.json").is_file() || dir.join("lyrics/words.json").is_file();
     let editor_ready = dir.join("hyperframes/index.html").is_file()
         || doc["workshop"]["video_project"]
             .as_str()

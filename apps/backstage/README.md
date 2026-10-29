@@ -1,8 +1,14 @@
 # Backstage — observer views
 
-A clean Rust/Ratatui observer draft with Workshop (F1), MOPS (F3), Mayhem (F4)
-and Settings (F5). Booth remains disabled. No old Backstage implementation was reused.
-Workshop populated-runtime acceptance is in progress; Mayhem acceptance follows it.
+Magic Studio's separate Rust/Ratatui observer has Workshop (F1), MOPS (F3),
+Mayhem (F4), and Settings (F5). Booth remains disabled.
+
+Actual native captures: [MOPS PR handoff](../../references/backstage/mops-pr22.png)
+and [Mayhem audit evidence](../../references/backstage/mayhem-pr30.png).
+These show imported GitHub snapshots and historical native audit artifacts,
+not live session state or an audit of the current checkout.
+
+Launch from a prepared source-development environment:
 
 ```sh
 cargo run -p backstage

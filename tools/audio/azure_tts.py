@@ -263,7 +263,7 @@ class AzureTTS(BaseTool):
             "Ocp-Apim-Subscription-Key": api_key,
             "Content-Type": "application/ssml+xml",
             "X-Microsoft-OutputFormat": azure_format,
-            "User-Agent": "OpenMontage-azure-tts",
+            "User-Agent": "MagicStudio-azure-tts",
         }
 
         try:

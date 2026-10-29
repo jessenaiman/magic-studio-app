@@ -355,7 +355,7 @@ class DoubaoTTS(BaseTool):
             ),
         }
         return {
-            "user": {"uid": inputs.get("user_id", "openmontage")},
+            "user": {"uid": inputs.get("user_id", "magicstudio")},
             "unique_id": request_id,
             "req_params": {
                 "text": inputs["text"],

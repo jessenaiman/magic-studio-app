@@ -493,22 +493,35 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
             .flatten()
             .map(|(_, v)| v)
         {
-            for terms in channels.as_object_mut().into_iter().flatten().map(|(_, v)| v) {
+            for terms in channels
+                .as_object_mut()
+                .into_iter()
+                .flatten()
+                .map(|(_, v)| v)
+            {
                 for term in terms.as_array_mut().into_iter().flatten() {
                     if let Some(keys) = term["keys"].as_array_mut() {
-                        if let Some(r) = ratio && retime {
+                        if let Some(r) = ratio
+                            && retime
+                        {
                             for k in keys.iter_mut() {
                                 if let Some(t) = k[0].as_f64() {
                                     k[0] = json!((t * r * 1000.0).round() / 1000.0);
                                 }
                             }
-                        } else if keys.iter().any(|k| k[0].as_f64().is_some_and(|t| t > duration)) {
+                        } else if keys
+                            .iter()
+                            .any(|k| k[0].as_f64().is_some_and(|t| t > duration))
+                        {
                             return Err(bad(
                                 "Duration would exclude existing keys; retime them first",
                             ));
                         }
                     }
-                    if let Some(r) = ratio && retime && term["kind"] == "ellipse" {
+                    if let Some(r) = ratio
+                        && retime
+                        && term["kind"] == "ellipse"
+                    {
                         if let Some(from) = term["from"].as_f64() {
                             term["from"] = json!((from * r * 1000.0).round() / 1000.0);
                         }
@@ -540,7 +553,10 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
         {
             let sheet_id = crate::theatre::clip_sheet_id(&edit.character, &track_id);
             if let Some(sheet) = sheets.get_mut(&sheet_id) {
-                let old_seq_len = sheet["sequence"]["length"].as_f64().unwrap_or(old_duration).max(0.1);
+                let old_seq_len = sheet["sequence"]["length"]
+                    .as_f64()
+                    .unwrap_or(old_duration)
+                    .max(0.1);
                 let ratio = new_dur / old_seq_len;
                 sheet["sequence"]["length"] = json!(new_dur);
                 if (ratio - 1.0).abs() > 1e-6
@@ -552,7 +568,8 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
                                 if let Some(kfs) = tr["keyframes"].as_array_mut() {
                                     for kf in kfs {
                                         if let Some(pos) = kf["position"].as_f64() {
-                                            kf["position"] = json!((pos * ratio * 1000.0).round() / 1000.0);
+                                            kf["position"] =
+                                                json!((pos * ratio * 1000.0).round() / 1000.0);
                                         }
                                     }
                                 }
@@ -573,9 +590,10 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
                 &edit.character,
                 &track_id,
                 new_dur,
-            ) {
-                res["video_tracks_synced"] = synced;
-            }
+            )
+        {
+            res["video_tracks_synced"] = synced;
+        }
     }
     Ok(res)
 }

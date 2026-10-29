@@ -108,22 +108,41 @@ impl AgentRun {
 
 /// Run the agent with a hard timeout, capturing both streams. A long run must not freeze the
 /// app, so on timeout the agent is stopped and whatever it wrote is still checked.
-pub(crate) fn run_agent(program: &str, args: &[String], cwd: &Path, timeout_s: u64) -> Result<AgentRun> {
-    run_agent_inner(program,args,cwd,timeout_s,false)
+pub(crate) fn run_agent(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    timeout_s: u64,
+) -> Result<AgentRun> {
+    run_agent_inner(program, args, cwd, timeout_s, false)
 }
 
 /// Image bytes are already staged when the native success receipt arrives. Stop this one-shot
 /// agent before it can retry generation while trying to reconstruct/copy binary tool output.
-pub(crate) fn run_image_agent(program: &str, args: &[String], cwd: &Path, timeout_s: u64) -> Result<AgentRun> {
-    run_agent_inner(program,args,cwd,timeout_s,true)
+pub(crate) fn run_image_agent(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    timeout_s: u64,
+) -> Result<AgentRun> {
+    run_agent_inner(program, args, cwd, timeout_s, true)
 }
 
-fn run_agent_inner(program: &str, args: &[String], cwd: &Path, timeout_s: u64, stop_on_image:bool) -> Result<AgentRun> {
+fn run_agent_inner(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    timeout_s: u64,
+    stop_on_image: bool,
+) -> Result<AgentRun> {
     let mut command = std::process::Command::new(program);
     // `codex exec` defaults to error-only stderr. The native image importer needs
     // its INFO tool receipt to correlate staged bytes; never rely on the parent's log level.
-    if stop_on_image { command.env("RUST_LOG", "error,codex_otel=info"); }
-    let mut child = command.current_dir(cwd)
+    if stop_on_image {
+        command.env("RUST_LOG", "error,codex_otel=info");
+    }
+    let mut child = command
+        .current_dir(cwd)
         .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -132,7 +151,7 @@ fn run_agent_inner(program: &str, args: &[String], cwd: &Path, timeout_s: u64, s
         .map_err(|e| EngineError::ExternalTool(program.to_string(), e.to_string()))?;
     let (tx_out, rx_out) = std::sync::mpsc::channel::<Vec<u8>>();
     let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
-    let (image_tx,image_rx)=std::sync::mpsc::channel::<()>();
+    let (image_tx, image_rx) = std::sync::mpsc::channel::<()>();
     if let Some(mut pipe) = child.stdout.take() {
         let tx = tx_out.clone();
         std::thread::spawn(move || {
@@ -145,15 +164,26 @@ fn run_agent_inner(program: &str, args: &[String], cwd: &Path, timeout_s: u64, s
     if let Some(mut pipe) = child.stderr.take() {
         let tx = tx_err.clone();
         std::thread::spawn(move || {
-            use std::io::{BufRead,BufReader};
-            let mut reader=BufReader::new(&mut pipe);
-            let mut buf=Vec::new();let mut line=Vec::new();let mut signalled=false;
+            use std::io::{BufRead, BufReader};
+            let mut reader = BufReader::new(&mut pipe);
+            let mut buf = Vec::new();
+            let mut line = Vec::new();
+            let mut signalled = false;
             loop {
                 line.clear();
-                match reader.read_until(b'\n',&mut line){Ok(0)|Err(_)=>break,Ok(_)=>{}}
+                match reader.read_until(b'\n', &mut line) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
                 buf.extend_from_slice(&line);
-                if stop_on_image&&!signalled&&crate::image_generation::native_image_success(&String::from_utf8_lossy(&line)) {
-                    signalled=true;let _=image_tx.send(());
+                if stop_on_image
+                    && !signalled
+                    && crate::image_generation::native_image_success(&String::from_utf8_lossy(
+                        &line,
+                    ))
+                {
+                    signalled = true;
+                    let _ = image_tx.send(());
                 }
             }
             let _ = tx.send(buf);
@@ -161,11 +191,12 @@ fn run_agent_inner(program: &str, args: &[String], cwd: &Path, timeout_s: u64, s
     }
     let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
     let mut timed_out = false;
-    let mut stopped_after_image=false;
+    let mut stopped_after_image = false;
     let code = loop {
-        if stop_on_image&&image_rx.try_recv().is_ok(){
-            stopped_after_image=true;let _=child.kill();
-            break child.wait().ok().and_then(|status|status.code());
+        if stop_on_image && image_rx.try_recv().is_ok() {
+            stopped_after_image = true;
+            let _ = child.kill();
+            break child.wait().ok().and_then(|status| status.code());
         }
         match child.try_wait() {
             Ok(Some(status)) => break status.code(),
@@ -179,8 +210,12 @@ fn run_agent_inner(program: &str, args: &[String], cwd: &Path, timeout_s: u64, s
         }
         std::thread::sleep(Duration::from_millis(150));
     };
-    let stdout = rx_out.recv_timeout(Duration::from_secs(15)).unwrap_or_default();
-    let stderr = rx_err.recv_timeout(Duration::from_secs(15)).unwrap_or_default();
+    let stdout = rx_out
+        .recv_timeout(Duration::from_secs(15))
+        .unwrap_or_default();
+    let stderr = rx_err
+        .recv_timeout(Duration::from_secs(15))
+        .unwrap_or_default();
     Ok(AgentRun {
         stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
         stderr: String::from_utf8_lossy(&stderr).trim().to_string(),
@@ -378,7 +413,9 @@ it and stop; the sheets themselves are fine.\n\
 `layout`, pass one and say which view is missing.\n",
         project = project_path.display(),
         sheet = sheet.display(),
-        normal = sheet_dir.join(format!("{}-turnaround-2048.png", character)).display(),
+        normal = sheet_dir
+            .join(format!("{}-turnaround-2048.png", character))
+            .display(),
         character = character,
     )
 }
@@ -440,12 +477,17 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         _ => KINDS.iter().map(|k| (*k).to_string()).collect(),
     };
     if kinds.is_empty() {
-        return Err(EngineError::InvalidParams(format!("kinds must be drawn from {KINDS:?}")));
+        return Err(EngineError::InvalidParams(format!(
+            "kinds must be drawn from {KINDS:?}"
+        )));
     }
 
     let spec_path = workspace_root(s).join(".agents/skills/asset-sheets/SKILL.md");
     let spec = std::fs::read_to_string(&spec_path).map_err(|e| {
-        EngineError::InvalidParams(format!("asset-sheet contract missing at {}: {e}", spec_path.display()))
+        EngineError::InvalidParams(format!(
+            "asset-sheet contract missing at {}: {e}",
+            spec_path.display()
+        ))
     })?;
 
     let sheet_dir = dir.join("assets/sheets");
@@ -466,7 +508,11 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
     ));
     brief.push_str(&draw_instructions(&sheet_dir, &character, &kinds));
     brief.push_str(&chain_instructions(&project_path, &sheet_dir, &character));
-    if let Some(extra) = params.get("note").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
+    if let Some(extra) = params
+        .get("note")
+        .and_then(Value::as_str)
+        .filter(|n| !n.trim().is_empty())
+    {
         brief.push_str(&format!("\n## Note from the user\n\n{extra}\n"));
     }
 
@@ -482,7 +528,10 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         .map(str::to_owned)
         .unwrap_or_else(configured_agent);
     let run = params.get("run").and_then(Value::as_bool).unwrap_or(true);
-    let check = params.get("check").and_then(Value::as_bool).unwrap_or(false);
+    let check = params
+        .get("check")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let timeout_s = params
         .get("timeout_s")
         .and_then(Value::as_u64)
@@ -490,7 +539,9 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         .unwrap_or(DEFAULT_TIMEOUT_S);
 
     if !run && !check {
-        return Ok(json!({"ok": true, "brief": brief_path, "agent": agent, "ran": false, "sheets": []}));
+        return Ok(
+            json!({"ok": true, "brief": brief_path, "agent": agent, "ran": false, "sheets": []}),
+        );
     }
 
     let mut error: Option<String> = None;
@@ -502,7 +553,8 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
                 "agent `{agent}` is not installed; installed agents: {available:?}. Pass agent=<name> to choose another, or run=false to only write the brief."
             )));
         }
-        let prompt = format!("Follow this brief exactly and draw the sheets it asks for:\n\n{brief}");
+        let prompt =
+            format!("Follow this brief exactly and draw the sheets it asks for:\n\n{brief}");
         let args: Vec<String> = match agent.as_str() {
             "codex" => vec![
                 "exec".into(),
@@ -518,8 +570,18 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
                 "-C".into(),
                 dir.to_string_lossy().into_owned(),
             ],
-            "claude" => vec!["-p".into(), prompt, "--permission-mode".into(), "auto".into()],
-            "omp" => vec!["-p".into(), prompt, "--cwd".into(), dir.to_string_lossy().into_owned()],
+            "claude" => vec![
+                "-p".into(),
+                prompt,
+                "--permission-mode".into(),
+                "auto".into(),
+            ],
+            "omp" => vec![
+                "-p".into(),
+                prompt,
+                "--cwd".into(),
+                dir.to_string_lossy().into_owned(),
+            ],
             other => {
                 return Err(EngineError::InvalidParams(format!(
                     "the app can only run omp, claude or codex non-interactively (asked for `{other}`)"
@@ -613,7 +675,10 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         next.push(detail.clone());
     }
     if !sheets_ok {
-        next.push(format!("Fix the sheet(s) and re-run: {}", problems.join(" | ")));
+        next.push(format!(
+            "Fix the sheet(s) and re-run: {}",
+            problems.join(" | ")
+        ));
         if !missing.is_empty() {
             next.push(format!(
                 "The agent drew no sheet for {}. Re-run the command to draw them again, with a \

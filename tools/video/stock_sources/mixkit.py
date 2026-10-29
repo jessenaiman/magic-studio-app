@@ -69,7 +69,7 @@ class MixkitSource:
             r = requests.get(
                 search_url,
                 timeout=30,
-                headers={"User-Agent": "OpenMontage/1.0"},
+                headers={"User-Agent": "MagicStudio/1.0"},
             )
             r.raise_for_status()
         except Exception as e:
@@ -163,7 +163,7 @@ class MixkitSource:
             r = requests.get(
                 detail_url,
                 timeout=30,
-                headers={"User-Agent": "OpenMontage/1.0"},
+                headers={"User-Agent": "MagicStudio/1.0"},
             )
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
@@ -228,7 +228,7 @@ class MixkitSource:
             url,
             stream=True,
             timeout=120,
-            headers={"User-Agent": "OpenMontage/1.0"},
+            headers={"User-Agent": "MagicStudio/1.0"},
         ) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:

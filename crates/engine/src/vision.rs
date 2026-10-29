@@ -310,4 +310,3 @@ pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
         "part_layers": part_layers,
     }))
 }
-

@@ -191,7 +191,7 @@ class KlingLipSync(BaseTool):
             {
                 "paid_api": True,
                 "cost_estimate_confidence": "low",
-                "cost_estimate_basis": "Conservative OpenMontage estimate for identify-face plus advanced lip-sync.",
+                "cost_estimate_basis": "Conservative MagicStudio estimate for identify-face plus advanced lip-sync.",
             }
         )
         return result

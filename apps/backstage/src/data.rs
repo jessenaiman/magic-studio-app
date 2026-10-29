@@ -113,7 +113,7 @@ impl Snapshot {
                 .unwrap_or_else(|| id.into());
             files.push(FileRecord::observe(
                 format!("{title} AGENTS.md"),
-                "OpenMontage agent roles",
+                "MagicStudio agent roles",
                 "Markdown",
                 path,
             ));
@@ -256,7 +256,7 @@ fn role_records(value: serde_json::Value) -> Result<Vec<FileRecord>, String> {
             .ok_or("Provider schema error: exists")?;
         let mut record = FileRecord::observe(
             format!("{} AGENTS.md", clean(title)),
-            "OpenMontage agent roles",
+            "MagicStudio agent roles",
             "Markdown",
             Some(path),
         );
