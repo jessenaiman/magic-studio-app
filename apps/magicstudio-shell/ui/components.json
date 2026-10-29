@@ -38,6 +38,7 @@
       "export",
       "reader"
     ],
+    "panel-fields": [],
     "panel-body": [
       "scroll",
       "composer",
@@ -1293,14 +1294,14 @@
       "indicator": "hidden"
     },
     "image-settings": {
-      "component": "panel-body",
+      "component": "panel-fields",
       "label": "Artwork settings",
-      "look": "settings",
       "indicator": "hidden"
     },
     "anim-agent-settings": {
       "component": "panel-body",
       "look": "settings",
+      "scroll": "bounded",
       "label": "App settings",
       "indicator": "hidden",
       "target": "magic-settings-pane"
@@ -1432,6 +1433,7 @@
     "words-workspace-controls": {
       "component": "panel-body",
       "look": "settings",
+      "scroll": "auto",
       "label": "Selected Lyrics view controls",
       "indicator": "hidden"
     },

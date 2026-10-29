@@ -192,6 +192,7 @@ function applyEntry(node, entry, id = node.id) {
   if (entry.component) node.className = [...new Set(`${node.className || ''} ${entry.component}`.trim().split(/\s+/))].join(' ');
   if (entry.look) node.dataset.look = entry.look;
   if (entry.density) node.dataset.density = entry.density;
+  if (entry.scroll) node.dataset.scroll = entry.scroll;
   if (entry.component === 'panel' && entry.rail && !node.querySelector('[data-companion-slot]')) {
     const head = node.querySelector('.panel-head');
     if (!head) { node.dataset.contractError = 'Panel has no shared header'; return node; }
