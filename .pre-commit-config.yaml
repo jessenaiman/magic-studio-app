@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.24.0
+    hooks:
+      - id: markdownlint-cli2
+        files: ^(?:\.agents/skills/magic-[^/]+|skills/(?:[^/]+/)*magic-[^/]+)/.*\.md$
+        args: [--no-globs]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check
+        types_or: [python, pyi]
+        files: ^(?:backlot|pipeline|tools|scripts|agent-harness)/.*\.pyi?$
+      - id: ruff-format
+        types_or: [python, pyi]
+        files: ^(?:backlot|pipeline|tools|scripts|agent-harness)/.*\.pyi?$
+        args: [--check]
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: Rust formatting (manual)
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+        files: ^(?:crates|apps)/.*\.rs$|(?:^|/)Cargo\.toml$
+        stages: [manual]
+      - id: cargo-clippy
+        name: Rust lint (manual, no tests)
+        entry: cargo clippy --workspace --lib --bins --locked --offline -- -D warnings
+        language: system
+        pass_filenames: false
+        files: ^(?:crates|apps)/.*\.rs$|(?:^|/)Cargo\.(?:toml|lock)$
+        stages: [manual]
