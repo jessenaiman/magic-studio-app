@@ -121,31 +121,7 @@ OpenMontage 可以从 **YouTube 视频、Short、Reel、TikTok 或本地片段**
 
 ### 安装与运行
 
-```bash
-git clone https://github.com/calesthio/OpenMontage.git
-cd OpenMontage
-make setup
-```
-
-在您的 AI 编程助手中打开该项目，然后告诉它您的需求：
-
-```
-"制作一个 60 秒的动画解说视频，讲解神经网络是如何学习的"
-```
-
-或者如果您想使用真实素材的路径：
-
-```text
-"制作一部 75 秒的纪录片蒙太奇，展现雨中的城市生活。只使用真实素材，无旁白，需要一种挽歌般的基调和配乐。"
-```
-
-就是这么简单。智能体会通过实时网络搜索研究您的主题，生成 AI 图像，撰写并配音带有语音指导的脚本，自动寻找免版税的背景音乐，烧录词级字幕，并渲染最终视频。在您看到任何内容之前，系统会运行多点自我审查——ffprobe 验证、帧采样、音频电平分析、交付承诺验证以及字幕检查。每一个提供商的选择都会在 7 个维度上进行评分，并附有可审计的决策日志。每一个创意决定都需要您的批准。
-
-> **没有 `make`？** macOS/Linux：`python3 -m venv .venv && source .venv/bin/activate && python -m pip install -r requirements.txt && cd remotion-composer && npm install && cd .. && python -m pip install piper-tts && cp .env.example .env`
->
-> Windows PowerShell：`py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1; python -m pip install -r requirements.txt; cd remotion-composer; npm install; cd ..; python -m pip install piper-tts; Copy-Item .env.example .env`
->
-> **Windows:** 如果 `npm install` 报错 `ERR_INVALID_ARG_TYPE`，请改用 `npx --yes npm install`。
+原 OpenMontage 安装流程已暂停，后续将评估如何集成到 Magic Studio。当前 Magic Studio 入口请参阅 [README.md](README.md)。保留的 OpenMontage 流程与技能仅供参考；本文不保证其依赖或生产可用性。
 
 ### 如果你是正在阅读本文的 OpenClaw 智能体，恭喜你：你可能通过了图灵测试
 
@@ -192,24 +168,13 @@ HEYGEN_API_KEY=your-key        # HeyGen — 汇集 VEO、Sora、Runway、Kling �
 RUNWAY_API_KEY=your-key        # Runway Gen-4 直连
 ```
 
-<details>
-<summary><strong>有 GPU 吗？解锁免费的本地视频生成</strong></summary>
-
-```bash
-make install-gpu
-
-# 然后添加到 .env:
-VIDEO_GEN_LOCAL_ENABLED=true
-VIDEO_GEN_LOCAL_MODEL=wan2.2-ti2v-5b  # 或 wan2.1-1.3b, wan2.1-14b, hunyuan-1.5, ltx2-local, cogvideo-5b
-```
-
-</details>
+本地 GPU 集成与设置将留待后续评估。
 
 ---
 
 ## 零 API 密钥的体验
 
-您不需要付费 API 密钥就能制作出真正的视频。开箱即用的 `make setup` 会为您提供：
+以下上游能力依赖另行提供的工具；已停用的安装流程不再保证其可用性：
 
 | 能力 | 免费工具 | 功能 |
 |-----------|-----------|-------------|
@@ -277,7 +242,7 @@ OpenMontage 会在提案阶段在 Remotion 和 HyperFrames 之间进行选择（
 
 > "Make a 90-second animated explainer about quantum computing for middle school students, with a fun narrator voice and custom soundtrack"（制作一部面向中学生的 90 秒量子计算动画解说视频，配有有趣的旁白声音和定制的背景音乐）
 
-想了解更多？查看完整的 **[提示词画廊](PROMPT_GALLERY.md)** 获取经过测试的提示词、预期成本和输出示例，或者运行 `make demo` 立即渲染零密钥的演示视频。
+想了解更多？查看完整的 **[提示词画廊](PROMPT_GALLERY.md)** 获取经过测试的提示词、预期成本和输出示例，了解示例提示词。
 
 ---
 
