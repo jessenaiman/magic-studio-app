@@ -909,7 +909,18 @@ fn bar_with_percent(
 pub fn draw_audit(f: &mut Frame, area: Rect, app: &mut App) {
     let Some(comparison) = app.audit.as_ref() else {
         if let Some(scope) = &app.audit_pr_context {
-            draw_missing_pr(f, area, scope);
+            let configured = app.audit_inputs.as_ref().is_some_and(|input| {
+                scope.matches(
+                    input.baseline_sha.as_deref(),
+                    input.candidate_sha.as_deref(),
+                )
+            });
+            let status = if configured {
+                "Matching artifact inputs configured; not loaded/verified. Press R to load/verify."
+            } else {
+                "No matching native audit artifact inputs supplied."
+            };
+            draw_missing_pr(f, area, scope, status);
             return;
         }
         let body = panel(
@@ -1527,7 +1538,7 @@ fn audit_scope(
     }
 }
 
-fn draw_missing_pr(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope) {
+fn draw_missing_pr(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope, status: &str) {
     let bands = Layout::vertical([
         Constraint::Percentage(34),
         Constraint::Percentage(36),
@@ -1535,7 +1546,7 @@ fn draw_missing_pr(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope) {
     ])
     .spacing(1)
     .split(area);
-    missing_revisions(f, bands[0], scope);
+    missing_revisions(f, bands[0], scope, status);
     let body = panel(
         f,
         bands[1],
@@ -1566,7 +1577,7 @@ fn draw_missing_pr(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope) {
     f.render_widget(Paragraph::new(format!("{}\n\nThis is supplied check-run metadata, not Codacy findings.\nMissing matching code-audit artifacts remain explicit.",scope.ci)).style(Style::default().fg(IVORY)).wrap(Wrap{trim:false}),right);
 }
 
-fn missing_revisions(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope) {
+fn missing_revisions(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope, status: &str) {
     let upper = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
         .spacing(1)
         .split(area);
@@ -1576,8 +1587,9 @@ fn missing_revisions(f: &mut Frame, area: Rect, scope: &crate::handoff::PrScope)
     ]) {
         let body = panel(f, *slot, title, "exact PR revision scope");
         let content = format!(
-            "Native SHA: {}\n\nNative toolResults: Unavailable\nissueCount: Unknown    errorCount: Unknown\n\nNo matching native audit artifact supplied.\nNot zero findings; not an audit pass.",
-            sha.unwrap_or("Unknown")
+            "Native SHA: {}\n\nNative toolResults: Unavailable\nissueCount: Unknown    errorCount: Unknown\n\n{}\nNot zero findings; not an audit pass.",
+            sha.unwrap_or("Unknown"),
+            status
         );
         wrapped_evidence(f, body, content, IVORY);
     }

@@ -201,7 +201,7 @@ impl PrScope {
     }
     pub fn markdown(&self) -> String {
         format!(
-            "# MAYHEM — PR-scoped audit evidence\n\nPR #{}: {}\nURL: {}\nNative base SHA: {}\nNative head SHA: {}\nSource: {}\n\nNative code findings: Unavailable. No baseline/candidate audit artifacts matching these exact PR revisions were supplied. Unrelated whole-project reports are not substituted.\n\nCI metadata (separate from code findings / approval): {}\n\nNo audit checker, agent or model was started. Use MOPS for ownership, review, blockers and recorded handoff metadata; missing session/resume fields remain Unknown.\n",
+            "# MAYHEM — PR-scoped audit evidence\n\nPR #{}: {}\nURL: {}\nNative base SHA: {}\nNative head SHA: {}\nSource: {}\n\nNative code findings: Unavailable. No baseline/candidate audit artifacts matching these exact PR revisions are loaded and verified. Unrelated whole-project reports are not substituted.\n\nCI metadata (separate from code findings / approval): {}\n\nNo audit checker, agent or model was started. Use MOPS for ownership, review, blockers and recorded handoff metadata; missing session/resume fields remain Unknown.\n",
             self.number,
             self.title,
             self.url,
