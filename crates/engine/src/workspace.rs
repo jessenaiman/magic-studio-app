@@ -13,6 +13,17 @@ use crate::{EngineError, Result};
 
 /// Return the canonical current Tauri/engine workspace, independent of the caller working directory.
 pub fn workspace_root(s: &crate::Session) -> PathBuf {
+    // Installed binaries resolve their bundled runtime before any development checkout.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(home) = exe.parent().and_then(|p| p.parent()) {
+            let runtime = home.join("runtime");
+            if runtime.join("studio_pipeline_cli.py").is_file()
+                && runtime.join("pipeline/templates/studio-template.deckcraft").is_file()
+            {
+                return runtime;
+            }
+        }
+    }
     let current_root = |root:&Path| root.join("Cargo.toml").is_file() && root.join("apps/magicstudio-shell/Cargo.toml").is_file();
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()

@@ -173,31 +173,7 @@ And when a run is done, hit **▶ REPLAY RUN** — the whole production replays 
 
 ### Install & Run
 
-```bash
-git clone https://github.com/calesthio/OpenMontage.git
-cd OpenMontage
-make setup
-```
-
-Open the project in your AI coding assistant and tell it what you want:
-
-```
-"Make a 60-second animated explainer about how neural networks learn"
-```
-
-Or if you want the real-footage path:
-
-```text
-"Make a 75-second documentary montage about city life in the rain. Use real footage only, no narration, elegiac tone, with music."
-```
-
-That's it. The agent researches your topic with live web search, generates AI images, writes and narrates the script with voice direction, finds royalty-free background music automatically, burns in word-level subtitles, and renders the final video. Before you see anything, the system runs a multi-point self-review — ffprobe validation, frame sampling, audio level analysis, delivery promise verification, and subtitle checks. Every provider selection is scored across 7 dimensions with an auditable decision log. Every creative decision gets your approval.
-
-> **No `make`?** macOS/Linux: `python3 -m venv .venv && source .venv/bin/activate && python -m pip install -r requirements.txt && cd remotion-composer && npm install && cd .. && python -m pip install piper-tts && cp .env.example .env`
->
-> Windows PowerShell: `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1; python -m pip install -r requirements.txt; cd remotion-composer; npm install; cd ..; python -m pip install piper-tts; Copy-Item .env.example .env`
->
-> **Windows:** If `npm install` fails with `ERR_INVALID_ARG_TYPE`, use `npx --yes npm install` instead.
+The root OpenMontage Makefile and package setup entry point have been removed. See [README.md](README.md) for Magic Studio installation. Python modules, pipeline definitions, skills, and their dependency contracts remain in the repository.
 
 ### If You're An OpenClaw Agent Reading This, Congratulations: You Probably Passed The Turing Test
 
@@ -249,24 +225,18 @@ HEYGEN_API_KEY=your-key        # HeyGen — VEO, Sora, Runway, Kling via single 
 RUNWAY_API_KEY=your-key        # Runway Gen-4 direct
 ```
 
-<details>
-<summary><strong>Have a GPU? Unlock free local video generation</strong></summary>
+Local video generation can be configured in `.env`:
 
-```bash
-make install-gpu
-
-# Then add to .env:
+```text
 VIDEO_GEN_LOCAL_ENABLED=true
-VIDEO_GEN_LOCAL_MODEL=wan2.2-ti2v-5b  # or wan2.1-1.3b, wan2.1-14b, hunyuan-1.5, ltx2-local, cogvideo-5b
+VIDEO_GEN_LOCAL_MODEL=wan2.2-ti2v-5b
 ```
-
-</details>
 
 ---
 
 ## What You Get With Zero API Keys
 
-You don't need paid API keys to make real videos. Out of the box, `make setup` gives you:
+The following capabilities depend on separately available tools:
 
 | Capability | Free Tool | What It Does |
 |-----------|-----------|-------------|
@@ -334,7 +304,7 @@ Copy any of these into your AI coding assistant after setup. Each one runs a ful
 
 > "Make a 90-second animated explainer about quantum computing for middle school students, with a fun narrator voice and custom soundtrack"
 
-Want more? See the full **[Prompt Gallery](PROMPT_GALLERY.md)** for tested prompts with expected costs and output examples, or run `make demo` to render zero-key demo videos instantly.
+Want more? See the **[Prompt Gallery](PROMPT_GALLERY.md)** for prompts, expected costs, and output examples.
 
 ---
 

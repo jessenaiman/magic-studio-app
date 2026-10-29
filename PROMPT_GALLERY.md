@@ -1,13 +1,12 @@
 # Prompt Gallery
 
-Tested prompts that produce impressive videos. Copy any prompt into your AI coding assistant after running `make setup`.
+Example prompts from OpenMontage. The root Makefile and package setup entry point have been removed; see [README.md](README.md) for Magic Studio installation.
 
 ## Zero-Key Demos (instant, no API keys)
 
 These render pre-built compositions using only Remotion components — animated charts, typography, data visualization. No external services, no cost, no waiting.
 
 ```bash
-make demo                         # Render all three demos
 ./render-demo.sh world-in-numbers # Render one specific demo
 ./render-demo.sh --list           # See all available demos
 ```

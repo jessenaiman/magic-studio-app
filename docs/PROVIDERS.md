@@ -1140,7 +1140,7 @@ These providers run entirely on your machine. No network, no API key, no cost. S
 #### Setup
 
 ```bash
-# Included in make setup, or install manually:
+# Optional upstream Remotion project:
 cd remotion-composer && npm install && cd ..
 ```
 
@@ -1279,16 +1279,14 @@ Official references: [Partner Node overview](https://docs.comfy.org/tutorials/pa
 
 #### Setup
 
-```bash
-# 1. Install the GPU stack
-make install-gpu
-# Or manually:
-pip install diffusers transformers accelerate torch pillow requests
+The following settings configure local generation; they do not install or verify
+the runtime.
 
-# 2. Enable local generation in .env
+```bash
+# Enable local generation in .env
 VIDEO_GEN_LOCAL_ENABLED=true
 
-# 3. Choose a model based on your GPU VRAM
+# Choose a model based on your GPU VRAM
 VIDEO_GEN_LOCAL_MODEL=wan2.2-ti2v-5b   # 12GB+ VRAM (default; 720p @ 24fps, T2V+I2V+V2V)
 VIDEO_GEN_LOCAL_MODEL=wan2.1-1.3b      # 6GB+ VRAM (entry-level, text-to-video only)
 VIDEO_GEN_LOCAL_MODEL=wan2.1-14b       # 24GB+ VRAM (best Wan 2.1 quality)
