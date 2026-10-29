@@ -52,8 +52,8 @@ const Fireflies: React.FC<{
   );
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {Array.from({ length: count }, (_, i) => {
+      <AbsoluteFill style={{ pointerEvents: "none" }}>
+          {Array.from({ length: count }, (_, i) => {
         const baseX = seededRandom(i * 7 + 1) * 90 + 5;
         const baseY = seededRandom(i * 13 + 2) * 80 + 10;
         const speed = 0.4 + seededRandom(i * 3 + 5) * 1.2;
@@ -66,9 +66,9 @@ const Fireflies: React.FC<{
         const glowPulse = 0.3 + (Math.sin(t * 2.5 + phase) * 0.35 + 0.35);
 
         return (
-          <div
-            key={i}
-            style={{
+            <div
+                key={i}
+                style={{
               position: "absolute",
               left: `calc(${baseX}% + ${xOffset}px)`,
               top: `calc(${baseY}% + ${yOffset}px)`,
@@ -79,10 +79,10 @@ const Fireflies: React.FC<{
               opacity: glowPulse * intensity * globalFadeIn * globalFadeOut,
               boxShadow: `0 0 ${size * 3}px ${size * 1.5}px ${color}`,
             }}
-          />
+            />
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };
 
@@ -106,8 +106,8 @@ const Petals: React.FC<{
   );
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none", overflow: "hidden" }}>
-      {Array.from({ length: count }, (_, i) => {
+      <AbsoluteFill style={{ pointerEvents: "none", overflow: "hidden" }}>
+          {Array.from({ length: count }, (_, i) => {
         const startX = seededRandom(i * 7 + 1) * 110 - 5;
         const speed = 0.3 + seededRandom(i * 3 + 5) * 0.5;
         const phase = seededRandom(i * 11 + 3) * Math.PI * 2;
@@ -131,9 +131,9 @@ const Petals: React.FC<{
         if (y > 110) return null;
 
         return (
-          <div
-            key={i}
-            style={{
+            <div
+                key={i}
+                style={{
               position: "absolute",
               left: `${x}%`,
               top: `${y}%`,
@@ -144,10 +144,10 @@ const Petals: React.FC<{
               opacity: fadeIn * globalFadeOut * intensity * 0.75,
               transform: `rotate(${rotation}deg)`,
             }}
-          />
+            />
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };
 
@@ -164,8 +164,8 @@ const Sparkles: React.FC<{
   const { fps, durationInFrames } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {Array.from({ length: count }, (_, i) => {
+      <AbsoluteFill style={{ pointerEvents: "none" }}>
+          {Array.from({ length: count }, (_, i) => {
         const x = seededRandom(i * 7 + 1) * 90 + 5;
         const y = seededRandom(i * 13 + 2) * 85 + 5;
         const size = 6 + seededRandom(i * 17 + 4) * 10;
@@ -189,9 +189,9 @@ const Sparkles: React.FC<{
         );
 
         return (
-          <div
-            key={i}
-            style={{
+            <div
+                key={i}
+                style={{
               position: "absolute",
               left: `${x}%`,
               top: `${y}%`,
@@ -200,9 +200,9 @@ const Sparkles: React.FC<{
               opacity: sparkleAlpha * intensity,
               transform: `scale(${sparkleScale}) rotate(45deg)`,
             }}
-          >
-            <div
-              style={{
+            >
+                <div
+                    style={{
                 position: "absolute",
                 width: "100%",
                 height: 2,
@@ -212,9 +212,9 @@ const Sparkles: React.FC<{
                 borderRadius: 1,
                 boxShadow: `0 0 ${size * 0.8}px ${color}`,
               }}
-            />
-            <div
-              style={{
+                />
+                <div
+                    style={{
                 position: "absolute",
                 width: 2,
                 height: "100%",
@@ -224,11 +224,11 @@ const Sparkles: React.FC<{
                 borderRadius: 1,
                 boxShadow: `0 0 ${size * 0.8}px ${color}`,
               }}
-            />
-          </div>
+                />
+            </div>
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };
 
@@ -247,17 +247,17 @@ const Mist: React.FC<{
   const layers = Math.min(count, 5);
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none", overflow: "hidden" }}>
-      {Array.from({ length: layers }, (_, i) => {
+      <AbsoluteFill style={{ pointerEvents: "none", overflow: "hidden" }}>
+          {Array.from({ length: layers }, (_, i) => {
         const baseY = 55 + seededRandom(i * 7 + 1) * 35;
         const speed = 0.8 + seededRandom(i * 13 + 2) * 1.2;
         const xDrift = ((frame / fps) * speed * 3) % 200 - 50;
         const pulse = 0.08 + Math.sin(frame / fps * 0.4 + i * 1.8) * 0.05;
 
         return (
-          <div
-            key={i}
-            style={{
+            <div
+                key={i}
+                style={{
               position: "absolute",
               left: `${xDrift}%`,
               top: `${baseY}%`,
@@ -266,10 +266,10 @@ const Mist: React.FC<{
               background: `radial-gradient(ellipse at center, rgba(255,255,255,${pulse}) 0%, transparent 70%)`,
               opacity: intensity,
             }}
-          />
+            />
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };
 
@@ -293,8 +293,8 @@ const LightRays: React.FC<{
   });
 
   return (
-    <AbsoluteFill style={{ pointerEvents: "none", overflow: "hidden" }}>
-      {Array.from({ length: rays }, (_, i) => {
+      <AbsoluteFill style={{ pointerEvents: "none", overflow: "hidden" }}>
+          {Array.from({ length: rays }, (_, i) => {
         const angle = -35 + seededRandom(i * 7 + 1) * 25;
         const xPos = 15 + seededRandom(i * 13 + 2) * 65;
         const beamWidth = 4 + seededRandom(i * 17 + 3) * 8;
@@ -302,9 +302,9 @@ const LightRays: React.FC<{
           0.06 + Math.sin(frame / fps * 0.6 + i * 2.2) * 0.04;
 
         return (
-          <div
-            key={i}
-            style={{
+            <div
+                key={i}
+                style={{
               position: "absolute",
               left: `${xPos}%`,
               top: "-10%",
@@ -315,10 +315,10 @@ const LightRays: React.FC<{
               transformOrigin: "top center",
               opacity: intensity * globalFadeIn,
             }}
-          />
+            />
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };
 

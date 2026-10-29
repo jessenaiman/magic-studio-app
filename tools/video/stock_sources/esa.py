@@ -17,6 +17,7 @@ What ESA is good for
 - ISS footage (European contributions)
 - Ariane rocket launches
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,6 +50,7 @@ class ESASource:
     def is_available(self) -> bool:
         try:
             import bs4  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -61,7 +63,11 @@ class ESASource:
 
         params: dict[str, Any] = {
             "SearchText": query,
-            "result_type": "videos" if kind == "video" else "images" if kind == "image" else "",
+            "result_type": "videos"
+            if kind == "video"
+            else "images"
+            if kind == "image"
+            else "",
         }
 
         try:
@@ -83,7 +89,7 @@ class ESASource:
 
         # Find video/image cards on the search results page
         cards = soup.select(".grid-item, .media-item, .search-result-item, article")
-        for card in cards[:filters.per_page]:
+        for card in cards[: filters.per_page]:
             link_el = card.select_one("a[href]")
             if not link_el:
                 continue
@@ -146,7 +152,9 @@ class ESASource:
         detail_url = candidate.extra.get("detail_url", candidate.download_url)
 
         # If it's already a direct media URL, download directly
-        if any(detail_url.lower().endswith(ext) for ext in (".mp4", ".mov", ".jpg", ".png")):
+        if any(
+            detail_url.lower().endswith(ext) for ext in (".mp4", ".mov", ".jpg", ".png")
+        ):
             return self._stream_download(detail_url, out_path)
 
         # Otherwise, scrape the detail page for the download link
@@ -180,7 +188,9 @@ class ESASource:
                         break
 
             if not download_url:
-                raise ValueError(f"Could not find download URL on ESA detail page: {detail_url}")
+                raise ValueError(
+                    f"Could not find download URL on ESA detail page: {detail_url}"
+                )
 
             if not download_url.startswith("http"):
                 download_url = f"https://www.esa.int{download_url}"
@@ -194,7 +204,9 @@ class ESASource:
         import requests
 
         with requests.get(
-            url, stream=True, timeout=180,
+            url,
+            stream=True,
+            timeout=180,
             headers={"User-Agent": "OpenMontage/1.0"},
         ) as r:
             r.raise_for_status()

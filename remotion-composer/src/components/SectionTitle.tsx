@@ -49,25 +49,25 @@ export const SectionTitle: React.FC<SectionTitleProps> = ({
       : { justifyContent: "flex-start", alignItems: "flex-start", padding: 60 };
 
   return (
-    <AbsoluteFill style={positionStyles}>
-      <div
-        style={{
+      <AbsoluteFill style={positionStyles}>
+          <div
+              style={{
           opacity,
           transform: `translateX(${interpolate(slideIn, [0, 1], [-40, 0])}px)`,
         }}
-      >
-        {/* Accent bar */}
-        <div
-          style={{
+          >
+              {/* Accent bar */}
+              <div
+                  style={{
             width: interpolate(slideIn, [0, 1], [0, 60]),
             height: 4,
             backgroundColor: accentColor,
             marginBottom: 12,
             borderRadius: 2,
           }}
-        />
-        <div
-          style={{
+              />
+              <div
+                  style={{
             fontSize: 28,
             fontWeight: 700,
             color: textColor,
@@ -76,12 +76,12 @@ export const SectionTitle: React.FC<SectionTitleProps> = ({
             textTransform: "uppercase",
             textShadow: "0 2px 8px rgba(0,0,0,0.6)",
           }}
-        >
-          {title}
-        </div>
-        {subtitle && (
-          <div
-            style={{
+              >
+                  {title}
+              </div>
+              {subtitle && (
+              <div
+                  style={{
               fontSize: 18,
               fontWeight: 400,
               color: accentColor,
@@ -94,11 +94,11 @@ export const SectionTitle: React.FC<SectionTitleProps> = ({
               }),
               textShadow: "0 2px 8px rgba(0,0,0,0.6)",
             }}
-          >
-            {subtitle}
-          </div>
+              >
+                  {subtitle}
+              </div>
         )}
-      </div>
-    </AbsoluteFill>
+          </div>
+      </AbsoluteFill>
   );
 };

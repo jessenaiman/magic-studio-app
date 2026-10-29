@@ -152,7 +152,12 @@ class BgmMontageLite(BaseTool):
     )
     retry_policy = RetryPolicy(max_retries=0)
     resume_support = ResumeSupport.FROM_START
-    idempotency_key_fields = ["audio_path", "video_paths", "output_path", "aspect_ratio"]
+    idempotency_key_fields = [
+        "audio_path",
+        "video_paths",
+        "output_path",
+        "aspect_ratio",
+    ]
     side_effects = ["writes an MP4, timeline JSON, and audiomap JSON"]
     user_visible_verification = [
         "BMTS-Lite checks the output streams, dimensions, duration, and full FFmpeg decode; play the MP4 to review its creative result.",
@@ -199,10 +204,16 @@ class BgmMontageLite(BaseTool):
         )
         try:
             result = subprocess.run(
-                [python, "-c", code], capture_output=True, text=True, timeout=30, check=False
+                [python, "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            raise DependencyError(f"Could not check the BMTS-Lite Python environment: {exc}") from exc
+            raise DependencyError(
+                f"Could not check the BMTS-Lite Python environment: {exc}"
+            ) from exc
         if result.returncode:
             try:
                 missing = json.loads(result.stdout)
@@ -219,23 +230,40 @@ class BgmMontageLite(BaseTool):
         started = time.monotonic()
         try:
             audio = Path(inputs["audio_path"]).expanduser().resolve(strict=True)
-            videos = [Path(path).expanduser().resolve(strict=True) for path in inputs["video_paths"]]
-            if not audio.is_file() or not videos or any(not path.is_file() for path in videos):
-                raise ValueError("Provide one existing music file and at least one existing video file.")
+            videos = [
+                Path(path).expanduser().resolve(strict=True)
+                for path in inputs["video_paths"]
+            ]
+            if (
+                not audio.is_file()
+                or not videos
+                or any(not path.is_file() for path in videos)
+            ):
+                raise ValueError(
+                    "Provide one existing music file and at least one existing video file."
+                )
             if len(videos) > 100:
                 raise ValueError("BMTS-Lite accepts at most 100 source videos per run.")
             total_bytes = sum(path.stat().st_size for path in [audio, *videos])
             if total_bytes > 4 * 1024**3:
-                raise ValueError("BMTS-Lite inputs exceed its 4 GiB total upload limit.")
+                raise ValueError(
+                    "BMTS-Lite inputs exceed its 4 GiB total upload limit."
+                )
 
             ratio = str(inputs.get("aspect_ratio", "auto")).strip().lower()
             if ratio != "auto" and ratio not in _RATIOS:
-                raise ValueError(f"Unsupported aspect_ratio {ratio!r}; choose auto or a supported ratio.")
+                raise ValueError(
+                    f"Unsupported aspect_ratio {ratio!r}; choose auto or a supported ratio."
+                )
 
             if inputs.get("output_path"):
                 output = Path(inputs["output_path"]).expanduser().resolve()
             elif inputs.get("project_dir"):
-                output = Path(inputs["project_dir"]).expanduser().resolve() / "renders" / "bgm-montage-lite.mp4"
+                output = (
+                    Path(inputs["project_dir"]).expanduser().resolve()
+                    / "renders"
+                    / "bgm-montage-lite.mp4"
+                )
             else:
                 output = audio.with_name(f"{audio.stem}_montage.mp4")
             if output.suffix.lower() != ".mp4":
@@ -246,11 +274,14 @@ class BgmMontageLite(BaseTool):
             destinations = [output, timeline_path, audiomap_path]
             source_paths = {audio, *videos}
             if any(path in source_paths for path in destinations):
-                raise ValueError("Output artifacts must not overwrite the supplied audio or video files.")
+                raise ValueError(
+                    "Output artifacts must not overwrite the supplied audio or video files."
+                )
             existing = [str(path) for path in destinations if path.exists()]
             if existing:
                 raise FileExistsError(
-                    "Output already exists; choose a new output_path: " + ", ".join(existing)
+                    "Output already exists; choose a new output_path: "
+                    + ", ".join(existing)
                 )
 
             self.check_dependencies()
@@ -258,7 +289,9 @@ class BgmMontageLite(BaseTool):
             python = self._python_executable()
             output.parent.mkdir(parents=True, exist_ok=True)
 
-            with tempfile.TemporaryDirectory(prefix=".bmts-lite-", dir=output.parent) as temp_name:
+            with tempfile.TemporaryDirectory(
+                prefix=".bmts-lite-", dir=output.parent
+            ) as temp_name:
                 workspace = Path(temp_name)
                 request_path = workspace / "request.json"
                 request_path.write_text(
@@ -289,8 +322,13 @@ class BgmMontageLite(BaseTool):
                 video_file = workspace / "result.mp4"
                 timeline_file = workspace / "timeline.json"
                 audiomap_file = workspace / "audiomap.json"
-                if any(not path.is_file() or path.stat().st_size == 0 for path in (video_file, timeline_file, audiomap_file)):
-                    raise RuntimeError("BMTS-Lite returned without producing all expected artifacts.")
+                if any(
+                    not path.is_file() or path.stat().st_size == 0
+                    for path in (video_file, timeline_file, audiomap_file)
+                ):
+                    raise RuntimeError(
+                        "BMTS-Lite returned without producing all expected artifacts."
+                    )
 
                 probe = json.loads(
                     self.run_command(
@@ -308,11 +346,19 @@ class BgmMontageLite(BaseTool):
                     ).stdout
                 )
                 video_stream = next(
-                    (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"),
+                    (
+                        stream
+                        for stream in probe.get("streams", [])
+                        if stream.get("codec_type") == "video"
+                    ),
                     None,
                 )
                 audio_stream = next(
-                    (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "audio"),
+                    (
+                        stream
+                        for stream in probe.get("streams", [])
+                        if stream.get("codec_type") == "audio"
+                    ),
                     None,
                 )
                 output_duration = float(probe.get("format", {}).get("duration", 0))
@@ -321,11 +367,14 @@ class BgmMontageLite(BaseTool):
                     video_stream is None
                     or audio_stream is None
                     or selected_ratio not in _RATIOS
-                    or (video_stream.get("width"), video_stream.get("height")) != _RATIOS[selected_ratio]
+                    or (video_stream.get("width"), video_stream.get("height"))
+                    != _RATIOS[selected_ratio]
                     or output_duration <= 0
                     or abs(output_duration - float(summary["duration"])) > 0.15
                 ):
-                    raise RuntimeError("BMTS-Lite output failed OpenMontage's independent ffprobe checks.")
+                    raise RuntimeError(
+                        "BMTS-Lite output failed OpenMontage's independent ffprobe checks."
+                    )
 
                 fps = _fraction(video_stream.get("avg_frame_rate")) or _fraction(
                     video_stream.get("r_frame_rate")

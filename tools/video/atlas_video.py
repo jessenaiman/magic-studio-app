@@ -43,7 +43,9 @@ def _media_type(entry: str) -> str:
         return "video"
     if suffix in {".mp3", ".wav", ".m4a", ".aac", ".flac"}:
         return "audio"
-    raise ValueError(f"Cannot infer Atlas reference media type from {entry!r}; pass `refers` with an explicit type")
+    raise ValueError(
+        f"Cannot infer Atlas reference media type from {entry!r}; pass `refers` with an explicit type"
+    )
 
 
 class AtlasVideo(BaseTool):
@@ -84,7 +86,10 @@ class AtlasVideo(BaseTool):
         "MiniMax H3 text, start/end image, and mixed-media reference generation up to 2K",
         "one Atlas key with exact per-model request validation and cost estimates",
     ]
-    not_good_for = ["offline generation", "clips longer than the selected model permits"]
+    not_good_for = [
+        "offline generation",
+        "clips longer than the selected model permits",
+    ]
     fallback_tools = ["seedance_video", "kling_video", "minimax_video", "veo_video"]
     quality_score = 0.86
 
@@ -99,9 +104,15 @@ class AtlasVideo(BaseTool):
                 "enum": sorted(VIDEO_MODELS),
                 "description": "Exact live Atlas model id. See provider_matrix in get_info() for supported sibling routes.",
             },
-            "operation": {"type": "string", "enum": list(_OPERATIONS), "default": "text_to_video"},
+            "operation": {
+                "type": "string",
+                "enum": list(_OPERATIONS),
+                "default": "text_to_video",
+            },
             "model_variant": {
-                "type": "string", "enum": ["standard", "developer"], "default": "standard",
+                "type": "string",
+                "enum": ["standard", "developer"],
+                "default": "standard",
                 "description": "Select Gemini Omni's developer route when it exists.",
             },
             "duration": {"type": "integer", "default": 10},
@@ -138,14 +149,30 @@ class AtlasVideo(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, disk_mb=500, network_required=True)
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
-    idempotency_key_fields = ["prompt", "model", "operation", "duration", "aspect_ratio"]
+    resource_profile = ResourceProfile(
+        cpu_cores=1, ram_mb=512, disk_mb=500, network_required=True
+    )
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
+    idempotency_key_fields = [
+        "prompt",
+        "model",
+        "operation",
+        "duration",
+        "aspect_ratio",
+    ]
     side_effects = ["writes video file to output_path", "calls Atlas Cloud API"]
-    user_visible_verification = ["Watch the generated clip for prompt fidelity, motion coherence, and audio quality"]
+    user_visible_verification = [
+        "Watch the generated clip for prompt fidelity, motion coherence, and audio quality"
+    ]
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if atlas_client.get_api_key() else ToolStatus.UNAVAILABLE
+        return (
+            ToolStatus.AVAILABLE
+            if atlas_client.get_api_key()
+            else ToolStatus.UNAVAILABLE
+        )
 
     def get_info(self) -> dict[str, Any]:
         info = super().get_info()
@@ -174,7 +201,9 @@ class AtlasVideo(BaseTool):
             str(inputs.get("operation", "text_to_video")),
             str(inputs["model_variant"]) if inputs.get("model_variant") else None,
         )
-        rate = VIDEO_MODELS.get(model, {}).get("cost_per_second", _DEFAULT_COST_PER_SECOND)
+        rate = VIDEO_MODELS.get(model, {}).get(
+            "cost_per_second", _DEFAULT_COST_PER_SECOND
+        )
         duration = int(inputs.get("duration", 10))
         return round(rate * max(duration, 0), 4)
 
@@ -184,7 +213,9 @@ class AtlasVideo(BaseTool):
     def is_operation_available(self, operation: str) -> bool:
         return operation in _OPERATIONS
 
-    def _resolve_model(self, model: str, operation: str, variant: str | None = None) -> str:
+    def _resolve_model(
+        self, model: str, operation: str, variant: str | None = None
+    ) -> str:
         if model not in VIDEO_MODELS:
             raise ValueError(
                 f"Unsupported Atlas video model id {model!r}. Use get_info()['model_catalog'] for live routes."
@@ -202,7 +233,9 @@ class AtlasVideo(BaseTool):
     @staticmethod
     def _validate_choice(name: str, value: Any, allowed: tuple[Any, ...] | None) -> Any:
         if allowed and value not in allowed:
-            raise ValueError(f"{name}={value!r} is not supported; choose one of {list(allowed)}")
+            raise ValueError(
+                f"{name}={value!r} is not supported; choose one of {list(allowed)}"
+            )
         return value
 
     def _build_payload(self, inputs: dict[str, Any], model: str) -> dict[str, Any]:
@@ -211,14 +244,24 @@ class AtlasVideo(BaseTool):
 
         if spec["operation"] != "video_edit":
             duration = int(inputs.get("duration", 10))
-            payload["duration"] = self._validate_choice("duration", duration, spec["durations"])
+            payload["duration"] = self._validate_choice(
+                "duration", duration, spec["durations"]
+            )
             ratio = inputs.get("aspect_ratio", spec["default_ratio"])
-            if ratio == "16:9" and spec["default_ratio"] == "adaptive" and spec["ratios"] == ("adaptive",):
+            if (
+                ratio == "16:9"
+                and spec["default_ratio"] == "adaptive"
+                and spec["ratios"] == ("adaptive",)
+            ):
                 ratio = "adaptive"
-            payload[spec["ratio_key"]] = self._validate_choice("aspect_ratio", ratio, spec["ratios"])
+            payload[spec["ratio_key"]] = self._validate_choice(
+                "aspect_ratio", ratio, spec["ratios"]
+            )
 
         resolution = inputs.get("resolution", spec["default_resolution"])
-        payload["resolution"] = self._validate_choice("resolution", resolution, spec["resolutions"])
+        payload["resolution"] = self._validate_choice(
+            "resolution", resolution, spec["resolutions"]
+        )
 
         for field in spec.get("optional_fields", ()):
             if inputs.get(field) is not None:
@@ -234,23 +277,39 @@ class AtlasVideo(BaseTool):
 
         if style in {"seedance_image", "gemini_image", "h3_image"}:
             if not image:
-                raise ValueError("image_to_video requires image_url, image_path, or reference_image_path")
+                raise ValueError(
+                    "image_to_video requires image_url, image_path, or reference_image_path"
+                )
             payload["image"] = image
             if last_image:
-                payload["last_image" if style == "seedance_image" else "end_image"] = last_image
+                payload["last_image" if style == "seedance_image" else "end_image"] = (
+                    last_image
+                )
         elif style == "gemini_images":
             if image and not images:
                 images = [image]
             if not images:
-                raise ValueError("This Gemini route requires at least one reference image")
+                raise ValueError(
+                    "This Gemini route requires at least one reference image"
+                )
             payload["images"] = images
         elif style == "seedance_references":
             if image and not images:
                 images = [image]
-            if not (images or videos or (audios and spec["family"] == "bytedance/seedance-2.5")):
-                raise ValueError("reference_to_video requires supported reference media for the selected model")
+            if not (
+                images
+                or videos
+                or (audios and spec["family"] == "bytedance/seedance-2.5")
+            ):
+                raise ValueError(
+                    "reference_to_video requires supported reference media for the selected model"
+                )
             limits = spec["media_limits"]
-            if len(images) > limits["images"] or len(videos) > limits["videos"] or len(audios) > limits["audios"]:
+            if (
+                len(images) > limits["images"]
+                or len(videos) > limits["videos"]
+                or len(audios) > limits["audios"]
+            ):
                 raise ValueError(
                     f"{model} accepts at most {limits['images']} images, {limits['videos']} videos, "
                     f"and {limits['audios']} audio references"
@@ -271,25 +330,41 @@ class AtlasVideo(BaseTool):
                 ]
                 if image:
                     refers.insert(0, {"url": image, "type": "image"})
-            if not refers or not any(item.get("type") in {"image", "video"} for item in refers):
-                raise ValueError("MiniMax H3 reference_to_video requires at least one image or video in refers")
+            if not refers or not any(
+                item.get("type") in {"image", "video"} for item in refers
+            ):
+                raise ValueError(
+                    "MiniMax H3 reference_to_video requires at least one image or video in refers"
+                )
             payload["refers"] = refers
         elif style == "gemini_video_clips":
             clips = list(inputs.get("video_clips") or [])
             if not clips and video:
-                clips = [{"url": video, "start": 0, "ends": min(int(inputs.get("duration", 10)), 10)}]
+                clips = [
+                    {
+                        "url": video,
+                        "start": 0,
+                        "ends": min(int(inputs.get("duration", 10)), 10),
+                    }
+                ]
             if len(clips) != 1:
-                raise ValueError("Gemini Omni developer reference_to_video requires exactly one video_clip")
+                raise ValueError(
+                    "Gemini Omni developer reference_to_video requires exactly one video_clip"
+                )
             payload["video_clips"] = clips
             if images:
                 payload["images"] = images
         elif style == "gemini_video_edit":
             if not video:
-                raise ValueError("video_edit requires video_url, video_path, or reference_video_path")
+                raise ValueError(
+                    "video_edit requires video_url, video_path, or reference_video_path"
+                )
             payload["video"] = video
             if images:
                 if len(images) > spec["media_limits"].get("images", 10):
-                    raise ValueError("Gemini Omni video_edit accepts at most 10 reference images")
+                    raise ValueError(
+                        "Gemini Omni video_edit accepts at most 10 reference images"
+                    )
                 payload["images"] = images
 
         extra = inputs.get("extra_params")
@@ -321,17 +396,37 @@ class AtlasVideo(BaseTool):
             *(resolved.get("reference_audio_paths") or []),
         ]
         aliases = {
-            "image_url": ("image_url", "reference_image_url", "image_path", "reference_image_path"),
-            "last_image_url": ("last_image_url", "end_image_url", "last_image_path", "end_image_path"),
-            "video_url": ("video_url", "reference_video_url", "video_path", "reference_video_path"),
+            "image_url": (
+                "image_url",
+                "reference_image_url",
+                "image_path",
+                "reference_image_path",
+            ),
+            "last_image_url": (
+                "last_image_url",
+                "end_image_url",
+                "last_image_path",
+                "end_image_path",
+            ),
+            "video_url": (
+                "video_url",
+                "reference_video_url",
+                "video_path",
+                "reference_video_path",
+            ),
         }
         for target, sources in aliases.items():
-            value = next((resolved.get(key) for key in sources if resolved.get(key)), None)
+            value = next(
+                (resolved.get(key) for key in sources if resolved.get(key)), None
+            )
             if value:
                 resolved[target] = self._upload_value(str(value), api_key)
 
         for key in ("reference_images", "reference_videos", "reference_audios"):
-            resolved[key] = [self._upload_value(str(value), api_key) for value in resolved.get(key, [])]
+            resolved[key] = [
+                self._upload_value(str(value), api_key)
+                for value in resolved.get(key, [])
+            ]
 
         if resolved.get("refers"):
             normalized = []
@@ -354,20 +449,27 @@ class AtlasVideo(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         api_key = atlas_client.get_api_key()
         if not api_key:
-            return ToolResult(success=False, error="ATLASCLOUD_API_KEY not set. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="ATLASCLOUD_API_KEY not set. " + self.install_instructions,
+            )
 
         started = time.time()
         operation = str(inputs.get("operation", "text_to_video"))
         try:
             model = self._resolve_model(
-                str(inputs.get("model", _DEFAULT_MODEL)), operation,
+                str(inputs.get("model", _DEFAULT_MODEL)),
+                operation,
                 str(inputs["model_variant"]) if inputs.get("model_variant") else None,
             )
             resolved = self._resolve_media(inputs, api_key)
             payload = self._build_payload(resolved, model)
-            prediction_id = atlas_client.submit(atlas_client.GENERATE_VIDEO_ENDPOINT, payload, api_key)
+            prediction_id = atlas_client.submit(
+                atlas_client.GENERATE_VIDEO_ENDPOINT, payload, api_key
+            )
             data = atlas_client.poll(
-                prediction_id, api_key,
+                prediction_id,
+                api_key,
                 interval=float(inputs.get("poll_interval", 5.0)),
                 timeout=float(inputs.get("poll_timeout", 1200.0)),
             )
@@ -375,9 +477,13 @@ class AtlasVideo(BaseTool):
             output_path = Path(inputs.get("output_path") or f"atlas_video.{suffix}")
             atlas_client.download(data["outputs"][0], output_path)
         except (atlas_client.AtlasError, ValueError, KeyError) as exc:
-            return ToolResult(success=False, error=f"Atlas Cloud video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Atlas Cloud video generation failed: {exc}"
+            )
         except Exception as exc:  # noqa: BLE001
-            return ToolResult(success=False, error=f"Atlas Cloud video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Atlas Cloud video generation failed: {exc}"
+            )
 
         from tools.video._shared import probe_output
 
@@ -386,11 +492,20 @@ class AtlasVideo(BaseTool):
         return ToolResult(
             success=True,
             data={
-                "provider": "atlascloud", "model": model, "prompt": inputs["prompt"],
-                "operation": operation, "output": str(output_path), "output_path": str(output_path),
-                "prediction_id": prediction_id, "source_url": data["outputs"][0],
-                "format": output_path.suffix.lstrip("."), "request_params": payload, **probed,
+                "provider": "atlascloud",
+                "model": model,
+                "prompt": inputs["prompt"],
+                "operation": operation,
+                "output": str(output_path),
+                "output_path": str(output_path),
+                "prediction_id": prediction_id,
+                "source_url": data["outputs"][0],
+                "format": output_path.suffix.lstrip("."),
+                "request_params": payload,
+                **probed,
             },
-            artifacts=[str(output_path)], cost_usd=self.estimate_cost(cost_inputs),
-            duration_seconds=round(time.time() - started, 2), model=model,
+            artifacts=[str(output_path)],
+            cost_usd=self.estimate_cost(cost_inputs),
+            duration_seconds=round(time.time() - started, 2),
+            model=model,
         )

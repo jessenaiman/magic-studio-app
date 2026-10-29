@@ -35,7 +35,9 @@ def _file_to_data_uri(path_str: str) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
-def _normalize_image_input(url_value: str | None, path_value: str | None) -> dict[str, str] | None:
+def _normalize_image_input(
+    url_value: str | None, path_value: str | None
+) -> dict[str, str] | None:
     if url_value:
         return {"url": url_value, "type": "image_url"}
     if path_value:
@@ -56,8 +58,7 @@ class GrokImage(BaseTool):
 
     dependencies = []
     install_instructions = (
-        "Set XAI_API_KEY to your xAI API key.\n"
-        "  Get one from the xAI developer console"
+        "Set XAI_API_KEY to your xAI API key.\n  Get one from the xAI developer console"
     )
     agent_skills = ["grok-media"]
 
@@ -99,7 +100,10 @@ class GrokImage(BaseTool):
                 "enum": ["grok-imagine-image"],
                 "default": "grok-imagine-image",
             },
-            "aspect_ratio": {"type": "string", "description": "Examples: 1:1, 3:2, 16:9, 9:16"},
+            "aspect_ratio": {
+                "type": "string",
+                "description": "Examples: 1:1, 3:2, 16:9, 9:16",
+            },
             "resolution": {
                 "type": "string",
                 "enum": ["1k", "2k"],
@@ -111,8 +115,14 @@ class GrokImage(BaseTool):
                 "maximum": 10,
                 "default": 1,
             },
-            "image_url": {"type": "string", "description": "Single source image URL for edit mode"},
-            "image_path": {"type": "string", "description": "Single local source image path for edit mode"},
+            "image_url": {
+                "type": "string",
+                "description": "Single source image URL for edit mode",
+            },
+            "image_path": {
+                "type": "string",
+                "description": "Single local source image path for edit mode",
+            },
             "image_urls": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -130,10 +140,21 @@ class GrokImage(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=100, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
-    idempotency_key_fields = ["prompt", "generation_mode", "model", "aspect_ratio", "resolution", "n"]
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
+    idempotency_key_fields = [
+        "prompt",
+        "generation_mode",
+        "model",
+        "aspect_ratio",
+        "resolution",
+        "n",
+    ]
     side_effects = ["writes image file(s) to output_path", "calls xAI image API"]
-    user_visible_verification = ["Inspect generated image(s) for composition quality and edit fidelity"]
+    user_visible_verification = [
+        "Inspect generated image(s) for composition quality and edit fidelity"
+    ]
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("XAI_API_KEY"):
@@ -169,7 +190,9 @@ class GrokImage(BaseTool):
         if inputs.get("n"):
             payload["n"] = inputs["n"]
 
-        primary_image = _normalize_image_input(inputs.get("image_url"), inputs.get("image_path"))
+        primary_image = _normalize_image_input(
+            inputs.get("image_url"), inputs.get("image_path")
+        )
         extra_images = [
             {"url": url, "type": "image_url"}
             for url in (inputs.get("image_urls") or [])
@@ -209,7 +232,9 @@ class GrokImage(BaseTool):
         return ".png"
 
     @staticmethod
-    def _output_paths(output_path: str | None, count: int, extension: str) -> list[Path]:
+    def _output_paths(
+        output_path: str | None, count: int, extension: str
+    ) -> list[Path]:
         if not output_path:
             stem = "grok_image"
             return [Path(f"{stem}_{idx + 1}{extension}") for idx in range(count)]
@@ -256,7 +281,9 @@ class GrokImage(BaseTool):
             if first_url:
                 extension = self._infer_extension(first_url)
 
-            output_paths = self._output_paths(inputs.get("output_path"), len(items), extension)
+            output_paths = self._output_paths(
+                inputs.get("output_path"), len(items), extension
+            )
             artifacts: list[str] = []
             outputs: list[str] = []
 
@@ -267,7 +294,9 @@ class GrokImage(BaseTool):
                 else:
                     image_url = item.get("url")
                     if not image_url:
-                        return ToolResult(success=False, error="xAI image output missing url")
+                        return ToolResult(
+                            success=False, error="xAI image output missing url"
+                        )
                     download = requests.get(image_url, timeout=120)
                     download.raise_for_status()
                     output_path.write_bytes(download.content)

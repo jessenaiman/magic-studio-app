@@ -5,6 +5,7 @@ MediaWiki API. Commons is a uniquely useful documentary source because
 it mixes public-domain historical imagery, recent CC-licensed videos,
 and educational media under one searchable catalogue.
 """
+
 from __future__ import annotations
 
 import html
@@ -23,19 +24,47 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 # Stop words stripped from multi-term queries before the cascade runs.
 # Commons' CirrusSearch defaults to AND semantics across multi-word
 # queries, so each extra common token shrinks the result set fast.
-_STOP_WORDS = frozenset({
-    "the", "and", "for", "with", "that", "this", "from", "into",
-    "its", "their", "about", "over", "under", "while", "during",
-    "your", "you", "our", "are", "was", "were", "have", "has",
-})
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "its",
+        "their",
+        "about",
+        "over",
+        "under",
+        "while",
+        "during",
+        "your",
+        "you",
+        "our",
+        "are",
+        "was",
+        "were",
+        "have",
+        "has",
+    }
+)
 
 # Tokens that refer to other stock archives — useless on Commons and
 # will poison the cascade if they end up in top2_or because Commons
 # file names don't reference Prelinger or other archives. Keeps the
 # cascade parallel to ``archive_org.py``'s own source-hint stripping.
-_SOURCE_HINT_TOKENS = frozenset({
-    "prelinger", "archive", "archives", "stock", "footage",
-})
+_SOURCE_HINT_TOKENS = frozenset(
+    {
+        "prelinger",
+        "archive",
+        "archives",
+        "stock",
+        "footage",
+    }
+)
 
 
 class WikimediaSource:
@@ -75,7 +104,9 @@ class WikimediaSource:
                 "gsrsearch": search_text,
                 "gsrnamespace": 6,
                 "gsrlimit": max(1, min(filters.per_page, 50)),
-                "gsroffset": max(0, (max(filters.page, 1) - 1) * max(1, min(filters.per_page, 50))),
+                "gsroffset": max(
+                    0, (max(filters.page, 1) - 1) * max(1, min(filters.per_page, 50))
+                ),
                 "prop": "imageinfo|info",
                 "iiprop": "url|size|mime|extmetadata|mediatype",
                 "iiurlwidth": 640,
@@ -156,8 +187,10 @@ def _build_search_queries(query: str, kind: str) -> list[tuple[str, str]]:
     user_query = query.strip()
     kind_l = (kind or "video").lower()
 
-    prefix = "filetype:video" if kind_l == "video" else (
-        "filetype:image" if kind_l == "image" else ""
+    prefix = (
+        "filetype:video"
+        if kind_l == "video"
+        else ("filetype:image" if kind_l == "image" else "")
     )
 
     def _wrap(text: str) -> str:
@@ -167,7 +200,8 @@ def _build_search_queries(query: str, kind: str) -> list[tuple[str, str]]:
         return [("default", _wrap(""))]
 
     tokens = [
-        t for t in user_query.split()
+        t
+        for t in user_query.split()
         if len(t) >= 3
         and t.lower() not in _STOP_WORDS
         and t.lower() not in _SOURCE_HINT_TOKENS
@@ -192,7 +226,9 @@ def _looks_like_year(token: str) -> bool:
     return bare.isdigit() and len(bare) == 4
 
 
-def _page_to_candidate(page: dict[str, Any], filters: SearchFilters) -> Candidate | None:
+def _page_to_candidate(
+    page: dict[str, Any], filters: SearchFilters
+) -> Candidate | None:
     infos = page.get("imageinfo") or []
     if not infos:
         return None
@@ -212,11 +248,21 @@ def _page_to_candidate(page: dict[str, Any], filters: SearchFilters) -> Candidat
 
     if filters.min_width is not None and width and width < filters.min_width:
         return None
-    if filters.min_duration is not None and duration and duration < filters.min_duration:
+    if (
+        filters.min_duration is not None
+        and duration
+        and duration < filters.min_duration
+    ):
         return None
-    if filters.max_duration is not None and duration and duration > filters.max_duration:
+    if (
+        filters.max_duration is not None
+        and duration
+        and duration > filters.max_duration
+    ):
         return None
-    if filters.orientation and not _matches_orientation(filters.orientation, width, height):
+    if filters.orientation and not _matches_orientation(
+        filters.orientation, width, height
+    ):
         return None
 
     meta = info.get("extmetadata") or {}
@@ -226,7 +272,9 @@ def _page_to_candidate(page: dict[str, Any], filters: SearchFilters) -> Candidat
     creator = _meta_value(meta, "Artist")
     license_name = _meta_value(meta, "LicenseShortName")
     usage_terms = _meta_value(meta, "UsageTerms")
-    source_tags = " ".join(part for part in (object_name, description, categories) if part).strip()
+    source_tags = " ".join(
+        part for part in (object_name, description, categories) if part
+    ).strip()
     if len(source_tags) > 500:
         source_tags = source_tags[:500]
 

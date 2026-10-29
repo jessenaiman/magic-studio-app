@@ -157,7 +157,7 @@ class HunyuanImage(BaseTool):
                 },
                 "description": (
                     "Custom watermark settings per upstream LogoParam. "
-                    "Default: \"图片由 AI 生成\" at bottom-right. "
+                    'Default: "图片由 AI 生成" at bottom-right. '
                     "Note: custom watermarks may not be supported by the engine "
                     "(error: InvalidParameterValue.LogoParamErr)."
                 ),
@@ -182,7 +182,11 @@ class HunyuanImage(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=100, network_required=True,
+        cpu_cores=1,
+        ram_mb=512,
+        vram_mb=0,
+        disk_mb=100,
+        network_required=True,
     )
     retry_policy = RetryPolicy(
         max_retries=2,
@@ -276,7 +280,10 @@ class HunyuanImage(BaseTool):
     # ------------------------------------------------------------------
 
     def _generate(
-        self, inputs: dict[str, Any], *, api_key: str,
+        self,
+        inputs: dict[str, Any],
+        *,
+        api_key: str,
     ) -> ToolResult:
         import requests
 
@@ -387,7 +394,11 @@ class HunyuanImage(BaseTool):
 
         resolved: list[str] = []
         for ref in refs:
-            if ref.startswith("data:") or ref.startswith("http://") or ref.startswith("https://"):
+            if (
+                ref.startswith("data:")
+                or ref.startswith("http://")
+                or ref.startswith("https://")
+            ):
                 resolved.append(ref)
                 continue
 
@@ -398,9 +409,7 @@ class HunyuanImage(BaseTool):
             raw = image_path.read_bytes()
             max_raw = 6 * 1024 * 1024  # 6MB per upstream limit
             if len(raw) > max_raw:
-                raise ValueError(
-                    f"Image too large ({len(raw)} bytes). Max ~6MB raw."
-                )
+                raise ValueError(f"Image too large ({len(raw)} bytes). Max ~6MB raw.")
 
             suffix = image_path.suffix.lower()
             mime_map = {
@@ -430,7 +439,11 @@ class HunyuanImage(BaseTool):
         }
 
     def _submit_task(
-        self, payload: dict[str, Any], *, model: str, api_key: str,
+        self,
+        payload: dict[str, Any],
+        *,
+        model: str,
+        api_key: str,
     ) -> str:
         """Submit an image generation task and return the task ID.
 
@@ -456,9 +469,7 @@ class HunyuanImage(BaseTool):
 
         task_id = data.get("id")
         if not task_id:
-            raise RuntimeError(
-                f"TokenHub submit returned no task id: {data}"
-            )
+            raise RuntimeError(f"TokenHub submit returned no task id: {data}")
         return task_id
 
     def _poll_task(
@@ -508,9 +519,7 @@ class HunyuanImage(BaseTool):
             if status == "failed":
                 error_info = data.get("error") or {}
                 error_msg = error_info.get("message", "unknown error")
-                raise RuntimeError(
-                    f"TokenHub task {task_id} failed: {error_msg}"
-                )
+                raise RuntimeError(f"TokenHub task {task_id} failed: {error_msg}")
 
             # queued / running / in_progress — continue polling
             if status not in ("queued", "running", "in_progress"):
@@ -556,9 +565,7 @@ class HunyuanImage(BaseTool):
         if error:
             message = error.get("message", "unknown error")
             code = error.get("code", error.get("type", "unknown"))
-            raise RuntimeError(
-                f"TokenHub API error: code={code}, message={message}"
-            )
+            raise RuntimeError(f"TokenHub API error: code={code}, message={message}")
 
     # ------------------------------------------------------------------
     # Output helpers

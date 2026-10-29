@@ -231,7 +231,9 @@ class ElevenLabsTTS(BaseTool):
         limit = (
             2000
             if inputs.get("model_id", "").startswith("eleven_v4")
-            else 5000 if inputs.get("model_id") == "eleven_v3" else 40000
+            else 5000
+            if inputs.get("model_id") == "eleven_v3"
+            else 40000
         )
         if not text.strip() or len(text) > limit:
             raise ValueError(f"Text must contain 1–{limit} characters for this model")

@@ -93,10 +93,14 @@ class PexelsVideo(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=200, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["query", "orientation", "size", "page"]
     side_effects = ["writes video file to output_path", "calls Pexels API"]
-    user_visible_verification = ["Watch downloaded clip to verify it matches the intended scene"]
+    user_visible_verification = [
+        "Watch downloaded clip to verify it matches the intended scene"
+    ]
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("PEXELS_API_KEY"):
@@ -168,7 +172,9 @@ class PexelsVideo(BaseTool):
             # Pick the best matching video file
             video_files = video.get("video_files", [])
             selected_file = None
-            for vf in sorted(video_files, key=lambda x: x.get("width", 0), reverse=True):
+            for vf in sorted(
+                video_files, key=lambda x: x.get("width", 0), reverse=True
+            ):
                 if vf.get("quality") == preferred_quality:
                     selected_file = vf
                     break
@@ -176,13 +182,17 @@ class PexelsVideo(BaseTool):
                 selected_file = video_files[0]
 
             if not selected_file:
-                return ToolResult(success=False, error="No downloadable video file found.")
+                return ToolResult(
+                    success=False, error="No downloadable video file found."
+                )
 
             video_url = selected_file["link"]
             video_response = requests.get(video_url, timeout=120)
             video_response.raise_for_status()
 
-            output_path = Path(inputs.get("output_path", f"pexels_video_{video['id']}.mp4"))
+            output_path = Path(
+                inputs.get("output_path", f"pexels_video_{video['id']}.mp4")
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(video_response.content)
 

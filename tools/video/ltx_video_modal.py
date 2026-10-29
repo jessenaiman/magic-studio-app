@@ -36,7 +36,13 @@ class LTXVideoModal(BaseTool):
         "  set MODAL_LTX2_ENDPOINT_URL=https://<your-modal-endpoint>"
     )
     fallback = "ltx_video_local"
-    fallback_tools = ["ltx_video_local", "wan_video", "hunyuan_video", "cogvideo_video", "image_selector"]
+    fallback_tools = [
+        "ltx_video_local",
+        "wan_video",
+        "hunyuan_video",
+        "cogvideo_video",
+        "image_selector",
+    ]
     agent_skills = ["ltx2"]
 
     capabilities = ["text_to_video", "image_to_video"]
@@ -46,7 +52,9 @@ class LTXVideoModal(BaseTool):
         "native_audio": False,
         "self_hosted_cloud": True,
     }
-    best_for = ["self-hosted cloud GPU rendering for LTX without local workstation dependence"]
+    best_for = [
+        "self-hosted cloud GPU rendering for LTX without local workstation dependence"
+    ]
     not_good_for = ["zero-setup local workflows"]
     provider_matrix = {
         "ltx2-modal": {
@@ -63,10 +71,18 @@ class LTXVideoModal(BaseTool):
         "required": ["prompt"],
         "properties": {
             "prompt": {"type": "string"},
-            "operation": {"type": "string", "enum": ["text_to_video", "image_to_video"], "default": "text_to_video"},
+            "operation": {
+                "type": "string",
+                "enum": ["text_to_video", "image_to_video"],
+                "default": "text_to_video",
+            },
             "reference_image_url": {"type": "string"},
             "reference_image_path": {"type": "string"},
-            "aspect_ratio": {"type": "string", "enum": ["16:9", "9:16", "1:1"], "default": "16:9"},
+            "aspect_ratio": {
+                "type": "string",
+                "enum": ["16:9", "9:16", "1:1"],
+                "default": "16:9",
+            },
             "duration_hint": {"type": "string"},
             "width": {"type": "integer"},
             "height": {"type": "integer"},
@@ -77,14 +93,26 @@ class LTXVideoModal(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True)
-    retry_policy = RetryPolicy(max_retries=2, backoff_seconds=10.0, retryable_errors=["timeout", "server_error"])
+    resource_profile = ResourceProfile(
+        cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True
+    )
+    retry_policy = RetryPolicy(
+        max_retries=2,
+        backoff_seconds=10.0,
+        retryable_errors=["timeout", "server_error"],
+    )
     idempotency_key_fields = ["prompt", "aspect_ratio", "num_frames", "seed"]
     side_effects = ["writes video file to output_path", "calls modal endpoint"]
-    user_visible_verification = ["Watch generated clip for motion quality and prompt adherence"]
+    user_visible_verification = [
+        "Watch generated clip for motion quality and prompt adherence"
+    ]
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if os.environ.get("MODAL_LTX2_ENDPOINT_URL") else ToolStatus.UNAVAILABLE
+        return (
+            ToolStatus.AVAILABLE
+            if os.environ.get("MODAL_LTX2_ENDPOINT_URL")
+            else ToolStatus.UNAVAILABLE
+        )
 
     def estimate_cost(self, inputs: dict[str, object]) -> float:
         return 0.25
@@ -94,12 +122,18 @@ class LTXVideoModal(BaseTool):
 
     def execute(self, inputs: dict[str, object]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
-            return ToolResult(success=False, error="Modal LTX video generation is unavailable. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="Modal LTX video generation is unavailable. "
+                + self.install_instructions,
+            )
         start = time.time()
         try:
             result = generate_ltx_modal_video(inputs)
         except Exception as exc:
-            return ToolResult(success=False, error=f"Modal LTX video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Modal LTX video generation failed: {exc}"
+            )
         result.duration_seconds = round(time.time() - start, 2)
         result.cost_usd = self.estimate_cost(inputs)
         return result

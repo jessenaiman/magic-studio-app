@@ -95,7 +95,9 @@ class CompositionValidator(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         comp_path = Path(inputs["composition_path"])
         if not comp_path.exists():
-            return ToolResult(success=False, error=f"Composition not found: {comp_path}")
+            return ToolResult(
+                success=False, error=f"Composition not found: {comp_path}"
+            )
 
         start = time.time()
 
@@ -110,10 +112,10 @@ class CompositionValidator(BaseTool):
         explicit_root = inputs.get("assets_root") or ""
         assets_root = Path(explicit_root) if explicit_root else None
         runtime = (
-            inputs.get("render_runtime")
-            or comp.get("render_runtime")
-            or ""
-        ).strip().lower()
+            (inputs.get("render_runtime") or comp.get("render_runtime") or "")
+            .strip()
+            .lower()
+        )
 
         if assets_root is None or not assets_root.is_dir():
             if runtime == "hyperframes":
@@ -168,7 +170,9 @@ class CompositionValidator(BaseTool):
             if out_s > video_duration:
                 video_duration = out_s
         info.append(f"Video duration: {video_duration}s ({len(cuts)} cuts)")
-        info.append(f"Render runtime: {runtime or 'default (remotion)'}; assets root: {assets_root}")
+        info.append(
+            f"Render runtime: {runtime or 'default (remotion)'}; assets root: {assets_root}"
+        )
 
         # --- Check 3: Cut ordering and gaps ---
         sorted_cuts = sorted(cuts, key=lambda c: c.get("in_seconds", 0))
@@ -217,7 +221,9 @@ class CompositionValidator(BaseTool):
                             f"by {overshoot:.1f}s"
                         )
                 else:
-                    warnings.append(f"Could not probe narration duration: {narration_src}")
+                    warnings.append(
+                        f"Could not probe narration duration: {narration_src}"
+                    )
 
         # --- Check 6: Music duration ---
         music = audio.get("music", {})

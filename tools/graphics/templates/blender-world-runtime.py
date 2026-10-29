@@ -35,7 +35,13 @@ def args_after_separator() -> argparse.Namespace:
     return parser.parse_args(sys.argv[sys.argv.index("--") + 1 :])
 
 
-def material(name: str, color: list[float], roughness: float = 0.7, metallic: float = 0.0, emission: float = 0.0):
+def material(
+    name: str,
+    color: list[float],
+    roughness: float = 0.7,
+    metallic: float = 0.0,
+    emission: float = 0.0,
+):
     mat = bpy.data.materials.new(name)
     mat.diffuse_color = (*color[:3], color[3] if len(color) > 3 else 1.0)
     mat.use_nodes = True
@@ -54,7 +60,9 @@ def terrain_height(x: float, y: float, spec: dict) -> float:
     scale = float(terrain.get("height_scale", 16.0))
     frequency = float(terrain.get("frequency", 0.018))
     base = hetero_terrain(Vector((x * frequency, y * frequency, 0)), 1.0, 2.0, 5.0, 0.7)
-    detail = fractal(Vector((x * frequency * 4.2, y * frequency * 4.2, 4.3)), 1.1, 2.0, 3.0)
+    detail = fractal(
+        Vector((x * frequency * 4.2, y * frequency * 4.2, 4.3)), 1.1, 2.0, 3.0
+    )
     height = (base - 0.65) * scale + detail * scale * 0.12
     for region in spec.get("regions", []):
         cx, cy = region.get("center", [0, 0])[:2]
@@ -73,7 +81,13 @@ def terrain_height(x: float, y: float, spec: dict) -> float:
 def clear_scene():
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    for block in (bpy.data.meshes, bpy.data.curves, bpy.data.materials, bpy.data.cameras, bpy.data.lights):
+    for block in (
+        bpy.data.meshes,
+        bpy.data.curves,
+        bpy.data.materials,
+        bpy.data.cameras,
+        bpy.data.lights,
+    ):
         for item in list(block):
             if item.users == 0:
                 block.remove(item)
@@ -99,17 +113,30 @@ def build_terrain(spec: dict):
     mesh.update()
     obj = bpy.data.objects.new("WorldTerrain", mesh)
     bpy.context.collection.objects.link(obj)
-    palette = terrain.get("palette", [[0.11, 0.28, 0.08, 1], [0.28, 0.45, 0.10, 1], [0.35, 0.28, 0.16, 1]])
-    mats = [material(f"Terrain-{index}", list(color), 0.92) for index, color in enumerate(palette)]
+    palette = terrain.get(
+        "palette", [[0.11, 0.28, 0.08, 1], [0.28, 0.45, 0.10, 1], [0.35, 0.28, 0.16, 1]]
+    )
+    mats = [
+        material(f"Terrain-{index}", list(color), 0.92)
+        for index, color in enumerate(palette)
+    ]
     region_material_start = len(mats)
     for region in spec.get("regions", []):
         color = region.get("color")
         if color:
-            mats.append(material(f"Region-{region.get('id', len(mats))}", list(color), float(region.get("roughness", 0.88))))
+            mats.append(
+                material(
+                    f"Region-{region.get('id', len(mats))}",
+                    list(color),
+                    float(region.get("roughness", 0.88)),
+                )
+            )
     for mat in mats:
         obj.data.materials.append(mat)
     for polygon in mesh.polygons:
-        center = sum((mesh.vertices[index].co for index in polygon.vertices), Vector()) / len(polygon.vertices)
+        center = sum(
+            (mesh.vertices[index].co for index in polygon.vertices), Vector()
+        ) / len(polygon.vertices)
         z = center.z
         normal_z = polygon.normal.z
         region_choice = None
@@ -135,7 +162,9 @@ def build_terrain(spec: dict):
     return obj
 
 
-def make_ribbon(name: str, points: list[list[float]], width: float, mat, z_offset: float = 0.25):
+def make_ribbon(
+    name: str, points: list[list[float]], width: float, mat, z_offset: float = 0.25
+):
     """Build a flat terrain-following ribbon, avoiding tube-like curve bevels."""
     vertices = []
     faces = []
@@ -150,7 +179,11 @@ def make_ribbon(name: str, points: list[list[float]], width: float, mat, z_offse
         nx, ny = -dy / length, dx / length
         for side in (-1.0, 1.0):
             vx, vy = x + nx * half_width * side, y + ny * half_width * side
-            vz = source[2] if len(source) > 2 else terrain_height(vx, vy, WORLD_SPEC) + z_offset
+            vz = (
+                source[2]
+                if len(source) > 2
+                else terrain_height(vx, vy, WORLD_SPEC) + z_offset
+            )
             vertices.append((vx, vy, vz))
         if index:
             base = index * 2
@@ -193,7 +226,9 @@ def import_asset_collection(path: Path, asset_id: str):
     z_values = []
     for obj in imported:
         if obj.type == "MESH":
-            z_values.extend((obj.matrix_world @ Vector(corner)).z for corner in obj.bound_box)
+            z_values.extend(
+                (obj.matrix_world @ Vector(corner)).z for corner in obj.bound_box
+            )
     source_height = max(z_values) - min(z_values) if z_values else 1.0
     source_floor = min(z_values) if z_values else 0.0
     return collection, max(0.001, source_height), source_floor
@@ -208,7 +243,9 @@ def scatter_assets(spec: dict):
             report["missing_assets"].append(str(path))
             continue
         asset_id = str(asset.get("id") or path.stem)
-        collection, source_height, source_floor = import_asset_collection(path, asset_id)
+        collection, source_height, source_floor = import_asset_collection(
+            path, asset_id
+        )
         target_height = float(asset.get("target_height", source_height))
         normalization = target_height / source_height
         report["asset_sources"] += 1
@@ -226,25 +263,38 @@ def scatter_assets(spec: dict):
                 x = center[0] + math.cos(angle) * distance
                 y = center[1] + math.sin(angle) * distance
                 if any(
-                    math.hypot(x - zone.get("center", [0, 0])[0], y - zone.get("center", [0, 0])[1])
+                    math.hypot(
+                        x - zone.get("center", [0, 0])[0],
+                        y - zone.get("center", [0, 0])[1],
+                    )
                     < float(zone.get("radius", 0))
                     for zone in exclusions
                 ):
                     continue
-                placements.append({
-                    "position": [x, y],
-                    "rotation": rng.random() * math.tau,
-                    "scale": rng.uniform(float(asset.get("scale_min", 1)), float(asset.get("scale_max", asset.get("scale_min", 1)))),
-                })
+                placements.append(
+                    {
+                        "position": [x, y],
+                        "rotation": rng.random() * math.tau,
+                        "scale": rng.uniform(
+                            float(asset.get("scale_min", 1)),
+                            float(asset.get("scale_max", asset.get("scale_min", 1))),
+                        ),
+                    }
+                )
         for index, placement in enumerate(placements):
             x, y = placement.get("position", [0, 0])[:2]
-            z = terrain_height(float(x), float(y), spec) + float(placement.get("z_offset", 0))
+            z = terrain_height(float(x), float(y), spec) + float(
+                placement.get("z_offset", 0)
+            )
             instance = bpy.data.objects.new(f"{asset_id}-{index:03d}", None)
             instance.instance_type = "COLLECTION"
             instance.instance_collection = collection
             instance.location = (x, y, z)
             if placement.get("rotation_euler_degrees") is not None:
-                instance.rotation_euler = [math.radians(float(value)) for value in placement["rotation_euler_degrees"]]
+                instance.rotation_euler = [
+                    math.radians(float(value))
+                    for value in placement["rotation_euler_degrees"]
+                ]
             else:
                 instance.rotation_euler[2] = float(placement.get("rotation", 0))
             scale = placement.get("scale", 1)
@@ -255,20 +305,30 @@ def scatter_assets(spec: dict):
                 effective_scale = scale * normalization
                 instance.scale = (effective_scale, effective_scale, effective_scale)
                 instance.location.z = z - source_floor * effective_scale
-            visible_from = placement.get("visible_from_seconds", asset.get("visible_from_seconds"))
-            visible_until = placement.get("visible_until_seconds", asset.get("visible_until_seconds"))
+            visible_from = placement.get(
+                "visible_from_seconds", asset.get("visible_from_seconds")
+            )
+            visible_until = placement.get(
+                "visible_until_seconds", asset.get("visible_until_seconds")
+            )
             if visible_from is not None:
-                reveal_frame = max(1, round(float(visible_from) * int(spec.get("fps", 30))))
+                reveal_frame = max(
+                    1, round(float(visible_from) * int(spec.get("fps", 30)))
+                )
                 instance.hide_render = True
                 instance.hide_viewport = True
                 instance.keyframe_insert("hide_render", frame=max(1, reveal_frame - 1))
-                instance.keyframe_insert("hide_viewport", frame=max(1, reveal_frame - 1))
+                instance.keyframe_insert(
+                    "hide_viewport", frame=max(1, reveal_frame - 1)
+                )
                 instance.hide_render = False
                 instance.hide_viewport = False
                 instance.keyframe_insert("hide_render", frame=reveal_frame)
                 instance.keyframe_insert("hide_viewport", frame=reveal_frame)
             if visible_until is not None:
-                hide_frame = max(1, round(float(visible_until) * int(spec.get("fps", 30))))
+                hide_frame = max(
+                    1, round(float(visible_until) * int(spec.get("fps", 30)))
+                )
                 instance.hide_render = False
                 instance.hide_viewport = False
                 instance.keyframe_insert("hide_render", frame=hide_frame)
@@ -283,7 +343,9 @@ def scatter_assets(spec: dict):
 
 
 def look_at(obj, target):
-    obj.rotation_euler = (Vector(target) - obj.location).to_track_quat("-Z", "Y").to_euler()
+    obj.rotation_euler = (
+        (Vector(target) - obj.location).to_track_quat("-Z", "Y").to_euler()
+    )
 
 
 def setup_camera_and_lights(spec: dict, args: argparse.Namespace):
@@ -317,7 +379,11 @@ def setup_camera_and_lights(spec: dict, args: argparse.Namespace):
         camera.keyframe_insert("location", frame=frame)
         target.keyframe_insert("location", frame=frame)
     for animated in (camera, target):
-        for curve in animated.animation_data.action.fcurves if animated.animation_data and animated.animation_data.action else []:
+        for curve in (
+            animated.animation_data.action.fcurves
+            if animated.animation_data and animated.animation_data.action
+            else []
+        ):
             for point in curve.keyframe_points:
                 point.interpolation = "BEZIER"
 
@@ -326,7 +392,10 @@ def setup_camera_and_lights(spec: dict, args: argparse.Namespace):
     sun_data.energy = float(lighting.get("sun_energy", 3.0))
     sun_data.angle = math.radians(float(lighting.get("sun_angle_degrees", 18)))
     sun = bpy.data.objects.new("Sun", sun_data)
-    sun.rotation_euler = [math.radians(value) for value in lighting.get("sun_rotation_degrees", [35, -28, -32])]
+    sun.rotation_euler = [
+        math.radians(value)
+        for value in lighting.get("sun_rotation_degrees", [35, -28, -32])
+    ]
     bpy.context.collection.objects.link(sun)
 
     area_data = bpy.data.lights.new("SkyFill", "AREA")
@@ -342,8 +411,12 @@ def setup_camera_and_lights(spec: dict, args: argparse.Namespace):
     bpy.context.scene.world = world
     world.use_nodes = True
     background = world.node_tree.nodes.get("Background")
-    background.inputs["Color"].default_value = lighting.get("world_color", [0.16, 0.24, 0.34, 1])
-    background.inputs["Strength"].default_value = float(lighting.get("world_strength", 0.5))
+    background.inputs["Color"].default_value = lighting.get(
+        "world_color", [0.16, 0.24, 0.34, 1]
+    )
+    background.inputs["Strength"].default_value = float(
+        lighting.get("world_strength", 0.5)
+    )
 
 
 def setup_title(spec: dict, args: argparse.Namespace):
@@ -362,7 +435,15 @@ def setup_title(spec: dict, args: argparse.Namespace):
     text.parent = bpy.context.scene.camera
     text.location = title.get("camera_local_position", [0, -0.92, -5.2])
     text.rotation_euler = (0, 0, 0)
-    text.data.materials.append(material("FinalTitleGold", title.get("color", [0.95, 0.68, 0.24, 1]), 0.38, 0.05, 0.12))
+    text.data.materials.append(
+        material(
+            "FinalTitleGold",
+            title.get("color", [0.95, 0.68, 0.24, 1]),
+            0.38,
+            0.05,
+            0.12,
+        )
+    )
     start_frame = round(float(title.get("start_seconds", 58.0)) * args.fps)
     text.hide_render = True
     text.hide_viewport = True
@@ -399,20 +480,43 @@ def build(spec: dict, args: argparse.Namespace):
     build_terrain(spec)
     water = spec.get("water")
     if water:
-        water_mat = material("Water", water.get("color", [0.03, 0.30, 0.48, 0.82]), 0.13, 0.05)
-        make_ribbon("River", water.get("points", [[-90, -20], [0, 0], [90, 25]]), float(water.get("width", 5)), water_mat, float(water.get("z_offset", 0.6)))
+        water_mat = material(
+            "Water", water.get("color", [0.03, 0.30, 0.48, 0.82]), 0.13, 0.05
+        )
+        make_ribbon(
+            "River",
+            water.get("points", [[-90, -20], [0, 0], [90, 25]]),
+            float(water.get("width", 5)),
+            water_mat,
+            float(water.get("z_offset", 0.6)),
+        )
     path_spec = spec.get("path")
     if path_spec:
         path_mat = material("Path", path_spec.get("color", [0.55, 0.36, 0.14, 1]), 0.95)
-        make_ribbon("Path", path_spec.get("points", []), float(path_spec.get("width", 2.2)), path_mat, float(path_spec.get("z_offset", 0.32)))
+        make_ribbon(
+            "Path",
+            path_spec.get("points", []),
+            float(path_spec.get("width", 2.2)),
+            path_mat,
+            float(path_spec.get("z_offset", 0.32)),
+        )
     report = scatter_assets(spec)
     setup_camera_and_lights(spec, args)
     setup_title(spec, args)
     setup_render(args)
     bpy.ops.wm.save_as_mainfile(filepath=args.blend)
-    Path(args.blend).with_suffix(".report.json").write_text(json.dumps({
-        "version": "1.0", "engine": "BLENDER_EEVEE_NEXT", "seed": spec.get("seed"), **report,
-    }, indent=2), encoding="utf-8")
+    Path(args.blend).with_suffix(".report.json").write_text(
+        json.dumps(
+            {
+                "version": "1.0",
+                "engine": "BLENDER_EEVEE_NEXT",
+                "seed": spec.get("seed"),
+                **report,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return report
 
 

@@ -114,6 +114,7 @@ class DiagramGen(BaseTool):
     def _has_pillow(self) -> bool:
         try:
             from PIL import Image  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -128,7 +129,9 @@ class DiagramGen(BaseTool):
             elif diagram_type in ("flowchart", "boxes"):
                 result = self._render_boxes(inputs)
             else:
-                return ToolResult(success=False, error=f"Unknown diagram type: {diagram_type}")
+                return ToolResult(
+                    success=False, error=f"Unknown diagram type: {diagram_type}"
+                )
         except Exception as e:
             return ToolResult(success=False, error=f"Diagram generation failed: {e}")
 
@@ -155,11 +158,16 @@ class DiagramGen(BaseTool):
 
             cmd = [
                 "mmdc",
-                "-i", str(temp_mmd),
-                "-o", str(output_path),
-                "-c", str(config_path),
-                "-b", "transparent",
-                "-w", str(inputs.get("width", 1200)),
+                "-i",
+                str(temp_mmd),
+                "-o",
+                str(output_path),
+                "-c",
+                str(config_path),
+                "-b",
+                "transparent",
+                "-w",
+                str(inputs.get("width", 1200)),
             ]
 
             try:
@@ -201,11 +209,26 @@ class DiagramGen(BaseTool):
 
         # Theme colors
         if theme == "dark":
-            bg, text_color, box_default, line_color = "#1e1e2e", "#cdd6f4", "#45475a", "#89b4fa"
+            bg, text_color, box_default, line_color = (
+                "#1e1e2e",
+                "#cdd6f4",
+                "#45475a",
+                "#89b4fa",
+            )
         elif theme == "light":
-            bg, text_color, box_default, line_color = "#ffffff", "#333333", "#e1e4e8", "#0366d6"
+            bg, text_color, box_default, line_color = (
+                "#ffffff",
+                "#333333",
+                "#e1e4e8",
+                "#0366d6",
+            )
         else:
-            bg, text_color, box_default, line_color = "#2d2d2d", "#d4d4d4", "#404040", "#569cd6"
+            bg, text_color, box_default, line_color = (
+                "#2d2d2d",
+                "#d4d4d4",
+                "#404040",
+                "#569cd6",
+            )
 
         img = Image.new("RGB", (width, height), bg)
         draw = ImageDraw.Draw(img)
@@ -222,7 +245,9 @@ class DiagramGen(BaseTool):
         if title:
             bbox = draw.textbbox((0, 0), title, font=title_font)
             tw = bbox[2] - bbox[0]
-            draw.text(((width - tw) // 2, y_offset), title, fill=text_color, font=title_font)
+            draw.text(
+                ((width - tw) // 2, y_offset), title, fill=text_color, font=title_font
+            )
             y_offset += 50
 
         # Layout boxes in a grid
@@ -258,7 +283,9 @@ class DiagramGen(BaseTool):
             lh = bbox[3] - bbox[1]
             draw.text(
                 (x + (box_w - lw) // 2, y + (box_h - lh) // 2),
-                label, fill=text_color, font=font,
+                label,
+                fill=text_color,
+                font=font,
             )
 
             box_positions.append((x, y, x + box_w, y + box_h))
@@ -283,7 +310,11 @@ class DiagramGen(BaseTool):
             # Arrow head
             arrow_size = 8
             draw.polygon(
-                [(end_x, end_y), (end_x - arrow_size, end_y - arrow_size * 2), (end_x + arrow_size, end_y - arrow_size * 2)],
+                [
+                    (end_x, end_y),
+                    (end_x - arrow_size, end_y - arrow_size * 2),
+                    (end_x + arrow_size, end_y - arrow_size * 2),
+                ],
                 fill=line_color,
             )
 
@@ -292,7 +323,9 @@ class DiagramGen(BaseTool):
             if conn_label:
                 mid_x = (start_x + end_x) // 2
                 mid_y = (start_y + end_y) // 2
-                draw.text((mid_x + 5, mid_y - 10), conn_label, fill=text_color, font=font)
+                draw.text(
+                    (mid_x + 5, mid_y - 10), conn_label, fill=text_color, font=font
+                )
 
         img.save(output_path)
 

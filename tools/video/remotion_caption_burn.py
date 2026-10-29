@@ -119,7 +119,7 @@ class RemotionCaptionBurn(BaseTool):
                 "description": (
                     "Dictionary of word corrections for common misrecognitions. "
                     "Keys are the wrong word (case-insensitive), values are the "
-                    "correct replacement. Example: {\"cloud\": \"Claude\"}."
+                    'correct replacement. Example: {"cloud": "Claude"}.'
                 ),
             },
             "overlays": {
@@ -173,8 +173,7 @@ class RemotionCaptionBurn(BaseTool):
 
     def _remotion_available(self) -> bool:
         return (
-            shutil.which("npx") is not None
-            and self._find_remotion_root() is not None
+            shutil.which("npx") is not None and self._find_remotion_root() is not None
         )
 
     # ------------------------------------------------------------------ #
@@ -200,22 +199,26 @@ class RemotionCaptionBurn(BaseTool):
                         trailing = raw[-1]
                     if fixed != raw and not fixed.endswith(trailing):
                         fixed = fixed + trailing
-                    captions.append({
-                        "word": fixed,
-                        "startMs": int(w["start"] * 1000),
-                        "endMs": int(w["end"] * 1000),
-                    })
+                    captions.append(
+                        {
+                            "word": fixed,
+                            "startMs": int(w["start"] * 1000),
+                            "endMs": int(w["end"] * 1000),
+                        }
+                    )
             elif "text" in seg:
                 text_words = seg["text"].strip().split()
                 dur = seg["end"] - seg["start"]
                 per_word = dur / max(len(text_words), 1)
                 for i, tw in enumerate(text_words):
                     fixed = corr.get(tw.lower().strip(".,!?;:"), tw)
-                    captions.append({
-                        "word": fixed,
-                        "startMs": int((seg["start"] + i * per_word) * 1000),
-                        "endMs": int((seg["start"] + (i + 1) * per_word) * 1000),
-                    })
+                    captions.append(
+                        {
+                            "word": fixed,
+                            "startMs": int((seg["start"] + i * per_word) * 1000),
+                            "endMs": int((seg["start"] + (i + 1) * per_word) * 1000),
+                        }
+                    )
         return captions
 
     def _srt_to_word_captions(
@@ -255,11 +258,13 @@ class RemotionCaptionBurn(BaseTool):
             per_word = (end_ms - start_ms) / max(len(words), 1)
             for i, w in enumerate(words):
                 fixed = corr.get(w.lower().strip(".,!?;:"), w)
-                captions.append({
-                    "word": fixed,
-                    "startMs": int(start_ms + i * per_word),
-                    "endMs": int(start_ms + (i + 1) * per_word),
-                })
+                captions.append(
+                    {
+                        "word": fixed,
+                        "startMs": int(start_ms + i * per_word),
+                        "endMs": int(start_ms + (i + 1) * per_word),
+                    }
+                )
         return captions
 
     # ------------------------------------------------------------------ #
@@ -282,9 +287,13 @@ class RemotionCaptionBurn(BaseTool):
 
         # Get video duration in frames
         dur_cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             input_path,
         ]
         dur_result = self.run_command(dur_cmd)
@@ -294,10 +303,15 @@ class RemotionCaptionBurn(BaseTool):
 
         # Detect video dimensions
         dim_cmd = [
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width,height",
-            "-of", "csv=p=0:s=x",
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0:s=x",
             input_path,
         ]
         dim_result = self.run_command(dim_cmd)
@@ -328,14 +342,20 @@ class RemotionCaptionBurn(BaseTool):
 
         # Render (use npx.cmd on Windows for subprocess compatibility)
         import sys
+
         npx_bin = "npx.cmd" if sys.platform == "win32" else "npx"
         render_cmd = [
-            npx_bin, "remotion", "render",
+            npx_bin,
+            "remotion",
+            "render",
             "TalkingHead",
             f"--props={props_file.relative_to(root)}",
-            f"--width={width}", f"--height={height}", "--fps=30",
+            f"--width={width}",
+            f"--height={height}",
+            "--fps=30",
             f"--frames=0-{total_frames - 1}",
-            "--codec=h264", "--crf=18",
+            "--codec=h264",
+            "--crf=18",
             f"--output={str(Path(output_path).resolve())}",
         ]
         self.run_command(render_cmd, cwd=str(root))
@@ -381,9 +401,7 @@ class RemotionCaptionBurn(BaseTool):
             start = page[0]["startMs"]
             end = page[-1]["endMs"]
             srt_lines.append(str(idx))
-            srt_lines.append(
-                f"{self._ms_to_srt(start)} --> {self._ms_to_srt(end)}"
-            )
+            srt_lines.append(f"{self._ms_to_srt(start)} --> {self._ms_to_srt(end)}")
             srt_lines.append(text)
             srt_lines.append("")
             idx += 1
@@ -399,17 +417,27 @@ class RemotionCaptionBurn(BaseTool):
             srt_escaped = str(tmp_srt).replace("\\", "/").replace(":", "\\:")
 
             cmd = [
-                "ffmpeg", "-y",
-                "-i", input_path,
-                "-vf", (
+                "ffmpeg",
+                "-y",
+                "-i",
+                input_path,
+                "-vf",
+                (
                     f"subtitles='{srt_escaped}'"
                     ":force_style='FontName=Segoe UI,FontSize=24,Bold=1,"
                     "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
                     "Outline=3,Shadow=2,Alignment=2,MarginV=100'"
                 ),
-                "-c:v", "libx264", "-preset", "fast", "-crf", "18",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "copy",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "copy",
                 output_path,
             ]
             self.run_command(cmd)
@@ -421,7 +449,9 @@ class RemotionCaptionBurn(BaseTool):
                 pass
 
         if not Path(output_path).exists():
-            return ToolResult(success=False, error="FFmpeg subtitle burn produced no output")
+            return ToolResult(
+                success=False, error="FFmpeg subtitle burn produced no output"
+            )
 
         return ToolResult(
             success=True,
@@ -456,7 +486,9 @@ class RemotionCaptionBurn(BaseTool):
         highlight_color = inputs.get("highlight_color", "#22D3EE")
 
         if not Path(input_path).exists():
-            return ToolResult(success=False, error=f"Input video not found: {input_path}")
+            return ToolResult(
+                success=False, error=f"Input video not found: {input_path}"
+            )
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         start = time.time()
@@ -483,8 +515,12 @@ class RemotionCaptionBurn(BaseTool):
         # Choose render method
         if not force_ffmpeg and self._remotion_available():
             result = self._render_remotion(
-                input_path, output_path, captions,
-                words_per_page, font_size, highlight_color,
+                input_path,
+                output_path,
+                captions,
+                words_per_page,
+                font_size,
+                highlight_color,
                 overlays=overlays,
             )
         else:

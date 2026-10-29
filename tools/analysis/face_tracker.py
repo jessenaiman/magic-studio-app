@@ -117,6 +117,7 @@ class FaceTracker(BaseTool):
     def _has_mediapipe(self) -> bool:
         try:
             import mediapipe  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -124,6 +125,7 @@ class FaceTracker(BaseTool):
     def _has_opencv(self) -> bool:
         try:
             import cv2  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -224,17 +226,19 @@ class FaceTracker(BaseTool):
                             key=lambda d: d.score[0],
                         )
                         bbox = det.location_data.relative_bounding_box
-                        faces_data.append({
-                            "frame_index": frame_idx,
-                            "timestamp_seconds": round(frame_idx / video_fps, 3),
-                            "confidence": round(det.score[0], 3),
-                            "bbox": {
-                                "x": round(bbox.xmin, 4),
-                                "y": round(bbox.ymin, 4),
-                                "width": round(bbox.width, 4),
-                                "height": round(bbox.height, 4),
-                            },
-                        })
+                        faces_data.append(
+                            {
+                                "frame_index": frame_idx,
+                                "timestamp_seconds": round(frame_idx / video_fps, 3),
+                                "confidence": round(det.score[0], 3),
+                                "bbox": {
+                                    "x": round(bbox.xmin, 4),
+                                    "y": round(bbox.ymin, 4),
+                                    "width": round(bbox.width, 4),
+                                    "height": round(bbox.height, 4),
+                                },
+                            }
+                        )
 
                 frame_idx += 1
 
@@ -287,17 +291,19 @@ class FaceTracker(BaseTool):
                     areas = [w * h for (_, _, w, h) in detected]
                     best_idx = areas.index(max(areas))
                     x, y, w, h = detected[best_idx]
-                    faces_data.append({
-                        "frame_index": frame_idx,
-                        "timestamp_seconds": round(frame_idx / video_fps, 3),
-                        "confidence": 0.0,  # Haar doesn't provide confidence
-                        "bbox": {
-                            "x": round(x / video_w, 4),
-                            "y": round(y / video_h, 4),
-                            "width": round(w / video_w, 4),
-                            "height": round(h / video_h, 4),
-                        },
-                    })
+                    faces_data.append(
+                        {
+                            "frame_index": frame_idx,
+                            "timestamp_seconds": round(frame_idx / video_fps, 3),
+                            "confidence": 0.0,  # Haar doesn't provide confidence
+                            "bbox": {
+                                "x": round(x / video_w, 4),
+                                "y": round(y / video_h, 4),
+                                "width": round(w / video_w, 4),
+                                "height": round(h / video_h, 4),
+                            },
+                        }
+                    )
 
             frame_idx += 1
 

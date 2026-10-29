@@ -105,13 +105,18 @@ class PiperTTS(BaseTool):
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
-            return ToolResult(success=False, error="Piper TTS not available. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="Piper TTS not available. " + self.install_instructions,
+            )
 
         start = time.time()
         try:
             result = self._generate(inputs)
         except Exception as exc:
-            return ToolResult(success=False, error=f"Local TTS generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Local TTS generation failed: {exc}"
+            )
 
         result.duration_seconds = round(time.time() - start, 2)
         return result
@@ -123,11 +128,16 @@ class PiperTTS(BaseTool):
         proc = subprocess.run(
             [
                 "piper",
-                "--model", inputs.get("model", "en_US-lessac-medium"),
-                "--speaker", str(inputs.get("speaker_id", 0)),
-                "--length-scale", str(inputs.get("length_scale", 1.0)),
-                "--sentence-silence", str(inputs.get("sentence_silence", 0.3)),
-                "--output_file", str(output_path),
+                "--model",
+                inputs.get("model", "en_US-lessac-medium"),
+                "--speaker",
+                str(inputs.get("speaker_id", 0)),
+                "--length-scale",
+                str(inputs.get("length_scale", 1.0)),
+                "--sentence-silence",
+                str(inputs.get("sentence_silence", 0.3)),
+                "--output_file",
+                str(output_path),
             ],
             input=inputs["text"],
             capture_output=True,
@@ -136,9 +146,14 @@ class PiperTTS(BaseTool):
         )
 
         if proc.returncode != 0:
-            return ToolResult(success=False, error=f"Piper failed (exit {proc.returncode}): {proc.stderr}")
+            return ToolResult(
+                success=False,
+                error=f"Piper failed (exit {proc.returncode}): {proc.stderr}",
+            )
         if not output_path.exists():
-            return ToolResult(success=False, error=f"Piper output file missing: {output_path}")
+            return ToolResult(
+                success=False, error=f"Piper output file missing: {output_path}"
+            )
 
         return ToolResult(
             success=True,

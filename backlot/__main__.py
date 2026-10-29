@@ -29,7 +29,9 @@ def _port() -> int:
 
 def _server_alive(port: int) -> bool:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=1.5) as resp:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/health", timeout=1.5
+        ) as resp:
             return resp.status == 200
     except Exception:
         return False
@@ -44,8 +46,8 @@ def _spawn_server(port: int) -> None:
         "stdin": subprocess.DEVNULL,
     }
     if os.name == "nt":
-        kwargs["creationflags"] = (
-            subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(
+            subprocess, "DETACHED_PROCESS", 0x00000008
         )
     else:
         kwargs["start_new_session"] = True
@@ -58,7 +60,9 @@ def cmd_open(project_id: str | None) -> int:
         try:
             _spawn_server(port)
         except Exception as exc:
-            print(f"backlot: could not start server ({exc}) — continuing without the board")
+            print(
+                f"backlot: could not start server ({exc}) — continuing without the board"
+            )
             return 1
         deadline = time.time() + 15
         while time.time() < deadline:
@@ -66,7 +70,9 @@ def cmd_open(project_id: str | None) -> int:
                 break
             time.sleep(0.4)
         else:
-            print("backlot: server did not come up in time — continuing without the board")
+            print(
+                "backlot: server did not come up in time — continuing without the board"
+            )
             return 1
     url = f"http://127.0.0.1:{port}/"
     if project_id:
@@ -90,7 +96,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="backlot", description=__doc__)
     sub = parser.add_subparsers(dest="command")
 
-    p_open = sub.add_parser("open", help="open the board in the browser (starts server if needed)")
+    p_open = sub.add_parser(
+        "open", help="open the board in the browser (starts server if needed)"
+    )
     p_open.add_argument("project_id", nargs="?", default=None)
 
     p_serve = sub.add_parser("serve", help="run the Backlot server in the foreground")

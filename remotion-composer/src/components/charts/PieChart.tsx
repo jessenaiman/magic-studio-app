@@ -89,37 +89,37 @@ export const PieChart: React.FC<PieChartProps> = ({
   );
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "flex-start",
         alignItems: "center",
         padding: 40,
       }}
-    >
-      <svg
-        viewBox="0 0 1920 1080"
-        style={{ width: "100%", height: "100%" }}
       >
-        {/* Title */}
-        {title && (
-          <text
-            x={960}
-            y={80}
-            textAnchor="middle"
-            fill={textColor}
-            fontFamily={fontFamily}
-            fontWeight={700}
-            fontSize={48}
-            opacity={spring({ frame, fps, config: { damping: 20 } })}
+          <svg
+              viewBox="0 0 1920 1080"
+              style={{ width: "100%", height: "100%" }}
           >
-            {title}
-          </text>
+              {/* Title */}
+              {title && (
+              <text
+                  x={960}
+                  y={80}
+                  textAnchor="middle"
+                  fill={textColor}
+                  fontFamily={fontFamily}
+                  fontWeight={700}
+                  fontSize={48}
+                  opacity={spring({ frame, fps, config: { damping: 20 } })}
+              >
+                  {title}
+              </text>
         )}
 
-        {/* Pie/donut slices */}
-        <g opacity={fadeOut}>
-          {slices.map((slice, i) => {
+              {/* Pie/donut slices */}
+              <g opacity={fadeOut}>
+                  {slices.map((slice, i) => {
             let sliceProgress: number;
             let sliceOpacity: number;
 
@@ -193,64 +193,64 @@ export const PieChart: React.FC<PieChartProps> = ({
             );
 
             return (
-              <path
-                key={slice.datum.label}
-                d={path}
-                fill={slice.color}
-                opacity={sliceOpacity}
-                stroke={backgroundColor}
-                strokeWidth={2}
-              />
+                <path
+                    key={slice.datum.label}
+                    d={path}
+                    fill={slice.color}
+                    opacity={sliceOpacity}
+                    stroke={backgroundColor}
+                    strokeWidth={2}
+                />
             );
           })}
 
-          {/* Donut center */}
-          {donut && (centerLabel || centerValue) && (
-            <g
-              opacity={interpolate(
+                  {/* Donut center */}
+                  {donut && (centerLabel || centerValue) && (
+                  <g
+                      opacity={interpolate(
                 globalProgress,
                 [0.5, 1],
                 [0, 1],
                 { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
               )}
-            >
-              {centerValue && (
-                <text
-                  x={cx}
-                  y={centerLabel ? cy - 10 : cy + 10}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={textColor}
-                  fontFamily={fontFamily}
-                  fontWeight={800}
-                  fontSize={56}
-                >
-                  {centerValue}
-                </text>
+                  >
+                      {centerValue && (
+                      <text
+                          x={cx}
+                          y={centerLabel ? cy - 10 : cy + 10}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill={textColor}
+                          fontFamily={fontFamily}
+                          fontWeight={800}
+                          fontSize={56}
+                      >
+                          {centerValue}
+                      </text>
               )}
-              {centerLabel && (
-                <text
-                  x={cx}
-                  y={centerValue ? cy + 36 : cy + 10}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={textColor}
-                  fontFamily={fontFamily}
-                  fontWeight={400}
-                  fontSize={24}
-                  opacity={0.7}
-                >
-                  {centerLabel}
-                </text>
+                      {centerLabel && (
+                      <text
+                          x={cx}
+                          y={centerValue ? cy + 36 : cy + 10}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill={textColor}
+                          fontFamily={fontFamily}
+                          fontWeight={400}
+                          fontSize={24}
+                          opacity={0.7}
+                      >
+                          {centerLabel}
+                      </text>
               )}
-            </g>
+                  </g>
           )}
-        </g>
+              </g>
 
-        {/* Legend */}
-        {showLegend && (
-          <g opacity={fadeOut}>
-            {slices.map((slice, i) => {
+              {/* Legend */}
+              {showLegend && (
+              <g opacity={fadeOut}>
+                  {slices.map((slice, i) => {
               const legendY = cy - (slices.length * 44) / 2 + i * 44;
               const legendX = showLegend ? 1200 : cx + outerRadius + 80;
               const legendOpacity = spring({
@@ -259,45 +259,45 @@ export const PieChart: React.FC<PieChartProps> = ({
                 config: { damping: 20 },
               });
               return (
-                <g key={`legend-${i}`} opacity={legendOpacity}>
-                  <rect
-                    x={legendX}
-                    y={legendY - 8}
-                    width={20}
-                    height={20}
-                    rx={4}
-                    fill={slice.color}
-                  />
-                  <text
-                    x={legendX + 32}
-                    y={legendY + 6}
-                    fill={textColor}
-                    fontFamily={fontFamily}
-                    fontSize={22}
-                    fontWeight={500}
-                  >
-                    {slice.datum.label}
-                  </text>
-                  <text
-                    x={legendX + 32}
-                    y={legendY + 6}
-                    fill={textColor}
-                    fontFamily={fontFamily}
-                    fontSize={22}
-                    fontWeight={400}
-                    opacity={0.6}
-                    textAnchor="end"
-                    dx={280}
-                  >
-                    {slice.percentage.toFixed(1)}%
-                  </text>
-                </g>
+                  <g key={`legend-${i}`} opacity={legendOpacity}>
+                      <rect
+                          x={legendX}
+                          y={legendY - 8}
+                          width={20}
+                          height={20}
+                          rx={4}
+                          fill={slice.color}
+                      />
+                      <text
+                          x={legendX + 32}
+                          y={legendY + 6}
+                          fill={textColor}
+                          fontFamily={fontFamily}
+                          fontSize={22}
+                          fontWeight={500}
+                      >
+                          {slice.datum.label}
+                      </text>
+                      <text
+                          x={legendX + 32}
+                          y={legendY + 6}
+                          fill={textColor}
+                          fontFamily={fontFamily}
+                          fontSize={22}
+                          fontWeight={400}
+                          opacity={0.6}
+                          textAnchor="end"
+                          dx={280}
+                      >
+                          {slice.percentage.toFixed(1)}%
+                      </text>
+                  </g>
               );
             })}
-          </g>
+              </g>
         )}
-      </svg>
-    </AbsoluteFill>
+          </svg>
+      </AbsoluteFill>
   );
 };
 

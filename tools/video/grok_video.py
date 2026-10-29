@@ -61,8 +61,7 @@ class GrokVideo(BaseTool):
 
     dependencies = []
     install_instructions = (
-        "Set XAI_API_KEY to your xAI API key.\n"
-        "  Get one from the xAI developer console"
+        "Set XAI_API_KEY to your xAI API key.\n  Get one from the xAI developer console"
     )
     agent_skills = ["grok-media", "ai-video-gen"]
 

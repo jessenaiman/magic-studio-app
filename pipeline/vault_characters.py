@@ -5,6 +5,7 @@ Step 1: Character Asset Resolution & PhotoCraft CLI Slicing (`pipeline/vault_cha
 Uses installed `photocraft-cli` (`layer.removeBackground`, `image.crop`, `image.trim`)
 instead of custom pixel flood-fills or BFS distance transforms.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,9 +25,15 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "id": "hopper",
         "name": "Hopper (Cream Rabbit Student)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Hopper-no-background.png_202607180130.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_5.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_15.jpeg"),
+        "cutout": os.path.join(
+            VAULT_ROOT, "Hopper-no-background.png_202607180130.jpeg"
+        ),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_5.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_15.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide4.PNG_202607180130.jpeg"),
     },
     "whiskers": {
@@ -34,8 +41,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Whiskers (Grey Tabby Kitten)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Whiskers-no-back.png_202607180130.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_17.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_20.jpeg"),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_17.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_20.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide5.PNG_202607180130.jpeg"),
     },
     "jenny": {
@@ -43,8 +54,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Jenny / Penny (Yellow Chick)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Penny.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_9.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_3.jpeg"),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_9.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_3.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide7.PNG_202607180130.jpeg"),
     },
     "puddles": {
@@ -52,8 +67,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Puddles (Yellow Duckling)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Puddles-tranparent.png_202607180130.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_12.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_13.jpeg"),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_12.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_13.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide9.PNG_202607180130.jpeg"),
     },
     "scout": {
@@ -62,7 +81,9 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Scout-no-back.png_202607180130.jpeg"),
         "turnaround": os.path.join(VAULT_ROOT, "Scout-no-back.png_202607180130.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_5.jpeg"),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_5.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide6.PNG_202607180130.jpeg"),
     },
     "rusty": {
@@ -70,8 +91,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Rusty (Brown Foal)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Rusty-transparent.png_202607180130.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_19.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_24.jpeg"),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_19.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_24.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide11.PNG_202607180130.jpeg"),
     },
     "sam": {
@@ -79,8 +104,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Sam (Pink Piglet)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Sam.png_202607180130.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_21.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_33.jpeg"),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_21.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_33.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide10.PNG_202607180130.jpeg"),
     },
     "maisy": {
@@ -88,8 +117,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Maisy (Black & White Calf)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "Slide8.PNG_202607180130.jpeg"),
-        "turnaround": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_29.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_29.jpeg"),
+        "turnaround": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_29.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_29.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide8.PNG_202607180130.jpeg"),
     },
     "mr_puddles": {
@@ -106,8 +139,12 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
         "name": "Old Mac (Farmer Teacher)",
         "archetype": "humanoid_biped",
         "cutout": os.path.join(VAULT_ROOT, "old_mac-tranparent.png_202607180130.jpeg"),
-        "turnaround": os.path.join(VAULT_ROOT, "old_mac-tranparent.png_202607180130.jpeg"),
-        "poseSheet": os.path.join(POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_25.jpeg"),
+        "turnaround": os.path.join(
+            VAULT_ROOT, "old_mac-tranparent.png_202607180130.jpeg"
+        ),
+        "poseSheet": os.path.join(
+            POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_25.jpeg"
+        ),
         "slide": os.path.join(VAULT_ROOT, "Slide3.PNG_202607180130.jpeg"),
     },
     "miss_hayley": {
@@ -130,14 +167,18 @@ def resolve_real_vault_image(image_or_name: str, prefer: str = "turnaround") -> 
     low = str(image_or_name).lower().strip()
     for key, entry in VAULT_CHARACTER_CATALOG.items():
         if key == low or key in low or low in key:
-            candidate = entry.get(prefer) or entry.get("cutout") or entry.get("turnaround")
+            candidate = (
+                entry.get(prefer) or entry.get("cutout") or entry.get("turnaround")
+            )
             if candidate and os.path.exists(candidate):
                 return candidate
     for root, _, files in os.walk(VAULT_ROOT):
         for f in files:
             if low.replace("_", " ") in f.lower() or low in f.lower():
                 return os.path.join(root, f)
-    raise FileNotFoundError(f"Could not resolve source image or character: {image_or_name!r}")
+    raise FileNotFoundError(
+        f"Could not resolve source image or character: {image_or_name!r}"
+    )
 
 
 def matte_with_photocraft(src_path: str, out_path: str) -> str:
@@ -146,9 +187,15 @@ def matte_with_photocraft(src_path: str, out_path: str) -> str:
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     proc = subprocess.run(
         [
-            pc_bin, "run", src_path,
-            "--cmd", "layer.removeBackground", "--params", '{"refine":true}',
-            "--out", out_path,
+            pc_bin,
+            "run",
+            src_path,
+            "--cmd",
+            "layer.removeBackground",
+            "--params",
+            '{"refine":true}',
+            "--out",
+            out_path,
         ],
         capture_output=True,
         text=True,
@@ -179,7 +226,11 @@ def slice_real_character_image(
     views_paths: List[str] = []
 
     if aspect >= 1.45:
-        sheet_type = "pose_sheet" if "pose_sheet" in os.path.basename(real_path).lower() else "turnaround_5view"
+        sheet_type = (
+            "pose_sheet"
+            if "pose_sheet" in os.path.basename(real_path).lower()
+            else "turnaround_5view"
+        )
         cols = 5
         col_w = w // cols
         top_y = int(h * 0.08)
@@ -188,11 +239,21 @@ def slice_real_character_image(
             p = os.path.join(out_dir, f"view_{i}.png")
             subprocess.run(
                 [
-                    pc_bin, "run", clean_sheet_path,
-                    "--cmd", "image.crop",
-                    "--params", json.dumps({"x": i * col_w, "y": top_y, "width": col_w, "height": crop_h}),
-                    "--cmd", "image.trim", "--params", "{}",
-                    "--out", p,
+                    pc_bin,
+                    "run",
+                    clean_sheet_path,
+                    "--cmd",
+                    "image.crop",
+                    "--params",
+                    json.dumps(
+                        {"x": i * col_w, "y": top_y, "width": col_w, "height": crop_h}
+                    ),
+                    "--cmd",
+                    "image.trim",
+                    "--params",
+                    "{}",
+                    "--out",
+                    p,
                 ],
                 capture_output=True,
                 text=True,
@@ -200,13 +261,25 @@ def slice_real_character_image(
             )
             if not os.path.isfile(p):
                 with Image.open(clean_sheet_path) as sheet_im:
-                    sheet_im.crop((i * col_w, top_y, (i + 1) * col_w, top_y + crop_h)).save(p)
+                    sheet_im.crop(
+                        (i * col_w, top_y, (i + 1) * col_w, top_y + crop_h)
+                    ).save(p)
             views_paths.append(p)
     else:
         sheet_type = "single_cutout"
         p = os.path.join(out_dir, "view_0.png")
         subprocess.run(
-            [pc_bin, "run", clean_sheet_path, "--cmd", "image.trim", "--params", "{}", "--out", p],
+            [
+                pc_bin,
+                "run",
+                clean_sheet_path,
+                "--cmd",
+                "image.trim",
+                "--params",
+                "{}",
+                "--out",
+                p,
+            ],
             capture_output=True,
             text=True,
             timeout=30,

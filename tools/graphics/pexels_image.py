@@ -90,10 +90,14 @@ class PexelsImage(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=50, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["query", "orientation", "size", "color", "page"]
     side_effects = ["writes image file to output_path", "calls Pexels API"]
-    user_visible_verification = ["Check that downloaded image matches the intended scene"]
+    user_visible_verification = [
+        "Check that downloaded image matches the intended scene"
+    ]
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("PEXELS_API_KEY"):

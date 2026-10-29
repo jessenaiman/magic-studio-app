@@ -39,21 +39,58 @@ from tools.base_tool import (
 # evade a static denylist, so it is paired with an explicit `allow_unsafe_code`
 # opt-out and a tool contract that names the boundary. A passing scan is not
 # proof that code is safe to run.
-_BLOCKED_IMPORTS = frozenset({
-    "os", "sys", "subprocess", "socket", "shutil", "requests", "urllib",
-    "http", "ftplib", "smtplib", "telnetlib", "ctypes", "pickle", "marshal",
-    "importlib", "builtins", "multiprocessing", "threading", "pty", "glob",
-    "resource", "signal", "tempfile", "webbrowser", "pathlib",
-})
+_BLOCKED_IMPORTS = frozenset(
+    {
+        "os",
+        "sys",
+        "subprocess",
+        "socket",
+        "shutil",
+        "requests",
+        "urllib",
+        "http",
+        "ftplib",
+        "smtplib",
+        "telnetlib",
+        "ctypes",
+        "pickle",
+        "marshal",
+        "importlib",
+        "builtins",
+        "multiprocessing",
+        "threading",
+        "pty",
+        "glob",
+        "resource",
+        "signal",
+        "tempfile",
+        "webbrowser",
+        "pathlib",
+    }
+)
 # Dangerous identifiers blocked wherever they appear as a bare name — not just
 # as a direct call. This catches indirection like `__builtins__['open']`,
 # `f = open`, or `getattr(x, '__class__')` that a call-target-only or
 # attribute-only check would miss.
-_BLOCKED_NAMES = frozenset({
-    "eval", "exec", "compile", "__import__", "open", "input", "breakpoint",
-    "__builtins__", "__loader__", "globals", "locals", "vars",
-    "getattr", "setattr", "delattr",
-})
+_BLOCKED_NAMES = frozenset(
+    {
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "open",
+        "input",
+        "breakpoint",
+        "__builtins__",
+        "__loader__",
+        "globals",
+        "locals",
+        "vars",
+        "getattr",
+        "setattr",
+        "delattr",
+    }
+)
 # Reflection via dunder attributes is the general escape hatch: `().__class__`,
 # `print.__self__` (the builtins module), `x.__globals__`, `f.__reduce__`, etc.
 # Enumerating dangerous dunders one by one is whack-a-mole, so block ALL dunder
@@ -366,9 +403,11 @@ class MathAnimate(BaseTool):
             # Extract the most useful part of the error
             lines = error_msg.strip().split("\n")
             # Look for the actual error (skip Manim header/progress)
-            error_lines = [l for l in lines if "Error" in l or "error" in l or "Traceback" in l]
+            error_lines = [
+                l for l in lines if "Error" in l or "error" in l or "Traceback" in l
+            ]
             if error_lines:
-                error_msg = "\n".join(lines[lines.index(error_lines[0]):])
+                error_msg = "\n".join(lines[lines.index(error_lines[0]) :])
             self._cleanup(work_dir)
             return ToolResult(
                 success=False,
@@ -460,9 +499,13 @@ class MathAnimate(BaseTool):
         try:
             proc = subprocess.run(
                 [
-                    "ffprobe", "-v", "quiet",
-                    "-print_format", "json",
-                    "-show_format", "-show_streams",
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    "-show_streams",
                     str(path),
                 ],
                 capture_output=True,
@@ -471,6 +514,7 @@ class MathAnimate(BaseTool):
             )
             if proc.returncode == 0:
                 import json
+
                 probe = json.loads(proc.stdout)
                 fmt = probe.get("format", {})
                 info["duration_seconds"] = float(fmt.get("duration", 0))

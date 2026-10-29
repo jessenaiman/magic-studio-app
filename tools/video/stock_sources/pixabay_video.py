@@ -18,6 +18,7 @@ What Pixabay Video is good for
 - Quick gap-fills when Pexels doesn't cover a query
 - Available up to 1080p (some clips have 4K)
 """
+
 from __future__ import annotations
 
 import os
@@ -114,9 +115,7 @@ class PixabayVideoSource:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with requests.get(
-            candidate.download_url, stream=True, timeout=120
-        ) as r:
+        with requests.get(candidate.download_url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):
@@ -143,5 +142,10 @@ def _pick_rendition(
         w = int(rend.get("width") or 0)
         h = int(rend.get("height") or 0)
         if w >= min_width:
-            return {"url": rend["url"], "width": w, "height": h, "size": rend.get("size")}
+            return {
+                "url": rend["url"],
+                "width": w,
+                "height": h,
+                "size": rend.get("size"),
+            }
     return None

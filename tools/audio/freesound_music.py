@@ -99,7 +99,9 @@ class FreesoundMusic(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=50, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["query", "min_duration", "max_duration"]
     side_effects = ["writes audio file to output_path", "calls Freesound API"]
     user_visible_verification = [
@@ -180,14 +182,16 @@ class FreesoundMusic(BaseTool):
         min_dur = inputs.get("min_duration", 30)
         max_dur = inputs.get("max_duration", 120)
 
-        params = urllib.parse.urlencode({
-            "query": query,
-            "filter": f"duration:[{min_dur} TO {max_dur}]",
-            "sort": "rating_desc",
-            "fields": "id,name,duration,previews,tags,avg_rating,username,license",
-            "token": api_key,
-            "page_size": 15,
-        })
+        params = urllib.parse.urlencode(
+            {
+                "query": query,
+                "filter": f"duration:[{min_dur} TO {max_dur}]",
+                "sort": "rating_desc",
+                "fields": "id,name,duration,previews,tags,avg_rating,username,license",
+                "token": api_key,
+                "page_size": 15,
+            }
+        )
 
         url = f"{self._BASE_URL}/search/text/?{params}"
 
@@ -215,7 +219,9 @@ class FreesoundMusic(BaseTool):
 
         # Build output path
         sound_name = sound.get("name", f"freesound_{sound.get('id', 'unknown')}")
-        safe_name = "".join(c if c.isalnum() or c in "._- " else "_" for c in sound_name)
+        safe_name = "".join(
+            c if c.isalnum() or c in "._- " else "_" for c in sound_name
+        )
         default_filename = f"freesound_{sound.get('id')}_{safe_name}.mp3"
         output_path = Path(inputs.get("output_path", default_filename))
         output_path.parent.mkdir(parents=True, exist_ok=True)

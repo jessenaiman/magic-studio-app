@@ -123,7 +123,10 @@ class AzureSpeechToText(BaseTool):
         "type": "object",
         "required": ["input_path"],
         "properties": {
-            "input_path": {"type": "string", "description": "Path to audio or video file"},
+            "input_path": {
+                "type": "string",
+                "description": "Path to audio or video file",
+            },
             "language": {
                 "type": "string",
                 "description": (
@@ -146,7 +149,10 @@ class AzureSpeechToText(BaseTool):
                 "enum": ["None", "Masked", "Removed", "Tags"],
                 "default": "Masked",
             },
-            "output_dir": {"type": "string", "description": "Directory for output files"},
+            "output_dir": {
+                "type": "string",
+                "description": "Directory for output files",
+            },
         },
     }
 
@@ -174,7 +180,10 @@ class AzureSpeechToText(BaseTool):
     )
     resume_support = ResumeSupport.FROM_START
     idempotency_key_fields = ["input_path", "language", "diarize"]
-    side_effects = ["writes transcript JSON to output_dir", "sends audio to Azure AI Speech"]
+    side_effects = [
+        "writes transcript JSON to output_dir",
+        "sends audio to Azure AI Speech",
+    ]
     fallback = "transcriber"
     fallback_tools = ["transcriber"]
     user_visible_verification = [
@@ -184,7 +193,8 @@ class AzureSpeechToText(BaseTool):
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("AZURE_SPEECH_KEY") and (
-            os.environ.get("AZURE_SPEECH_REGION") or os.environ.get("AZURE_SPEECH_ENDPOINT")
+            os.environ.get("AZURE_SPEECH_REGION")
+            or os.environ.get("AZURE_SPEECH_ENDPOINT")
         ):
             return ToolStatus.AVAILABLE
         return ToolStatus.UNAVAILABLE
@@ -223,11 +233,14 @@ class AzureSpeechToText(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         input_path = Path(inputs["input_path"])
         if not input_path.exists():
-            return ToolResult(success=False, error=f"Input file not found: {input_path}")
+            return ToolResult(
+                success=False, error=f"Input file not found: {input_path}"
+            )
 
         api_key = os.environ.get("AZURE_SPEECH_KEY")
         if not api_key or not (
-            os.environ.get("AZURE_SPEECH_REGION") or os.environ.get("AZURE_SPEECH_ENDPOINT")
+            os.environ.get("AZURE_SPEECH_REGION")
+            or os.environ.get("AZURE_SPEECH_ENDPOINT")
         ):
             return ToolResult(
                 success=False,
@@ -276,13 +289,23 @@ class AzureSpeechToText(BaseTool):
                     url,
                     headers=headers,
                     files={
-                        "audio": (input_path.name, audio_file, "application/octet-stream"),
-                        "definition": (None, json.dumps(definition), "application/json"),
+                        "audio": (
+                            input_path.name,
+                            audio_file,
+                            "application/octet-stream",
+                        ),
+                        "definition": (
+                            None,
+                            json.dumps(definition),
+                            "application/json",
+                        ),
                     },
                     timeout=600,
                 )
         except requests.RequestException as exc:  # network/timeout
-            return ToolResult(success=False, error=f"Azure Speech request failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Azure Speech request failed: {exc}"
+            )
 
         if response.status_code != 200:
             detail = response.text[:500] if response.text else ""
@@ -311,7 +334,9 @@ class AzureSpeechToText(BaseTool):
         )
 
     @staticmethod
-    def _parse_payload(payload: dict[str, Any], requested_locales: list[str]) -> dict[str, Any]:
+    def _parse_payload(
+        payload: dict[str, Any], requested_locales: list[str]
+    ) -> dict[str, Any]:
         """Map the Fast Transcription response onto the transcriber output schema."""
         segments: list[dict[str, Any]] = []
         word_timestamps: list[dict[str, Any]] = []
@@ -345,7 +370,9 @@ class AzureSpeechToText(BaseTool):
                         "end": round((w_offset + w_dur) / 1000.0, 3),
                         # Fast Transcription has no per-word confidence; carry the
                         # phrase confidence so downstream schemas stay populated.
-                        "probability": round(confidence, 3) if confidence is not None else None,
+                        "probability": round(confidence, 3)
+                        if confidence is not None
+                        else None,
                     }
                     seg_words.append(word_entry)
                     word_timestamps.append(word_entry)
@@ -360,6 +387,7 @@ class AzureSpeechToText(BaseTool):
         return {
             "segments": segments,
             "word_timestamps": word_timestamps,
-            "language": detected_locale or (requested_locales[0] if requested_locales else None),
+            "language": detected_locale
+            or (requested_locales[0] if requested_locales else None),
             "duration_seconds": round((duration_ms or 0) / 1000.0, 3),
         }

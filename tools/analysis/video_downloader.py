@@ -70,7 +70,10 @@ class VideoDownloader(BaseTool):
         "required": ["url", "output_dir"],
         "properties": {
             "url": {"type": "string", "description": "Video URL to download"},
-            "output_dir": {"type": "string", "description": "Directory for downloaded files"},
+            "output_dir": {
+                "type": "string",
+                "description": "Directory for downloaded files",
+            },
             "format": {
                 "type": "string",
                 "enum": ["video", "audio_only", "subtitles_only", "metadata_only"],
@@ -114,7 +117,10 @@ class VideoDownloader(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=2000,
+        cpu_cores=1,
+        ram_mb=512,
+        vram_mb=0,
+        disk_mb=2000,
         network_required=True,
     )
     idempotency_key_fields = ["url", "format", "max_resolution"]
@@ -136,7 +142,11 @@ class VideoDownloader(BaseTool):
     def _detect_platform(self, url: str) -> str:
         """Detect platform from URL."""
         url_lower = url.lower()
-        if "youtube.com/shorts" in url_lower or "youtu.be" in url_lower and "/shorts" in url_lower:
+        if (
+            "youtube.com/shorts" in url_lower
+            or "youtu.be" in url_lower
+            and "/shorts" in url_lower
+        ):
             return "shorts"
         if "youtube.com" in url_lower or "youtu.be" in url_lower:
             return "youtube"
@@ -223,9 +233,7 @@ class VideoDownloader(BaseTool):
 
         try:
             if dl_format == "video":
-                video_path, audio_path = self._download_video(
-                    url, output_dir, max_res
-                )
+                video_path, audio_path = self._download_video(url, output_dir, max_res)
             elif dl_format == "audio_only":
                 audio_path = self._download_audio(url, output_dir)
             elif dl_format == "subtitles_only":
@@ -276,7 +284,9 @@ class VideoDownloader(BaseTool):
             ydl.download([url])
 
         # Find the downloaded video file
-        video_path = self._find_downloaded(output_dir, "reference_video", ["mp4", "mkv", "webm"])
+        video_path = self._find_downloaded(
+            output_dir, "reference_video", ["mp4", "mkv", "webm"]
+        )
 
         # Extract audio separately for transcription
         audio_path = None
@@ -284,12 +294,17 @@ class VideoDownloader(BaseTool):
             audio_out = output_dir / "reference_audio.wav"
             try:
                 audio_cmd = [
-                    "ffmpeg", "-y",
-                    "-i", video_path,
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    video_path,
                     "-vn",
-                    "-acodec", "pcm_s16le",
-                    "-ar", "16000",
-                    "-ac", "1",
+                    "-acodec",
+                    "pcm_s16le",
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
                     str(audio_out),
                 ]
                 self.run_command(audio_cmd, timeout=120)
@@ -307,11 +322,13 @@ class VideoDownloader(BaseTool):
         audio_out = str(output_dir / "reference_audio.%(ext)s")
         ydl_opts = {
             "format": "bestaudio/best",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
-                "preferredquality": "0",
-            }],
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "wav",
+                    "preferredquality": "0",
+                }
+            ],
             "outtmpl": audio_out,
             "noplaylist": True,
             "quiet": True,
@@ -319,7 +336,9 @@ class VideoDownloader(BaseTool):
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        return self._find_downloaded(output_dir, "reference_audio", ["wav", "mp3", "m4a", "opus"])
+        return self._find_downloaded(
+            output_dir, "reference_audio", ["wav", "mp3", "m4a", "opus"]
+        )
 
     def _download_subtitles(self, url: str, output_dir: Path) -> str | None:
         """Download subtitles only."""
@@ -342,7 +361,9 @@ class VideoDownloader(BaseTool):
                 ydl.download([url])
         except Exception:
             pass
-        return self._find_downloaded(output_dir, "reference_subs", ["srt", "vtt", "ass"])
+        return self._find_downloaded(
+            output_dir, "reference_subs", ["srt", "vtt", "ass"]
+        )
 
     def _find_downloaded(
         self, output_dir: Path, prefix: str, extensions: list[str]

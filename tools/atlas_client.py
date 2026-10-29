@@ -76,10 +76,14 @@ def _payload_of(response: Any) -> dict[str, Any]:
         body = response.json()
     except Exception as exc:  # noqa: BLE001 - surface the raw text, not a parse trace
         text = getattr(response, "text", "")
-        raise AtlasError(f"Atlas Cloud returned a non-JSON response: {text[:500]}") from exc
+        raise AtlasError(
+            f"Atlas Cloud returned a non-JSON response: {text[:500]}"
+        ) from exc
 
     if not isinstance(body, dict):
-        raise AtlasError(f"Atlas Cloud returned an unexpected payload: {str(body)[:500]}")
+        raise AtlasError(
+            f"Atlas Cloud returned an unexpected payload: {str(body)[:500]}"
+        )
 
     code = body.get("code")
     if code is not None and int(code) != 200:
@@ -91,7 +95,9 @@ def _payload_of(response: Any) -> dict[str, Any]:
         # uploadMedia historically answered with a bare {"url": ...}.
         return body
     if not isinstance(data, dict):
-        raise AtlasError(f"Atlas Cloud returned an unexpected 'data' field: {str(data)[:500]}")
+        raise AtlasError(
+            f"Atlas Cloud returned an unexpected 'data' field: {str(data)[:500]}"
+        )
     return data
 
 
@@ -102,7 +108,9 @@ def _raise_for_status(response: Any, context: str) -> None:
         raise AtlasError(f"{context} failed with HTTP {status}: {text[:500]}")
 
 
-def submit(endpoint: str, payload: dict[str, Any], api_key: str, timeout: int = 60) -> str:
+def submit(
+    endpoint: str, payload: dict[str, Any], api_key: str, timeout: int = 60
+) -> str:
     """Submit a generation request and return its prediction id."""
     import requests
 
@@ -120,7 +128,9 @@ def submit(endpoint: str, payload: dict[str, Any], api_key: str, timeout: int = 
 
     prediction_id = data.get("id")
     if not prediction_id:
-        raise AtlasError(f"Atlas Cloud did not return a prediction id: {str(data)[:500]}")
+        raise AtlasError(
+            f"Atlas Cloud did not return a prediction id: {str(data)[:500]}"
+        )
     return str(prediction_id)
 
 

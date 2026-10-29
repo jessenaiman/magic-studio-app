@@ -15,6 +15,7 @@ What JAXA is good for
 - Moon and asteroid imagery
 - Complement to NASA for non-U.S. space footage
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,7 +28,9 @@ _log = logging.getLogger(__name__)
 
 _BASE_URL = "https://jda.jaxa.jp"
 _SEARCH_URL = "https://jda.jaxa.jp/result.php"
-_LICENSE = "JAXA Digital Archives License (educational/informational use, verify per item)"
+_LICENSE = (
+    "JAXA Digital Archives License (educational/informational use, verify per item)"
+)
 
 
 class JAXASource:
@@ -46,6 +49,7 @@ class JAXASource:
     def is_available(self) -> bool:
         try:
             import bs4  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -85,8 +89,10 @@ class JAXASource:
         out: list[Candidate] = []
 
         # Find result items
-        items = soup.select(".result-item, .photo-item, .movie-item, .item, li.list-item, .gallery-item")
-        for item in items[:filters.per_page]:
+        items = soup.select(
+            ".result-item, .photo-item, .movie-item, .item, li.list-item, .gallery-item"
+        )
+        for item in items[: filters.per_page]:
             link_el = item.select_one("a[href]")
             if not link_el:
                 continue
@@ -144,12 +150,16 @@ class JAXASource:
 
         detail_url = candidate.extra.get("detail_url", candidate.download_url)
 
-        if any(detail_url.lower().endswith(ext) for ext in (".mp4", ".mov", ".webm", ".jpg", ".png")):
+        if any(
+            detail_url.lower().endswith(ext)
+            for ext in (".mp4", ".mov", ".webm", ".jpg", ".png")
+        ):
             return self._stream_download(detail_url, out_path)
 
         try:
             r = requests.get(
-                detail_url, timeout=30,
+                detail_url,
+                timeout=30,
                 headers={"User-Agent": "OpenMontage/1.0"},
             )
             r.raise_for_status()
@@ -180,12 +190,16 @@ class JAXASource:
             if not download_url and candidate.kind == "image":
                 for a in soup.select("a[href]"):
                     href = a.get("href", "")
-                    if any(ext in href.lower() for ext in [".jpg", ".jpeg", ".png", ".tif"]):
+                    if any(
+                        ext in href.lower() for ext in [".jpg", ".jpeg", ".png", ".tif"]
+                    ):
                         download_url = href
                         break
 
             if not download_url:
-                raise ValueError(f"Could not find download URL on JAXA page: {detail_url}")
+                raise ValueError(
+                    f"Could not find download URL on JAXA page: {detail_url}"
+                )
 
             if not download_url.startswith("http"):
                 download_url = f"{_BASE_URL}/{download_url.lstrip('/')}"
@@ -199,7 +213,9 @@ class JAXASource:
         import requests
 
         with requests.get(
-            url, stream=True, timeout=180,
+            url,
+            stream=True,
+            timeout=180,
             headers={"User-Agent": "OpenMontage/1.0"},
         ) as r:
             r.raise_for_status()

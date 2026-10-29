@@ -123,7 +123,9 @@ class ColorGrade(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=1024, vram_mb=0, disk_mb=2000)
+    resource_profile = ResourceProfile(
+        cpu_cores=2, ram_mb=1024, vram_mb=0, disk_mb=2000
+    )
     idempotency_key_fields = ["input_path", "profile", "lut_path", "intensity"]
     side_effects = ["writes graded video to output_path"]
     user_visible_verification = [
@@ -137,23 +139,34 @@ class ColorGrade(BaseTool):
             return ToolResult(success=False, error=f"Input not found: {input_path}")
 
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_graded")))
+            inputs.get(
+                "output_path", str(input_path.with_stem(f"{input_path.stem}_graded"))
+            )
         )
         codec = inputs.get("codec", "libx264")
         crf = inputs.get("crf", 20)
 
         vf = self._build_filter(inputs)
         if not vf:
-            return ToolResult(success=False, error="No profile, lut_path, or custom_vf specified")
+            return ToolResult(
+                success=False, error="No profile, lut_path, or custom_vf specified"
+            )
 
         start = time.time()
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", vf,
-            "-c:v", codec, "-crf", str(crf),
-            "-c:a", "copy",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            vf,
+            "-c:v",
+            codec,
+            "-crf",
+            str(crf),
+            "-c:a",
+            "copy",
             str(output_path),
         ]
 
@@ -184,7 +197,9 @@ class ColorGrade(BaseTool):
 
         lut_path = inputs.get("lut_path")
         if lut_path and Path(lut_path).exists():
-            safe_path = str(Path(lut_path).resolve()).replace("\\", "/").replace(":", "\\:")
+            safe_path = (
+                str(Path(lut_path).resolve()).replace("\\", "/").replace(":", "\\:")
+            )
             return f"lut3d='{safe_path}'"
 
         profile_name = inputs.get("profile", "cinematic_warm")

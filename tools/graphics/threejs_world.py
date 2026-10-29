@@ -144,7 +144,14 @@ class ThreeJSWorld(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=2, ram_mb=1024, vram_mb=1024, disk_mb=2000, network_required=True
     )
-    idempotency_key_fields = ["operation", "world_spec", "duration_seconds", "render_mode", "quality_tier", "asset_catalog_paths"]
+    idempotency_key_fields = [
+        "operation",
+        "world_spec",
+        "duration_seconds",
+        "render_mode",
+        "quality_tier",
+        "asset_catalog_paths",
+    ]
     side_effects = [
         "writes an editable HyperFrames/Three.js workspace to output_path",
         "writes normalized world and diagnostic JSON files",
@@ -164,11 +171,18 @@ class ThreeJSWorld(BaseTool):
         height = int(_clamp(_integer(inputs.get("height"), 1080), 240, 4320))
         render_mode = str(inputs.get("render_mode") or "cinematic").lower()
         if render_mode not in _RENDER_MODES:
-            return ToolResult(success=False, error=f"Unknown render_mode: {render_mode}")
+            return ToolResult(
+                success=False, error=f"Unknown render_mode: {render_mode}"
+            )
         quality_tier = str(inputs.get("quality_tier") or "blockout").lower()
         if quality_tier not in _QUALITY_TIERS:
-            return ToolResult(success=False, error=f"Unknown quality_tier: {quality_tier}")
-        catalog_paths = [Path(str(path)).expanduser().resolve() for path in inputs.get("asset_catalog_paths") or []]
+            return ToolResult(
+                success=False, error=f"Unknown quality_tier: {quality_tier}"
+            )
+        catalog_paths = [
+            Path(str(path)).expanduser().resolve()
+            for path in inputs.get("asset_catalog_paths") or []
+        ]
 
         spec, normalize_warnings = self._normalize_spec(
             inputs.get("world_spec") or {}, duration=duration
@@ -176,7 +190,9 @@ class ThreeJSWorld(BaseTool):
         report = self._report(spec, duration=duration, warnings=normalize_warnings)
         report["quality_tier"] = quality_tier
         report["asset_catalog_paths"] = [str(path) for path in catalog_paths]
-        fidelity_errors, fidelity_warnings = self._fidelity_gate(spec, quality_tier, catalog_paths)
+        fidelity_errors, fidelity_warnings = self._fidelity_gate(
+            spec, quality_tier, catalog_paths
+        )
         report["errors"].extend(fidelity_errors)
         report["warnings"].extend(fidelity_warnings)
 
@@ -196,12 +212,15 @@ class ThreeJSWorld(BaseTool):
             return ToolResult(
                 success=False,
                 data={"world_spec": spec, "report": report},
-                error="World specification failed validation: " + "; ".join(report["errors"]),
+                error="World specification failed validation: "
+                + "; ".join(report["errors"]),
             )
 
         output_raw = inputs.get("output_path")
         if not output_raw:
-            return ToolResult(success=False, error="output_path is required for operation='build'")
+            return ToolResult(
+                success=False, error="output_path is required for operation='build'"
+            )
         workspace = Path(str(output_raw)).expanduser().resolve()
 
         try:
@@ -258,10 +277,14 @@ class ThreeJSWorld(BaseTool):
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc:
-                errors.append(f"Production catalog manifest unreadable: {manifest_path}: {exc}")
+                errors.append(
+                    f"Production catalog manifest unreadable: {manifest_path}: {exc}"
+                )
                 continue
             if manifest.get("license") not in {"CC0", "CC0-1.0"}:
-                errors.append(f"Catalog {manifest_path} lacks an approved CC0 license declaration.")
+                errors.append(
+                    f"Catalog {manifest_path} lacks an approved CC0 license declaration."
+                )
             if int(manifest.get("model_count") or 0) <= 0:
                 errors.append(f"Catalog {manifest_path} contains no GLTF/GLB models.")
             manifests.append(manifest)
@@ -269,21 +292,43 @@ class ThreeJSWorld(BaseTool):
         asset_palette = spec.get("asset_palette") or []
         terrain_materials = spec.get("terrain_materials") or []
         if not catalog_paths:
-            errors.append("Production tier requires at least one installed asset catalog path.")
+            errors.append(
+                "Production tier requires at least one installed asset catalog path."
+            )
         if len(asset_palette) < 8:
-            errors.append("Production tier requires at least 8 distinct asset-palette entries.")
+            errors.append(
+                "Production tier requires at least 8 distinct asset-palette entries."
+            )
         if len(terrain_materials) < 3:
-            errors.append("Production tier requires at least 3 terrain material layers.")
-        if any(not item.get("catalog_id") or not item.get("model_id") for item in asset_palette):
-            errors.append("Every production asset-palette entry requires catalog_id and model_id.")
-        if any(not item.get("base_color") or not item.get("normal") or not item.get("roughness") for item in terrain_materials):
-            errors.append("Every production terrain material requires base_color, normal, and roughness maps.")
+            errors.append(
+                "Production tier requires at least 3 terrain material layers."
+            )
+        if any(
+            not item.get("catalog_id") or not item.get("model_id")
+            for item in asset_palette
+        ):
+            errors.append(
+                "Every production asset-palette entry requires catalog_id and model_id."
+            )
+        if any(
+            not item.get("base_color")
+            or not item.get("normal")
+            or not item.get("roughness")
+            for item in terrain_materials
+        ):
+            errors.append(
+                "Every production terrain material requires base_color, normal, and roughness maps."
+            )
 
         unique_categories = {str(item.get("category") or "") for item in asset_palette}
         if len(unique_categories - {""}) < 4:
-            errors.append("Production asset palette requires at least 4 semantic categories.")
+            errors.append(
+                "Production asset palette requires at least 4 semantic categories."
+            )
         if len(manifests) == 1:
-            warnings.append("Only one asset catalog is installed; repetition must be checked at walk level.")
+            warnings.append(
+                "Only one asset catalog is installed; repetition must be checked at walk level."
+            )
         return errors, warnings
 
     @classmethod
@@ -294,10 +339,20 @@ class ThreeJSWorld(BaseTool):
         warnings: list[str] = []
         world_raw = source.get("world") if isinstance(source.get("world"), dict) else {}
         atmosphere_raw = (
-            source.get("atmosphere") if isinstance(source.get("atmosphere"), dict) else {}
+            source.get("atmosphere")
+            if isinstance(source.get("atmosphere"), dict)
+            else {}
         )
-        terrain_materials_raw = source.get("terrain_materials") if isinstance(source.get("terrain_materials"), list) else []
-        asset_palette_raw = source.get("asset_palette") if isinstance(source.get("asset_palette"), list) else []
+        terrain_materials_raw = (
+            source.get("terrain_materials")
+            if isinstance(source.get("terrain_materials"), list)
+            else []
+        )
+        asset_palette_raw = (
+            source.get("asset_palette")
+            if isinstance(source.get("asset_palette"), list)
+            else []
+        )
 
         world = {
             "size": _clamp(_number(world_raw.get("size"), 120.0), 24.0, 500.0),
@@ -330,23 +385,31 @@ class ThreeJSWorld(BaseTool):
         palette = ["#315b48", "#73523d", "#2d5968", "#6f4b78", "#8b753f"]
         accent_palette = ["#8ee6b1", "#ff9a62", "#64d8ff", "#d4a8ff", "#ffe27a"]
         regions: list[dict[str, Any]] = []
-        raw_regions = source.get("regions") if isinstance(source.get("regions"), list) else []
+        raw_regions = (
+            source.get("regions") if isinstance(source.get("regions"), list) else []
+        )
         for index, item in enumerate(raw_regions[:12]):
             item = item if isinstance(item, dict) else {}
-            region_id = _slug(item.get("id") or item.get("label"), f"region-{index + 1}")
+            region_id = _slug(
+                item.get("id") or item.get("label"), f"region-{index + 1}"
+            )
             landform = str(item.get("landform") or "plain").lower()
             if landform not in _LANDFORMS:
                 warnings.append(
                     f"Region {region_id}: unknown landform {landform!r}; using 'plain'."
                 )
                 landform = "plain"
-            scatter_raw = item.get("scatter") if isinstance(item.get("scatter"), dict) else {}
+            scatter_raw = (
+                item.get("scatter") if isinstance(item.get("scatter"), dict) else {}
+            )
             center = _vec(item.get("center"), 2, [0.0, 0.0])
             center = [_clamp(center[0], -1.0, 1.0), _clamp(center[1], -1.0, 1.0)]
             regions.append(
                 {
                     "id": region_id,
-                    "label": str(item.get("label") or region_id.replace("-", " ").title()),
+                    "label": str(
+                        item.get("label") or region_id.replace("-", " ").title()
+                    ),
                     "center": center,
                     "radius": _clamp(_number(item.get("radius"), 0.75), 0.12, 2.5),
                     "base_elevation": _clamp(
@@ -360,7 +423,8 @@ class ThreeJSWorld(BaseTool):
                     ),
                     "color": _color(item.get("color"), palette[index % len(palette)]),
                     "accent_color": _color(
-                        item.get("accent_color"), accent_palette[index % len(accent_palette)]
+                        item.get("accent_color"),
+                        accent_palette[index % len(accent_palette)],
                     ),
                     "scatter": {
                         "tree": int(
@@ -408,14 +472,20 @@ class ThreeJSWorld(BaseTool):
 
         camera_path: list[dict[str, Any]] = []
         raw_camera = (
-            source.get("camera_path") if isinstance(source.get("camera_path"), list) else []
+            source.get("camera_path")
+            if isinstance(source.get("camera_path"), list)
+            else []
         )
         for index, item in enumerate(raw_camera[:40]):
             item = item if isinstance(item, dict) else {}
-            default_time = (duration * index / max(1, len(raw_camera) - 1)) if raw_camera else 0
+            default_time = (
+                (duration * index / max(1, len(raw_camera) - 1)) if raw_camera else 0
+            )
             camera_path.append(
                 {
-                    "time": _clamp(_number(item.get("time"), default_time), 0.0, duration),
+                    "time": _clamp(
+                        _number(item.get("time"), default_time), 0.0, duration
+                    ),
                     "position": _vec(item.get("position"), 3, [60.0, 35.0, 60.0]),
                     "target": _vec(item.get("target"), 3, [0.0, 0.0, 0.0]),
                     "fov": _clamp(_number(item.get("fov"), 45.0), 18.0, 90.0),
@@ -444,8 +514,16 @@ class ThreeJSWorld(BaseTool):
             else [],
             "world": world,
             "atmosphere": atmosphere,
-            "terrain_materials": [copy.deepcopy(item) for item in terrain_materials_raw if isinstance(item, dict)],
-            "asset_palette": [copy.deepcopy(item) for item in asset_palette_raw if isinstance(item, dict)],
+            "terrain_materials": [
+                copy.deepcopy(item)
+                for item in terrain_materials_raw
+                if isinstance(item, dict)
+            ],
+            "asset_palette": [
+                copy.deepcopy(item)
+                for item in asset_palette_raw
+                if isinstance(item, dict)
+            ],
             "regions": regions,
             "landmarks": landmarks,
             "camera_path": camera_path,
@@ -519,7 +597,11 @@ class ThreeJSWorld(BaseTool):
                 position = cls._interpolate_camera(camera_path, sample_time)
                 terrain_y = cls._height_at(spec, position[0], position[2])
                 clearance = position[1] - terrain_y
-                min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+                min_clearance = (
+                    clearance
+                    if min_clearance is None
+                    else min(min_clearance, clearance)
+                )
             if min_clearance is not None and min_clearance < 2.0:
                 warnings.append(
                     f"Camera path minimum terrain clearance is {min_clearance:.2f}; "
@@ -560,7 +642,7 @@ class ThreeJSWorld(BaseTool):
             radius = max(0.05, region["radius"])
             distance = math.sqrt(dx * dx + dz * dz) / radius
             softness = max(0.02, region["blend_width"])
-            value = math.exp(-max(0.0, distance - 0.05) ** 2 / (softness * 2.8))
+            value = math.exp(-(max(0.0, distance - 0.05) ** 2) / (softness * 2.8))
             raw.append(max(1e-5, value))
         total = sum(raw) or 1.0
         return [value / total for value in raw]
@@ -578,8 +660,7 @@ class ThreeJSWorld(BaseTool):
             noise = (
                 math.sin((nx * 3.1 + seed + index) * frequency * math.pi)
                 + math.cos((nz * 2.7 - seed * 0.7 + index) * frequency * math.pi)
-                + 0.5
-                * math.sin((nx + nz) * frequency * 7.3 + seed * 3.0 + index)
+                + 0.5 * math.sin((nx + nz) * frequency * 7.3 + seed * 3.0 + index)
             ) / 2.5
             dx = nx - region["center"][0]
             dz = nz - region["center"][1]
@@ -602,13 +683,15 @@ class ThreeJSWorld(BaseTool):
         if kind == "terrace":
             return math.floor(max(0.0, 1.0 - distance) * 5.0) / 5.0
         if kind == "basin":
-            return -max(0.0, 1.0 - distance) ** 1.7
+            return -(max(0.0, 1.0 - distance) ** 1.7)
         if kind == "canyon":
-            return -max(0.0, 1.0 - abs(dx + math.sin(dz * 7.0) * 0.1)) ** 2.0
+            return -(max(0.0, 1.0 - abs(dx + math.sin(dz * 7.0) * 0.1)) ** 2.0)
         return 0.0
 
     @staticmethod
-    def _interpolate_camera(camera_path: list[dict[str, Any]], time_value: float) -> list[float]:
+    def _interpolate_camera(
+        camera_path: list[dict[str, Any]], time_value: float
+    ) -> list[float]:
         if time_value <= camera_path[0]["time"]:
             return list(camera_path[0]["position"])
         if time_value >= camera_path[-1]["time"]:
@@ -642,7 +725,9 @@ class ThreeJSWorld(BaseTool):
         required = ["index.html", "world.css", "world-runtime.js"]
         missing = [name for name in required if not (template_dir / name).is_file()]
         if missing:
-            raise FileNotFoundError(f"Missing Three.js world templates: {', '.join(missing)}")
+            raise FileNotFoundError(
+                f"Missing Three.js world templates: {', '.join(missing)}"
+            )
 
         workspace.mkdir(parents=True, exist_ok=True)
         (workspace / "assets").mkdir(exist_ok=True)
@@ -663,8 +748,14 @@ class ThreeJSWorld(BaseTool):
             copied = copy.deepcopy(manifest)
             for model in copied.get("models", []):
                 original = Path(model["path"])
-                relative_inside_source = Path(*original.parts[1:]) if original.parts and original.parts[0] == "source" else original
-                model["runtime_path"] = (Path("assets") / "models" / catalog_id / relative_inside_source).as_posix()
+                relative_inside_source = (
+                    Path(*original.parts[1:])
+                    if original.parts and original.parts[0] == "source"
+                    else original
+                )
+                model["runtime_path"] = (
+                    Path("assets") / "models" / catalog_id / relative_inside_source
+                ).as_posix()
             copied.pop("download_url", None)
             catalog_index["catalogs"].append(copied)
 
@@ -697,9 +788,13 @@ class ThreeJSWorld(BaseTool):
             encoding="utf-8",
         )
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-        catalog_index_path.write_text(json.dumps(catalog_index, indent=2), encoding="utf-8")
+        catalog_index_path.write_text(
+            json.dumps(catalog_index, indent=2), encoding="utf-8"
+        )
         catalog_js_path.write_text(
-            "export const ASSET_CATALOG = " + json.dumps(catalog_index, indent=2) + ";\n",
+            "export const ASSET_CATALOG = "
+            + json.dumps(catalog_index, indent=2)
+            + ";\n",
             encoding="utf-8",
         )
         config_path.write_text(

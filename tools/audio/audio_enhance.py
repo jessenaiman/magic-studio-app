@@ -35,11 +35,7 @@ PRESETS = {
     },
     "noise_reduce": {
         "description": "Aggressive noise reduction for noisy environments",
-        "af": (
-            "afftdn=nf=-25:nt=w,"
-            "highpass=f=100,"
-            "loudnorm=I=-16:LRA=11:TP=-1.5"
-        ),
+        "af": ("afftdn=nf=-25:nt=w,highpass=f=100,loudnorm=I=-16:LRA=11:TP=-1.5"),
     },
     "normalize_only": {
         "description": "Loudness normalization without other processing",
@@ -129,7 +125,11 @@ class AudioEnhance(BaseTool):
 
     resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500)
     idempotency_key_fields = [
-        "input_path", "preset", "custom_af", "audio_codec", "audio_bitrate",
+        "input_path",
+        "preset",
+        "custom_af",
+        "audio_codec",
+        "audio_bitrate",
     ]
     side_effects = ["writes enhanced audio/video to output_path"]
     user_visible_verification = [
@@ -143,20 +143,40 @@ class AudioEnhance(BaseTool):
             return ToolResult(success=False, error=f"Input not found: {input_path}")
 
         audio_codec = inputs.get("audio_codec", "aac")
-        is_video = input_path.suffix.lower() in {".mp4", ".mkv", ".avi", ".mov", ".webm"}
+        is_video = input_path.suffix.lower() in {
+            ".mp4",
+            ".mkv",
+            ".avi",
+            ".mov",
+            ".webm",
+        }
         default_output = input_path.with_stem(f"{input_path.stem}_enhanced")
         # Pick a muxable audio container rather than inheriting the source
         # suffix after a codec change. Keep unknown encoders caller-directed.
         audio_suffixes = {
-            "aac": ".m4a", "mp3": ".mp3", "libmp3lame": ".mp3",
-            "flac": ".flac", "opus": ".ogg", "libopus": ".ogg",
-            "vorbis": ".ogg", "libvorbis": ".ogg", "pcm_s16le": ".wav",
+            "aac": ".m4a",
+            "mp3": ".mp3",
+            "libmp3lame": ".mp3",
+            "flac": ".flac",
+            "opus": ".ogg",
+            "libopus": ".ogg",
+            "vorbis": ".ogg",
+            "libvorbis": ".ogg",
+            "pcm_s16le": ".wav",
         }
         if not is_video and audio_codec in audio_suffixes:
             default_output = default_output.with_suffix(audio_suffixes[audio_codec])
-        elif is_video and input_path.suffix.lower() == ".webm" and audio_codec not in {
-            "opus", "libopus", "vorbis", "libvorbis",
-        }:
+        elif (
+            is_video
+            and input_path.suffix.lower() == ".webm"
+            and audio_codec
+            not in {
+                "opus",
+                "libopus",
+                "vorbis",
+                "libvorbis",
+            }
+        ):
             default_output = default_output.with_suffix(".mkv")
         output_path = Path(inputs.get("output_path", str(default_output)))
         audio_bitrate = inputs.get("audio_bitrate", "192k")
@@ -172,9 +192,12 @@ class AudioEnhance(BaseTool):
         start = time.time()
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-af", af,
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-af",
+            af,
         ]
         if is_video:
             cmd.extend(["-c:v", "copy"])

@@ -14,6 +14,7 @@ What Mixkit is good for
 - No-attribution-needed clips for quick gap-fills
 - Nature and landscape establishing shots
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +27,9 @@ from .base import Candidate, SearchFilters
 _log = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://mixkit.co/free-stock-video/"
-_LICENSE = "Mixkit License (free for commercial and personal use, no attribution required)"
+_LICENSE = (
+    "Mixkit License (free for commercial and personal use, no attribution required)"
+)
 
 
 class MixkitSource:
@@ -45,6 +48,7 @@ class MixkitSource:
     def is_available(self) -> bool:
         try:
             import bs4  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -78,8 +82,10 @@ class MixkitSource:
         out: list[Candidate] = []
 
         # Mixkit lists video cards with preview videos and download links
-        cards = soup.select(".item-grid__item, .video-item, article, [class*='VideoCard']")
-        for card in cards[:filters.per_page]:
+        cards = soup.select(
+            ".item-grid__item, .video-item, article, [class*='VideoCard']"
+        )
+        for card in cards[: filters.per_page]:
             link_el = card.select_one("a[href]")
             if not link_el:
                 continue
@@ -155,7 +161,8 @@ class MixkitSource:
 
         try:
             r = requests.get(
-                detail_url, timeout=30,
+                detail_url,
+                timeout=30,
                 headers={"User-Agent": "OpenMontage/1.0"},
             )
             r.raise_for_status()
@@ -169,7 +176,9 @@ class MixkitSource:
                 text = (a.get_text(strip=True) or "").lower()
                 classes = " ".join(a.get("class", []))
                 if "download" in text or "download" in classes:
-                    if href and any(ext in href.lower() for ext in [".mp4", ".mov", ".webm"]):
+                    if href and any(
+                        ext in href.lower() for ext in [".mp4", ".mov", ".webm"]
+                    ):
                         download_url = href
                         break
                     elif href and "/download/" in href:
@@ -186,14 +195,23 @@ class MixkitSource:
 
             # Look for data attributes with video URLs
             if not download_url:
-                for el in soup.select("[data-video-url], [data-download-url], [data-src]"):
-                    url = el.get("data-video-url") or el.get("data-download-url") or el.get("data-src") or ""
+                for el in soup.select(
+                    "[data-video-url], [data-download-url], [data-src]"
+                ):
+                    url = (
+                        el.get("data-video-url")
+                        or el.get("data-download-url")
+                        or el.get("data-src")
+                        or ""
+                    )
                     if url and any(ext in url.lower() for ext in [".mp4", ".mov"]):
                         download_url = url
                         break
 
             if not download_url:
-                raise ValueError(f"Could not find download URL on Mixkit page: {detail_url}")
+                raise ValueError(
+                    f"Could not find download URL on Mixkit page: {detail_url}"
+                )
 
             if not download_url.startswith("http"):
                 download_url = f"https://mixkit.co{download_url}"
@@ -207,7 +225,9 @@ class MixkitSource:
         import requests
 
         with requests.get(
-            url, stream=True, timeout=120,
+            url,
+            stream=True,
+            timeout=120,
             headers={"User-Agent": "OpenMontage/1.0"},
         ) as r:
             r.raise_for_status()

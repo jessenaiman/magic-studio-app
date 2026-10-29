@@ -37,7 +37,24 @@ RIGHT_LOWER_EYELID = [263, 249, 390, 373, 374, 380, 381, 382, 362]
 
 # Full eye contour (used for iris/eye brightening):
 LEFT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-RIGHT_EYE = [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466]
+RIGHT_EYE = [
+    263,
+    249,
+    390,
+    373,
+    374,
+    380,
+    381,
+    382,
+    362,
+    398,
+    384,
+    385,
+    386,
+    387,
+    388,
+    466,
+]
 
 # Iris landmarks (available when refine_landmarks=True, indices 468-477):
 LEFT_IRIS = [468, 469, 470, 471, 472]
@@ -114,8 +131,11 @@ class EyeEnhance(BaseTool):
         cpu_cores=4, ram_mb=2048, vram_mb=0, disk_mb=4000, network_required=False
     )
     idempotency_key_fields = [
-        "input_path", "operations", "dark_circle_intensity",
-        "eye_brighten_intensity", "sharpen_intensity",
+        "input_path",
+        "operations",
+        "dark_circle_intensity",
+        "eye_brighten_intensity",
+        "sharpen_intensity",
     ]
     side_effects = ["writes enhanced video to output_path"]
     user_visible_verification = [
@@ -127,6 +147,7 @@ class EyeEnhance(BaseTool):
     def _has_mediapipe(self) -> bool:
         try:
             import mediapipe  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -135,6 +156,7 @@ class EyeEnhance(BaseTool):
         try:
             import cv2  # noqa: F401
             import numpy  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -153,7 +175,10 @@ class EyeEnhance(BaseTool):
 
         operations = inputs.get("operations", ["dark_circles", "brighten_eyes"])
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_eye_enhanced")))
+            inputs.get(
+                "output_path",
+                str(input_path.with_stem(f"{input_path.stem}_eye_enhanced")),
+            )
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -224,8 +249,14 @@ class EyeEnhance(BaseTool):
                 if results.multi_face_landmarks:
                     landmarks = results.multi_face_landmarks[0]
                     frame = self._apply_eye_enhancements(
-                        frame, landmarks, width, height,
-                        operations, dark_intensity, brighten_intensity, sharpen_intensity,
+                        frame,
+                        landmarks,
+                        width,
+                        height,
+                        operations,
+                        dark_intensity,
+                        brighten_intensity,
+                        sharpen_intensity,
                     )
                     frames_enhanced += 1
 
@@ -236,12 +267,26 @@ class EyeEnhance(BaseTool):
 
         # Mux original audio back with FFmpeg
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(temp_video),
-            "-i", str(input_path),
-            "-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
-            "-c:a", "aac", "-b:a", "192k",
-            "-map", "0:v:0", "-map", "1:a:0?",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(temp_video),
+            "-i",
+            str(input_path),
+            "-c:v",
+            "libx264",
+            "-crf",
+            str(crf),
+            "-preset",
+            "fast",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0?",
             "-shortest",
             str(output_path),
         ]
@@ -294,7 +339,9 @@ class EyeEnhance(BaseTool):
             return np.array(points, dtype=np.int32)
 
         for side in ["left", "right"]:
-            lower_lid = lm_to_px(LEFT_LOWER_EYELID if side == "left" else RIGHT_LOWER_EYELID)
+            lower_lid = lm_to_px(
+                LEFT_LOWER_EYELID if side == "left" else RIGHT_LOWER_EYELID
+            )
             eye_contour = lm_to_px(LEFT_EYE if side == "left" else RIGHT_EYE)
 
             if len(lower_lid) < 3 or len(eye_contour) < 3:
@@ -313,9 +360,7 @@ class EyeEnhance(BaseTool):
                 )
 
             if "sharpen_eyes" in operations:
-                result = self._sharpen_eyes(
-                    result, eye_contour, sharpen_intensity
-                )
+                result = self._sharpen_eyes(result, eye_contour, sharpen_intensity)
 
         return result
 
@@ -362,8 +407,9 @@ class EyeEnhance(BaseTool):
         # Combine: weighted blend of both adjustments
         mask_3ch = np.stack([mask] * 3, axis=-1)
         combined = frame.astype(np.float32)
-        combined = combined * (1 - mask_3ch * intensity) + \
-                   (brightened.astype(np.float32) * 0.6 + desaturated.astype(np.float32) * 0.4) * (mask_3ch * intensity)
+        combined = combined * (1 - mask_3ch * intensity) + (
+            brightened.astype(np.float32) * 0.6 + desaturated.astype(np.float32) * 0.4
+        ) * (mask_3ch * intensity)
 
         return np.clip(combined, 0, 255).astype(np.uint8)
 
@@ -390,8 +436,9 @@ class EyeEnhance(BaseTool):
         brightened = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
         mask_3ch = np.stack([mask] * 3, axis=-1)
-        result = frame.astype(np.float32) * (1 - mask_3ch * intensity) + \
-                 brightened.astype(np.float32) * (mask_3ch * intensity)
+        result = frame.astype(np.float32) * (
+            1 - mask_3ch * intensity
+        ) + brightened.astype(np.float32) * (mask_3ch * intensity)
 
         return np.clip(result, 0, 255).astype(np.uint8)
 
@@ -417,8 +464,10 @@ class EyeEnhance(BaseTool):
         sharpened = cv2.addWeighted(frame, 1.0 + intensity, blur, -intensity, 0)
 
         mask_3ch = np.stack([mask] * 3, axis=-1)
-        result = frame.astype(np.float32) * (1 - mask_3ch) + \
-                 sharpened.astype(np.float32) * mask_3ch
+        result = (
+            frame.astype(np.float32) * (1 - mask_3ch)
+            + sharpened.astype(np.float32) * mask_3ch
+        )
 
         return np.clip(result, 0, 255).astype(np.uint8)
 
@@ -468,10 +517,12 @@ class EyeEnhance(BaseTool):
                 fx, fy, fw, fh = faces[fi]
 
                 # Detect eyes within face region
-                face_roi_gray = gray[fy:fy + fh, fx:fx + fw]
-                eyes = eye_cascade.detectMultiScale(face_roi_gray, 1.1, 5, minSize=(20, 20))
+                face_roi_gray = gray[fy : fy + fh, fx : fx + fw]
+                eyes = eye_cascade.detectMultiScale(
+                    face_roi_gray, 1.1, 5, minSize=(20, 20)
+                )
 
-                for (ex, ey, ew, eh) in eyes:
+                for ex, ey, ew, eh in eyes:
                     # Under-eye region: below the detected eye box
                     under_y = fy + ey + eh
                     under_h = max(5, int(eh * 0.4))
@@ -486,14 +537,22 @@ class EyeEnhance(BaseTool):
                                 mask,
                                 (under_x + under_w // 2, under_y + under_h // 2),
                                 (under_w // 2, under_h // 2),
-                                0, 0, 360, 1.0, -1,
+                                0,
+                                0,
+                                360,
+                                1.0,
+                                -1,
                             )
                             mask = cv2.GaussianBlur(mask, (15, 15), 0)
 
-                            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB).astype(np.float32)
+                            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB).astype(
+                                np.float32
+                            )
                             lab[:, :, 0] += mask * (25 * dark_intensity)
                             lab[:, :, 0] = np.clip(lab[:, :, 0], 0, 255)
-                            frame = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+                            frame = cv2.cvtColor(
+                                lab.astype(np.uint8), cv2.COLOR_LAB2BGR
+                            )
 
                 frames_enhanced += 1
 
@@ -504,12 +563,26 @@ class EyeEnhance(BaseTool):
 
         # Mux audio
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(temp_video),
-            "-i", str(input_path),
-            "-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
-            "-c:a", "aac", "-b:a", "192k",
-            "-map", "0:v:0", "-map", "1:a:0?",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(temp_video),
+            "-i",
+            str(input_path),
+            "-c:v",
+            "libx264",
+            "-crf",
+            str(crf),
+            "-preset",
+            "fast",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0?",
             "-shortest",
             str(output_path),
         ]
@@ -548,11 +621,20 @@ class EyeEnhance(BaseTool):
         contrast = 1.0 + (0.05 * intensity)
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", f"eq=brightness={brightness}:contrast={contrast}",
-            "-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
-            "-c:a", "copy",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"eq=brightness={brightness}:contrast={contrast}",
+            "-c:v",
+            "libx264",
+            "-crf",
+            str(crf),
+            "-preset",
+            "fast",
+            "-c:a",
+            "copy",
             str(output_path),
         ]
 

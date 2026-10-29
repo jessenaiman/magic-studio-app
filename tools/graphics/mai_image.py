@@ -129,7 +129,7 @@ class MAIImage(SpeechAPI):
         out.parent.mkdir(parents=True, exist_ok=True)
         outputs = []
         for i, encoded in enumerate(images):
-            p = out if i == 0 else out.with_name(f"{out.stem}_{i+1}{out.suffix}")
+            p = out if i == 0 else out.with_name(f"{out.stem}_{i + 1}{out.suffix}")
             p.write_bytes(base64.b64decode(encoded, validate=True))
             outputs.append(str(p))
         return ToolResult(

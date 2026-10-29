@@ -5,6 +5,7 @@ Builds a FilmCraft `.fcproj` sequence from the character's rendered EffectCraft 
 places named program timeline markers (`markers.add`) for each action segment (`idle`, `walk`, `run`, `jump`,
 `wave`, `talk_express`), exports `<slug>_markers.csv` (`markers.exportCsv`), and renders a verified frame.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,12 @@ def build_filmcraft_marked_sequence(
         {"id": "run", "title": "3. RUN", "startSec": 1.6, "durationFrames": 19},
         {"id": "jump", "title": "4. JUMP", "startSec": 2.4, "durationFrames": 19},
         {"id": "wave", "title": "5. WAVE", "startSec": 3.2, "durationFrames": 19},
-        {"id": "talk_express", "title": "6. TALK / EXPRESS", "startSec": 4.0, "durationFrames": 19},
+        {
+            "id": "talk_express",
+            "title": "6. TALK / EXPRESS",
+            "startSec": 4.0,
+            "durationFrames": 19,
+        },
     ]
 
     marker_receipts: list[dict[str, Any]] = []
@@ -77,13 +83,15 @@ def build_filmcraft_marked_sequence(
             text=True,
             timeout=15,
         )
-        marker_receipts.append({
-            "id": seg.get("id"),
-            "name": name,
-            "startSec": start_sec,
-            "durationFrames": dur_frames,
-            "ok": proc.returncode == 0,
-        })
+        marker_receipts.append(
+            {
+                "id": seg.get("id"),
+                "name": name,
+                "startSec": start_sec,
+                "durationFrames": dur_frames,
+                "ok": proc.returncode == 0,
+            }
+        )
 
     subprocess.run(
         [

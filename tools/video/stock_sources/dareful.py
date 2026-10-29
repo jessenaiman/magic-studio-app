@@ -15,6 +15,7 @@ What Dareful is good for
 - Time-lapse sequences (sunrise, clouds, stars)
 - Consistent visual style (single creator)
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ class DarefulSource:
     def is_available(self) -> bool:
         try:
             import bs4  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -76,7 +78,7 @@ class DarefulSource:
 
         # Find video post cards
         cards = soup.select("article, .post, .entry, .video-item, .grid-item")
-        for card in cards[:filters.per_page]:
+        for card in cards[: filters.per_page]:
             link_el = card.select_one("a[href]")
             if not link_el:
                 continue
@@ -136,7 +138,8 @@ class DarefulSource:
 
         try:
             r = requests.get(
-                detail_url, timeout=30,
+                detail_url,
+                timeout=30,
                 headers={"User-Agent": "OpenMontage/1.0"},
             )
             r.raise_for_status()
@@ -164,7 +167,9 @@ class DarefulSource:
                         break
 
             if not download_url:
-                raise ValueError(f"Could not find download URL on Dareful page: {detail_url}")
+                raise ValueError(
+                    f"Could not find download URL on Dareful page: {detail_url}"
+                )
 
             if not download_url.startswith("http"):
                 download_url = f"{_BASE_URL}{download_url}"
@@ -178,7 +183,9 @@ class DarefulSource:
         import requests
 
         with requests.get(
-            url, stream=True, timeout=180,
+            url,
+            stream=True,
+            timeout=180,
             headers={"User-Agent": "OpenMontage/1.0"},
         ) as r:
             r.raise_for_status()

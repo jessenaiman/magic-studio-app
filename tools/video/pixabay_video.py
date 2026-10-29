@@ -71,10 +71,26 @@ class PixabayVideo(BaseTool):
             "category": {
                 "type": "string",
                 "enum": [
-                    "backgrounds", "fashion", "nature", "science", "education",
-                    "feelings", "health", "people", "religion", "places",
-                    "animals", "industry", "computer", "food", "sports",
-                    "transportation", "travel", "buildings", "business", "music",
+                    "backgrounds",
+                    "fashion",
+                    "nature",
+                    "science",
+                    "education",
+                    "feelings",
+                    "health",
+                    "people",
+                    "religion",
+                    "places",
+                    "animals",
+                    "industry",
+                    "computer",
+                    "food",
+                    "sports",
+                    "transportation",
+                    "travel",
+                    "buildings",
+                    "business",
+                    "music",
                 ],
             },
             "min_duration": {
@@ -101,10 +117,14 @@ class PixabayVideo(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=200, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["query", "video_type", "category", "page"]
     side_effects = ["writes video file to output_path", "calls Pixabay API"]
-    user_visible_verification = ["Watch downloaded clip to verify it matches the intended scene"]
+    user_visible_verification = [
+        "Watch downloaded clip to verify it matches the intended scene"
+    ]
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("PIXABAY_API_KEY"):
@@ -185,14 +205,18 @@ class PixabayVideo(BaseTool):
                         break
 
             if not video_info:
-                return ToolResult(success=False, error="No downloadable video file found.")
+                return ToolResult(
+                    success=False, error="No downloadable video file found."
+                )
 
             # Download immediately — Pixabay URLs expire
             video_url = video_info["url"]
             video_response = requests.get(video_url, timeout=120)
             video_response.raise_for_status()
 
-            output_path = Path(inputs.get("output_path", f"pixabay_video_{hit['id']}.mp4"))
+            output_path = Path(
+                inputs.get("output_path", f"pixabay_video_{hit['id']}.mp4")
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(video_response.content)
 

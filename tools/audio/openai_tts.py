@@ -109,10 +109,22 @@ class OpenAITTS(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=50, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
-    idempotency_key_fields = ["text", "voice", "model", "format", "response_format", "instructions", "speed"]
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
+    idempotency_key_fields = [
+        "text",
+        "voice",
+        "model",
+        "format",
+        "response_format",
+        "instructions",
+        "speed",
+    ]
     side_effects = ["writes audio file to output_path", "calls OpenAI API"]
-    user_visible_verification = ["Listen to generated audio for intelligibility and tone"]
+    user_visible_verification = [
+        "Listen to generated audio for intelligibility and tone"
+    ]
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("OPENAI_API_KEY"):
@@ -128,7 +140,9 @@ class OpenAITTS(BaseTool):
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         if not os.environ.get("OPENAI_API_KEY"):
-            return ToolResult(success=False, error="No OpenAI API key. " + self.install_instructions)
+            return ToolResult(
+                success=False, error="No OpenAI API key. " + self.install_instructions
+            )
 
         start = time.time()
         try:
@@ -189,7 +203,9 @@ class OpenAITTS(BaseTool):
                 "instructions": inputs.get("instructions"),
                 "speed": inputs.get("speed", 1.0),
                 "text_length": len(text),
-                "audio_duration_seconds": round(audio_duration, 2) if audio_duration else None,
+                "audio_duration_seconds": round(audio_duration, 2)
+                if audio_duration
+                else None,
                 "output": str(output_path),
             },
             artifacts=[str(output_path)],

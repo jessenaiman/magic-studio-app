@@ -99,8 +99,14 @@ class SilenceCutter(BaseTool):
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["FFmpeg error"])
     resume_support = ResumeSupport.FROM_START
     idempotency_key_fields = [
-        "input_path", "mode", "silence_threshold_db", "min_silence_duration",
-        "padding_seconds", "silence_speed_factor", "codec", "crf",
+        "input_path",
+        "mode",
+        "silence_threshold_db",
+        "min_silence_duration",
+        "padding_seconds",
+        "silence_speed_factor",
+        "codec",
+        "crf",
     ]
     side_effects = ["writes cut video to output_path"]
     user_visible_verification = [
@@ -166,7 +172,9 @@ class SilenceCutter(BaseTool):
                     "mode": "mark",
                     "silence_segments": len(silences),
                     "speech_segments": len(speech_segments),
-                    "silence_duration_seconds": round(result_data["silence_duration"], 2),
+                    "silence_duration_seconds": round(
+                        result_data["silence_duration"], 2
+                    ),
                     "speech_duration_seconds": round(result_data["speech_duration"], 2),
                     "output": str(output_json),
                 },
@@ -175,7 +183,9 @@ class SilenceCutter(BaseTool):
             )
 
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_cut")))
+            inputs.get(
+                "output_path", str(input_path.with_stem(f"{input_path.stem}_cut"))
+            )
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         codec = inputs.get("codec", "libx264")
@@ -184,12 +194,22 @@ class SilenceCutter(BaseTool):
         if mode == "speed_up":
             speed_factor = inputs.get("silence_speed_factor", 6.0)
             result = self._render_speed_up(
-                input_path, output_path, silences, speech_segments,
-                total_duration, speed_factor, codec, crf,
+                input_path,
+                output_path,
+                silences,
+                speech_segments,
+                total_duration,
+                speed_factor,
+                codec,
+                crf,
             )
         else:
             result = self._render_jump_cut(
-                input_path, output_path, speech_segments, codec, crf,
+                input_path,
+                output_path,
+                speech_segments,
+                codec,
+                crf,
             )
 
         if not result.success:
@@ -211,7 +231,9 @@ class SilenceCutter(BaseTool):
                 "silence_removed_seconds": round(silence_dur, 2),
                 "silence_segments": len(silences),
                 "speech_segments": len(speech_segments),
-                "time_saved_percent": round(silence_dur / total_duration * 100, 1) if total_duration > 0 else 0,
+                "time_saved_percent": round(silence_dur / total_duration * 100, 1)
+                if total_duration > 0
+                else 0,
             },
             artifacts=[str(output_path)],
             duration_seconds=round(elapsed, 2),
@@ -223,9 +245,13 @@ class SilenceCutter(BaseTool):
         """Detect silent segments using FFmpeg silencedetect filter."""
         cmd = [
             "ffmpeg",
-            "-i", str(input_path),
-            "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration}",
-            "-f", "null", "-",
+            "-i",
+            str(input_path),
+            "-af",
+            f"silencedetect=noise={threshold_db}dB:d={min_duration}",
+            "-f",
+            "null",
+            "-",
         ]
 
         try:
@@ -244,20 +270,29 @@ class SilenceCutter(BaseTool):
 
         silences = []
         for i in range(min(len(starts), len(ends))):
-            silences.append({
-                "start": float(starts[i]),
-                "end": float(ends[i]),
-                "duration": float(durations[i]) if i < len(durations) else float(ends[i]) - float(starts[i]),
-            })
+            silences.append(
+                {
+                    "start": float(starts[i]),
+                    "end": float(ends[i]),
+                    "duration": float(durations[i])
+                    if i < len(durations)
+                    else float(ends[i]) - float(starts[i]),
+                }
+            )
 
         return silences
 
     def _get_duration(self, input_path: Path) -> float:
         """Get video duration via ffprobe."""
         cmd = [
-            "ffprobe", "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "json", str(input_path),
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(input_path),
         ]
         try:
             result = self.run_command(cmd)
@@ -276,7 +311,9 @@ class SilenceCutter(BaseTool):
         for silence in silences:
             speech_end = silence["start"] + padding
             if speech_end > cursor:
-                segments.append({"start": cursor, "end": min(speech_end, total_duration)})
+                segments.append(
+                    {"start": cursor, "end": min(speech_end, total_duration)}
+                )
             cursor = max(cursor, silence["end"] - padding)
 
         # Final segment after last silence
@@ -297,9 +334,11 @@ class SilenceCutter(BaseTool):
 
     def _render_jump_cut(
         self,
-        input_path: Path, output_path: Path,
+        input_path: Path,
+        output_path: Path,
         speech_segments: list[dict],
-        codec: str, crf: int,
+        codec: str,
+        crf: int,
     ) -> ToolResult:
         """Remove silence by concatenating speech segments."""
         if not speech_segments:
@@ -314,14 +353,27 @@ class SilenceCutter(BaseTool):
             for i, seg in enumerate(speech_segments):
                 seg_path = temp_dir / f"seg_{i:04d}.mp4"
                 cmd = [
-                    "ffmpeg", "-y",
-                    "-i", str(input_path),
-                    "-ss", f"{seg['start']:.3f}",
-                    "-to", f"{seg['end']:.3f}",
-                    "-c:v", codec, "-crf", str(crf), "-preset", "fast",
-                    "-c:a", "aac", "-b:a", "192k",
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_path),
+                    "-ss",
+                    f"{seg['start']:.3f}",
+                    "-to",
+                    f"{seg['end']:.3f}",
+                    "-c:v",
+                    codec,
+                    "-crf",
+                    str(crf),
+                    "-preset",
+                    "fast",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "192k",
                     # Force keyframe at start for clean cuts
-                    "-force_key_frames", f"{seg['start']:.3f}",
+                    "-force_key_frames",
+                    f"{seg['start']:.3f}",
                     str(seg_path),
                 ]
                 self.run_command(cmd, timeout=120)
@@ -329,7 +381,9 @@ class SilenceCutter(BaseTool):
                     seg_files.append(seg_path)
 
             if not seg_files:
-                return ToolResult(success=False, error="No segments were successfully cut")
+                return ToolResult(
+                    success=False, error="No segments were successfully cut"
+                )
 
             # Concat all segments
             list_path = temp_dir / "concat_list.txt"
@@ -339,10 +393,16 @@ class SilenceCutter(BaseTool):
                     f.write(f"file '{safe_path}'\n")
 
             cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(list_path),
-                "-c", "copy",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(list_path),
+                "-c",
+                "copy",
                 str(output_path),
             ]
             self.run_command(cmd, timeout=120)
@@ -364,11 +424,14 @@ class SilenceCutter(BaseTool):
 
     def _render_speed_up(
         self,
-        input_path: Path, output_path: Path,
-        silences: list[dict], speech_segments: list[dict],
+        input_path: Path,
+        output_path: Path,
+        silences: list[dict],
+        speech_segments: list[dict],
         total_duration: float,
         speed_factor: float,
-        codec: str, crf: int,
+        codec: str,
+        crf: int,
     ) -> ToolResult:
         """Speed up silent segments instead of removing them.
 
@@ -385,15 +448,15 @@ class SilenceCutter(BaseTool):
             cursor = 0.0
             for seg in speech_segments:
                 if seg["start"] > cursor:
-                    all_segments.append({
-                        "start": cursor, "end": seg["start"], "speed": speed_factor
-                    })
+                    all_segments.append(
+                        {"start": cursor, "end": seg["start"], "speed": speed_factor}
+                    )
                 all_segments.append({**seg, "speed": 1.0})
                 cursor = seg["end"]
             if cursor < total_duration:
-                all_segments.append({
-                    "start": cursor, "end": total_duration, "speed": speed_factor
-                })
+                all_segments.append(
+                    {"start": cursor, "end": total_duration, "speed": speed_factor}
+                )
 
             # Process each segment
             seg_files = []
@@ -406,12 +469,24 @@ class SilenceCutter(BaseTool):
                 if seg["speed"] == 1.0:
                     # Normal speed
                     cmd = [
-                        "ffmpeg", "-y",
-                        "-i", str(input_path),
-                        "-ss", f"{seg['start']:.3f}",
-                        "-to", f"{seg['end']:.3f}",
-                        "-c:v", codec, "-crf", str(crf), "-preset", "fast",
-                        "-c:a", "aac", "-b:a", "192k",
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(input_path),
+                        "-ss",
+                        f"{seg['start']:.3f}",
+                        "-to",
+                        f"{seg['end']:.3f}",
+                        "-c:v",
+                        codec,
+                        "-crf",
+                        str(crf),
+                        "-preset",
+                        "fast",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
                         str(seg_path),
                     ]
                 else:
@@ -419,18 +494,30 @@ class SilenceCutter(BaseTool):
                     pts = 1.0 / seg["speed"]
                     atempo_chain = self._build_atempo_chain(seg["speed"])
                     cmd = [
-                        "ffmpeg", "-y",
-                        "-i", str(input_path),
-                        "-filter:v", (
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(input_path),
+                        "-filter:v",
+                        (
                             f"trim=start={seg['start']:.6f}:end={seg['end']:.6f},"
                             f"setpts={pts:.8f}*(PTS-STARTPTS)"
                         ),
-                        "-filter:a", (
+                        "-filter:a",
+                        (
                             f"atrim=start={seg['start']:.6f}:end={seg['end']:.6f},"
                             f"asetpts=PTS-STARTPTS,{atempo_chain}"
                         ),
-                        "-c:v", codec, "-crf", str(crf), "-preset", "fast",
-                        "-c:a", "aac", "-b:a", "192k",
+                        "-c:v",
+                        codec,
+                        "-crf",
+                        str(crf),
+                        "-preset",
+                        "fast",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "192k",
                         str(seg_path),
                     ]
 
@@ -449,10 +536,16 @@ class SilenceCutter(BaseTool):
                     f.write(f"file '{safe_path}'\n")
 
             cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(list_path),
-                "-c", "copy",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(list_path),
+                "-c",
+                "copy",
                 str(output_path),
             ]
             self.run_command(cmd, timeout=120)

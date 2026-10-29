@@ -33,7 +33,9 @@ def build_image_prompt_references(
                 f"prompt references <<<image_{max(existing_numbers)}>>> but only {len(references)} image(s) were provided"
             )
         if min(existing_numbers) < 1:
-            raise ValueError("Image Omni prompt placeholders must start at <<<image_1>>>")
+            raise ValueError(
+                "Image Omni prompt placeholders must start at <<<image_1>>>"
+            )
         return prompt, references
 
     placeholders = " ".join(item["placeholder"] for item in references)

@@ -101,6 +101,7 @@ class FaceRestore(BaseTool):
     def get_status(self) -> ToolStatus:
         try:
             import gfpgan  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             return ToolStatus.UNAVAILABLE
@@ -145,8 +146,12 @@ class FaceRestore(BaseTool):
                 from realesrgan import RealESRGANer
 
                 realesrgan_model = RRDBNet(
-                    num_in_ch=3, num_out_ch=3, num_feat=64,
-                    num_block=23, num_grow_ch=32, scale=2,
+                    num_in_ch=3,
+                    num_out_ch=3,
+                    num_feat=64,
+                    num_block=23,
+                    num_grow_ch=32,
+                    scale=2,
                 )
                 bg_kwargs: dict = {
                     "scale": 2,
@@ -218,9 +223,7 @@ class FaceRestore(BaseTool):
             return ToolResult(success=False, error=f"Restoration failed: {e}")
 
         if restored_img is None:
-            return ToolResult(
-                success=False, error="Restoration produced no output"
-            )
+            return ToolResult(success=False, error="Restoration produced no output")
 
         # Save restored output
         output_path.parent.mkdir(parents=True, exist_ok=True)

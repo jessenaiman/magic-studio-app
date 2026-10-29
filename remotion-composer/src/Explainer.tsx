@@ -126,16 +126,16 @@ const AnimatedBackground: React.FC<{ theme: ThemeConfig }> = ({ theme }) => {
     : `rgba(${bgR},${bgG},${bgB},0.4)`;
 
   return (
-    <AbsoluteFill style={{ background: gradient }}>
-      {/* Floating glow orbs */}
-      {orbs.map((orb, i) => {
+      <AbsoluteFill style={{ background: gradient }}>
+          {/* Floating glow orbs */}
+          {orbs.map((orb, i) => {
         const ox = orb.x + Math.sin(frame / (fps * orb.speedX)) * 15;
         const oy = orb.y + Math.cos(frame / (fps * orb.speedY)) * 12;
         const { r, g, b } = hexToRgb(orb.color);
         return (
-          <div
-            key={i}
-            style={{
+            <div
+                key={i}
+                style={{
               position: "absolute",
               left: `${ox}%`,
               top: `${oy}%`,
@@ -147,13 +147,13 @@ const AnimatedBackground: React.FC<{ theme: ThemeConfig }> = ({ theme }) => {
               transform: "translate(-50%, -50%)",
               willChange: "transform",
             }}
-          />
+            />
         );
       })}
 
-      {/* Subtle grid overlay */}
-      <div
-        style={{
+          {/* Subtle grid overlay */}
+          <div
+              style={{
           position: "absolute",
           inset: 0,
           backgroundImage: `
@@ -163,11 +163,11 @@ const AnimatedBackground: React.FC<{ theme: ThemeConfig }> = ({ theme }) => {
           backgroundSize: "60px 60px",
           opacity: 0.5 + Math.sin(frame / (fps * 20)) * 0.2,
         }}
-      />
+          />
 
-      {/* Top gradient fade for depth */}
-      <div
-        style={{
+          {/* Top gradient fade for depth */}
+          <div
+              style={{
           position: "absolute",
           top: 0,
           left: 0,
@@ -175,8 +175,8 @@ const AnimatedBackground: React.FC<{ theme: ThemeConfig }> = ({ theme }) => {
           height: "30%",
           background: `linear-gradient(to bottom, ${fadeColor}, transparent)`,
         }}
-      />
-    </AbsoluteFill>
+          />
+      </AbsoluteFill>
   );
 };
 
@@ -329,13 +329,13 @@ function isVideo(source: string): boolean {
 // ---------------------------------------------------------------------------
 
 const Vignette: React.FC = () => (
-  <AbsoluteFill
-    style={{
+    <AbsoluteFill
+        style={{
       background:
         "radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%)",
       pointerEvents: "none",
     }}
-  />
+    />
 );
 
 // ---------------------------------------------------------------------------
@@ -393,10 +393,10 @@ const ImageScene: React.FC<{ src: string; animation?: string }> = ({
   // "static" or "none" → just display
 
   return (
-    <AbsoluteFill style={{ overflow: "hidden", background: "#0F172A" }}>
-      <Img
-        src={resolveAsset(src)}
-        style={{
+      <AbsoluteFill style={{ overflow: "hidden", background: "#0F172A" }}>
+          <Img
+              src={resolveAsset(src)}
+              style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
@@ -404,9 +404,9 @@ const ImageScene: React.FC<{ src: string; animation?: string }> = ({
           transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
           willChange: "transform, opacity",
         }}
-      />
-      <Vignette />
-    </AbsoluteFill>
+          />
+          <Vignette />
+      </AbsoluteFill>
   );
 };
 
@@ -456,20 +456,20 @@ const VideoScene: React.FC<{
       });
 
   return (
-    <AbsoluteFill style={{ background: backgroundColor }}>
-      <OffthreadVideo
-        src={resolveAsset(src)}
-        startFrom={Math.round(startFrom * fps)}
-        style={{
+      <AbsoluteFill style={{ background: backgroundColor }}>
+          <OffthreadVideo
+              src={resolveAsset(src)}
+              startFrom={Math.round(startFrom * fps)}
+              style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
           opacity: fadeIn * fadeOut,
         }}
-        muted
-      />
-      <Vignette />
-    </AbsoluteFill>
+              muted
+          />
+          <Vignette />
+      </AbsoluteFill>
   );
 };
 
@@ -494,27 +494,27 @@ const BackgroundImageLayer: React.FC<{
   const bgScale = 1 + progress * 0.08;
 
   return (
-    <AbsoluteFill style={{ overflow: "hidden" }}>
-      {/* Background image with subtle zoom */}
-      <Img
-        src={resolveAsset(src)}
-        style={{
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+          {/* Background image with subtle zoom */}
+          <Img
+              src={resolveAsset(src)}
+              style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
           transform: `scale(${bgScale})`,
           willChange: "transform",
         }}
-      />
-      {/* Dark overlay for readability */}
-      <AbsoluteFill
-        style={{
+          />
+          {/* Dark overlay for readability */}
+          <AbsoluteFill
+              style={{
           background: `rgba(15, 23, 42, ${overlayOpacity})`,
         }}
-      />
-      {/* Component content on top */}
-      {children}
-    </AbsoluteFill>
+          />
+          {/* Component content on top */}
+          {children}
+      </AbsoluteFill>
   );
 };
 
@@ -528,27 +528,27 @@ const BackgroundVideoLayer: React.FC<{
   const { fps } = useVideoConfig();
 
   return (
-    <AbsoluteFill style={{ overflow: "hidden" }}>
-      {/* Background video */}
-      <OffthreadVideo
-        src={resolveAsset(src)}
-        startFrom={Math.round(startFrom * fps)}
-        style={{
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+          {/* Background video */}
+          <OffthreadVideo
+              src={resolveAsset(src)}
+              startFrom={Math.round(startFrom * fps)}
+              style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
         }}
-        muted
-      />
-      {/* Dark overlay for readability */}
-      <AbsoluteFill
-        style={{
+              muted
+          />
+          {/* Dark overlay for readability */}
+          <AbsoluteFill
+              style={{
           background: `rgba(15, 23, 42, ${overlayOpacity})`,
         }}
-      />
-      {/* Component content on top */}
-      {children}
-    </AbsoluteFill>
+          />
+          {/* Component content on top */}
+          {children}
+      </AbsoluteFill>
   );
 };
 
@@ -557,23 +557,23 @@ const SceneRenderer: React.FC<{ cut: Cut; theme: ThemeConfig }> = ({ cut, theme 
   const maybeWrapWithBg = (element: React.ReactElement) => {
     if (cut.backgroundVideo) {
       return (
-        <BackgroundVideoLayer
-          src={cut.backgroundVideo}
-          startFrom={cut.backgroundVideoStart ?? 0}
-          overlayOpacity={cut.backgroundOverlay ?? 0.55}
-        >
-          {element}
-        </BackgroundVideoLayer>
+          <BackgroundVideoLayer
+              src={cut.backgroundVideo}
+              startFrom={cut.backgroundVideoStart ?? 0}
+              overlayOpacity={cut.backgroundOverlay ?? 0.55}
+          >
+              {element}
+          </BackgroundVideoLayer>
       );
     }
     if (cut.backgroundImage) {
       return (
-        <BackgroundImageLayer
-          src={cut.backgroundImage}
-          overlayOpacity={cut.backgroundOverlay ?? 0.55}
-        >
-          {element}
-        </BackgroundImageLayer>
+          <BackgroundImageLayer
+              src={cut.backgroundImage}
+              overlayOpacity={cut.backgroundOverlay ?? 0.55}
+          >
+              {element}
+          </BackgroundImageLayer>
       );
     }
     return element;
@@ -590,154 +590,154 @@ const SceneRenderer: React.FC<{ cut: Cut; theme: ThemeConfig }> = ({ cut, theme 
   // Explicit component types — use theme-derived defaults for colors
   if (cut.type === "text_card" && cut.text) {
     return maybeWrapWithBg(
-      <TextCard text={cut.text} fontSize={cut.fontSize} color={textColor} backgroundColor={bgColor} />
+        <TextCard text={cut.text} fontSize={cut.fontSize} color={textColor} backgroundColor={bgColor} />
     );
   }
   if (cut.type === "stat_card" && cut.stat) {
     return maybeWrapWithBg(
-      <StatCard stat={cut.stat} subtitle={cut.subtitle} accentColor={accent} backgroundColor={bgColor} />
+        <StatCard stat={cut.stat} subtitle={cut.subtitle} accentColor={accent} backgroundColor={bgColor} />
     );
   }
   if (cut.type === "callout" && cut.text) {
     return maybeWrapWithBg(
-      <CalloutBox
-        text={cut.text} type={cut.callout_type} title={cut.title}
-        borderColor={accent} backgroundColor={cut.backgroundColor || theme.surfaceColor}
-        textColor={textColor} containerBackgroundColor={bgColor}
-      />
+        <CalloutBox
+            text={cut.text} type={cut.callout_type} title={cut.title}
+            borderColor={accent} backgroundColor={cut.backgroundColor || theme.surfaceColor}
+            textColor={textColor} containerBackgroundColor={bgColor}
+        />
     );
   }
   if (cut.type === "comparison" && cut.leftLabel && cut.rightLabel && cut.leftValue && cut.rightValue) {
     return maybeWrapWithBg(
-      <ComparisonCard
-        leftLabel={cut.leftLabel} rightLabel={cut.rightLabel}
-        leftValue={cut.leftValue} rightValue={cut.rightValue}
-        title={cut.title} backgroundColor={bgColor} textColor={textColor}
-        cardBackgroundColor={cut.cardBackgroundColor || theme.surfaceColor}
-      />
+        <ComparisonCard
+            leftLabel={cut.leftLabel} rightLabel={cut.rightLabel}
+            leftValue={cut.leftValue} rightValue={cut.rightValue}
+            title={cut.title} backgroundColor={bgColor} textColor={textColor}
+            cardBackgroundColor={cut.cardBackgroundColor || theme.surfaceColor}
+        />
     );
   }
   if (cut.type === "hero_title" && cut.text) {
     return maybeWrapWithBg(
-      <HeroTitle
-        title={cut.text}
-        subtitle={cut.heroSubtitle || cut.subtitle}
-        accentColor={accent}
-        textColor={textColor}
-        subtitleColor={theme.mutedTextColor}
-        scrimBackground={heroScrim(theme)}
-      />
+        <HeroTitle
+            title={cut.text}
+            subtitle={cut.heroSubtitle || cut.subtitle}
+            accentColor={accent}
+            textColor={textColor}
+            subtitleColor={theme.mutedTextColor}
+            scrimBackground={heroScrim(theme)}
+        />
     );
   }
   if (cut.type === "terminal_scene" && cut.steps) {
     return maybeWrapWithBg(
-      <TerminalScene
-        title={cut.terminalTitle || "Terminal"}
-        steps={cut.steps as TerminalStep[]}
-        prompt={cut.prompt}
-        accentColor={accent}
-        backgroundColor={bgColor || theme.backgroundColor}
-      />
+        <TerminalScene
+            title={cut.terminalTitle || "Terminal"}
+            steps={cut.steps as TerminalStep[]}
+            prompt={cut.prompt}
+            accentColor={accent}
+            backgroundColor={bgColor || theme.backgroundColor}
+        />
     );
   }
   if (cut.type === "screenshot_scene" && cut.backgroundImage && cut.screenshotSteps) {
     return (
-      <ScreenshotScene
-        backgroundImage={cut.backgroundImage}
-        backgroundSize={cut.screenshotSize}
-        steps={cut.screenshotSteps as ScreenshotStep[]}
-        accentColor={accent}
-        cursorStartAt={cut.cursorStartAt}
-      />
+        <ScreenshotScene
+            backgroundImage={cut.backgroundImage}
+            backgroundSize={cut.screenshotSize}
+            steps={cut.screenshotSteps as ScreenshotStep[]}
+            accentColor={accent}
+            cursorStartAt={cut.cursorStartAt}
+        />
     );
   }
 
   // --- Chart types — use theme.chartColors as default palette ---
   if (cut.type === "bar_chart" && cut.chartData) {
     return maybeWrapWithBg(
-      <BarChart
-        data={cut.chartData} title={cut.title} colors={cut.chartColors || theme.chartColors}
-        animationStyle={(cut.chartAnimation as any) || "grow-up"}
-        showGrid={cut.showGrid} showValues={cut.showValues} backgroundColor={bgColor}
-        textColor={textColor}
-      />
+        <BarChart
+            data={cut.chartData} title={cut.title} colors={cut.chartColors || theme.chartColors}
+            animationStyle={(cut.chartAnimation as any) || "grow-up"}
+            showGrid={cut.showGrid} showValues={cut.showValues} backgroundColor={bgColor}
+            textColor={textColor}
+        />
     );
   }
   if (cut.type === "line_chart" && cut.chartSeries) {
     return maybeWrapWithBg(
-      <LineChart
-        series={cut.chartSeries} title={cut.title} colors={cut.chartColors || theme.chartColors}
-        animationStyle={(cut.chartAnimation as any) || "draw"}
-        showGrid={cut.showGrid} showMarkers={cut.showMarkers} showLegend={cut.showLegend}
-        xLabel={cut.xLabel} yLabel={cut.yLabel} backgroundColor={bgColor}
-        textColor={textColor}
-      />
+        <LineChart
+            series={cut.chartSeries} title={cut.title} colors={cut.chartColors || theme.chartColors}
+            animationStyle={(cut.chartAnimation as any) || "draw"}
+            showGrid={cut.showGrid} showMarkers={cut.showMarkers} showLegend={cut.showLegend}
+            xLabel={cut.xLabel} yLabel={cut.yLabel} backgroundColor={bgColor}
+            textColor={textColor}
+        />
     );
   }
   if (cut.type === "pie_chart" && cut.chartData) {
     return maybeWrapWithBg(
-      <PieChart
-        data={cut.chartData} title={cut.title} colors={cut.chartColors || theme.chartColors}
-        animationStyle={(cut.chartAnimation as any) || "expand"}
-        donut={cut.donut} centerLabel={cut.centerLabel} centerValue={cut.centerValue}
-        showLegend={cut.showLegend} backgroundColor={bgColor}
-        textColor={textColor}
-      />
+        <PieChart
+            data={cut.chartData} title={cut.title} colors={cut.chartColors || theme.chartColors}
+            animationStyle={(cut.chartAnimation as any) || "expand"}
+            donut={cut.donut} centerLabel={cut.centerLabel} centerValue={cut.centerValue}
+            showLegend={cut.showLegend} backgroundColor={bgColor}
+            textColor={textColor}
+        />
     );
   }
   if (cut.type === "kpi_grid" && cut.chartData) {
     return maybeWrapWithBg(
-      <KPIGrid
-        metrics={cut.chartData} title={cut.title} columns={cut.columns}
-        colors={cut.chartColors || theme.chartColors} animationStyle={(cut.chartAnimation as any) || "count-up"}
-        backgroundColor={bgColor}
-        textColor={textColor}
-      />
+        <KPIGrid
+            metrics={cut.chartData} title={cut.title} columns={cut.columns}
+            colors={cut.chartColors || theme.chartColors} animationStyle={(cut.chartAnimation as any) || "count-up"}
+            backgroundColor={bgColor}
+            textColor={textColor}
+        />
     );
   }
   if (cut.type === "progress_bar" && cut.progress !== undefined) {
     return maybeWrapWithBg(
-      <AbsoluteFill
-        style={{
+        <AbsoluteFill
+            style={{
           background: bgColor || theme.surfaceColor,
           display: "flex", alignItems: "center", justifyContent: "center",
           padding: "80px 120px",
         }}
-      >
-        {cut.title && (
-          <div style={{
+        >
+            {cut.title && (
+            <div style={{
             position: "absolute", top: 120, fontSize: 48, fontWeight: 700,
             color: textColor, textAlign: "center", width: "100%",
           }}>
-            {cut.title}
-          </div>
+                {cut.title}
+            </div>
         )}
-        <ProgressBar
-          progress={cut.progress} label={cut.progressLabel}
-          color={cut.progressColor || accent}
-          animationStyle={(cut.progressAnimation as any) || "fill"}
-          segments={cut.progressSegments} backgroundColor={cut.backgroundColor || theme.surfaceColor}
-        />
-      </AbsoluteFill>
+            <ProgressBar
+                progress={cut.progress} label={cut.progressLabel}
+                color={cut.progressColor || accent}
+                animationStyle={(cut.progressAnimation as any) || "fill"}
+                segments={cut.progressSegments} backgroundColor={cut.backgroundColor || theme.surfaceColor}
+            />
+        </AbsoluteFill>
     );
   }
 
   // --- Anime scene (multi-image crossfade + particles) ---
   if (cut.type === "anime_scene" && cut.images && cut.images.length > 0) {
     return (
-      <AnimeScene
-        images={cut.images}
-        animation={(cut.animation as CameraMotion) || "ken-burns"}
-        particles={cut.particles}
-        particleColor={cut.particleColor}
-        particleCount={cut.particleCount}
-        particleIntensity={cut.particleIntensity}
-        backgroundColor={cut.backgroundColor}
-        vignette={cut.vignette ?? true}
-        lightingFrom={cut.lightingFrom}
-        lightingTo={cut.lightingTo}
-        sceneDurationSeconds={cut.out_seconds - cut.in_seconds}
-      />
+        <AnimeScene
+            images={cut.images}
+            animation={(cut.animation as CameraMotion) || "ken-burns"}
+            particles={cut.particles}
+            particleColor={cut.particleColor}
+            particleCount={cut.particleCount}
+            particleIntensity={cut.particleIntensity}
+            backgroundColor={cut.backgroundColor}
+            vignette={cut.vignette ?? true}
+            lightingFrom={cut.lightingFrom}
+            lightingTo={cut.lightingTo}
+            sceneDurationSeconds={cut.out_seconds - cut.in_seconds}
+        />
     );
   }
 
@@ -750,15 +750,15 @@ const SceneRenderer: React.FC<{ cut: Cut; theme: ThemeConfig }> = ({ cut, theme 
 
   if (cut.source && isVideo(cut.source)) {
     return maybeWrapWithBg(
-      <VideoScene
-        src={cut.source}
-        startFrom={cut.source_in_seconds ?? 0}
-        transitionIn={cut.transition_in}
-        transitionOut={cut.transition_out}
-        transitionDuration={cut.transition_duration}
-        sceneDurationSeconds={cut.out_seconds - cut.in_seconds}
-        backgroundColor={cut.backgroundColor}
-      />,
+        <VideoScene
+            src={cut.source}
+            startFrom={cut.source_in_seconds ?? 0}
+            transitionIn={cut.transition_in}
+            transitionOut={cut.transition_out}
+            transitionDuration={cut.transition_duration}
+            sceneDurationSeconds={cut.out_seconds - cut.in_seconds}
+            backgroundColor={cut.backgroundColor}
+        />,
     );
   }
 
@@ -781,47 +781,47 @@ const OverlayRenderer: React.FC<{ overlay: Overlay; theme: ThemeConfig }> = ({
 }) => {
   if (overlay.type === "section_title") {
     return (
-      <SectionTitle
-        title={overlay.text ?? ""}
-        subtitle={overlay.subtitle}
-        accentColor={overlay.accentColor || theme.accentColor}
-        textColor={theme.textColor}
-        position={(overlay.position as any) || "top-left"}
-      />
+        <SectionTitle
+            title={overlay.text ?? ""}
+            subtitle={overlay.subtitle}
+            accentColor={overlay.accentColor || theme.accentColor}
+            textColor={theme.textColor}
+            position={(overlay.position as any) || "top-left"}
+        />
     );
   }
   if (overlay.type === "stat_reveal") {
     return (
-      <StatReveal
-        stat={overlay.text ?? ""}
-        label={overlay.subtitle}
-        accentColor={overlay.accentColor || theme.accentColor}
-        textColor={theme.textColor}
-        position={(overlay.position as any) || "bottom-right"}
-      />
+        <StatReveal
+            stat={overlay.text ?? ""}
+            label={overlay.subtitle}
+            accentColor={overlay.accentColor || theme.accentColor}
+            textColor={theme.textColor}
+            position={(overlay.position as any) || "bottom-right"}
+        />
     );
   }
   if (overlay.type === "hero_title") {
     return (
-      <HeroTitle
-        title={overlay.text ?? ""}
-        subtitle={overlay.subtitle}
-        accentColor={overlay.accentColor || theme.accentColor}
-        textColor={theme.textColor}
-        subtitleColor={theme.mutedTextColor}
-        scrimBackground={heroScrim(theme)}
-      />
+        <HeroTitle
+            title={overlay.text ?? ""}
+            subtitle={overlay.subtitle}
+            accentColor={overlay.accentColor || theme.accentColor}
+            textColor={theme.textColor}
+            subtitleColor={theme.mutedTextColor}
+            scrimBackground={heroScrim(theme)}
+        />
     );
   }
   if (overlay.type === "provider_chip" && overlay.providers) {
     return (
-      <ProviderChip
-        providers={overlay.providers as string[]}
-        cycleSeconds={overlay.cycleSeconds}
-        position={(overlay.position as any) || "bottom-right"}
-        accentColor={overlay.accentColor}
-        label={overlay.label}
-      />
+        <ProviderChip
+            providers={overlay.providers as string[]}
+            cycleSeconds={overlay.cycleSeconds}
+            position={(overlay.position as any) || "bottom-right"}
+            accentColor={overlay.accentColor}
+            label={overlay.label}
+        />
     );
   }
   return null;
@@ -839,61 +839,61 @@ export const Explainer: React.FC<ExplainerProps> = (props) => {
   const theme = resolveTheme(props as Record<string, unknown>);
 
   return (
-    <AbsoluteFill style={{ background: theme.backgroundColor, fontFamily: theme.headingFont || fontFamily }}>
-      {/* Layer 0: Animated gradient background — driven by theme */}
-      <AnimatedBackground theme={theme} />
+      <AbsoluteFill style={{ background: theme.backgroundColor, fontFamily: theme.headingFont || fontFamily }}>
+          {/* Layer 0: Animated gradient background — driven by theme */}
+          <AnimatedBackground theme={theme} />
 
-      {/* Layer 1: Visual scenes */}
-      {cuts.map((cut) => {
+          {/* Layer 1: Visual scenes */}
+          {cuts.map((cut) => {
         const from = Math.round(cut.in_seconds * fps);
         const duration = Math.round((cut.out_seconds - cut.in_seconds) * fps);
 
         return (
-          <Sequence key={cut.id} from={from} durationInFrames={duration}>
-            <SceneRenderer cut={cut} theme={theme} />
-          </Sequence>
+            <Sequence key={cut.id} from={from} durationInFrames={duration}>
+                <SceneRenderer cut={cut} theme={theme} />
+            </Sequence>
         );
       })}
 
-      {/* Layer 2: Overlays (section titles, stat reveals, hero titles) */}
-      {overlays?.map((overlay, i) => {
+          {/* Layer 2: Overlays (section titles, stat reveals, hero titles) */}
+          {overlays?.map((overlay, i) => {
         const from = Math.round(overlay.in_seconds * fps);
         const duration = Math.round(
           (overlay.out_seconds - overlay.in_seconds) * fps
         );
 
         return (
-          <Sequence key={`overlay-${i}`} from={from} durationInFrames={duration}>
-            <OverlayRenderer overlay={overlay} theme={theme} />
-          </Sequence>
+            <Sequence key={`overlay-${i}`} from={from} durationInFrames={duration}>
+                <OverlayRenderer overlay={overlay} theme={theme} />
+            </Sequence>
         );
       })}
 
-      {/* Layer 3: Captions (word-by-word highlight) */}
-      {captions && captions.length > 0 && (
-        <CaptionOverlay
-          words={captions}
-          wordsPerPage={6}
-          fontSize={42}
-          color={theme.textColor}
-          highlightColor={theme.captionHighlightColor}
-          backgroundColor={theme.captionBackgroundColor}
-        />
+          {/* Layer 3: Captions (word-by-word highlight) */}
+          {captions && captions.length > 0 && (
+          <CaptionOverlay
+              words={captions}
+              wordsPerPage={6}
+              fontSize={42}
+              color={theme.textColor}
+              highlightColor={theme.captionHighlightColor}
+              backgroundColor={theme.captionBackgroundColor}
+          />
       )}
 
-      {/* Layer 4: Audio — narration */}
-      {audio?.narration?.src && (
-        <Audio src={resolveAsset(audio.narration.src)} volume={audio.narration.volume ?? 1} />
+          {/* Layer 4: Audio — narration */}
+          {audio?.narration?.src && (
+          <Audio src={resolveAsset(audio.narration.src)} volume={audio.narration.volume ?? 1} />
       )}
 
-      {/* Layer 4: Audio — music with offset, fade in/out, and optional loop */}
-      {audio?.music?.src && (
-        <Audio
-          src={resolveAsset(audio.music.src)}
-          startFrom={Math.round((audio.music.offsetSeconds ?? 0) * fps)}
-          loop={audio.music.loop ?? false}
-          loopVolumeCurveBehavior="repeat"
-          volume={(f) => {
+          {/* Layer 4: Audio — music with offset, fade in/out, and optional loop */}
+          {audio?.music?.src && (
+          <Audio
+              src={resolveAsset(audio.music.src)}
+              startFrom={Math.round((audio.music.offsetSeconds ?? 0) * fps)}
+              loop={audio.music.loop ?? false}
+              loopVolumeCurveBehavior="repeat"
+              volume={(f) => {
             const baseVol = audio.music!.volume ?? 0.1;
             const fadeInDur = (audio.music!.fadeInSeconds ?? 2) * fps;
             const fadeOutDur = (audio.music!.fadeOutSeconds ?? 3) * fps;
@@ -913,8 +913,8 @@ export const Explainer: React.FC<ExplainerProps> = (props) => {
             );
             return Math.min(fadeIn, fadeOut);
           }}
-        />
+          />
       )}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

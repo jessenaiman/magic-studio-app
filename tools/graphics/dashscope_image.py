@@ -120,9 +120,7 @@ class DashscopeImage(BaseTool):
         "writes image file to output_path",
         "calls DashScope (Alibaba Cloud) image generation API",
     ]
-    user_visible_verification = [
-        "Inspect generated image for relevance and quality"
-    ]
+    user_visible_verification = ["Inspect generated image for relevance and quality"]
 
     ENDPOINT = (
         "https://dashscope.aliyuncs.com/api/v1/services/aigc/"
@@ -268,6 +266,4 @@ class DashscopeImage(BaseTool):
 
     @staticmethod
     def _safe_error(exc: Exception) -> str:
-        return str(exc).replace(
-            os.environ.get("DASHSCOPE_API_KEY", ""), "[redacted]"
-        )
+        return str(exc).replace(os.environ.get("DASHSCOPE_API_KEY", ""), "[redacted]")

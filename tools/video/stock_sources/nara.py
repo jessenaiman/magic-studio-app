@@ -22,6 +22,7 @@ What NARA is good for
 - Government program footage and newsreels
 - Any "march of history" documentary sequence
 """
+
 from __future__ import annotations
 
 import logging
@@ -130,13 +131,21 @@ class NARASource:
             mime = (obj.get("mimeType", "") or "").lower()
             ext = file_url.rsplit(".", 1)[-1].lower() if "." in file_url else ""
 
-            is_video = (
-                "video" in mime
-                or ext in ("mp4", "mov", "avi", "wmv", "mkv", "webm")
+            is_video = "video" in mime or ext in (
+                "mp4",
+                "mov",
+                "avi",
+                "wmv",
+                "mkv",
+                "webm",
             )
-            is_image = (
-                "image" in mime
-                or ext in ("jpg", "jpeg", "png", "tif", "tiff", "gif")
+            is_image = "image" in mime or ext in (
+                "jpg",
+                "jpeg",
+                "png",
+                "tif",
+                "tiff",
+                "gif",
             )
 
             if kind == "video" and not is_video:
@@ -153,9 +162,17 @@ class NARASource:
 
             # Duration filters (client-side)
             if candidate_kind == "video":
-                if filters.min_duration and duration and duration < filters.min_duration:
+                if (
+                    filters.min_duration
+                    and duration
+                    and duration < filters.min_duration
+                ):
                     continue
-                if filters.max_duration and duration and duration > filters.max_duration:
+                if (
+                    filters.max_duration
+                    and duration
+                    and duration > filters.max_duration
+                ):
                     continue
 
             out.append(
@@ -188,9 +205,7 @@ class NARASource:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with requests.get(
-            candidate.download_url, stream=True, timeout=180
-        ) as r:
+        with requests.get(candidate.download_url, stream=True, timeout=180) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):

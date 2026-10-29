@@ -64,8 +64,18 @@ class SoraVideo(BaseTool):
         "short cinematic product-ad inserts with native ambience or dialogue",
         "4, 8, or 12 second social-video clips that OpenMontage can stitch and compose",
     ]
-    not_good_for = ["offline generation", "long continuous scenes", "projects without Sora API access"]
-    fallback_tools = ["veo_video", "gemini_omni_video", "seedance_video", "kling_video", "minimax_video"]
+    not_good_for = [
+        "offline generation",
+        "long continuous scenes",
+        "projects without Sora API access",
+    ]
+    fallback_tools = [
+        "veo_video",
+        "gemini_omni_video",
+        "seedance_video",
+        "kling_video",
+        "minimax_video",
+    ]
 
     input_schema = {
         "type": "object",
@@ -117,10 +127,14 @@ class SoraVideo(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=1000, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=1, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=1, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "model", "size", "seconds"]
     side_effects = ["writes video file to output_path", "calls OpenAI Video API"]
-    user_visible_verification = ["Watch generated clip for motion coherence, artifacts, and audio quality"]
+    user_visible_verification = [
+        "Watch generated clip for motion coherence, artifacts, and audio quality"
+    ]
 
     def get_status(self) -> ToolStatus:
         if not os.environ.get("OPENAI_API_KEY"):
@@ -147,7 +161,8 @@ class SoraVideo(BaseTool):
         if not self._openai_sdk_supports_videos():
             return ToolResult(
                 success=False,
-                error="OpenAI SDK with Videos API support is required. " + self.install_instructions,
+                error="OpenAI SDK with Videos API support is required. "
+                + self.install_instructions,
             )
 
         from openai import OpenAI
@@ -167,30 +182,46 @@ class SoraVideo(BaseTool):
             "seconds": seconds,
         }
 
-        reference_path = inputs.get("input_reference_path") or inputs.get("reference_image_path")
+        reference_path = inputs.get("input_reference_path") or inputs.get(
+            "reference_image_path"
+        )
         if inputs.get("operation") == "image_to_video" or reference_path:
             if not reference_path:
-                return ToolResult(success=False, error="image_to_video requires input_reference_path")
+                return ToolResult(
+                    success=False, error="image_to_video requires input_reference_path"
+                )
             reference = Path(str(reference_path))
             if not reference.exists():
-                return ToolResult(success=False, error=f"Input reference not found: {reference}")
-            payload["input_reference"] = {"image_url": self._file_to_data_uri(reference)}
+                return ToolResult(
+                    success=False, error=f"Input reference not found: {reference}"
+                )
+            payload["input_reference"] = {
+                "image_url": self._file_to_data_uri(reference)
+            }
 
         client = OpenAI()
         try:
             video = client.videos.create_and_poll(**payload)
             video_id = self._get_video_id(video)
             if not video_id:
-                return ToolResult(success=False, error=f"OpenAI Sora response did not include a video id: {video}")
+                return ToolResult(
+                    success=False,
+                    error=f"OpenAI Sora response did not include a video id: {video}",
+                )
 
             status = self._get_status_value(video)
             if status != "completed":
-                return ToolResult(success=False, error=f"OpenAI Sora generation ended with status: {status}")
+                return ToolResult(
+                    success=False,
+                    error=f"OpenAI Sora generation ended with status: {status}",
+                )
 
             content = client.videos.download_content(video_id, variant="video")
             self._write_download(content, output_path)
         except Exception as exc:
-            return ToolResult(success=False, error=f"OpenAI Sora video generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"OpenAI Sora video generation failed: {exc}"
+            )
 
         return ToolResult(
             success=True,
@@ -241,16 +272,24 @@ class SoraVideo(BaseTool):
 
     @staticmethod
     def _normalize_size(inputs: dict[str, Any], model: str) -> str:
-        default_size = "1280x720" if inputs.get("aspect_ratio") == "16:9" else _DEFAULT_SIZE
+        default_size = (
+            "1280x720" if inputs.get("aspect_ratio") == "16:9" else _DEFAULT_SIZE
+        )
         size = str(inputs.get("size", default_size)).strip().lower()
         allowed = {"1280x720", "720x1280"} if model == "sora-2" else set(_ALLOWED_SIZES)
         if size not in allowed:
-            raise ValueError(f"size must be one of: {', '.join(sorted(allowed))} for model {model}")
+            raise ValueError(
+                f"size must be one of: {', '.join(sorted(allowed))} for model {model}"
+            )
         return size
 
     @staticmethod
     def _normalize_seconds(inputs: dict[str, Any]) -> str:
-        seconds = str(inputs.get("seconds") or inputs.get("duration") or _DEFAULT_SECONDS).strip().lower()
+        seconds = (
+            str(inputs.get("seconds") or inputs.get("duration") or _DEFAULT_SECONDS)
+            .strip()
+            .lower()
+        )
         seconds = seconds[:-1] if seconds.endswith("s") else seconds
         if seconds not in _ALLOWED_SECONDS:
             raise ValueError("seconds must be one of: 4, 8, 12")
@@ -260,7 +299,9 @@ class SoraVideo(BaseTool):
     def _get_status_value(video: Any) -> str:
         if isinstance(video, dict):
             return str(video.get("status") or video.get("state") or "unknown")
-        return str(getattr(video, "status", None) or getattr(video, "state", None) or "unknown")
+        return str(
+            getattr(video, "status", None) or getattr(video, "state", None) or "unknown"
+        )
 
     @staticmethod
     def _get_video_id(video: Any) -> str | None:

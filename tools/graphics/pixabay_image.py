@@ -77,10 +77,26 @@ class PixabayImage(BaseTool):
             "category": {
                 "type": "string",
                 "enum": [
-                    "backgrounds", "fashion", "nature", "science", "education",
-                    "feelings", "health", "people", "religion", "places",
-                    "animals", "industry", "computer", "food", "sports",
-                    "transportation", "travel", "buildings", "business", "music",
+                    "backgrounds",
+                    "fashion",
+                    "nature",
+                    "science",
+                    "education",
+                    "feelings",
+                    "health",
+                    "people",
+                    "religion",
+                    "places",
+                    "animals",
+                    "industry",
+                    "computer",
+                    "food",
+                    "sports",
+                    "transportation",
+                    "travel",
+                    "buildings",
+                    "business",
+                    "music",
                 ],
             },
             "colors": {
@@ -98,10 +114,14 @@ class PixabayImage(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=50, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["query", "image_type", "orientation", "category", "page"]
     side_effects = ["writes image file to output_path", "calls Pixabay API"]
-    user_visible_verification = ["Check that downloaded image matches the intended scene"]
+    user_visible_verification = [
+        "Check that downloaded image matches the intended scene"
+    ]
 
     def get_status(self) -> ToolStatus:
         if os.environ.get("PIXABAY_API_KEY"):

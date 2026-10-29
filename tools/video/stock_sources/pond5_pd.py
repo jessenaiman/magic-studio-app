@@ -21,6 +21,7 @@ What Pond5 Public Domain is good for
 - Space race and early NASA footage
 - Historical speeches (JFK, Churchill, MLK)
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,6 +75,7 @@ class Pond5PublicDomainSource:
             params["mt"] = "photos"
 
         import os
+
         headers: dict[str, str] = {
             "User-Agent": "OpenMontage/1.0 (stock source adapter)",
         }
@@ -115,9 +117,17 @@ class Pond5PublicDomainSource:
 
             duration = float(item.get("dur", 0) or item.get("duration", 0) or 0)
             if kind == "video":
-                if filters.min_duration and duration and duration < filters.min_duration:
+                if (
+                    filters.min_duration
+                    and duration
+                    and duration < filters.min_duration
+                ):
                     continue
-                if filters.max_duration and duration and duration > filters.max_duration:
+                if (
+                    filters.max_duration
+                    and duration
+                    and duration > filters.max_duration
+                ):
                     continue
 
             # Preview/download URL
@@ -148,7 +158,9 @@ class Pond5PublicDomainSource:
                     width=width,
                     height=height,
                     duration=duration,
-                    creator=item.get("an", "") or item.get("artist_name", "") or "Pond5 Public Domain",
+                    creator=item.get("an", "")
+                    or item.get("artist_name", "")
+                    or "Pond5 Public Domain",
                     license=_LICENSE,
                     source_tags=source_tags,
                     thumbnail_url=thumb_url,
@@ -177,9 +189,7 @@ class Pond5PublicDomainSource:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with requests.get(
-            candidate.download_url, stream=True, timeout=180
-        ) as r:
+        with requests.get(candidate.download_url, stream=True, timeout=180) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):

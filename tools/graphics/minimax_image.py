@@ -97,8 +97,18 @@ class MiniMaxImage(BaseTool):
                 "enum": ["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"],
                 "default": "1:1",
             },
-            "width": {"type": "integer", "minimum": 512, "maximum": 2048, "multipleOf": 8},
-            "height": {"type": "integer", "minimum": 512, "maximum": 2048, "multipleOf": 8},
+            "width": {
+                "type": "integer",
+                "minimum": 512,
+                "maximum": 2048,
+                "multipleOf": 8,
+            },
+            "height": {
+                "type": "integer",
+                "minimum": 512,
+                "maximum": 2048,
+                "multipleOf": 8,
+            },
             "response_format": {
                 "type": "string",
                 "enum": ["url", "base64"],
@@ -247,9 +257,12 @@ class MiniMaxImage(BaseTool):
 
             response_format = payload["response_format"]
             data_object = data.get("data") or {}
-            image_values = data_object.get(
-                "image_base64" if response_format == "base64" else "image_urls"
-            ) or []
+            image_values = (
+                data_object.get(
+                    "image_base64" if response_format == "base64" else "image_urls"
+                )
+                or []
+            )
             if not image_values:
                 return ToolResult(
                     success=False,
@@ -271,8 +284,7 @@ class MiniMaxImage(BaseTool):
             return ToolResult(
                 success=False,
                 error=(
-                    "MiniMax image generation failed: "
-                    f"{self._safe_error(exc, api_key)}"
+                    f"MiniMax image generation failed: {self._safe_error(exc, api_key)}"
                 ),
             )
 

@@ -27,7 +27,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PORTABLE_BLENDER = (
     _REPO_ROOT / ".runtime" / "blender" / "blender-4.5.10-windows-x64" / "blender.exe"
 )
-_RUNTIME_SCRIPT = Path(__file__).resolve().parent / "templates" / "blender-world-runtime.py"
+_RUNTIME_SCRIPT = (
+    Path(__file__).resolve().parent / "templates" / "blender-world-runtime.py"
+)
 
 
 def find_blender() -> Path | None:
@@ -40,7 +42,9 @@ def find_blender() -> Path | None:
     return Path(discovered).resolve() if discovered else None
 
 
-def first_missing_frame(output_prefix: str | Path, start_frame: int, end_frame: int) -> int | None:
+def first_missing_frame(
+    output_prefix: str | Path, start_frame: int, end_frame: int
+) -> int | None:
     """Return the first missing PNG in a contiguous Blender image sequence."""
     prefix = Path(output_prefix).expanduser().resolve()
     for frame in range(start_frame, end_frame + 1):
@@ -66,14 +70,28 @@ class BlenderWorld(BaseTool):
         ".runtime/blender/blender-4.5.10-windows-x64/blender.exe."
     )
     agent_skills = [
-        "3d-asset-generation", "threejs-world-generation", "threejs-loaders", "threejs-materials",
-        "threejs-textures", "threejs-lighting", "threejs-postprocessing",
+        "3d-asset-generation",
+        "threejs-world-generation",
+        "threejs-loaders",
+        "threejs-materials",
+        "threejs-textures",
+        "threejs-lighting",
+        "threejs-postprocessing",
     ]
     capabilities = [
-        "gltf_glb_scene_assembly", "procedural_terrain", "linked_asset_scatter",
-        "pbr_materials", "eevee_next_render", "camera_flythrough", "blend_project_export",
-        "asset_unit_normalization", "bounding_box_ground_contact", "semantic_scatter_exclusions",
-        "terrain_following_ribbons", "visibility_windows", "title_safe_final_hold",
+        "gltf_glb_scene_assembly",
+        "procedural_terrain",
+        "linked_asset_scatter",
+        "pbr_materials",
+        "eevee_next_render",
+        "camera_flythrough",
+        "blend_project_export",
+        "asset_unit_normalization",
+        "bounding_box_ground_contact",
+        "semantic_scatter_exclusions",
+        "terrain_following_ribbons",
+        "visibility_windows",
+        "title_safe_final_hold",
     ]
     supports = {
         "glb": True,
@@ -94,15 +112,33 @@ class BlenderWorld(BaseTool):
         "type": "object",
         "required": ["operation"],
         "properties": {
-            "operation": {"type": "string", "enum": ["doctor", "build", "render_still", "render_animation"]},
+            "operation": {
+                "type": "string",
+                "enum": ["doctor", "build", "render_still", "render_animation"],
+            },
             "world_spec": {"type": "object"},
             "output_path": {"type": "string"},
             "blend_path": {"type": "string"},
-            "width": {"type": "integer", "minimum": 320, "maximum": 7680, "default": 1920},
-            "height": {"type": "integer", "minimum": 240, "maximum": 4320, "default": 1080},
+            "width": {
+                "type": "integer",
+                "minimum": 320,
+                "maximum": 7680,
+                "default": 1920,
+            },
+            "height": {
+                "type": "integer",
+                "minimum": 240,
+                "maximum": 4320,
+                "default": 1080,
+            },
             "samples": {"type": "integer", "minimum": 1, "maximum": 256, "default": 32},
             "fps": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30},
-            "duration_seconds": {"type": "number", "minimum": 1, "maximum": 600, "default": 60},
+            "duration_seconds": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 600,
+                "default": 60,
+            },
             "start_frame": {"type": "integer", "minimum": 1},
             "end_frame": {"type": "integer", "minimum": 1},
             "frame": {"type": "integer", "minimum": 1},
@@ -111,8 +147,18 @@ class BlenderWorld(BaseTool):
     }
     output_schema = {"type": "object"}
     artifact_schema = {"artifact": "3d_world"}
-    resource_profile = ResourceProfile(cpu_cores=8, ram_mb=8192, vram_mb=6000, disk_mb=20000)
-    idempotency_key_fields = ["operation", "world_spec", "width", "height", "samples", "fps", "duration_seconds"]
+    resource_profile = ResourceProfile(
+        cpu_cores=8, ram_mb=8192, vram_mb=6000, disk_mb=20000
+    )
+    idempotency_key_fields = [
+        "operation",
+        "world_spec",
+        "width",
+        "height",
+        "samples",
+        "fps",
+        "duration_seconds",
+    ]
     side_effects = ["writes a .blend project", "may render an image or PNG sequence"]
     user_visible_verification = [
         "Review global, regional, and walk-height stills before an animation render",
@@ -121,27 +167,56 @@ class BlenderWorld(BaseTool):
     quality_score = 0.94
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if find_blender() and _RUNTIME_SCRIPT.is_file() else ToolStatus.UNAVAILABLE
+        return (
+            ToolStatus.AVAILABLE
+            if find_blender() and _RUNTIME_SCRIPT.is_file()
+            else ToolStatus.UNAVAILABLE
+        )
 
     def estimate_runtime(self, inputs: dict[str, Any]) -> float:
         if inputs.get("operation") == "render_animation":
-            return float(inputs.get("duration_seconds", 60)) * float(inputs.get("fps", 30)) * 2.0
+            return (
+                float(inputs.get("duration_seconds", 60))
+                * float(inputs.get("fps", 30))
+                * 2.0
+            )
         return 30.0
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         blender = find_blender()
         if not blender:
-            return ToolResult(success=False, error="Blender not found. " + self.install_instructions)
+            return ToolResult(
+                success=False, error="Blender not found. " + self.install_instructions
+            )
         operation = str(inputs.get("operation") or "")
         if operation == "doctor":
             process = subprocess.run(
-                [str(blender), "--background", "--python-expr", "import bpy; print('OPENMONTAGE_BLENDER=' + bpy.app.version_string)"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                [
+                    str(blender),
+                    "--background",
+                    "--python-expr",
+                    "import bpy; print('OPENMONTAGE_BLENDER=' + bpy.app.version_string)",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
             )
             ok = process.returncode == 0 and "OPENMONTAGE_BLENDER=" in process.stdout
             return ToolResult(
                 success=ok,
-                data={"blender_path": str(blender), "version_line": next((line for line in process.stdout.splitlines() if line.startswith("OPENMONTAGE_BLENDER=")), "")},
+                data={
+                    "blender_path": str(blender),
+                    "version_line": next(
+                        (
+                            line
+                            for line in process.stdout.splitlines()
+                            if line.startswith("OPENMONTAGE_BLENDER=")
+                        ),
+                        "",
+                    ),
+                },
                 error=None if ok else (process.stderr or process.stdout)[-1000:],
                 model="blender-4.5-lts",
             )
@@ -152,34 +227,57 @@ class BlenderWorld(BaseTool):
             return ToolResult(success=False, error="world_spec is required")
         output_raw = inputs.get("output_path")
         if operation != "build" and not output_raw:
-            return ToolResult(success=False, error="output_path is required for rendering")
+            return ToolResult(
+                success=False, error="output_path is required for rendering"
+            )
         blend_raw = inputs.get("blend_path") or (
-            str(Path(str(output_raw)).with_suffix(".blend")) if output_raw else "blender-world.blend"
+            str(Path(str(output_raw)).with_suffix(".blend"))
+            if output_raw
+            else "blender-world.blend"
         )
         blend_path = Path(str(blend_raw)).expanduser().resolve()
         blend_path.parent.mkdir(parents=True, exist_ok=True)
         spec_path = blend_path.with_suffix(".world.json")
-        spec_path.write_text(json.dumps(inputs["world_spec"], indent=2), encoding="utf-8")
+        spec_path.write_text(
+            json.dumps(inputs["world_spec"], indent=2), encoding="utf-8"
+        )
 
         command = [
-            str(blender), "--background", "--python", str(_RUNTIME_SCRIPT), "--",
-            "--operation", operation,
-            "--spec", str(spec_path),
-            "--blend", str(blend_path),
-            "--width", str(int(inputs.get("width", 1920))),
-            "--height", str(int(inputs.get("height", 1080))),
-            "--samples", str(int(inputs.get("samples", 32))),
-            "--fps", str(int(inputs.get("fps", 30))),
-            "--duration", str(float(inputs.get("duration_seconds", 60))),
+            str(blender),
+            "--background",
+            "--python",
+            str(_RUNTIME_SCRIPT),
+            "--",
+            "--operation",
+            operation,
+            "--spec",
+            str(spec_path),
+            "--blend",
+            str(blend_path),
+            "--width",
+            str(int(inputs.get("width", 1920))),
+            "--height",
+            str(int(inputs.get("height", 1080))),
+            "--samples",
+            str(int(inputs.get("samples", 32))),
+            "--fps",
+            str(int(inputs.get("fps", 30))),
+            "--duration",
+            str(float(inputs.get("duration_seconds", 60))),
         ]
         requested_start = int(inputs.get("start_frame", 1))
-        requested_end = int(inputs.get("end_frame") or round(
-            float(inputs.get("duration_seconds", 60)) * int(inputs.get("fps", 30))
-        ))
+        requested_end = int(
+            inputs.get("end_frame")
+            or round(
+                float(inputs.get("duration_seconds", 60)) * int(inputs.get("fps", 30))
+            )
+        )
         effective_start = requested_start
         if operation == "render_animation" and inputs.get("resume"):
             if not output_raw:
-                return ToolResult(success=False, error="output_path is required to resume a render")
+                return ToolResult(
+                    success=False, error="output_path is required to resume a render"
+                )
             missing = first_missing_frame(output_raw, requested_start, requested_end)
             if missing is None:
                 return ToolResult(
@@ -202,18 +300,28 @@ class BlenderWorld(BaseTool):
         if inputs.get("frame") is not None:
             command.extend(["--frame", str(int(inputs["frame"]))])
         if output_raw:
-            command.extend(["--output", str(Path(str(output_raw)).expanduser().resolve())])
+            command.extend(
+                ["--output", str(Path(str(output_raw)).expanduser().resolve())]
+            )
 
         started = time.time()
         try:
             process = subprocess.run(
-                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=max(120, int(self.estimate_runtime(inputs) * 2.5)),
             )
         except Exception as exc:
             return ToolResult(success=False, error=f"Blender invocation failed: {exc}")
         if process.returncode != 0:
-            return ToolResult(success=False, error="Blender world build failed: " + (process.stderr or process.stdout)[-3000:])
+            return ToolResult(
+                success=False,
+                error="Blender world build failed: "
+                + (process.stderr or process.stdout)[-3000:],
+            )
 
         artifacts = [str(spec_path), str(blend_path)]
         if output_raw:
@@ -230,9 +338,15 @@ class BlenderWorld(BaseTool):
                 "blend_path": str(blend_path),
                 "output": str(output_raw or ""),
                 "report": str(report_path),
-                "start_frame": effective_start if operation == "render_animation" else None,
+                "start_frame": effective_start
+                if operation == "render_animation"
+                else None,
                 "end_frame": requested_end if operation == "render_animation" else None,
-                "resumed": bool(operation == "render_animation" and inputs.get("resume") and effective_start > requested_start),
+                "resumed": bool(
+                    operation == "render_animation"
+                    and inputs.get("resume")
+                    and effective_start > requested_start
+                ),
             },
             artifacts=artifacts,
             duration_seconds=round(time.time() - started, 2),

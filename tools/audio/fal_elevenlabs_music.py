@@ -41,8 +41,7 @@ class FalElevenLabsMusic(BaseTool):
 
     dependencies = ["env:FAL_KEY"]
     install_instructions = (
-        "Set FAL_KEY to a fal.ai API key. "
-        "Get one at https://fal.ai/dashboard/keys"
+        "Set FAL_KEY to a fal.ai API key. Get one at https://fal.ai/dashboard/keys"
     )
     fallback_tools = ["music_gen", "google_music"]
     agent_skills = ["music", "elevenlabs"]

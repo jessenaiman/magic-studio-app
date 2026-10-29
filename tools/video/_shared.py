@@ -14,7 +14,11 @@ from tools.base_tool import ToolResult, ToolStatus
 
 HEYGEN_PROVIDERS = {
     "veo_3_1": {"name": "Google VEO 3.1", "quality": "highest", "speed": "slow"},
-    "veo_3_1_fast": {"name": "Google VEO 3.1 Fast", "quality": "high", "speed": "medium"},
+    "veo_3_1_fast": {
+        "name": "Google VEO 3.1 Fast",
+        "quality": "high",
+        "speed": "medium",
+    },
     "veo3": {"name": "Google VEO 3", "quality": "high", "speed": "slow"},
     "veo3_fast": {"name": "Google VEO 3 Fast", "quality": "high", "speed": "medium"},
     "veo2": {"name": "Google VEO 2", "quality": "medium", "speed": "medium"},
@@ -27,8 +31,16 @@ HEYGEN_PROVIDERS = {
     # Seedance 1.x. Seedance 2.0 on HeyGen is exposed through Video Agent and
     # Avatar Shots endpoints, NOT via the workflow provider parameter. For 2.0
     # access today, use `seedance_video` (fal.ai) or `seedance_replicate`.
-    "seedance_lite": {"name": "Seedance Lite (1.x)", "quality": "medium", "speed": "fast"},
-    "seedance_pro": {"name": "Seedance Pro (1.x)", "quality": "high", "speed": "medium"},
+    "seedance_lite": {
+        "name": "Seedance Lite (1.x)",
+        "quality": "medium",
+        "speed": "fast",
+    },
+    "seedance_pro": {
+        "name": "Seedance Pro (1.x)",
+        "quality": "high",
+        "speed": "medium",
+    },
     "ltx_distilled": {"name": "LTX Distilled", "quality": "low", "speed": "fastest"},
 }
 
@@ -320,7 +332,9 @@ def estimate_quality_cost(quality: str) -> float:
 
 
 def estimate_speed_runtime(speed: str) -> float:
-    return {"fastest": 30.0, "fast": 60.0, "medium": 120.0, "slow": 300.0}.get(speed, 120.0)
+    return {"fastest": 30.0, "fast": 60.0, "medium": 120.0, "slow": 300.0}.get(
+        speed, 120.0
+    )
 
 
 def estimate_local_runtime(speed: str) -> float:
@@ -429,7 +443,11 @@ def generate_local_video(
     height = inputs.get("height", meta["default_height"])
     num_frames = inputs.get("num_frames", meta["default_num_frames"])
     fps = meta["fps"]
-    model_id = meta.get("hf_i2v_id") if operation == "image_to_video" and meta.get("hf_i2v_id") else meta["hf_id"]
+    model_id = (
+        meta.get("hf_i2v_id")
+        if operation == "image_to_video" and meta.get("hf_i2v_id")
+        else meta["hf_id"]
+    )
     pipeline = load_diffusers_pipeline(meta["pipeline_class"], model_id, enable_offload)
 
     generation_args: dict[str, Any] = {
@@ -447,7 +465,9 @@ def generate_local_video(
             return image
         generation_args["image"] = image
     if meta["pipeline_class"] == "CogVideoXPipeline":
-        generation_args["negative_prompt"] = "worst quality, low quality, blurry, distorted, watermark"
+        generation_args["negative_prompt"] = (
+            "worst quality, low quality, blurry, distorted, watermark"
+        )
 
     output = pipeline(**generation_args)
     frames = output.frames[0] if hasattr(output, "frames") else output.images
@@ -497,16 +517,17 @@ def poll_heygen(execution_id: str, api_key: str, timeout: int = 600) -> str:
         status = data.get("status", "")
 
         if status == "completed":
-            video_url = (
-                data.get("output", {}).get("video", {}).get("video_url")
-                or data.get("output", {}).get("video_url")
-            )
+            video_url = data.get("output", {}).get("video", {}).get(
+                "video_url"
+            ) or data.get("output", {}).get("video_url")
             if video_url:
                 return video_url
             raise RuntimeError(f"Completed but no video_url in output: {data}")
 
         if status in {"failed", "error"}:
-            raise RuntimeError(f"HeyGen generation failed: {data.get('error', 'Unknown')}")
+            raise RuntimeError(
+                f"HeyGen generation failed: {data.get('error', 'Unknown')}"
+            )
 
         time.sleep(min(interval, max(0.0, deadline - time.time())))
         interval = min(interval * 1.2, 30.0)
@@ -527,9 +548,12 @@ def upload_image_fal(image_path: str) -> str:
         raise FileNotFoundError(f"Image not found: {image_path}")
 
     suffix = path.suffix.lower()
-    content_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(
-        suffix.lstrip("."), "image/png"
-    )
+    content_type = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+    }.get(suffix.lstrip("."), "image/png")
 
     # Initiate upload
     init_resp = requests.post(
@@ -636,7 +660,9 @@ def generate_heygen_video(inputs: dict[str, Any]) -> ToolResult:
     payload = response.json()
     execution_id = payload.get("data", {}).get("execution_id")
     if not execution_id:
-        return ToolResult(success=False, error=f"No execution_id in response: {payload}")
+        return ToolResult(
+            success=False, error=f"No execution_id in response: {payload}"
+        )
 
     video_url = poll_heygen(execution_id, api_key, timeout=600)
     output_path = Path(inputs.get("output_path", f"heygen_video_{execution_id}.mp4"))
@@ -687,7 +713,9 @@ def generate_ltx_modal_video(inputs: dict[str, Any]) -> ToolResult:
         else:
             width, height = 512, 512
 
-    num_frames = inputs.get("num_frames", LTX2_FRAME_COUNTS.get(inputs.get("duration_hint", "5s"), 121))
+    num_frames = inputs.get(
+        "num_frames", LTX2_FRAME_COUNTS.get(inputs.get("duration_hint", "5s"), 121)
+    )
     if (num_frames - 1) % 8 != 0:
         num_frames = ((num_frames - 1) // 8) * 8 + 1
 
@@ -707,7 +735,9 @@ def generate_ltx_modal_video(inputs: dict[str, Any]) -> ToolResult:
         ref_path = inputs.get("reference_image_path")
         ref_url = inputs.get("reference_image_url")
         if ref_path:
-            payload["input_image"] = base64.b64encode(Path(ref_path).read_bytes()).decode()
+            payload["input_image"] = base64.b64encode(
+                Path(ref_path).read_bytes()
+            ).decode()
         elif ref_url:
             payload["input_image_url"] = ref_url
         else:
@@ -728,7 +758,9 @@ def generate_ltx_modal_video(inputs: dict[str, Any]) -> ToolResult:
         response_payload = response.json()
         video_url = response_payload.get("video_url") or response_payload.get("url")
         if not video_url:
-            return ToolResult(success=False, error=f"No video data in response: {response_payload}")
+            return ToolResult(
+                success=False, error=f"No video data in response: {response_payload}"
+            )
         download = requests.get(video_url, timeout=120)
         download.raise_for_status()
         output_path.write_bytes(download.content)

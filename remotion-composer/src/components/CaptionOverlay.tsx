@@ -102,16 +102,16 @@ const PageRenderer: React.FC<{
   });
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         justifyContent: "flex-end",
         alignItems: "center",
         paddingBottom: 80,
       }}
-    >
-      <div
-        dir={direction}
-        style={{
+      >
+          <div
+              dir={direction}
+              style={{
           direction,
           opacity: entrance,
           transform: `translateY(${interpolate(entrance, [0, 1], [20, 0])}px)`,
@@ -121,23 +121,23 @@ const PageRenderer: React.FC<{
           maxWidth: "80%",
           textAlign: "center",
         }}
-      >
-        <span
-          style={{
+          >
+              <span
+                  style={{
             fontSize,
             fontWeight: 700,
             fontFamily,
             lineHeight: 1.4,
             whiteSpace: "pre-wrap",
           }}
-        >
-          {page.words.map((w, i) => {
+              >
+                  {page.words.map((w, i) => {
             const isActive = w.startMs <= currentMs && w.endMs > currentMs;
             const isPast = w.endMs <= currentMs;
             return (
-              <Fragment key={`${w.startMs}-${i}`}>
-                <span
-                  style={{
+                <Fragment key={`${w.startMs}-${i}`}>
+                    <span
+                        style={{
                     // Keep each word unbroken so lines wrap only at word
                     // boundaries. For space-delimited text this matches the
                     // previous behavior; for CJK it prevents mid-word breaks.
@@ -149,16 +149,16 @@ const PageRenderer: React.FC<{
                       ? `0 0 20px ${highlightColor}66, 0 2px 4px rgba(0,0,0,0.5)`
                       : "0 2px 4px rgba(0,0,0,0.5)",
                   }}
-                >
-                  {w.word}
-                </span>
-                {i < page.words.length - 1 ? wordSeparator : ""}
-              </Fragment>
+                    >
+                        {w.word}
+                    </span>
+                    {i < page.words.length - 1 ? wordSeparator : ""}
+                </Fragment>
             );
           })}
-        </span>
-      </div>
-    </AbsoluteFill>
+              </span>
+          </div>
+      </AbsoluteFill>
   );
 };
 
@@ -179,8 +179,8 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
     direction === "auto" ? detectDirection(words) : direction;
 
   return (
-    <AbsoluteFill>
-      {pages.map((page, i) => {
+      <AbsoluteFill>
+          {pages.map((page, i) => {
         const fromFrame = Math.round((page.startMs / 1000) * fps);
         const nextStart = pages[i + 1]?.startMs ?? page.endMs + 500;
         const duration = Math.max(
@@ -189,20 +189,20 @@ export const CaptionOverlay: React.FC<CaptionOverlayProps> = ({
         );
 
         return (
-          <Sequence key={i} from={fromFrame} durationInFrames={duration}>
-            <PageRenderer
-              page={page}
-              fontSize={fontSize}
-              color={color}
-              highlightColor={highlightColor}
-              backgroundColor={backgroundColor}
-              fontFamily={fontFamily}
-              wordSeparator={wordSeparator}
-              direction={resolvedDirection}
-            />
-          </Sequence>
+            <Sequence key={i} from={fromFrame} durationInFrames={duration}>
+                <PageRenderer
+                    page={page}
+                    fontSize={fontSize}
+                    color={color}
+                    highlightColor={highlightColor}
+                    backgroundColor={backgroundColor}
+                    fontFamily={fontFamily}
+                    wordSeparator={wordSeparator}
+                    direction={resolvedDirection}
+                />
+            </Sequence>
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

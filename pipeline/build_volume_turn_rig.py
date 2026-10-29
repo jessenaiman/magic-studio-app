@@ -61,7 +61,9 @@ def keys(points: list[tuple[float, float]]) -> list[dict]:
 def opacity_channel(index: int, duration: float, left_to_right: bool) -> list[dict]:
     """Opacity keys for one view: 0 is visible, -100 is hidden."""
     stage = len(VIEWS) - 1 - index if left_to_right else index
-    return keys([(fraction * duration, value) for fraction, value in OPACITY_TABLE[stage]])
+    return keys(
+        [(fraction * duration, value) for fraction, value in OPACITY_TABLE[stage]]
+    )
 
 
 def verify_registered(registered: Path, canvas: tuple[int, int]) -> dict[str, Path]:
@@ -99,7 +101,15 @@ def build_tracks(duration: float) -> list[dict]:
                 "rotation": keys([(t * duration, v) for t, v in ROTATION_KEYS]),
             }
             if view in MIRRORED:
-                channel["scale"] = [{"kind": "keys", "keys": [[0, list(MIRROR_SCALE)], [duration, list(MIRROR_SCALE)]]}]
+                channel["scale"] = [
+                    {
+                        "kind": "keys",
+                        "keys": [
+                            [0, list(MIRROR_SCALE)],
+                            [duration, list(MIRROR_SCALE)],
+                        ],
+                    }
+                ]
             motion[view] = channel
         tracks.append(
             {
@@ -114,7 +124,9 @@ def build_tracks(duration: float) -> list[dict]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--registered-dir", required=True, type=Path)
     parser.add_argument("--canvas", required=True, type=int, nargs=2)
     parser.add_argument("--pivot", required=True, type=int, nargs=2)
@@ -135,11 +147,14 @@ def main() -> int:
         "rig_type": "layered_motion",
         "character_id": args.character_id,
         "source_character": args.source_character,
-        "source_generation": str(args.source_generation) if args.source_generation else None,
+        "source_generation": str(args.source_generation)
+        if args.source_generation
+        else None,
         "canvas": list(canvas),
         "fps": 30,
         "layers": [
-            {"id": view, "file": str(views[view]), "pivot": list(pivot)} for view in VIEWS
+            {"id": view, "file": str(views[view]), "pivot": list(pivot)}
+            for view in VIEWS
         ],
         "tracks": build_tracks(args.duration),
         "animation_notes": (

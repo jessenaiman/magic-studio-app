@@ -26,15 +26,15 @@ export const TextCard: React.FC<TextCardProps> = ({
   });
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         justifyContent: "center",
         alignItems: "center",
         background: backgroundColor,
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           opacity,
           transform: `scale(${scale})`,
           fontSize,
@@ -45,9 +45,9 @@ export const TextCard: React.FC<TextCardProps> = ({
           maxWidth: "80%",
           lineHeight: 1.3,
         }}
-      >
-        {text}
-      </div>
-    </AbsoluteFill>
+          >
+              {text}
+          </div>
+      </AbsoluteFill>
   );
 };

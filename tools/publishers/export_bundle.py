@@ -48,7 +48,9 @@ class ExportBundle(BaseTool):
     runtime = ToolRuntime.LOCAL
 
     dependencies = []  # pure filesystem packaging
-    install_instructions = "No setup required — runs locally with the Python standard library."
+    install_instructions = (
+        "No setup required — runs locally with the Python standard library."
+    )
 
     agent_skills = []
 
@@ -145,7 +147,9 @@ class ExportBundle(BaseTool):
         for ch in chapters:
             label = ch.get("title") or ch.get("label") or ""
             if "start_seconds" in ch or "time_seconds" in ch:
-                ts = self._format_chapter_time(ch.get("start_seconds", ch.get("time_seconds", 0)))
+                ts = self._format_chapter_time(
+                    ch.get("start_seconds", ch.get("time_seconds", 0))
+                )
             elif "time" in ch:
                 ts = str(ch["time"])
             else:
@@ -158,17 +162,23 @@ class ExportBundle(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         video_path = Path(inputs["video_path"]).expanduser()
         if not video_path.is_file():
-            return ToolResult(success=False, error=f"video_path not found: {video_path}")
+            return ToolResult(
+                success=False, error=f"video_path not found: {video_path}"
+            )
 
         title = inputs["title"]
-        project_name = inputs.get("project_name") or self._infer_project_name(video_path)
+        project_name = inputs.get("project_name") or self._infer_project_name(
+            video_path
+        )
 
         # Explicitly-provided optional assets must exist — silently dropping them
         # would ship a publish package missing part of an approved deliverable.
         for key in ("subtitles_path", "thumbnail_path"):
             val = inputs.get(key)
             if val and not Path(val).expanduser().is_file():
-                return ToolResult(success=False, error=f"{key} provided but not found: {val}")
+                return ToolResult(
+                    success=False, error=f"{key} provided but not found: {val}"
+                )
 
         export_root = (
             Path(inputs["export_dir"]).expanduser()
@@ -221,7 +231,9 @@ class ExportBundle(BaseTool):
         if chapter_lines:
             desc_parts.append("\n".join(chapter_lines))
         desc_txt = meta_dir / "description.txt"
-        desc_txt.write_text("\n\n".join(desc_parts) + ("\n" if desc_parts else ""), encoding="utf-8")
+        desc_txt.write_text(
+            "\n\n".join(desc_parts) + ("\n" if desc_parts else ""), encoding="utf-8"
+        )
         files_written.append(str(desc_txt))
 
         # tags.txt (one per line)
@@ -245,7 +257,9 @@ class ExportBundle(BaseTool):
             files_written.append(str(out_thumb))
         elif inputs.get("thumbnail_concept"):
             concept = thumb_dir / "concept.json"
-            concept.write_text(json.dumps(inputs["thumbnail_concept"], indent=2), encoding="utf-8")
+            concept.write_text(
+                json.dumps(inputs["thumbnail_concept"], indent=2), encoding="utf-8"
+            )
             files_written.append(str(concept))
 
         timestamp = inputs.get("timestamp") or datetime.now(timezone.utc).isoformat()
@@ -272,7 +286,9 @@ class ExportBundle(BaseTool):
 
             validate_artifact("publish_log", publish_log)
         except Exception as exc:  # pragma: no cover - defensive
-            return ToolResult(success=False, error=f"publish_log failed schema validation: {exc}")
+            return ToolResult(
+                success=False, error=f"publish_log failed schema validation: {exc}"
+            )
 
         return ToolResult(
             success=True,

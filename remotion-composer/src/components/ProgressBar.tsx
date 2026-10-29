@@ -127,15 +127,15 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   const trackTop = label ? 520 : 500;
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "center",
         alignItems: "center",
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           opacity: containerOpacity,
           transform: `scale(${containerScale})`,
           width: "100%",
@@ -144,11 +144,11 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
           alignItems: "center",
           gap: 24,
         }}
-      >
-        {/* Label */}
-        {label && (
-          <div
-            style={{
+          >
+              {/* Label */}
+              {label && (
+              <div
+                  style={{
               fontFamily,
               fontWeight: 700,
               fontSize: labelFontSize,
@@ -160,20 +160,20 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                 config: { damping: 20 },
               }),
             }}
-          >
-            {label}
-          </div>
+              >
+                  {label}
+              </div>
         )}
 
-        {/* Track */}
-        <div
-          style={{
+              {/* Track */}
+              <div
+                  style={{
             width: `${(trackWidth / 1920) * 100}%`,
             position: "relative",
           }}
-        >
-          <div
-            style={{
+              >
+                  <div
+                      style={{
               width: "100%",
               height,
               backgroundColor: trackColor,
@@ -182,8 +182,8 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
               position: "relative",
               display: "flex",
             }}
-          >
-            {isSegmented ? (
+                  >
+                      {isSegmented ? (
               // Segmented bars
               segments!.map((seg, i) => {
                 const segDelay = 10 + i * 8;
@@ -194,9 +194,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                 });
                 const segWidth = (seg.value / 100) * 100;
                 return (
-                  <div
-                    key={i}
-                    style={{
+                    <div
+                        key={i}
+                        style={{
                       width: `${segWidth}%`,
                       height: "100%",
                       backgroundColor: seg.color || color,
@@ -207,13 +207,13 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                           ? `2px solid ${backgroundColor}`
                           : "none",
                     }}
-                  />
+                    />
                 );
               })
             ) : (
               // Single fill bar
-              <div
-                style={{
+                <div
+                    style={{
                   width: `${fillFraction * 100}%`,
                   height: "100%",
                   backgroundColor: color,
@@ -223,20 +223,20 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                       ? "width 0.15s ease"
                       : undefined,
                 }}
-              />
+                />
             )}
-          </div>
+                  </div>
 
-          {/* Segment labels below track */}
-          {isSegmented && (
-            <div
-              style={{
+                  {/* Segment labels below track */}
+                  {isSegmented && (
+                  <div
+                      style={{
                 display: "flex",
                 width: "100%",
                 marginTop: 8,
               }}
-            >
-              {segments!.map((seg, i) => {
+                  >
+                      {segments!.map((seg, i) => {
                 const segDelay = 10 + i * 8;
                 const labelOp = spring({
                   frame: frame - segDelay - 6,
@@ -244,9 +244,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                   config: { damping: 20 },
                 });
                 return (
-                  <div
-                    key={i}
-                    style={{
+                    <div
+                        key={i}
+                        style={{
                       width: `${(seg.value / 100) * 100}%`,
                       fontFamily,
                       fontWeight: 500,
@@ -255,30 +255,30 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                       textAlign: "center",
                       opacity: labelOp,
                     }}
-                  >
-                    {seg.label}
-                  </div>
+                    >
+                        {seg.label}
+                    </div>
                 );
               })}
-            </div>
+                  </div>
           )}
-        </div>
+              </div>
 
-        {/* Percentage */}
-        {showPercentage && !isSegmented && (
-          <div
-            style={{
+              {/* Percentage */}
+              {showPercentage && !isSegmented && (
+              <div
+                  style={{
               fontFamily,
               fontWeight: 800,
               fontSize: percentageFontSize,
               color,
               opacity: percentOpacity,
             }}
-          >
-            {displayedPercent}%
-          </div>
+              >
+                  {displayedPercent}%
+              </div>
         )}
-      </div>
-    </AbsoluteFill>
+          </div>
+      </AbsoluteFill>
   );
 };

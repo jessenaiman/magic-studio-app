@@ -99,155 +99,155 @@ export const LineChart: React.FC<LineChartProps> = ({
   );
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "flex-start",
         alignItems: "center",
         padding: 40,
       }}
-    >
-      <svg
-        viewBox="0 0 1920 1080"
-        style={{ width: "100%", height: "100%" }}
       >
-        {/* Title */}
-        {title && (
-          <text
-            x={960}
-            y={80}
-            textAnchor="middle"
-            fill={textColor}
-            fontFamily={fontFamily}
-            fontWeight={700}
-            fontSize={48}
-            opacity={spring({ frame, fps, config: { damping: 20 } })}
+          <svg
+              viewBox="0 0 1920 1080"
+              style={{ width: "100%", height: "100%" }}
           >
-            {title}
-          </text>
-        )}
-
-        {/* Grid */}
-        {showGrid && (
-          <g
-            opacity={interpolate(frame, [0, 10], [0, 0.5], {
-              extrapolateRight: "clamp",
-            })}
-          >
-            {/* Horizontal grid */}
-            {gridLinesY.map((line, i) => (
-              <g key={`gy-${i}`}>
-                <line
-                  x1={chartLeft}
-                  y1={line.y}
-                  x2={chartRight}
-                  y2={line.y}
-                  stroke={gridColor}
-                  strokeWidth={1}
-                />
-                <text
-                  x={chartLeft - 14}
-                  y={line.y + 6}
-                  textAnchor="end"
-                  fill={textColor}
-                  fontFamily={fontFamily}
-                  fontSize={18}
-                  fontWeight={400}
-                >
-                  {formatNumber(line.value)}
-                </text>
-              </g>
-            ))}
-            {/* Vertical grid */}
-            {gridLinesX.map((line, i) => (
-              <g key={`gx-${i}`}>
-                <line
-                  x1={line.x}
-                  y1={chartTop}
-                  x2={line.x}
-                  y2={chartBottom}
-                  stroke={gridColor}
-                  strokeWidth={1}
-                />
-                <text
-                  x={line.x}
-                  y={chartBottom + 36}
+              {/* Title */}
+              {title && (
+              <text
+                  x={960}
+                  y={80}
                   textAnchor="middle"
                   fill={textColor}
                   fontFamily={fontFamily}
-                  fontSize={18}
-                  fontWeight={400}
-                >
-                  {formatNumber(line.value)}
-                </text>
-              </g>
+                  fontWeight={700}
+                  fontSize={48}
+                  opacity={spring({ frame, fps, config: { damping: 20 } })}
+              >
+                  {title}
+              </text>
+        )}
+
+              {/* Grid */}
+              {showGrid && (
+              <g
+                  opacity={interpolate(frame, [0, 10], [0, 0.5], {
+              extrapolateRight: "clamp",
+            })}
+              >
+                  {/* Horizontal grid */}
+                  {gridLinesY.map((line, i) => (
+                      <g key={`gy-${i}`}>
+                          <line
+                              x1={chartLeft}
+                              y1={line.y}
+                              x2={chartRight}
+                              y2={line.y}
+                              stroke={gridColor}
+                              strokeWidth={1}
+                          />
+                          <text
+                              x={chartLeft - 14}
+                              y={line.y + 6}
+                              textAnchor="end"
+                              fill={textColor}
+                              fontFamily={fontFamily}
+                              fontSize={18}
+                              fontWeight={400}
+                          >
+                              {formatNumber(line.value)}
+                          </text>
+                      </g>
             ))}
-          </g>
+                  {/* Vertical grid */}
+                  {gridLinesX.map((line, i) => (
+                      <g key={`gx-${i}`}>
+                          <line
+                              x1={line.x}
+                              y1={chartTop}
+                              x2={line.x}
+                              y2={chartBottom}
+                              stroke={gridColor}
+                              strokeWidth={1}
+                          />
+                          <text
+                              x={line.x}
+                              y={chartBottom + 36}
+                              textAnchor="middle"
+                              fill={textColor}
+                              fontFamily={fontFamily}
+                              fontSize={18}
+                              fontWeight={400}
+                          >
+                              {formatNumber(line.value)}
+                          </text>
+                      </g>
+            ))}
+              </g>
         )}
 
-        {/* Axes */}
-        <line
-          x1={chartLeft}
-          y1={chartTop}
-          x2={chartLeft}
-          y2={chartBottom}
-          stroke={gridColor}
-          strokeWidth={2}
-          opacity={interpolate(frame, [0, 8], [0, 1], {
+              {/* Axes */}
+              <line
+                  x1={chartLeft}
+                  y1={chartTop}
+                  x2={chartLeft}
+                  y2={chartBottom}
+                  stroke={gridColor}
+                  strokeWidth={2}
+                  opacity={interpolate(frame, [0, 8], [0, 1], {
             extrapolateRight: "clamp",
           })}
-        />
-        <line
-          x1={chartLeft}
-          y1={chartBottom}
-          x2={chartRight}
-          y2={chartBottom}
-          stroke={gridColor}
-          strokeWidth={2}
-          opacity={interpolate(frame, [0, 8], [0, 1], {
+              />
+              <line
+                  x1={chartLeft}
+                  y1={chartBottom}
+                  x2={chartRight}
+                  y2={chartBottom}
+                  stroke={gridColor}
+                  strokeWidth={2}
+                  opacity={interpolate(frame, [0, 8], [0, 1], {
             extrapolateRight: "clamp",
           })}
-        />
+              />
 
-        {/* Axis labels */}
-        {xLabel && (
-          <text
-            x={chartLeft + chartWidth / 2}
-            y={chartBottom + 70}
-            textAnchor="middle"
-            fill={textColor}
-            fontFamily={fontFamily}
-            fontSize={22}
-            fontWeight={500}
-            opacity={interpolate(frame, [5, 15], [0, 1], {
+              {/* Axis labels */}
+              {xLabel && (
+              <text
+                  x={chartLeft + chartWidth / 2}
+                  y={chartBottom + 70}
+                  textAnchor="middle"
+                  fill={textColor}
+                  fontFamily={fontFamily}
+                  fontSize={22}
+                  fontWeight={500}
+                  opacity={interpolate(frame, [5, 15], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             })}
-          >
-            {xLabel}
-          </text>
+              >
+                  {xLabel}
+              </text>
         )}
-        {yLabel && (
-          <text
-            x={40}
-            y={chartTop + chartHeight / 2}
-            textAnchor="middle"
-            fill={textColor}
-            fontFamily={fontFamily}
-            fontSize={22}
-            fontWeight={500}
-            transform={`rotate(-90, 40, ${chartTop + chartHeight / 2})`}
-            opacity={interpolate(frame, [5, 15], [0, 1], {
+              {yLabel && (
+              <text
+                  x={40}
+                  y={chartTop + chartHeight / 2}
+                  textAnchor="middle"
+                  fill={textColor}
+                  fontFamily={fontFamily}
+                  fontSize={22}
+                  fontWeight={500}
+                  transform={`rotate(-90, 40, ${chartTop + chartHeight / 2})`}
+                  opacity={interpolate(frame, [5, 15], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             })}
-          >
-            {yLabel}
-          </text>
+              >
+                  {yLabel}
+              </text>
         )}
 
-        {/* Series lines */}
-        {series.map((s, seriesIdx) => {
+              {/* Series lines */}
+              {series.map((s, seriesIdx) => {
           const color = s.color || colors[seriesIdx % colors.length];
           const sorted = [...s.data].sort((a, b) => a.x - b.x);
           if (sorted.length < 2) return null;
@@ -298,22 +298,22 @@ export const LineChart: React.FC<LineChartProps> = ({
           const dashOffset = pathLength * (1 - drawProgress);
 
           return (
-            <g key={s.label} opacity={fadeOut}>
-              {/* Line */}
-              <path
-                d={pathD}
-                fill="none"
-                stroke={color}
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={pathLength}
-                strokeDashoffset={dashOffset}
-                opacity={lineOpacity}
-              />
+              <g key={s.label} opacity={fadeOut}>
+                  {/* Line */}
+                  <path
+                      d={pathD}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={strokeWidth}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray={pathLength}
+                      strokeDashoffset={dashOffset}
+                      opacity={lineOpacity}
+                  />
 
-              {/* Markers */}
-              {showMarkers &&
+                  {/* Markers */}
+                  {showMarkers &&
                 sorted.map((p, pIdx) => {
                   const markerProgress = interpolate(
                     drawProgress,
@@ -322,60 +322,60 @@ export const LineChart: React.FC<LineChartProps> = ({
                     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
                   );
                   return (
-                    <circle
-                      key={`${s.label}-p-${pIdx}`}
-                      cx={toSvgX(p.x)}
-                      cy={toSvgY(p.y)}
-                      r={5}
-                      fill={backgroundColor}
-                      stroke={color}
-                      strokeWidth={2.5}
-                      opacity={markerProgress * lineOpacity}
-                    />
+                      <circle
+                          key={`${s.label}-p-${pIdx}`}
+                          cx={toSvgX(p.x)}
+                          cy={toSvgY(p.y)}
+                          r={5}
+                          fill={backgroundColor}
+                          stroke={color}
+                          strokeWidth={2.5}
+                          opacity={markerProgress * lineOpacity}
+                      />
                   );
                 })}
-            </g>
+              </g>
           );
         })}
 
-        {/* Legend */}
-        {showLegend && series.length > 1 && (
-          <g
-            opacity={interpolate(frame, [15, 25], [0, 1], {
+              {/* Legend */}
+              {showLegend && series.length > 1 && (
+              <g
+                  opacity={interpolate(frame, [15, 25], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             })}
-          >
-            {series.map((s, i) => {
+              >
+                  {series.map((s, i) => {
               const color = s.color || colors[i % colors.length];
               const legendX = 960 - (series.length * 160) / 2 + i * 160;
               return (
-                <g key={`legend-${i}`}>
-                  <rect
-                    x={legendX}
-                    y={960}
-                    width={24}
-                    height={4}
-                    rx={2}
-                    fill={color}
-                  />
-                  <text
-                    x={legendX + 32}
-                    y={966}
-                    fill={textColor}
-                    fontFamily={fontFamily}
-                    fontSize={20}
-                    fontWeight={500}
-                  >
-                    {s.label}
-                  </text>
-                </g>
+                  <g key={`legend-${i}`}>
+                      <rect
+                          x={legendX}
+                          y={960}
+                          width={24}
+                          height={4}
+                          rx={2}
+                          fill={color}
+                      />
+                      <text
+                          x={legendX + 32}
+                          y={966}
+                          fill={textColor}
+                          fontFamily={fontFamily}
+                          fontSize={20}
+                          fontWeight={500}
+                      >
+                          {s.label}
+                      </text>
+                  </g>
               );
             })}
-          </g>
+              </g>
         )}
-      </svg>
-    </AbsoluteFill>
+          </svg>
+      </AbsoluteFill>
   );
 };
 

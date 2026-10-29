@@ -37,7 +37,9 @@ def file_to_raw_base64(path: str | Path, *, label: str = "File") -> str:
     return base64.b64encode(media_path.read_bytes()).decode("ascii")
 
 
-def normalize_image_input(url: str | None = None, path: str | Path | None = None) -> str | None:
+def normalize_image_input(
+    url: str | None = None, path: str | Path | None = None
+) -> str | None:
     """Normalize a Kling image input to either URL or raw base64."""
 
     if url:

@@ -155,9 +155,9 @@ class PixabayMusic(BaseTool):
             min_dur = inputs.get("min_duration", 30)
             max_dur = inputs.get("max_duration", 120)
             filtered = [
-                t for t in tracks
-                if t.get("duration") is not None
-                and min_dur <= t["duration"] <= max_dur
+                t
+                for t in tracks
+                if t.get("duration") is not None and min_dur <= t["duration"] <= max_dur
             ]
 
             # Fall back to unfiltered if no matches within duration range
@@ -201,9 +201,7 @@ class PixabayMusic(BaseTool):
         import http.cookiejar
 
         cj = http.cookiejar.CookieJar()
-        return urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(cj)
-        )
+        return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 
     def _search(self, inputs: dict[str, Any]) -> list[dict]:
         """Search Pixabay Music via the bootstrap JSON API.
@@ -284,15 +282,17 @@ class PixabayMusic(BaseTool):
                 continue
 
             user = item.get("user", {}) or {}
-            tracks.append({
-                "title": item.get("name") or sources.get("filename", "Unknown"),
-                "audio_url": audio_url,
-                "duration": item.get("duration"),
-                "artist": user.get("username", "Unknown"),
-                "rating": item.get("rating"),
-                "download_count": item.get("downloadCount"),
-                "pixabay_id": item.get("id"),
-            })
+            tracks.append(
+                {
+                    "title": item.get("name") or sources.get("filename", "Unknown"),
+                    "audio_url": audio_url,
+                    "duration": item.get("duration"),
+                    "artist": user.get("username", "Unknown"),
+                    "rating": item.get("rating"),
+                    "download_count": item.get("downloadCount"),
+                    "pixabay_id": item.get("id"),
+                }
+            )
 
         return tracks
 
@@ -311,12 +311,14 @@ class PixabayMusic(BaseTool):
         for url in mp3_urls:
             if url not in seen:
                 seen.add(url)
-                tracks.append({
-                    "title": "Unknown",
-                    "audio_url": url,
-                    "duration": None,
-                    "artist": "Unknown",
-                })
+                tracks.append(
+                    {
+                        "title": "Unknown",
+                        "audio_url": url,
+                        "duration": None,
+                        "artist": "Unknown",
+                    }
+                )
 
         return tracks
 

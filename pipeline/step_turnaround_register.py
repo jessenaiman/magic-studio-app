@@ -6,6 +6,7 @@ uniformly scales views to the reference view's height, aligns foot-center X and 
 on a shared padded canvas, and writes `registered_turnaround/manifest.json`, `atlas.png`,
 `contact_sheet.jpg`, and `turnaround_registration.json`.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,7 +58,9 @@ def measure_silhouette(image: Image.Image, threshold: int = 128) -> dict:
     if not bbox:
         raise ValueError("Blank foreground at selected alpha threshold")
     left, top, right, bottom = bbox
-    foot_band = alpha.crop((left, max(top, bottom - max(2, round((bottom - top) * 0.08))), right, bottom))
+    foot_band = alpha.crop(
+        (left, max(top, bottom - max(2, round((bottom - top) * 0.08))), right, bottom)
+    )
     fb_box = foot_band.getbbox() or (0, 0, right - left, 1)
     foot_x = left + (fb_box[0] + fb_box[2]) * 0.5
     area_px = sum(alpha.histogram()[1:])
@@ -82,10 +85,16 @@ def register_turnaround(
     reference: str = "front",
     _loaded: tuple[list[dict], dict[str, str]] | None = None,
 ) -> dict:
-    frames, hashes = _loaded if _loaded is not None else read_sheet_frames(turnaround_dir)
-    by_label = {f["meta"]["label"]: f for f in frames if f["meta"]["label"] in DIRECTIONS}
+    frames, hashes = (
+        _loaded if _loaded is not None else read_sheet_frames(turnaround_dir)
+    )
+    by_label = {
+        f["meta"]["label"]: f for f in frames if f["meta"]["label"] in DIRECTIONS
+    }
     if not by_label:
-        by_label = {f["meta"].get("label", f"view_{i}"): f for i, f in enumerate(frames)}
+        by_label = {
+            f["meta"].get("label", f"view_{i}"): f for i, f in enumerate(frames)
+        }
     if reference not in by_label:
         reference = next(iter(by_label))
     for f in frames:
@@ -105,7 +114,9 @@ def register_turnaround(
 
     padding = 16
     left_room = math.ceil(max(m["footCenterX"] for _, _, _, m, _ in transformed))
-    right_room = math.ceil(max(im.width - m["footCenterX"] for _, _, im, m, _ in transformed))
+    right_room = math.ceil(
+        max(im.width - m["footCenterX"] for _, _, im, m, _ in transformed)
+    )
     top_room = max(m["crownY"] for _, _, _, m, _ in transformed)
     bottom_room = max(im.height - m["footBaselineY"] for _, _, im, m, _ in transformed)
     crown = padding + top_room
@@ -133,27 +144,31 @@ def register_turnaround(
         contact.paste(aligned, (i * size[0], 0), aligned.getchannel("A"))
         contact_draw.text((i * size[0] + 5, size[1] + 3), label, fill="white")
         iw, ih = frame["image"].size
-        result_frames.append({
-            "index": i,
-            "label": label,
-            "file": filename,
-            "size": list(size),
-            "sourceFile": str(frame["path"]),
-            "sourceSize": [iw, ih],
-            "sourceBox": frame["meta"].get("sourceBox"),
-            "input": frame["measure"],
-            "registered": final,
-            "uniformScale": scale,
-            "anchor": [center, baseline],
-            "atlasRect": [i * size[0], 0, *size],
-            "uv": [i / len(transformed), 0, 1 / len(transformed), 1],
-        })
+        result_frames.append(
+            {
+                "index": i,
+                "label": label,
+                "file": filename,
+                "size": list(size),
+                "sourceFile": str(frame["path"]),
+                "sourceSize": [iw, ih],
+                "sourceBox": frame["meta"].get("sourceBox"),
+                "input": frame["measure"],
+                "registered": final,
+                "uniformScale": scale,
+                "anchor": [center, baseline],
+                "atlasRect": [i * size[0], 0, *size],
+                "uv": [i / len(transformed), 0, 1 / len(transformed), 1],
+            }
+        )
 
     atlas.save(destination / "atlas.png", compress_level=3)
     contact.save(destination / "contact_sheet.jpg", quality=92)
     crown_vals = [f["registered"]["crownY"] for f in result_frames]
     foot_vals = [f["registered"]["footBaselineY"] for f in result_frames]
-    drift = float(max(max(crown_vals) - min(crown_vals), max(foot_vals) - min(foot_vals)))
+    drift = float(
+        max(max(crown_vals) - min(crown_vals), max(foot_vals) - min(foot_vals))
+    )
     before_crown = [f["input"]["crownY"] for f in result_frames]
     before_foot = [f["input"]["footBaselineY"] for f in result_frames]
     result = {
@@ -191,7 +206,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--alpha-threshold", type=int, default=128)
     ap.add_argument("--reference", default="front")
     args = ap.parse_args(argv)
-    res = register_turnaround(args.turnaround_dir, args.out_dir, args.alpha_threshold, args.reference)
+    res = register_turnaround(
+        args.turnaround_dir, args.out_dir, args.alpha_threshold, args.reference
+    )
     print(json.dumps(res, indent=2))
     return 0 if res["rasterRegistrationPassed"] else 1
 

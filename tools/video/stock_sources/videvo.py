@@ -15,6 +15,7 @@ What Videvo is good for
 - Modern HD/4K footage
 - Complements Pexels with a different contributor base
 """
+
 from __future__ import annotations
 
 import logging
@@ -88,7 +89,12 @@ class VidevoSource:
             _log.warning("Videvo search failed: %s", e)
             raise
 
-        hits = data.get("data", []) or data.get("results", []) or data.get("clips", []) or []
+        hits = (
+            data.get("data", [])
+            or data.get("results", [])
+            or data.get("clips", [])
+            or []
+        )
         out: list[Candidate] = []
 
         for v in hits:
@@ -123,10 +129,18 @@ class VidevoSource:
 
             # License type
             lic_type = (v.get("license_type", "") or "").lower()
-            lic = _LICENSE_CC if "creative commons" in lic_type or "cc" in lic_type else _LICENSE_ATTR
+            lic = (
+                _LICENSE_CC
+                if "creative commons" in lic_type or "cc" in lic_type
+                else _LICENSE_ATTR
+            )
 
             clip_id = str(v.get("id", "") or "")
-            source_url = v.get("page_url", "") or v.get("url", "") or f"https://www.videvo.net/video/{clip_id}/"
+            source_url = (
+                v.get("page_url", "")
+                or v.get("url", "")
+                or f"https://www.videvo.net/video/{clip_id}/"
+            )
 
             out.append(
                 Candidate(
@@ -141,7 +155,9 @@ class VidevoSource:
                     creator=v.get("author", "") or v.get("contributor", "") or "",
                     license=lic,
                     source_tags=source_tags,
-                    thumbnail_url=v.get("thumbnail_url", "") or v.get("poster_url", "") or "",
+                    thumbnail_url=v.get("thumbnail_url", "")
+                    or v.get("poster_url", "")
+                    or "",
                     extra={
                         "fps": v.get("fps"),
                         "resolution": v.get("resolution"),
@@ -157,9 +173,7 @@ class VidevoSource:
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with requests.get(
-            candidate.download_url, stream=True, timeout=120
-        ) as r:
+        with requests.get(candidate.download_url, stream=True, timeout=120) as r:
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 16):

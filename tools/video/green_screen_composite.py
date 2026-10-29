@@ -44,8 +44,7 @@ class GreenScreenComposite(BaseTool):
 
     dependencies = ["cmd:ffmpeg", "python:numpy", "python:PIL"]
     install_instructions = (
-        "Install FFmpeg: https://ffmpeg.org/download.html — "
-        "pip install numpy Pillow"
+        "Install FFmpeg: https://ffmpeg.org/download.html — pip install numpy Pillow"
     )
     agent_skills = ["ffmpeg"]
 
@@ -111,8 +110,13 @@ class GreenScreenComposite(BaseTool):
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["FFmpeg error"])
     resume_support = ResumeSupport.FROM_START
     idempotency_key_fields = [
-        "speaker_path", "background_path", "layout", "speaker_scale",
-        "bg_shift_up", "bg_color_hex", "original_audio_path",
+        "speaker_path",
+        "background_path",
+        "layout",
+        "speaker_scale",
+        "bg_shift_up",
+        "bg_color_hex",
+        "original_audio_path",
     ]
     side_effects = ["writes composite video to output_path"]
     user_visible_verification = [
@@ -132,11 +136,17 @@ class GreenScreenComposite(BaseTool):
         bg_color_hex = inputs.get("bg_color_hex", "#0E172A")
 
         if not speaker_path.exists():
-            return ToolResult(success=False, error=f"Speaker video not found: {speaker_path}")
+            return ToolResult(
+                success=False, error=f"Speaker video not found: {speaker_path}"
+            )
         if not background_path.exists():
-            return ToolResult(success=False, error=f"Background video not found: {background_path}")
+            return ToolResult(
+                success=False, error=f"Background video not found: {background_path}"
+            )
         if original_audio_path and not Path(original_audio_path).exists():
-            return ToolResult(success=False, error=f"Audio source not found: {original_audio_path}")
+            return ToolResult(
+                success=False, error=f"Audio source not found: {original_audio_path}"
+            )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         start = time.time()
@@ -195,13 +205,17 @@ class GreenScreenComposite(BaseTool):
             # Step 4: Composite each frame pair
             for i in range(frame_count):
                 if i % log_interval == 0:
-                    print(f"[green_screen_composite] Compositing frame {i + 1}/{frame_count}")
+                    print(
+                        f"[green_screen_composite] Compositing frame {i + 1}/{frame_count}"
+                    )
 
                 speaker_img = Image.open(speaker_frames[i]).convert("RGB")
                 bg_img = Image.open(bg_frames[i]).convert("RGB")
 
                 comp = self._composite_frame(
-                    speaker_img, bg_img, bg_color,
+                    speaker_img,
+                    bg_img,
+                    bg_color,
                     layout=layout,
                     speaker_scale=speaker_scale,
                     bg_shift_up=bg_shift_up,
@@ -213,12 +227,18 @@ class GreenScreenComposite(BaseTool):
             print(f"[green_screen_composite] All {frame_count} frames composited")
 
             # Step 5: Encode composite frames to video
-            no_audio_path = output_path if not original_audio_path else temp_dir / "no_audio.mp4"
-            self._encode_frames(comp_frames_dir, no_audio_path, target_fps, out_w, out_h)
+            no_audio_path = (
+                output_path if not original_audio_path else temp_dir / "no_audio.mp4"
+            )
+            self._encode_frames(
+                comp_frames_dir, no_audio_path, target_fps, out_w, out_h
+            )
 
             # Step 6: Mux audio if provided
             if original_audio_path:
-                self._mux_audio(no_audio_path, Path(original_audio_path), output_path, duration)
+                self._mux_audio(
+                    no_audio_path, Path(original_audio_path), output_path, duration
+                )
 
             if not output_path.exists() or output_path.stat().st_size == 0:
                 return ToolResult(success=False, error="Output video was not created")
@@ -257,9 +277,13 @@ class GreenScreenComposite(BaseTool):
     def _probe_video(self, path: Path) -> dict[str, Any] | None:
         """Probe a video for fps, duration, and dimensions."""
         cmd = [
-            "ffprobe", "-v", "quiet",
-            "-print_format", "json",
-            "-show_format", "-show_streams",
+            "ffprobe",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
             str(path),
         ]
         try:
@@ -298,9 +322,12 @@ class GreenScreenComposite(BaseTool):
     def _extract_frames(self, video_path: Path, output_dir: Path, fps: float) -> None:
         """Extract frames from a video at the given fps."""
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-vf", f"fps={fps}",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-vf",
+            f"fps={fps}",
             str(output_dir / "frame_%06d.png"),
         ]
         self.run_command(cmd, timeout=600)
@@ -390,12 +417,22 @@ class GreenScreenComposite(BaseTool):
     ) -> None:
         """Encode PNG frames to an MP4 video."""
         cmd = [
-            "ffmpeg", "-y",
-            "-framerate", str(fps),
-            "-i", str(frames_dir / "frame_%06d.png"),
-            "-c:v", "libx264", "-crf", "18", "-preset", "fast",
-            "-pix_fmt", "yuv420p",
-            "-vf", f"scale={width}:{height}",
+            "ffmpeg",
+            "-y",
+            "-framerate",
+            str(fps),
+            "-i",
+            str(frames_dir / "frame_%06d.png"),
+            "-c:v",
+            "libx264",
+            "-crf",
+            "18",
+            "-preset",
+            "fast",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            f"scale={width}:{height}",
             str(output_path),
         ]
         self.run_command(cmd, timeout=600)
@@ -405,13 +442,24 @@ class GreenScreenComposite(BaseTool):
     ) -> None:
         """Mux audio from the original source into the composite video."""
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-i", str(audio_source),
-            "-t", f"{duration:.3f}",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "192k",
-            "-map", "0:v:0", "-map", "1:a:0",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(audio_source),
+            "-t",
+            f"{duration:.3f}",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
             "-shortest",
             str(output_path),
         ]
@@ -424,7 +472,9 @@ class GreenScreenComposite(BaseTool):
                 shutil.rmtree(temp_dir)
             except OSError:
                 # Best-effort cleanup; log but don't fail
-                print(f"[green_screen_composite] Warning: could not fully clean {temp_dir}")
+                print(
+                    f"[green_screen_composite] Warning: could not fully clean {temp_dir}"
+                )
 
     def estimate_runtime(self, inputs: dict[str, Any]) -> float:
         return 120.0

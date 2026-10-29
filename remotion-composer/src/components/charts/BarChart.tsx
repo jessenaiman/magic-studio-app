@@ -71,36 +71,36 @@ export const BarChart: React.FC<BarChartProps> = ({
   });
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "flex-start",
         alignItems: "center",
         padding: 40,
       }}
-    >
-      <svg
-        viewBox="0 0 1920 1080"
-        style={{ width: "100%", height: "100%" }}
       >
-        {/* Title */}
-        {title && (
-          <text
-            x={960}
-            y={80}
-            textAnchor="middle"
-            fill={textColor}
-            fontFamily={fontFamily}
-            fontWeight={700}
-            fontSize={48}
-            opacity={spring({ frame, fps, config: { damping: 20 } })}
+          <svg
+              viewBox="0 0 1920 1080"
+              style={{ width: "100%", height: "100%" }}
           >
-            {title}
-          </text>
+              {/* Title */}
+              {title && (
+              <text
+                  x={960}
+                  y={80}
+                  textAnchor="middle"
+                  fill={textColor}
+                  fontFamily={fontFamily}
+                  fontWeight={700}
+                  fontSize={48}
+                  opacity={spring({ frame, fps, config: { damping: 20 } })}
+              >
+                  {title}
+              </text>
         )}
 
-        {/* Grid lines */}
-        {showGrid &&
+              {/* Grid lines */}
+              {showGrid &&
           gridLines.map((line, i) => {
             const gridOpacity = interpolate(
               frame,
@@ -109,58 +109,58 @@ export const BarChart: React.FC<BarChartProps> = ({
               { extrapolateRight: "clamp" }
             );
             return (
-              <g key={`grid-${i}`}>
-                <line
-                  x1={chartLeft}
-                  y1={line.y}
-                  x2={chartRight}
-                  y2={line.y}
-                  stroke={gridColor}
-                  strokeWidth={1}
-                  opacity={gridOpacity}
-                />
-                <text
-                  x={chartLeft - 12}
-                  y={line.y + 5}
-                  textAnchor="end"
-                  fill={textColor}
-                  fontFamily={fontFamily}
-                  fontWeight={400}
-                  fontSize={20}
-                  opacity={gridOpacity}
-                >
-                  {formatNumber(line.value)}
-                </text>
-              </g>
+                <g key={`grid-${i}`}>
+                    <line
+                        x1={chartLeft}
+                        y1={line.y}
+                        x2={chartRight}
+                        y2={line.y}
+                        stroke={gridColor}
+                        strokeWidth={1}
+                        opacity={gridOpacity}
+                    />
+                    <text
+                        x={chartLeft - 12}
+                        y={line.y + 5}
+                        textAnchor="end"
+                        fill={textColor}
+                        fontFamily={fontFamily}
+                        fontWeight={400}
+                        fontSize={20}
+                        opacity={gridOpacity}
+                    >
+                        {formatNumber(line.value)}
+                    </text>
+                </g>
             );
           })}
 
-        {/* Axis lines */}
-        <line
-          x1={chartLeft}
-          y1={chartTop}
-          x2={chartLeft}
-          y2={chartBottom}
-          stroke={gridColor}
-          strokeWidth={2}
-          opacity={interpolate(frame, [0, 8], [0, 1], {
+              {/* Axis lines */}
+              <line
+                  x1={chartLeft}
+                  y1={chartTop}
+                  x2={chartLeft}
+                  y2={chartBottom}
+                  stroke={gridColor}
+                  strokeWidth={2}
+                  opacity={interpolate(frame, [0, 8], [0, 1], {
             extrapolateRight: "clamp",
           })}
-        />
-        <line
-          x1={chartLeft}
-          y1={chartBottom}
-          x2={chartRight}
-          y2={chartBottom}
-          stroke={gridColor}
-          strokeWidth={2}
-          opacity={interpolate(frame, [0, 8], [0, 1], {
+              />
+              <line
+                  x1={chartLeft}
+                  y1={chartBottom}
+                  x2={chartRight}
+                  y2={chartBottom}
+                  stroke={gridColor}
+                  strokeWidth={2}
+                  opacity={interpolate(frame, [0, 8], [0, 1], {
             extrapolateRight: "clamp",
           })}
-        />
+              />
 
-        {/* Bars */}
-        {data.map((datum, i) => {
+              {/* Bars */}
+              {data.map((datum, i) => {
           const color = colors[i % colors.length];
           const barX = offsetX + barGap + i * (barWidth + barGap);
           const barHeightFull = (datum.value / maxValue) * chartHeight;
@@ -222,57 +222,57 @@ export const BarChart: React.FC<BarChartProps> = ({
           );
 
           return (
-            <g key={datum.label} opacity={fadeOut}>
-              {/* Bar */}
-              <rect
-                x={barX}
-                y={barY}
-                width={barWidth}
-                height={Math.max(animatedHeight, 0)}
-                fill={color}
-                rx={4}
-                opacity={barOpacity}
-              />
+              <g key={datum.label} opacity={fadeOut}>
+                  {/* Bar */}
+                  <rect
+                      x={barX}
+                      y={barY}
+                      width={barWidth}
+                      height={Math.max(animatedHeight, 0)}
+                      fill={color}
+                      rx={4}
+                      opacity={barOpacity}
+                  />
 
-              {/* Value label */}
-              {showValues && (
-                <text
-                  x={barX + barWidth / 2}
-                  y={barY - 12}
-                  textAnchor="middle"
-                  fill={textColor}
-                  fontFamily={fontFamily}
-                  fontWeight={600}
-                  fontSize={22}
-                  opacity={interpolate(
+                  {/* Value label */}
+                  {showValues && (
+                  <text
+                      x={barX + barWidth / 2}
+                      y={barY - 12}
+                      textAnchor="middle"
+                      fill={textColor}
+                      fontFamily={fontFamily}
+                      fontWeight={600}
+                      fontSize={22}
+                      opacity={interpolate(
                     barProgress,
                     [0.7, 1],
                     [0, 1],
                     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
                   )}
-                >
-                  {formatNumber(datum.value)}
-                </text>
+                  >
+                      {formatNumber(datum.value)}
+                  </text>
               )}
 
-              {/* Label */}
-              <text
-                x={barX + barWidth / 2}
-                y={chartBottom + 40}
-                textAnchor="middle"
-                fill={textColor}
-                fontFamily={fontFamily}
-                fontWeight={500}
-                fontSize={20}
-                opacity={barOpacity}
-              >
-                {datum.label}
-              </text>
-            </g>
+                  {/* Label */}
+                  <text
+                      x={barX + barWidth / 2}
+                      y={chartBottom + 40}
+                      textAnchor="middle"
+                      fill={textColor}
+                      fontFamily={fontFamily}
+                      fontWeight={500}
+                      fontSize={20}
+                      opacity={barOpacity}
+                  >
+                      {datum.label}
+                  </text>
+              </g>
           );
         })}
-      </svg>
-    </AbsoluteFill>
+          </svg>
+      </AbsoluteFill>
   );
 };
 

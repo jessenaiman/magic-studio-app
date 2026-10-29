@@ -9,6 +9,7 @@ Delegates directly to `img2threejs/forge`:
 - `stage4_review/interior_difference.py` (`compare` -> 192x192 pixel/luminance parity inside the silhouette when sizes match or bboxes align)
 - `pipeline/pose_and_part_cutter.py` (`_ocr_labels` -> Tesseract OCR read of pose/panel labels)
 """
+
 from __future__ import annotations
 
 import json
@@ -97,7 +98,9 @@ def compare_reference_and_import_with_jev(
     import extract_part_color_recipe  # type: ignore
     import interior_difference  # type: ignore
 
-    expected_recipe = extract_part_color_recipe.build_recipe("subject", ref_p, target_threshold=0.3)
+    expected_recipe = extract_part_color_recipe.build_recipe(
+        "subject", ref_p, target_threshold=0.3
+    )
     color_delta = diagnose_render.per_part_color_delta([expected_recipe], ren_p)
     tier1 = diagnose_render.run_tier1(ref_p, ren_p)
     de_eval = divine_eye.evaluate(ref_p, ren_p)
@@ -110,7 +113,8 @@ def compare_reference_and_import_with_jev(
             r_bytes = r_rgba.convert("RGBA").tobytes()
             a_bytes = a_rgba.convert("RGBA").tobytes()
             pixel_rms_diff = round(
-                sum(abs(x - y) for x, y in zip(r_bytes, a_bytes)) / max(1, len(r_bytes) * 255.0),
+                sum(abs(x - y) for x, y in zip(r_bytes, a_bytes))
+                / max(1, len(r_bytes) * 255.0),
                 4,
             )
     idiff = interior_difference.compare(ref_p, ren_p)
@@ -120,7 +124,11 @@ def compare_reference_and_import_with_jev(
     aspect_delta = float(de_eval["signals"]["aspectRatioDelta"])
     max_delta_e = float(color_delta.get("maxDeltaE", 0.0))
     color_ok = max_delta_e <= diagnose_render.COLOR_DELTA_E_THRESHOLD
-    aspect_ok = aspect_delta <= 0.12 if not dims_match else (pixel_rms_diff is not None and pixel_rms_diff <= 0.15)
+    aspect_ok = (
+        aspect_delta <= 0.12
+        if not dims_match
+        else (pixel_rms_diff is not None and pixel_rms_diff <= 0.15)
+    )
 
     pc_bin = shutil.which("photocraft-cli")
     pc_info: Dict[str, Any] = {}
@@ -148,7 +156,9 @@ def compare_reference_and_import_with_jev(
             "path": str(ren_p),
             "dimensions": [aw, ah],
             "dimensions_match_reference": dims_match,
-            "comparison_mode": "identical_size_pixel_and_interior" if dims_match else "aspect_ratio_and_cie_lab_color",
+            "comparison_mode": "identical_size_pixel_and_interior"
+            if dims_match
+            else "aspect_ratio_and_cie_lab_color",
             "has_alpha": has_alpha,
             "photocraft_info": pc_info,
         },

@@ -51,6 +51,7 @@ for (`queries`), WHERE to search (`sources`), WHAT to filter
 (`filters`), and HOW MUCH (`max_new_clips`). Everything else has
 sensible defaults.
 """
+
 from __future__ import annotations
 
 import time
@@ -156,7 +157,7 @@ class CorpusBuilder(BaseTool):
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "Source names to use (e.g. ['pexels','archive_org']). "
-                               "Defaults to all available.",
+                "Defaults to all available.",
             },
             "filters": {
                 "type": "object",
@@ -217,6 +218,7 @@ class CorpusBuilder(BaseTool):
         info = super().get_info()
         try:
             from tools.video.stock_sources import source_catalog, source_summary
+
             info["source_provider_menu"] = source_catalog()
             info["source_provider_summary"] = source_summary()
         except Exception:
@@ -339,12 +341,14 @@ class CorpusBuilder(BaseTool):
                     try:
                         cands = src.search(query, f)
                     except Exception as e:
-                        errors.append({
-                            "phase": "search",
-                            "source": src.name,
-                            "query": query,
-                            "error": f"{type(e).__name__}: {e}",
-                        })
+                        errors.append(
+                            {
+                                "phase": "search",
+                                "source": src.name,
+                                "query": query,
+                                "error": f"{type(e).__name__}: {e}",
+                            }
+                        )
                         continue
 
                     candidates_seen += len(cands)
@@ -355,11 +359,13 @@ class CorpusBuilder(BaseTool):
                         clip_id = getattr(cand, "clip_id", "")
                         if not _is_safe_clip_id(clip_id):
                             failed += 1
-                            errors.append({
-                                "phase": "process",
-                                "clip_id": clip_id or "unknown",
-                                "error": f"ValueError: Unsafe clip_id: {clip_id!r}",
-                            })
+                            errors.append(
+                                {
+                                    "phase": "process",
+                                    "clip_id": clip_id or "unknown",
+                                    "error": f"ValueError: Unsafe clip_id: {clip_id!r}",
+                                }
+                            )
                             continue
 
                         if skip_existing and corp.has(cand.clip_id):
@@ -378,18 +384,22 @@ class CorpusBuilder(BaseTool):
                             )
                         except Exception as e:
                             failed += 1
-                            errors.append({
-                                "phase": "process",
-                                "clip_id": cand.clip_id,
-                                "error": f"{type(e).__name__}: {e}",
-                            })
+                            errors.append(
+                                {
+                                    "phase": "process",
+                                    "clip_id": cand.clip_id,
+                                    "error": f"{type(e).__name__}: {e}",
+                                }
+                            )
                             continue
 
                         if rec is None:
                             failed += 1
                             continue
                         added_ids.append(rec.clip_id)
-                        per_source_counts[src.name] = per_source_counts.get(src.name, 0) + 1
+                        per_source_counts[src.name] = (
+                            per_source_counts.get(src.name, 0) + 1
+                        )
 
             # Single save at the end. Corpus.save() writes JSONL first
             # (source of truth) then both .npy files, so a crash mid-save
@@ -412,9 +422,7 @@ class CorpusBuilder(BaseTool):
             total_failure = bool(candidates_seen) and not added_ids and failed > 0
             if total_failure:
                 first_errors = "; ".join(
-                    item["error"]
-                    for item in errors
-                    if item.get("phase") == "process"
+                    item["error"] for item in errors if item.get("phase") == "process"
                 )[:400]
                 index_state = (
                     "corpus index is empty"
@@ -471,6 +479,7 @@ class CorpusBuilder(BaseTool):
             )
         except Exception as e:
             import traceback
+
             return ToolResult(
                 success=False,
                 error=f"{type(e).__name__}: {e}\n{traceback.format_exc()[-800:]}",
@@ -675,8 +684,19 @@ def _safe_child_path(parent_dir: Path, rel_path: Path | str) -> Optional[Path]:
 
 def _guess_ext(cand) -> str:
     """Extract a sensible file extension from a candidate's URL."""
-    known = {".mp4", ".mov", ".mkv", ".webm", ".ogv", ".m4v",
-             ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+    known = {
+        ".mp4",
+        ".mov",
+        ".mkv",
+        ".webm",
+        ".ogv",
+        ".m4v",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".tif",
+        ".tiff",
+    }
     path = urllib.parse.urlparse(cand.download_url).path
     ext = Path(path).suffix.lower()
     if ext in known:
@@ -732,8 +752,11 @@ def _extract_video_thumbs(
     motion = 0.0
     if len(captured) >= 2:
         import numpy as np
+
         a = cv2.cvtColor(captured[0], cv2.COLOR_BGR2GRAY).astype(np.float32)
-        b = cv2.cvtColor(captured[len(captured) // 2], cv2.COLOR_BGR2GRAY).astype(np.float32)
+        b = cv2.cvtColor(captured[len(captured) // 2], cv2.COLOR_BGR2GRAY).astype(
+            np.float32
+        )
         motion = float(np.abs(a - b).mean())
 
     return thumb_paths, {

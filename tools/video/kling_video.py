@@ -54,7 +54,11 @@ class KlingVideo(BaseTool):
         "fluid motion and camera direction",
         "professional video clips",
     ]
-    not_good_for = ["budget-constrained projects", "offline generation", "quick iteration"]
+    not_good_for = [
+        "budget-constrained projects",
+        "offline generation",
+        "quick iteration",
+    ]
     fallback_tools = ["minimax_video", "veo_video", "wan_video"]
 
     input_schema = {
@@ -83,7 +87,10 @@ class KlingVideo(BaseTool):
                 "enum": ["16:9", "9:16", "1:1"],
                 "default": "16:9",
             },
-            "image_url": {"type": "string", "description": "Reference image URL for image_to_video"},
+            "image_url": {
+                "type": "string",
+                "description": "Reference image URL for image_to_video",
+            },
             "output_path": {"type": "string"},
         },
     }
@@ -91,10 +98,14 @@ class KlingVideo(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "model_variant", "operation", "duration"]
     side_effects = ["writes video file to output_path", "calls fal.ai API"]
-    user_visible_verification = ["Watch generated clip for motion coherence and visual quality"]
+    user_visible_verification = [
+        "Watch generated clip for motion coherence and visual quality"
+    ]
 
     def _get_api_key(self) -> str | None:
         return os.environ.get("FAL_KEY") or os.environ.get("FAL_AI_API_KEY")
@@ -187,7 +198,9 @@ class KlingVideo(BaseTool):
             output_path.write_bytes(video_response.content)
 
         except Exception as e:
-            return ToolResult(success=False, error=f"Kling video generation failed: {e}")
+            return ToolResult(
+                success=False, error=f"Kling video generation failed: {e}"
+            )
 
         from tools.video._shared import probe_output
 

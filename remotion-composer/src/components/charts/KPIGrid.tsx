@@ -76,18 +76,18 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
   );
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "flex-start",
         alignItems: "center",
         fontFamily,
       }}
-    >
-      {/* Title */}
-      {title && (
-        <div
-          style={{
+      >
+          {/* Title */}
+          {title && (
+          <div
+              style={{
             position: "absolute",
             top: 60,
             left: 0,
@@ -100,13 +100,13 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
             opacity:
               spring({ frame, fps, config: { damping: 20 } }) * fadeOut,
           }}
-        >
-          {title}
-        </div>
+          >
+              {title}
+          </div>
       )}
 
-      {/* Cards */}
-      {metrics.map((metric, idx) => {
+          {/* Cards */}
+          {metrics.map((metric, idx) => {
         const col = idx % cols;
         const row = Math.floor(idx / cols);
         const left = gridPadding + col * (cardWidth + cardGap);
@@ -150,9 +150,9 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
           );
           // We'll use slideY via transform below
           return (
-            <div
-              key={metric.label}
-              style={{
+              <div
+                  key={metric.label}
+                  style={{
                 position: "absolute",
                 left,
                 top,
@@ -170,20 +170,20 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
                 transform: `translateY(${slideY}px)`,
                 boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
               }}
-            >
-              <KPICardContent
-                metric={metric}
-                accentColor={accentColor}
-                textColor={textColor}
-                fontFamily={fontFamily}
-                positiveColor={positiveColor}
-                negativeColor={negativeColor}
-                frame={frame}
-                fps={fps}
-                staggerDelay={staggerDelay}
-                animationStyle={animationStyle}
-              />
-            </div>
+              >
+                  <KPICardContent
+                      metric={metric}
+                      accentColor={accentColor}
+                      textColor={textColor}
+                      fontFamily={fontFamily}
+                      positiveColor={positiveColor}
+                      negativeColor={negativeColor}
+                      frame={frame}
+                      fps={fps}
+                      staggerDelay={staggerDelay}
+                      animationStyle={animationStyle}
+                  />
+              </div>
           );
         } else {
           // count-up — no special card animation
@@ -196,9 +196,9 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
         }
 
         return (
-          <div
-            key={metric.label}
-            style={{
+            <div
+                key={metric.label}
+                style={{
               position: "absolute",
               left,
               top,
@@ -216,23 +216,23 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
               transform: `scale(${cardScale})`,
               boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
             }}
-          >
-            <KPICardContent
-              metric={metric}
-              accentColor={accentColor}
-              textColor={textColor}
-              fontFamily={fontFamily}
-              positiveColor={positiveColor}
-              negativeColor={negativeColor}
-              frame={frame}
-              fps={fps}
-              staggerDelay={idx * 3}
-              animationStyle={animationStyle}
-            />
-          </div>
+            >
+                <KPICardContent
+                    metric={metric}
+                    accentColor={accentColor}
+                    textColor={textColor}
+                    fontFamily={fontFamily}
+                    positiveColor={positiveColor}
+                    negativeColor={negativeColor}
+                    frame={frame}
+                    fps={fps}
+                    staggerDelay={idx * 3}
+                    animationStyle={animationStyle}
+                />
+            </div>
         );
       })}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };
 
@@ -287,37 +287,37 @@ const KPICardContent: React.FC<KPICardContentProps> = ({
   );
 
   return (
-    <>
-      {/* Icon */}
-      {metric.icon && (
-        <div
-          style={{
+      <>
+          {/* Icon */}
+          {metric.icon && (
+          <div
+              style={{
             fontSize: 36,
             marginBottom: 8,
           }}
-        >
-          {metric.icon}
-        </div>
+          >
+              {metric.icon}
+          </div>
       )}
 
-      {/* Value */}
-      <div
-        style={{
+          {/* Value */}
+          <div
+              style={{
           fontSize: 56,
           fontWeight: 800,
           color: accentColor,
           fontFamily,
           lineHeight: 1.1,
         }}
-      >
-        {metric.prefix || ""}
-        {formattedValue}
-        {metric.suffix || ""}
-      </div>
+          >
+              {metric.prefix || ""}
+              {formattedValue}
+              {metric.suffix || ""}
+          </div>
 
-      {/* Label */}
-      <div
-        style={{
+          {/* Label */}
+          <div
+              style={{
           fontSize: 22,
           fontWeight: 500,
           color: textColor,
@@ -325,14 +325,14 @@ const KPICardContent: React.FC<KPICardContentProps> = ({
           marginTop: 8,
           opacity: 0.8,
         }}
-      >
-        {metric.label}
-      </div>
+          >
+              {metric.label}
+          </div>
 
-      {/* Change indicator */}
-      {metric.change !== undefined && metric.change !== 0 && (
-        <div
-          style={{
+          {/* Change indicator */}
+          {metric.change !== undefined && metric.change !== 0 && (
+          <div
+              style={{
             display: "flex",
             alignItems: "center",
             gap: 4,
@@ -343,14 +343,14 @@ const KPICardContent: React.FC<KPICardContentProps> = ({
             color: metric.change > 0 ? positiveColor : negativeColor,
             opacity: changeOpacity,
           }}
-        >
-          <span style={{ fontSize: 18 }}>
-            {metric.change > 0 ? "\u25B2" : "\u25BC"}
-          </span>
-          {Math.abs(metric.change).toFixed(1)}%
-        </div>
+          >
+              <span style={{ fontSize: 18 }}>
+                  {metric.change > 0 ? "\u25B2" : "\u25BC"}
+              </span>
+              {Math.abs(metric.change).toFixed(1)}%
+          </div>
       )}
-    </>
+      </>
   );
 };
 

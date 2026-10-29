@@ -1,6 +1,7 @@
 """Seedream  V5 image generation via fal.ai API.
 deep-thinking prompt understanding, native text in 14 languages, and precise control over dense layouts and structured designs.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,6 +21,8 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
+
+
 class SeedreamImage(BaseTool):
     name = "seedream_image"
     version = "0.1.0"
@@ -60,43 +63,49 @@ class SeedreamImage(BaseTool):
         "multi-language text rendering (14 languages)",
     ]
     input_schema = {
-            "type": "object",
-            "required": ["prompt"],
-            "properties": {
-                "prompt": {"type": "string"},
-                "image_size": {
-                    "type": "string",
-                    "enum": [
-                        "square", "square_hd",
-                        "landscape_4_3", "landscape_16_9",
-                        "portrait_4_3", "portrait_16_9",
-                        "auto_1K","auto_2K"
-                    ],
-                    "default": "auto_2K",
-                },
-                "num_images": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 4,
-                    "default": 1,
-                },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["jpeg", "png"],
-                    "description": "Output image format. Use 'jpeg' for smaller file size with lossy compression (suitable for web/preview), or 'png' for lossless quality with transparency support (suitable for design assets and further editing).",
-                },
-                "enable_safety_checker": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "If set to true, the safety checker will be enabled.",
-                 },
-                 "output_path": {"type": "string"}
+        "type": "object",
+        "required": ["prompt"],
+        "properties": {
+            "prompt": {"type": "string"},
+            "image_size": {
+                "type": "string",
+                "enum": [
+                    "square",
+                    "square_hd",
+                    "landscape_4_3",
+                    "landscape_16_9",
+                    "portrait_4_3",
+                    "portrait_16_9",
+                    "auto_1K",
+                    "auto_2K",
+                ],
+                "default": "auto_2K",
+            },
+            "num_images": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4,
+                "default": 1,
+            },
+            "output_format": {
+                "type": "string",
+                "enum": ["jpeg", "png"],
+                "description": "Output image format. Use 'jpeg' for smaller file size with lossy compression (suitable for web/preview), or 'png' for lossless quality with transparency support (suitable for design assets and further editing).",
+            },
+            "enable_safety_checker": {
+                "type": "boolean",
+                "default": True,
+                "description": "If set to true, the safety checker will be enabled.",
+            },
+            "output_path": {"type": "string"},
         },
     }
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=100, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = [
         "prompt",
         "image_size",
@@ -105,7 +114,9 @@ class SeedreamImage(BaseTool):
         "enable_safety_checker",
     ]
     side_effects = ["writes image file to output_path", "calls fal.ai queue API"]
-    user_visible_verification = ["Inspect generated image for brand accuracy and text readability"]
+    user_visible_verification = [
+        "Inspect generated image for brand accuracy and text readability"
+    ]
 
     def _get_api_key(self) -> str | None:
         return os.environ.get("FAL_KEY") or os.environ.get("FAL_AI_API_KEY")
@@ -195,8 +206,7 @@ class SeedreamImage(BaseTool):
                     "Seedream submit succeeded but did not return request_id"
                 )
             status_url = (
-                f"https://queue.fal.run/bytedance/seedream/requests/"
-                f"{request_id}/status"
+                f"https://queue.fal.run/bytedance/seedream/requests/{request_id}/status"
             )
             elapsed = 0.0
             while elapsed < 300:
@@ -219,13 +229,10 @@ class SeedreamImage(BaseTool):
                 elapsed += 10
 
             if elapsed >= 300:
-                raise RuntimeError(
-                    f"Seedream task timed out after {300}s"
-                )
+                raise RuntimeError(f"Seedream task timed out after {300}s")
 
             result_resp = requests.get(
-                f"https://queue.fal.run/bytedance/seedream/requests/"
-                f"{request_id}",
+                f"https://queue.fal.run/bytedance/seedream/requests/{request_id}",
                 headers=headers,
                 timeout=30,
             )

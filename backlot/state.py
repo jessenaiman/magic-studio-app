@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from lib.events import read_events
-from lib.paths import PROJECTS_DIR, REPO_ROOT  # single source of truth (env-overridable)
+from lib.paths import (
+    PROJECTS_DIR,
+    REPO_ROOT,
+)  # single source of truth (env-overridable)
 
 MEDIA_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
 MEDIA_VIDEO_EXT = {".mp4", ".webm", ".mov"}
@@ -25,8 +28,15 @@ SCAN_EXCLUDE = {"node_modules", ".git", "__pycache__", "history", ".cache"}
 
 # Stages every pipeline shares (fallback rail when the manifest is unknown).
 FALLBACK_STAGES = [
-    "research", "proposal", "idea", "script", "scene_plan",
-    "assets", "edit", "compose", "publish",
+    "research",
+    "proposal",
+    "idea",
+    "script",
+    "scene_plan",
+    "assets",
+    "edit",
+    "compose",
+    "publish",
 ]
 
 # How long (seconds) without filesystem activity before a board reads "idle".
@@ -60,19 +70,22 @@ def _rel(project_dir: Path, path: Path) -> str:
 # Pipeline / stages
 # ---------------------------------------------------------------------------
 
+
 @lru_cache(maxsize=32)
 def _load_pipeline_meta(pipeline_type: Optional[str]) -> dict[str, Any]:
     """Stage order + gate flags from the manifest; graceful fallback."""
     if pipeline_type and pipeline_type != "unknown":
         try:
             from lib.pipeline_loader import load_pipeline
+
             manifest = load_pipeline(pipeline_type)
             stages = [
                 {
                     "name": s["name"],
                     "gated": bool(s.get("human_approval_default", False)),
                     "produces": [
-                        str(name) for name in (s.get("produces") or [])
+                        str(name)
+                        for name in (s.get("produces") or [])
                         if isinstance(name, str) and name
                     ],
                 }
@@ -89,7 +102,9 @@ def _load_pipeline_meta(pipeline_type: Optional[str]) -> dict[str, Any]:
             pass
     return {
         "pipeline_type": pipeline_type or "unknown",
-        "stages": [{"name": s, "gated": False, "produces": []} for s in FALLBACK_STAGES],
+        "stages": [
+            {"name": s, "gated": False, "produces": []} for s in FALLBACK_STAGES
+        ],
         "known": False,
     }
 
@@ -119,7 +134,7 @@ def _collect_checkpoints(project_dir: Path) -> dict[str, dict]:
     """Current checkpoint per stage (raw dicts, unvalidated by design)."""
     out: dict[str, dict] = {}
     for path in sorted(project_dir.glob("checkpoint_*.json")):
-        stage = path.stem[len("checkpoint_"):]
+        stage = path.stem[len("checkpoint_") :]
         data = _read_json(path)
         if data is not None:
             data["_mtime"] = path.stat().st_mtime
@@ -135,7 +150,7 @@ def _collect_history(project_dir: Path) -> dict[str, list[dict]]:
         return out
     for path in sorted(history_dir.glob("checkpoint_*.json")):
         m = re.match(r"checkpoint_(.+?)_\d", path.stem)
-        stage = m.group(1) if m else path.stem[len("checkpoint_"):]
+        stage = m.group(1) if m else path.stem[len("checkpoint_") :]
         data = _read_json(path)
         if data is not None:
             out.setdefault(stage, []).append(data)
@@ -165,21 +180,26 @@ def _build_stage_rail(
             "cost_snapshot": cp.get("cost_snapshot") if cp else None,
             "error": cp.get("error") if cp else None,
             "human_approved": cp.get("human_approved") if cp else None,
-            "partial_progress": (cp.get("metadata") or {}).get("partial_progress") if cp else None,
+            "partial_progress": (cp.get("metadata") or {}).get("partial_progress")
+            if cp
+            else None,
             "versions": len(versions) + (1 if cp else 0),
             # Chronological status trail (history + current) — powers replay.
             "history_entries": (
-                [{"status": v.get("status"), "timestamp": v.get("timestamp")} for v in versions]
-                + ([{"status": cp.get("status"), "timestamp": cp.get("timestamp")}] if cp else [])
+                [
+                    {"status": v.get("status"), "timestamp": v.get("timestamp")}
+                    for v in versions
+                ]
+                + (
+                    [{"status": cp.get("status"), "timestamp": cp.get("timestamp")}]
+                    if cp
+                    else []
+                )
             ),
         }
         # Gate audit: a gated stage that completed without ever passing
         # through awaiting_human (current or archived) was gate-skipped.
-        if (
-            stage_def["gated"]
-            and cp is not None
-            and cp.get("status") == "completed"
-        ):
+        if stage_def["gated"] and cp is not None and cp.get("status") == "completed":
             saw_wait = any(v.get("status") == "awaiting_human" for v in versions)
             approved = bool(cp.get("human_approved"))
             entry["gate_skipped"] = not (saw_wait or approved)
@@ -243,7 +263,9 @@ ARTIFACT_FILES = {
 }
 
 
-def _collect_artifacts(project_dir: Path, checkpoints: dict[str, dict]) -> dict[str, dict]:
+def _collect_artifacts(
+    project_dir: Path, checkpoints: dict[str, dict]
+) -> dict[str, dict]:
     """Artifacts from artifacts/*.json, backfilled from checkpoint payloads."""
     artifacts: dict[str, dict] = {}
     art_dir = project_dir / "artifacts"
@@ -269,6 +291,7 @@ def _collect_artifacts(project_dir: Path, checkpoints: dict[str, dict]) -> dict[
 # ---------------------------------------------------------------------------
 # Storyboard join
 # ---------------------------------------------------------------------------
+
 
 def _resolve_asset_path(project_dir: Path, raw_path: str) -> Optional[Path]:
     """Manifest paths appear in several real-world flavors — try them all.
@@ -444,45 +467,66 @@ def _build_storyboard(
         sid = scene_key(scene.get("id"))
         section = _find_script_section(scene, sections)
         scene_assets = assets_by_scene.get(sid, [])
-        visuals = [a for a in scene_assets if a["type"] in ("image", "video", "diagram", "animation")]
-        audio = [a for a in scene_assets if a["type"] in ("audio", "narration", "music", "sfx")]
+        visuals = [
+            a
+            for a in scene_assets
+            if a["type"] in ("image", "video", "diagram", "animation")
+        ]
+        audio = [
+            a
+            for a in scene_assets
+            if a["type"] in ("audio", "narration", "music", "sfx")
+        ]
         # Only files that can actually be shown (raster/video) are takes; a
         # bespoke composition asset (.tsx animation) is real but not showable.
         renderable = [a for a in visuals if a.get("renderable")]
         # A raster/video asset whose FILE is missing stays as a "file missing"
         # indicator. But an asset that EXISTS yet can't be shown (a .tsx atelier
         # composition) is dropped — it falls back to a per-scene snapshot.
-        missing = [a for a in visuals if not a.get("exists") and a["type"] in ("image", "video", "diagram")]
+        missing = [
+            a
+            for a in visuals
+            if not a.get("exists") and a["type"] in ("image", "video", "diagram")
+        ]
         active_visual = (
-            renderable[-1] if renderable
-            else missing[-1] if missing
+            renderable[-1]
+            if renderable
+            else missing[-1]
+            if missing
             else _find_scene_snapshot(project_dir, sid)
         )
-        cards.append({
-            "id": sid,
-            "type": scene.get("type"),
-            "description": scene.get("description"),
-            "start_seconds": scene.get("start_seconds"),
-            "end_seconds": scene.get("end_seconds"),
-            "duration_seconds": (
-                max(0, (scene.get("end_seconds") or 0) - (scene.get("start_seconds") or 0))
-                if scene.get("end_seconds") is not None and scene.get("start_seconds") is not None
-                else None
-            ),
-            "hero_moment": bool(scene.get("hero_moment")),
-            "shot_language": scene.get("shot_language"),
-            "shot_intent": scene.get("shot_intent"),
-            "framing": scene.get("framing"),
-            "movement": scene.get("movement"),
-            "narration": (section or {}).get("text"),
-            "section_label": (section or {}).get("label"),
-            "required_assets": scene.get("required_assets") or [],
-            "visual": active_visual,
-            "takes": renderable,
-            "audio": audio,
-            "generating": generating.get(sid) is not None,
-            "generating_tool": (generating.get(sid) or {}).get("tool"),
-        })
+        cards.append(
+            {
+                "id": sid,
+                "type": scene.get("type"),
+                "description": scene.get("description"),
+                "start_seconds": scene.get("start_seconds"),
+                "end_seconds": scene.get("end_seconds"),
+                "duration_seconds": (
+                    max(
+                        0,
+                        (scene.get("end_seconds") or 0)
+                        - (scene.get("start_seconds") or 0),
+                    )
+                    if scene.get("end_seconds") is not None
+                    and scene.get("start_seconds") is not None
+                    else None
+                ),
+                "hero_moment": bool(scene.get("hero_moment")),
+                "shot_language": scene.get("shot_language"),
+                "shot_intent": scene.get("shot_intent"),
+                "framing": scene.get("framing"),
+                "movement": scene.get("movement"),
+                "narration": (section or {}).get("text"),
+                "section_label": (section or {}).get("label"),
+                "required_assets": scene.get("required_assets") or [],
+                "visual": active_visual,
+                "takes": renderable,
+                "audio": audio,
+                "generating": generating.get(sid) is not None,
+                "generating_tool": (generating.get(sid) or {}).get("tool"),
+            }
+        )
 
     total = scene_plan.get("metadata", {}).get("total_duration_seconds")
     if total is None and cards:
@@ -499,6 +543,7 @@ def _build_storyboard(
 # Media discovery
 # ---------------------------------------------------------------------------
 
+
 def _scan_media(project_dir: Path) -> dict[str, list[dict]]:
     """Discovered media files (renders, loose assets, snapshots)."""
     renders: list[dict] = []
@@ -509,12 +554,23 @@ def _scan_media(project_dir: Path) -> dict[str, list[dict]]:
     if renders_dir.is_dir():
         for f in sorted(renders_dir.iterdir()):
             if f.suffix.lower() in MEDIA_VIDEO_EXT and f.is_file():
-                renders.append({"path": _rel(project_dir, f), "size": f.stat().st_size,
-                                "mtime": f.stat().st_mtime})
+                renders.append(
+                    {
+                        "path": _rel(project_dir, f),
+                        "size": f.stat().st_size,
+                        "mtime": f.stat().st_mtime,
+                    }
+                )
     # Atelier heuristic: deliverables at project root.
     for f in sorted(project_dir.glob("*.mp4")):
-        renders.append({"path": _rel(project_dir, f), "size": f.stat().st_size,
-                        "mtime": f.stat().st_mtime, "at_root": True})
+        renders.append(
+            {
+                "path": _rel(project_dir, f),
+                "size": f.stat().st_size,
+                "mtime": f.stat().st_mtime,
+                "at_root": True,
+            }
+        )
     for f in sorted(project_dir.glob("*.mp3")):
         music.append({"path": _rel(project_dir, f), "at_root": True})
     music_dir = project_dir / "assets" / "music"
@@ -585,6 +641,7 @@ def _last_activity(project_dir: Path) -> float:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def load_board_state(project_dir: Path) -> dict[str, Any]:
     """Full BoardState for one project. Never raises."""
     project_dir = Path(project_dir)
@@ -614,7 +671,9 @@ def load_board_state(project_dir: Path) -> dict[str, Any]:
 
     # Cost: latest checkpoint snapshot wins; fall back to manifest total.
     cost = None
-    for cp in sorted(checkpoints.values(), key=lambda c: c.get("_mtime", 0), reverse=True):
+    for cp in sorted(
+        checkpoints.values(), key=lambda c: c.get("_mtime", 0), reverse=True
+    ):
         if cp.get("cost_snapshot"):
             cost = cp["cost_snapshot"]
             break
@@ -624,6 +683,7 @@ def load_board_state(project_dir: Path) -> dict[str, Any]:
             cost = {"total_spent_usd": total}
 
     import time
+
     last_activity = _last_activity(project_dir)
     now = time.time()
 
@@ -639,7 +699,9 @@ def load_board_state(project_dir: Path) -> dict[str, Any]:
 
     state: dict[str, Any] = {
         "project_id": project_id,
-        "title": marker.get("title") or meta_json.get("name") or project_id.replace("-", " ").title(),
+        "title": marker.get("title")
+        or meta_json.get("name")
+        or project_id.replace("-", " ").title(),
         "pipeline": pipeline_meta,
         "style_playbook": marker.get("style_playbook"),
         "created_at": marker.get("created_at"),
@@ -661,7 +723,14 @@ def load_board_state(project_dir: Path) -> dict[str, Any]:
 def summarize_project(project_dir: Path) -> dict[str, Any]:
     """Cheap library-card summary (no full artifact parse of big files)."""
     state = load_board_state(project_dir)
-    active = next((s for s in state["stages"] if s["status"] in ("in_progress", "awaiting_human")), None)
+    active = next(
+        (
+            s
+            for s in state["stages"]
+            if s["status"] in ("in_progress", "awaiting_human")
+        ),
+        None,
+    )
     done = [s for s in state["stages"] if s["status"] == "completed"]
     return {
         "project_id": state["project_id"],
@@ -675,7 +744,8 @@ def summarize_project(project_dir: Path) -> dict[str, Any]:
         "awaiting_human": bool(active and active["status"] == "awaiting_human"),
         "stage_states": [
             {"name": s["name"], "status": s["status"]}
-            for s in state["stages"] if not s.get("undeclared")
+            for s in state["stages"]
+            if not s.get("undeclared")
         ],
         "completed_count": len(done),
         "render_count": len(state["media"]["renders"]),
@@ -695,21 +765,23 @@ def list_projects(projects_dir: Optional[Path] = None) -> list[dict[str, Any]]:
         try:
             summaries.append(summarize_project(entry))
         except Exception:
-            summaries.append({
-                "project_id": entry.name,
-                "title": entry.name.replace("-", " ").title(),
-                "pipeline_type": "unknown",
-                "has_pipeline_state": False,
-                "poster": None,
-                "live": False,
-                "last_activity": 0,
-                "active_stage": None,
-                "awaiting_human": False,
-                "stage_states": [],
-                "completed_count": 0,
-                "render_count": 0,
-                "scene_count": 0,
-                "error": "unreadable",
-            })
+            summaries.append(
+                {
+                    "project_id": entry.name,
+                    "title": entry.name.replace("-", " ").title(),
+                    "pipeline_type": "unknown",
+                    "has_pipeline_state": False,
+                    "poster": None,
+                    "live": False,
+                    "last_activity": 0,
+                    "active_stage": None,
+                    "awaiting_human": False,
+                    "stage_states": [],
+                    "completed_count": 0,
+                    "render_count": 0,
+                    "scene_count": 0,
+                    "error": "unreadable",
+                }
+            )
     summaries.sort(key=lambda s: (not s["live"], -(s["last_activity"] or 0)))
     return summaries

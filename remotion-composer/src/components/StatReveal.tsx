@@ -57,16 +57,16 @@ export const StatReveal: React.FC<StatRevealProps> = ({
       : { justifyContent: "flex-end", alignItems: "flex-end", padding: 80 };
 
   return (
-    <AbsoluteFill style={positionStyles}>
-      <div
-        style={{
+      <AbsoluteFill style={positionStyles}>
+          <div
+              style={{
           opacity,
           transform: `scale(${scale})`,
           textAlign: position === "center" ? "center" : "right",
         }}
-      >
-        <div
-          style={{
+          >
+              <div
+                  style={{
             fontSize: 96,
             fontWeight: 800,
             color: accentColor,
@@ -74,12 +74,12 @@ export const StatReveal: React.FC<StatRevealProps> = ({
             lineHeight: 1,
             textShadow: `0 0 ${interpolate(glow, [0, 1], [0, 30])}px ${accentColor}66, 0 4px 12px rgba(0,0,0,0.5)`,
           }}
-        >
-          {stat}
-        </div>
-        {label && (
-          <div
-            style={{
+              >
+                  {stat}
+              </div>
+              {label && (
+              <div
+                  style={{
               fontSize: 22,
               fontWeight: 500,
               color: textColor,
@@ -92,11 +92,11 @@ export const StatReveal: React.FC<StatRevealProps> = ({
               }),
               textShadow: "0 2px 8px rgba(0,0,0,0.6)",
             }}
-          >
-            {label}
-          </div>
+              >
+                  {label}
+              </div>
         )}
-      </div>
-    </AbsoluteFill>
+          </div>
+      </AbsoluteFill>
   );
 };

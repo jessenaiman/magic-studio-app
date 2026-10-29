@@ -56,7 +56,11 @@ def get_account_costs(
 
     if _LAST_QUERY_AT and timestamp - _LAST_QUERY_AT < min_interval_seconds:
         if cached:
-            return {**cached["payload"], "cached": True, "throttle_status": "throttled_cache"}
+            return {
+                **cached["payload"],
+                "cached": True,
+                "throttle_status": "throttled_cache",
+            }
         return {
             "provider": "kling_official",
             "queried_range": {

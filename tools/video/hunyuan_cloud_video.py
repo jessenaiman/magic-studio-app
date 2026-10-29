@@ -36,8 +36,8 @@ _SUBMIT_PATH = "/v1/api/video/submit"
 _QUERY_PATH = "/v1/api/video/query"
 
 # TokenHub model identifiers
-_MODEL_T2V = "hy-video-1.5"       # text-to-video
-_MODEL_I2V = "yt-video-2.0"       # image-to-video
+_MODEL_T2V = "hy-video-1.5"  # text-to-video
+_MODEL_I2V = "yt-video-2.0"  # image-to-video
 
 
 class HunyuanCloudVideo(BaseTool):
@@ -71,11 +71,11 @@ class HunyuanCloudVideo(BaseTool):
         "Hunyuan text-to-video and image-to-video via Tencent TokenHub API",
         "simple Bearer-token auth (no TC3 signing required)",
         "direct Tencent Cloud quota usage (not through a third-party gateway)",
-        "Chinese-language prompt understanding"
+        "Chinese-language prompt understanding",
     ]
     not_good_for = [
         "offline generation or air-gapped environments",
-        "users without Tencent Cloud account and real-name verification"
+        "users without Tencent Cloud account and real-name verification",
     ]
     fallback_tools = ["jimeng_video", "kling_official_video", "minimax_video"]
 
@@ -159,7 +159,11 @@ class HunyuanCloudVideo(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True,
+        cpu_cores=1,
+        ram_mb=512,
+        vram_mb=0,
+        disk_mb=500,
+        network_required=True,
     )
     retry_policy = RetryPolicy(
         max_retries=2,
@@ -263,7 +267,11 @@ class HunyuanCloudVideo(BaseTool):
                     f"Use '{expected_model}'."
                 ),
             )
-        if operation == "image_to_video" and not inputs.get("image_url") and not inputs.get("image_path"):
+        if (
+            operation == "image_to_video"
+            and not inputs.get("image_url")
+            and not inputs.get("image_path")
+        ):
             return ToolResult(
                 success=False,
                 error="image_to_video requires image_url (public URL) or image_path (local file).",
@@ -292,7 +300,10 @@ class HunyuanCloudVideo(BaseTool):
     # ------------------------------------------------------------------
 
     def _generate(
-        self, inputs: dict[str, Any], *, api_key: str,
+        self,
+        inputs: dict[str, Any],
+        *,
+        api_key: str,
     ) -> ToolResult:
         import requests
 
@@ -312,9 +323,7 @@ class HunyuanCloudVideo(BaseTool):
         download = requests.get(video_url, timeout=120)
         download.raise_for_status()
 
-        output_path = Path(
-            inputs.get("output_path", f"hunyuan_cloud_{task_id}.mp4")
-        )
+        output_path = Path(inputs.get("output_path", f"hunyuan_cloud_{task_id}.mp4"))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(download.content)
 
@@ -410,7 +419,11 @@ class HunyuanCloudVideo(BaseTool):
         }
 
     def _submit_task(
-        self, payload: dict[str, Any], *, model: str, api_key: str,
+        self,
+        payload: dict[str, Any],
+        *,
+        model: str,
+        api_key: str,
     ) -> str:
         """Submit a video generation task and return the task ID."""
         import requests
@@ -431,9 +444,7 @@ class HunyuanCloudVideo(BaseTool):
 
         task_id = data.get("id")
         if not task_id:
-            raise RuntimeError(
-                f"TokenHub submit returned no task id: {data}"
-            )
+            raise RuntimeError(f"TokenHub submit returned no task id: {data}")
         return task_id
 
     def _poll_task(
@@ -477,9 +488,7 @@ class HunyuanCloudVideo(BaseTool):
             if status == "failed":
                 error_info = data.get("error") or {}
                 error_msg = error_info.get("message", "unknown error")
-                raise RuntimeError(
-                    f"TokenHub task {task_id} failed: {error_msg}"
-                )
+                raise RuntimeError(f"TokenHub task {task_id} failed: {error_msg}")
 
             # queued / running / in_progress — continue polling
             if status not in ("queued", "running", "in_progress"):
@@ -525,6 +534,4 @@ class HunyuanCloudVideo(BaseTool):
         if error:
             message = error.get("message", "unknown error")
             code = error.get("code", error.get("type", "unknown"))
-            raise RuntimeError(
-                f"TokenHub API error: code={code}, message={message}"
-            )
+            raise RuntimeError(f"TokenHub API error: code={code}, message={message}")

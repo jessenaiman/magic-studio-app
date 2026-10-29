@@ -36,7 +36,9 @@ _ENV_KEYS = ("ATLASCLOUD_API_KEY", "ATLAS_CLOUD_API_KEY", "ATLAS_API_KEY")
 
 
 def _api_key() -> str | None:
-    return next((os.environ.get(name) for name in _ENV_KEYS if os.environ.get(name)), None)
+    return next(
+        (os.environ.get(name) for name in _ENV_KEYS if os.environ.get(name)), None
+    )
 
 
 def _extension(url: str, content_type: str | None, fallback: str = ".glb") -> str:
@@ -91,26 +93,54 @@ class Atlas3D(BaseTool):
             "output_path": {"type": "string"},
             "texture": {"type": "boolean", "default": True},
             "pbr": {"type": "boolean", "default": True},
-            "texture_quality": {"type": "string", "enum": ["standard", "detailed"], "default": "standard"},
-            "geometry_quality": {"type": "string", "enum": ["standard", "detailed"], "default": "standard"},
+            "texture_quality": {
+                "type": "string",
+                "enum": ["standard", "detailed"],
+                "default": "standard",
+            },
+            "geometry_quality": {
+                "type": "string",
+                "enum": ["standard", "detailed"],
+                "default": "standard",
+            },
             "face_limit": {"type": "integer", "minimum": 1000, "maximum": 2000000},
             "model_seed": {"type": "integer"},
             "image_seed": {"type": "integer"},
             "texture_seed": {"type": "integer"},
             "auto_size": {"type": "boolean", "default": True},
             "quad": {"type": "boolean", "default": False},
-            "poll_timeout_seconds": {"type": "integer", "minimum": 30, "maximum": 1800, "default": 900},
+            "poll_timeout_seconds": {
+                "type": "integer",
+                "minimum": 30,
+                "maximum": 1800,
+                "default": 900,
+            },
         },
     }
     output_schema = {"type": "object"}
     artifact_schema = {"artifact": "3d_asset"}
-    resource_profile = ResourceProfile(cpu_cores=1, ram_mb=512, disk_mb=1000, network_required=True)
-    retry_policy = RetryPolicy(max_retries=1, retryable_errors=["rate_limit", "timeout"])
+    resource_profile = ResourceProfile(
+        cpu_cores=1, ram_mb=512, disk_mb=1000, network_required=True
+    )
+    retry_policy = RetryPolicy(
+        max_retries=1, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = [
-        "prompt", "negative_prompt", "texture", "pbr", "texture_quality",
-        "geometry_quality", "face_limit", "model_seed", "image_seed", "texture_seed",
+        "prompt",
+        "negative_prompt",
+        "texture",
+        "pbr",
+        "texture_quality",
+        "geometry_quality",
+        "face_limit",
+        "model_seed",
+        "image_seed",
+        "texture_seed",
     ]
-    side_effects = ["calls the Atlas Cloud API", "writes a generated mesh and provenance manifest"]
+    side_effects = [
+        "calls the Atlas Cloud API",
+        "writes a generated mesh and provenance manifest",
+    ]
     user_visible_verification = [
         "Inspect the downloaded mesh from front, back, silhouette, UV, and PBR material views before scene assembly"
     ]
@@ -122,7 +152,9 @@ class Atlas3D(BaseTool):
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         texture = bool(inputs.get("texture", True))
         texture_quality = inputs.get("texture_quality", "standard")
-        cost = 0.22 if not texture else (0.44 if texture_quality == "detailed" else 0.33)
+        cost = (
+            0.22 if not texture else (0.44 if texture_quality == "detailed" else 0.33)
+        )
         if inputs.get("geometry_quality", "standard") == "detailed":
             cost += 0.22
         if inputs.get("quad", False):
@@ -132,7 +164,10 @@ class Atlas3D(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         key = _api_key()
         if not key:
-            return ToolResult(success=False, error="Atlas Cloud API key not set. " + self.install_instructions)
+            return ToolResult(
+                success=False,
+                error="Atlas Cloud API key not set. " + self.install_instructions,
+            )
 
         output = Path(str(inputs["output_path"])).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -146,7 +181,13 @@ class Atlas3D(BaseTool):
             "auto_size": bool(inputs.get("auto_size", True)),
             "quad": bool(inputs.get("quad", False)),
         }
-        for key_name in ("negative_prompt", "face_limit", "model_seed", "image_seed", "texture_seed"):
+        for key_name in (
+            "negative_prompt",
+            "face_limit",
+            "model_seed",
+            "image_seed",
+            "texture_seed",
+        ):
             if inputs.get(key_name) is not None:
                 payload[key_name] = inputs[key_name]
 
@@ -175,50 +216,91 @@ class Atlas3D(BaseTool):
                 if status in {"completed", "succeeded"}:
                     break
                 if status in {"failed", "cancelled"}:
-                    raise RuntimeError(str(prediction.get("error") or f"prediction {status}"))
+                    raise RuntimeError(
+                        str(prediction.get("error") or f"prediction {status}")
+                    )
                 time.sleep(3)
             else:
-                raise TimeoutError(f"Prediction {prediction_id} exceeded the poll timeout")
+                raise TimeoutError(
+                    f"Prediction {prediction_id} exceeded the poll timeout"
+                )
 
             files = list(prediction.get("files") or [])
             mesh_file = next(
                 (item for item in files if str(item.get("type", "")).lower() == "glb"),
                 None,
             ) or next(
-                (item for item in files if _extension(str(item.get("url", "")), item.get("content_type")) == ".glb"),
+                (
+                    item
+                    for item in files
+                    if _extension(str(item.get("url", "")), item.get("content_type"))
+                    == ".glb"
+                ),
                 None,
             )
             if mesh_file is None:
-                outputs = [url for url in prediction.get("outputs") or [] if isinstance(url, str)]
-                mesh_url = next((url for url in outputs if Path(urlparse(url).path).suffix.lower() == ".glb"), None)
+                outputs = [
+                    url
+                    for url in prediction.get("outputs") or []
+                    if isinstance(url, str)
+                ]
+                mesh_url = next(
+                    (
+                        url
+                        for url in outputs
+                        if Path(urlparse(url).path).suffix.lower() == ".glb"
+                    ),
+                    None,
+                )
                 if mesh_url is None:
-                    raise RuntimeError("Atlas prediction completed without a GLB output")
+                    raise RuntimeError(
+                        "Atlas prediction completed without a GLB output"
+                    )
                 mesh_file = {"url": mesh_url, "content_type": "model/gltf-binary"}
 
             mesh_url = str(mesh_file["url"])
             if output.suffix.lower() != ".glb":
-                output = output.with_suffix(_extension(mesh_url, mesh_file.get("content_type")))
+                output = output.with_suffix(
+                    _extension(mesh_url, mesh_file.get("content_type"))
+                )
             download = requests.get(mesh_url, timeout=180)
             download.raise_for_status()
             output.write_bytes(download.content)
 
             manifest = output.with_suffix(".provenance.json")
-            manifest.write_text(json.dumps({
-                "version": "1.0",
-                "provider": "atlas_cloud",
-                "model": _MODEL,
-                "prediction_id": prediction_id,
-                "prompt": inputs["prompt"],
-                "parameters": {key: value for key, value in payload.items() if key != "prompt"},
-                "source_url": "https://www.atlascloud.ai/models/tripo-h3.1/text-to-3d",
-                "output": str(output),
-            }, indent=2), encoding="utf-8")
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "version": "1.0",
+                        "provider": "atlas_cloud",
+                        "model": _MODEL,
+                        "prediction_id": prediction_id,
+                        "prompt": inputs["prompt"],
+                        "parameters": {
+                            key: value
+                            for key, value in payload.items()
+                            if key != "prompt"
+                        },
+                        "source_url": "https://www.atlascloud.ai/models/tripo-h3.1/text-to-3d",
+                        "output": str(output),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         except Exception as exc:
-            return ToolResult(success=False, error=f"Atlas Cloud 3D generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"Atlas Cloud 3D generation failed: {exc}"
+            )
 
         return ToolResult(
             success=True,
-            data={"provider": "atlas_cloud", "model": _MODEL, "output": str(output), "prediction_id": prediction_id},
+            data={
+                "provider": "atlas_cloud",
+                "model": _MODEL,
+                "output": str(output),
+                "prediction_id": prediction_id,
+            },
             artifacts=[str(output), str(manifest)],
             cost_usd=self.estimate_cost(inputs),
             duration_seconds=round(time.time() - started, 2),

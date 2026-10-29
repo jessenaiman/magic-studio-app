@@ -75,17 +75,23 @@ class RecraftImage(BaseTool):
             "image_size": {
                 "type": "string",
                 "enum": [
-                    "square", "square_hd",
-                    "landscape_4_3", "landscape_16_9",
-                    "portrait_4_3", "portrait_16_9",
+                    "square",
+                    "square_hd",
+                    "landscape_4_3",
+                    "landscape_16_9",
+                    "portrait_4_3",
+                    "portrait_16_9",
                 ],
                 "default": "square_hd",
             },
             "style": {
                 "type": "string",
                 "enum": [
-                    "any", "realistic_image", "digital_illustration",
-                    "vector_illustration", "icon",
+                    "any",
+                    "realistic_image",
+                    "digital_illustration",
+                    "vector_illustration",
+                    "icon",
                 ],
                 "default": "any",
             },
@@ -101,10 +107,14 @@ class RecraftImage(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=100, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "model", "style", "image_size"]
     side_effects = ["writes image file to output_path", "calls fal.ai API"]
-    user_visible_verification = ["Inspect generated image for brand accuracy and text readability"]
+    user_visible_verification = [
+        "Inspect generated image for brand accuracy and text readability"
+    ]
 
     def _get_api_key(self) -> str | None:
         return os.environ.get("FAL_KEY") or os.environ.get("FAL_AI_API_KEY")

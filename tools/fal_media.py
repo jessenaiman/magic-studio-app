@@ -280,7 +280,9 @@ class FalMedia(BaseTool):
             values = result.get("images") or (
                 [result["video"]]
                 if result.get("video")
-                else [result["audio"]] if result.get("audio") else []
+                else [result["audio"]]
+                if result.get("audio")
+                else []
             )
             if not values:
                 raise ValueError("Completed job returned no media")

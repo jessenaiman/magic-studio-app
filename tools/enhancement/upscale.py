@@ -100,8 +100,16 @@ class Upscale(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=4096, vram_mb=2048, disk_mb=2000)
-    idempotency_key_fields = ["input_path", "scale", "model", "face_enhance", "denoise_strength"]
+    resource_profile = ResourceProfile(
+        cpu_cores=2, ram_mb=4096, vram_mb=2048, disk_mb=2000
+    )
+    idempotency_key_fields = [
+        "input_path",
+        "scale",
+        "model",
+        "face_enhance",
+        "denoise_strength",
+    ]
     side_effects = ["writes upscaled file to output_path"]
     user_visible_verification = [
         "Compare upscaled output with original for detail and artifact quality",
@@ -115,6 +123,7 @@ class Upscale(BaseTool):
     def get_status(self) -> ToolStatus:
         try:
             import realesrgan  # noqa: F401
+
             return ToolStatus.AVAILABLE
         except ImportError:
             return ToolStatus.UNAVAILABLE
@@ -144,13 +153,21 @@ class Upscale(BaseTool):
         try:
             if is_video:
                 result = self._upscale_video(
-                    input_path, output_path, scale, model_name,
-                    face_enhance, denoise_strength,
+                    input_path,
+                    output_path,
+                    scale,
+                    model_name,
+                    face_enhance,
+                    denoise_strength,
                 )
             else:
                 result = self._upscale_image(
-                    input_path, output_path, scale, model_name,
-                    face_enhance, denoise_strength,
+                    input_path,
+                    output_path,
+                    scale,
+                    model_name,
+                    face_enhance,
+                    denoise_strength,
                 )
         except Exception as e:
             return ToolResult(success=False, error=f"Upscale failed: {e}")
@@ -187,7 +204,9 @@ class Upscale(BaseTool):
     ) -> dict[str, Any]:
         import cv2
 
-        upsampler = self._build_upsampler(scale, model_name, denoise_strength, face_enhance)
+        upsampler = self._build_upsampler(
+            scale, model_name, denoise_strength, face_enhance
+        )
 
         img = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
         if img is None:
@@ -214,7 +233,9 @@ class Upscale(BaseTool):
     ) -> dict[str, Any]:
         import cv2
 
-        upsampler = self._build_upsampler(scale, model_name, denoise_strength, face_enhance)
+        upsampler = self._build_upsampler(
+            scale, model_name, denoise_strength, face_enhance
+        )
 
         # Get source frame rate
         fps = self._get_video_fps(input_path)
@@ -226,11 +247,15 @@ class Upscale(BaseTool):
             upscaled_dir.mkdir()
 
             # Extract frames
-            self.run_command([
-                "ffmpeg", "-y",
-                "-i", str(input_path),
-                str(frames_dir / "frame_%06d.png"),
-            ])
+            self.run_command(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(input_path),
+                    str(frames_dir / "frame_%06d.png"),
+                ]
+            )
 
             # Upscale each frame
             frame_files = sorted(frames_dir.glob("*.png"))
@@ -243,15 +268,26 @@ class Upscale(BaseTool):
 
             # Reassemble with ffmpeg, copy audio from original
             reassemble_cmd = [
-                "ffmpeg", "-y",
-                "-framerate", str(fps),
-                "-i", str(upscaled_dir / "frame_%06d.png"),
-                "-i", str(input_path),
-                "-map", "0:v",
-                "-map", "1:a?",
-                "-c:v", "libx264", "-crf", "18",
-                "-c:a", "copy",
-                "-pix_fmt", "yuv420p",
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                str(fps),
+                "-i",
+                str(upscaled_dir / "frame_%06d.png"),
+                "-i",
+                str(input_path),
+                "-map",
+                "0:v",
+                "-map",
+                "1:a?",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "18",
+                "-c:a",
+                "copy",
+                "-pix_fmt",
+                "yuv420p",
                 str(output_path),
             ]
             self.run_command(reassemble_cmd)
@@ -278,9 +314,23 @@ class Upscale(BaseTool):
 
         # Select architecture based on model
         if model_name == "RealESRGAN_x4plus_anime_6B":
-            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
+            model = RRDBNet(
+                num_in_ch=3,
+                num_out_ch=3,
+                num_feat=64,
+                num_block=6,
+                num_grow_ch=32,
+                scale=4,
+            )
         else:
-            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+            model = RRDBNet(
+                num_in_ch=3,
+                num_out_ch=3,
+                num_feat=64,
+                num_block=23,
+                num_grow_ch=32,
+                scale=4,
+            )
 
         # Resolve model path — realesrgan ships weights or downloads them
         model_url = f"https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/{model_name}.pth"
@@ -288,8 +338,11 @@ class Upscale(BaseTool):
             model_url = f"https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/{model_name}.pth"
 
         from tools.video._shared import get_torch_device as _get_device
+
         _device = _get_device()
-        half = _device == "cuda"  # fp16 only safe on CUDA; MPS/CPU use fp32 for realesrgan
+        half = (
+            _device == "cuda"
+        )  # fp16 only safe on CUDA; MPS/CPU use fp32 for realesrgan
 
         upsampler_kwargs: dict = {
             "scale": 4,
@@ -311,6 +364,7 @@ class Upscale(BaseTool):
 
         if face_enhance:
             from gfpgan import GFPGANer
+
             face_kwargs: dict = {
                 "model_path": "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth",
                 "upscale": scale,
@@ -328,7 +382,10 @@ class Upscale(BaseTool):
 
             def enhance_with_face(img, outscale=scale):
                 _, _, output = face_enhancer.enhance(
-                    img, has_aligned=False, only_center_face=False, paste_back=True,
+                    img,
+                    has_aligned=False,
+                    only_center_face=False,
+                    paste_back=True,
                 )
                 return output, None
 
@@ -344,12 +401,17 @@ class Upscale(BaseTool):
             return 30.0  # safe default
 
         try:
-            proc = self.run_command([
-                "ffprobe", "-v", "quiet",
-                "-print_format", "json",
-                "-show_streams",
-                str(video_path),
-            ])
+            proc = self.run_command(
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_streams",
+                    str(video_path),
+                ]
+            )
             probe = json.loads(proc.stdout)
             for stream in probe.get("streams", []):
                 if stream.get("codec_type") == "video":

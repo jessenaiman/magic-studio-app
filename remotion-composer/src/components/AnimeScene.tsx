@@ -59,13 +59,13 @@ export interface AnimeSceneProps {
 // ---------------------------------------------------------------------------
 
 const AnimeVignette: React.FC = () => (
-  <AbsoluteFill
-    style={{
+    <AbsoluteFill
+        style={{
       background:
         "radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.6) 100%)",
       pointerEvents: "none",
     }}
-  />
+    />
 );
 
 // ---------------------------------------------------------------------------
@@ -241,13 +241,13 @@ export const AnimeScene: React.FC<AnimeSceneProps> = ({
       : 0;
 
   return (
-    <AbsoluteFill style={{ overflow: "hidden", background: backgroundColor }}>
-      {/* Layer 1: Image stack with crossfade + camera motion */}
-      {images.map((src, i) => (
-        <AbsoluteFill key={i}>
-          <Img
-            src={resolveAsset(src)}
-            style={{
+      <AbsoluteFill style={{ overflow: "hidden", background: backgroundColor }}>
+          {/* Layer 1: Image stack with crossfade + camera motion */}
+          {images.map((src, i) => (
+              <AbsoluteFill key={i}>
+                  <Img
+                      src={resolveAsset(src)}
+                      style={{
               width: "100%",
               height: "100%",
               objectFit: "cover",
@@ -255,33 +255,33 @@ export const AnimeScene: React.FC<AnimeSceneProps> = ({
               transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
               willChange: "transform, opacity",
             }}
-          />
-        </AbsoluteFill>
+                  />
+              </AbsoluteFill>
       ))}
 
-      {/* Layer 2: Animated lighting gradient */}
-      {lightingFrom && lightingTo && (
-        <AbsoluteFill
-          style={{
+          {/* Layer 2: Animated lighting gradient */}
+          {lightingFrom && lightingTo && (
+          <AbsoluteFill
+              style={{
             background: `linear-gradient(135deg, ${lightingFrom}, ${lightingTo})`,
             opacity: lightOpacity,
             pointerEvents: "none",
           }}
-        />
+          />
       )}
 
-      {/* Layer 3: Cinematic vignette */}
-      {vignette && <AnimeVignette />}
+          {/* Layer 3: Cinematic vignette */}
+          {vignette && <AnimeVignette />}
 
-      {/* Layer 4: Particle effects */}
-      {particles && (
-        <ParticleOverlay
-          type={particles}
-          count={particleCount}
-          color={particleColor}
-          intensity={particleIntensity}
-        />
+          {/* Layer 4: Particle effects */}
+          {particles && (
+          <ParticleOverlay
+              type={particles}
+              count={particleCount}
+              color={particleColor}
+              intensity={particleIntensity}
+          />
       )}
-    </AbsoluteFill>
+      </AbsoluteFill>
   );
 };

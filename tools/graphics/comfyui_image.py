@@ -88,7 +88,10 @@ class ComfyUIImage(BaseTool):
         "type": "object",
         "required": ["prompt"],
         "properties": {
-            "prompt": {"type": "string", "description": "Text prompt for image generation"},
+            "prompt": {
+                "type": "string",
+                "description": "Text prompt for image generation",
+            },
             "width": {"type": "integer", "default": 1024},
             "height": {"type": "integer", "default": 1024},
             "steps": {"type": "integer", "default": 20},
@@ -127,12 +130,18 @@ class ComfyUIImage(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=8000, vram_mb=8000, disk_mb=500, network_required=False,
+        cpu_cores=2,
+        ram_mb=8000,
+        vram_mb=8000,
+        disk_mb=500,
+        network_required=False,
     )
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["timeout"])
     idempotency_key_fields = ["prompt", "width", "height", "steps", "seed"]
     side_effects = ["writes image file to output_path"]
-    user_visible_verification = ["Inspect generated image for quality and prompt adherence"]
+    user_visible_verification = [
+        "Inspect generated image for quality and prompt adherence"
+    ]
 
     def __init__(self) -> None:
         self._client = ComfyUIClient(capability="image")
@@ -158,7 +167,9 @@ class ComfyUIImage(BaseTool):
         return info
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
-        custom_workflow = bool(inputs.get("workflow_json") or inputs.get("workflow_path"))
+        custom_workflow = bool(
+            inputs.get("workflow_json") or inputs.get("workflow_path")
+        )
         if custom_workflow and not inputs.get("output_node"):
             return ToolResult(
                 success=False,
@@ -204,28 +215,38 @@ class ComfyUIImage(BaseTool):
                 workflow = self._load_custom_workflow(inputs)
                 output_node = str(inputs["output_node"])
             else:
-                workflow = ComfyUIClient.load_workflow(_WORKFLOWS / "flux2-txt2img.json")
-                workflow = ComfyUIClient.patch_workflow(workflow, {
-                    "4": {"text": inputs["prompt"]},
-                    "5": {"guidance": guidance},
-                    "6": {"width": width, "height": height, "batch_size": 1},
-                    "7": {"noise_seed": seed},
-                    "10": {"steps": steps, "width": width, "height": height},
-                    "13": {"filename_prefix": output_path.stem},
-                })
+                workflow = ComfyUIClient.load_workflow(
+                    _WORKFLOWS / "flux2-txt2img.json"
+                )
+                workflow = ComfyUIClient.patch_workflow(
+                    workflow,
+                    {
+                        "4": {"text": inputs["prompt"]},
+                        "5": {"guidance": guidance},
+                        "6": {"width": width, "height": height, "batch_size": 1},
+                        "7": {"noise_seed": seed},
+                        "10": {"steps": steps, "width": width, "height": height},
+                        "13": {"filename_prefix": output_path.stem},
+                    },
+                )
                 output_node = "13"
 
             provenance = self._workflow_provenance(
                 inputs, custom_workflow, output_node, workflow
             )
             paths = self._client.generate(
-                workflow, output_node=output_node, dest=output_path, timeout=600,
+                workflow,
+                output_node=output_node,
+                dest=output_path,
+                timeout=600,
             )
 
         except ComfyUIError as exc:
             return ToolResult(success=False, error=str(exc))
         except Exception as exc:
-            return ToolResult(success=False, error=f"ComfyUI image generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"ComfyUI image generation failed: {exc}"
+            )
 
         model_name = self._model_name(inputs, custom_workflow)
         return ToolResult(

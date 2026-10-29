@@ -20,13 +20,13 @@ from tools.base_tool import BaseTool, ToolStatus, ToolTier, ToolStability
 # that an agent is likely to print to the user at preflight — not docstrings,
 # comments, or markdown.
 _UNICODE_DASH_REPLACEMENTS = {
-    "\u2014": "--",   # em dash
-    "\u2013": "-",    # en dash
-    "\u2212": "-",    # minus sign
-    "\u2018": "'",    # left single quote
-    "\u2019": "'",    # right single quote
-    "\u201c": '"',    # left double quote
-    "\u201d": '"',    # right double quote
+    "\u2014": "--",  # em dash
+    "\u2013": "-",  # en dash
+    "\u2212": "-",  # minus sign
+    "\u2018": "'",  # left single quote
+    "\u2019": "'",  # right single quote
+    "\u201c": '"',  # left double quote
+    "\u201d": '"',  # right double quote
     "\u2026": "...",  # ellipsis
 }
 
@@ -88,10 +88,12 @@ class ToolRegistry:
         """Load .env file into os.environ if present, so tools can find API keys."""
         from pathlib import Path
         import os
+
         env_path = Path(__file__).resolve().parent.parent / ".env"
         if not env_path.is_file():
             return
         import re
+
         with open(env_path, encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
@@ -125,7 +127,9 @@ class ToolRegistry:
             return self.register_module(package)
 
         for module_info in pkgutil.walk_packages(package_paths, f"{package.__name__}."):
-            if module_info.name.endswith(".base_tool") or module_info.name.endswith(".tool_registry"):
+            if module_info.name.endswith(".base_tool") or module_info.name.endswith(
+                ".tool_registry"
+            ):
                 continue
             module = importlib.import_module(module_info.name)
             discovered.extend(self.register_module(module))
@@ -176,10 +180,7 @@ class ToolRegistry:
 
     def find_by_capability(self, capability: str) -> list[BaseTool]:
         """Find tools that declare a given capability."""
-        return [
-            t for t in self._tools.values()
-            if capability in t.capabilities
-        ]
+        return [t for t in self._tools.values() if capability in t.capabilities]
 
     def find_fallback(self, tool_name: str) -> Optional[BaseTool]:
         """Find the fallback tool for a given tool, if declared and available."""
@@ -273,7 +274,12 @@ class ToolRegistry:
         for tool in tools:
             cap = tool.capability
             if cap not in menu:
-                menu[cap] = {"available": [], "unavailable": [], "total": 0, "configured": 0}
+                menu[cap] = {
+                    "available": [],
+                    "unavailable": [],
+                    "total": 0,
+                    "configured": 0,
+                }
 
             info = tool.get_info()
             status = tool.get_status()
@@ -308,8 +314,12 @@ class ToolRegistry:
             menu[cap]["total"] += 1
 
         for bucket in menu.values():
-            bucket["available"].sort(key=lambda entry: (entry["provider"], entry["name"]))
-            bucket["unavailable"].sort(key=lambda entry: (entry["provider"], entry["name"]))
+            bucket["available"].sort(
+                key=lambda entry: (entry["provider"], entry["name"])
+            )
+            bucket["unavailable"].sort(
+                key=lambda entry: (entry["provider"], entry["name"])
+            )
 
         return dict(sorted(menu.items()))
 
@@ -411,7 +421,8 @@ class ToolRegistry:
                             "tool": entry.get("name"),
                             "provider": entry.get("provider"),
                             "runtime": entry.get("runtime"),
-                            "install_instructions": entry.get("install_instructions") or "",
+                            "install_instructions": entry.get("install_instructions")
+                            or "",
                             **offer,
                         }
                     )
@@ -432,7 +443,8 @@ class ToolRegistry:
                             "kind": "env_var",
                             "fix_complexity": "1-minute env-var",
                             "env_vars": env_vars,
-                            "install_instructions": entry.get("install_instructions") or "",
+                            "install_instructions": entry.get("install_instructions")
+                            or "",
                         }
                     )
                     continue
@@ -475,16 +487,12 @@ class ToolRegistry:
 
     def gpu_required_tools(self) -> list[str]:
         """List tools that require GPU (VRAM > 0)."""
-        return [
-            t.name for t in self._tools.values()
-            if t.resource_profile.vram_mb > 0
-        ]
+        return [t.name for t in self._tools.values() if t.resource_profile.vram_mb > 0]
 
     def network_required_tools(self) -> list[str]:
         """List tools that require network access."""
         return [
-            t.name for t in self._tools.values()
-            if t.resource_profile.network_required
+            t.name for t in self._tools.values() if t.resource_profile.network_required
         ]
 
 

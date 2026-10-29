@@ -115,10 +115,16 @@ class FaceEnhance(BaseTool):
         },
     }
 
-    resource_profile = ResourceProfile(cpu_cores=2, ram_mb=1024, vram_mb=0, disk_mb=2000)
+    resource_profile = ResourceProfile(
+        cpu_cores=2, ram_mb=1024, vram_mb=0, disk_mb=2000
+    )
     idempotency_key_fields = [
-        "input_path", "preset", "presets", "custom_vf",
-        "codec", "crf",
+        "input_path",
+        "preset",
+        "presets",
+        "custom_vf",
+        "codec",
+        "crf",
     ]
     side_effects = ["writes enhanced video to output_path"]
     user_visible_verification = [
@@ -132,7 +138,9 @@ class FaceEnhance(BaseTool):
             return ToolResult(success=False, error=f"Input not found: {input_path}")
 
         output_path = Path(
-            inputs.get("output_path", str(input_path.with_stem(f"{input_path.stem}_enhanced")))
+            inputs.get(
+                "output_path", str(input_path.with_stem(f"{input_path.stem}_enhanced"))
+            )
         )
         codec = inputs.get("codec", "libx264")
         crf = inputs.get("crf", 20)
@@ -140,16 +148,25 @@ class FaceEnhance(BaseTool):
         # Build filter chain
         vf = self._build_filter(inputs)
         if not vf:
-            return ToolResult(success=False, error="No preset, presets, or custom_vf specified")
+            return ToolResult(
+                success=False, error="No preset, presets, or custom_vf specified"
+            )
 
         start = time.time()
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", vf,
-            "-c:v", codec, "-crf", str(crf),
-            "-c:a", "copy",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            vf,
+            "-c:v",
+            codec,
+            "-crf",
+            str(crf),
+            "-c:a",
+            "copy",
             str(output_path),
         ]
 

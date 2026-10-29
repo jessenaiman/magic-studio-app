@@ -240,8 +240,12 @@ class GoogleTTS(BaseTool):
 
         text = inputs["text"]
         input_type = inputs.get("input_type", "text")
-        voice_name = inputs.get("voice") or inputs.get("voice_id") or "en-US-Chirp3-HD-Orus"
-        language_code = inputs.get("language_code") or self._locale_from_voice(voice_name)
+        voice_name = (
+            inputs.get("voice") or inputs.get("voice_id") or "en-US-Chirp3-HD-Orus"
+        )
+        language_code = inputs.get("language_code") or self._locale_from_voice(
+            voice_name
+        )
         speaking_rate = inputs.get("speaking_rate", 1.0)
         pitch = inputs.get("pitch", 0.0)
         audio_encoding = inputs.get("audio_encoding", "MP3")

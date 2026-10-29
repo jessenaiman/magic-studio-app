@@ -3,6 +3,7 @@
 CSV columns: technique_id, technique, app, source, shot_id, timecode (HH:MM:SS[.ff]), status.
 Only rows with status "earned" count. `timeline` maps shot_id -> {"start_s", "end_s"} as cut.
 """
+
 from __future__ import annotations
 
 import csv
@@ -24,7 +25,9 @@ def parse_timecode(tc: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def check_ledger(ledger_csv: str | Path, timeline: dict, root: str | Path) -> LedgerReport:
+def check_ledger(
+    ledger_csv: str | Path, timeline: dict, root: str | Path
+) -> LedgerReport:
     report = LedgerReport()
     earned: set[str] = set()
     tools: set[str] = set()
@@ -44,7 +47,8 @@ def check_ledger(ledger_csv: str | Path, timeline: dict, root: str | Path) -> Le
             if not shot["start_s"] <= t <= shot["end_s"]:
                 report.failures.append(
                     f"{tid}: timecode {row['timecode']} outside shot {row['shot_id']} "
-                    f"({shot['start_s']:.2f}-{shot['end_s']:.2f}s)")
+                    f"({shot['start_s']:.2f}-{shot['end_s']:.2f}s)"
+                )
                 continue
             earned.add(tid)
             tools.add(row["app"])

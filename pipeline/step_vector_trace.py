@@ -1,4 +1,5 @@
 """Stage 3B: Trace cutout part PNGs into multi-color SVGs via vectorcraft-cli."""
+
 from __future__ import annotations
 
 import json
@@ -20,20 +21,36 @@ def trace_part_layers_with_vectorcraft(
 
     for part in plan.get("parts", []):
         pid = part.get("id") or part.get("part") or "part"
-        crop_rel = part.get("cropped_path") or part.get("cropped_file") or part.get("file", "")
-        crop_path = Path(crop_rel) if Path(crop_rel).is_absolute() else (base_dir / crop_rel)
+        crop_rel = (
+            part.get("cropped_path") or part.get("cropped_file") or part.get("file", "")
+        )
+        crop_path = (
+            Path(crop_rel) if Path(crop_rel).is_absolute() else (base_dir / crop_rel)
+        )
         if not crop_path.is_file():
             continue
         svg_path = crop_path.with_suffix(".svg")
-        trace_params = json.dumps({"preset": preset, "enhanced": True, "params": {"ignoreWhite": True}})
+        trace_params = json.dumps(
+            {"preset": preset, "enhanced": True, "params": {"ignoreWhite": True}}
+        )
         proc = subprocess.run(
             [
-                vc_bin, "run", "--in", str(crop_path),
-                "--cmd", "select.all",
-                "--cmd", "imageTrace.makeAndExpand", "--params", trace_params,
-                "--export", str(svg_path),
+                vc_bin,
+                "run",
+                "--in",
+                str(crop_path),
+                "--cmd",
+                "select.all",
+                "--cmd",
+                "imageTrace.makeAndExpand",
+                "--params",
+                trace_params,
+                "--export",
+                str(svg_path),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if proc.returncode == 0 and svg_path.is_file():
             part["svg_path"] = str(svg_path)
@@ -41,7 +58,13 @@ def trace_part_layers_with_vectorcraft(
                 part["svg_file"] = str(svg_path.relative_to(base_dir))
             except ValueError:
                 part["svg_file"] = svg_path.name
-            traced_parts.append({"part": pid, "svg_path": str(svg_path), "bytes": svg_path.stat().st_size})
+            traced_parts.append(
+                {
+                    "part": pid,
+                    "svg_path": str(svg_path),
+                    "bytes": svg_path.stat().st_size,
+                }
+            )
 
     rig_plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
     return {

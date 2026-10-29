@@ -107,17 +107,17 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
   const windowOpacity = spring({ frame, fps, config: { damping: 25, stiffness: 100 } });
 
   return (
-    <AbsoluteFill
-      style={{
+      <AbsoluteFill
+          style={{
         background: backgroundColor,
         justifyContent: "center",
         alignItems: "center",
         padding: "80px",
         fontFamily: "'JetBrains Mono', 'Consolas', 'Monaco', monospace",
       }}
-    >
-      <div
-        style={{
+      >
+          <div
+              style={{
           width: "85%",
           maxWidth: 1600,
           height: "80%",
@@ -129,10 +129,10 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
           background: "#12151F",
           position: "relative",
         }}
-      >
-        {/* Title bar */}
-        <div
-          style={{
+          >
+              {/* Title bar */}
+              <div
+                  style={{
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -140,26 +140,26 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
             background: "#1A1F2E",
             borderBottom: "1px solid rgba(255,255,255,0.05)",
           }}
-        >
-          <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#FF5F56" }} />
-          <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#FFBD2E" }} />
-          <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#27C93F" }} />
-          <div
-            style={{
+              >
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#FF5F56" }} />
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#FFBD2E" }} />
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#27C93F" }} />
+                  <div
+                      style={{
               flex: 1,
               textAlign: "center",
               color: "#8E8E93",
               fontSize: 16,
               fontFamily: "Inter, sans-serif",
             }}
-          >
-            {title}
-          </div>
-        </div>
+                  >
+                      {title}
+                  </div>
+              </div>
 
-        {/* Terminal body */}
-        <div
-          style={{
+              {/* Terminal body */}
+              <div
+                  style={{
             padding: "32px 40px",
             fontSize: 26,
             lineHeight: 1.55,
@@ -167,8 +167,8 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
             height: "calc(100% - 46px)",
             overflow: "hidden",
           }}
-        >
-          {renderedLines.map((line, idx) => {
+              >
+                  {renderedLines.map((line, idx) => {
             if (line.isCmd) {
               // Char-by-char typed command
               const progress = interpolate(
@@ -181,12 +181,12 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
               const isLatest = idx === renderedLines.length - 1;
               const isActive = frame <= line.endFrame + fps * 0.2;
               return (
-                <div key={`${line.startFrame}-${idx}`} style={{ display: "flex", alignItems: "baseline" }}>
-                  <span style={{ color: accentColor, marginRight: 12, fontWeight: 600 }}>{prompt}</span>
-                  <span style={{ color: "#F1F5F9" }}>{typed}</span>
-                  {isLatest && isActive && blinkPhase && (
-                    <span
-                      style={{
+                  <div key={`${line.startFrame}-${idx}`} style={{ display: "flex", alignItems: "baseline" }}>
+                      <span style={{ color: accentColor, marginRight: 12, fontWeight: 600 }}>{prompt}</span>
+                      <span style={{ color: "#F1F5F9" }}>{typed}</span>
+                      {isLatest && isActive && blinkPhase && (
+                      <span
+                          style={{
                         display: "inline-block",
                         width: 12,
                         height: 26,
@@ -194,9 +194,9 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
                         marginLeft: 2,
                         transform: "translateY(4px)",
                       }}
-                    />
+                      />
                   )}
-                </div>
+                  </div>
               );
             } else {
               // Instant-reveal output line with fade-in
@@ -207,19 +207,19 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
                 { extrapolateRight: "clamp" }
               );
               return (
-                <div
-                  key={`${line.startFrame}-${idx}`}
-                  style={{ color: "#9CA3AF", opacity: alpha, paddingLeft: 4 }}
-                >
-                  {line.text}
-                </div>
+                  <div
+                      key={`${line.startFrame}-${idx}`}
+                      style={{ color: "#9CA3AF", opacity: alpha, paddingLeft: 4 }}
+                  >
+                      {line.text}
+                  </div>
               );
             }
           })}
-        </div>
+              </div>
 
-        {/* Floating command pills */}
-        {pills
+              {/* Floating command pills */}
+              {pills
           .filter(p => frame >= p.startFrame && frame <= p.endFrame)
           .map((pill, idx) => {
             const lifeProgress = (frame - pill.startFrame) / Math.max(1, pill.endFrame - pill.startFrame);
@@ -237,9 +237,9 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
             const alpha = Math.min(inAlpha, outAlpha);
             const translateY = interpolate(inAlpha, [0, 1], [14, 0]);
             return (
-              <div
-                key={`${pill.startFrame}-${idx}`}
-                style={{
+                <div
+                    key={`${pill.startFrame}-${idx}`}
+                    style={{
                   position: "absolute",
                   top: 28 + idx * 62,
                   right: 32,
@@ -255,12 +255,12 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
                   transform: `translateY(${translateY}px)`,
                   boxShadow: `0 10px 30px ${pill.color}40`,
                 }}
-              >
-                {pill.text}
-              </div>
+                >
+                    {pill.text}
+                </div>
             );
           })}
-      </div>
-    </AbsoluteFill>
+          </div>
+      </AbsoluteFill>
   );
 };

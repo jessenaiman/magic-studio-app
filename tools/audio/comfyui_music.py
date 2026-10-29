@@ -68,7 +68,11 @@ class ComfyUIMusic(BaseTool):
     )
     agent_skills = ["comfyui"]
 
-    capabilities = ["generate_background_music", "generate_song", "generate_instrumental"]
+    capabilities = [
+        "generate_background_music",
+        "generate_song",
+        "generate_instrumental",
+    ]
     supports = {
         "seed": True,
         "lyrics": True,
@@ -154,12 +158,18 @@ class ComfyUIMusic(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=8000, vram_mb=8000, disk_mb=500, network_required=False,
+        cpu_cores=2,
+        ram_mb=8000,
+        vram_mb=8000,
+        disk_mb=500,
+        network_required=False,
     )
     retry_policy = RetryPolicy(max_retries=1, retryable_errors=["timeout"])
     idempotency_key_fields = ["prompt", "lyrics", "duration_seconds", "seed"]
     side_effects = ["writes audio file to output_path"]
-    user_visible_verification = ["Listen to generated audio for mood, genre accuracy, and quality"]
+    user_visible_verification = [
+        "Listen to generated audio for mood, genre accuracy, and quality"
+    ]
 
     def __init__(self) -> None:
         self._client = ComfyUIClient(capability="music")
@@ -196,7 +206,9 @@ class ComfyUIMusic(BaseTool):
             print(f"[comfyui_music] step {value}/{max_value}")
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
-        custom_workflow = bool(inputs.get("workflow_json") or inputs.get("workflow_path"))
+        custom_workflow = bool(
+            inputs.get("workflow_json") or inputs.get("workflow_path")
+        )
         if custom_workflow and not inputs.get("output_node"):
             return ToolResult(
                 success=False,
@@ -237,24 +249,31 @@ class ComfyUIMusic(BaseTool):
                 workflow = self._load_custom_workflow(inputs)
                 output_node = str(inputs["output_node"])
             else:
-                workflow = ComfyUIClient.load_workflow(_WORKFLOWS / "ace-step-1-t2a.json")
-                workflow = ComfyUIClient.patch_workflow(workflow, {
-                    "2": {
-                        "tags": inputs["prompt"],
-                        "lyrics": inputs.get("lyrics", ""),
-                        "lyrics_strength": inputs.get("lyrics_strength", 0.99),
+                workflow = ComfyUIClient.load_workflow(
+                    _WORKFLOWS / "ace-step-1-t2a.json"
+                )
+                workflow = ComfyUIClient.patch_workflow(
+                    workflow,
+                    {
+                        "2": {
+                            "tags": inputs["prompt"],
+                            "lyrics": inputs.get("lyrics", ""),
+                            "lyrics_strength": inputs.get("lyrics_strength", 0.99),
+                        },
+                        "4": {"seconds": inputs.get("duration_seconds", 120.0)},
+                        "8": {
+                            "seed": seed,
+                            "steps": inputs.get("steps", 50),
+                            "cfg": inputs.get("cfg", 5.0),
+                        },
+                        "10": {"filename_prefix": output_path.stem},
                     },
-                    "4": {"seconds": inputs.get("duration_seconds", 120.0)},
-                    "8": {
-                        "seed": seed,
-                        "steps": inputs.get("steps", 50),
-                        "cfg": inputs.get("cfg", 5.0),
-                    },
-                    "10": {"filename_prefix": output_path.stem},
-                })
+                )
                 output_node = "10"
 
-            provenance = self._workflow_provenance(inputs, custom_workflow, output_node, workflow)
+            provenance = self._workflow_provenance(
+                inputs, custom_workflow, output_node, workflow
+            )
             paths = self._client.generate(
                 workflow,
                 output_node=output_node,
@@ -279,7 +298,9 @@ class ComfyUIMusic(BaseTool):
                 error_msg = str(exc)
             return ToolResult(success=False, error=error_msg, data=data)
         except Exception as exc:
-            return ToolResult(success=False, error=f"ComfyUI music generation failed: {exc}")
+            return ToolResult(
+                success=False, error=f"ComfyUI music generation failed: {exc}"
+            )
 
         duration = self._probe_duration(paths[0])
         model_name = self._model_name(inputs, custom_workflow)
@@ -342,7 +363,9 @@ class ComfyUIMusic(BaseTool):
             "model": inputs.get("workflow_model") or inputs.get("model"),
             "workflow_hash_sha256": workflow_hash(workflow),
             "model_stack": stack if isinstance(stack, list) else [],
-            "model_stack_source": "caller_supplied" if stack else "unknown_custom_workflow",
+            "model_stack_source": "caller_supplied"
+            if stack
+            else "unknown_custom_workflow",
             "output_node": output_node,
         }
 
@@ -354,12 +377,19 @@ class ComfyUIMusic(BaseTool):
         try:
             out = subprocess.run(
                 [
-                    "ffprobe", "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
                     str(path),
                 ],
-                capture_output=True, text=True, timeout=15, check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=True,
             )
             value = out.stdout.strip()
             return round(float(value), 2) if value else None

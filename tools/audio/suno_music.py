@@ -120,9 +120,14 @@ class SunoMusic(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=256, vram_mb=0, disk_mb=100, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "style", "instrumental", "model"]
-    side_effects = ["writes audio file to output_path", "calls Suno API via sunoapi.org"]
+    side_effects = [
+        "writes audio file to output_path",
+        "calls Suno API via sunoapi.org",
+    ]
     user_visible_verification = [
         "Listen to generated music for mood, genre accuracy, and quality",
     ]

@@ -69,8 +69,18 @@ class HiggsFieldVideo(BaseTool):
         "lip-sync from quoted dialogue in prompts",
         "multi-model access through a single API (Seedance 2.0, Kling, Veo, Sora, WAN)",
     ]
-    not_good_for = ["offline generation", "fine-grained model control", "budget projects without subscription"]
-    fallback_tools = ["seedance_video", "seedance_replicate", "kling_video", "veo_video", "minimax_video"]
+    not_good_for = [
+        "offline generation",
+        "fine-grained model control",
+        "budget projects without subscription",
+    ]
+    fallback_tools = [
+        "seedance_video",
+        "seedance_replicate",
+        "kling_video",
+        "veo_video",
+        "minimax_video",
+    ]
     quality_score = 0.9
 
     input_schema = {
@@ -108,7 +118,10 @@ class HiggsFieldVideo(BaseTool):
                 "enum": ["16:9", "9:16", "1:1", "21:9"],
                 "default": "16:9",
             },
-            "image_url": {"type": "string", "description": "Reference image URL for image_to_video"},
+            "image_url": {
+                "type": "string",
+                "description": "Reference image URL for image_to_video",
+            },
             "output_path": {"type": "string"},
         },
     }
@@ -116,10 +129,14 @@ class HiggsFieldVideo(BaseTool):
     resource_profile = ResourceProfile(
         cpu_cores=1, ram_mb=512, vram_mb=0, disk_mb=500, network_required=True
     )
-    retry_policy = RetryPolicy(max_retries=2, retryable_errors=["rate_limit", "timeout"])
+    retry_policy = RetryPolicy(
+        max_retries=2, retryable_errors=["rate_limit", "timeout"]
+    )
     idempotency_key_fields = ["prompt", "model", "operation", "duration"]
     side_effects = ["writes video file to output_path", "calls Higgsfield Cloud API"]
-    user_visible_verification = ["Watch generated clip for motion coherence and visual quality"]
+    user_visible_verification = [
+        "Watch generated clip for motion coherence and visual quality"
+    ]
 
     def _get_credentials(self) -> tuple[str, str] | None:
         """Return (api_key, api_secret) or None if not configured."""
@@ -207,7 +224,10 @@ class HiggsFieldVideo(BaseTool):
             submit_resp.raise_for_status()
             gen_data = submit_resp.json()
             generation_id = gen_data["id"]
-            status_url = gen_data.get("status_url", f"https://platform.higgsfield.ai/v1/generations/{generation_id}")
+            status_url = gen_data.get(
+                "status_url",
+                f"https://platform.higgsfield.ai/v1/generations/{generation_id}",
+            )
 
             # Poll for completion
             video_url = None
@@ -228,7 +248,9 @@ class HiggsFieldVideo(BaseTool):
                     )
 
             if not video_url:
-                return ToolResult(success=False, error="Higgsfield generation timed out.")
+                return ToolResult(
+                    success=False, error="Higgsfield generation timed out."
+                )
 
             # Download video
             video_response = requests.get(video_url, timeout=120)
@@ -239,7 +261,9 @@ class HiggsFieldVideo(BaseTool):
             output_path.write_bytes(video_response.content)
 
         except Exception as e:
-            return ToolResult(success=False, error=f"Higgsfield video generation failed: {e}")
+            return ToolResult(
+                success=False, error=f"Higgsfield video generation failed: {e}"
+            )
 
         from tools.video._shared import probe_output
 
