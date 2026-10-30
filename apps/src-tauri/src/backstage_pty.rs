@@ -195,6 +195,84 @@ fn spawn_writer(
         }
     })
 }
+/// True once the session has been cancelled and output must be drained, not shown.
+fn flow_cancelled(flow: &FlowControl) -> bool {
+    flow.0.lock().unwrap_or_else(|e| e.into_inner()).cancelled
+}
+
+fn mark_pending(flow: &FlowControl, sequence: u64) {
+    let (lock, _) = &**flow;
+    lock.lock().unwrap_or_else(|e| e.into_inner()).pending = Some(sequence);
+}
+
+/// What the renderer's acknowledgement says about the message just written.
+enum Credit {
+    /// The session was cancelled while we waited.
+    Cancelled,
+    /// The deadline passed with the message still unacknowledged.
+    TimedOut,
+    /// The renderer took the credit.
+    Acknowledged,
+}
+
+/// Wait for the renderer to take the credit; only one 8 KiB message may be in flight at once.
+fn await_credit(flow: &FlowControl) -> Credit {
+    let (lock, wake) = &**flow;
+    let (credit, _) = wake
+        .wait_timeout_while(
+            lock.lock().unwrap_or_else(|e| e.into_inner()),
+            OUTPUT_DEADLINE,
+            |flow| flow.pending.is_some() && !flow.cancelled,
+        )
+        .unwrap_or_else(|e| e.into_inner());
+    if credit.cancelled {
+        return Credit::Cancelled;
+    }
+    if credit.pending.is_some() {
+        return Credit::TimedOut;
+    }
+    Credit::Acknowledged
+}
+
+/// Emit one output chunk; false when the renderer channel is gone.
+fn emit_chunk(output: &Output, id: u64, sequence: u64, bytes: &[u8]) -> bool {
+    output(json!({"kind":"data", "session":id, "sequence":sequence, "bytes": bytes})).is_ok()
+}
+
+fn report_read_error(output: &Output, id: u64, error: std::io::Error) {
+    let _ = output(
+        json!({"kind":"error", "session":id, "message":format!("Backstage PTY read failed: {error}")}),
+    );
+}
+
+/// Show one chunk and wait for the renderer's credit; the loop keeps draining either way.
+fn deliver_chunk(
+    output: &Output,
+    flow: &FlowControl,
+    id: u64,
+    sequence: u64,
+    chunk: &[u8],
+    stop: &mpsc::SyncSender<()>,
+) {
+    if !emit_chunk(output, id, sequence, chunk) {
+        cancel(flow);
+        let _ = stop.try_send(());
+        return;
+    }
+    // Only one 8 KiB message may be in IPC/xterm at once. xterm's parse
+    // callback returns the credit; a lost renderer terminates this session.
+    match await_credit(flow) {
+        Credit::Cancelled | Credit::Acknowledged => {}
+        Credit::TimedOut => {
+            let _ = output(
+                json!({"kind":"error", "session":id, "message":"Backstage stopped: terminal output acknowledgement timed out."}),
+            );
+            cancel(flow);
+            let _ = stop.try_send(());
+        }
+    }
+}
+
 fn spawn_reader(
     mut reader: Box<dyn Read + Send>,
     id: u64,
@@ -211,41 +289,15 @@ fn spawn_reader(
                 Ok(count) => {
                     // Continue draining during shutdown so a full output buffer cannot
                     // block Backstage before it handles HUP and cancels its providers.
-                    if flow.0.lock().unwrap_or_else(|e| e.into_inner()).cancelled {
+                    if flow_cancelled(&flow) {
                         continue;
                     }
                     sequence += 1;
-                    let (lock, wake) = &*flow;
-                    lock.lock().unwrap_or_else(|e| e.into_inner()).pending = Some(sequence);
-                    if output(json!({"kind":"data", "session":id, "sequence":sequence, "bytes": &bytes[..count]})).is_err() {
-                        cancel(&flow);
-                        let _ = stop.try_send(()); continue;
-                    }
-                    // Only one 8 KiB message may be in IPC/xterm at once. xterm's parse
-                    // callback returns the credit; a lost renderer terminates this session.
-                    let (credit, _) = wake
-                        .wait_timeout_while(
-                            lock.lock().unwrap_or_else(|e| e.into_inner()),
-                            OUTPUT_DEADLINE,
-                            |flow| flow.pending.is_some() && !flow.cancelled,
-                        )
-                        .unwrap_or_else(|e| e.into_inner());
-                    if credit.cancelled {
-                        continue;
-                    }
-                    if credit.pending.is_some() {
-                        let _ = output(
-                            json!({"kind":"error", "session":id, "message":"Backstage stopped: terminal output acknowledgement timed out."}),
-                        );
-                        drop(credit);
-                        cancel(&flow);
-                        let _ = stop.try_send(());
-                    }
+                    mark_pending(&flow, sequence);
+                    deliver_chunk(&output, &flow, id, sequence, &bytes[..count], &stop);
                 }
                 Err(error) => {
-                    let _ = output(
-                        json!({"kind":"error", "session":id, "message":format!("Backstage PTY read failed: {error}")}),
-                    );
+                    report_read_error(&output, id, error);
                     let _ = stop.try_send(());
                     break;
                 }
