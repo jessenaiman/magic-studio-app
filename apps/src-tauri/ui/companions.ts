@@ -117,28 +117,37 @@ function createCompanions(frames: any, options: any = {}) {
     pet.timer = setTimeout(tick, 260);
   }
 
+  function selectCompanionTargets(rows) {
+    const newestFirst = (a, b) => (b.seq ?? 0) - (a.seq ?? 0) || (b.observed_at ?? 0) - (a.observed_at ?? 0);
+    const worst = rows.filter(row => row.signal >= 2).sort((a, b) => b.signal - a.signal || Number(!!b.attention) - Number(!!a.attention) || (b.priority || 0) - (a.priority || 0) || newestFirst(a, b))[0] || null;
+    const recent = rows.filter(row => row.state === "working" || (row.source !== "readiness" && row.source !== "light" && Date.now() - row.observed_at < 8000));
+    const newest = [...recent].sort(newestFirst)[0] || worst;
+    return {
+      newest,
+      targets: {
+        sproket: { box: worst?.id || null, signal: worst?.signal || 0, pose: worst ? (worst.signal === 3 ? "alert" : "work") : "rest" },
+        gaffer: { box: newest?.id || null, signal: newest?.signal || 0, pose: newest ? (newest.state === "working" || newest.signal >= 2 ? "work" : "rest") : "asleep" },
+      },
+    };
+  }
+
+  function applyCompanionTarget(name, target) {
+    const pet = pets[name];
+    const news = pet.box !== target.box || pet.pose !== target.pose;
+    if (news && target.signal < 2) { clearTimeout(pet.timer); pet.timer = null; }
+    Object.assign(pet, target);
+    if (news && target.signal >= 2) burst(name);
+  }
+
   function react() {
     if (!boxes) return;
     if (!enabled) { for (const name of Object.keys(nodes)) nodes[name].hidden = true; return; }
     rails?.discover();
     const rows = boxes.panels().items.filter(row => row.signal > 0);
-    const newestFirst = (a, b) => (b.seq ?? 0) - (a.seq ?? 0) || (b.observed_at ?? 0) - (a.observed_at ?? 0);
-    const worst = rows.filter(row => row.signal >= 2).sort((a, b) => b.signal - a.signal || Number(!!b.attention) - Number(!!a.attention) || (b.priority || 0) - (a.priority || 0) || newestFirst(a, b))[0] || null;
-    const recent = rows.filter(row => row.state === "working" || (row.source !== "readiness" && row.source !== "light" && Date.now() - row.observed_at < 8000));
-    const newest = [...recent].sort(newestFirst)[0] || worst;
+    const { newest, targets } = selectCompanionTargets(rows);
     clearTimeout(settleTimer);
     if (newest?.state === "ready") settleTimer = setTimeout(react, Math.max(1, 8000 - (Date.now() - newest.observed_at)));
-    const next = {
-      sproket: { box: worst?.id || null, signal: worst?.signal || 0, pose: worst ? (worst.signal === 3 ? "alert" : "work") : "rest" },
-      gaffer: { box: newest?.id || null, signal: newest?.signal || 0, pose: newest ? (newest.state === "working" || newest.signal >= 2 ? "work" : "rest") : "asleep" },
-    };
-    for (const name of Object.keys(next)) {
-      const pet = pets[name];
-      const news = pet.box !== next[name].box || pet.pose !== next[name].pose;
-      if (news && next[name].signal < 2) { clearTimeout(pet.timer); pet.timer = null; }
-      Object.assign(pet, next[name]);
-      if (news && next[name].signal >= 2) burst(name);
-    }
+    for (const name of Object.keys(targets)) applyCompanionTarget(name, targets[name]);
     for (const name of Object.keys(nodes)) place(name);
     frame();
     if (typeof window.magicCompanionPaint === "function") window.magicCompanionPaint();
