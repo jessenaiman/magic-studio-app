@@ -216,6 +216,32 @@ def studio_for_project(project_path: str | Path) -> dict[str, Any] | None:
     return None
 
 
+def _resolve_auto_endpoint(cmd_id: str, req_params: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+    req_proj = req_params.get("_expected_project") or req_params.get("project")
+    if req_proj and Path(str(req_proj)).exists():
+        live = studio_for_project(str(req_proj))
+        if live:
+            return live["endpoint"], None
+    discovery = discover_studios()
+    sessions = [] if req_proj else discovery["sessions"]
+    if len(sessions) == 1:
+        return sessions[0]["endpoint"], None
+    if not sessions:
+        if cmd_id == "ui.feedback":
+            return None, {
+                "ok": True,
+                "connection": "not_observed_open",
+                "project": req_proj,
+                "ui_ready": False,
+                "unsaved_state": "unknown",
+                "recovery": "No matching responsive Studio. No app launched or switched.",
+            }
+        raise RuntimeError("No matching connected Studio; no command executed or app launched")
+    raise RuntimeError(
+        "Multiple Studios available; select a project or studio window explicitly."
+    )
+
+
 def call_studio(
     endpoint: str,
     cmd_id: str,
@@ -231,29 +257,11 @@ def call_studio(
         req_params["_expected_instance"] = expected_instance
 
     if endpoint == "auto":
-        req_proj = req_params.get("_expected_project") or req_params.get("project")
-        if req_proj and Path(str(req_proj)).exists():
-            live = studio_for_project(str(req_proj))
-            if live:
-                return call_unix_socket(live["endpoint"], cmd_id, req_params)
-        discovery = discover_studios()
-        sessions = [] if req_proj else discovery["sessions"]
-        if len(sessions) == 1:
-            return call_unix_socket(sessions[0]["endpoint"], cmd_id, req_params)
-        if not sessions:
-            if cmd_id == "ui.feedback":
-                return {
-                    "ok": True,
-                    "connection": "not_observed_open",
-                    "project": req_proj,
-                    "ui_ready": False,
-                    "unsaved_state": "unknown",
-                    "recovery": "No matching responsive Studio. No app launched or switched.",
-                }
-            raise RuntimeError("No matching connected Studio; no command executed or app launched")
-        raise RuntimeError(
-            "Multiple Studios available; select a project or studio window explicitly."
-        )
+        resolved_ep, fallback_resp = _resolve_auto_endpoint(cmd_id, req_params)
+        if fallback_resp is not None:
+            return fallback_resp
+        assert resolved_ep is not None
+        return call_unix_socket(resolved_ep, cmd_id, req_params)
 
     if not endpoint.startswith("unix:"):
         raise RuntimeError("Invalid Studio session endpoint; use studio open to select a window")
