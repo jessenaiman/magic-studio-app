@@ -2,7 +2,7 @@ name: Native acceptance infrastructure
 on:
   pull_request:
     paths:
-      - apps/magicstudio-shell/acceptance/**
+      - apps/src-tauri/acceptance/**
       - .github/workflows/native-acceptance.yml
   workflow_dispatch:
     inputs:
@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: for source in apps/magicstudio-shell/acceptance/*.mjs; do node --check "$source"; done
+      - run: for source in apps/src-tauri/acceptance/*.mjs; do node --check "$source"; done
   native:
     name: Native acceptance (approval gated)
     if: github.event_name == 'workflow_dispatch' && inputs.native_acceptance
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned framework
-        working-directory: apps/magicstudio-shell/acceptance
+        working-directory: apps/src-tauri/acceptance
         run: npm ci --ignore-scripts
       - name: Build this checkout and isolate installed CLI
         run: |
@@ -42,7 +42,7 @@ jobs:
           echo "$cli_env/bin" >> "$GITHUB_PATH"
       - name: Real native path (no browser fallback)
         id: acceptance
-        working-directory: apps/magicstudio-shell/acceptance
+        working-directory: apps/src-tauri/acceptance
         run: npm test
       - name: Publish diagnostics, not source snapshots
         if: always()

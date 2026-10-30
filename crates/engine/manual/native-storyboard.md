@@ -17,7 +17,7 @@ Project with valid imported timing.
 
 ## Command
 ```sh
-mc "$PROJECT" storyboard.init
+magic-cli --project "$PROJECT" storyboard.init
 ```
 
 ## Output

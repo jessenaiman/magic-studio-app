@@ -47,11 +47,9 @@ cargo build -p magicstudio-shell -p backstage --release --locked
 python3 scripts/install_magic.py --profile release
 ```
 
-`python3 scripts/install_magic.py --help` lists `--prefix`, `--python`, and
-`--migrate-legacy`. A custom `--python` must name an existing environment; the
-installer installs the harness and its dependencies there. `--migrate-legacy`
-changes only recognized old Magic entry points/configuration and is an explicit
-migration choice, not a prerequisite for a fresh installation.
+`python3 scripts/install_magic.py --help` lists `--prefix` and `--python`. A custom
+`--python` must name an existing environment; the installer installs the harness
+and its dependencies there.
 
 Rebuild and reinstall after embedded UI or native changes. If modifying the
 bundled frontend integrations, follow their [build instructions](../../../apps/magicstudio-shell/frontend/README.md)

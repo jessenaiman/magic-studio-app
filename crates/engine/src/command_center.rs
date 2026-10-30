@@ -462,9 +462,9 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
   json!({"id":c.id,"label":c.label,"params":c.params,"menu":c.menu,"enabled":reason.is_none(),"block_reason":reason,"long_running":c.long_running})
  }).collect();
     let mapping = json!([
- {"control":"Home / Open Project","command":"project.open","source":"apps/magicstudio-shell/src/main.rs:project_open","status":"source verified; UI transport separate"},
- {"control":"Home / New song","command":"project.intake","source":"apps/magicstudio-shell/src/main.rs:project_create","status":"source verified; shared intake command"},
- {"control":"Add transcript","command":"workshop.import_transcript","source":"apps/magicstudio-shell/ui/app.js","status":"existing UI omits captions picker"},
+ {"control":"Home / Open Project","command":"project.open","source":"apps/src-tauri/src/main.rs:project_open","status":"source verified; UI transport separate"},
+ {"control":"Home / New song","command":"project.intake","source":"apps/src-tauri/src/main.rs:project_create","status":"source verified; shared intake command"},
+ {"control":"Add transcript","command":"workshop.import_transcript","source":"apps/src-tauri/ui/app.js","status":"existing UI omits captions picker"},
  {"control":"Save","command":"project.save","source":"crates/engine/src/commands.rs","status":"backend command; not every UI save control verified"}]);
     let provenance = dir
         .and_then(|d| fs::read(d.join("transcript-provenance.json")).ok())

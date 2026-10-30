@@ -407,10 +407,7 @@ pub fn cmd_agent_config(s: &mut Session, p: &Value) -> Result<Value> {
         persist_selection(&value)?;
     }
     let root = crate::workspace::workspace_root(s);
-    value["instructions"] = json!(
-        root.join("apps/magicstudio-shell/agent.md")
-            .to_string_lossy()
-    );
+    value["instructions"] = json!(root.join("apps/src-tauri/agent.md").to_string_lossy());
     if let (Some(base), Value::Object(catalog)) = (value.as_object_mut(), agent_catalog()) {
         for (key, val) in catalog {
             base.insert(key, val);
@@ -739,8 +736,8 @@ pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
     if said.is_empty() {
         return Err(invalid("message is empty"));
     }
-    let instructions=fs::read_to_string(crate::workspace::workspace_root(s).join("apps/magicstudio-shell/agent.md"))
-        .map_err(|_|invalid("Cannot read apps/magicstudio-shell/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))?;
+    let instructions=fs::read_to_string(crate::workspace::workspace_root(s).join("apps/src-tauri/agent.md"))
+        .map_err(|_|invalid("Cannot read apps/src-tauri/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))?;
     let fresh = params["new_chat"].as_bool().unwrap_or(false);
     let task = if params["image_task"] == true {
         format!(

@@ -17,7 +17,7 @@ Resolved $PROJECT.
 
 ## Command
 ```sh
-mc "$PROJECT" workshop.files group=audio
+magic-cli --project "$PROJECT" workshop.files group=audio
 ```
 
 ## Output
