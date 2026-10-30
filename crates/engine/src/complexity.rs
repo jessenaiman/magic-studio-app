@@ -28,7 +28,7 @@ fn long_file_limit(root: &Path) -> u64 {
 }
 
 /// The sources worth measuring: the Rust engine and CLIs, the Python pipeline and
-/// scripts, and the shell UI's own JavaScript modules (vendor bundles are excluded).
+/// scripts, and the shell UI's own TypeScript/JavaScript modules (vendor bundles are excluded).
 fn scan_targets(root: &Path) -> Vec<String> {
     let mut targets: Vec<String> = vec![
         "crates/engine/src".to_string(),
@@ -38,14 +38,19 @@ fn scan_targets(root: &Path) -> Vec<String> {
         "scripts".to_string(),
     ];
     let ui_dir = root.join("apps/src-tauri/ui");
-    let Ok(entries) = std::fs::read_dir(ui_dir) else {
+    let Ok(entries) = std::fs::read_dir(&ui_dir) else {
         return targets;
     };
-    let mut ui_files: Vec<String> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("js") {
+    let all_paths: Vec<std::path::PathBuf> =
+        entries.flatten().map(|entry| entry.path()).collect();
+    let has_ts = all_paths
+        .iter()
+        .any(|p| p.extension().and_then(|ext| ext.to_str()) == Some("ts"));
+    let wanted_ext = if has_ts { "ts" } else { "js" };
+    let mut ui_files: Vec<String> = all_paths
+        .into_iter()
+        .filter_map(|path| {
+            if path.extension().and_then(|ext| ext.to_str()) != Some(wanted_ext) {
                 return None;
             }
             path.file_name()
@@ -65,7 +70,17 @@ fn lizard_csv(lizard_bin: &str, root: &Path, targets: &[String]) -> (String, Vec
         let mut command = std::process::Command::new(lizard_bin);
         command
             .current_dir(root)
-            .args(["--csv", "-l", "rust", "-l", "python", "-l", "javascript"]);
+            .args([
+                "--csv",
+                "-l",
+                "rust",
+                "-l",
+                "python",
+                "-l",
+                "javascript",
+                "-l",
+                "typescript",
+            ]);
         for target in list {
             command.arg(target);
         }
