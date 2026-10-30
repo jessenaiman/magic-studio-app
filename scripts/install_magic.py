@@ -95,12 +95,11 @@ def install_resources(
         "schemas/",
         "automation/",
         "crew/",
-        "backlot/",
         "tools/",
         ".agents/skills/",
     )
     root_files = {
-        "studio_pipeline_cli.py",
+        "apps/src-tauri/agent.md",
         "config.yaml",
         "SOURCE-ATTRIBUTION.md",
         "LICENSE",
@@ -206,8 +205,8 @@ def main():
         args.prefix / "share/icons/hicolor/256x256/apps/ai.storyteller.magicstudio.png"
     )
     icon.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(root / "apps/magicstudio-shell/icons/icon.png", icon)
-    template = (root / "apps/magicstudio-shell/magic.desktop").read_text()
+    shutil.copy2(root / "apps/src-tauri/icons/icon.png", icon)
+    template = (root / "apps/src-tauri/magic.desktop").read_text()
     desktop.write_text(
         template.replace("Name=Magic Studio", "Name=Magic ✨").replace(
             "Exec=magic %f", f'Exec="{args.prefix / "bin/magic"}" %f'

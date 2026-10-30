@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 
 const UI = new URL('../ui/', import.meta.url);
-const UI_PATH = 'apps/magicstudio-shell/ui/';
+const UI_PATH = 'apps/src-tauri/ui/';
 // --ratchet reads the index, so an edit still sitting in the working tree is not part of the check.
 const RATCHET = process.argv.includes('--ratchet');
 const read = name => RATCHET
@@ -223,7 +223,7 @@ if (process.argv.includes('--write-baseline')) {
   const baseline = (() => {
     if (process.argv.includes('--ratchet')) {
       try {
-        return JSON.parse(execSync('git show :apps/magicstudio-shell/scripts/ui-lint.baseline.json', { encoding: 'utf8' }));
+        return JSON.parse(execSync('git show :apps/src-tauri/scripts/ui-lint.baseline.json', { encoding: 'utf8' }));
       } catch { /* not staged yet */ }
     }
     return JSON.parse(fs.readFileSync(BASELINE, 'utf8'));
@@ -269,7 +269,7 @@ if (process.argv.includes('--write-baseline')) {
     } catch { staged = []; }
     let previous = {};
     try {
-      previous = JSON.parse(execSync('git show HEAD:apps/magicstudio-shell/scripts/ui-lint.baseline.json', { encoding: 'utf8' })).files ?? {};
+      previous = JSON.parse(execSync('git show HEAD:apps/src-tauri/scripts/ui-lint.baseline.json', { encoding: 'utf8' })).files ?? {};
     } catch { previous = {}; }
     for (const path of staged) {
       const file = path.split('/').slice(-1)[0];

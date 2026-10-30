@@ -87,7 +87,7 @@ fn theatre_bundle() {
             .unwrap_or_else(|e| panic!("Building the Theatre panel needs Bun on PATH: {e}"));
         assert!(
             status.success(),
-            "`bun {}` failed in apps/magicstudio-shell/frontend",
+            "`bun {}` failed in apps/src-tauri/frontend",
             args.join(" ")
         );
     };

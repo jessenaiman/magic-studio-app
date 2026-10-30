@@ -70,7 +70,7 @@ pub struct Panel {
     pub telemetry: std::collections::BTreeMap<String, Value>,
 }
 
-/// One element's entry in `apps/magicstudio-shell/ui/components.json`.
+/// One element's entry in `apps/src-tauri/ui/components.json`.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default)]
 pub struct Entry {
     pub component: String,

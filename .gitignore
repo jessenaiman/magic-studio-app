@@ -26,7 +26,7 @@ yarn-error.log*
 dist/
 build/
 *.bundle.js
-apps/magicstudio-shell/frontend/node_modules
+apps/src-tauri/frontend/node_modules
 
 # IDE / editor
 .idea/
@@ -78,7 +78,7 @@ WATCHDOG.yml
 /*.mp4
 
 # Generated from pinned Learning editor sources by the shell build.
-/apps/magicstudio-shell/ui/vendor/learning/
+/apps/src-tauri/ui/vendor/learning/
 *.pyc
 *.pyo
 *.egg-info/
@@ -161,6 +161,6 @@ venv/
 docs/codacy-report.md
 
 # Native acceptance diagnostics/projects are disposable and never source.
-apps/magicstudio-shell/acceptance/artifacts/
+apps/src-tauri/acceptance/artifacts/
 
-/apps/magicstudio-shell/ui/vendor/backstage/
+/apps/src-tauri/ui/vendor/backstage/
