@@ -330,58 +330,149 @@ pub(crate) fn write_caption_source(
     Ok(())
 }
 
-/// Deterministic binding of native timed words into the official reusable caption component.
-/// Existing edited caption sources/visual overrides are never replaced on unchanged input.
-pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
-    use sha2::{Digest, Sha256};
-    let hf = dir.join("hyperframes");
+/// The project's timed transcript with its words, when one exists.
+fn caption_words(dir: &Path) -> Result<Option<(PathBuf, Vec<Value>)>> {
     let Some(transcript) = crate::workshop::transcript_files(dir).into_iter().next() else {
-        return Ok(json!({"ready":false,"reason":"No timed transcript available"}));
+        return Ok(None);
     };
-    let raw = std::fs::read(&transcript)?;
-    let input: Value =
-        serde_json::from_slice(&raw).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let input: Value = serde_json::from_slice(&std::fs::read(&transcript)?)
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     let words = input
         .as_array()
         .or_else(|| input["words"].as_array())
         .filter(|v| !v.is_empty())
         .ok_or_else(|| {
             EngineError::InvalidParams("Native captions require existing timed words".into())
-        })?;
+        })?
+        .clone();
+    require_sound_words(&input, &words)?;
+    Ok(Some((transcript, words)))
+}
+
+/// A bare word array must carry text and ordered, finite timestamps; a document must pass the
+/// transcript checks the workshop already applies.
+fn require_sound_words(input: &Value, words: &[Value]) -> Result<()> {
     if input.is_array() {
-        if words.iter().any(|w| {
+        let unsound = words.iter().any(|w| {
             w["text"].as_str().is_none_or(|t| t.trim().is_empty())
                 || w["start"]
                     .as_f64()
                     .zip(w["end"].as_f64())
                     .is_none_or(|(a, b)| !a.is_finite() || !b.is_finite() || a < 0.0 || b < a)
-        }) {
+        });
+        if unsound {
             return Err(EngineError::InvalidParams(
                 "Native caption words require text and valid start/end timestamps".into(),
             ));
         }
-    } else {
-        let problems = crate::workshop::transcript_problems(&input);
-        if !problems.is_empty() {
-            return Err(EngineError::InvalidParams(problems.join("; ")));
-        }
+        return Ok(());
     }
-    let digest = format!(
+    let problems = crate::workshop::transcript_problems(input);
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(EngineError::InvalidParams(problems.join("; ")))
+}
+
+fn caption_digest(words: &[Value]) -> Result<String> {
+    Ok(format!(
         "{:x}",
         Sha256::digest(
             serde_json::to_vec(words).map_err(|e| EngineError::InvalidParams(e.to_string()))?
         )
-    );
+    ))
+}
+
+/// How an already-present caption source is treated.
+enum CaptionReuse {
+    /// An authored lyric track wins; report the value and touch nothing.
+    AuthorTrack(Value),
+    /// The source was edited by hand or has no fingerprint: refuse rather than overwrite.
+    Refuse,
+    /// Same input as last time: keep the file.
+    Keep,
+    /// The timing changed with matching fingerprints: rewrite.
+    Rewrite,
+}
+
+fn caption_reuse(dest: &Path, receipt: &Path, digest: &str) -> Result<CaptionReuse> {
+    if !dest.is_file() {
+        return Ok(CaptionReuse::Rewrite);
+    }
+    let state: Value = std::fs::read(receipt)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
+    if state["source_kind"] == "artist_lines" {
+        return Ok(CaptionReuse::AuthorTrack(
+            json!({"ready":state["input_sha256"]==digest,"preserved_existing_caption_track":true,"reason":"Authored lyric track retained; changed timing requires review","source":dest,"provenance":receipt}),
+        ));
+    }
+    if state["input_sha256"] == digest {
+        return Ok(CaptionReuse::Keep);
+    }
+    let actual = format!("{:x}", Sha256::digest(std::fs::read(dest)?));
+    if state["source_sha256"] != actual {
+        return Ok(CaptionReuse::Refuse);
+    }
+    Ok(CaptionReuse::Rewrite)
+}
+
+fn write_caption_receipt(
+    receipt: &Path,
+    digest: &str,
+    dest: &Path,
+    transcript: &Path,
+    words: &[Value],
+    duration: f64,
+) -> Result<()> {
+    let source_hash = format!("{:x}", Sha256::digest(std::fs::read(dest)?));
+    let receipt_bytes=serde_json::to_vec_pretty(&json!({"input_sha256":digest,"source_sha256":source_hash,"transcript":transcript,"word_count":words.len(),"duration":duration,"grouping":"provisional deterministic batches of five; no semantic or listening review claimed","source":"official caption-highlight; native caption-group classes"})).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
+    std::fs::write(receipt, receipt_bytes)?;
+    Ok(())
+}
+
+/// Add the caption composition to the official host index, once. True when it was inserted.
+fn mount_caption_track(host: &mut String, duration: f64) -> Result<bool> {
+    let marker = "data-composition-src=\"compositions/captions.html\"";
+    if host.contains(marker) {
+        return Ok(false);
+    }
+    if !host.contains("</body>") {
+        return Err(EngineError::InvalidParams("Official host has no closing body; caption source retained but no host edit performed".into()));
+    }
+    let end = host.rfind("</div>").ok_or_else(|| {
+        EngineError::InvalidParams(
+            "Official host has no composition container; no host edit performed".into(),
+        )
+    })?;
+    host.insert_str(end,&format!("<div id=\"caption-highlight\" class=\"clip\" data-composition-id=\"caption-highlight\" {marker} data-track-kind=\"captions\" data-start=\"0\" data-duration=\"{duration}\" data-track-index=\"3\" data-width=\"1920\" data-height=\"1080\"></div>\n"));
+    Ok(true)
+}
+
+/// An authored caption track that is not the reusable composition is left exactly as it is.
+fn preserved_caption_track(host: &str, word_count: usize) -> Option<Value> {
+    let authored = host.contains("data-track-kind=\"captions\"");
+    let ours = host.contains("data-composition-src=\"compositions/captions.html\"");
+    (authored && !ours).then(|| {
+        json!({"ready":false,"preserved_existing_caption_track":true,"reason":"Existing authored caption track preserved; synchronization with imported timing has not been verified","word_count":word_count})
+    })
+}
+
+/// Deterministic binding of native timed words into the official reusable caption component.
+/// Existing edited caption sources/visual overrides are never replaced on unchanged input.
+pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
+    let hf = dir.join("hyperframes");
+    let Some((transcript, words)) = caption_words(dir)? else {
+        return Ok(json!({"ready":false,"reason":"No timed transcript available"}));
+    };
+    let digest = caption_digest(&words)?;
     let dest = hf.join("compositions/captions.html");
     let receipt = hf.join(".magicstudio-captions.json");
     let entry = hf.join("index.html");
     let mut host = std::fs::read_to_string(&entry)?;
-    if host.contains("data-track-kind=\"captions\"")
-        && !host.contains("data-composition-src=\"compositions/captions.html\"")
-    {
-        return Ok(
-            json!({"ready":false,"preserved_existing_caption_track":true,"reason":"Existing authored caption track preserved; synchronization with imported timing has not been verified","word_count":words.len()}),
-        );
+    if let Some(value) = preserved_caption_track(&host, words.len()) {
+        return Ok(value);
     }
     let duration = probe_audio_duration(s.song_audio.as_deref()).max(
         words
@@ -390,47 +481,25 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
             .fold(0.0, f64::max),
     );
     let reused = dest.is_file();
-    let mut changed = !reused;
-    if reused {
-        let state: Value = std::fs::read(&receipt)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or(Value::Null);
-        if state["source_kind"] == "artist_lines" {
-            return Ok(
-                json!({"ready":state["input_sha256"]==digest,"preserved_existing_caption_track":true,"reason":"Authored lyric track retained; changed timing requires review","source":dest,"provenance":receipt}),
-            );
-        }
-        changed = state["input_sha256"] != digest;
-        let actual = format!("{:x}", Sha256::digest(std::fs::read(&dest)?));
-        if changed && state["source_sha256"] != actual {
+    match caption_reuse(&dest, &receipt, &digest)? {
+        CaptionReuse::AuthorTrack(value) => return Ok(value),
+        CaptionReuse::Refuse => {
             return Err(EngineError::InvalidParams(format!(
                 "Existing caption source {} was edited or has no source fingerprint; preserved without overwrite. Review it before replacing timing",
                 dest.display()
             )));
         }
-    }
-    if changed {
-        let groups: Vec<[usize; 2]> = (0..words.len())
-            .step_by(5)
-            .map(|start| [start, (start + 4).min(words.len() - 1)])
-            .collect();
-        write_caption_source(&dest, words, &groups, duration)?;
-        let source_hash = format!("{:x}", Sha256::digest(std::fs::read(&dest)?));
-        let receipt_bytes=serde_json::to_vec_pretty(&json!({"input_sha256":digest,"source_sha256":source_hash,"transcript":transcript,"word_count":words.len(),"duration":duration,"grouping":"provisional deterministic batches of five; no semantic or listening review claimed","source":"official caption-highlight; native caption-group classes"})).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
-        std::fs::write(&receipt, receipt_bytes)?;
-    }
-    let marker = "data-composition-src=\"compositions/captions.html\"";
-    if !host.contains(marker) {
-        if !host.contains("</body>") {
-            return Err(EngineError::InvalidParams("Official host has no closing body; caption source retained but no host edit performed".into()));
+        CaptionReuse::Keep => {}
+        CaptionReuse::Rewrite => {
+            let groups: Vec<[usize; 2]> = (0..words.len())
+                .step_by(5)
+                .map(|start| [start, (start + 4).min(words.len() - 1)])
+                .collect();
+            write_caption_source(&dest, &words, &groups, duration)?;
+            write_caption_receipt(&receipt, &digest, &dest, &transcript, &words, duration)?;
         }
-        let end = host.rfind("</div>").ok_or_else(|| {
-            EngineError::InvalidParams(
-                "Official host has no composition container; no host edit performed".into(),
-            )
-        })?;
-        host.insert_str(end,&format!("<div id=\"caption-highlight\" class=\"clip\" data-composition-id=\"caption-highlight\" {marker} data-track-kind=\"captions\" data-start=\"0\" data-duration=\"{duration}\" data-track-index=\"3\" data-width=\"1920\" data-height=\"1080\"></div>\n"));
+    }
+    if mount_caption_track(&mut host, duration)? {
         std::fs::write(&entry, host)?;
     }
     Ok(
@@ -438,8 +507,8 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
     )
 }
 
-pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
+/// The target this call names, refused when it is not the supported one.
+fn video_target_of(s: &Session, params: &Value) -> Result<String> {
     let target = params
         .get("target")
         .and_then(Value::as_str)
@@ -450,6 +519,125 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
             "Magic Studio uses HyperFrames".into(),
         ));
     }
+    Ok(target)
+}
+
+/// The official timeline of the contained project, as JSON.
+fn native_timeline(dir: &Path, params: &Value) -> Result<Value> {
+    let hf = dir.join("hyperframes");
+    let runtime = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
+    let native = run_tool_in(
+        dir,
+        runtime.to_str().ok_or_else(|| {
+            EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
+        })?,
+        &["timeline".into(), hf.to_string_lossy().into_owned(), "--json".into()],
+    )?;
+    serde_json::from_str(&native)
+        .map_err(|e| EngineError::InvalidParams(format!("HyperFrames timeline: {e}")))
+}
+
+/// A connected song must appear as a nonempty audio track in the official timeline.
+fn require_audio_track(s: &Session, native: &Value) -> Result<()> {
+    let has_audio = native["timeline"]["tracks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|t| {
+            t["kind"] == "audio" && t["rows"].as_array().is_some_and(|rows| !rows.is_empty())
+        });
+    if s.song_audio.is_some() && !has_audio {
+        return Err(EngineError::InvalidParams(
+            "HyperFrames project has no audio track; upload was not completed".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// The timeline's own copy of the recording, when it sits inside the contained project.
+fn contained_audio(dir: &Path, native: &Value) -> Option<PathBuf> {
+    let hf = dir.join("hyperframes");
+    native["timeline"]["tracks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|track| track["kind"] == "audio")
+        .flat_map(|track| track["rows"].as_array().into_iter().flatten())
+        .filter_map(|row| row["src"].as_str())
+        .map(|src| hf.join(src))
+        .find(|path| {
+            path.is_file()
+                && path
+                    .canonicalize()
+                    .ok()
+                    .is_some_and(|p| hf.canonicalize().ok().is_some_and(|root| p.starts_with(root)))
+        })
+}
+
+/// Point the session at the timeline's contained recording, refusing a first import without one.
+fn adopt_audio(s: &mut Session, dir: &Path, native: &Value, reused: bool) -> Result<()> {
+    let contained = contained_audio(dir, native);
+    if !reused && s.song_audio.is_some() {
+        let copied = contained.ok_or_else(|| {
+            EngineError::InvalidParams(
+                "HyperFrames did not return a contained copy of the uploaded recording; project was not marked imported".into(),
+            )
+        })?;
+        s.song_audio = Some(copied);
+        return Ok(());
+    }
+    if let Some(contained) = contained
+        && s.song_audio
+            .as_ref()
+            .is_none_or(|a| !a.starts_with(dir.join("hyperframes")))
+    {
+        s.song_audio = Some(contained);
+    }
+    Ok(())
+}
+
+/// The status this initialization reports, with captions and the project path recorded.
+fn init_status(
+    s: &mut Session,
+    dir: &Path,
+    params: &Value,
+    target: &str,
+    native: Value,
+    created: &Path,
+    reused: bool,
+) -> Result<Value> {
+    let mut status = workshop_status(s)?;
+    status["native_timeline"] = native;
+    status["music_assembly"] = Value::Null;
+    status["captions"] = if params["captions"] != false {
+        ensure_native_captions(s, dir)?
+    } else {
+        Value::Null
+    };
+    status["initialized"] = json!(created);
+    status["reused_existing_project"] = json!(reused);
+    status["video_complete"] = json!(false);
+    status["song_imported"] = json!(!reused && s.song_audio.is_some());
+    s.video_project_path = target_project_path(s, dir, target);
+    status["video_project_path"] = json!(s.video_project_path);
+    if s.project_path.is_some() {
+        crate::project::write_project_file(s)?;
+    }
+    status["initialization_scope"] = json!(
+        "Official editable project with linked song and supplied timing when available; authored visuals and rendered output are separate steps"
+    );
+    if !reused {
+        let hf = dir.join("hyperframes");
+        status["runtime_executable"] =
+            json!(resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?);
+    }
+    Ok(status)
+}
+
+/// Create the contained project (or reopen it) and report what the official tool says about it.
+pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    let target = video_target_of(s, params)?;
     if params["assemble"] == true {
         return Err(EngineError::InvalidParams("The installed HyperFrames workflow retired the music-to-video assembler. Existing project files were preserved. Author the contained HyperFrames compositions with the current /hyperframes skill; video.init only creates or reopens the project.".into()));
     }
@@ -460,10 +648,10 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
         ));
     }
     let reused = existed;
-    let created = if !reused {
-        init_video_project(s, &dir, params["resolve_video_cli"].as_str())?
-    } else {
+    let created = if reused {
         ensure_video_target_project(s, &dir, &target)?
+    } else {
+        init_video_project(s, &dir, params["resolve_video_cli"].as_str())?
     };
     if !created.is_file() {
         return Err(EngineError::InvalidParams(format!(
@@ -472,92 +660,88 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
         )));
     }
     ensure_music_audio_role(&dir.join("hyperframes"))?;
-    let runtime = resolve_video_cli(
-        params["resolve_video_cli"].as_str(),
-        Some(&dir.join("hyperframes")),
-    )?;
-    let native = run_tool_in(
-        &dir,
-        runtime.to_str().ok_or_else(|| {
-            EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
-        })?,
-        &[
-            "timeline".into(),
-            dir.join("hyperframes").to_string_lossy().into_owned(),
-            "--json".into(),
-        ],
-    )?;
-    let native: Value = serde_json::from_str(&native)
-        .map_err(|e| EngineError::InvalidParams(format!("HyperFrames timeline: {e}")))?;
-    if s.song_audio.is_some()
-        && !native["timeline"]["tracks"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|t| {
-                t["kind"] == "audio" && t["rows"].as_array().is_some_and(|rows| !rows.is_empty())
-            })
-    {
-        return Err(EngineError::InvalidParams(
-            "HyperFrames project has no audio track; upload was not completed".into(),
-        ));
-    }
-    let contained_audio = native["timeline"]["tracks"]
+    let native = native_timeline(&dir, params)?;
+    require_audio_track(s, &native)?;
+    adopt_audio(s, &dir, &native, reused)?;
+    init_status(s, &dir, params, &target, native, &created, reused)
+}
+
+/// The source-motion link for a saved rig track, without loading it into the live selection.
+fn source_motion_request(s: &Session, params: &Value) -> Result<Value> {
+    let character = params["character"].as_str().ok_or_else(|| {
+        EngineError::InvalidParams("Source motion needs character and track".into())
+    })?;
+    let track = params["track"].as_str().ok_or_else(|| {
+        EngineError::InvalidParams("Source motion needs character and track".into())
+    })?;
+    let asset = s
+        .project_assets
+        .iter()
+        .find(|a| a.id == character)
+        .ok_or_else(|| EngineError::InvalidParams("Source character is not registered".into()))?;
+    let path = asset.path.as_ref().ok_or_else(|| {
+        EngineError::InvalidParams("Source character has no saved rig".into())
+    })?;
+    let bytes = std::fs::read(path)?;
+    let source: Value = serde_json::from_slice(&bytes).map_err(|_| {
+        EngineError::InvalidParams("Source motion needs a saved rig JSON".into())
+    })?;
+    let clip = source["tracks"]
         .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|track| track["kind"] == "audio")
-        .flat_map(|track| track["rows"].as_array().into_iter().flatten())
-        .filter_map(|row| row["src"].as_str())
-        .map(|src| dir.join("hyperframes").join(src))
-        .find(|path| {
-            path.is_file()
-                && path.canonicalize().ok().is_some_and(|p| {
-                    dir.join("hyperframes")
-                        .canonicalize()
-                        .ok()
-                        .is_some_and(|root| p.starts_with(root))
-                })
-        });
-    if !reused && s.song_audio.is_some() {
-        let copied = contained_audio.ok_or_else(|| {
+        .and_then(|tracks| tracks.iter().find(|t| t["id"] == track))
+        .ok_or_else(|| {
             EngineError::InvalidParams(
-                "HyperFrames did not return a contained copy of the uploaded recording; project was not marked imported".into(),
+                "Save this named motion track in the rig before linking it to the video".into(),
             )
         })?;
-        s.song_audio = Some(copied);
-    } else if let Some(contained) = contained_audio
-        && s.song_audio.as_ref().is_none_or(|a| !a.starts_with(dir.join("hyperframes")))
+    if !clip["duration"]
+        .as_f64()
+        .is_some_and(|d| d.is_finite() && d > 0.0)
     {
-        s.song_audio = Some(contained);
+        return Err(EngineError::InvalidParams(
+            "Saved source track has no valid duration".into(),
+        ));
     }
-    let mut status = workshop_status(s)?;
-    status["native_timeline"] = native;
-    status["music_assembly"] = Value::Null;
-    status["captions"] = if params["captions"] != false {
-        ensure_native_captions(s, &dir)?
-    } else {
-        Value::Null
-    };
-    status["initialized"] = json!(created);
-    status["reused_existing_project"] = json!(reused);
-    status["video_complete"] = json!(false);
-    status["song_imported"] = json!(!reused && s.song_audio.is_some());
-    s.video_project_path = target_project_path(s, &dir, &target);
-    status["video_project_path"] = json!(s.video_project_path);
-    if s.project_path.is_some() {
-        crate::project::write_project_file(s)?;
+    Ok(json!({"source_motion":{"character":character,"track":track,"duration":clip["duration"],
+        "spec":path,"canvas":source["canvas"],"rig_sha256":format!("{:x}",Sha256::digest(&bytes)),"relationship":"declared source clip; rendered media is a separate artifact"}}))
+}
+
+/// Place a rendered track in HyperFrames without recreating the composition.
+pub fn cmd_video_place_track(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    if s.video_target != "hyperframes" {
+        return Err(EngineError::InvalidParams(
+            "Select HyperFrames before placing this track".into(),
+        ));
     }
-    status["initialization_scope"] = json!(
-        "Official editable project with linked song and supplied timing when available; authored visuals and rendered output are separate steps"
-    );
-    if !reused {
-        status["runtime_executable"] = json!(resolve_video_cli(
-            params["resolve_video_cli"].as_str(),
-            Some(&dir.join("hyperframes"))
-        )?);
+    if params.get("blender_job").is_some() && params.get("animation_job").is_some() {
+        return Err(EngineError::InvalidParams(
+            "Pass only one animation job selector".into(),
+        ));
     }
-    Ok(status)
+    let mut request = params.clone();
+    if let Some(job) = params
+        .get("animation_job")
+        .or_else(|| params.get("blender_job"))
+    {
+        request = animation_job_request(s, params, job)?;
+    } else if params.get("character").is_some() || params.get("track").is_some() {
+        let motion = source_motion_request(s, params)?;
+        request["source_motion"] = motion["source_motion"].clone();
+    }
+    let script = crate::workspace::workspace_root(s).join("pipeline/place_video_track.py");
+    let output = run_tool_in(
+        &dir,
+        "python3",
+        &[
+            script.to_string_lossy().into_owned(),
+            "--project".into(),
+            dir.to_string_lossy().into_owned(),
+            "--request".into(),
+            request.to_string(),
+        ],
+    )?;
+    serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))
 }
 
 pub fn cmd_video_server_start(s: &mut Session, params: &Value) -> Result<Value> {
@@ -654,81 +838,6 @@ pub fn sync_placed_tracks_duration(
     sync_placed_tracks_media_and_duration(s, character, track, None, Some(new_duration))
 }
 
-/// Place a rendered track in HyperFrames without recreating the composition.
-pub fn cmd_video_place_track(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
-    if s.video_target != "hyperframes" {
-        return Err(EngineError::InvalidParams(
-            "Select HyperFrames before placing this track".into(),
-        ));
-    }
-    let mut request = params.clone();
-    if params.get("blender_job").is_some() && params.get("animation_job").is_some() {
-        return Err(EngineError::InvalidParams(
-            "Pass only one animation job selector".into(),
-        ));
-    }
-    if let Some(job) = params
-        .get("animation_job")
-        .or_else(|| params.get("blender_job"))
-    {
-        request = animation_job_request(s, params, job)?;
-    } else if params.get("character").is_some() || params.get("track").is_some() {
-        let character = params["character"].as_str().ok_or_else(|| {
-            EngineError::InvalidParams("Source motion needs character and track".into())
-        })?;
-        let track = params["track"].as_str().ok_or_else(|| {
-            EngineError::InvalidParams("Source motion needs character and track".into())
-        })?;
-        // Inspect the saved rig without loading it into the live selection or rewriting project metadata.
-        let asset = s
-            .project_assets
-            .iter()
-            .find(|a| a.id == character)
-            .ok_or_else(|| {
-                EngineError::InvalidParams("Source character is not registered".into())
-            })?;
-        let path = asset.path.as_ref().ok_or_else(|| {
-            EngineError::InvalidParams("Source character has no saved rig".into())
-        })?;
-        let bytes = std::fs::read(path)?;
-        let source: Value = serde_json::from_slice(&bytes).map_err(|_| {
-            EngineError::InvalidParams("Source motion needs a saved rig JSON".into())
-        })?;
-        let clip = source["tracks"]
-            .as_array()
-            .and_then(|tracks| tracks.iter().find(|t| t["id"] == track))
-            .ok_or_else(|| {
-                EngineError::InvalidParams(
-                    "Save this named motion track in the rig before linking it to the video".into(),
-                )
-            })?;
-        if !clip["duration"]
-            .as_f64()
-            .is_some_and(|d| d.is_finite() && d > 0.0)
-        {
-            return Err(EngineError::InvalidParams(
-                "Saved source track has no valid duration".into(),
-            ));
-        }
-        request["source_motion"] = json!({"character":character,"track":track,"duration":clip["duration"],
-            "spec":path,"canvas":source["canvas"],"rig_sha256":format!("{:x}",Sha256::digest(&bytes)),"relationship":"declared source clip; rendered media is a separate artifact"});
-    }
-    let script = crate::workspace::workspace_root(s).join("pipeline/place_video_track.py");
-    let output = run_tool_in(
-        &dir,
-        "python3",
-        &[
-            script.to_string_lossy().into_owned(),
-            "--project".into(),
-            dir.to_string_lossy().into_owned(),
-            "--request".into(),
-            request.to_string(),
-        ],
-    )?;
-    serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))
-}
-
 fn path_exists(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok()
 }
@@ -785,28 +894,29 @@ fn snapshot_times(params: &Value) -> Result<Vec<f64>> {
     Ok(values)
 }
 
-/// Snapshot exact requested times through the official CLI. A single `out` is a PNG path;
-/// multiple times use `out` as a new directory containing the CLI's PNG names.
-pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
+/// The contained project a snapshot reads, after the target and existence checks.
+fn snapshot_project(s: &Session, params: &Value) -> Result<PathBuf> {
     let dir = project_dir(s)?;
     let target = params
         .get("target")
         .and_then(Value::as_str)
-        .unwrap_or(&s.video_target)
-        .to_string();
+        .unwrap_or(&s.video_target);
     if target != "hyperframes" {
         return Err(EngineError::InvalidParams(
             "video.snapshot requires target=hyperframes".into(),
         ));
     }
-    let hf = dir.join("hyperframes");
-    if !hf.join("index.html").is_file() {
+    if !dir.join("hyperframes").join("index.html").is_file() {
         return Err(EngineError::InvalidParams(
             "No HyperFrames project in this song. Run video.init with target=hyperframes first."
                 .into(),
         ));
     }
-    let times = snapshot_times(params)?;
+    Ok(dir)
+}
+
+/// The snapshot destination, refused when it already exists.
+fn snapshot_out(s: &Session, params: &Value) -> Result<PathBuf> {
     let out = params
         .get("out")
         .and_then(Value::as_str)
@@ -818,39 +928,33 @@ pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
             out_path.display()
         )));
     }
-    let parent = out_path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let cli = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
-    let stage = unique_stage_dir(parent)?;
-    let at_arg = times
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(",");
-    let output = std::process::Command::new(&cli)
+    Ok(out_path)
+}
+
+/// Run the official snapshot into the staging directory; returns both streams.
+fn run_snapshot(cli: &Path, hf: &Path, stage: &Path, at: &str) -> Result<(String, String)> {
+    let output = std::process::Command::new(cli)
         .args([
             "snapshot".into(),
             hf.to_string_lossy().into_owned(),
             "--at".into(),
-            at_arg,
+            at.to_string(),
             "--no-end".into(),
             "--describe".into(),
             "false".into(),
             "--output".into(),
             stage.to_string_lossy().into_owned(),
         ])
-        .current_dir(&hf)
+        .current_dir(hf)
         .output()
         .map_err(|e| {
-            let _ = std::fs::remove_dir_all(&stage);
+            let _ = std::fs::remove_dir_all(stage);
             EngineError::ExternalTool(cli.display().to_string(), e.to_string())
         })?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     if !output.status.success() {
-        let _ = std::fs::remove_dir_all(&stage);
+        let _ = std::fs::remove_dir_all(stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
             format!(
@@ -859,34 +963,92 @@ pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
             ),
         ));
     }
-    let mut pngs = std::fs::read_dir(&stage)?
+    Ok((stdout, stderr))
+}
+
+fn stage_pngs(stage: &Path) -> Result<Vec<PathBuf>> {
+    let mut pngs = std::fs::read_dir(stage)?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")))
         .collect::<Vec<_>>();
     pngs.sort();
-    if pngs.len() != times.len()
-        || pngs
+    Ok(pngs)
+}
+
+/// Every requested time must have produced one non-empty PNG.
+fn require_snapshot_pngs(
+    pngs: &[PathBuf],
+    expected: usize,
+    stage: &Path,
+    cli: &Path,
+    logs: (&str, &str),
+) -> Result<()> {
+    let (stdout, stderr) = logs;
+    if pngs.len() == expected
+        && !pngs
             .iter()
             .any(|p| std::fs::metadata(p).map_or(true, |m| m.len() == 0))
     {
-        let _ = std::fs::remove_dir_all(&stage);
+        return Ok(());
+    }
+    let _ = std::fs::remove_dir_all(stage);
+    Err(EngineError::ExternalTool(
+        cli.display().to_string(),
+        format!(
+            "snapshot produced {} non-empty PNGs for {expected} requested times; stdout: {stdout}; stderr: {stderr}",
+            pngs.len()
+        ),
+    ))
+}
+
+/// Publish one PNG without overwriting, by hard link; a failed link drops the staging directory.
+fn publish_one(
+    pngs: &[PathBuf],
+    out_path: &Path,
+    stage: &Path,
+    cli: &Path,
+    logs: (&str, &str),
+) -> Result<PathBuf> {
+    let (stdout, stderr) = logs;
+    if let Some(p) = out_path.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    if let Err(e) = std::fs::hard_link(&pngs[0], out_path) {
+        let _ = std::fs::remove_dir_all(stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
             format!(
-                "snapshot produced {} non-empty PNGs for {} requested times; stdout: {stdout}; stderr: {stderr}",
-                pngs.len(),
-                times.len()
+                "could not publish snapshot without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"
             ),
         ));
     }
+    Ok(out_path.to_path_buf())
+}
+
+/// Publish every PNG into a new directory, unlinking partial work if one link fails.
+fn publish_many(
+    pngs: &[PathBuf],
+    out_path: &Path,
+    cli: &Path,
+    stage: &Path,
+    logs: (&str, &str),
+) -> Result<Vec<PathBuf>> {
+    let (stdout, stderr) = logs;
+    std::fs::create_dir(out_path).map_err(|e| {
+        EngineError::ExternalTool(
+            cli.display().to_string(),
+            format!("could not create snapshot output directory without overwrite: {e}"),
+        )
+    })?;
     let mut paths = Vec::with_capacity(pngs.len());
-    if times.len() == 1 {
-        let source = &pngs[0];
-        if let Some(p) = out_path.parent() {
-            std::fs::create_dir_all(p)?;
-        }
-        if let Err(e) = std::fs::hard_link(source, &out_path) {
-            let _ = std::fs::remove_dir_all(&stage);
+    for source in pngs {
+        let target = out_path.join(source.file_name().unwrap_or_default());
+        if let Err(e) = std::fs::hard_link(source, &target) {
+            for published in &paths {
+                let _ = std::fs::remove_file(published);
+            }
+            let _ = std::fs::remove_dir(out_path);
+            let _ = std::fs::remove_dir_all(stage);
             return Err(EngineError::ExternalTool(
                 cli.display().to_string(),
                 format!(
@@ -894,32 +1056,38 @@ pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
                 ),
             ));
         }
-        paths.push(out_path.clone());
-    } else {
-        std::fs::create_dir(&out_path).map_err(|e| {
-            EngineError::ExternalTool(
-                cli.display().to_string(),
-                format!("could not create snapshot output directory without overwrite: {e}"),
-            )
-        })?;
-        for source in &pngs {
-            let target = out_path.join(source.file_name().unwrap_or_default());
-            if let Err(e) = std::fs::hard_link(source, &target) {
-                for published in &paths {
-                    let _ = std::fs::remove_file(published);
-                }
-                let _ = std::fs::remove_dir(&out_path);
-                let _ = std::fs::remove_dir_all(&stage);
-                return Err(EngineError::ExternalTool(
-                    cli.display().to_string(),
-                    format!(
-                        "could not publish snapshot without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"
-                    ),
-                ));
-            }
-            paths.push(target);
-        }
+        paths.push(target);
     }
+    Ok(paths)
+}
+
+/// Snapshot exact requested times through the official CLI. A single `out` is a PNG path;
+/// multiple times use `out` as a new directory containing the CLI's PNG names.
+pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = snapshot_project(s, params)?;
+    let times = snapshot_times(params)?;
+    let out_path = snapshot_out(s, params)?;
+    let parent = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let hf = dir.join("hyperframes");
+    let cli = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
+    let stage = unique_stage_dir(parent)?;
+    let at_arg = times
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let (stdout, stderr) = run_snapshot(&cli, &hf, &stage, &at_arg)?;
+    let logs = (stdout.as_str(), stderr.as_str());
+    let pngs = stage_pngs(&stage)?;
+    require_snapshot_pngs(&pngs, times.len(), &stage, &cli, logs)?;
+    let paths = if times.len() == 1 {
+        vec![publish_one(&pngs, &out_path, &stage, &cli, logs)?]
+    } else {
+        publish_many(&pngs, &out_path, &cli, &stage, logs)?
+    };
     let _ = std::fs::remove_dir_all(&stage);
     let at_result = if times.len() == 1 {
         json!(times[0])
@@ -1144,94 +1312,131 @@ fn render_video(
     }))
 }
 
-/// Resolve a completed project-local animation receipt: verified clip, canvas rect mapped to the
-/// rendered world frame, and the provenance frozen at render time (the current rig is not rehashed).
-fn animation_job_request(s: &mut Session, params: &Value, job: &Value) -> Result<Value> {
-    let invalid = |m: String| EngineError::InvalidParams(m);
+/// The receipt of a completed, full-length animation job.
+fn completed_receipt(s: &mut Session, params: &Value, job: &Value) -> Result<Value> {
     if params.get("path").is_some() {
-        return Err(invalid(
+        return Err(EngineError::InvalidParams(
             "Pass animation_job/blender_job or path, not both".into(),
         ));
     }
     let receipt = crate::animation_jobs::cmd_animation_status(s, &json!({"job":job}))?;
     if receipt["state"] != "completed" {
-        return Err(invalid(format!(
+        return Err(EngineError::InvalidParams(format!(
             "Animation job is {}, not completed",
             receipt["state"]
         )));
     }
     if receipt["partial"] != false {
-        return Err(invalid(
+        return Err(EngineError::InvalidParams(
             "Animation job is a shortened preview; render the full track before placing it".into(),
         ));
     }
-    let jobs = s
-        .project_path
+    Ok(receipt)
+}
+
+fn job_folder(s: &Session, receipt: &Value) -> Result<PathBuf> {
+    s.project_path
         .as_ref()
         .and_then(|p| p.parent())
         .map(|p| {
             p.join("animation/blender-jobs")
                 .join(receipt["job"].as_str().unwrap_or_default())
         })
-        .ok_or_else(|| invalid("Open a .magic project first".into()))?;
+        .ok_or_else(|| EngineError::InvalidParams("Open a .magic project first".into()))
+}
+
+/// The clip inside its own job folder, whose bytes still match the receipt hash.
+fn verified_clip(receipt: &Value, jobs: &Path) -> Result<PathBuf> {
     let clip = PathBuf::from(
         receipt["clip"]
             .as_str()
-            .ok_or_else(|| invalid("Receipt has no clip".into()))?,
+            .ok_or_else(|| EngineError::InvalidParams("Receipt has no clip".into()))?,
     );
-    if clip.parent() != Some(jobs.as_path()) {
-        return Err(invalid("Receipt clip is outside its job folder".into()));
+    if clip.parent() != Some(jobs) {
+        return Err(EngineError::InvalidParams(
+            "Receipt clip is outside its job folder".into(),
+        ));
     }
     // Stream the hash: a long clip must not be loaded into Studio memory.
     let mut hasher = Sha256::new();
     std::io::copy(&mut std::fs::File::open(&clip)?, &mut hasher)?;
     if receipt["clip_sha256"].as_str() != Some(format!("{:x}", hasher.finalize()).as_str()) {
-        return Err(invalid(
+        return Err(EngineError::InvalidParams(
             "Clip does not match its receipt clip_sha256".into(),
         ));
     }
+    Ok(clip)
+}
+
+/// Caller-supplied character and track must name what was rendered.
+fn check_job_identity(params: &Value, receipt: &Value) -> Result<()> {
     for key in ["character", "track"] {
         if let Some(v) = params.get(key)
             && *v != receipt[key]
         {
-            return Err(invalid(format!(
+            return Err(EngineError::InvalidParams(format!(
                 "{key} does not match the rendered job ({})",
                 receipt[key]
             )));
         }
     }
-    let number = |v: &Value, what: &str| {
-        v.as_f64()
-            .filter(|n| n.is_finite())
-            .ok_or_else(|| invalid(format!("{what} is missing or invalid")))
-    };
-    let positive = |v: &Value, what: &str| {
-        number(v, what).and_then(|n| {
-            if n > 0.0 {
-                Ok(n)
-            } else {
-                Err(invalid(format!("{what} must be positive")))
-            }
-        })
-    };
+    Ok(())
+}
+
+fn receipt_number(v: &Value, what: &str) -> Result<f64> {
+    v.as_f64()
+        .filter(|n| n.is_finite())
+        .ok_or_else(|| EngineError::InvalidParams(format!("{what} is missing or invalid")))
+}
+
+fn receipt_positive(v: &Value, what: &str) -> Result<f64> {
+    let n = receipt_number(v, what)?;
+    if n > 0.0 {
+        return Ok(n);
+    }
+    Err(EngineError::InvalidParams(format!("{what} must be positive")))
+}
+
+/// The numbers the caller and the receipt agree on before any media is probed.
+struct ClipFacts {
+    rate: f64,
+    duration: f64,
+    seconds: f64,
+    fps: f64,
+    width: f64,
+    height: f64,
+}
+
+fn clip_facts(params: &Value, receipt: &Value) -> Result<ClipFacts> {
     let rate = params
         .get("playback_rate")
-        .map_or(Ok(1.0), |v| positive(v, "playback_rate"))?;
+        .map_or(Ok(1.0), |v| receipt_positive(v, "playback_rate"))?;
     if rate > 16.0 {
-        return Err(invalid("playback_rate must be in (0,16]".into()));
+        return Err(EngineError::InvalidParams(
+            "playback_rate must be in (0,16]".into(),
+        ));
     }
-    let duration = positive(&params["duration"], "duration")?;
-    let (seconds, fps) = (
-        positive(&receipt["clip_seconds"], "Receipt clip_seconds")?,
-        positive(&receipt["fps"], "Receipt fps")?,
-    );
-    let (width, height) = (
-        positive(&receipt["width"], "Receipt width")?,
-        positive(&receipt["height"], "Receipt height")?,
-    );
-    // The receipt must describe the actual media: dimensions exact, rate and duration within a frame.
+    Ok(ClipFacts {
+        rate,
+        duration: receipt_positive(&params["duration"], "duration")?,
+        seconds: receipt_positive(&receipt["clip_seconds"], "Receipt clip_seconds")?,
+        fps: receipt_positive(&receipt["fps"], "Receipt fps")?,
+        width: receipt_positive(&receipt["width"], "Receipt width")?,
+        height: receipt_positive(&receipt["height"], "Receipt height")?,
+    })
+}
+
+struct MediaFacts {
+    fps: f64,
+    seconds: f64,
+    width: f64,
+    height: f64,
+}
+
+/// What ffprobe says the clip actually is.
+fn probe_media(jobs: &Path, clip: &Path) -> Result<MediaFacts> {
     let probe = run_tool_in(
-        &jobs,
+        jobs,
         "ffprobe",
         &[
             "-v",
@@ -1248,60 +1453,70 @@ fn animation_job_request(s: &mut Session, params: &Value, job: &Value) -> Result
         .chain([clip.to_string_lossy().into_owned()])
         .collect::<Vec<_>>(),
     )?;
-    let probe: Value =
-        serde_json::from_str(&probe).map_err(|e| invalid(format!("ffprobe output: {e}")))?;
+    let probe: Value = serde_json::from_str(&probe)
+        .map_err(|e| EngineError::InvalidParams(format!("ffprobe output: {e}")))?;
     let stream = &probe["streams"][0];
-    let media_fps = stream["r_frame_rate"]
+    let fps = stream["r_frame_rate"]
         .as_str()
         .and_then(|r| r.split_once('/'))
         .and_then(|(n, d)| Some(n.parse::<f64>().ok()? / d.parse::<f64>().ok()?))
         .filter(|f| f.is_finite() && *f > 0.0);
-    let media_seconds = probe["format"]["duration"]
+    let seconds = probe["format"]["duration"]
         .as_str()
         .and_then(|d| d.parse::<f64>().ok());
-    let (Some(media_fps), Some(media_seconds), Some(media_w), Some(media_h)) = (
-        media_fps,
-        media_seconds,
+    let (Some(fps), Some(seconds), Some(width), Some(height)) = (
+        fps,
+        seconds,
         stream["width"].as_f64(),
         stream["height"].as_f64(),
     ) else {
-        return Err(invalid(
+        return Err(EngineError::InvalidParams(
             "ffprobe could not read the clip's frame rate, duration or dimensions".into(),
         ));
     };
-    if media_w != width
-        || media_h != height
-        || (media_fps - fps).abs() > fps * 1e-3
-        || (media_seconds - seconds).abs() > 1.0 / fps
-    {
-        return Err(invalid(format!(
-            "Clip media ({media_w}x{media_h}, {media_fps:.3}fps, {media_seconds:.3}s) does not match its receipt ({width}x{height}, {fps:.3}fps, {seconds:.3}s)"
-        )));
+    Ok(MediaFacts {
+        fps,
+        seconds,
+        width,
+        height,
+    })
+}
+
+/// The receipt must describe the actual media: dimensions exact, rate and duration within a frame.
+fn require_media_matches(facts: &ClipFacts, media: &MediaFacts) -> Result<()> {
+    let matches = media.width == facts.width
+        && media.height == facts.height
+        && (media.fps - facts.fps).abs() <= facts.fps * 1e-3
+        && (media.seconds - facts.seconds).abs() <= 1.0 / facts.fps;
+    if matches {
+        return Ok(());
     }
-    if duration > seconds / rate + 1e-6 {
-        return Err(invalid(format!(
-            "Clip covers {:.3}s at playback_rate {rate}; requested duration is {duration}s",
-            seconds / rate
-        )));
-    }
-    // rect frames the original canvas with object-fit: contain; the clip itself shows world_rect.
-    let values = |v: &Value, n: usize, what: &str| -> Result<Vec<f64>> {
-        let a = v
-            .as_array()
-            .filter(|a| a.len() == n)
-            .ok_or_else(|| invalid(format!("{what} must have {n} numbers")))?;
-        a.iter().map(|x| number(x, what)).collect()
-    };
+    Err(EngineError::InvalidParams(format!(
+        "Clip media ({}x{}, {:.3}fps, {:.3}s) does not match its receipt ({}x{}, {:.3}fps, {:.3}s)",
+        media.width, media.height, media.fps, media.seconds, facts.width, facts.height, facts.fps, facts.seconds
+    )))
+}
+
+fn number_list(v: &Value, n: usize, what: &str) -> Result<Vec<f64>> {
+    let values = v
+        .as_array()
+        .filter(|a| a.len() == n)
+        .ok_or_else(|| EngineError::InvalidParams(format!("{what} must have {n} numbers")))?;
+    values.iter().map(|x| receipt_number(x, what)).collect()
+}
+
+/// The world-frame rect: the canvas fitted with `object-fit: contain` inside the requested box.
+fn rect_mapping(params: &Value, receipt: &Value, facts: &ClipFacts) -> Result<Value> {
     let (c, world, rect) = (
-        values(&receipt["canvas"], 2, "Receipt canvas")?,
-        values(&receipt["world_rect"], 4, "Receipt world_rect")?,
-        values(&params["rect"], 4, "rect")?,
+        number_list(&receipt["canvas"], 2, "Receipt canvas")?,
+        number_list(&receipt["world_rect"], 4, "Receipt world_rect")?,
+        number_list(&params["rect"], 4, "rect")?,
     );
     let (ww, wh) = (world[2] - world[0], world[3] - world[1]);
     if !(c[0] > 0.0 && c[1] > 0.0 && ww > 0.0 && wh > 0.0 && rect[2] > 0.0 && rect[3] > 0.0)
-        || (ww / wh * height - width).abs() > 1.0
+        || (ww / wh * facts.height - facts.width).abs() > 1.0
     {
-        return Err(invalid(
+        return Err(EngineError::InvalidParams(
             "rect, canvas or world_rect is invalid, or world_rect does not match the clip aspect"
                 .into(),
         ));
@@ -1311,20 +1526,16 @@ fn animation_job_request(s: &mut Session, params: &Value, job: &Value) -> Result
         rect[0] + (rect[2] - c[0] * scale) / 2.0,
         rect[1] + (rect[3] - c[1] * scale) / 2.0,
     );
-    let mut request = params.clone();
-    request["path"] = json!(clip);
-    request["canvas_rect"] = params["rect"].clone();
-    request["rect"] = json!([
+    Ok(json!([
         x + world[0] * scale,
         y + world[1] * scale,
         ww * scale,
         wh * scale
-    ]);
-    for key in ["character", "track"] {
-        if receipt[key].is_string() {
-            request[key] = receipt[key].clone();
-        }
-    }
+    ]))
+}
+
+/// The receipt fields frozen at render time; later source edits do not change them.
+fn frozen_source(jobs: &Path, receipt: &Value) -> Value {
     let mut frozen = json!({"receipt":jobs.join("result.json"),"relationship":"provenance frozen when this clip was rendered; later source edits do not change it"});
     for key in [
         "job",
@@ -1361,6 +1572,36 @@ fn animation_job_request(s: &mut Session, params: &Value, job: &Value) -> Result
             frozen[key] = value.clone();
         }
     }
-    request["rendered_source"] = frozen;
+    frozen
+}
+
+/// Resolve a completed project-local animation receipt: verified clip, canvas rect mapped to the
+/// rendered world frame, and the provenance frozen at render time (the current rig is not rehashed).
+fn animation_job_request(s: &mut Session, params: &Value, job: &Value) -> Result<Value> {
+    let receipt = completed_receipt(s, params, job)?;
+    let jobs = job_folder(s, &receipt)?;
+    let clip = verified_clip(&receipt, &jobs)?;
+    check_job_identity(params, &receipt)?;
+    let facts = clip_facts(params, &receipt)?;
+    require_media_matches(&facts, &probe_media(&jobs, &clip)?)?;
+    if facts.duration > facts.seconds / facts.rate + 1e-6 {
+        return Err(EngineError::InvalidParams(format!(
+            "Clip covers {:.3}s at playback_rate {}; requested duration is {}s",
+            facts.seconds / facts.rate,
+            facts.rate,
+            facts.duration
+        )));
+    }
+    let rect = rect_mapping(params, &receipt, &facts)?;
+    let mut request = params.clone();
+    request["path"] = json!(clip);
+    request["canvas_rect"] = params["rect"].clone();
+    request["rect"] = rect;
+    for key in ["character", "track"] {
+        if receipt[key].is_string() {
+            request[key] = receipt[key].clone();
+        }
+    }
+    request["rendered_source"] = frozen_source(&jobs, &receipt);
     Ok(request)
 }
