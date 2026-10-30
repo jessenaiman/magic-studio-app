@@ -1,22 +1,46 @@
 // Magic Studio shell: the project view. Data comes from magicstudio-engine through the
 // shell's commands; files open with one click; the studio tab hosts the video target's studio.
 const { invoke: nativeInvoke, convertFileSrc } = window.__TAURI__.core;
+// Engine commands say who asked: a control click or a callback, and which request it belongs to.
+function stampEngineParams(params: any, action: any, companion: any): any {
+  return {...params, params: {...params.params, _origin: action ? 'UI click' : 'UI callback', _client: 'Studio user (unverified label)', _control: action?.control, _request_id: action?.request_id || params.params?._request_id || companion?.request}};
+}
+
+// Opening or creating a project carries the control and request that triggered it.
+function stampOpenParams(params: any, action: any): any {
+  return {...params, request: params?.request ?? action?.request_id ?? null, control: params?.control ?? action?.control ?? null};
+}
+
+function reportTransportError(command: string, params: any, action: any, error: unknown): void {
+  const message = String(error).slice(0, 300);
+  acFeedback.last = {transport: command, id: params?.id || null, status: 'error', error: message};
+  acFeedback.report(null, null, {stage: 'handler_error', command: params?.id || command, control: action?.control || null, request_id: action?.request_id || null, error: message});
+}
+
+function noteTransportSuccess(command: string, params: any, companion: any, result: any): void {
+  acFeedback.last = {transport: command, id: params?.id || null, status: 'success'};
+  if (companion) window.uiRegistry?.event({...companion, phase: 'success', result});
+  if (result?._ui_engine_revision) acFeedback.pendingRevision = result._ui_engine_revision;
+}
+
 // `options` carries transport options, e.g. request headers for raw byte payloads.
-async function invoke(command: string,params?: any,options?: any){
- const action=acFeedback.action;
- const companion=command==='engine_command'?window.uiRegistry?.capture(params.id,{...params.params,_request_id:action?.request_id||params.params?._request_id}):null;
- if(companion)window.uiRegistry?.event({...companion,phase:"start"});
- acFeedback.pending++;await acFeedback.report();
- if(command==='engine_command'&&params){params={...params,params:{...params.params,_origin:action?'UI click':'UI callback',_client:'Studio user (unverified label)',_control:action?.control,_request_id:action?.request_id||params.params?._request_id||companion?.request}};}
- if(command==='project_create'||command==='project_open'){params={...params,request:params?.request??action?.request_id??null,control:params?.control??action?.control??null};}
- acFeedback.report(null,null,{stage:'handler_dispatch',control:action?.control||null,request_id:action?.request_id||null,command:params?.id||command});
- try{
-  const result=await nativeInvoke(command,params,options);acFeedback.last={transport:command,id:params?.id||null,status:'success'};
-  if(companion)window.uiRegistry?.event({...companion,phase:'success',result});
-  if(result?._ui_engine_revision) acFeedback.pendingRevision=result._ui_engine_revision;
-  return result;
- }catch(error){if(companion)window.uiRegistry?.event({...companion,phase:'error',error:String(error)});acFeedback.last={transport:command,id:params?.id||null,status:'error',error:String(error).slice(0,300)};acFeedback.report(null,null,{stage:'handler_error',command:params?.id||command,control:action?.control||null,request_id:action?.request_id||null,error:String(error).slice(0,300)});throw error;}
- finally{acFeedback.pending--;await acFeedback.report();}
+async function invoke(command: string, params?: any, options?: any) {
+  const action = acFeedback.action;
+  const companion = command === 'engine_command' ? window.uiRegistry?.capture(params.id, {...params.params, _request_id: action?.request_id || params.params?._request_id}) : null;
+  if (companion) window.uiRegistry?.event({...companion, phase: "start"});
+  acFeedback.pending++; await acFeedback.report();
+  if (command === 'engine_command' && params) params = stampEngineParams(params, action, companion);
+  if (command === 'project_create' || command === 'project_open') params = stampOpenParams(params, action);
+  acFeedback.report(null, null, {stage: 'handler_dispatch', control: action?.control || null, request_id: action?.request_id || null, command: params?.id || command});
+  try {
+    const result = await nativeInvoke(command, params, options);
+    noteTransportSuccess(command, params, companion, result);
+    return result;
+  } catch (error) {
+    if (companion) window.uiRegistry?.event({...companion, phase: 'error', error: String(error)});
+    reportTransportError(command, params, action, error);
+    throw error;
+  } finally { acFeedback.pending--; await acFeedback.report(); }
 }
 const $ = (id: string): any => document.getElementById(id);
 
@@ -103,23 +127,40 @@ async function footerGo(id) {
   state.open = SONG_SECTIONS.includes(id) ? 'song' : id; state.blocksCollapsed = false; $('blocks').classList.remove('collapsed'); renderBlocks();
 }
 
-function footerContext() {
-  if (state.view === 'home') return 'Choose a project or start a new song';
-  if (state.view === 'animation') {
-    const meta = motion.meta;
-    if (motion.mode === 'composite') return 'Composite · images arranged in time';
-    if (!meta) return motion.character ? `${motion.character} · loading…` : 'No object chosen';
-    const clips = (meta.tracks || []).filter((t) => !t.standard).length;
-    const track = motion.rest ? 'Rest pose' : (meta.tracks.find((t) => t.id === motion.track)?.label || motion.track.replaceAll('-', ' '));
-    const part = meta.layers.find((l) => l.id === motion.selected);
-    return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
-  }
-  if (state.view === 'studio') { const project = videoProject(); return project ? `Video project: ${project}` : 'No video project yet'; }
-  if (state.view === 'analytics') return 'Mayhem · code, usage and tool reports';
+// The footer line for the Animation view: the chosen object, its layers, clips, track and selection.
+function animationFooter(): string {
+  const meta = motion.meta;
+  if (motion.mode === 'composite') return 'Composite · images arranged in time';
+  if (!meta) return motion.character ? `${motion.character} · loading…` : 'No object chosen';
+  const clips = (meta.tracks || []).filter((t) => !t.standard).length;
+  const track = motion.rest ? 'Rest pose' : (meta.tracks.find((t) => t.id === motion.track)?.label || motion.track.replaceAll('-', ' '));
+  const part = meta.layers.find((l) => l.id === motion.selected);
+  return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
+}
+
+// The footer line for Storyboard: the page, its title and the object count.
+function storyboardFooter(): string {
   const pages = state.data?.storyboard?.previews?.length || 0;
   const objects = (state.data?.assets?.assets || []).length;
   return [pages ? `Storyboard · Page ${state.page + 1} / ${pages}` : 'Storyboard · not built yet', pages ? state.pageTitles?.[state.page] : null,
     `${objects} object${objects === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
+}
+
+function studioFooter(): string {
+  const project = videoProject();
+  return project ? `Video project: ${project}` : 'No video project yet';
+}
+
+// What the footer says about the active tab; each view owns its own line.
+const FOOTER_CONTEXT: Record<string, () => string> = {
+  home: () => 'Choose a project or start a new song',
+  animation: animationFooter,
+  studio: studioFooter,
+  analytics: () => 'Mayhem · code, usage and tool reports',
+};
+
+function footerContext(): string {
+  return (FOOTER_CONTEXT[state.view] || storyboardFooter)();
 }
 
 // Coalesces the many callers (renders, selection, Theatre messages) into one footer render.
@@ -130,24 +171,46 @@ function updateAppFooter(): void {
   queueMicrotask(() => { footerQueued = false; renderAppFooter(); });
 }
 
-function renderAppFooter() {
-  if (!$('app-footer')) return;
+const STAGE_DOT = {ok: 'ready', warn: 'needs-attention', idle: 'idle'};
+const STAGE_NOTE = {ok: 'ready', warn: 'needs work', idle: 'not started'};
+
+function renderFooterStages(): void {
   $('footer-stages').replaceChildren(...FOOTER_STAGES.map(([id, label]) => {
     const tone = footerStageState(id);
-    return el('button', { class: 'footer-stage', id: `footer-stage-${id}`, title: `${label} · ${tone === 'ok' ? 'ready' : tone === 'warn' ? 'needs work' : 'not started'}`,
-      onclick: () => footerGo(id).catch((e) => toast(String(e))) }, window.companionBoxes.dot(tone === 'ok' ? 'ready' : tone === 'warn' ? 'needs-attention' : 'idle', '', `footer-stage-${id}`), label);
+    return el('button', { class: 'footer-stage', id: `footer-stage-${id}`, title: `${label} · ${STAGE_NOTE[tone]}`,
+      onclick: () => footerGo(id).catch((e) => toast(String(e))) }, window.companionBoxes.dot(STAGE_DOT[tone], '', `footer-stage-${id}`), label);
   }));
-  updateStoryboardSaveControls();
-  const context = footerContext();
-  $('footer-context').textContent = context; $('footer-context').title = context;
+}
+
+// What the footer says about saving: a dot tone and a label, from pending saves and unsaved edits.
+function saveStatus(unsaved: boolean): {tone: string, label: string} {
+  if (projectView.pending > 0) return {tone: 'working', label: 'Saving…'};
+  if (unsaved) return {tone: 'needs-attention', label: 'Unsaved edits'};
+  return state.project ? {tone: 'ready', label: 'Project saved'} : {tone: 'idle', label: 'Not saved'};
+}
+
+function renderFooterSaveState(): void {
   const motionUnsaved = state.view === 'animation' && typeof magicTheatre !== 'undefined' && (magicTheatre.interactionRevision > magicTheatre.savedRevision || !!magicTheatre.gestureActive);
   const unsaved = motionUnsaved || state.data?.design?.dirty === true || projectView.textDrafts.size > 0;
-  const saving = projectView.pending > 0;
-  $('footer-save-state').replaceChildren(window.companionBoxes.dot(saving ? 'working' : unsaved ? 'needs-attention' : state.project ? 'ready' : 'idle', '', 'footer-save-state'), saving ? 'Saving…' : unsaved ? 'Unsaved edits' : state.project ? 'Project saved' : 'Not saved');
+  const {tone, label} = saveStatus(unsaved);
+  $('footer-save-state').replaceChildren(window.companionBoxes.dot(tone, '', 'footer-save-state'), label);
   $('footer-save-state').title = motionUnsaved ? 'Theatre motion has unsaved keyframes · use Save motion' : unsaved ? 'Storyboard changes need saving' : 'Magic Studio project state; HyperFrames saves composition edits in its own editor';
+}
+
+function renderFooterServer(): void {
   const url = serverUrl();
   // A Studio that is off is simply idle: grey, never a red problem.
   $('footer-server').replaceChildren(window.companionBoxes.dot(url ? 'ready' : 'idle', '', 'target'), url ? `Studio · ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : 'Studio off');
+}
+
+function renderAppFooter(): void {
+  if (!$('app-footer')) return;
+  renderFooterStages();
+  updateStoryboardSaveControls();
+  const context = footerContext();
+  $('footer-context').textContent = context; $('footer-context').title = context;
+  renderFooterSaveState();
+  renderFooterServer();
 }
 // Theatre's own listener (theatre.js) updates its revisions first; render after it.
 window.addEventListener('message', (event) => { if (event.data?.magicTheatre && event.data.type !== 'values') setTimeout(updateAppFooter); });
@@ -221,29 +284,45 @@ function applyEntry(node, entry, id = node.id) {
   return node;
 }
 
-// Create an element from a tag, attributes and children.
-function el(tag: string, attrs: Record<string, any> = {}, ...children: any[]): any {
-  const node = document.createElement(tag);
-  let box = null;
-  for (const [k, v] of Object.entries(attrs)) {
-    if(v===null||v===undefined)continue;
-    if (k === "class") node.className = v;
-    else if (k === "html") node.innerHTML = v;
-    else if (k === "box") box = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), event=>{const previous=acFeedback.action;acFeedback.action=event.acAction;try{return v(event);}finally{acFeedback.action=previous;}});
-    else if (typeof v === "boolean" && k in node) node[k] = v;
-    else node.setAttribute(k, v);
-  }
-  for (const c of children.flat()) if (c != null) node.append(c);
-  const project = typeof state === "undefined" ? null : state.project;
-  const boxId = box || attrs.id || null;
+// A listener runs with the clicked control's action recorded, so feedback can say what the user did.
+function runListener(listener: (event: Event) => unknown, event: Event): unknown {
+  const previous = acFeedback.action;
+  acFeedback.action = event.acAction;
+  try { return listener(event); } finally { acFeedback.action = previous; }
+}
+
+// One attribute: class, html, an on* listener, a boolean property, or a plain attribute.
+function applyAttribute(node: any, key: string, value: any): void {
+  if (key === "class") node.className = value;
+  else if (key === "html") node.innerHTML = value;
+  else if (key.startsWith("on")) node.addEventListener(key.slice(2), (event: Event) => runListener(value, event));
+  else if (typeof value === "boolean" && key in node) node[key] = value;
+  else node.setAttribute(key, value);
+}
+
+// Apply the element's components.json entry and register it with the companion boxes and registry.
+function registerElement(node: any, boxId: string | null): void {
   const entry = boxId ? uiConfig.elements[boxId] : null;
   if (entry) applyEntry(node, entry, boxId);
   if (boxId) {
     node.setAttribute("data-box-id", boxId);
+    const project = typeof state === "undefined" ? null : state.project;
     if (window.companionBoxes) window.companionBoxes.register(boxId, { project, label: entry?.label || null, look: entry?.look || null, density: entry?.density || null });
   }
   window.uiRegistry?.registerElement(node);
+}
+
+// Create an element from a tag, attributes and children.
+function el(tag: string, attrs: Record<string, any> = {}, ...children: any[]): any {
+  const node = document.createElement(tag);
+  let box = null;
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined) continue;
+    if (key === "box") box = value;
+    else applyAttribute(node, key, value);
+  }
+  for (const child of children.flat()) if (child != null) node.append(child);
+  registerElement(node, box || attrs.id || null);
   return node;
 }
 
@@ -281,6 +360,25 @@ async function showStudio() {
   catch (e) { toast(String(e)); throw e; }
 }
 
+// What each workspace does when it opens. Wrapped in arrows: the views load after this file.
+const WORKSPACE_OPENERS: Record<string, () => unknown> = {
+  animation: () => animationOpen(),
+  design: () => wordsOpen(),
+  skills: () => { if (typeof renderResources === "function") renderResources(); },
+  analytics: () => { if (typeof renderAnalytics === "function") renderAnalytics(); },
+};
+
+// Show the workspace: its own opener, the live Studio, or the Studio's empty state.
+async function openWorkspace(view: string): Promise<void> {
+  const open = WORKSPACE_OPENERS[view];
+  if (open) { await invoke("studio_hide"); await open(); return; }
+  if (view !== "project" && serverUrl()) { await new Promise(requestAnimationFrame); await showStudio(); return; }
+  await invoke("studio_hide");
+  if (view === "project") return;
+  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-studio"));
+  $("studio-empty").classList.add("show");
+}
+
 async function setView(view: string, action?: any) {
   const errors = acFeedback.errors.length;
   if (view === "split") view = "studio";
@@ -292,18 +390,7 @@ async function setView(view: string, action?: any) {
   const page = view === "studio" ? "project" : view;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${page}`));
   placeInk();
-  if (view === "animation") { await invoke("studio_hide"); await animationOpen(); }
-  else if (view === "design") { await invoke("studio_hide"); await wordsOpen(); }
-  else if (view === "skills") { await invoke("studio_hide"); if (typeof renderResources === "function") renderResources(); }
-  else if (view === "analytics") { await invoke("studio_hide"); if (typeof renderAnalytics === "function") renderAnalytics(); }
-  else if (view !== "project" && serverUrl()) { await new Promise(requestAnimationFrame); await showStudio(); }
-  else {
-    await invoke("studio_hide");
-    if (view !== "project") {
-      document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-studio"));
-      $("studio-empty").classList.add("show");
-    }
-  }
+  await openWorkspace(view);
   updateAppFooter();
   window.magicCompanions?.sync();
   if (action && feedbackSnapshot().rendered && acFeedback.errors.length === errors) {
