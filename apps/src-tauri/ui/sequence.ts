@@ -52,17 +52,22 @@ function seqLerp(a, b, u) {
   };
 }
 
+function seqSideOffset(spec, entering, t, rest) {
+  if (!spec || spec.kind === "none") return null;
+  const start = spec.delay ?? (entering ? 0 : Math.max(0, seq.duration - (spec.duration ?? 0.5)));
+  const end = Math.min(seq.duration, start + (spec.duration ?? 0.6));
+  if (t <= start) return null;
+  const from = seqSideValues(spec.kind, seq.canvas);
+  const part = seqLerp(from, rest, seqEase(spec.ease || "smooth", end > start ? (t - start) / (end - start) : 1));
+  return entering ? (t >= end ? rest : part) : part;
+}
+
 function seqOffsets(layer, t) {
   const rest = seqSideValues("none", seq.canvas);
   let value = rest;
   for (const [spec, entering] of [[layer.entry, true], [layer.exit, false]]) {
-    if (!spec || spec.kind === "none") continue;
-    const start = spec.delay ?? (entering ? 0 : Math.max(0, seq.duration - (spec.duration ?? 0.5)));
-    const end = Math.min(seq.duration, start + (spec.duration ?? 0.6));
-    if (t <= start) continue;
-    const from = seqSideValues(spec.kind, seq.canvas);
-    const part = seqLerp(from, rest, seqEase(spec.ease || "smooth", end > start ? (t - start) / (end - start) : 1));
-    value = entering ? (t >= end ? rest : part) : part;
+    const off = seqSideOffset(spec, entering, t, rest);
+    if (off) value = off;
   }
   return value;
 }

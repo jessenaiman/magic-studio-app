@@ -119,47 +119,77 @@ pub struct Config {
 }
 
 impl Config {
+    fn validate_target(&self, id: &str, entry: &Entry) -> Result<(), String> {
+        if let Some(target) = &entry.target
+            && (!self.elements.contains_key(target) || self.elements[target].target.is_some())
+        {
+            return Err(format!("{id}: target must name a canonical component"));
+        }
+        Ok(())
+    }
+
+    fn validate_rail(&self, id: &str, entry: &Entry) -> Result<(), String> {
+        if let Some(rail) = &entry.rail
+            && (!self.rails.get(rail).is_some_and(Value::is_object)
+                || !self.slots.get(rail).is_some_and(Value::is_object))
+        {
+            return Err(format!("{id}: missing configured rail or slot"));
+        }
+        Ok(())
+    }
+
+    fn validate_look(&self, id: &str, entry: &Entry) -> Result<(), String> {
+        if let Some(look) = &entry.look
+            && !self
+                .looks
+                .get(&entry.component)
+                .is_some_and(|looks| looks.contains(look))
+        {
+            return Err(format!("{id}: unknown look {look}"));
+        }
+        Ok(())
+    }
+
+    fn validate_density(&self, id: &str, entry: &Entry) -> Result<(), String> {
+        if entry
+            .density
+            .as_ref()
+            .is_some_and(|d| !self.densities.contains(d))
+        {
+            return Err(format!("{id}: unknown density"));
+        }
+        Ok(())
+    }
+
+    fn validate_indicator(&self, id: &str, entry: &Entry) -> Result<(), String> {
+        if entry
+            .indicator
+            .as_ref()
+            .is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden"))
+        {
+            return Err(format!("{id}: unknown indicator"));
+        }
+        Ok(())
+    }
+
+    fn validate_entry(&self, id: &str, entry: &Entry) -> Result<(), String> {
+        self.validate_target(id, entry)?;
+        self.validate_rail(id, entry)?;
+        if entry.component.trim().is_empty() {
+            return Err(format!("{id}: missing component"));
+        }
+        self.validate_look(id, entry)?;
+        self.validate_density(id, entry)?;
+        self.validate_indicator(id, entry)?;
+        Ok(())
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.elements.is_empty() {
             return Err("no configured elements".into());
         }
         for (id, entry) in &self.elements {
-            if let Some(target) = &entry.target
-                && (!self.elements.contains_key(target) || self.elements[target].target.is_some())
-            {
-                return Err(format!("{id}: target must name a canonical component"));
-            }
-            if let Some(rail) = &entry.rail
-                && (!self.rails.get(rail).is_some_and(Value::is_object)
-                    || !self.slots.get(rail).is_some_and(Value::is_object))
-            {
-                return Err(format!("{id}: missing configured rail or slot"));
-            }
-            if entry.component.trim().is_empty() {
-                return Err(format!("{id}: missing component"));
-            }
-            if let Some(look) = &entry.look
-                && !self
-                    .looks
-                    .get(&entry.component)
-                    .is_some_and(|looks| looks.contains(look))
-            {
-                return Err(format!("{id}: unknown look {look}"));
-            }
-            if entry
-                .density
-                .as_ref()
-                .is_some_and(|d| !self.densities.contains(d))
-            {
-                return Err(format!("{id}: unknown density"));
-            }
-            if entry
-                .indicator
-                .as_ref()
-                .is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden"))
-            {
-                return Err(format!("{id}: unknown indicator"));
-            }
+            self.validate_entry(id, entry)?;
         }
         Ok(())
     }
