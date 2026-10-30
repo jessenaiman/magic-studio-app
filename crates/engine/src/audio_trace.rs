@@ -1,6 +1,6 @@
 //! Receipt for the existing audio.analyze chain; no transcription or tool replacement here.
 use crate::{EngineError, Result};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -61,6 +61,30 @@ fn summary(stdout: &str) -> Value {
     }
     selected
 }
+fn version_args(tool: &str) -> Vec<String> {
+    match tool {
+        "ffmpeg" => vec!["-version".into()],
+        "npx" => vec![
+            "--offline".into(),
+            "--no-install".into(),
+            "hyperframes".into(),
+            "--version".into(),
+        ],
+        _ => vec!["--version".into()],
+    }
+}
+
+fn version_probe(tool: &str, cwd: &Path) -> Value {
+    let version_args = version_args(tool);
+    match crate::sheets::run_agent(tool, &version_args, cwd, 5) {
+        Ok(run) => {
+            json!({"argv":version_args,"exit_code":run.code,"timed_out":run.timed_out,
+                "output":if run.succeeded(){run.stdout.lines().next().map(str::to_owned)}else{None}})
+        }
+        Err(e) => json!({"argv":version_args,"error":e.to_string(),"output":null}),
+    }
+}
+
 impl AudioTrace {
     pub fn new(project: &Path, audio: &Path, p: &Value) -> Result<Self> {
         let mut trace = Self {
@@ -121,6 +145,33 @@ impl AudioTrace {
         })?;
         Ok(())
     }
+    fn finish_success(&mut self, index: usize, output: String) -> Result<Option<String>> {
+        self.data["steps"][index]["status"] = json!("success");
+        self.data["steps"][index]["result"] = summary(&output);
+        self.persist()?;
+        Ok(Some(output))
+    }
+
+    fn finish_error(
+        &mut self,
+        index: usize,
+        stage: &str,
+        tool: &str,
+        cwd: &Path,
+        error: EngineError,
+    ) -> Result<Option<String>> {
+        self.data["steps"][index]["status"] = json!("error");
+        self.data["steps"][index]["error"] = json!(error.to_string());
+        self.data["failed_stage"] = json!(stage);
+        self.data["status"] = json!("failed");
+        self.persist()?;
+        Err(EngineError::InvalidParams(format!(
+            "audio.analyze stage={stage}; executable={tool}; cwd={}; {error}; receipt={}. Inspect this receipt and `magic-cli commands audio.analyze` before retrying; no alternate provider or automatic retry was used.",
+            cwd.display(),
+            self.path.display()
+        )))
+    }
+
     pub fn run(
         &mut self,
         stage: &str,
@@ -135,23 +186,7 @@ impl AudioTrace {
             "real_executable":program.as_ref().and_then(|p|p.canonicalize().ok()),"argv":args,"cwd":cwd,
             "outputs":outputs,"status":if needed{"running"}else{"skipped_existing"}});
         if needed {
-            let version_args: Vec<String> = match tool {
-                "ffmpeg" => vec!["-version".into()],
-                "npx" => vec![
-                    "--offline".into(),
-                    "--no-install".into(),
-                    "hyperframes".into(),
-                    "--version".into(),
-                ],
-                _ => vec!["--version".into()],
-            };
-            row["version_probe"] = match crate::sheets::run_agent(tool, &version_args, cwd, 5) {
-                Ok(run) => {
-                    json!({"argv":version_args,"exit_code":run.code,"timed_out":run.timed_out,
-                    "output":if run.succeeded(){run.stdout.lines().next().map(str::to_owned)}else{None}})
-                }
-                Err(e) => json!({"argv":version_args,"error":e.to_string(),"output":null}),
-            };
+            row["version_probe"] = version_probe(tool, cwd);
             if tool == "python3" {
                 row["script"] = args
                     .first()
@@ -169,24 +204,8 @@ impl AudioTrace {
             return Ok(None);
         }
         match crate::workspace::run_tool_in(cwd, tool, args) {
-            Ok(output) => {
-                self.data["steps"][index]["status"] = json!("success");
-                self.data["steps"][index]["result"] = summary(&output);
-                self.persist()?;
-                Ok(Some(output))
-            }
-            Err(error) => {
-                self.data["steps"][index]["status"] = json!("error");
-                self.data["steps"][index]["error"] = json!(error.to_string());
-                self.data["failed_stage"] = json!(stage);
-                self.data["status"] = json!("failed");
-                self.persist()?;
-                Err(EngineError::InvalidParams(format!(
-                    "audio.analyze stage={stage}; executable={tool}; cwd={}; {error}; receipt={}. Inspect this receipt and `magic-cli commands audio.analyze` before retrying; no alternate provider or automatic retry was used.",
-                    cwd.display(),
-                    self.path.display()
-                )))
-            }
+            Ok(output) => self.finish_success(index, output),
+            Err(error) => self.finish_error(index, stage, tool, cwd, error),
         }
     }
     pub fn read_json(&mut self, stage: &str, path: &Path) -> Result<Value> {
