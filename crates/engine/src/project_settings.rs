@@ -7,8 +7,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const DEFAULT_PROJECTS_ROOT: &str = "/run/media/jesse/Speedy/media";
-
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
@@ -54,7 +52,9 @@ fn configured_root(settings: &Value) -> Result<PathBuf> {
             v.as_str()
                 .ok_or_else(|| invalid("Saved projects_root must be a string"))?,
         ),
-        None => Ok(PathBuf::from(DEFAULT_PROJECTS_ROOT)),
+        None => crate::workspace::user_data_dir()
+            .map(|root| root.join("magicstudio/projects"))
+            .ok_or_else(|| invalid("Project root unavailable; configure XDG_DATA_HOME or HOME")),
     }
 }
 
@@ -66,6 +66,15 @@ pub fn root() -> Result<PathBuf> {
 /// launched by the desktop do not inherit a terminal's environment, so this is where they look.
 pub fn saved_path(key: &str) -> Option<PathBuf> {
     stored().ok()?.get(key)?.as_str().map(PathBuf::from)
+}
+
+/// Optional external character library. Its location belongs to the user's configuration.
+pub fn characters_root() -> Option<PathBuf> {
+    std::env::var_os("MAGICSTUDIO_CHARACTERS_ROOT")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| saved_path("characters_root"))
+        .filter(|path| path.is_absolute())
 }
 
 fn read_settings_file(output: &mut fs::File) -> Result<Value> {

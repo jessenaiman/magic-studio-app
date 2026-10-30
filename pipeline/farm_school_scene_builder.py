@@ -23,10 +23,8 @@ if _REPO_ROOT not in sys.path:
 from pipeline.step_volume_hull import (
     ANATOMY,
     CHARACTER_STAGE_SPECS,
-    CLASS_BG,
     PERFORMANCES,
     ROOT,
-    SCHOOL_BG,
     SIX_CAST_ORDER,
     VIEW_ANGLES,
     resolve_character_assets,
@@ -47,13 +45,27 @@ def _rig_helper_code() -> str:
     return BLENDER_HELPERS
 
 
+def school_background(background: str | Path | None = None) -> Path:
+    from pipeline.library_paths import configured_path
+
+    path = (
+        Path(background).expanduser().resolve() if background is not None
+        else configured_path("school_background", "MAGICSTUDIO_SCHOOL_BACKGROUND")
+    )
+    if not path.is_file():
+        raise FileNotFoundError(f"School background is unavailable: {path}")
+    return path
+
+
 def render_single_character(
     slug: str,
     out_mp4: str,
     out_png: str,
     out_glb: str | None = None,
     out_blend: str | None = None,
+    background: str | Path | None = None,
 ) -> dict:
+    background = school_background(background)
     out = Path(out_mp4).resolve().parent
     spec = prepare_volume(resolve_character_assets(slug), out / "construction")
     spec["gait"] = gait_frames(spec, 48, solo=True)
@@ -76,7 +88,7 @@ rig,obj=build_character_rig(SPEC,make_collection('Character'),make_collection('R
 animate_character_rig(rig,SPEC)
 qa=verify_character(rig,obj,SPEC)
 cam=setup_camera('CharacterPreview',SPEC['height_m'])
-build_environment(cam,{str(SCHOOL_BG)!r})
+build_environment(cam,{str(background)!r})
 add_contact_shadows(SPEC)
 render=render_frames_to_mp4(bpy.context.scene,PATHS['mp4'],PATHS['png'],1,48)
 export_character(rig,obj,PATHS['blend'],PATHS['glb'])
@@ -91,8 +103,10 @@ print('FARM_SCHOOL_RESULT='+json.dumps(dict(ok=True,character=SPEC['slug'],qa=qa
 
 
 def build_farm_school_milestone(
-    out_dir: str | Path, only_character: str | None = None
+    out_dir: str | Path, only_character: str | None = None,
+    background: str | Path | None = None,
 ) -> dict:
+    background = school_background(background)
     out = Path(out_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
     if only_character and only_character != "all":
@@ -104,6 +118,7 @@ def build_farm_school_milestone(
             str(folder / f"{slug}_blender_preview.png"),
             str(folder / f"{slug}_rig.glb"),
             str(folder / f"{slug}_rig.blend"),
+            background=background,
         )
     reports = []
     specs = []
@@ -118,6 +133,7 @@ def build_farm_school_milestone(
                 str(folder / f"{slug}_blender_preview.png"),
                 str(folder / f"{slug}_rig.glb"),
                 str(folder / f"{slug}_rig.blend"),
+                background=background,
             )
         )
         spec = json.loads((folder / "construction/asset_sources.json").read_text())
@@ -135,7 +151,7 @@ chars=make_collection('Characters');rigs=make_collection('Rigs');qa={{}}
 for spec in SPECS:
     rig,obj=load_character_rig(spec,os.path.join({str(out)!r},'characters',spec['slug'],spec['slug']+'_rig.blend'),chars,rigs)
     animate_character_rig(rig,spec);qa[spec['slug']]=verify_character(rig,obj,spec)
-cam=setup_camera('FarmSchoolLineupCamera');build_environment(cam,{str(SCHOOL_BG)!r})
+cam=setup_camera('FarmSchoolLineupCamera');build_environment(cam,{str(background)!r})
 for spec in SPECS:add_contact_shadows(spec)
 render=render_frames_to_mp4(bpy.context.scene,PATHS['mp4'],PATHS['png'],1,48)
 for frame,name in [(1,'enter'),(24,'walking'),(48,'lined_up')]:
@@ -186,13 +202,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out-dir", default="exports/farm_school_milestone")
     parser.add_argument("--character", default=None)
+    parser.add_argument(
+        "--background", type=Path,
+        help="Existing background image; overrides saved settings",
+    )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     if args.self_test:
         self_test()
         return 0
     print(
-        json.dumps(build_farm_school_milestone(args.out_dir, args.character), indent=2)
+        json.dumps(
+            build_farm_school_milestone(args.out_dir, args.character, args.background),
+            indent=2,
+        )
     )
     return 0
 

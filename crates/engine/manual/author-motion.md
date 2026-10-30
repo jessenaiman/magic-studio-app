@@ -21,7 +21,7 @@
 Reviewed rig, character/action IDs and source hash.
 
 ## Skill
-/home/jesse/.codex/skills/character-rigging/SKILL.md
+Use the installed `character-rigging` skill from the current skill catalog.
 
 ## Output
 Editable action plus source/render evidence, or an exact capability blocker.

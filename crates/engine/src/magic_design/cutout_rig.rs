@@ -71,20 +71,17 @@ fn prepare_dir(s: &Session, id: &str) -> std::path::PathBuf {
     crate::workspace::workspace_root(s).join("exports/pose_and_parts").join(id)
 }
 
-/// AssetFurnace's install: `ASSETFURNACE_HOME`, else `assetfurnace_home` in settings.json,
-/// else its documented `~/image-to-3dlab`.
+/// AssetFurnace's explicitly configured install: environment, then saved settings.
 fn assetfurnace_home() -> Result<std::path::PathBuf> {
-    let documented = std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join("image-to-3dlab"));
     [
         std::env::var_os("ASSETFURNACE_HOME").map(std::path::PathBuf::from),
         crate::project_settings::saved_path("assetfurnace_home"),
-        documented,
     ]
     .into_iter()
     .flatten()
     .find(|home| home.join(".venv/bin/python").is_file())
     .ok_or_else(|| EngineError::InvalidParams(
-        "AssetFurnace is not installed where Magic looks: save its folder (the one with ./lab) as assetfurnace_home in ~/.config/magicstudio/settings.json, or set ASSETFURNACE_HOME".into(),
+        "Configure AssetFurnace's install folder as assetfurnace_home in Magic Studio settings.json, or set ASSETFURNACE_HOME".into(),
     ))
 }
 
