@@ -486,6 +486,16 @@ pub(crate) fn default_document(report: &Value) -> Result<Value> {
                 "source_revision": 0,
                 "origin": null,
                 "style": {},
+                "kinetic": {
+                    "layout": "karaoke",
+                    "entrance": "pop",
+                    "acts": {},
+                    "draws": [],
+                    "overlay": "none",
+                    "band": "top",
+                    "seed": 1,
+                    "style": {"font":"Fraunces","hero_font":"Fraunces","weight":600,"hero_weight":700,"hero_italic":true,"size":58.0,"hero_size":92.0,"color":"#FFF6E3","hero_color":"#FFD27D","outline":"#143042"}
+                },
                 "words": []
             }));
         }
@@ -519,6 +529,7 @@ pub(crate) fn default_document(report: &Value) -> Result<Value> {
             }));
     }
     for anim in &mut animations {
+        fill_untimed(anim);
         timing(anim);
     }
     Ok(json!({

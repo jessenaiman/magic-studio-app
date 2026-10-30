@@ -42,17 +42,29 @@ function wordsLabel(anim) {
   return `${name[0].toUpperCase()}${name.slice(1)}${s.section === "chorus" || s.occurrence > 1 ? ` ${s.occurrence}` : ""}`;
 }
 
+const wordsEnsureKinetic = (a) => (a.kinetic ??= { layout: "karaoke", entrance: "pop", acts: {}, draws: [], overlay: "none", band: "top", seed: 1,
+  style: { font: "Fraunces", hero_font: "Fraunces", weight: 600, hero_weight: 700, hero_italic: true, size: 58, hero_size: 92, color: "#FFF6E3", hero_color: "#FFD27D", outline: "#143042" } });
+
+async function wordsBootstrapStudio(studio) {
+  if (!serverUrl() && typeof designCommand === "function") await designCommand("video.server_start").catch(() => {});
+  if (studio?.sections?.length) return studio;
+  await wordsCommand("words.track").catch(() => {});
+  return wordsCommand("words.studio_track").catch((error) => ({ error: String(error).replace(/^.*?: /, "") }));
+}
+
 async function wordsOpen() {
   const view = $("view-design");
   if (!view) return;
   view.replaceChildren(el("p", { class: "panel-empty inline" }, "Loading the words…"));
   try {
-    const [read, align, studio, backgrounds] = await Promise.all([
+    const [read, align, rawStudio, backgrounds] = await Promise.all([
       wordsCommand("words.read"),
       wordsCommand("words.align"),
       wordsCommand("words.studio_track").catch((error) => ({ error: String(error).replace(/^.*?: /, "") })),
       wordsCommand("storyboard.backgrounds").catch(error=>({images:[],error:String(error).replace(/^.*?: /, "")})),
     ]);
+    const studio = await wordsBootstrapStudio(rawStudio);
+    (read.document?.animations || []).forEach(wordsEnsureKinetic);
     wordsPanel.read = read;
     wordsPanel.backgrounds = backgrounds;
     wordsPanel.align = align;
@@ -414,6 +426,7 @@ function wordsChipClick(anim, w, index, event) {
   wordsVideo("pause"); wordsPanel.playing = false; wordsPanel.autoPlay = false;
   const nextPicked = wordsTogglePickedWord(w, sameLine && event.shiftKey);
   wordsPanel.picked = nextPicked.length ? nextPicked : [w.word_id];
+  if (wordsPanel.mode === "timing") wordsPanel.mode = "lyrics";
   wordsPanel.cue = null; wordsPanel.shelf = "acts";
   wordsPanel.line = w.line_id; wordsPanel.item = index;
   wordsPanel.followed = `${anim.animation_id}/${w.line_id}`;
@@ -423,21 +436,27 @@ function wordsChipClick(anim, w, index, event) {
   requestAnimationFrame(() => wordsEnsureBelowVideo(wordsLineSpan(anim, w.line_id).start));
 }
 
+function wordsApplyPreviewWindow(range, pausedTime, ensureAt) {
+  wordsPanel.previewRange = range;
+  wordsPanel.autoPlay = wordsPanel.loopLine;
+  wordsPanel.time = wordsPanel.loopLine ? range.start : pausedTime;
+  wordsRender();
+  if (wordsPanel.loopLine) wordsVideoRange(); else wordsSeekSong(wordsPanel.time);
+  requestAnimationFrame(() => wordsEnsureBelowVideo(ensureAt));
+}
+
 function wordsSelectLine(anim, line) {
   if (!wordsSwitchSection(anim.animation_id)) return;
   wordsVideo("pause"); wordsPanel.playing = false;
   const hero = line.words.find((w) => anim.kinetic?.acts?.[w.word_id]) || line.words[0];
+  if (wordsPanel.mode === "timing") wordsPanel.mode = "lyrics";
   wordsPanel.line = line.id; wordsPanel.item = null; wordsPanel.cue = null;
   wordsPanel.picked = hero ? [hero.word_id] : [];
   if (!wordsPanel.shelf || wordsPanel.shelf === "cues") wordsPanel.shelf = "arrive";
   wordsPanel.followed = `${anim.animation_id}/${line.id}`;
   const span = wordsLineSpan(anim, line.id), lastWord = line.words.at(-1);
-  wordsPanel.previewRange = wordsLineWindow(anim, line.id);
-  wordsPanel.autoPlay = wordsPanel.loopLine;
-  wordsPanel.time = wordsPanel.loopLine ? wordsPanel.previewRange.start : Math.min(span.end - 0.12, (lastWord ? wordsAt(lastWord) : span.start) + 0.18);
-  wordsRender();
-  if (wordsPanel.loopLine) wordsVideoRange(); else wordsSeekSong(wordsPanel.time);
-  requestAnimationFrame(() => wordsEnsureBelowVideo(span.start));
+  const paused = Math.min(wordsSpan(anim).end - 0.35, span.end - 0.12, (lastWord ? wordsAt(lastWord) : span.start) + 0.18);
+  wordsApplyPreviewWindow(wordsLineWindow(anim, line.id), paused, span.start);
 }
 
 // Lyric tags: each sung word of the line, laid on a grid; a hero word shows its lettering and move.
@@ -556,17 +575,13 @@ function wordsPreviewCue(cue) {
   wordsPanel.line = cue.line_id || wordsLines(anim)[0]?.id;
   const fallbackWord = wordsLines(anim).find((l) => l.id === wordsPanel.line)?.words[0]?.word_id;
   wordsPanel.picked = cue.word_ids?.length ? cue.word_ids : (fallbackWord ? [fallbackWord] : []);
+  if (wordsPanel.mode === "timing") wordsPanel.mode = "lyrics";
   wordsPanel.cue = cue.id;
   wordsPanel.shelf = "cues";
   if (cue.kind === "overlay") wordsPanel.topShelf = "overlay";
   wordsPanel.followed = `${anim.animation_id}/${wordsPanel.line}`;
-  const lineSpan = wordsLineSpan(anim, wordsPanel.line);
-  wordsPanel.previewRange = wordsCueWindow(anim, cue, lineSpan);
-  wordsPanel.autoPlay = wordsPanel.loopLine;
-  wordsPanel.time = wordsPanel.loopLine ? wordsPanel.previewRange.start : Math.min(lineSpan.end - 0.12, Math.max(cue.start + 0.35, lineSpan.end - 0.18));
-  wordsRender();
-  if (wordsPanel.loopLine) wordsVideoRange(); else wordsSeekSong(wordsPanel.time);
-  requestAnimationFrame(() => wordsEnsureBelowVideo(cue.start));
+  const range = wordsCueWindow(anim, cue, wordsLineSpan(anim, wordsPanel.line));
+  wordsApplyPreviewWindow(range, Math.min(cue.end - 0.2, (cue.draw_end ?? cue.end) - 0.05), cue.start);
 }
 async function wordsRetimeCue(cue, start, end) {
   const anim = wordsCurrent();
@@ -1311,7 +1326,7 @@ function wordsStageEmptyMessage(url) {
 
 // The stage is the finished video, kept across re-renders so editing never reloads it.
 function wordsStage(anim) {
-  const section = wordsStudioSection(anim), songSpan = wordsSongSpan();
+  const section = wordsStudioSection(anim) || wordsSpan(anim), songSpan = wordsSongSpan();
   const url = serverUrl();
   wordsPanel.server = url || null;
   if (!section || !url) {
@@ -1775,9 +1790,11 @@ async function wordsApply(use) {
 }
 
 async function wordsFlushPendingEdits(anim) {
-  const hasEdits = wordsPanel.designs.size > 0 || Object.keys(wordsPanel.styleEdits).length > 0;
+  const unsavedDoc = !wordsPanel.read?.saved;
+  const hasEdits = unsavedDoc || wordsPanel.designs.size > 0 || Object.keys(wordsPanel.styleEdits).length > 0;
   if (!hasEdits) return true;
   const params = { animation_id: anim.animation_id, expected_source_revision: anim.source_revision, origin: "magicstudio-design" };
+  if (unsavedDoc && anim.kinetic) params.kinetic = anim.kinetic;
   if (wordsPanel.designs.size) params.design = Object.fromEntries(wordsPanel.designs);
   if (Object.keys(wordsPanel.styleEdits).length) params.style = wordsPanel.styleEdits;
   const result = await wordsCommand("words.save", params);
