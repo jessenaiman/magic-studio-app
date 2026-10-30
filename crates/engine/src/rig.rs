@@ -490,7 +490,7 @@ fn write_wavefront_obj(
     for n in normals {
         out.push_str(&format!("vn {:.5} {:.5} {:.5}\n", n[0], n[1], n[2]));
     }
-    for tri in indices.chunks_exact(3) {
+    for tri in indices.as_chunks::<3>().0 {
         let i0 = tri[0] + 1;
         let i1 = tri[1] + 1;
         let i2 = tri[2] + 1;

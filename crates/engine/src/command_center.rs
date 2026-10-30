@@ -215,22 +215,21 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     if p["prepare_only"] == true {
         let mut outputs = json!({"video.init":audio_setup});
         if problems.is_empty() {
-            for (command, params) in [("storyboard.init", json!({"empty":true}))] {
-                match s.execute(command, params) {
-                    Ok(value) if value["ok"] != false => {
-                        steps.push(json!({"command":command,"status":"complete"}));
-                        outputs[command] = value;
-                    }
-                    Ok(value) => {
-                        let error = format!("{command}: {value}");
-                        steps.push(json!({"command":command,"status":"failed","error":error}));
-                        problems.push(error);
-                    }
-                    Err(error) => {
-                        let error = error.to_string();
-                        steps.push(json!({"command":command,"status":"failed","error":error}));
-                        problems.push(error);
-                    }
+            let (command, params) = ("storyboard.init", json!({"empty":true}));
+            match s.execute(command, params) {
+                Ok(value) if value["ok"] != false => {
+                    steps.push(json!({"command":command,"status":"complete"}));
+                    outputs[command] = value;
+                }
+                Ok(value) => {
+                    let error = format!("{command}: {value}");
+                    steps.push(json!({"command":command,"status":"failed","error":error}));
+                    problems.push(error);
+                }
+                Err(error) => {
+                    let error = error.to_string();
+                    steps.push(json!({"command":command,"status":"failed","error":error}));
+                    problems.push(error);
                 }
             }
         }

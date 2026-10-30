@@ -14,7 +14,6 @@ pub(crate) mod playback;
 use layout::SheetLayout;
 
 const KINDS: [&str; 3] = ["turnaround", "skeleton", "poses"];
-/// Target canvas; source pixels remain available for review at their returned size.
 
 /// Pixels within this distance of pure white still count as the flat `#ffffff` background.
 const WHITE_TOLERANCE: u8 = 12;
