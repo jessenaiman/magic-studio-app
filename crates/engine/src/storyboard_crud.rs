@@ -45,6 +45,79 @@ pub(crate) fn words(board: &Value) -> Result<Vec<Value>> {
         })
         .collect()
 }
+fn scene_packet(
+    board: &Value,
+    design: &Value,
+    words: &[Value],
+    i: usize,
+    mut scene: Value,
+) -> Value {
+    let first = board["first_scene_page"].as_u64().unwrap_or(1);
+    let page = first + i as u64;
+    scene["target"] = json!(format!("scene-{}", i + 1));
+    scene["scene"] = json!(i + 1);
+    scene["page"] = json!(page);
+    scene["title"] = board["scene_titles"][i]
+        .as_str()
+        .map(|v| json!(v))
+        .unwrap_or_else(|| json!(format!("Scene {}", i + 1)));
+    scene["text_fields"] = json!(
+        design["text_fields"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| f["page"] == page)
+            .collect::<Vec<_>>()
+    );
+    scene["sections"] = json!(
+        scene["text_fields"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["field"]
+                .as_str()
+                .filter(|key| !key.starts_with("object."))
+                .map(|key| (key.to_owned(), f["value"].clone())))
+            .collect::<serde_json::Map<String, Value>>()
+    );
+    scene["saved_placements"] = json!(
+        design["placements"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| f["page"] == page)
+            .collect::<Vec<_>>()
+    );
+    scene["words"] = json!(
+        words
+            .iter()
+            .filter(|w| w["start"]
+                .as_f64()
+                .is_some_and(|t| t >= scene["start"].as_f64().unwrap_or(0.0)
+                    && t < scene["end"].as_f64().unwrap_or(0.0)))
+            .collect::<Vec<_>>()
+    );
+    scene["preview"] = board["previews"][page as usize - 1].clone();
+    scene
+}
+
+fn packets_from_scenes(
+    s: &Session,
+    board: &Value,
+    design: &Value,
+    words: &[Value],
+) -> Result<Vec<Value>> {
+    let mut packets = Vec::new();
+    for (i, scene) in
+        crate::storyboard::storyboard_scenes(&crate::workshop::project_dir(s)?)?
+            .into_iter()
+            .enumerate()
+    {
+        packets.push(scene_packet(board, design, words, i, scene));
+    }
+    Ok(packets)
+}
+
 pub(crate) fn packets(s: &mut Session) -> Result<(Value, Value, Vec<Value>)> {
     let board = board(s)?;
     let design = crate::storyboard_design::inspect(s, &json!({}))?;
@@ -58,65 +131,12 @@ pub(crate) fn packets(s: &mut Session) -> Result<(Value, Value, Vec<Value>)> {
     } else {
         words(&source)?
     };
-    let mut packets = Vec::new();
     if !board["page_plan"].is_array() && board["empty_template"] != true {
-        let first = board["first_scene_page"].as_u64().unwrap_or(1);
-        for (i, mut scene) in
-            crate::storyboard::storyboard_scenes(&crate::workshop::project_dir(s)?)?
-                .into_iter()
-                .enumerate()
-        {
-            let page = first + i as u64;
-            scene["target"] = json!(format!("scene-{}", i + 1));
-            scene["scene"] = json!(i + 1);
-            scene["page"] = json!(page);
-            scene["title"] = board["scene_titles"][i]
-                .as_str()
-                .map(|v| json!(v))
-                .unwrap_or_else(|| json!(format!("Scene {}", i + 1)));
-            scene["text_fields"] = json!(
-                design["text_fields"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|f| f["page"] == page)
-                    .collect::<Vec<_>>()
-            );
-            scene["sections"] = json!(
-                scene["text_fields"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|f| f["field"]
-                        .as_str()
-                        .filter(|key| !key.starts_with("object."))
-                        .map(|key| (key.to_owned(), f["value"].clone())))
-                    .collect::<serde_json::Map<String, Value>>()
-            );
-            scene["saved_placements"] = json!(
-                design["placements"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|f| f["page"] == page)
-                    .collect::<Vec<_>>()
-            );
-            scene["words"] = json!(
-                words
-                    .iter()
-                    .filter(|w| w["start"]
-                        .as_f64()
-                        .is_some_and(|t| t >= scene["start"].as_f64().unwrap_or(0.0)
-                            && t < scene["end"].as_f64().unwrap_or(0.0)))
-                    .collect::<Vec<_>>()
-            );
-            scene["preview"] = board["previews"][page as usize - 1].clone();
-            packets.push(scene);
-        }
-        return Ok((board, design, packets));
+        let scenes = packets_from_scenes(s, &board, &design, &words)?;
+        return Ok((board, design, scenes));
     }
     let dir = crate::workshop::project_dir(s)?;
-    packets = packets_from_page_plan(&dir, &board, &design, &words);
+    let packets = packets_from_page_plan(&dir, &board, &design, &words);
     if packets.is_empty() && board["empty_template"] != true {
         return Err(invalid("Create the native storyboard first"));
     }
@@ -286,6 +306,78 @@ fn check_revision(board: &Value, design: &Value, p: &Value) -> Result<()> {
     }
     Ok(())
 }
+fn regroup_delete(packets: &mut Vec<Value>, i: usize, p: &Value) -> Result<()> {
+    if packets.len() == 1 {
+        return Err(invalid("Keep at least one scene covering the song"));
+    }
+    let into = p["into"]
+        .as_str()
+        .unwrap_or(if i == 0 { "next" } else { "previous" });
+    let j = match into {
+        "previous" if i > 0 => i - 1,
+        "next" if i + 1 < packets.len() => i + 1,
+        _ => return Err(invalid("into must name an adjacent previous or next scene")),
+    };
+    let deleted = packets[i].clone();
+    let edge = if j < i { "end" } else { "start" };
+    packets[j][edge] = deleted[edge].clone();
+    // The previous version retains the removed page, artwork and every field for Restore.
+    packets[j]["status"] = json!("needs review");
+    packets.remove(i);
+    Ok(())
+}
+
+fn regroup_word_start(words: &[Value], p: &Value) -> Result<f64> {
+    let id = p["word"]
+        .as_str()
+        .ok_or_else(|| invalid("word must identify an existing project timing word"))?;
+    words
+        .iter()
+        .find(|w| w["id"] == id)
+        .and_then(|w| w["start"].as_f64())
+        .ok_or_else(|| invalid("Unknown recorded word"))
+}
+
+fn regroup_split(packets: &mut Vec<Value>, i: usize, at: f64, new_id: &str) -> Result<()> {
+    let start = packets[i]["start"].as_f64().unwrap_or(0.0);
+    let end = packets[i]["end"].as_f64().unwrap_or(0.0);
+    if at <= start || at >= end {
+        return Err(invalid("Split at a word inside the selected scene"));
+    }
+    let mut next = packets[i].clone();
+    next["target"] = json!(new_id);
+    next["start"] = json!(at);
+    next["status"] = json!("needs review");
+    packets[i]["end"] = json!(at);
+    packets[i]["status"] = json!("needs review");
+    packets.insert(i + 1, next);
+    Ok(())
+}
+
+fn regroup_trim(packets: &mut [Value], i: usize, at: f64, p: &Value) -> Result<()> {
+    let (edge, other, j) = match p["edge"].as_str() {
+        Some("start") if i > 0 => ("start", "end", i - 1),
+        Some("end") if i + 1 < packets.len() => ("end", "start", i + 1),
+        _ => {
+            return Err(invalid(
+                "Trim a shared start or end boundary; the song endpoints are fixed",
+            ));
+        }
+    };
+    let low = packets[i.min(j)]["start"].as_f64().unwrap_or(0.0);
+    let high = packets[i.max(j)]["end"].as_f64().unwrap_or(0.0);
+    if at <= low || at >= high {
+        return Err(invalid(
+            "The boundary must stay inside the two adjacent scenes",
+        ));
+    }
+    packets[i][edge] = json!(at);
+    packets[j][other] = json!(at);
+    packets[i]["status"] = json!("needs review");
+    packets[j]["status"] = json!("needs review");
+    Ok(())
+}
+
 /// Change grouping only: split, combine, or move a cut to an existing recorded word.
 fn regroup(
     packets: &mut Vec<Value>,
@@ -296,69 +388,13 @@ fn regroup(
 ) -> Result<()> {
     let i = scene_index(packets, p)?;
     if operation == "delete" {
-        if packets.len() == 1 {
-            return Err(invalid("Keep at least one scene covering the song"));
-        }
-        let into = p["into"]
-            .as_str()
-            .unwrap_or(if i == 0 { "next" } else { "previous" });
-        let j = match into {
-            "previous" if i > 0 => i - 1,
-            "next" if i + 1 < packets.len() => i + 1,
-            _ => return Err(invalid("into must name an adjacent previous or next scene")),
-        };
-        let deleted = packets[i].clone();
-        let edge = if j < i { "end" } else { "start" };
-        packets[j][edge] = deleted[edge].clone();
-        // The previous version retains the removed page, artwork and every field for Restore.
-        packets[j]["status"] = json!("needs review");
-        packets.remove(i);
-    } else {
-        let id = p["word"]
-            .as_str()
-            .ok_or_else(|| invalid("word must identify an existing project timing word"))?;
-        let at = words
-            .iter()
-            .find(|w| w["id"] == id)
-            .and_then(|w| w["start"].as_f64())
-            .ok_or_else(|| invalid("Unknown recorded word"))?;
-        if operation == "create" {
-            let start = packets[i]["start"].as_f64().unwrap_or(0.0);
-            let end = packets[i]["end"].as_f64().unwrap_or(0.0);
-            if at <= start || at >= end {
-                return Err(invalid("Split at a word inside the selected scene"));
-            }
-            let mut next = packets[i].clone();
-            next["target"] = json!(new_id);
-            next["start"] = json!(at);
-            next["status"] = json!("needs review");
-            packets[i]["end"] = json!(at);
-            packets[i]["status"] = json!("needs review");
-            packets.insert(i + 1, next);
-        } else {
-            let (edge, other, j) = match p["edge"].as_str() {
-                Some("start") if i > 0 => ("start", "end", i - 1),
-                Some("end") if i + 1 < packets.len() => ("end", "start", i + 1),
-                _ => {
-                    return Err(invalid(
-                        "Trim a shared start or end boundary; the song endpoints are fixed",
-                    ));
-                }
-            };
-            let low = packets[i.min(j)]["start"].as_f64().unwrap_or(0.0);
-            let high = packets[i.max(j)]["end"].as_f64().unwrap_or(0.0);
-            if at <= low || at >= high {
-                return Err(invalid(
-                    "The boundary must stay inside the two adjacent scenes",
-                ));
-            }
-            packets[i][edge] = json!(at);
-            packets[j][other] = json!(at);
-            packets[i]["status"] = json!("needs review");
-            packets[j]["status"] = json!("needs review");
-        }
+        return regroup_delete(packets, i, p);
     }
-    Ok(())
+    let at = regroup_word_start(words, p)?;
+    if operation == "create" {
+        return regroup_split(packets, i, at, new_id);
+    }
+    regroup_trim(packets, i, at, p)
 }
 fn rebuild(
     s: &mut Session,
@@ -407,69 +443,85 @@ pub fn create(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn delete(s: &mut Session, p: &Value) -> Result<Value> {
     change(s, p, "delete")
 }
+fn update_backgrounds(s: &mut Session, p: &Value, ids: &[Value]) -> Result<Value> {
+    let (board, design, scenes) = packets(s)?;
+    check_revision(&board, &design, p)?;
+    let mut records = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for id in ids {
+        let id = id
+            .as_str()
+            .ok_or_else(|| invalid("backgrounds must contain registered image IDs"))?;
+        if !seen.insert(id) {
+            return Err(invalid("Duplicate background image"));
+        }
+        let asset = s
+            .project_assets
+            .iter()
+            .find(|a| {
+                a.id == id && a.kind == "image" && a.path.as_ref().is_some_and(|p| p.is_file())
+            })
+            .ok_or_else(|| invalid("Select an existing registered background image"))?;
+        records.push(json!({"id":asset.id,"asset_id":asset.id,"name":asset.name,"file":asset.path,"category":"Backgrounds & locations"}));
+    }
+    rebuild(s, &board, &design, scenes, Some(records))
+}
+
+fn update_status(s: &mut Session, p: &Value) -> Result<Value> {
+    let (board, design, mut scenes) = packets(s)?;
+    check_revision(&board, &design, p)?;
+    let status = p["value"]
+        .as_str()
+        .filter(|s| crate::storyboard::SCENE_STATUSES.contains(s))
+        .ok_or_else(|| invalid("Unknown storyboard status"))?;
+    let i = scene_index(&scenes, p)?;
+    scenes[i]["status"] = json!(status);
+    rebuild(s, &board, &design, scenes, None)
+}
+
+fn update_restore(s: &mut Session, p: &Value, path: &str) -> Result<Value> {
+    let (current, design, _) = packets(s)?;
+    check_revision(&current, &design, p)?;
+    let root = crate::workshop::project_dir(s)?
+        .join("storyboard")
+        .canonicalize()?;
+    let path = Path::new(path).canonicalize()?;
+    if !path.starts_with(root)
+        || path.file_name().and_then(|s| s.to_str()) != Some("manifest.json")
+    {
+        return Err(invalid("Restore a saved version from this storyboard"));
+    }
+    let old = crate::storyboard_document::related(&crate::workshop::project_dir(s)?, &path)?;
+    if old["project"] != json!(s.project_path) {
+        return Err(invalid("That version belongs to another project"));
+    }
+    let mut design = old["design"].clone();
+    design["text_fields"] = crate::storyboard_design::native_fields(s, &old)?;
+    crate::storyboard_design::save_deck(s, old, &design)
+}
+
+fn update_scene_text(s: &mut Session, p: &Value) -> Result<Value> {
+    let (_, _, scenes) = packets(s)?;
+    let mut p = p.clone();
+    p["page"] = scenes[scene_index(&scenes, &p)?]["page"].clone();
+    crate::storyboard_design::edit_text(s, &p)
+}
+
 pub fn update(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(ids) = p["backgrounds"].as_array() {
-        let (board, design, scenes) = packets(s)?;
-        check_revision(&board, &design, p)?;
-        let mut records = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        for id in ids {
-            let id = id
-                .as_str()
-                .ok_or_else(|| invalid("backgrounds must contain registered image IDs"))?;
-            if !seen.insert(id) {
-                return Err(invalid("Duplicate background image"));
-            }
-            let asset = s
-                .project_assets
-                .iter()
-                .find(|a| {
-                    a.id == id && a.kind == "image" && a.path.as_ref().is_some_and(|p| p.is_file())
-                })
-                .ok_or_else(|| invalid("Select an existing registered background image"))?;
-            records.push(json!({"id":asset.id,"asset_id":asset.id,"name":asset.name,"file":asset.path,"category":"Backgrounds & locations"}));
-        }
-        return rebuild(s, &board, &design, scenes, Some(records));
+        return update_backgrounds(s, p, ids);
     }
     if p["edge"].is_string() {
         return change(s, p, "update");
     }
     if p["field"] == "status" {
-        let (board, design, mut scenes) = packets(s)?;
-        check_revision(&board, &design, p)?;
-        let status = p["value"]
-            .as_str()
-            .filter(|s| crate::storyboard::SCENE_STATUSES.contains(s))
-            .ok_or_else(|| invalid("Unknown storyboard status"))?;
-        let i = scene_index(&scenes, p)?;
-        scenes[i]["status"] = json!(status);
-        return rebuild(s, &board, &design, scenes, None);
+        return update_status(s, p);
     }
     if let Some(path) = p["restore"].as_str() {
-        let (current, design, _) = packets(s)?;
-        check_revision(&current, &design, p)?;
-        let root = crate::workshop::project_dir(s)?
-            .join("storyboard")
-            .canonicalize()?;
-        let path = Path::new(path).canonicalize()?;
-        if !path.starts_with(root)
-            || path.file_name().and_then(|s| s.to_str()) != Some("manifest.json")
-        {
-            return Err(invalid("Restore a saved version from this storyboard"));
-        }
-        let old = crate::storyboard_document::related(&crate::workshop::project_dir(s)?, &path)?;
-        if old["project"] != json!(s.project_path) {
-            return Err(invalid("That version belongs to another project"));
-        }
-        let mut design = old["design"].clone();
-        design["text_fields"] = crate::storyboard_design::native_fields(s, &old)?;
-        return crate::storyboard_design::save_deck(s, old, &design);
+        return update_restore(s, p, path);
     }
     if p["scene"].is_string() {
-        let (_, _, scenes) = packets(s)?;
-        let mut p = p.clone();
-        p["page"] = scenes[scene_index(&scenes, &p)?]["page"].clone();
-        return crate::storyboard_design::edit_text(s, &p);
+        return update_scene_text(s, p);
     }
     crate::storyboard_design::edit_text(s, p)
 }
