@@ -441,6 +441,16 @@ pub fn cmd_words_studio_track(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({"source":path,"clip_count":clips.len(),"sections":sections,"overlaps":overlaps,"unmatched":unmatched}))
 }
 
+pub fn cmd_words_overlaps(s: &mut Session, p: &Value) -> Result<Value> {
+    let track = cmd_words_studio_track(s, p)?;
+    let overlaps = track["overlaps"].as_array().cloned().unwrap_or_default();
+    Ok(json!({
+        "source": track["source"],
+        "overlap_count": overlaps.len(),
+        "overlaps": overlaps
+    }))
+}
+
 pub use crate::words_stage::{
     cmd_words_effects, cmd_words_link, cmd_words_lyrics_view, cmd_words_read, cmd_words_save,
 };

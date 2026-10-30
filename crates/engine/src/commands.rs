@@ -1324,6 +1324,12 @@ pub fn build() -> Vec<CommandSpec> {
             crate::words::cmd_words_compose
         ),
         query!(
+            "words.overlaps",
+            "Words Track Overlaps",
+            "{}",
+            crate::words::cmd_words_overlaps
+        ),
+        query!(
             "workshop.files",
             "Workshop Files",
             "{\"filter\": \"optional substring\", \"group\": \"optional audio|liner_notes|transcript|storyboard|assets|other\"}",

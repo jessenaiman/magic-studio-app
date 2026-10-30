@@ -107,6 +107,7 @@ pub mod vision;
 pub mod words;
 mod words_compose;
 mod words_stage;
+mod words_validate;
 pub mod workshop;
 pub mod workspace;
 
