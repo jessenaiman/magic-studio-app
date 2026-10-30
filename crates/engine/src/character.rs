@@ -49,7 +49,7 @@ fn resolve_rel(base_root: &Path, char_dir: &Path, rel: &str) -> String {
     resolved.to_string_lossy().into_owned()
 }
 
-fn resolve_character_map_paths(doc: &mut Value, base_root: &Path, char_dir: &Path) {
+fn resolve_sheet_paths(base_root: &Path, char_dir: &Path, doc: &mut Value) {
     if let Some(sheets) = doc.get_mut("sheets").and_then(Value::as_object_mut) {
         for val in sheets.values_mut() {
             if let Some(s_str) = val.as_str().map(str::to_owned) {
@@ -57,31 +57,30 @@ fn resolve_character_map_paths(doc: &mut Value, base_root: &Path, char_dir: &Pat
             }
         }
     }
-    if let Some(angles) = doc.get_mut("angles").and_then(Value::as_object_mut) {
-        for a_val in angles.values_mut() {
-            if let Some(img) = a_val
-                .get("image")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-            {
-                a_val["image_path"] = json!(resolve_rel(base_root, char_dir, &img));
-            }
-            if let Some(rig_p) = a_val.get("rig").and_then(Value::as_str).map(str::to_owned) {
-                a_val["rig_path"] = json!(resolve_rel(base_root, char_dir, &rig_p));
-            }
-        }
-    }
-    if let Some(poses) = doc.get_mut("poses").and_then(Value::as_object_mut) {
-        for p_val in poses.values_mut() {
-            if let Some(img) = p_val
-                .get("image")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-            {
-                p_val["image_path"] = json!(resolve_rel(base_root, char_dir, &img));
+}
+
+fn resolve_object_paths(
+    base_root: &Path,
+    char_dir: &Path,
+    doc: &mut Value,
+    key: &str,
+    field: &str,
+    target: &str,
+) {
+    if let Some(obj) = doc.get_mut(key).and_then(Value::as_object_mut) {
+        for val in obj.values_mut() {
+            if let Some(rel) = val.get(field).and_then(Value::as_str).map(str::to_owned) {
+                val[target] = json!(resolve_rel(base_root, char_dir, &rel));
             }
         }
     }
+}
+
+fn resolve_character_map_paths(doc: &mut Value, base_root: &Path, char_dir: &Path) {
+    resolve_sheet_paths(base_root, char_dir, doc);
+    resolve_object_paths(base_root, char_dir, doc, "angles", "image", "image_path");
+    resolve_object_paths(base_root, char_dir, doc, "angles", "rig", "rig_path");
+    resolve_object_paths(base_root, char_dir, doc, "poses", "image", "image_path");
 }
 
 pub fn load_character_config(s: &Session, id: &str, project_root: Option<&Path>) -> Value {
@@ -285,7 +284,7 @@ pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
     }))
 }
 
-fn apply_pose_and_angle_params(doc: &mut Value, params: &Value) {
+fn apply_pose_param(doc: &mut Value, params: &Value) {
     if let Some(pose) = params
         .get("pose")
         .and_then(Value::as_str)
@@ -307,6 +306,9 @@ fn apply_pose_and_angle_params(doc: &mut Value, params: &Value) {
             doc["direction"] = json!(pd.to_owned());
         }
     }
+}
+
+fn apply_angle_param(doc: &mut Value, params: &Value) {
     if let Some(angle) = params
         .get("angle")
         .and_then(Value::as_str)
@@ -322,6 +324,9 @@ fn apply_pose_and_angle_params(doc: &mut Value, params: &Value) {
             doc["direction"] = json!(dir);
         }
     }
+}
+
+fn apply_direction_param(doc: &mut Value, params: &Value) {
     if let Some(dir) = params
         .get("direction")
         .and_then(Value::as_str)
@@ -339,6 +344,12 @@ fn apply_pose_and_angle_params(doc: &mut Value, params: &Value) {
             doc["active_angle"] = json!(next);
         }
     }
+}
+
+fn apply_pose_and_angle_params(doc: &mut Value, params: &Value) {
+    apply_pose_param(doc, params);
+    apply_angle_param(doc, params);
+    apply_direction_param(doc, params);
 }
 
 fn sync_angle_rig_files(char_dir: &Path, active_angle: &str) {
@@ -450,37 +461,51 @@ fn find_rotation_track<'a>(sheet: &'a Value, part_id: &str) -> Option<&'a Vec<Va
     tr.get("keyframes")?.as_array()
 }
 
-pub fn eval_theatre_rotation_at(sheet: &Value, part_id: &str, t: f64) -> f64 {
-    if let Some(keyframes) = find_rotation_track(sheet, part_id) {
-        let mut pts: Vec<(f64, f64)> = keyframes
-            .iter()
-            .filter_map(|k| Some((k["position"].as_f64()?, k["value"].as_f64()?)))
-            .collect();
-        pts.sort_by(|a, b| a.0.total_cmp(&b.0));
-        if let Some(&(t_first, v_first)) = pts.first() {
-            if t <= t_first {
-                return v_first;
-            }
-            for w in pts.windows(2) {
-                let (t0, v0) = w[0];
-                let (t1, v1) = w[1];
-                if t <= t1 {
-                    let u = if t1 > t0 {
-                        ((t - t0) / (t1 - t0)).clamp(0.0, 1.0)
-                    } else {
-                        1.0
-                    };
-                    let s = u * u * (3.0 - 2.0 * u);
-                    return v0 + (v1 - v0) * s;
-                }
-            }
-            return pts.last().map(|p| p.1).unwrap_or(0.0);
+fn rotation_keyframes(sheet: &Value, part_id: &str) -> Option<Vec<(f64, f64)>> {
+    let keyframes = find_rotation_track(sheet, part_id)?;
+    let mut pts: Vec<(f64, f64)> = keyframes
+        .iter()
+        .filter_map(|k| Some((k["position"].as_f64()?, k["value"].as_f64()?)))
+        .collect();
+    pts.sort_by(|a, b| a.0.total_cmp(&b.0));
+    Some(pts)
+}
+
+fn interpolate_rotation(pts: &[(f64, f64)], t: f64) -> Option<f64> {
+    let &(t_first, v_first) = pts.first()?;
+    if t <= t_first {
+        return Some(v_first);
+    }
+    for w in pts.windows(2) {
+        let (t0, v0) = w[0];
+        let (t1, v1) = w[1];
+        if t <= t1 {
+            let u = if t1 > t0 {
+                ((t - t0) / (t1 - t0)).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            let s = u * u * (3.0 - 2.0 * u);
+            return Some(v0 + (v1 - v0) * s);
         }
     }
+    pts.last().map(|p| p.1)
+}
+
+fn static_rotation(sheet: &Value, part_id: &str) -> f64 {
     sheet
         .pointer("/staticOverrides/byObject")
         .and_then(|o| o.get(part_id))
         .and_then(|p| p.get("rotation"))
         .and_then(Value::as_f64)
         .unwrap_or(0.0)
+}
+
+pub fn eval_theatre_rotation_at(sheet: &Value, part_id: &str, t: f64) -> f64 {
+    if let Some(pts) = rotation_keyframes(sheet, part_id)
+        && let Some(value) = interpolate_rotation(&pts, t)
+    {
+        return value;
+    }
+    static_rotation(sheet, part_id)
 }
