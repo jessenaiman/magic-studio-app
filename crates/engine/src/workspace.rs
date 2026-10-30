@@ -52,8 +52,50 @@ pub fn resolve_workspace_path(s: &crate::Session, raw: &str) -> PathBuf {
     workspace_root(s).join(p)
 }
 
-/// Resolve an installed Craft CLI binary (`photocraft-cli`, `effectcraft-cli`, `filmcraft-cli`),
-/// preferring an explicit `<TOOL_NAME>` env override, then `~/.local/share/artcraft-launcher/installed.json`, then `PATH`.
+/// The user's portable data directory; relative XDG values are not valid roots.
+pub(crate) fn user_data_dir() -> Option<PathBuf> {
+    std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+                .map(|home| home.join(".local/share"))
+        })
+}
+
+/// Resolve a program on the caller's PATH before handing it to a background service.
+pub(crate) fn find_executable(name: &str) -> Result<PathBuf> {
+    let executable = |path: &Path| {
+        if !path.is_file() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            path.metadata().is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
+        }
+        #[cfg(not(unix))]
+        { true }
+    };
+    let path = Path::new(name);
+    let found = if path.components().count() > 1 {
+        executable(path).then(|| path.to_path_buf())
+    } else {
+        std::env::var_os("PATH").and_then(|paths| {
+            std::env::split_paths(&paths)
+                .map(|dir| dir.join(name))
+                .find(|path| executable(path))
+        })
+    };
+    found
+        .and_then(|path| std::path::absolute(path).ok())
+        .ok_or_else(|| EngineError::ExternalTool(name.into(), "executable not found on PATH".into()))
+}
+
+/// Resolve an installed Craft CLI using an explicit `<TOOL_NAME>` environment override,
+/// then the ArtCraft inventory under the user's data directory, then PATH.
 pub fn resolve_craft_cli(name: &str) -> String {
     std::env::var(name.to_uppercase().replace('-', "_"))
         .ok()
@@ -65,8 +107,8 @@ pub fn resolve_craft_cli(name: &str) -> String {
 fn resolve_installed_cli(name: &str) -> Option<String> {
     let is_cli = name.ends_with("-cli");
     let app = name.strip_suffix("-cli").unwrap_or(name);
-    let home = std::env::var("HOME").ok()?;
-    let installed_path = Path::new(&home).join(".local/share/artcraft-launcher/installed.json");
+    let data_home = user_data_dir()?;
+    let installed_path = data_home.join("artcraft-launcher/installed.json");
     let text = std::fs::read_to_string(installed_path).ok()?;
     let parsed: Value = serde_json::from_str(&text).ok()?;
     let app_entry = &parsed["apps"][app];
@@ -78,8 +120,7 @@ fn resolve_installed_cli(name: &str) -> Option<String> {
     }
     let ver = app_entry["version"].as_str()?;
     let cli_name = format!("{app}-cli");
-    let extracted = Path::new(&home)
-        .join(".local/share")
+    let extracted = data_home
         .join(app)
         .join(ver)
         .join(&cli_name);

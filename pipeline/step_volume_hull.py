@@ -25,8 +25,6 @@ from pipeline.character_iteration_exporter import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHOOL_BG = Path("/home/jesse/main-vault/Creative/Old MacDonald/oldmac-school.png")
-CLASS_BG = Path("/home/jesse/main-vault/Creative/old-macs-class.png")
 
 SIX_CAST_ORDER = [
     "miss_hayley",

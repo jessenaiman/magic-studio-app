@@ -697,7 +697,9 @@ fn worker_command(backend: &str, worker: &Path, request_path: &Path) -> Result<V
         )));
     }
     Ok(vec![
-        std::env::var("BLENDER_BIN").unwrap_or_else(|_| "blender".into()),
+        crate::workspace::find_executable(
+            &std::env::var("BLENDER_BIN").unwrap_or_else(|_| "blender".into()),
+        )?.to_string_lossy().into_owned(),
         "--background".into(),
         "--factory-startup".into(),
         "--disable-autoexec".into(),
@@ -719,7 +721,8 @@ fn systemd_command(
     worker: &Path,
     request_path: &Path,
     command: &[String],
-) -> Command {
+) -> Result<Command> {
+    let python = crate::workspace::find_executable("python3")?;
     let mut cmd = Command::new("systemd-run");
     cmd.args(["--user", "--quiet", "--collect"])
         .arg(format!("--unit={UNIT}"))
@@ -743,13 +746,14 @@ fn systemd_command(
             dir.join("worker.log").display()
         ))
         .arg(format!(
-            "--property=ExecStopPost=/usr/bin/python3 {} --finalize {}",
+            "--property=ExecStopPost={} {} --finalize {}",
+            systemd_quote(&python),
             systemd_quote(worker),
             systemd_quote(request_path)
         ))
         .arg("--")
         .args(command);
-    cmd
+    Ok(cmd)
 }
 
 /// A start that systemd-run refused still leaves a receipt, so a later status can report it.
@@ -816,9 +820,9 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
     let dir = root(s)?.join(&plan.id);
     let (worker, request_path) = prepare_job_dir(&dir, s, p, &request, &plan)?;
     let command = worker_command(backend, &worker, &request_path)?;
-    record_owner(&dir, &plan)?;
     // systemd-run waits for the start transaction while holding the start/cancel lock.
-    let mut unit = systemd_command(&dir, &plan, &worker, &request_path, &command);
+    let mut unit = systemd_command(&dir, &plan, &worker, &request_path, &command)?;
+    record_owner(&dir, &plan)?;
     if let Some(error) = submission_error(unit.output()) {
         write_failure_receipt(&dir, s, &request, &plan.id, &error)?;
         return Err(EngineError::ExternalTool("systemd-run".into(), error));

@@ -17,162 +17,159 @@ from typing import Any, Dict, List, Tuple
 
 from PIL import Image
 
-VAULT_ROOT = "/home/jesse/main-vault/Creative/Design/Characters"
-POSES_DIR = os.path.join(VAULT_ROOT, "3d poses")
+from pipeline.library_paths import configured_path
+
+POSES_DIR = "3d poses"
 
 VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
     "hopper": {
         "id": "hopper",
         "name": "Hopper (Cream Rabbit Student)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(
-            VAULT_ROOT, "Hopper-no-background.png_202607180130.jpeg"
-        ),
+        "cutout": "Hopper-no-background.png_202607180130.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_5.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_15.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide4.PNG_202607180130.jpeg"),
+        "slide": "Slide4.PNG_202607180130.jpeg",
     },
     "whiskers": {
         "id": "whiskers",
         "name": "Whiskers (Grey Tabby Kitten)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Whiskers-no-back.png_202607180130.jpeg"),
+        "cutout": "Whiskers-no-back.png_202607180130.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_17.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_20.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide5.PNG_202607180130.jpeg"),
+        "slide": "Slide5.PNG_202607180130.jpeg",
     },
     "jenny": {
         "id": "jenny",
         "name": "Jenny / Penny (Yellow Chick)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Penny.jpeg"),
+        "cutout": "Penny.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_9.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_3.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide7.PNG_202607180130.jpeg"),
+        "slide": "Slide7.PNG_202607180130.jpeg",
     },
     "puddles": {
         "id": "puddles",
         "name": "Puddles (Yellow Duckling)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Puddles-tranparent.png_202607180130.jpeg"),
+        "cutout": "Puddles-tranparent.png_202607180130.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_12.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_13.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide9.PNG_202607180130.jpeg"),
+        "slide": "Slide9.PNG_202607180130.jpeg",
     },
     "scout": {
         "id": "scout",
         "name": "Scout (Explorer Puppy)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Scout-no-back.png_202607180130.jpeg"),
-        "turnaround": os.path.join(VAULT_ROOT, "Scout-no-back.png_202607180130.jpeg"),
+        "cutout": "Scout-no-back.png_202607180130.jpeg",
+        "turnaround": "Scout-no-back.png_202607180130.jpeg",
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_5.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide6.PNG_202607180130.jpeg"),
+        "slide": "Slide6.PNG_202607180130.jpeg",
     },
     "rusty": {
         "id": "rusty",
         "name": "Rusty (Brown Foal)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Rusty-transparent.png_202607180130.jpeg"),
+        "cutout": "Rusty-transparent.png_202607180130.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_19.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_24.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide11.PNG_202607180130.jpeg"),
+        "slide": "Slide11.PNG_202607180130.jpeg",
     },
     "sam": {
         "id": "sam",
         "name": "Sam (Pink Piglet)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Sam.png_202607180130.jpeg"),
+        "cutout": "Sam.png_202607180130.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_21.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_33.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide10.PNG_202607180130.jpeg"),
+        "slide": "Slide10.PNG_202607180130.jpeg",
     },
     "maisy": {
         "id": "maisy",
         "name": "Maisy (Black & White Calf)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Slide8.PNG_202607180130.jpeg"),
+        "cutout": "Slide8.PNG_202607180130.jpeg",
         "turnaround": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_29.jpeg"
         ),
         "poseSheet": os.path.join(
             POSES_DIR, "Character_turnaround_sheet_anima…_202607180130_29.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide8.PNG_202607180130.jpeg"),
+        "slide": "Slide8.PNG_202607180130.jpeg",
     },
     "mr_puddles": {
         "id": "mr_puddles",
         "name": "Mr Puddles (Adult Duck)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Mr Puddles.png"),
-        "turnaround": os.path.join(VAULT_ROOT, "Mr Puddles.png"),
-        "poseSheet": os.path.join(VAULT_ROOT, "Mr Puddles.png"),
-        "slide": os.path.join(VAULT_ROOT, "Mr Puddles.png"),
+        "cutout": "Mr Puddles.png",
+        "turnaround": "Mr Puddles.png",
+        "poseSheet": "Mr Puddles.png",
+        "slide": "Mr Puddles.png",
     },
     "old_mac": {
         "id": "old_mac",
         "name": "Old Mac (Farmer Teacher)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "old_mac-tranparent.png_202607180130.jpeg"),
-        "turnaround": os.path.join(
-            VAULT_ROOT, "old_mac-tranparent.png_202607180130.jpeg"
-        ),
+        "cutout": "old_mac-tranparent.png_202607180130.jpeg",
+        "turnaround": "old_mac-tranparent.png_202607180130.jpeg",
         "poseSheet": os.path.join(
             POSES_DIR, "Create_pose_sheet_for_puppet_202607180130_25.jpeg"
         ),
-        "slide": os.path.join(VAULT_ROOT, "Slide3.PNG_202607180130.jpeg"),
+        "slide": "Slide3.PNG_202607180130.jpeg",
     },
     "miss_hayley": {
         "id": "miss_hayley",
         "name": "Miss Hayley (Teacher)",
         "archetype": "humanoid_biped",
-        "cutout": os.path.join(VAULT_ROOT, "Miss Hayley.png"),
-        "turnaround": os.path.join(VAULT_ROOT, "Miss Hayley.png"),
-        "poseSheet": os.path.join(VAULT_ROOT, "Hayley-Draft.jpeg"),
-        "slide": os.path.join(VAULT_ROOT, "Miss Hayley.png"),
+        "cutout": "Miss Hayley.png",
+        "turnaround": "Miss Hayley.png",
+        "poseSheet": "Hayley-Draft.jpeg",
+        "slide": "Miss Hayley.png",
     },
 }
 
 
-def _match_catalog_entry(low: str, prefer: str) -> str | None:
+def _match_catalog_entry(low: str, prefer: str, vault_root: Path) -> str | None:
     for key, entry in VAULT_CHARACTER_CATALOG.items():
         if key == low or key in low or low in key:
             candidate = (
                 entry.get(prefer) or entry.get("cutout") or entry.get("turnaround")
             )
-            if candidate and os.path.exists(candidate):
-                return candidate
+            if candidate and (vault_root / candidate).is_file():
+                return str(vault_root / candidate)
     return None
 
 
-def _search_vault_root(low: str) -> str | None:
+def _search_vault_root(low: str, vault_root: Path) -> str | None:
     spaced = low.replace("_", " ")
-    for root, _, files in os.walk(VAULT_ROOT):
+    for root, _, files in os.walk(vault_root):
         for f in files:
             fl = f.lower()
             if spaced in fl or low in fl:
@@ -180,13 +177,22 @@ def _search_vault_root(low: str) -> str | None:
     return None
 
 
-def resolve_real_vault_image(image_or_name: str, prefer: str = "turnaround") -> str:
+def resolve_real_vault_image(
+    image_or_name: str, prefer: str = "turnaround", vault_root: Path | None = None
+) -> str:
     if not image_or_name or not str(image_or_name).strip():
         raise FileNotFoundError("No character ID or source image path provided")
     if os.path.exists(image_or_name):
         return os.path.abspath(image_or_name)
+    vault_root = (
+        vault_root if vault_root is not None else configured_path(
+            "characters_root", "MAGICSTUDIO_CHARACTERS_ROOT"
+        )
+    )
     low = str(image_or_name).lower().strip()
-    found = _match_catalog_entry(low, prefer) or _search_vault_root(low)
+    found = _match_catalog_entry(low, prefer, vault_root) or _search_vault_root(
+        low, vault_root
+    )
     if found:
         return found
     raise FileNotFoundError(

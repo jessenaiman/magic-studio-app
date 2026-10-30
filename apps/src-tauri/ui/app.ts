@@ -505,10 +505,6 @@ class AppShellController {
     state.identity = start.identity;
     window.applicationFileMenu?.configure(start.menus.file);
     window.textContextMenu?.configure(start.menus.text);
-    if (start.animate_only) {
-      state.animateOnly = true;
-      document.body.classList.add("animate-only");
-    }
     if (start.character && typeof motion !== "undefined") {
       motion.character = start.character;
       motion.explicitCharacter = true;
@@ -535,8 +531,8 @@ class AppShellController {
     state.storyboardUndo = null;
   }
 
-  updateWindowProjectTitle(path: string) {
-    const title = path.split("/").pop()?.replace(/\.magic$/, "") || "";
+  updateWindowProjectTitle(path: string, name?: string) {
+    const title = name || path.split("/").pop()?.replace(/\.magic$/, "") || "";
     $("project-name").textContent = title;
     $("project-name").parentElement.title = title;
     document.title = `${title} · Magic Studio`;
@@ -551,7 +547,7 @@ class AppShellController {
     if (!path) throw new Error('Project command did not return its canonical location');
     state.data = opened;
     state.projectReceipt = opened;
-    state.animateOnly = opened.mode === "animation" || document.body.classList.contains("animate-only");
+    state.animateOnly = opened.mode === "animation";
     document.body.classList.toggle("animation-mode", opened.mode === "animation");
     this.resetProjectTransientState(path);
     state.project = path;
@@ -562,7 +558,7 @@ class AppShellController {
     const startOpen = start.open && start.open !== "agent" ? start.open : "song";
     state.open = SONG_SECTIONS.includes(startOpen) ? "song" : startOpen;
     document.body.classList.remove("at-home");
-    this.updateWindowProjectTitle(path);
+    this.updateWindowProjectTitle(path, opened.name);
     this.renderTarget();
     renderBlocks();
     renderStoryboard();
