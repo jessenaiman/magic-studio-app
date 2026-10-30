@@ -144,7 +144,7 @@ def sha256(path):
 
 def import_skeleton(request, job):
     sys.path.insert(0, str(job))
-    from step_effectcraft_rig import export_blender_python_script
+    from pipeline.blender_cutout_rig import export_blender_python_script
     import runpy
 
     source = request["rig_plan"]

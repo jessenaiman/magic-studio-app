@@ -1,9 +1,6 @@
 """Author Puppet rigs and captured paths using EffectCraft's own motion tools."""
 
-try:
-    from .effectcraft_project import fields, nodes
-except ImportError:
-    from effectcraft_project import fields, nodes
+from .project import fields, nodes
 
 
 class PuppetRig:

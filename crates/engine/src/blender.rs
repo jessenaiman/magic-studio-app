@@ -569,9 +569,13 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
         &worker,
         include_str!("../../../pipeline/blender_animation_worker.py"),
     )?;
+    if request["rig_plan"].is_object() || backend == "effectcraft" {
+        fs::create_dir_all(dir.join("pipeline"))?;
+        fs::write(dir.join("pipeline/__init__.py"), "")?;
+    }
     if request["rig_plan"].is_object() {
-        fs::write(dir.join("step_effectcraft_rig.py"), include_str!("../../../pipeline/step_effectcraft_rig.py"))?;
-        fs::write(dir.join("blender_cutout_rig.py"), include_str!("../../../pipeline/blender_cutout_rig.py"))?;
+        fs::write(dir.join("pipeline/rig_motion.py"), include_str!("../../../pipeline/rig_motion.py"))?;
+        fs::write(dir.join("pipeline/blender_cutout_rig.py"), include_str!("../../../pipeline/blender_cutout_rig.py"))?;
     }
     if request["volume_plan"].is_object() {
         fs::write(dir.join("volume_reconstruction.py"), include_str!("../../../pipeline/volume_reconstruction.py"))?;
@@ -595,8 +599,10 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
         ]
     } else {
         if backend == "effectcraft" {
-            fs::write(dir.join("effectcraft_worker.py"), include_str!("../../../pipeline/effectcraft_worker.py"))?;
-            fs::write(dir.join("effectcraft_project.py"), include_str!("../../../pipeline/effectcraft_project.py"))?;
+            fs::create_dir_all(dir.join("pipeline/effectcraft"))?;
+            fs::write(dir.join("pipeline/effectcraft/__init__.py"), "")?;
+            fs::write(dir.join("pipeline/effectcraft/worker.py"), include_str!("../../../pipeline/effectcraft/worker.py"))?;
+            fs::write(dir.join("pipeline/effectcraft/project.py"), include_str!("../../../pipeline/effectcraft/project.py"))?;
         }
         if backend == "mlt" {
             fs::write(

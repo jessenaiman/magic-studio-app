@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from effectcraft_project import NativeProject, digest
+from .project import NativeProject, digest
 
 
 def snapshot(project, job):

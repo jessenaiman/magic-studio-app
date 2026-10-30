@@ -6,12 +6,8 @@ from pathlib import Path
 import shutil
 import tempfile
 
-try:
-    from .effectcraft_project import NativeProject, digest, fields
-    from .effectcraft_motion import animate
-except ImportError:
-    from effectcraft_project import NativeProject, digest, fields
-    from effectcraft_motion import animate
+from .project import NativeProject, digest, fields
+from .motion import animate
 
 
 class SceneBuilder:
@@ -90,13 +86,28 @@ class SceneBuilder:
     def add_layer(self, layer):
         fields(
             layer,
-            "id file parent anchor position scale rotation "
+            "id file null parent anchor position scale rotation "
             "properties puppet sketch model",
             "layer",
         )
         name = layer["id"]
         if name in self.layers or name == "Controls":
             raise ValueError(f"Duplicate or reserved layer ID: {name}")
+        uid = self.create_layer(layer)
+        self.layers[name] = uid
+        commands = [
+            ("prop.set", dict(layer=uid, path=f"transform/{key}", value=layer[key]))
+            for key in ("anchor", "position", "scale", "rotation")
+            if key in layer
+        ]
+        if "model" in layer:
+            commands.extend(self.model(uid, layer["model"]))
+        self.project.edit(commands)
+
+    def create_layer(self, layer):
+        name = layer["id"]
+        if layer.get("null"):
+            return self.project.command("layer.newNull", name=name)["layer"]
         original = (self.base / layer["file"]).resolve()
         media = self.output / "media" / f"{len(self.media):04}-{original.name}"
         media.parent.mkdir(exist_ok=True)
@@ -122,15 +133,7 @@ class SceneBuilder:
             uid = next(
                 row["id"] for row in info["activeComp"]["layers"] if row["name"] == name
             )
-        self.layers[name] = uid
-        commands = [
-            ("prop.set", dict(layer=uid, path=f"transform/{key}", value=layer[key]))
-            for key in ("anchor", "position", "scale", "rotation")
-            if key in layer
-        ]
-        if "model" in layer:
-            commands.extend(self.model(uid, layer["model"]))
-        self.project.edit(commands)
+        return uid
 
     def model(self, uid, model):
         fields(model, "clip loop speed unitScale", "model")

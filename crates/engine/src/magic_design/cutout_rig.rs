@@ -8,20 +8,7 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
         .current_asset()
         .ok_or_else(|| EngineError::InvalidParams("no active asset".into()))?;
     let id = asset.id.clone();
-    let mut src_path = asset.path.clone();
-    let ds_dir = crate::workspace::workspace_root(s)
-        .join("exports/design_share")
-        .join(&id);
-    if src_path.is_dir()
-        || src_path
-            .to_string_lossy()
-            .contains(".layered_preview_cache")
-    {
-        let candidate = ds_dir.join("registered_turnaround/frames/00_front.png");
-        if candidate.is_file() {
-            src_path = candidate;
-        }
-    }
+    let src_path = asset.path.clone();
     crate::sheets::require_sheet_review(s, &id, &src_path)?;
 
     let rec_parts_csv = asset
@@ -46,9 +33,9 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
     let out_dir = crate::workspace::workspace_root(s)
         .join("exports/pose_and_parts")
         .join(&id);
-    let script = crate::workspace::workspace_root(s).join("pipeline/guided_cutout_rig_builder.py");
     let mut args = vec![
-        script.to_string_lossy().into_owned(),
+        "-m".into(),
+        "pipeline.guided_cutout_rig_builder".into(),
         src_path.to_string_lossy().into_owned(),
         "--character".into(),
         id.clone(),
@@ -66,18 +53,7 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
         args.push(p_csv.clone());
     }
     crate::workspace::run_tool_in(&crate::workspace::workspace_root(s), "python3", &args)?;
-    let ds_rig = ds_dir.join("rig.json");
-    let uses_ds_rig = s
-        .project_assets
-        .iter()
-        .find(|a| a.id == id)
-        .and_then(|a| a.path.as_ref())
-        .is_some_and(|p| p == &ds_rig);
-    let plan_path = if uses_ds_rig && ds_rig.is_file() {
-        ds_rig
-    } else {
-        out_dir.join(format!("{id}_cutout_rig_plan.json"))
-    };
+    let plan_path = out_dir.join(format!("{id}_cutout_rig_plan.json"));
     let plan = crate::session::LoadedCutoutRigPlan::load_from_path(&plan_path)?;
     if let Some(asset) = s.current_asset_mut() {
         asset.attached_asset_sheet = plan.cutout_asset_sheet.clone();

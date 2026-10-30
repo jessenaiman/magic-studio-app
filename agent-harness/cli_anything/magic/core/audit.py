@@ -87,8 +87,10 @@ def build_command(root: Path, target: Path, name: str) -> list[str]:
             f"missing repository configuration: {', '.join(tool.configs)}"
         )
     command = list(tool.command)
-    if target.is_file() or name == "lizard":
+    if name != "clippy":
         command[-1] = str(target)
+    if name == "stylelint" and target.is_dir():
+        command[-1] = str(target / "**/*.css")
     if name == "lizard":
         modules = target.with_suffix("")
         if target.is_file() and target.suffix == ".rs" and modules.is_dir():
@@ -112,7 +114,7 @@ def run_native(
     if dry_run:
         print(f"[{label}] not run (--dry-run)", file=sys.stderr, flush=True)
         return 0
-    code = subprocess.run(
+    code = subprocess.run(  # noqa: S603 -- Fixed native tool argv; no shell.
         command, cwd=root, check=False, stdout=sys.stderr if diagnostic else None
     ).returncode
     code = code if code >= 0 else 128 - code
@@ -128,8 +130,7 @@ def run_audit(
     single_file = target.is_file()
     selected = tools or (("lizard",) if single_file else tuple(TOOLS))
     root = target.parent if single_file else target
-    if single_file or set(selected) == {"lizard"}:
-        root = next((p for p in (root, *root.parents) if (p / ".git").exists()), root)
+    root = next((p for p in (root, *root.parents) if (p / ".git").exists()), root)
     status = 0
     for name in dict.fromkeys(selected):
         tool = TOOLS[name]

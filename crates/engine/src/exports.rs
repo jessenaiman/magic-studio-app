@@ -1,5 +1,4 @@
-//! Export commands: EffectCraft / Three.js / React Motion / Blender scripts,
-//! FilmCraft, Blender 5.3, cutout MP4, layered motion, and motion validation.
+//! FilmCraft, Blender, cutout video, layered motion, and motion validation exports.
 
 use std::path::PathBuf;
 
@@ -7,137 +6,7 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::workspace::{
-    build_effectcraft_script_args, resolve_craft_cli, resolve_workspace_path, run_python_json,
-    run_tool_in, workspace_root,
-};
-
-/// Resolve the active cutout rig plan path (asset's plan or the default on-disk location).
-fn resolve_active_cutout_plan(s: &Session) -> Result<(String, PathBuf)> {
-    let asset = s
-        .current_asset()
-        .ok_or_else(|| EngineError::InvalidParams("no active asset to export".into()))?;
-    let asset_id = asset.id.clone();
-    let plan_path = if let Some(rig) = &asset.cutout_rig {
-        rig.plan_path.clone()
-    } else {
-        let candidate = resolve_workspace_path(
-            s,
-            &format!("exports/pose_and_parts/{asset_id}/{asset_id}_cutout_rig_plan.json"),
-        );
-        if candidate.is_file() {
-            candidate
-        } else {
-            return Err(EngineError::InvalidParams(format!(
-                "no cutout rig built for active asset '{asset_id}'; run asset.build_cutout_rig first"
-            )));
-        }
-    };
-    Ok((asset_id, plan_path))
-}
-
-/// Resolve preview timing (mode, speed, duration) from params or session defaults.
-fn resolve_preview_export_timing(s: &Session, params: &Value) -> (String, f64, f64) {
-    let mode = params
-        .get("mode")
-        .and_then(Value::as_str)
-        .unwrap_or(s.preview_mode.as_str())
-        .to_string();
-    let speed = params
-        .get("speed")
-        .and_then(Value::as_f64)
-        .unwrap_or(s.preview_speed as f64);
-    let default_dur = ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
-    let duration = params
-        .get("duration")
-        .and_then(Value::as_f64)
-        .unwrap_or(default_dur);
-    (mode, speed, duration)
-}
-
-/// Run an EffectCraft `.jsx` script via `effectcraft-cli script <script.jsx>`.
-pub fn cmd_effectcraft_run_script(s: &mut Session, params: &Value) -> Result<Value> {
-    let script_raw = params
-        .get("script")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::InvalidParams("missing 'script' parameter".into()))?;
-    let resolved_script = resolve_workspace_path(s, script_raw);
-    if !resolved_script.is_file() {
-        return Err(EngineError::InvalidParams(format!(
-            "EffectCraft script file not found: {}",
-            resolved_script.display()
-        )));
-    }
-    let root = workspace_root(s);
-    let bin = resolve_craft_cli("effectcraft-cli");
-    let args = build_effectcraft_script_args(&resolved_script.to_string_lossy());
-    let stdout = run_tool_in(&root, &bin, &args)?;
-    Ok(json!({
-        "ok": true,
-        "command": "effectcraft.run_script",
-        "tool": bin,
-        "script": resolved_script.to_string_lossy(),
-        "stdout": stdout,
-    }))
-}
-
-/// Export an EffectCraft JSX for the active cutout rig, or run a raw `.jsx` when `script` is given without `output`.
-pub fn cmd_export_effectcraft(s: &mut Session, params: &Value) -> Result<Value> {
-    if params.get("script").is_some() && params.get("output").is_none() {
-        let mut res = cmd_effectcraft_run_script(s, params)?;
-        if let Some(obj) = res.as_object_mut() {
-            obj.insert("command".to_string(), json!("export.effectcraft"));
-        }
-        return Ok(res);
-    }
-
-    let (asset_id, plan_path) = resolve_active_cutout_plan(s)?;
-    let default_jsx = format!("exports/{asset_id}_cutout_rig.jsx");
-    let output_raw = params
-        .get("output")
-        .and_then(Value::as_str)
-        .unwrap_or(&default_jsx);
-    let output_path = resolve_workspace_path(s, output_raw);
-    let (mode, speed, duration) = resolve_preview_export_timing(s, params);
-
-    let root = workspace_root(s);
-    let builder_script = root.join("pipeline/guided_cutout_rig_builder.py");
-    let args = vec![
-        builder_script.to_string_lossy().into_owned(),
-        "--jsx-only".to_string(),
-        "--rig-plan".to_string(),
-        plan_path.to_string_lossy().into_owned(),
-        "--mode".to_string(),
-        mode.clone(),
-        "--speed".to_string(),
-        format!("{speed:.3}"),
-        "--duration".to_string(),
-        format!("{duration:.3}"),
-        "--out-jsx".to_string(),
-        output_path.to_string_lossy().into_owned(),
-    ];
-    let stdout = run_tool_in(&root, "python3", &args)?;
-    if !output_path.is_file() {
-        return Err(EngineError::CommandFailed(
-            "export.effectcraft".into(),
-            format!(
-                "EffectCraft JSX script was not created at {}",
-                output_path.display()
-            ),
-        ));
-    }
-    Ok(json!({
-        "ok": true,
-        "command": "export.effectcraft",
-        "asset_id": asset_id,
-        "output": output_path.to_string_lossy(),
-        "script": output_path.to_string_lossy(),
-        "mode": mode,
-        "speed": speed,
-        "duration": duration,
-        "stdout": stdout,
-    }))
-}
+use crate::workspace::{resolve_workspace_path, run_python_json, run_tool_in, workspace_root};
 
 /// Export a FilmCraft project: locate the rendered overlay/animation, then run `filmcraft-load`.
 pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
@@ -380,12 +249,12 @@ pub fn cmd_export_cutout_mp4(s: &mut Session, params: &Value) -> Result<Value> {
     }
 
     let root = workspace_root(s);
-    let script = root.join("pipeline/guided_cutout_rig_builder.py");
     run_tool_in(
         &root,
         "python3",
         &[
-            script.to_string_lossy().into_owned(),
+            "-m".into(),
+            "pipeline.guided_cutout_rig_builder".into(),
             "--render-only".into(),
             "--rig-plan".into(),
             plan_path.to_string_lossy().into_owned(),

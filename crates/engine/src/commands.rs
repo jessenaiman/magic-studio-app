@@ -7,7 +7,7 @@
 //!   - `turnaround` — turnaround accuracy + 2D preview
 //!   - `magic_design` — asset intake, sheet preparation, manifest loading, agent prompt
 //!   - `rig` — 4-dir mesh build + GLB/OBJ writers
-//!   - `exports` — EffectCraft/Three.js/React/Blender/FilmCraft/cutout MP4/layered motion/validate
+//!   - `exports` — Blender/FilmCraft/cutout MP4/layered motion/validate
 //!   - `image_cmds` — break apart / puppet warp / color to alpha / content-aware fill
 //!   - `vision` — in-memory pixel analysis
 //!   - `project` — .magic lifecycle + connect/load/remove/update assets
@@ -28,7 +28,7 @@ pub use crate::magic_design::decontaminate_sprite_rgba;
 pub use crate::project::write_project_file;
 pub use crate::vision::{analyze_rgba_image, analyze_viewport_region};
 pub use crate::workspace::{
-    asset_id_for_import, build_effectcraft_script_args, build_photocraft_run_args,
+    asset_id_for_import, build_photocraft_run_args,
     resolve_craft_cli, resolve_workspace_path, sanitize_asset_id, workspace_root,
 };
 
@@ -39,8 +39,8 @@ use crate::agent::{
 };
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
 use crate::exports::{
-    cmd_effectcraft_run_script, cmd_export_blender, cmd_export_character_iteration,
-    cmd_export_cutout_mp4, cmd_export_effectcraft, cmd_export_filmcraft, cmd_export_layered_motion,
+    cmd_export_blender, cmd_export_character_iteration,
+    cmd_export_cutout_mp4, cmd_export_filmcraft, cmd_export_layered_motion,
     cmd_scene_farm_school_lineup, cmd_validate_motion,
 };
 use crate::image_cmds::{
@@ -86,6 +86,10 @@ pub struct CommandSpec {
     pub shortcut: Option<&'static str>,
     /// Parameter description (JSON-ish, for agents and the MCP schema).
     pub params: &'static str,
+    /// One sentence describing behavior and the next useful operation.
+    pub help: &'static str,
+    /// A runnable CLI invocation using explicit example paths and IDs.
+    pub example: &'static str,
     pub enabled: fn(&Session) -> std::result::Result<(), String>,
     pub run: fn(&mut Session, &Value) -> Result<Value>,
     /// Record in the journal (false for pure queries).
@@ -95,10 +99,16 @@ pub struct CommandSpec {
 }
 
 impl CommandSpec {
+    fn help(mut self, help: &'static str, example: &'static str) -> Self {
+        self.help = help;
+        self.example = example;
+        self
+    }
+
     pub fn describe(&self) -> Value {
         serde_json::json!({"id":self.id,"label":self.label,"menu":self.menu,
             "shortcut":self.shortcut,"params":self.params,"journal":self.journal,
-            "long_running":self.long_running})
+            "long_running":self.long_running,"help":self.help,"example":self.example})
     }
 }
 
@@ -204,7 +214,6 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"asset.cut_sheet"
             | b"turnaround.optimize_accuracy"
             | b"mesh.build_4dir"
-            | b"export.effectcraft"
             | b"export.filmcraft"
             | b"export.blender"
             | b"export.character_iteration"
@@ -224,7 +233,7 @@ const fn is_long_running_id(id: &str) -> bool {
 
 macro_rules! cmd {
     ($id:literal, $label:literal, [$($m:literal),*], $sc:expr, $params:literal, $en:expr, $run:expr) => {
-        CommandSpec { id: $id, label: $label, menu: &[$($m),*], shortcut: $sc, params: $params, enabled: $en, run: $run, journal: true, long_running: is_long_running_id($id) }
+        CommandSpec { id: $id, label: $label, menu: &[$($m),*], shortcut: $sc, params: $params, help: "", example: "", enabled: $en, run: $run, journal: true, long_running: is_long_running_id($id) }
     };
 }
 
@@ -236,6 +245,8 @@ macro_rules! query {
             menu: &[],
             shortcut: None,
             params: $params,
+            help: "",
+            example: "",
             enabled: always,
             run: $run,
             journal: false,
@@ -330,7 +341,8 @@ pub fn build() -> Vec<CommandSpec> {
             "Registered native animation sources",
             "{\"expected_project\":\"optional project identity\"}",
             crate::animation_links::sources
-        ),
+        ).help("List configured animations and their current revisions before choosing one to render.",
+               "magic-cli --project /absolute/Project.magic animation sources"),
         cmd!(
             "animation.source.set",
             "Register editable native source",
@@ -339,7 +351,8 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|effectcraft|synfig|opentoonz|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
             always,
             crate::animation_links::set
-        ),
+        ).help("Link an editable file to the project; pair character and track to show it for that artwork in Animation, then save the project.",
+               "magic-cli --project /absolute/Project.magic animation source set expected_project=/absolute/Project.magic id=sway backend=effectcraft source=/absolute/animation.ecproj expected_revision=0"),
         cmd!(
             "animation.source.render",
             "Render registered native source",
@@ -348,7 +361,8 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"expected_project\":\"selected .magic\",\"id\":\"source id\",\"expected_revision\":1,\"options\":{}}",
             always,
             crate::animation_links::render
-        ),
+        ).help("Render a registered animation using saved settings, with optional backend settings in options; inspect the returned job with animation status.",
+               "magic-cli --project /absolute/Project.magic animation source render expected_project=/absolute/Project.magic id=sway expected_revision=1 'options={\"first_frame\":0,\"last_frame\":47,\"memory_mb\":4096,\"timeout_seconds\":300}'"),
         cmd!(
             "animation.source.accept",
             "Accept completed native result",
@@ -357,13 +371,15 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"expected_project\":\"selected .magic\",\"id\":\"source id\",\"expected_revision\":1,\"job\":\"completed full job id\"}",
             always,
             crate::animation_links::accept
-        ),
+        ).help("Attach a completed full render to its unchanged source revision, then run project save to retain the result.",
+               "magic-cli --project /absolute/Project.magic animation source accept expected_project=/absolute/Project.magic id=sway expected_revision=1 job=JOB_ID"),
         query!(
             "animation.status",
             "Native Animation Job Progress",
             "{\"job\":\"job id\"}",
             crate::blender::cmd_blender_status
-        ),
+        ).help("Read a render job's progress, result, transparency evidence and failure details before accepting it.",
+               "magic-cli --project /absolute/Project.magic animation status job=JOB_ID"),
         query!(
             "animation.list",
             "Native Animation Jobs and Global Owner",
@@ -375,7 +391,8 @@ pub fn build() -> Vec<CommandSpec> {
             "Cancel Native Animation Job",
             "{\"job\":\"job id\"}",
             crate::blender::cmd_blender_cancel
-        ),
+        ).help("Cancel the named render job, then check animation status until cancellation finishes.",
+               "magic-cli --project /absolute/Project.magic animation cancel job=JOB_ID"),
         query!(
             "blender.actions",
             "Saved Blender Migration Actions",
@@ -1790,6 +1807,8 @@ pub fn build() -> Vec<CommandSpec> {
             menu: &["Animation", "Parts"],
             shortcut: None,
             params: "{\"asset\":\"optional asset id\",\"part\":\"stable part id\",\"which\":\"current|original\",\"spawn\":false}",
+            help: "",
+            example: "",
             enabled: always,
             run: crate::part_replacement::cmd_part_open_photocraft,
             journal: false,
@@ -1858,50 +1877,36 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_mesh_build_4dir
         ),
-        cmd!(
-            "export.effectcraft",
-            "Export EffectCraft Animation (.jsx)",
-            ["File", "Export"],
-            None,
-            "{\"output\": \"path.jsx\", \"mode\": \"optional\", \"speed\": 1.0, \"duration\": 3.0}",
-            always,
-            cmd_export_effectcraft
-        ),
-        cmd!(
-            "effectcraft.run_script",
-            "Run EffectCraft Script (.jsx)",
-            ["File", "Export"],
-            None,
-            "{\"script\": \"path.jsx\"}",
-            always,
-            cmd_effectcraft_run_script
-        ),
         query!(
             "effectcraft.discover",
             "Installed EffectCraft capabilities",
             "{}",
             crate::effectcraft::discover
-        ),
+        ).help("Report the installed EffectCraft runtime and capabilities before building or rendering a composition.",
+               "magic-cli effectcraft discover"),
         query!(
             "effectcraft.inspect",
             "Inspect native composition and model clips",
             "{\"source\":\"saved .ecproj\"}",
             crate::effectcraft::inspect
-        ),
+        ).help("Read native layers, properties, template controls, model clips and expression errors before editing or rendering the source.",
+               "magic-cli effectcraft inspect source=/absolute/animation.ecproj"),
         cmd!(
             "effectcraft.build",
             "Build editable EffectCraft animation",
             ["Animation"], None,
             "{\"expected_project\":\"selected .magic\",\"spec\":\"scene JSON with layers, Puppet pins, recordings, follow, sketch, properties, model clips and controls\",\"out_dir\":\"new output directory\"}",
             always, crate::effectcraft::build
-        ),
+        ).help("Build a native composition and template from a scene spec, then register the returned source with animation source set.",
+               "magic-cli --project /absolute/Project.magic effectcraft build expected_project=/absolute/Project.magic spec=/absolute/scene.json out_dir=/absolute/new-animation"),
         cmd!(
             "effectcraft.start",
             "Render saved EffectCraft composition",
             ["Animation"], None,
             "{\"source\":\"saved .ecproj\",\"comp\":\"optional composition name\",\"first_frame\":0,\"last_frame\":47,\"memory_mb\":4096,\"timeout_seconds\":300}",
             always, crate::effectcraft::start
-        ),
+        ).help("Render a saved composition with its saved size, timing and full frame range unless overridden, then inspect the returned job with animation status.",
+               "magic-cli --project /absolute/Project.magic effectcraft start source=/absolute/animation.ecproj comp=Main first_frame=0 last_frame=47 memory_mb=4096 timeout_seconds=300"),
         cmd!(
             "export.filmcraft",
             "Export FilmCraft",

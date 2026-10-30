@@ -46,7 +46,7 @@ pub fn build(s: &mut Session, p: &Value) -> Result<Value> {
         })?;
     run_python_json(
         s,
-        "pipeline.effectcraft_scene",
+        "pipeline.effectcraft.scene",
         &[
             "build".into(),
             spec.to_string_lossy().into_owned(),
@@ -62,7 +62,7 @@ pub fn inspect(s: &mut Session, p: &Value) -> Result<Value> {
     let source = path(s, p, "source")?;
     run_python_json(
         s,
-        "pipeline.effectcraft_scene",
+        "pipeline.effectcraft.scene",
         &[
             "inspect".into(),
             source.to_string_lossy().into_owned(),

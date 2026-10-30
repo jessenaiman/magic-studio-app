@@ -765,10 +765,11 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .motion-coordinate-row input { width:100%;min-width:0;box-sizing:border-box; }
 #motion-step-back svg { transform:scaleX(-1); }
 
-.native-render-body { display:grid;gap:var(--size-10);padding:var(--size-14);overflow:auto;max-height:75vh; }
-.native-render-body label { display:grid;gap:var(--size-4);min-width:0; }
-.native-render-body input { min-width:0;width:100%;box-sizing:border-box; }
-.native-render-body video { width:100%;max-height:var(--size-280); }
+.effectcraft-preview-dialog { width:min(var(--size-620),calc(100vw - var(--size-32))); }
+.effectcraft-preview-body { display:grid;gap:var(--size-12);overflow:auto;max-height:75vh; }
+.effectcraft-preview-body video { width:100%;max-height:50vh;background:var(--bg);object-fit:contain; }
+.effectcraft-preview-body select { min-width:0;width:100%; }
+.effectcraft-preview-actions { display:flex;justify-content:flex-end;gap:var(--size-8); }
 .animation-readback { display:block; user-select:text; white-space:pre-wrap;overflow-wrap:anywhere;max-height:var(--size-220);overflow:auto; }
 .motion-modes { flex-wrap:wrap; }
 
@@ -804,7 +805,6 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .lyric-text { flex: 1; min-width: 0; line-height: 1.5; }
 .lyric-line .cue { flex: none; color: var(--faint); font: var(--text-sm) ui-monospace, monospace; }
 
-.native-backend-fields[hidden] { display:none; }
 
 /* ---------------------------------------------------------------------------
    Companion pets.
