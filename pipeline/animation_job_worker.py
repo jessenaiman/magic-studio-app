@@ -22,6 +22,54 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+def _create_part_material(part):
+    material = bpy.data.materials.new(part["id"] + "-fabric")
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    nodes.clear()
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.image = bpy.data.images.load(part["file"], check_existing=True)
+    emission = nodes.new("ShaderNodeEmission")
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    mix = nodes.new("ShaderNodeMixShader")
+    alpha = nodes.new("ShaderNodeMath")
+    alpha.operation = "MULTIPLY"
+    alpha.inputs[1].default_value = 1
+    output = nodes.new("ShaderNodeOutputMaterial")
+    links = material.node_tree.links
+    for source, target in [
+        (texture.outputs["Color"], emission.inputs["Color"]),
+        (texture.outputs["Alpha"], alpha.inputs[0]),
+        (alpha.outputs[0], mix.inputs[0]),
+        (transparent.outputs[0], mix.inputs[1]),
+        (emission.outputs[0], mix.inputs[2]),
+        (mix.outputs[0], output.inputs["Surface"]),
+    ]:
+        links.new(source, target)
+    return material, alpha.inputs[1]
+
+
+def _keyframe_sampled_layers(meta, sample, roots, parts, parents, opacity):
+    for frame in sample["frames"]:
+        number = 1 + frame["time"] * sample["fps"]
+        for part, values in zip(meta["layers"], frame["layers"]):
+            root = roots[part["id"]]
+            px, py = part["pivot"]
+            parent = parts.get(parents[part["id"]])
+            bx, by = parent["pivot"] if parent else (0, 0)
+            dx, dy = values.get("position") or (0, 0)
+            root.location = (px - bx + dx, -(py - by + dy), 0)
+            root.rotation_euler.z = -math.radians(values.get("rotation") or 0)
+            sx, sy = values.get("scale") or (1, 1)
+            root.scale = (sx, sy, 1)
+            for channel in ("location", "rotation_euler", "scale"):
+                root.keyframe_insert(
+                    data_path=channel, frame=number, group=sample["track"]
+                )
+            opacity[part["id"]].default_value = values["opacity"]
+            opacity[part["id"]].keyframe_insert(data_path="default_value", frame=number)
+
+
 def import_motion(request):
     meta, sample = request["meta"], request["sample"]
     bpy.ops.object.select_all(action="SELECT")
@@ -64,52 +112,13 @@ def import_motion(request):
         obj = bpy.data.objects.new(part["id"] + "-artwork", mesh)
         scene.collection.objects.link(obj)
         obj.parent = root
-        material = bpy.data.materials.new(part["id"] + "-fabric")
-        material.use_nodes = True
-        nodes = material.node_tree.nodes
-        nodes.clear()
-        texture = nodes.new("ShaderNodeTexImage")
-        texture.image = bpy.data.images.load(part["file"], check_existing=True)
-        emission = nodes.new("ShaderNodeEmission")
-        transparent = nodes.new("ShaderNodeBsdfTransparent")
-        mix = nodes.new("ShaderNodeMixShader")
-        alpha = nodes.new("ShaderNodeMath")
-        alpha.operation = "MULTIPLY"
-        alpha.inputs[1].default_value = 1
-        output = nodes.new("ShaderNodeOutputMaterial")
-        links = material.node_tree.links
-        for source, target in [
-            (texture.outputs["Color"], emission.inputs["Color"]),
-            (texture.outputs["Alpha"], alpha.inputs[0]),
-            (alpha.outputs[0], mix.inputs[0]),
-            (transparent.outputs[0], mix.inputs[1]),
-            (emission.outputs[0], mix.inputs[2]),
-            (mix.outputs[0], output.inputs["Surface"]),
-        ]:
-            links.new(source, target)
+        material, op_input = _create_part_material(part)
         obj.data.materials.append(material)
-        opacity[part["id"]] = alpha.inputs[1]
+        opacity[part["id"]] = op_input
     for part in meta["layers"]:
         if parents[part["id"]]:
             roots[part["id"]].parent = roots[parents[part["id"]]]
-    for frame in sample["frames"]:
-        number = 1 + frame["time"] * sample["fps"]
-        for part, values in zip(meta["layers"], frame["layers"]):
-            root = roots[part["id"]]
-            px, py = part["pivot"]
-            parent = parts.get(parents[part["id"]])
-            bx, by = parent["pivot"] if parent else (0, 0)
-            dx, dy = values.get("position") or (0, 0)
-            root.location = (px - bx + dx, -(py - by + dy), 0)
-            root.rotation_euler.z = -math.radians(values.get("rotation") or 0)
-            sx, sy = values.get("scale") or (1, 1)
-            root.scale = (sx, sy, 1)
-            for channel in ("location", "rotation_euler", "scale"):
-                root.keyframe_insert(
-                    data_path=channel, frame=number, group=sample["track"]
-                )
-            opacity[part["id"]].default_value = values["opacity"]
-            opacity[part["id"]].keyframe_insert(data_path="default_value", frame=number)
+    _keyframe_sampled_layers(meta, sample, roots, parts, parents, opacity)
     camera = bpy.data.cameras.new("Camera")
     camera.type = "ORTHO"
     camera.sensor_fit = "HORIZONTAL"
@@ -281,6 +290,33 @@ def job_metadata(request_path, request, properties):
     return metadata
 
 
+def _parse_service_metrics(properties):
+    metrics = {}
+    for field, key in [
+        ("memory_current_bytes", "MemoryCurrent"),
+        ("memory_peak_bytes", "MemoryPeak"),
+        ("memory_max_bytes", "MemoryMax"),
+        ("swap_current_bytes", "MemorySwapCurrent"),
+        ("swap_max_bytes", "MemorySwapMax"),
+        ("cpu_usage_ns", "CPUUsageNSec"),
+    ]:
+        value = properties.get(key, "")
+        metrics[field] = (
+            int(value) if value.isdigit() and int(value) != 2**64 - 1 else None
+        )
+    return metrics
+
+
+def _resolve_termination_reason(cancelled, reason, state):
+    if cancelled:
+        return "cancel"
+    if reason == "oom-kill":
+        return "oom"
+    if reason == "timeout":
+        return "timeout"
+    return None if state == "completed" else "failure"
+
+
 def finalize(request_path):
     request = json.loads(request_path.read_text())
     job = request_path.parent
@@ -305,21 +341,10 @@ def finalize(request_path):
             else "failed"
         )
     )
-    metrics = {}
-    for field, key in [
-        ("memory_current_bytes", "MemoryCurrent"),
-        ("memory_peak_bytes", "MemoryPeak"),
-        ("memory_max_bytes", "MemoryMax"),
-        ("swap_current_bytes", "MemorySwapCurrent"),
-        ("swap_max_bytes", "MemorySwapMax"),
-        ("cpu_usage_ns", "CPUUsageNSec"),
-    ]:
-        value = properties.get(key, "")
-        metrics[field] = (
-            int(value) if value.isdigit() and int(value) != 2**64 - 1 else None
-        )
+    metrics = _parse_service_metrics(properties)
     progress_path = job / "progress.json"
     progress = json.loads(progress_path.read_text()) if progress_path.exists() else {}
+    exec_status = properties.get("ExecMainStatus", "")
     result.update(
         backend=request.get("backend", "blender"),
         job=request["job"],
@@ -338,22 +363,10 @@ def finalize(request_path):
         frames_total=progress.get("total"),
         telemetry=metrics,
         service_result=reason,
-        exec_main_status=int(properties["ExecMainStatus"])
-        if properties.get("ExecMainStatus", "").isdigit()
-        else None,
+        exec_main_status=int(exec_status) if exec_status.isdigit() else None,
         exit_code=os.environ.get("EXIT_CODE"),
         exit_status=os.environ.get("EXIT_STATUS"),
-        termination_reason="cancel"
-        if cancelled
-        else (
-            "oom"
-            if reason == "oom-kill"
-            else (
-                "timeout"
-                if reason == "timeout"
-                else (None if state == "completed" else "failure")
-            )
-        ),
+        termination_reason=_resolve_termination_reason(cancelled, reason, state),
     )
     write_json(job / "result.json", result)
 
@@ -382,6 +395,102 @@ def registration(scene):
     ]
 
 
+def _load_or_prepare_scene(request_path, request, job):
+    source_blend_sha256 = None
+    if request.get("volume_plan"):
+        write_json(job / "progress.json", {"state": "reconstructing_volume"})
+        return import_volume(request, job), bpy.context.scene, None
+    if request.get("rig_plan"):
+        write_json(job / "progress.json", {"state": "building_skeleton"})
+        return import_skeleton(request, job), bpy.context.scene, None
+    if request.get("blend"):
+        write_json(job / "progress.json", {"state": "loading"})
+        frozen_blend = job / "source.blend"
+        shutil.copyfile(request["blend"], frozen_blend)
+        source_blend_sha256 = sha256(frozen_blend)
+        bpy.ops.wm.open_mainfile(filepath=str(frozen_blend))
+        scene = bpy.context.scene
+        provenance_text = scene.get("magicstudio_provenance")
+        if not provenance_text:
+            raise RuntimeError(
+                "Saved scene has no frozen Magic Studio migration provenance; reimport the rig"
+            )
+        provenance = json.loads(provenance_text)
+        for key in ("character", "track"):
+            if request.get(key) != provenance.get(key):
+                raise RuntimeError(
+                    "Requested " + key + " does not match saved scene provenance"
+                )
+        return provenance, scene, source_blend_sha256
+
+    write_json(job / "progress.json", {"state": "preparing"})
+    subprocess.run(
+        [
+            request["magic_cli"],
+            "exec",
+            "animation.scene.prepare",
+            "request=" + str(request_path),
+        ],
+        check=True,
+    )
+    prepared = json.loads((job / "sample.json").read_text())
+    import_motion(prepared)
+    scene = bpy.context.scene
+    meta, sample = prepared["meta"], prepared["sample"]
+    provenance = dict(
+        backend="blender",
+        character=meta["character"],
+        track=sample["track"],
+        spec=meta["spec"],
+        rig_sha256=meta["rig_sha256"],
+        canvas=meta["canvas"],
+        source_job=request["job"],
+        artwork=[
+            dict(
+                id=part["id"],
+                source_file=part.get("source_file"),
+                packed_crop_sha256=sha256(part["file"]),
+            )
+            for part in meta["layers"]
+        ],
+    )
+    scene["magicstudio_provenance"] = json.dumps(provenance)
+    return provenance, scene, None
+
+
+def _encode_preview_webm(frames, clip, fps, start, end):
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-nostdin",
+            "-framerate",
+            str(fps),
+            "-start_number",
+            str(start),
+            "-i",
+            str(frames / "%06d.png"),
+            "-frames:v",
+            str(end - start + 1),
+            "-c:v",
+            "libvpx-vp9",
+            "-pix_fmt",
+            "yuva420p",
+            "-threads",
+            "2",
+            "-b:v",
+            "0",
+            "-crf",
+            "24",
+            "-auto-alt-ref",
+            "0",
+            str(clip),
+        ],
+        check=True,
+    )
+
+
 def main():
     global bpy
     import bpy
@@ -394,68 +503,9 @@ def main():
     )
     try:
         job_metadata(request_path, request, service_metrics(request["unit"]))
-        source_blend_sha256 = None
-        if request.get("volume_plan"):
-            write_json(job / "progress.json", {"state": "reconstructing_volume"})
-            provenance = import_volume(request, job)
-            scene = bpy.context.scene
-        elif request.get("rig_plan"):
-            write_json(job / "progress.json", {"state": "building_skeleton"})
-            provenance = import_skeleton(request, job)
-            scene = bpy.context.scene
-        elif request.get("blend"):
-            write_json(job / "progress.json", {"state": "loading"})
-            frozen_blend = job / "source.blend"
-            shutil.copyfile(request["blend"], frozen_blend)
-            source_blend_sha256 = sha256(frozen_blend)
-            bpy.ops.wm.open_mainfile(filepath=str(frozen_blend))
-            scene = bpy.context.scene
-            provenance_text = scene.get("magicstudio_provenance")
-            if not provenance_text:
-                raise RuntimeError(
-                    "Saved scene has no frozen Magic Studio migration provenance; reimport the rig"
-                )
-            provenance = json.loads(provenance_text)
-            for key in ("character", "track"):
-                if request.get(key) != provenance.get(key):
-                    raise RuntimeError(
-                        "Requested " + key + " does not match saved scene provenance"
-                    )
-        else:
-            write_json(job / "progress.json", {"state": "preparing"})
-            subprocess.run(
-                [
-                    request["magic_cli"],
-                    "exec",
-                    "animation.scene.prepare",
-                    "request=" + str(request_path),
-                ],
-                check=True,
-            )
-            prepared = json.loads((job / "sample.json").read_text())
-            import_motion(prepared)
-            scene = bpy.context.scene
-            meta, sample = prepared["meta"], prepared["sample"]
-            provenance = dict(
-                backend="blender",
-                character=meta["character"],
-                track=sample["track"],
-                spec=meta["spec"],
-                rig_sha256=meta["rig_sha256"],
-                canvas=meta["canvas"],
-                source_job=request["job"],
-                artwork=[
-                    dict(
-                        id=part["id"],
-                        source_file=part.get("source_file"),
-                        packed_crop_sha256=sha256(part["file"]),
-                    )
-                    for part in meta["layers"]
-                ],
-            )
-            scene["magicstudio_provenance"] = json.dumps(provenance)
-        # Imported scenes may retain GPU/compositor/driver behavior; this backend only supports
-        # its own packed CPU migration scenes and explicitly disables the compositor/sequencer.
+        provenance, scene, source_blend_sha256 = _load_or_prepare_scene(
+            request_path, request, job
+        )
         scene.render.engine = "CYCLES"
         scene.cycles.device = "CPU"
         scene.render.use_compositing = False
@@ -477,7 +527,6 @@ def main():
         scene.frame_set(scene.frame_start)
         world_rect = registration(scene)
         render_size = (scene.render.resolution_x, scene.render.resolution_y)
-        # Keep the editable scene's base resolution stable across repeated preview renders.
         scene.render.resolution_x, scene.render.resolution_y = original_size
         bpy.ops.wm.save_as_mainfile(filepath=str(job / "animation.blend"))
         scene.render.resolution_x, scene.render.resolution_y = render_size
@@ -509,36 +558,7 @@ def main():
         )
         clip = job / "preview.webm"
         fps = scene.render.fps / scene.render.fps_base
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-nostdin",
-                "-framerate",
-                str(fps),
-                "-start_number",
-                str(start),
-                "-i",
-                str(frames / "%06d.png"),
-                "-frames:v",
-                str(end - start + 1),
-                "-c:v",
-                "libvpx-vp9",
-                "-pix_fmt",
-                "yuva420p",
-                "-threads",
-                "2",
-                "-b:v",
-                "0",
-                "-crf",
-                "24",
-                "-auto-alt-ref",
-                "0",
-                str(clip),
-            ],
-            check=True,
-        )
+        _encode_preview_webm(frames, clip, fps, start, end)
         write_json(
             job / "rendered.json",
             dict(

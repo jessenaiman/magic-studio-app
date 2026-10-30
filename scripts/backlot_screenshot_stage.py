@@ -166,59 +166,17 @@ def decision_log(pid: str) -> dict:
     }
 
 
-def stage_project(pid: str, title: str, palette: str, scenes: list, *,
-                  state: str, hero: str, takes_scene: str | None = None) -> None:
-    """state: 'complete' | 'assets_live' | 'script_gate' | 'early'"""
+def _populate_stage_assets(
+    pdir: Path,
+    art_dir: Path,
+    pid: str,
+    title: str,
+    palette: str,
+    scenes: list,
+    state: str,
+    takes_scene: str | None,
+) -> dict:
     top, bottom, glow = PALETTES[palette]
-    pdir = STAGE_DIR / pid
-    init_project(pid, title=title, pipeline_type="cinematic",
-                 pipeline_dir=STAGE_DIR, style_playbook="clean-professional")
-    art_dir = pdir / "artifacts"
-
-    def cp(stage, status, artifacts, **kw):
-        write_checkpoint(STAGE_DIR, pid, stage, status, artifacts,
-                         pipeline_type="cinematic", **kw)
-        time.sleep(0.02)  # distinct mtimes/timestamps
-
-    brief = sample_artifact("research_brief")
-    brief["topic"] = title
-    cp("research", "completed", {"research_brief": brief})
-
-    proposal = sample_artifact("proposal_packet")
-    cp("proposal", "awaiting_human", {"proposal_packet": proposal})
-    cp(
-        "proposal",
-        "completed",
-        {"proposal_packet": proposal},
-        human_approved=True,
-    )
-
-    script = script_artifact(title, scenes)
-    plan = scene_plan_artifact(scenes, hero)
-    (art_dir / "decision_log.json").write_text(json.dumps(decision_log(pid), indent=2))
-
-    if state == "early":
-        cp("script", "in_progress", {})
-        return
-
-    (art_dir / "script.json").write_text(json.dumps(script, indent=2))
-    if state == "script_gate":
-        cp("script", "awaiting_human", {"script": script},
-           review={"round": 1, "decision": "pass", "critical": 0,
-                   "suggestions": 2, "nitpicks": 1,
-                   "summary": "Hook rewritten to a direct claim; s3 tightened."})
-        return
-
-    cp("script", "awaiting_human", {"script": script},
-       review={"round": 1, "decision": "pass", "critical": 0, "suggestions": 1,
-               "nitpicks": 0, "summary": "Strong spine; trimmed s2."})
-    cp("script", "completed", {"script": script}, human_approved=True)
-    (art_dir / "scene_plan.json").write_text(json.dumps(plan, indent=2))
-    cp("scene_plan", "awaiting_human", {"scene_plan": plan})
-    cp("scene_plan", "completed", {"scene_plan": plan}, human_approved=True)
-
-    # assets
-    cp("assets", "in_progress", {})
     manifest = {"version": "1.0", "assets": [], "total_cost_usd": 0.0}
     n_done = len(scenes) if state == "complete" else max(1, len(scenes) - 2)
     for i, (sid, desc, _s0, _s1, _n) in enumerate(scenes[:n_done]):
@@ -246,11 +204,62 @@ def stage_project(pid: str, title: str, palette: str, scenes: list, *,
                          cost_snapshot={"total_spent_usd": manifest["total_cost_usd"],
                                         "total_reserved_usd": 0.0,
                                         "budget_remaining_usd": round(4 - manifest["total_cost_usd"], 2)})
-
     if state == "assets_live":
-        # one scene actively generating right now
         gen_sid = scenes[n_done][0]
         emit_event(pdir, {"tool": "flux_image", "event": "start", "scene_id": gen_sid})
+    return manifest
+
+
+def stage_project(pid: str, title: str, palette: str, scenes: list, *,
+                  state: str, hero: str, takes_scene: str | None = None) -> None:
+    """state: 'complete' | 'assets_live' | 'script_gate' | 'early'"""
+    pdir = STAGE_DIR / pid
+    init_project(pid, title=title, pipeline_type="cinematic",
+                 pipeline_dir=STAGE_DIR, style_playbook="clean-professional")
+    art_dir = pdir / "artifacts"
+
+    def cp(stage, status, artifacts, **kw):
+        write_checkpoint(STAGE_DIR, pid, stage, status, artifacts,
+                         pipeline_type="cinematic", **kw)
+        time.sleep(0.02)
+
+    brief = sample_artifact("research_brief")
+    brief["topic"] = title
+    cp("research", "completed", {"research_brief": brief})
+
+    proposal = sample_artifact("proposal_packet")
+    cp("proposal", "awaiting_human", {"proposal_packet": proposal})
+    cp("proposal", "completed", {"proposal_packet": proposal}, human_approved=True)
+
+    script = script_artifact(title, scenes)
+    plan = scene_plan_artifact(scenes, hero)
+    (art_dir / "decision_log.json").write_text(json.dumps(decision_log(pid), indent=2))
+
+    if state == "early":
+        cp("script", "in_progress", {})
+        return
+
+    (art_dir / "script.json").write_text(json.dumps(script, indent=2))
+    if state == "script_gate":
+        cp("script", "awaiting_human", {"script": script},
+           review={"round": 1, "decision": "pass", "critical": 0,
+                   "suggestions": 2, "nitpicks": 1,
+                   "summary": "Hook rewritten to a direct claim; s3 tightened."})
+        return
+
+    cp("script", "awaiting_human", {"script": script},
+       review={"round": 1, "decision": "pass", "critical": 0, "suggestions": 1,
+               "nitpicks": 0, "summary": "Strong spine; trimmed s2."})
+    cp("script", "completed", {"script": script}, human_approved=True)
+    (art_dir / "scene_plan.json").write_text(json.dumps(plan, indent=2))
+    cp("scene_plan", "awaiting_human", {"scene_plan": plan})
+    cp("scene_plan", "completed", {"scene_plan": plan}, human_approved=True)
+
+    cp("assets", "in_progress", {})
+    manifest = _populate_stage_assets(
+        pdir, art_dir, pid, title, palette, scenes, state, takes_scene
+    )
+    if state == "assets_live":
         return
 
     cp("assets", "awaiting_human", {"asset_manifest": manifest},
@@ -259,7 +268,6 @@ def stage_project(pid: str, title: str, palette: str, scenes: list, *,
                       "budget_remaining_usd": round(4 - manifest["total_cost_usd"], 2)})
     cp("assets", "completed", {"asset_manifest": manifest}, human_approved=True)
 
-    # edit + compose (render via ffmpeg slideshow from the frames)
     edit = {"version": "1.0", "cuts": [], "metadata": {"note": "demo"}}
     (art_dir / "edit_decisions.json").write_text(json.dumps(edit, indent=2))
     renders = pdir / "renders"

@@ -80,32 +80,44 @@ def render(command, magic_cli, receipts, project=None, request_id=None):
     return {**receipt, 'receipt': str(folder / 'receipt.json')}
 
 
-def place(args, scenes, selected, current, receipts):
+def _resolve_video_place_command(command: dict, scenes: dict, selected: list, current: dict) -> dict | None:
+    scene = Path(command['params']['path']).stem
+    if scene not in selected:
+        return None
+    entry = current.get(scene, {})
+    if not reusable(entry, inputs_for(scenes[scene])[0]):
+        raise ValueError(f'{scene}: no receipt matches the current inputs and outputs')
+    videos = [path for path in entry['outputs'] if Path(path).suffix == '.webm' and Path(path).stem == scene]
+    if len(videos) != 1:
+        raise ValueError(f'{scene}: expected exactly one verified clip')
+    command['params']['path'] = videos[0]
+    return command
+
+
+def _resolve_placement_commands(place_path, scenes, selected, current):
     commands = []
-    for line in Path(args.place).read_text().splitlines():
+    for line in Path(place_path).read_text().splitlines():
         if not line.strip() or line.lstrip().startswith('#'):
             continue
         command = json.loads(line)
         if command['id'] == 'video.place_track':
-            scene = Path(command['params']['path']).stem
-            if scene not in selected:
-                continue
-            entry = current.get(scene, {})
-            if not reusable(entry, inputs_for(scenes[scene])[0]):
-                raise ValueError(f'{scene}: no receipt matches the current inputs and outputs')
-            videos = [path for path in entry['outputs'] if Path(path).suffix == '.webm' and Path(path).stem == scene]
-            if len(videos) != 1:
-                raise ValueError(f'{scene}: expected exactly one verified clip')
-            command['params']['path'] = videos[0]
-            commands.append(command)
+            resolved = _resolve_video_place_command(command, scenes, selected, current)
+            if resolved is not None:
+                commands.append(resolved)
         elif command['id'] != 'project.save':
             raise ValueError(f'unsupported placement command: {command["id"]}')
     if len(commands) != len(selected):
         raise ValueError('placement recipe must place each selected scene exactly once')
     commands.append({'id': 'project.save', 'params': {}})
-    for command in commands:
-        if getattr(args, 'request_id', None):
-            command['params']['_request_id'] = args.request_id
+    return commands
+
+
+def place(args, scenes, selected, current, receipts):
+    commands = _resolve_placement_commands(args.place, scenes, selected, current)
+    req_id = getattr(args, 'request_id', None)
+    if req_id:
+        for command in commands:
+            command['params']['_request_id'] = req_id
     folder = receipts / ('place-' + uuid4().hex)
     folder.mkdir()
     (folder / 'commands.jsonl').write_text(''.join(json.dumps(command) + '\n' for command in commands))
@@ -121,8 +133,7 @@ def place(args, scenes, selected, current, receipts):
     print(json.dumps({'status': 'placed', 'scenes': selected, 'receipt': str(folder)}), flush=True)
 
 
-def run(args):
-    recipe = Path(args.recipe).resolve()
+def _load_scene_commands(recipe: Path) -> dict:
     commands = [json.loads(line) for line in recipe.read_text().splitlines()
                 if line.strip() and not line.lstrip().startswith('#')]
     scenes = {}
@@ -133,16 +144,26 @@ def run(args):
         if scene in scenes:
             raise ValueError(f'duplicate scene: {scene}')
         scenes[scene] = command
+    return scenes
+
+
+def _verify_project_match(magic_cli: str, project: str) -> None:
+    observed = subprocess.run([magic_cli, '--project', project, 'exec', 'ui.state'],
+                              capture_output=True, text=True)
+    state = json.loads(observed.stdout) if observed.returncode == 0 else {}
+    if not state.get('project') or Path(state['project']).resolve() != Path(project).resolve():
+        raise ValueError('Studio project does not match the requested project; no render or placement started')
+
+
+def run(args):
+    recipe = Path(args.recipe).resolve()
+    scenes = _load_scene_commands(recipe)
     selected = args.scene or list(scenes)
     unknown = set(selected) - scenes.keys()
     if unknown:
         raise ValueError(f'unknown scenes: {sorted(unknown)}')
     if getattr(args, 'project', None):
-        observed = subprocess.run([args.magic_cli, '--project', args.project, 'exec', 'ui.state'],
-                                  capture_output=True, text=True)
-        state = json.loads(observed.stdout) if observed.returncode == 0 else {}
-        if not state.get('project') or Path(state['project']).resolve() != Path(args.project).resolve():
-            raise ValueError('Studio project does not match the requested project; no render or placement started')
+        _verify_project_match(args.magic_cli, args.project)
     receipts = recipe.parent / 'receipts'
     receipts.mkdir(exist_ok=True)
     with (receipts / '.lock').open('w') as lock:

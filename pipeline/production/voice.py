@@ -68,6 +68,25 @@ def measure_duration(path: Path) -> float:
     return float(out.decode().strip())
 
 
+def _synthesize_single_line(
+    line: Line,
+    out_dir: Path,
+    spec_parent: Path,
+    profiles: dict[str, str],
+    client: Any,
+    only: list[str] | None,
+    instructs: dict[str, str] | None,
+) -> None:
+    wav = out_dir / f"{line.id}.wav"
+    if not wav.exists() or (only is not None and line.id in only):
+        instruct = (instructs or {}).get(line.speaker, "")
+        if line.direction:
+            instruct = f"{instruct} {line.direction}".strip()
+        wav.write_bytes(client.generate(line.text, profiles[line.speaker], instruct))
+    line.wav = str(wav.relative_to(spec_parent))
+    line.duration_s = round(measure_duration(wav), 3)
+
+
 def generate_lines(
     spec_path: str | Path,
     out_dir: str | Path,
@@ -87,22 +106,13 @@ def generate_lines(
     done: list[Line] = []
     for shot in shots:
         for line in shot.lines:
-            wav = out_dir / f"{line.id}.wav"
-            if not wav.exists() or (only is not None and line.id in only):
-                instruct = (instructs or {}).get(line.speaker, "")
-                if line.direction:
-                    instruct = f"{instruct} {line.direction}".strip()
-                wav.write_bytes(
-                    client.generate(line.text, profiles[line.speaker], instruct)
-                )
-            line.wav = str(wav.relative_to(spec_path.parent))
-            line.duration_s = round(measure_duration(wav), 3)
+            _synthesize_single_line(
+                line, out_dir, spec_path.parent, profiles, client, only, instructs
+            )
             done.append(line)
         needed = sum(l.duration_s or 0 for l in shot.lines) + BREATH_S * len(shot.lines)
         shot.duration_s = round(max(shot.duration_s, needed), 3)
-        save_spec(
-            spec, spec_path
-        )  # save per shot so an interrupted run keeps its progress
+        save_spec(spec, spec_path)
     return done
 
 

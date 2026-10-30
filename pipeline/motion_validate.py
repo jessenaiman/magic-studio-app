@@ -131,25 +131,10 @@ def check(name, ok, value, limit, note=""):
     return {"name": name, "ok": bool(ok), "value": value, "limit": limit, "note": note}
 
 
-def analyze(
-    path,
-    expected_frames=None,
-    expected_fps=None,
-    loop=False,
-    reference=None,
-    limits=None,
-):
-    lim = {**LIMITS, **(limits or {})}
-    width, height, fps, alpha_flag = probe(path)
+def _collect_frame_samples(path, width, height):
     scale = width / ANALYSIS_WIDTH
-    areas, centroids, touches, colors, first_mask, last_mask = (
-        [],
-        [],
-        [],
-        [],
-        None,
-        None,
-    )
+    areas, centroids, touches, colors = [], [], [], []
+    first_mask, last_mask = None, None
     last_alpha_size = max(
         1, ANALYSIS_WIDTH * max(1, int(round(ANALYSIS_WIDTH * height / width)))
     )
@@ -179,12 +164,56 @@ def analyze(
         else:
             centroids.append(None)
             colors.append(None)
-        first_mask = mask if first_mask is None else first_mask
+        if first_mask is None:
+            first_mask = mask
         last_mask = mask
-    frames = len(areas)
-    if not frames:
-        raise RuntimeError("no frames decoded")
-    areas_np = np.array(areas, float)
+    return areas, centroids, touches, colors, first_mask, last_mask, last_alpha_size
+
+
+def _evaluate_reference_checks(reference, width, colors, areas_np, lim):
+    ref_color, ref_native_area = reference_stats(reference)
+    ref_area = ref_native_area * (ANALYSIS_WIDTH / width) ** 2
+    drift = [float(np.linalg.norm(c - ref_color)) for c in colors if c is not None]
+    worst = max(drift) if drift else float("inf")
+    valid_areas = areas_np[areas_np >= lim["min_visible_px"]]
+    ratio = float(np.median(valid_areas) / ref_area) if valid_areas.any() else 0.0
+    low, high = lim["area_ratio"]
+    ref_report = {
+        "worst_color_distance": round(worst, 2),
+        "median_area_ratio": round(ratio, 3),
+    }
+    ref_checks = [
+        check(
+            "colors_match_reference",
+            worst <= lim["color_drift"],
+            round(worst, 2),
+            lim["color_drift"],
+            "alpha-weighted mean colour vs the reference",
+        ),
+        check(
+            "size_matches_reference",
+            low <= ratio <= high,
+            round(ratio, 3),
+            [low, high],
+            "median visible area vs the reference",
+        ),
+    ]
+    return ref_report, ref_checks
+
+
+def _build_base_checks(
+    alpha_flag,
+    areas_np,
+    last_alpha_size,
+    frames,
+    expected_frames,
+    fps,
+    expected_fps,
+    touches,
+    steps,
+    median,
+    lim,
+):
     checks = [
         check(
             "alpha_channel",
@@ -204,13 +233,7 @@ def analyze(
         )
     empty = int((areas_np < lim["min_visible_px"]).sum())
     checks.append(
-        check(
-            "no_empty_frames",
-            empty == 0,
-            empty,
-            0,
-            "frames with almost nothing visible",
-        )
+        check("no_empty_frames", empty == 0, empty, 0, "frames with almost nothing visible")
     )
     clipped = int(sum(touches))
     checks.append(
@@ -222,13 +245,6 @@ def analyze(
             "frames whose visible pixels touch the canvas edge",
         )
     )
-    pts = [c for c in centroids if c]
-    steps = (
-        np.array([math.dist(a, b) for a, b in zip(pts, pts[1:])])
-        if len(pts) > 1
-        else np.zeros(1)
-    )
-    median = float(np.median(steps))
     cutoff = max(lim["teleport_factor"] * median, lim["teleport_min_px"])
     jumps = int((steps > cutoff).sum())
     checks.append(
@@ -255,12 +271,56 @@ def analyze(
             "frame-to-frame visible-area changes above the limit",
         )
     )
+    return checks
+
+
+def analyze(
+    path,
+    expected_frames=None,
+    expected_fps=None,
+    loop=False,
+    reference=None,
+    limits=None,
+):
+    lim = {**LIMITS, **(limits or {})}
+    width, height, fps, alpha_flag = probe(path)
+    (
+        areas,
+        centroids,
+        touches,
+        colors,
+        first_mask,
+        last_mask,
+        last_alpha_size,
+    ) = _collect_frame_samples(path, width, height)
+    frames = len(areas)
+    if not frames:
+        raise RuntimeError("no frames decoded")
+    areas_np = np.array(areas, float)
+    pts = [c for c in centroids if c]
+    steps = (
+        np.array([math.dist(a, b) for a, b in zip(pts, pts[1:])])
+        if len(pts) > 1
+        else np.zeros(1)
+    )
+    median = float(np.median(steps))
+    checks = _build_base_checks(
+        alpha_flag,
+        areas_np,
+        last_alpha_size,
+        frames,
+        expected_frames,
+        fps,
+        expected_fps,
+        touches,
+        steps,
+        median,
+        lim,
+    )
     loop_iou = None
     if loop:
-        inter, union = (
-            int((first_mask & last_mask).sum()),
-            int((first_mask | last_mask).sum()),
-        )
+        inter = int((first_mask & last_mask).sum())
+        union = int((first_mask | last_mask).sum())
         loop_iou = inter / union if union else 1.0
         checks.append(
             check(
@@ -273,38 +333,10 @@ def analyze(
         )
     reference_report = None
     if reference:
-        ref_color, ref_native_area = reference_stats(reference)
-        ref_area = ref_native_area * (ANALYSIS_WIDTH / width) ** 2
-        drift = [float(np.linalg.norm(c - ref_color)) for c in colors if c is not None]
-        worst = max(drift) if drift else float("inf")
-        ratio = (
-            float(np.median(areas_np[areas_np >= lim["min_visible_px"]]) / ref_area)
-            if (areas_np >= lim["min_visible_px"]).any()
-            else 0.0
+        reference_report, ref_checks = _evaluate_reference_checks(
+            reference, width, colors, areas_np, lim
         )
-        low, high = lim["area_ratio"]
-        reference_report = {
-            "worst_color_distance": round(worst, 2),
-            "median_area_ratio": round(ratio, 3),
-        }
-        checks.append(
-            check(
-                "colors_match_reference",
-                worst <= lim["color_drift"],
-                round(worst, 2),
-                lim["color_drift"],
-                "alpha-weighted mean colour vs the reference",
-            )
-        )
-        checks.append(
-            check(
-                "size_matches_reference",
-                low <= ratio <= high,
-                round(ratio, 3),
-                [low, high],
-                "median visible area vs the reference",
-            )
-        )
+        checks.extend(ref_checks)
     return {
         "file": str(path),
         "width": width,
@@ -320,7 +352,6 @@ def analyze(
             "reference": reference_report,
         },
         "checks": checks,
-        # A check that could not run is not a pass: name it so a reader does not assume it was verified.
         "not_measured": []
         if reference
         else [
@@ -329,6 +360,33 @@ def analyze(
         ],
         "ok": all(c["ok"] for c in checks),
     }
+
+
+def _render_reference_tile(reference, tile_width, tile_h, background):
+    with Image.open(reference) as ref:
+        ref = ref.convert("RGBA")
+        box = ref.getchannel("A").point(
+            lambda a: 255 if a > ALPHA_ON else 0
+        ).getbbox() or (0, 0, ref.width, ref.height)
+        ref = ref.crop(box)
+        ref.thumbnail((tile_width, tile_h))
+        tile = Image.new("RGBA", (tile_width, tile_h), background + (255,))
+        tile.alpha_composite(
+            ref, ((tile_width - ref.width) // 2, (tile_h - ref.height) // 2)
+        )
+        return tile
+
+
+def _compute_union_bbox(boxes, work_w, work_h):
+    seen = [b for b in boxes if b]
+    if not seen:
+        return (0, 0, work_w, work_h)
+    return (
+        min(b[0] for b in seen),
+        min(b[1] for b in seen),
+        max(b[2] for b in seen),
+        max(b[3] for b in seen),
+    )
 
 
 def contact_sheet(
@@ -341,18 +399,13 @@ def contact_sheet(
     reference=None,
     mode="path",
 ):
-    """Evenly spaced frames on a neutral background, with the reference (if any) as the first tile, for a visual review.
-
-    mode "path" crops every tile to the area the subject covers over the whole clip (shows where it moves);
-    mode "detail" crops each tile tightly to the subject in that frame (shows how it is drawn and posed).
-    """
+    """Evenly spaced frames on a neutral background, with the reference (if any) as the first tile, for a visual review."""
     count = max(1, int(count))
     cols = max(1, int(cols))
     width, height, _, _ = probe(path)
     work_w = tile_width * 2
     work_h = max(1, int(round(work_w * height / width)))
     tile_h = max(1, int(round(tile_width * height / width)))
-    tiles = []
     frames = list(decode_rgba(path, width, height, work_w, work_h))
     if not frames:
         raise RuntimeError("no frames decoded")
@@ -365,31 +418,13 @@ def contact_sheet(
         .getbbox()
         for f in frames
     ]
-    seen = [b for b in boxes if b]
-    union = (
-        (
-            min(b[0] for b in seen),
-            min(b[1] for b in seen),
-            max(b[2] for b in seen),
-            max(b[3] for b in seen),
-        )
-        if seen
-        else (0, 0, work_w, work_h)
-    )
+    union = _compute_union_bbox(boxes, work_w, work_h)
     pad = 12
-    if reference:
-        with Image.open(reference) as ref:
-            ref = ref.convert("RGBA")
-            box = ref.getchannel("A").point(
-                lambda a: 255 if a > ALPHA_ON else 0
-            ).getbbox() or (0, 0, ref.width, ref.height)
-            ref = ref.crop(box)
-            ref.thumbnail((tile_width, tile_h))
-            tile = Image.new("RGBA", (tile_width, tile_h), background + (255,))
-            tile.alpha_composite(
-                ref, ((tile_width - ref.width) // 2, (tile_h - ref.height) // 2)
-            )
-            tiles.append(tile)
+    tiles = (
+        [_render_reference_tile(reference, tile_width, tile_h, background)]
+        if reference
+        else []
+    )
     for index in wanted:
         box = union if mode == "path" else (boxes[index] or union)
         crop = Image.fromarray(frames[index], "RGBA").crop(
@@ -404,7 +439,7 @@ def contact_sheet(
         tile = Image.new("RGBA", (tile_width, tile_h), background + (255,))
         tile.alpha_composite(
             crop,
-            ((tile_width - crop.width) // 2, (tile_height_offset(tile_h, crop.height))),
+            ((tile_width - crop.width) // 2, tile_height_offset(tile_h, crop.height)),
         )
         tiles.append(tile)
     rows = max(1, (len(tiles) + cols - 1) // cols)
@@ -464,6 +499,43 @@ def decode_rgba(path, width, height, out_w, out_h):
         raise RuntimeError((stderr_txt.splitlines() or ["ffmpeg failed"])[-1])
 
 
+def _lint_oscillate_term(track_id, layer, prop, term, fps, blur):
+    if not isinstance(term, dict) or term.get("kind") != "oscillate":
+        return None
+    hz = float(term["hz"])
+    per_cycle = fps / hz if hz else math.inf
+    if hz > fps / 2:
+        return {
+            "track": track_id,
+            "layer": layer,
+            "property": prop,
+            "hz": hz,
+            "level": "error",
+            "note": f"{hz} Hz is above the {fps / 2} Hz Nyquist limit of {fps} fps and will alias",
+        }
+    if per_cycle < 4 and not blur:
+        return {
+            "track": track_id,
+            "layer": layer,
+            "property": prop,
+            "hz": hz,
+            "level": "warning",
+            "note": f"{per_cycle:.1f} frames per cycle without motion blur will strobe",
+        }
+    return None
+
+
+def _iter_motion_terms(spec):
+    for track in spec.get("tracks", []):
+        track_id = track["id"]
+        for layer, props in (track.get("motion") or {}).items():
+            if not isinstance(props, dict):
+                continue
+            for prop, terms in props.items():
+                for term in terms or []:
+                    yield track_id, layer, prop, term
+
+
 def lint_spec(spec):
     """Static checks on a layered motion spec: oscillations that cannot read as smooth motion at its frame rate."""
     if isinstance(spec, (Path, str)):
@@ -471,38 +543,10 @@ def lint_spec(spec):
     fps = float(spec.get("fps", 30))
     blur = bool(spec.get("motionBlur"))
     issues = []
-    for track in spec.get("tracks", []):
-        for layer, props in (track.get("motion") or {}).items():
-            if not isinstance(props, dict):
-                continue
-            for prop, terms in props.items():
-                for term in terms or []:
-                    if not isinstance(term, dict) or term.get("kind") != "oscillate":
-                        continue
-                    hz = float(term["hz"])
-                    per_cycle = fps / hz if hz else math.inf
-                    if hz > fps / 2:
-                        issues.append(
-                            {
-                                "track": track["id"],
-                                "layer": layer,
-                                "property": prop,
-                                "hz": hz,
-                                "level": "error",
-                                "note": f"{hz} Hz is above the {fps / 2} Hz Nyquist limit of {fps} fps and will alias",
-                            }
-                        )
-                    elif per_cycle < 4 and not blur:
-                        issues.append(
-                            {
-                                "track": track["id"],
-                                "layer": layer,
-                                "property": prop,
-                                "hz": hz,
-                                "level": "warning",
-                                "note": f"{per_cycle:.1f} frames per cycle without motion blur will strobe",
-                            }
-                        )
+    for track_id, layer, prop, term in _iter_motion_terms(spec):
+        issue = _lint_oscillate_term(track_id, layer, prop, term, fps, blur)
+        if issue is not None:
+            issues.append(issue)
     return issues
 
 

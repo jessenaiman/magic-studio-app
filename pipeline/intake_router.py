@@ -48,6 +48,72 @@ def inspect_image(image_path: str) -> dict:
     return dict(info, width=w, height=h, aspect=round(w / h, 3), exists=True)
 
 
+INTAKE_QUESTIONS = [
+    {
+        "id": "q1_archetype",
+        "question": "1. How does this object's core skeleton move?",
+        "options": [
+            {
+                "value": "humanoid_biped",
+                "label": "Humanoid / Farm Character (18-bone walk, jump, knee/elbow/paw + face)",
+            },
+            {
+                "value": "axial_creature",
+                "label": "Fish / Swimming Creature (Spine S-wave + oscillating pectoral/tail fins)",
+            },
+            {
+                "value": "radial_prop",
+                "label": "Smiling Sun / Prop (Rise & fall arc + pulsing radial rays + face morphs)",
+            },
+            {
+                "value": "vehicle_hull",
+                "label": "Boat / Vehicle (Left/Right traverse + banking yaw turn + wave pitch)",
+            },
+        ],
+    },
+    {
+        "id": "q2_slicing",
+        "question": "2. How should the 2D image be broken into parts or skins?",
+        "options": [
+            {
+                "value": "base_mannequin_plus_costume_skin",
+                "label": "Base Skeleton + Swappable Costume Skin",
+            },
+            {
+                "value": "auto_slice_appendages",
+                "label": "Slice Moving Appendages (Separate fins/wheels/limbs with 3-loop hinges)",
+            },
+            {
+                "value": "single_deformable_sheet",
+                "label": "Single Deformable 2.5D Mesh with Internal Bend Loops",
+            },
+        ],
+    },
+    {
+        "id": "q3_verb_output",
+        "question": "3. Which Universal Action & Track B Output do you want to verify in Blender & FilmCraft?",
+        "options": [
+            {
+                "value": "move_traverse",
+                "label": "Move / Traverse (Walk / Swim / Glide) -> Blender -> FilmCraft",
+            },
+            {
+                "value": "jump_rise_fall",
+                "label": "Jump / Rise & Fall (Leap / Sunrise-Sunset / Crest) -> Blender -> FilmCraft",
+            },
+            {
+                "value": "turn_bank",
+                "label": "Turn / Bank (Set Angles 0°, 40°, 90°, 180°) -> Blender -> FilmCraft",
+            },
+            {
+                "value": "express_talk",
+                "label": "Express / Talk (Blink, Gaze & Mouth Visemes) -> Blender -> FilmCraft",
+            },
+        ],
+    },
+]
+
+
 def run_three_question_intake(
     image_path: str, answers_override: dict | None = None
 ) -> dict:
@@ -93,71 +159,6 @@ def run_three_question_intake(
         except Exception:
             pass
 
-    questions = [
-        {
-            "id": "q1_archetype",
-            "question": "1. How does this object's core skeleton move?",
-            "options": [
-                {
-                    "value": "humanoid_biped",
-                    "label": "Humanoid / Farm Character (18-bone walk, jump, knee/elbow/paw + face)",
-                },
-                {
-                    "value": "axial_creature",
-                    "label": "Fish / Swimming Creature (Spine S-wave + oscillating pectoral/tail fins)",
-                },
-                {
-                    "value": "radial_prop",
-                    "label": "Smiling Sun / Prop (Rise & fall arc + pulsing radial rays + face morphs)",
-                },
-                {
-                    "value": "vehicle_hull",
-                    "label": "Boat / Vehicle (Left/Right traverse + banking yaw turn + wave pitch)",
-                },
-            ],
-        },
-        {
-            "id": "q2_slicing",
-            "question": "2. How should the 2D image be broken into parts or skins?",
-            "options": [
-                {
-                    "value": "base_mannequin_plus_costume_skin",
-                    "label": "Base Skeleton + Swappable Costume Skin",
-                },
-                {
-                    "value": "auto_slice_appendages",
-                    "label": "Slice Moving Appendages (Separate fins/wheels/limbs with 3-loop hinges)",
-                },
-                {
-                    "value": "single_deformable_sheet",
-                    "label": "Single Deformable 2.5D Mesh with Internal Bend Loops",
-                },
-            ],
-        },
-        {
-            "id": "q3_verb_output",
-            "question": "3. Which Universal Action & Track B Output do you want to verify in Blender & FilmCraft?",
-            "options": [
-                {
-                    "value": "move_traverse",
-                    "label": "Move / Traverse (Walk / Swim / Glide) -> Blender -> FilmCraft",
-                },
-                {
-                    "value": "jump_rise_fall",
-                    "label": "Jump / Rise & Fall (Leap / Sunrise-Sunset / Crest) -> Blender -> FilmCraft",
-                },
-                {
-                    "value": "turn_bank",
-                    "label": "Turn / Bank (Set Angles 0°, 40°, 90°, 180°) -> Blender -> FilmCraft",
-                },
-                {
-                    "value": "express_talk",
-                    "label": "Express / Talk (Blink, Gaze & Mouth Visemes) -> Blender -> FilmCraft",
-                },
-            ],
-        },
-    ]
-
     recommended = {
         "archetype": rec["archetype"],
         "slicingStrategy": rec["slicingStrategy"],
@@ -172,7 +173,7 @@ def run_three_question_intake(
         "imagePath": image_path,
         "imageMeta": img_meta,
         "routerSource": router_source,
-        "questions": questions,
+        "questions": INTAKE_QUESTIONS,
         "recommended": recommended,
     }
 
