@@ -531,8 +531,8 @@ class AppShellController {
     state.storyboardUndo = null;
   }
 
-  updateWindowProjectTitle(path: string) {
-    const title = path.split("/").pop()?.replace(/\.magic$/, "") || "";
+  updateWindowProjectTitle(path: string, name?: string) {
+    const title = name || path.split("/").pop()?.replace(/\.magic$/, "") || "";
     $("project-name").textContent = title;
     $("project-name").parentElement.title = title;
     document.title = `${title} · Magic Studio`;
@@ -558,7 +558,7 @@ class AppShellController {
     const startOpen = start.open && start.open !== "agent" ? start.open : "song";
     state.open = SONG_SECTIONS.includes(startOpen) ? "song" : startOpen;
     document.body.classList.remove("at-home");
-    this.updateWindowProjectTitle(path);
+    this.updateWindowProjectTitle(path, opened.name);
     this.renderTarget();
     renderBlocks();
     renderStoryboard();

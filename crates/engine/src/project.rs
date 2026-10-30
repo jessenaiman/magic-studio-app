@@ -8,6 +8,10 @@ use crate::{EngineError, Result, Session};
 
 /// Identifies a Magic Studio project file (`.magic`, JSON).
 const PROJECT_FORMAT: &str = "magicstudio.project";
+/// A character manifest (`character.magic`); it opens as an animation project.
+const CHARACTER_FORMAT: &str = "magicstudio.character";
+/// The keys an animation owns inside a character file; the rest is the character manifest.
+const CHARACTER_ANIMATION_KEYS: [&str; 3] = ["theatre", "animation_sources", "parts"];
 
 fn saved_path(path: &Path, project: &Path) -> PathBuf {
     let parent = project.parent().unwrap_or(Path::new("."));
@@ -45,6 +49,9 @@ pub fn project_document(s: &Session) -> Value {
     let Some(path) = &s.project_path else {
         return Value::Null;
     };
+    if s.character_file {
+        return character_document(s);
+    }
     let name = path
         .file_stem()
         .and_then(|n| n.to_str())
@@ -76,6 +83,40 @@ pub fn project_document(s: &Session) -> Value {
     doc
 }
 
+/// The animation state a character file carries: Theatre motion, native sources and part states.
+fn character_document(s: &Session) -> Value {
+    let mut doc = json!({"format": CHARACTER_FORMAT});
+    if let Some(state) = &s.theatre_state {
+        doc["theatre"] = state.clone();
+    }
+    if !s.animation_sources.is_empty() {
+        doc["animation_sources"] = json!(s.animation_sources);
+    }
+    if let Some(entry) = s.project_assets.first() {
+        let parts = s.assets.get(&entry.id).map_or(&entry.parts, |a| &a.parts);
+        if !parts.is_empty() {
+            doc["parts"] = json!(parts);
+        }
+    }
+    doc
+}
+
+/// The character manifest as it is on disk, with the animation's keys replaced.
+fn character_file_document(s: &Session, path: &Path) -> Result<Value> {
+    let mut doc = read_project_document(path)?;
+    let current = character_document(s);
+    let manifest = doc
+        .as_object_mut()
+        .ok_or_else(|| EngineError::InvalidParams("character file is not a JSON object".into()))?;
+    for key in CHARACTER_ANIMATION_KEYS {
+        match current.get(key) {
+            Some(value) => manifest.insert(key.into(), value.clone()),
+            None => manifest.remove(key),
+        };
+    }
+    Ok(doc)
+}
+
 fn normalize_connections(doc: &mut Value, project: &Path) {
     for asset in doc["assets"].as_array_mut().into_iter().flatten() {
         if let Some(path) = asset["path"].as_str() {
@@ -95,7 +136,7 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
         normalize_connections(&mut saved, path);
     }
     let current = project_document(s);
-    ["assets", "workshop", "theatre", "animation_sources", "mode"]
+    ["assets", "workshop", "theatre", "animation_sources", "mode", "parts"]
         .iter()
         .any(|key| saved[*key] != current[*key])
 }
@@ -105,7 +146,11 @@ pub fn write_project_file(s: &Session) -> Result<()> {
     let Some(path) = &s.project_path else {
         return Ok(());
     };
-    let doc = project_document(s);
+    let doc = if s.character_file {
+        character_file_document(s, path)?
+    } else {
+        project_document(s)
+    };
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -433,51 +478,6 @@ fn read_project_document(path: &Path) -> Result<Value> {
         .map_err(|e| EngineError::InvalidParams(format!("invalid project file: {e}")))
 }
 
-fn sibling_magic_project(entry_path: &Path, project_path: &Path) -> Option<Value> {
-    if entry_path == project_path
-        || !entry_path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("magic"))
-    {
-        return None;
-    }
-    let text = std::fs::read_to_string(entry_path).ok()?;
-    let doc = serde_json::from_str::<Value>(&text).ok()?;
-    (doc.get("format").and_then(Value::as_str) == Some(PROJECT_FORMAT)).then_some(doc)
-}
-
-fn open_containing_character_project(
-    s: &mut Session,
-    path: &Path,
-    doc: &Value,
-    params: &Value,
-) -> Result<Option<Value>> {
-    if doc.get("format").and_then(Value::as_str) != Some("magicstudio.character") {
-        return Ok(None);
-    }
-    let char_id = doc
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or("character")
-        .to_string();
-    for anc in path.ancestors().skip(1).take(5) {
-        if let Ok(entries) = std::fs::read_dir(anc) {
-            for entry in entries.flatten() {
-                let ep = entry.path();
-                if sibling_magic_project(&ep, path).is_some() {
-                    let mut p2 = params.clone();
-                    p2["path"] = json!(ep);
-                    let mut res = cmd_project_open(s, &p2)?;
-                    let _ = cmd_project_load_asset(s, &json!({"id": char_id}));
-                    res["active_asset"] = json!(s.active_asset);
-                    return Ok(Some(res));
-                }
-            }
-        }
-    }
-    Ok(None)
-}
-
 fn project_assets_from_doc(path: &Path, doc: &Value) -> Result<Vec<crate::ProjectAsset>> {
     let mut assets: Vec<crate::ProjectAsset> =
         serde_json::from_value(doc.get("assets").cloned().unwrap_or_else(|| json!([])))
@@ -547,8 +547,8 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         None
     };
     let doc = read_project_document(&path)?;
-    if let Some(res) = open_containing_character_project(s, &path, &doc, params)? {
-        return Ok(res);
+    if doc.get("format").and_then(Value::as_str) == Some(CHARACTER_FORMAT) {
+        return open_character_file(s, &path, &doc, owner, params);
     }
     if doc.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
         return Err(EngineError::InvalidParams(format!(
@@ -577,6 +577,57 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         "missing": missing,
         "workshop": workshop,
         "next_steps": workshop["next_steps"],
+    }))
+}
+
+/// The character's id: its manifest id, else its folder name.
+fn character_id(path: &Path, doc: &Value) -> String {
+    let folder = path.parent().and_then(Path::file_name).and_then(|n| n.to_str());
+    doc["id"]
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+        .or(folder)
+        .unwrap_or("character")
+        .to_string()
+}
+
+/// A character file opens as an animation project whose one asset is the character itself.
+fn open_character_file(
+    s: &mut Session,
+    path: &Path,
+    doc: &Value,
+    owner: Option<std::sync::Arc<std::fs::File>>,
+    params: &Value,
+) -> Result<Value> {
+    let id = character_id(path, doc);
+    let name = doc["name"].as_str().filter(|v| !v.trim().is_empty()).unwrap_or(&id).to_string();
+    let parts = serde_json::from_value(doc.get("parts").cloned().unwrap_or_else(|| json!([])))
+        .map_err(|e| EngineError::InvalidParams(format!("invalid character part states: {e}")))?;
+    let entry = crate::ProjectAsset {
+        id: id.clone(),
+        name: name.clone(),
+        preset: None,
+        path: Some(path.to_path_buf()),
+        kind: "auto".into(),
+        parts,
+    };
+    apply_opened_state(s, path, doc, vec![entry], owner)?;
+    s.project_mode = Some("animation".into());
+    s.character_file = true;
+    let mut warnings = recent_warning(s, path, params["record_recent"] != false);
+    if let Err(error) = cmd_project_load_asset(s, &json!({"id": id})) {
+        warnings.push(json!(format!("{name} did not load: {error}")));
+    }
+    Ok(json!({
+        "ok": true,
+        "project": path,
+        "name": name,
+        "mode": s.project_mode,
+        "character_file": true,
+        "warnings": warnings,
+        "assets": s.project_assets,
+        "active_asset": s.active_asset,
+        "missing": [],
     }))
 }
 
@@ -643,6 +694,11 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     }
     if params.get("path").is_some() {
         let target = project_file_path(s, params)?;
+        if s.character_file && s.project_path.as_ref() != Some(&target) {
+            return Err(EngineError::InvalidParams(
+                "Save As does not copy a character: its images and rigs live in its folder. Copy the character folder instead.".into(),
+            ));
+        }
         if s.project_path.as_ref() != Some(&target) {
             let file = claim_save_target(&target)?;
             let target = std::fs::canonicalize(target)?;
