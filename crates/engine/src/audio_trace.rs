@@ -17,10 +17,19 @@ fn digest(path: &Path) -> Option<String> {
         .map(|b| format!("{:x}", Sha256::digest(b)))
 }
 fn resolve(tool: &str) -> Option<PathBuf> {
+    let direct = Path::new(tool);
+    if direct.is_absolute() && direct.is_file() {
+        return Some(direct.to_path_buf());
+    }
     std::env::var_os("PATH").and_then(|p| {
         std::env::split_paths(&p)
             .map(|d| d.join(tool))
-            .find(|p| p.is_file())
+            .find(|p| p.is_file() && !p.to_string_lossy().contains("/mise/shims/"))
+            .or_else(|| {
+                std::env::split_paths(&p)
+                    .map(|d| d.join(tool))
+                    .find(|p| p.is_file())
+            })
     })
 }
 fn summary(stdout: &str) -> Value {

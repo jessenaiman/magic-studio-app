@@ -513,10 +513,19 @@ def _discover_locations(source_root, lyric_bgs):
     ]
     preferred = [
         k
-        for k in ("barn-open", "meadow-day", "barn-closed", "meadow-golden")
+        for k in (
+            "barn-open",
+            "meadow-day",
+            "barn-closed",
+            "meadow-golden",
+            "bunnies-on-ground",
+            "garden-lettuce-carrots",
+            "farmer-looking-burrow",
+            "rabbit-hole-underground",
+        )
         if k in found_bgs
     ]
-    chosen = preferred if len(preferred) == 4 else ordered[:4]
+    chosen = preferred[:4] if len(preferred) >= 4 else ordered[:4]
     locations = []
     for bg_id in chosen:
         img = found_bgs[bg_id]

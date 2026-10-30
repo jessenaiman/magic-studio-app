@@ -134,11 +134,18 @@ pub(crate) fn hyperframes_cli(explicit: Option<&str>, project: Option<&Path>) ->
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HYPERFRAMES_CLI").map(PathBuf::from));
     let on_path = || {
-        std::env::var_os("PATH").and_then(|v| {
-            std::env::split_paths(&v)
-                .map(|d| d.join("hyperframes"))
-                .find(|p| p.is_file())
-        })
+        let paths: Vec<PathBuf> = std::env::var_os("PATH")
+            .into_iter()
+            .flat_map(|v| std::env::split_paths(&v).collect::<Vec<_>>())
+            .map(|d| d.join("hyperframes"))
+            .filter(|p| p.is_file())
+            .collect();
+        paths
+            .iter()
+            .find(|p| !p.to_string_lossy().contains("/mise/shims/"))
+            .cloned()
+            .or_else(discover_installed_hyperframes)
+            .or_else(|| paths.into_iter().next())
     };
     let pinned = project.and_then(|dir| pinned_hyperframes(dir).map(|version| (dir, version)));
     let cached = || {
@@ -160,6 +167,74 @@ pub(crate) fn hyperframes_cli(explicit: Option<&str>, project: Option<&Path>) ->
     Ok(path)
 }
 
+fn discover_installed_hyperframes() -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let mise_nodes = home.join(".local/share/mise/installs/node");
+    if let Ok(entries) = std::fs::read_dir(&mise_nodes) {
+        let mut bins: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path().join("bin/hyperframes"))
+            .filter(|p| p.is_file())
+            .collect();
+        bins.sort();
+        if let Some(bin) = bins.pop() {
+            return Some(bin);
+        }
+    }
+    let npx_root = home.join(".npm/_npx");
+    let mut bins: Vec<PathBuf> = std::fs::read_dir(&npx_root)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path().join("node_modules/.bin/hyperframes"))
+        .filter(|p| p.is_file())
+        .collect();
+    bins.sort();
+    bins.pop()
+}
+
+/// Ensure the project's local `<audio>` tag carries `data-timeline-role="music"` so `hyperframes beats`
+/// and Studio beat-grid tools recognize the music track (`hyperframes-cli/references/beats.md`).
+pub(crate) fn ensure_music_audio_role(hf_dir: &Path) -> Result<()> {
+    let entry = hf_dir.join("index.html");
+    if !entry.is_file() {
+        return Ok(());
+    }
+    let html = std::fs::read_to_string(&entry)?;
+    if html.contains("<audio") && !html.contains("data-timeline-role=\"music\"") {
+        let updated = html.replacen("<audio", "<audio data-timeline-role=\"music\"", 1);
+        std::fs::write(&entry, updated)?;
+    }
+    Ok(())
+}
+
+/// Inspect `hyperframes/index.html` for a local `<audio src="...">` inside `hyperframes/`.
+pub(crate) fn discover_contained_audio(dir: &Path) -> Option<PathBuf> {
+    let hf = dir.join("hyperframes");
+    let html = std::fs::read_to_string(hf.join("index.html")).ok()?;
+    let audio_idx = html.find("<audio")?;
+    let tag = &html[audio_idx..html[audio_idx..].find('>')? + audio_idx];
+    let src_idx = tag.find("src=\"")? + 5;
+    let src_end = tag[src_idx..].find('"')? + src_idx;
+    let src = &tag[src_idx..src_end];
+    let candidate = hf.join(src);
+    candidate.is_file().then_some(candidate)
+}
+
+/// Run `hyperframes beats <hf> --json` per hyperframes-cli/references/beats.md after ensuring `data-timeline-role="music"`.
+pub(crate) fn run_hyperframes_beats(hf: &Path, runtime: &str) -> Option<&'static str> {
+    let _ = ensure_music_audio_role(hf);
+    if !hf.join("index.html").is_file() {
+        return None;
+    }
+    let ok = std::process::Command::new(runtime)
+        .args(["beats", &hf.to_string_lossy(), "--json"])
+        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
+        .current_dir(hf)
+        .output()
+        .is_ok_and(|o| o.status.success());
+    ok.then_some("hyperframes beats → beats/*.json")
+}
+
 fn init_hyperframes(s: &Session, dir: &Path, executable: Option<&str>) -> Result<PathBuf> {
     let project = dir.join("hyperframes");
     let cli = hyperframes_cli(executable, Some(&project))?;
@@ -171,6 +246,7 @@ fn init_hyperframes(s: &Session, dir: &Path, executable: Option<&str>) -> Result
         "blank".into(),
         "--skill".into(),
         "hyperframes".into(),
+        "--skip-skills".into(),
         "--skip-transcribe".into(),
     ];
     if let Some(audio) = &s.song_audio {
@@ -178,6 +254,8 @@ fn init_hyperframes(s: &Session, dir: &Path, executable: Option<&str>) -> Result
     }
     let output = std::process::Command::new(&cli)
         .args(&args)
+        .env("HYPERFRAMES_SKIP_SKILLS", "1")
+        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
         .current_dir(dir)
         .output()
         .map_err(|e| EngineError::ExternalTool(cli.display().to_string(), e.to_string()))?;
@@ -187,6 +265,7 @@ fn init_hyperframes(s: &Session, dir: &Path, executable: Option<&str>) -> Result
             String::from_utf8_lossy(&output.stderr).into_owned(),
         ));
     }
+    ensure_music_audio_role(&project)?;
     target_project_path(s, dir, "hyperframes").ok_or_else(|| {
         EngineError::InvalidParams("HyperFrames init did not produce its project files".into())
     })
@@ -392,6 +471,7 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
             created.display()
         )));
     }
+    ensure_music_audio_role(&dir.join("hyperframes"))?;
     let runtime = hyperframes_cli(
         params["hyperframes_cli"].as_str(),
         Some(&dir.join("hyperframes")),
@@ -422,13 +502,34 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
             "HyperFrames project has no audio track; upload was not completed".into(),
         ));
     }
+    let contained_audio = native["timeline"]["tracks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|track| track["kind"] == "audio")
+        .flat_map(|track| track["rows"].as_array().into_iter().flatten())
+        .filter_map(|row| row["src"].as_str())
+        .map(|src| dir.join("hyperframes").join(src))
+        .find(|path| {
+            path.is_file()
+                && path.canonicalize().ok().is_some_and(|p| {
+                    dir.join("hyperframes")
+                        .canonicalize()
+                        .ok()
+                        .is_some_and(|root| p.starts_with(root))
+                })
+        });
     if !reused && s.song_audio.is_some() {
-        let copied=native["timeline"]["tracks"].as_array().into_iter().flatten()
-            .filter(|track|track["kind"]=="audio").flat_map(|track|track["rows"].as_array().into_iter().flatten())
-            .filter_map(|row|row["src"].as_str()).map(|src|dir.join("hyperframes").join(src))
-            .find(|path|path.is_file() && path.canonicalize().ok().is_some_and(|p|dir.join("hyperframes").canonicalize().ok().is_some_and(|root|p.starts_with(root))))
-            .ok_or_else(||EngineError::InvalidParams("HyperFrames did not return a contained copy of the uploaded recording; project was not marked imported".into()))?;
+        let copied = contained_audio.ok_or_else(|| {
+            EngineError::InvalidParams(
+                "HyperFrames did not return a contained copy of the uploaded recording; project was not marked imported".into(),
+            )
+        })?;
         s.song_audio = Some(copied);
+    } else if let Some(contained) = contained_audio
+        && s.song_audio.as_ref().is_none_or(|a| !a.starts_with(dir.join("hyperframes")))
+    {
+        s.song_audio = Some(contained);
     }
     let mut status = workshop_status(s)?;
     status["native_timeline"] = native;

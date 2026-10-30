@@ -10,18 +10,34 @@ use crate::{EngineError, Result, Session};
 const PROJECT_FORMAT: &str = "magicstudio.project";
 
 fn saved_path(path: &Path, project: &Path) -> PathBuf {
-    path.strip_prefix(project.parent().unwrap_or(Path::new(".")))
-        .unwrap_or(path)
-        .to_path_buf()
+    let parent = project.parent().unwrap_or(Path::new("."));
+    if let Ok(rel) = path.strip_prefix(parent) {
+        return rel.to_path_buf();
+    }
+    if let (Ok(canon_path), Ok(canon_parent)) = (path.canonicalize(), parent.canonicalize())
+        && let Ok(rel) = canon_path.strip_prefix(&canon_parent)
+    {
+        return rel.to_path_buf();
+    }
+    path.to_path_buf()
 }
 
 fn opened_path(path: &str, project: &Path) -> PathBuf {
-    let path = Path::new(path);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        project.parent().unwrap_or(Path::new(".")).join(path)
+    let parent = project.parent().unwrap_or(Path::new("."));
+    let raw = Path::new(path);
+    if raw.is_absolute() {
+        if raw.exists() {
+            return raw.to_path_buf();
+        }
+        if let Some(idx) = path.find("/hyperframes/") {
+            let candidate = parent.join(&path[idx + 1..]);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        return raw.to_path_buf();
     }
+    parent.join(raw)
 }
 
 /// The persisted project state, shared by Save and unsaved-change detection.
@@ -276,6 +292,55 @@ pub fn cmd_project_migrate(_s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
+fn link_existing_hyperframes(s: &mut Session, dir: &Path, steps: &mut Vec<Value>) {
+    if !dir.join("hyperframes/index.html").is_file() {
+        return;
+    }
+    let _ = super::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
+    s.video_project_path = super::video_target::target_project_path(s, dir, &s.video_target);
+    if s.song_audio.is_none() {
+        s.song_audio = super::video_target::discover_contained_audio(dir);
+    }
+    let _ = super::video_target::ensure_native_captions(s, dir);
+    steps.push(json!({"command": "video.link_existing", "status": "linked existing hyperframes project and contained audio"}));
+}
+
+/// Auto-initialize HyperFrames and process audio when `project.new` is given `audio` (or link existing `hyperframes/`).
+fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) -> Vec<Value> {
+    let mut steps = Vec::new();
+    let Some(dir) = path.parent() else {
+        return steps;
+    };
+    let Some(raw_audio) = params.get("audio").and_then(Value::as_str).filter(|v| !v.is_empty()) else {
+        link_existing_hyperframes(s, dir, &mut steps);
+        return steps;
+    };
+    if params["skip_audio_setup"] == true {
+        return steps;
+    }
+    match super::workshop::cmd_workshop_set_audio(s, &json!({"path": raw_audio, "hyperframes_cli": params["hyperframes_cli"]})) {
+        Ok(_) => steps.push(json!({"command": "workshop.set_audio", "status": "complete; HyperFrames initialized and audio linked"})),
+        Err(e) => {
+            steps.push(json!({"command": "workshop.set_audio", "status": "failed", "error": e.to_string()}));
+            return steps;
+        }
+    }
+    if let Some(t) = params.get("transcript").and_then(Value::as_str).filter(|v| !v.is_empty()) {
+        let _ = super::workshop::cmd_workshop_import_transcript(s, &json!({"path": t, "captions": params["captions"], "audiomap": params["audiomap"], "replace": true}));
+        steps.push(json!({"command": "workshop.import_transcript", "status": "complete"}));
+    } else if params.get("process_audio").and_then(Value::as_bool).unwrap_or(true) && params["prepare_only"] != true {
+        let model = params.get("model").and_then(Value::as_str).unwrap_or("large-v3");
+        match super::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "hyperframes_cli": params["hyperframes_cli"]})) {
+            Ok(_) => steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"})),
+            Err(e) => steps.push(json!({"command": "audio.analyze", "status": "failed", "error": e.to_string()})),
+        }
+    }
+    if !super::workshop::transcript_files(dir).is_empty() && !dir.join("storyboard/movie-board.json").is_file() && params["prepare_only"] != true && super::storyboard::cmd_storyboard_init(s, &json!({})).is_ok() {
+        steps.push(json!({"command": "storyboard.init", "status": "complete"}));
+    }
+    steps
+}
+
 /// Create a new `.magic` session.
 pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
@@ -312,10 +377,19 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     s.project_owner = Some(owner);
     s.song_audio = audio;
     write_project_file(s)?;
+    let steps = bootstrap_new_project_workshop(s, &path, params);
+    write_project_file(s)?;
     let warnings = recent_warning(s, &path, true);
-    Ok(
-        json!({"ok": true, "project": path, "warnings":warnings,"assets": s.project_assets, "workshop": super::workshop::workshop_status(s)?}),
-    )
+    let workshop = super::workshop::workshop_status(s)?;
+    Ok(json!({
+        "ok": true,
+        "project": path,
+        "warnings": warnings,
+        "steps": steps,
+        "assets": s.project_assets,
+        "workshop": workshop,
+        "next_steps": workshop["next_steps"],
+    }))
 }
 
 /// Open an existing `.magic` session.
@@ -416,10 +490,47 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         .pointer("/workshop/video_project")
         .and_then(Value::as_str)
         .map(|source| opened_path(source, &path));
+    repair_opened_workshop_links(s, &path);
     let warnings = recent_warning(s, &path, params["record_recent"] != false);
-    Ok(
-        json!({"ok": true, "project": path,"warnings":warnings,"assets": s.project_assets, "missing": missing, "workshop": super::workshop::workshop_status(s)?}),
-    )
+    let workshop = super::workshop::workshop_status(s)?;
+    Ok(json!({
+        "ok": true,
+        "project": path,
+        "warnings": warnings,
+        "assets": s.project_assets,
+        "missing": missing,
+        "workshop": workshop,
+        "next_steps": workshop["next_steps"],
+    }))
+}
+
+fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
+    let Some(dir) = path.parent() else {
+        return;
+    };
+    if !dir.join("hyperframes/index.html").is_file() {
+        return;
+    }
+    let _ = super::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
+    if s.project_owner.is_none() {
+        return;
+    }
+    let mut changed = false;
+    if s.video_project_path.as_ref().is_none_or(|p| !p.is_file())
+        && let Some(vp) = super::video_target::target_project_path(s, dir, &s.video_target)
+    {
+        s.video_project_path = Some(vp);
+        changed = true;
+    }
+    if s.song_audio.as_ref().is_none_or(|p| !p.is_file())
+        && let Some(audio) = super::video_target::discover_contained_audio(dir)
+    {
+        s.song_audio = Some(audio);
+        changed = true;
+    }
+    if changed {
+        let _ = write_project_file(s);
+    }
 }
 
 /// Save the open project (or save-as when `path` is given).

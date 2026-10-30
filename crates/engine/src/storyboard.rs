@@ -708,6 +708,13 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
         if result["ok"] == true && result["draft"] != true {
             std::fs::write(dir.join("storyboard/movie-board.json"), result.to_string())?;
         }
+        let diag = diagnose_storyboard_and_workshop(s, &dir);
+        result["scene_diagnostics"] = diag.clone();
+        if let Some(steps) = diag["next_steps"].as_array()
+            && !steps.is_empty()
+        {
+            result["next_steps"] = json!(steps);
+        }
         return Ok(result);
     }
     Err(EngineError::InvalidParams(
@@ -1234,4 +1241,130 @@ pub fn cmd_storyboard_approve(s: &mut Session, params: &Value) -> Result<Value> 
         s,
         &json!({"scene": params.get("scene"), "field": "status", "value": status,"expected_revision":revision}),
     )
+}
+
+fn diagnose_hyperframes_setup(s: &Session, dir: &Path) -> (Vec<String>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let mut next = Vec::new();
+    let hf = dir.join("hyperframes");
+    if !hf.join("hyperframes.json").is_file() {
+        warnings.push("HyperFrames project (hyperframes/hyperframes.json) is missing.".into());
+        next.push("Run `magic-cli exec workshop.set_audio path=<song.wav>` to scaffold hyperframes/ and link the song.".into());
+        return (warnings, next);
+    }
+    if s.video_project_path.as_ref().is_none_or(|p| !p.exists()) {
+        warnings.push("Project file is not linked to hyperframes/hyperframes.json.".into());
+        next.push("Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project.".into());
+    }
+    if let Ok(html) = std::fs::read_to_string(hf.join("index.html"))
+        && html.contains("<audio")
+        && !html.contains("data-timeline-role=\"music\"")
+    {
+        warnings.push("hyperframes/index.html <audio> is missing data-timeline-role=\"music\" (required by `hyperframes beats`).".into());
+        next.push("Run `magic-cli exec audio.analyze` to tag the music track and generate beat/section analysis.".into());
+    }
+    if !hf.join("audio-analysis.json").is_file() {
+        warnings.push("hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed).".into());
+        next.push("Run `magic-cli exec audio.analyze` to generate transcript.json, transcript.srt, audio-analysis.json, and beats/.".into());
+    }
+    let has_beats = std::fs::read_dir(hf.join("beats"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.path().extension().is_some_and(|x| x == "json"));
+    if !has_beats {
+        warnings.push("hyperframes/beats/*.json beat grid is missing.".into());
+        next.push("Run `hyperframes beats hyperframes --json` or `magic-cli exec audio.analyze` to build the Studio beat grid.".into());
+    }
+    (warnings, next)
+}
+
+fn check_scene_reference(
+    dir: &Path,
+    n: usize,
+    doc: &SceneDoc,
+    seen_refs: &mut std::collections::BTreeMap<String, usize>,
+) -> (Option<String>, bool) {
+    let Some(rel) = doc.reference.as_deref().filter(|r| !r.trim().is_empty()) else {
+        return (Some(format!("Scene {n:02} is missing a `reference:` plate image.")), false);
+    };
+    let path = dir.join(rel);
+    if !path.is_file() {
+        return (Some(format!("Scene {n:02} reference `{rel}` does not exist on disk.")), false);
+    }
+    let mut issue = None;
+    let mut is_16_9 = true;
+    if let Ok((w, h)) = image::image_dimensions(&path)
+        && (h == 0 || (w as f64 / h as f64) < 1.45)
+    {
+        issue = Some(format!(
+            "Scene {n:02} reference `{rel}` is {w}x{h} (not 16:9 widescreen; will letterbox or crop)."
+        ));
+        is_16_9 = false;
+    }
+    if let Some(prev) = seen_refs.insert(rel.to_string(), n) {
+        let dup = format!("Scene {n:02} reuses `{rel}` from Scene {prev:02} instead of a dedicated scene plate.");
+        issue = Some(match issue {
+            Some(existing) => format!("{existing} {dup}"),
+            None => dup,
+        });
+        is_16_9 = false;
+    }
+    (issue, is_16_9)
+}
+
+pub(crate) fn diagnose_storyboard_and_workshop(s: &Session, dir: &Path) -> Value {
+    let (mut warnings, mut next_steps) = diagnose_hyperframes_setup(s, dir);
+    let scene_docs: Vec<(usize, SceneDoc)> = (1..)
+        .map(|n| (n, scene_doc_path(dir, n)))
+        .take_while(|(_, p)| p.is_file())
+        .map(|(n, _)| (n, read_scene_doc(dir, n)))
+        .collect();
+    if scene_docs.is_empty() {
+        warnings.push("No storyboard/scene-N.md files exist yet.".into());
+        next_steps.push("Run `magic-cli exec storyboard.init` to create the initial DeckCraft storyboard and scene files.".into());
+        return json!({"warnings": warnings, "next_steps": next_steps, "scenes_total": 0, "all_scenes_complete": false});
+    }
+    let required = ["action", "reference_prompt", "animation_prompt", "layer_stack", "animated_text", "teaching_cues"];
+    let mut seen_refs = std::collections::BTreeMap::new();
+    let mut art_ok_count = 0usize;
+    let mut sections_ok_count = 0usize;
+    for (n, doc) in &scene_docs {
+        let (ref_issue, ref_ok) = check_scene_reference(dir, *n, doc, &mut seen_refs);
+        if let Some(msg) = ref_issue {
+            warnings.push(msg);
+        }
+        if ref_ok {
+            art_ok_count += 1;
+        }
+        let missing: Vec<&str> = required
+            .iter()
+            .copied()
+            .filter(|k| doc.sections.get(*k).is_none_or(|v| v.trim().is_empty()))
+            .collect();
+        if missing.is_empty() {
+            sections_ok_count += 1;
+        } else {
+            warnings.push(format!("Scene {n:02} is missing sections: {}.", missing.join(", ")));
+        }
+    }
+    let total = scene_docs.len();
+    if art_ok_count < total {
+        next_steps.push(format!(
+            "Generate dedicated 16:9 scene plates for all {total} scenes ({art_ok_count}/{total} unique 16:9 plates ready) and set `reference: assets/backgrounds/scene-NN-....jpg` in storyboard/scene-N.md."
+        ));
+    }
+    if sections_ok_count < total {
+        next_steps.push(format!(
+            "Fill in all 6 storyboard sections (`Action`, `Reference prompt`, `Animation prompt`, `Layer stack`, `Animated text`, `Teaching cues`) in storyboard/scene-1.md..scene-{total}.md ({sections_ok_count}/{total} complete), then run `magic-cli exec workshop.build_storyboard` and `magic-cli exec words.apply`."
+        ));
+    }
+    json!({
+        "scenes_total": total,
+        "scenes_with_unique_16_9_art": art_ok_count,
+        "scenes_with_complete_sections": sections_ok_count,
+        "all_scenes_complete": art_ok_count == total && sections_ok_count == total,
+        "warnings": warnings,
+        "next_steps": next_steps,
+    })
 }

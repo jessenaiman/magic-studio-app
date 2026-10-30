@@ -346,7 +346,8 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     let mut next_commands = Vec::<Value>::new();
     // Supplied/previously imported timing is authoritative. Never fall back to ASR after an import error.
     if !valid && problems.is_empty() && s.song_audio.is_some() {
-        let params = json!({"_request_id":p["_request_id"],"_client":p["_client"],"analyze_beats":false,"hyperframes_cli":p["hyperframes_cli"]});
+        let analyze_beats = p.get("analyze_beats").and_then(Value::as_bool).unwrap_or(true);
+        let params = json!({"_request_id":p["_request_id"],"_client":p["_client"],"analyze_beats":analyze_beats,"hyperframes_cli":p["hyperframes_cli"]});
         match s.execute("audio.analyze", params.clone()) {
             Ok(_) => steps.push(json!({"command":"audio.analyze","params":params,"status":"complete; native pipeline output imported"})),
             Err(e) => {
