@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::workspace::resolve_craft_cli;
 use crate::{Result, Session};
@@ -126,6 +126,82 @@ fn read_host_telemetry() -> Value {
     })
 }
 
+#[derive(Default)]
+struct UsageTotals {
+    today_tokens: u64,
+    today_prompts: u64,
+    input: u64,
+    output: u64,
+    cache_read: u64,
+}
+
+fn read_usage_json(path: &Path) -> Option<Value> {
+    let bytes = std::fs::read(path).ok()?;
+    serde_json::from_slice::<Value>(&bytes).ok()
+}
+
+fn model_usage(v: &Value) -> (u64, u64, u64, Vec<Value>) {
+    let mut input_sum = 0u64;
+    let mut output_sum = 0u64;
+    let mut cache_sum = 0u64;
+    let mut models = Vec::new();
+    if let Some(map) = v["modelUsage"].as_object() {
+        for (m_id, mv) in map {
+            let inp = mv["inputTokens"].as_u64().unwrap_or(0);
+            let out = mv["outputTokens"].as_u64().unwrap_or(0);
+            let cr = mv["cacheReadInputTokens"].as_u64().unwrap_or(0);
+            input_sum = input_sum.saturating_add(inp);
+            output_sum = output_sum.saturating_add(out);
+            cache_sum = cache_sum.saturating_add(cr);
+            if inp + out + cr > 0 {
+                models.push(json!({
+                    "model": m_id,
+                    "input_tokens": inp,
+                    "output_tokens": out,
+                    "cache_read_tokens": cr,
+                    "total_tokens": inp.saturating_add(out).saturating_add(cr),
+                }));
+            }
+        }
+    }
+    models.sort_by_key(|m| std::cmp::Reverse(m["total_tokens"].as_u64().unwrap_or(0)));
+    (input_sum, output_sum, cache_sum, models)
+}
+
+fn usage_row(v: &Value, totals: &mut UsageTotals) -> Option<Value> {
+    let today_tokens = v["todayTotalTokens"].as_u64().unwrap_or(0);
+    let today_prompts = v["todayPrompts"].as_u64().unwrap_or(0);
+    let total_prompts = v["totalPrompts"].as_u64().unwrap_or(0);
+    let total_sessions = v["totalSessions"].as_u64().unwrap_or(0);
+    let (input_sum, output_sum, cache_sum, models) = model_usage(v);
+    let total_agent_tokens = input_sum
+        .saturating_add(output_sum)
+        .saturating_add(cache_sum);
+    if today_tokens == 0 && total_prompts == 0 && total_agent_tokens == 0 {
+        return None;
+    }
+    totals.today_tokens = totals.today_tokens.saturating_add(today_tokens);
+    totals.today_prompts = totals.today_prompts.saturating_add(today_prompts);
+    totals.input = totals.input.saturating_add(input_sum);
+    totals.output = totals.output.saturating_add(output_sum);
+    totals.cache_read = totals.cache_read.saturating_add(cache_sum);
+    Some(json!({
+        "id": v["id"].as_str().unwrap_or_default(),
+        "name": v["name"].as_str().unwrap_or_default(),
+        "tier": v["tierLabel"].as_str().unwrap_or_default(),
+        "today_tokens": today_tokens,
+        "today_prompts": today_prompts,
+        "total_prompts": total_prompts,
+        "total_sessions": total_sessions,
+        "input_tokens": input_sum,
+        "output_tokens": output_sum,
+        "cache_read_tokens": cache_sum,
+        "total_tokens": total_agent_tokens,
+        "limits": v["limits"],
+        "models": models,
+    }))
+}
+
 fn read_omarchy_usage() -> Value {
     let base = std::env::var_os("XDG_STATE_HOME")
         .map(std::path::PathBuf::from)
@@ -139,77 +215,19 @@ fn read_omarchy_usage() -> Value {
         return json!({ "available": false, "agents": [], "totals": {} });
     };
     let mut agents = Vec::new();
-    let mut today_tokens_total = 0u64;
-    let mut today_prompts_total = 0u64;
-    let mut all_time_input = 0u64;
-    let mut all_time_output = 0u64;
-    let mut all_time_cache_read = 0u64;
+    let mut totals = UsageTotals::default();
 
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let Ok(bytes) = std::fs::read(&path) else {
+        let Some(v) = read_usage_json(&path) else {
             continue;
         };
-        let Ok(v) = serde_json::from_slice::<Value>(&bytes) else {
-            continue;
-        };
-        let today_tokens = v["todayTotalTokens"].as_u64().unwrap_or(0);
-        let today_prompts = v["todayPrompts"].as_u64().unwrap_or(0);
-        let total_prompts = v["totalPrompts"].as_u64().unwrap_or(0);
-        let total_sessions = v["totalSessions"].as_u64().unwrap_or(0);
-        let mut input_sum = 0u64;
-        let mut output_sum = 0u64;
-        let mut cache_sum = 0u64;
-        let mut models = Vec::new();
-        if let Some(map) = v["modelUsage"].as_object() {
-            for (m_id, mv) in map {
-                let inp = mv["inputTokens"].as_u64().unwrap_or(0);
-                let out = mv["outputTokens"].as_u64().unwrap_or(0);
-                let cr = mv["cacheReadInputTokens"].as_u64().unwrap_or(0);
-                input_sum = input_sum.saturating_add(inp);
-                output_sum = output_sum.saturating_add(out);
-                cache_sum = cache_sum.saturating_add(cr);
-                if inp + out + cr > 0 {
-                    models.push(json!({
-                        "model": m_id,
-                        "input_tokens": inp,
-                        "output_tokens": out,
-                        "cache_read_tokens": cr,
-                        "total_tokens": inp.saturating_add(out).saturating_add(cr),
-                    }));
-                }
-            }
+        if let Some(row) = usage_row(&v, &mut totals) {
+            agents.push(row);
         }
-        models.sort_by_key(|m| std::cmp::Reverse(m["total_tokens"].as_u64().unwrap_or(0)));
-        let total_agent_tokens = input_sum
-            .saturating_add(output_sum)
-            .saturating_add(cache_sum);
-        if today_tokens == 0 && total_prompts == 0 && total_agent_tokens == 0 {
-            continue;
-        }
-        today_tokens_total = today_tokens_total.saturating_add(today_tokens);
-        today_prompts_total = today_prompts_total.saturating_add(today_prompts);
-        all_time_input = all_time_input.saturating_add(input_sum);
-        all_time_output = all_time_output.saturating_add(output_sum);
-        all_time_cache_read = all_time_cache_read.saturating_add(cache_sum);
-        agents.push(json!({
-            "id": v["id"].as_str().unwrap_or_default(),
-            "name": v["name"].as_str().unwrap_or_default(),
-            "tier": v["tierLabel"].as_str().unwrap_or_default(),
-            "today_tokens": today_tokens,
-            "today_prompts": today_prompts,
-            "total_prompts": total_prompts,
-            "total_sessions": total_sessions,
-            "input_tokens": input_sum,
-            "output_tokens": output_sum,
-            "cache_read_tokens": cache_sum,
-            "total_tokens": total_agent_tokens,
-            "limits": v["limits"],
-            "models": models,
-        }));
     }
     agents.sort_by_key(|a| {
         std::cmp::Reverse(
@@ -223,12 +241,12 @@ fn read_omarchy_usage() -> Value {
         "available": true,
         "agents": agents,
         "totals": {
-            "today_tokens": today_tokens_total,
-            "today_prompts": today_prompts_total,
-            "input_tokens": all_time_input,
-            "output_tokens": all_time_output,
-            "cache_read_tokens": all_time_cache_read,
-            "total_tokens": all_time_input.saturating_add(all_time_output).saturating_add(all_time_cache_read),
+            "today_tokens": totals.today_tokens,
+            "today_prompts": totals.today_prompts,
+            "input_tokens": totals.input,
+            "output_tokens": totals.output,
+            "cache_read_tokens": totals.cache_read,
+            "total_tokens": totals.input.saturating_add(totals.output).saturating_add(totals.cache_read),
         }
     })
 }
