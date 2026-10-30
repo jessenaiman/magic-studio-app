@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,6 +10,7 @@ from typing import Any
 import click
 
 from cli_anything.magic import __version__
+from cli_anything.magic.core import audit as audit_core
 from cli_anything.magic.core.session import Session
 from cli_anything.magic.utils import magic_backend as backend
 
@@ -190,56 +189,28 @@ def cli(
     "path", type=click.Path(exists=True, file_okay=False, path_type=Path), default="."
 )
 @click.option(
-    "--output-format",
-    type=click.Choice(["json", "text", "sarif", "container"]),
-    default="json",
-    show_default=True,
-    help="Native Codacy report format.",
-)
-@click.option(
-    "--output",
-    type=click.Path(dir_okay=False, path_type=Path),
-    help="Write the complete native report to this file instead of stdout.",
+    "--tool",
+    "tools",
+    multiple=True,
+    type=click.Choice(tuple(audit_core.TOOLS)),
+    help="Select a native tool; repeat to choose several. Default: all five.",
 )
 @click.pass_context
-def audit(
-    ctx: click.Context, path: Path, output_format: str, output: Path | None
-) -> None:
-    """Audit PATH (default: current directory) with installed native Codacy tools.
+def audit(ctx: click.Context, path: Path, tools: tuple[str, ...]) -> None:
+    """Run native repository checks with unmodified tool output.
 
-    Uses PATH/.codacy/codacy.config.json. Missing tools and analysis failures
-    remain in the native output and exit status. No tools are installed or
-    reports uploaded. No Studio window or project selection is required.
+    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard. Each tool uses
+    PATH (or root node_modules/.bin) and requires its repository configuration.
+    Missing tools/configuration are errors, not passing or skipped checks.
+    Lizard emits native CSV using code-limits.json's max_function_ccn.
+
+    Each native exit code is printed; the command returns the first nonzero
+    status, or 0 if all selected tools return 0. Setup/invocation errors use 2;
+    signals use 128 + signal. Remaining selected tools still run after failure.
+    Global --dry-run validates setup and prints commands without running them.
+    No install, autofix, Codacy, AgentLinter, or upload feature is invoked.
     """
-    path = path.resolve()
-    if not (path / ".codacy/codacy.config.json").is_file():
-        raise click.ClickException(
-            f"Codacy configuration missing: {path}/.codacy/codacy.config.json"
-        )
-    program = shutil.which("codacy-analysis")
-    if program is None:
-        raise click.ClickException(
-            "codacy-analysis is not installed or not on PATH; no audit ran"
-        )
-    command = [
-        program,
-        "analyze",
-        "--output-format",
-        output_format,
-        "--no-log",
-        "--no-update-notifier",
-    ]
-    if output is not None:
-        command.extend(["--output", str(output.resolve())])
-    command.append(str(path))
-    if ctx.obj["dry_run"]:
-        emit({"command": command, "dry_run": True})
-        return
-    try:
-        result = subprocess.run(command, check=False)
-    except OSError as error:
-        raise click.ClickException(f"Cannot run codacy-analysis: {error}") from error
-    ctx.exit(result.returncode if result.returncode >= 0 else 128 - result.returncode)
+    ctx.exit(audit_core.run_audit(path.resolve(), tools, dry_run=ctx.obj["dry_run"]))
 
 
 @cli.command("commands")

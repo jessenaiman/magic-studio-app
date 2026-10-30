@@ -43,11 +43,7 @@ Store clip-relative timing details in `asset_manifest.metadata.subtitle_map`.
 
 ### 3. Normalize Audio Consistently
 
-Use `audio_enhance` across the clip set so the batch feels like one series:
-
-- similar loudness,
-- similar noise floor,
-- similar vocal clarity.
+Preserve audio from it's original
 
 ### 4. Keep Hook Assets Lightweight
 
