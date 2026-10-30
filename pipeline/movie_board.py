@@ -9,6 +9,16 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
+def line_lyric(target, line):
+    # Transcript lines carry "lyric"; scene packets parsed from scene-N.md carry "text".
+    for key in ("lyric", "text"):
+        if line.get(key):
+            return str(line[key])
+    at = line.get("start")
+    print(f"warning: {target} line at {at}s has no lyric or text", file=sys.stderr)
+    return ""
+
+
 def canonical_scenes(scene_map):
     doc = json.loads(Path(scene_map).read_text())
     scenes = []
@@ -38,8 +48,7 @@ def canonical_scenes(scene_map):
                 start_seconds=start,
                 end_seconds=end,
                 lyric_text=" ".join(
-                    str(line.get("lyric") if "lyric" in line else line.get("text", ""))
-                    for line in packet.get("lines", [])
+                    line_lyric(target, line) for line in packet.get("lines", [])
                 ),
             )
         )
