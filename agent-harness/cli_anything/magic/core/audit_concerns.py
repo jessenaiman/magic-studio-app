@@ -30,7 +30,7 @@ def rules(repo: Path, files: list[Path]) -> list[dict]:
     if not files:
         return []
     postcss = repo / "node_modules" / "postcss"
-    output = subprocess.run(
+    output = subprocess.run(  # noqa: S603 -- Fixed tool argv; no shell.
         [executable("node"), str(SCRIPT), str(postcss), *map(str, files)],
         capture_output=True,
         text=True,

@@ -13,7 +13,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from cli_anything.magic.core import audit, audit_concerns
+from cli_anything.magic.core import audit, audit_concerns, audit_names
 
 CONFIGS = (
     "stylelint.config.mjs",
@@ -31,7 +31,7 @@ def tool(root: Path, name: str) -> str:
 
 
 def run(command: list[str], cwd: Path, stdin: bytes | None = None) -> str:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- Fixed tool argv; no shell.
         command, cwd=cwd, input=stdin, capture_output=True, check=False
     ).stdout.decode()
 
@@ -77,7 +77,9 @@ def eslint(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]
     # The config's file patterns are repository-relative: run from the measured tree.
     command = [tool(repo, "eslint"), "--config", str(repo / CONFIGS[4])]
     results = json.loads(run([*command, "--format", "json", str(target)], tree))
-    return {"Inline styles + JS lint (ESLint)": sum(len(r["messages"]) for r in results)}
+    return {
+        "Inline styles + JS lint (ESLint)": sum(len(r["messages"]) for r in results)
+    }
 
 
 def jscpd(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]:
@@ -116,7 +118,7 @@ def lizard(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]
     options = [*audit.lizard_options(repo), "--warnings_only"]
     warnings = unparsed = 0
     for path in audit.sources(target, (".js", ".mjs", ".py", ".rs")):
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 -- Fixed tool argv; no shell.
             [audit.executable("lizard"), str(path), *options],
             cwd=work,
             capture_output=True,
@@ -131,6 +133,13 @@ def lizard(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]
     }
 
 
+def names(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]:
+    # Same PATH scope on both sides, read with the current reserved-name list.
+    cfg = audit_names.config(repo)
+    found = audit_names.findings(tree, cfg, target)
+    return {key: len(items) for key, items in found.items()}
+
+
 def concerns(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]:
     return audit_concerns.metrics(repo, audit.css_sources(target))
 
@@ -143,6 +152,7 @@ MEASURES: tuple[Callable[[Path, Path, Path, Path], dict[str, float]], ...] = (
     jscpd,
     purgecss,
     lizard,
+    names,
 )
 
 
@@ -159,14 +169,14 @@ def measure(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float
 
 def checkout(repo: Path, relative: Path, base: str, into: Path) -> Path:
     """The path as it was at base, in a scratch tree beside nothing else."""
-    archive = subprocess.run(
+    archive = subprocess.run(  # noqa: S603 -- Fixed tool argv; no shell.
         [audit.executable("git"), "archive", base, "--", str(relative)],
         cwd=repo,
         capture_output=True,
         check=True,
     ).stdout
     tar = [audit.executable("tar"), "-x", "-C", str(into)]
-    subprocess.run(tar, input=archive, check=True)
+    subprocess.run(tar, input=archive, check=True)  # noqa: S603 -- Fixed tool argv; no shell.
     return into / relative
 
 

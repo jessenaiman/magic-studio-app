@@ -1,0 +1,44 @@
+{
+  "about": "Installed applications whose names are reserved. Magic code calls these apps; it never copies them or names its own files, declarations or command IDs after them. A name may appear in a native file extension of that app.",
+  "names": [
+    "photocraft",
+    "effectcraft",
+    "filmcraft",
+    "deckcraft",
+    "pdfcraft",
+    "figcraft",
+    "designcraft",
+    "vectorcraft",
+    "wordcraft",
+    "soundcraft",
+    "lightcraft",
+    "gridcraft",
+    "cadcraft",
+    "printcraft",
+    "artcraft",
+    "animationcraft",
+    "blender",
+    "synfig",
+    "opentoonz",
+    "hyperframes"
+  ],
+  "paths": [
+    "crates",
+    "apps",
+    "pipeline",
+    "lib",
+    "tools",
+    "scripts",
+    "agent-harness",
+    "schemas"
+  ],
+  "native_extensions": [
+    ".deckcraft",
+    ".sif",
+    ".sifz",
+    ".blend"
+  ],
+  "native_files": [
+    "hyperframes.json"
+  ]
+}

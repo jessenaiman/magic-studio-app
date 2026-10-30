@@ -63,6 +63,8 @@ TOOLS = {
     "purgecss": ToolSpec(
         "PurgeCSS", ("purgecss", "-c", "purgecss.config.cjs"), ("purgecss.config.cjs",)
     ),
+    # Reserved application names used for our own files, declarations, commands.
+    "names": ToolSpec("Reserved names", ("rg",), ("reserved-names.json",)),
     # Scope creep: every file the change touches, inside PATH or not.
     "scope": ToolSpec("git scope", ("git", "diff", "--stat=160"), ()),
 }
@@ -138,7 +140,7 @@ def with_target(command: list[str], root: Path, target: Path, name: str) -> list
     """Point the native command at target when it is not the config root."""
     if name == "wallace":
         return [*command, str(target)] if target.is_file() else command
-    if name in ("scope", "purgecss"):
+    if name in ("scope", "purgecss", "names"):
         return command
     if target.is_file() or name == "lizard":
         command[-1] = str(target)
@@ -211,7 +213,7 @@ def run_purgecss(command: list[str], root: Path, dry_run: bool) -> int:
     if dry_run:
         print("[PurgeCSS] not run (--dry-run)", file=sys.stderr, flush=True)
         return 0
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- Fixed native tool argv; no shell.
         command, cwd=root, check=False, capture_output=True, text=True
     )
     sys.stderr.write(result.stderr)
@@ -231,6 +233,13 @@ def run_tool(
     label = TOOLS[name].label
     if name == "scope":
         return run_scope(command, root, base, dry_run)
+    if name == "names":
+        print(f"[{label}] ripgrep over reserved-names.json paths", file=sys.stderr)
+        if dry_run:
+            return 0
+        from cli_anything.magic.core.audit_names import report
+
+        return report(root, target)
     if name == "purgecss":
         return run_purgecss(command, root, dry_run)
     if name == "wallace" and target.is_dir():
