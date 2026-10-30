@@ -37,6 +37,65 @@ def _load(path: Path) -> dict:
         return {}
 
 
+def _scenes(proj: Path) -> list:
+    plan = _load(proj / "artifacts" / "scene_plan.json")
+    return (plan.get("scenes") or []) if isinstance(plan, dict) else []
+
+
+def _bespoke(proj: Path) -> dict:
+    edit = _load(proj / "artifacts" / "edit_decisions.json")
+    return (edit.get("bespoke") or {}) if isinstance(edit, dict) else {}
+
+
+def _render_paths(args: argparse.Namespace, proj: Path, bespoke: dict):
+    """The staged inputs one still needs: props, entry, public dir and composition id."""
+    props_path = Path(
+        args.props or bespoke.get("props_path") or (proj / "artifacts" / "props.json")
+    )
+    entry = Path(args.entry or bespoke.get("entry") or (proj / "index.tsx"))
+    if not entry.is_absolute():
+        entry = (REPO_ROOT / entry).resolve()
+    public_dir = Path(args.public_dir or bespoke.get("public_dir") or (proj / "public"))
+    comp_id = args.composition_id or bespoke.get("composition_id")
+    return props_path, entry, public_dir, comp_id
+
+
+def _fps(args: argparse.Namespace, props_path: Path) -> int:
+    if args.fps is not None:
+        return args.fps
+    return int(_load(props_path).get("fps") or 30)
+
+
+def _scene_frame(scene: dict, only: list[str] | None, fps: int):
+    """(scene id, representative frame) — or None when this scene is skipped."""
+    sid = str(scene.get("id") or "").strip()
+    if not sid or (only and sid not in only):
+        return None
+    start = scene.get("start_seconds")
+    end = scene.get("end_seconds")
+    mid = ((start + end) / 2) if (start is not None and end is not None) else (start or 0)
+    return sid, max(0, round(mid * fps))
+
+
+def _render_still(entry: Path, comp_id: str, out: Path, frame: int, props: Path, public: Path):
+    """Render one still; returns the failure text, or None on success."""
+    cmd = [
+        NPX, "remotion", "still", str(entry), str(comp_id), str(out.resolve()),
+        f"--frame={frame}",
+        f"--props={props.resolve()}",
+        f"--public-dir={public.resolve()}",
+    ]
+    try:
+        subprocess.run(  # noqa: S603 -- fixed argv from the composition id
+            cmd, cwd=COMPOSER_DIR, check=True, capture_output=True, text=True, timeout=600
+        )
+        return None
+    except subprocess.CalledProcessError as e:
+        return (e.stderr or e.stdout or "")[-300:]
+    except Exception as e:  # noqa: BLE001
+        return str(e)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("slug", help="project slug under projects/")
@@ -53,28 +112,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: no project at {proj}", file=sys.stderr)
         return 2
 
-    scene_plan = _load(proj / "artifacts" / "scene_plan.json")
-    scenes = (scene_plan.get("scenes") or []) if isinstance(scene_plan, dict) else []
+    scenes = _scenes(proj)
     if not scenes:
         print("error: no scenes in artifacts/scene_plan.json", file=sys.stderr)
         return 2
 
-    edit = _load(proj / "artifacts" / "edit_decisions.json")
-    bespoke = (edit.get("bespoke") or {}) if isinstance(edit, dict) else {}
-    props_path = Path(args.props or bespoke.get("props_path") or (proj / "artifacts" / "props.json"))
-    entry = Path(args.entry or bespoke.get("entry") or (proj / "index.tsx"))
-    if not entry.is_absolute():
-        entry = (REPO_ROOT / entry).resolve()
-    public_dir = Path(args.public_dir or bespoke.get("public_dir") or (proj / "public"))
-    comp_id = args.composition_id or bespoke.get("composition_id")
+    props_path, entry, public_dir, comp_id = _render_paths(args, proj, _bespoke(proj))
     if not comp_id:
-        print("error: composition id unknown (pass --composition-id or set edit_decisions.bespoke)", file=sys.stderr)
+        print(
+            "error: composition id unknown (pass --composition-id or set edit_decisions.bespoke)",
+            file=sys.stderr,
+        )
         return 2
-
-    fps = args.fps
-    if fps is None:
-        props = _load(props_path)
-        fps = int(props.get("fps") or 30)
+    fps = _fps(args, props_path)
 
     # Stage the project into remotion-composer so webpack resolves node_modules.
     sys.path.insert(0, str(REPO_ROOT))
@@ -85,33 +135,19 @@ def main(argv: list[str] | None = None) -> int:
     snap_dir.mkdir(exist_ok=True)
 
     ok, fail = 0, 0
-    for sc in scenes:
-        sid = str(sc.get("id") or "").strip()
-        if not sid:
+    for scene in scenes:
+        selected = _scene_frame(scene, args.only, fps)
+        if selected is None:
             continue
-        if args.only and sid not in args.only:
-            continue
-        start = sc.get("start_seconds")
-        end = sc.get("end_seconds")
-        mid = ((start + end) / 2) if (start is not None and end is not None) else (start or 0)
-        frame = max(0, round(mid * fps))
+        sid, frame = selected
         out = snap_dir / f"{sid}.png"
-        cmd = [
-            NPX, "remotion", "still", str(staged_entry), str(comp_id), str(out.resolve()),
-            f"--frame={frame}",
-            f"--props={props_path.resolve()}",
-            f"--public-dir={public_dir.resolve()}",
-        ]
-        try:
-            subprocess.run(cmd, cwd=COMPOSER_DIR, check=True, capture_output=True, text=True, timeout=600)
+        failure = _render_still(staged_entry, comp_id, out, frame, props_path, public_dir)
+        if failure is None:
             ok += 1
             print(f"  {sid}: frame {frame} -> {out.relative_to(REPO_ROOT)}")
-        except subprocess.CalledProcessError as e:
+        else:
             fail += 1
-            print(f"  {sid}: FAILED — {(e.stderr or e.stdout or '')[-300:]}", file=sys.stderr)
-        except Exception as e:  # noqa: BLE001
-            fail += 1
-            print(f"  {sid}: FAILED — {e}", file=sys.stderr)
+            print(f"  {sid}: FAILED — {failure}", file=sys.stderr)
 
     print(f"snapshots: {ok} ok, {fail} failed -> {snap_dir.relative_to(REPO_ROOT)}")
     return 0 if fail == 0 else 1
