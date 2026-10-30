@@ -10,28 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const DEPARTMENTS: &[(&str, &str)] = &[
-    (
-        "creative",
-        include_str!("../../../crew/departments/creative/AGENTS.md"),
-    ),
-    (
-        "animation",
-        include_str!("../../../crew/departments/animation/AGENTS.md"),
-    ),
-    (
-        "production",
-        include_str!("../../../crew/departments/production/AGENTS.md"),
-    ),
-    (
-        "backstage",
-        include_str!("../../../crew/departments/backstage/AGENTS.md"),
-    ),
-    (
-        "review",
-        include_str!("../../../crew/departments/review/AGENTS.md"),
-    ),
-];
+const DEPARTMENTS: &[&str] = &["creative", "animation", "production", "backstage", "review"];
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,7 +64,7 @@ fn workspace(s: &Session, p: &Value) -> Result<PathBuf> {
     Ok(fs::canonicalize(path)?)
 }
 fn path(root: &Path, id: &str) -> Result<PathBuf> {
-    if !DEPARTMENTS.iter().any(|(key, _)| *key == id) {
+    if !DEPARTMENTS.contains(&id) {
         return Err(invalid("Unknown cast department"));
     }
     let mut path = root.to_path_buf();
@@ -173,33 +152,31 @@ fn render(doc: &Document) -> Result<String> {
 }
 fn read(root: &Path, id: &str) -> Result<Value> {
     let file = path(root, id)?;
-    let (markdown, exists) = match fs::metadata(&file) {
+    let markdown = match fs::metadata(&file) {
         Ok(meta) => {
             if meta.len() > 512 * 1024 {
                 return Err(invalid("Cast file exceeds 512 KiB; preserved for repair"));
             }
-            (fs::read_to_string(&file)?, true)
+            fs::read_to_string(&file)?
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (
-            DEPARTMENTS
-                .iter()
-                .find(|(key, _)| *key == id)
-                .map(|(_, md)| (*md).to_owned())
-                .ok_or_else(|| invalid("Unknown department"))?,
-            false,
-        ),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(invalid(format!(
+                "Department role file missing: {}; no embedded defaults are available",
+                file.display()
+            )));
+        }
         Err(e) => return Err(e.into()),
     };
     let document = parse(&markdown, id)?;
     Ok(
-        json!({"path":file,"exists":exists,"revision":digest(markdown.as_bytes()),"markdown":markdown,"document":document}),
+        json!({"path":file,"exists":true,"revision":digest(markdown.as_bytes()),"markdown":markdown,"document":document}),
     )
 }
 pub fn cmd_list(s: &mut Session, p: &Value) -> Result<Value> {
     let root = workspace(s, p)?;
     let departments = DEPARTMENTS
         .iter()
-        .map(|(id, _)| read(&root, id))
+        .map(|&id| read(&root, id))
         .collect::<Result<Vec<_>>>()?;
     Ok(json!({"workspace":root,"departments":departments}))
 }
