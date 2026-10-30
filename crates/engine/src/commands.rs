@@ -40,7 +40,7 @@ use crate::agent::{
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
 use crate::exports::{
     cmd_export_blender, cmd_export_character_iteration,
-    cmd_export_cutout_mp4, cmd_export_filmcraft, cmd_export_layered_motion,
+    cmd_export_filmcraft, cmd_export_layered_motion,
     cmd_scene_farm_school_lineup, cmd_validate_motion,
 };
 use crate::image_cmds::{
@@ -141,8 +141,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "motion.theatre.read"
         | "validate.motion"
         | "animation.sources"
-        | "effectcraft.discover"
-        | "effectcraft.inspect"
         | "animation.status"
         | "animation.list"
         | "blender.actions"
@@ -196,28 +194,25 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"opentoonz.render"
             | b"synfig.start"
             | b"motion.pose.export"
-            | b"motion.export_track"
+            | b"animation.render"
             | b"motion.place_section"
             | b"assets.agent_sheets"
             | b"rig.from_sheet"
             | b"words.design"
             | b"sequence.render"
             | b"animation.source.render"
-            | b"effectcraft.build"
-            | b"effectcraft.start"
             | b"video.init"
             | b"intake.validate"
             | b"intake.three_question"
             | b"asset.make_transparent"
             | b"asset.extract_background"
-            | b"asset.build_cutout_rig"
+            | b"animation.prepare"
             | b"asset.cut_sheet"
             | b"turnaround.optimize_accuracy"
             | b"mesh.build_4dir"
             | b"export.filmcraft"
             | b"export.blender"
             | b"export.character_iteration"
-            | b"export.cutout_mp4"
             | b"export.layered_motion"
             | b"validate.motion"
             | b"audio.analyze"
@@ -348,11 +343,11 @@ pub fn build() -> Vec<CommandSpec> {
             "Register editable native source",
             ["Animation"],
             None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|effectcraft|synfig|opentoonz|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
+            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|synfig|opentoonz|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
             always,
             crate::animation_links::set
-        ).help("Link an editable file to the project; pair character and track to show it for that artwork in Animation, then save the project.",
-               "magic-cli --project /absolute/Project.magic animation source set expected_project=/absolute/Project.magic id=sway backend=effectcraft source=/absolute/animation.ecproj expected_revision=0"),
+        ).help("Link an editable file to a project and optionally associate a character action, then save the project.",
+               "magic-cli --project /absolute/Project.magic animation source set expected_project=/absolute/Project.magic id=sway backend=blender source=/absolute/animation.blend expected_revision=0"),
         cmd!(
             "animation.source.render",
             "Render registered native source",
@@ -362,7 +357,7 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::animation_links::render
         ).help("Render a registered animation using saved settings, with optional backend settings in options; inspect the returned job with animation status.",
-               "magic-cli --project /absolute/Project.magic animation source render expected_project=/absolute/Project.magic id=sway expected_revision=1 'options={\"first_frame\":0,\"last_frame\":47,\"memory_mb\":4096,\"timeout_seconds\":300}'"),
+               "magic-cli --project /absolute/Project.magic animation source render expected_project=/absolute/Project.magic id=sway expected_revision=1 'options={\"memory_mb\":4096,\"timeout_seconds\":300}'"),
         cmd!(
             "animation.source.accept",
             "Accept completed native result",
@@ -940,14 +935,15 @@ pub fn build() -> Vec<CommandSpec> {
             cmd_agent_new_chat
         ),
         cmd!(
-            "motion.export_track",
-            "Export a preview action as transparent video",
+            "animation.render",
+            "Render the selected animation",
             ["Animation"],
             None,
-            "{\"character\":\"asset id\",\"track\":\"track id\",\"amount\":35,\"rest\":false,\"duration\":2.58}",
+            "{\"character\":\"asset id\",\"track\":\"track id\",\"amount\":100,\"rest\":false,\"duration\":\"optional seconds; defaults to action length\",\"sync_video\":true}",
             always,
             crate::motion::cmd_motion_export_track
-        ),
+        ).help("Render the selected character action through the existing script workflow and return its clip, editable source and validation results.",
+               "magic-cli --project /absolute/Project.magic animation render character=babel track=@sway duration=2 amount=35 sync_video=false"),
         cmd!(
             "motion.place_section",
             "Animate a song section: draw the path, export, gate and place it in the video",
@@ -1138,14 +1134,15 @@ pub fn build() -> Vec<CommandSpec> {
             cmd_asset_extract_background
         ),
         cmd!(
-            "asset.build_cutout_rig",
-            "Build Cutout Rig",
+            "animation.prepare",
+            "Prepare reviewed artwork for animation",
             ["Rig & Matting"],
             None,
-            "{\"mode\":\"optional\",\"speed\":1.0,\"duration\":3.0,\"parts\":\"optional_csv\"}",
+            "{\"asset\":\"optional asset id\"}",
             has_asset,
             cmd_asset_build_cutout_rig
-        ),
+        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering.",
+               "magic-cli --project /absolute/Project.magic animation prepare asset=babel"),
         cmd!(
             "rig.from_sheet",
             "Rig From Sheet",
@@ -1217,15 +1214,6 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"spec\":\"layered_motion_spec.json\",\"out_dir\":\"optional_dir\",\"tracks\":\"optional_csv\",\"stills\":0,\"video\":true,\"gpu\":true,\"crf\":24}",
             always,
             cmd_export_layered_motion
-        ),
-        cmd!(
-            "export.cutout_mp4",
-            "Export Cutout MP4",
-            ["Export"],
-            None,
-            "{\"output\":\"optional.mp4\",\"mode\":\"optional\",\"speed\":1.0,\"duration\":3.0}",
-            has_asset,
-            cmd_export_cutout_mp4
         ),
         query!(
             "workshop.status",
@@ -1877,36 +1865,6 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_mesh_build_4dir
         ),
-        query!(
-            "effectcraft.discover",
-            "Installed EffectCraft capabilities",
-            "{}",
-            crate::effectcraft::discover
-        ).help("Report the installed EffectCraft runtime and capabilities before building or rendering a composition.",
-               "magic-cli effectcraft discover"),
-        query!(
-            "effectcraft.inspect",
-            "Inspect native composition and model clips",
-            "{\"source\":\"saved .ecproj\"}",
-            crate::effectcraft::inspect
-        ).help("Read native layers, properties, template controls, model clips and expression errors before editing or rendering the source.",
-               "magic-cli effectcraft inspect source=/absolute/animation.ecproj"),
-        cmd!(
-            "effectcraft.build",
-            "Build editable EffectCraft animation",
-            ["Animation"], None,
-            "{\"expected_project\":\"selected .magic\",\"spec\":\"scene JSON with layers, Puppet pins, recordings, follow, sketch, properties, model clips and controls\",\"out_dir\":\"new output directory\"}",
-            always, crate::effectcraft::build
-        ).help("Build a native composition and template from a scene spec, then register the returned source with animation source set.",
-               "magic-cli --project /absolute/Project.magic effectcraft build expected_project=/absolute/Project.magic spec=/absolute/scene.json out_dir=/absolute/new-animation"),
-        cmd!(
-            "effectcraft.start",
-            "Render saved EffectCraft composition",
-            ["Animation"], None,
-            "{\"source\":\"saved .ecproj\",\"comp\":\"optional composition name\",\"first_frame\":0,\"last_frame\":47,\"memory_mb\":4096,\"timeout_seconds\":300}",
-            always, crate::effectcraft::start
-        ).help("Render a saved composition with its saved size, timing and full frame range unless overridden, then inspect the returned job with animation status.",
-               "magic-cli --project /absolute/Project.magic effectcraft start source=/absolute/animation.ecproj comp=Main first_frame=0 last_frame=47 memory_mb=4096 timeout_seconds=300"),
         cmd!(
             "export.filmcraft",
             "Export FilmCraft",
