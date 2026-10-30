@@ -77,8 +77,9 @@
       at(box, { opacity: 1 }, { opacity: 0, duration: 0.25 }, end - 0.25);
       if (K.layout === "push") at(box, { scale: 1 }, { scale: 1.12, duration: Math.max(0.1, end - start), ease: "none" }, start);
       for (const e of els) {
-        const move = e.hero ? LIB.acts[e.act] : LIB.entrances[K.entrance] || LIB.entrances["fade-up"];
-        const from = { ...move.from }, to = { ...move.to };
+        const defaultMove = LIB.entrances?.[K.entrance] || LIB.entrances?.["fade-up"] || { from: { opacity: 0, y: 18 }, to: { opacity: 1, y: 0, duration: 0.3 } };
+        const move = (e.hero && (LIB.acts?.[e.act] || LIB.entrances?.[e.act])) || defaultMove;
+        const from = { ...(move.from || { opacity: 0 }) }, to = { ...(move.to || { opacity: 1, duration: 0.3 }) };
         if (move.glow) { from.textShadow = `0 0 0px ${S.hero_color}`; to.textShadow = `0 0 28px ${S.hero_color}`; }
         if (move.letters) {
           e.el.textContent = ""; e.el.style.opacity = 1;

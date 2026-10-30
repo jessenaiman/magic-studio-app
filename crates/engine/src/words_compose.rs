@@ -926,6 +926,7 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     )?;
     fs::write(&file, &html)?;
     let drawings = compose_drawing_subcompositions(&hf, anim, &read, &composition_id, width, height, anchor, &words)?;
+    let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
     Ok(json!({
         "ok": true,
         "animation_id": id,
