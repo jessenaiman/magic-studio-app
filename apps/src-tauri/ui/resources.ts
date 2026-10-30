@@ -1,8 +1,8 @@
 // The Resources page intentionally starts small for the first video.
 // Knowledge comes from Rustdoc and source; this surface is for visual references.
 class ResourcesView {
-  constructor(root) { this.root = root; }
-  render() {
+  constructor(private readonly root: HTMLElement) {}
+  render(): void {
     if (this.root.firstElementChild) return;
     this.root.append(el('div', {id:'resources-page'},
       el('div', {class:'home-hero'}, el('div', {},
@@ -14,4 +14,4 @@ class ResourcesView {
   }
 }
 const resourcesView = new ResourcesView($('view-skills'));
-function renderResources() { resourcesView.render(); }
+function renderResources(): void { resourcesView.render(); }

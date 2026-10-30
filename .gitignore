@@ -164,3 +164,6 @@ docs/codacy-report.md
 apps/src-tauri/acceptance/artifacts/
 
 /apps/src-tauri/ui/vendor/backstage/
+
+# TypeScript UI: ui/<name>.js is generated from ui/<name>.ts by build.rs (bun build)
+/apps/src-tauri/ui/resources.js

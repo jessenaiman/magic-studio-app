@@ -47,6 +47,7 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=ui");
     theatre_bundle();
+    ui_typescript();
     tauri_build::build();
 }
 
@@ -93,4 +94,30 @@ fn theatre_bundle() {
         bun(&["install"]);
     }
     bun(&["run", "build"]);
+}
+
+/// Every `ui/*.ts` is the source of a classic script: `ui/<name>.js` is generated from it with
+/// Bun's transpiler (types stripped, no bundling, so index.html loads it unchanged). The `.js`
+/// files are gitignored, rebuilt when missing or older than their source, like the Theatre bundle.
+fn ui_typescript() {
+    let Ok(entries) = std::fs::read_dir("ui") else { return };
+    let modified = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    for source in entries.flatten().map(|e| e.path()) {
+        if source.extension().and_then(|e| e.to_str()) != Some("ts") {
+            continue;
+        }
+        println!("cargo:rerun-if-changed={}", source.display());
+        let output = source.with_extension("js");
+        if output.exists() && modified(&source) <= modified(&output) {
+            continue;
+        }
+        let status = std::process::Command::new("bun")
+            .args(["build", "--no-bundle", "--target=browser"])
+            .arg(&source)
+            .arg("--outfile")
+            .arg(&output)
+            .status()
+            .unwrap_or_else(|e| panic!("Compiling the UI TypeScript needs Bun on PATH: {e}"));
+        assert!(status.success(), "`bun build` failed for {}", source.display());
+    }
 }
