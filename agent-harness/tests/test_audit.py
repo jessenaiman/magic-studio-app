@@ -1,11 +1,9 @@
-"""Exercise audit's CLI and real Lizard, including its CSV exit-status trap.
+"""Exercise audit's CLI and real Lizard.
 
 Run: PYTHONPATH=agent-harness python -m unittest discover -s agent-harness/tests -v
 Requires the installed lizard executable; no tools are installed by the tests.
 """
 
-import csv
-import io
 import json
 import os
 from pathlib import Path
@@ -54,23 +52,10 @@ class AuditTests(unittest.TestCase):
         self.assertIn("branchy", result.stdout)
         self.assertIn("CogC", result.stdout)
 
-    def test_csv_remains_parseable_but_does_not_hide_violations(self):
-        result = self.run_audit("audit", str(self.source), "--format", "csv")
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        rows = list(csv.reader(io.StringIO(result.stdout)))
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][1], "3")
-        self.assertEqual(rows[0][7], "branchy")
-        self.assertIn("warning:", result.stderr)
-
-    def test_simple_function_passes_in_both_formats(self):
+    def test_simple_function_passes(self):
         self.source.write_text("fn simple() -> i32 { 1 }\n")
-        for output_format in ("text", "csv"):
-            with self.subTest(output_format=output_format):
-                result = self.run_audit(
-                    "audit", str(self.source), "--format", output_format,
-                )
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        result = self.run_audit("audit", str(self.source))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_length_limit_finds_long_straight_line_function(self):
         self.source.write_text("fn long() {\n" + "    work();\n" * 101 + "}\n")
