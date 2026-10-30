@@ -84,11 +84,14 @@ class Session:
         }
         _locked_save_json(self.session_file, state)
 
+    def _live_for_pinned_project(self) -> list[dict[str, Any]]:
+        return [x for x in backend.discover_studios()["sessions"]
+                if self.project_path and self.project_path in (x.get("canonical_project"), x.get("active_project"))]
+
     def _unavailable_message(self) -> str:
         """Name the live windows for the pinned project; never rebind to one silently."""
         message = "Pinned Studio is unavailable; no other window or file writer was selected. "
-        live = [x for x in backend.discover_studios()["sessions"]
-                if self.project_path and self.project_path in (x.get("canonical_project"), x.get("active_project"))]
+        live = self._live_for_pinned_project()
         if live:
             found = ", ".join(f"pid {x.get('pid')} ({x.get('instance')})" for x in live)
             return message + f"A live window has this project open: {found}. Reattach with: magic-cli studio open {self.project_path}"
@@ -191,7 +194,17 @@ class Session:
                     expected_project=self.project_path, expected_instance=self.studio_instance,
                 )
             except OSError as exc:
-                raise RuntimeError(self._unavailable_message()) from exc
+                # The window restarted: the same project in exactly one live window is the same
+                # intent, so follow it (the expected-project guard still applies). Anything else
+                # stays an explicit choice.
+                live = self._live_for_pinned_project()
+                if len(live) != 1:
+                    raise RuntimeError(self._unavailable_message()) from exc
+                self.bind_studio(live[0])
+                result = backend.call_studio(
+                    live[0]["endpoint"], cmd_id, req,
+                    expected_project=self.project_path, expected_instance=live[0].get("instance"),
+                )
         else:
             live = backend.studio_for_project(target) if target else None
             if live:
