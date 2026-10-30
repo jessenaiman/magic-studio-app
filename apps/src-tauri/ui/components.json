@@ -975,6 +975,66 @@
       "label": "Save lyric changes",
       "indicator": "hidden"
     },
+    "words-replay-line": {
+      "component": "ghost",
+      "target": "words-main",
+      "label": "Replay line",
+      "indicator": "hidden"
+    },
+    "words-loop-line": {
+      "component": "ghost",
+      "target": "words-main",
+      "label": "Loop line",
+      "indicator": "hidden"
+    },
+    "words-track-scene": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Scene track",
+      "indicator": "hidden"
+    },
+    "words-track-lettering": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Style track",
+      "indicator": "hidden"
+    },
+    "words-track-layout": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Layout track",
+      "indicator": "hidden"
+    },
+    "words-track-overlay": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Atmosphere track",
+      "indicator": "hidden"
+    },
+    "words-track-arrive": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Arrive track",
+      "indicator": "hidden"
+    },
+    "words-track-acts": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Meaning track",
+      "indicator": "hidden"
+    },
+    "words-track-cues": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Cues track",
+      "indicator": "hidden"
+    },
+    "words-track-marks": {
+      "component": "chip",
+      "target": "words-main",
+      "label": "Marks track",
+      "indicator": "hidden"
+    },
     "words-style-font": {
       "component": "field",
       "target": "words-main",
@@ -1699,6 +1759,69 @@
     "asset-sheet-original-prompt": {
       "component": "field",
       "label": "Original generation prompt",
+      "indicator": "hidden"
+    },
+    "asset-sheet-guide-toggle": {
+      "component": "ghost",
+      "label": "Show panel guide",
+      "indicator": "hidden"
+    },
+    "asset-sheet-motion": {
+      "component": "field",
+      "label": "Action verb",
+      "indicator": "hidden"
+    },
+    "asset-sheet-four-rows": {
+      "component": "field",
+      "label": "Four action rows",
+      "indicator": "hidden"
+    },
+    "asset-sheet-action-rows": {
+      "component": "workspace",
+      "label": "Action rows",
+      "indicator": "hidden"
+    },
+    "asset-sheet-panels": {
+      "component": "field",
+      "label": "Ordered panel descriptions",
+      "indicator": "hidden"
+    },
+    "asset-sheet-full-prompt": {
+      "component": "field",
+      "label": "Full Gaffer prompt",
+      "indicator": "hidden"
+    },
+    "asset-sheet-timing": {
+      "component": "muted",
+      "label": "Sheet timing",
+      "indicator": "hidden"
+    },
+    "asset-sheet-update-layout": {
+      "component": "ghost",
+      "label": "Update panel guide",
+      "command": "assets.sheet_plan",
+      "indicator": "hidden"
+    },
+    "asset-sheet-medium": {
+      "component": "field",
+      "label": "Generated art style",
+      "indicator": "hidden"
+    },
+    "asset-sheet-remove-background": {
+      "component": "ghost",
+      "label": "Remove background again",
+      "command": "asset.make_transparent",
+      "indicator": "hidden"
+    },
+    "asset-sheet-medium-status": {
+      "component": "muted",
+      "label": "Reference status",
+      "indicator": "hidden"
+    },
+    "asset-sheet-playback": {
+      "component": "ghost",
+      "label": "Preview animation",
+      "command": "assets.sheet_playback",
       "indicator": "hidden"
     },
     "motion-stage-status": {
