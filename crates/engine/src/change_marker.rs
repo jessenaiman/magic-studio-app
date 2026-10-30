@@ -1,7 +1,7 @@
 //! Coalescing invalidation for the explicitly listed Magic-owned file writes.
 //! Readers never create, clear or acknowledge the shared marker.
 use crate::{EngineError, Result, Session};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     fs,
     io::Write,
@@ -34,15 +34,7 @@ fn directory() -> Result<PathBuf> {
     Ok(base.join("magicstudio"))
 }
 
-/// Best-effort publication must not turn a completed project save into an apparent failure.
-pub fn invalidate() {
-    if let Err(error) = publish() {
-        eprintln!("Magic change notification unavailable: {error}");
-    }
-}
-
-fn publish() -> Result<()> {
-    let dir = directory()?;
+fn ensure_private_directory(dir: &std::path::Path) -> Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
@@ -50,11 +42,11 @@ fn publish() -> Result<()> {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    builder.create(&dir)?;
+    builder.create(dir)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let metadata = fs::symlink_metadata(&dir)?;
+        let metadata = fs::symlink_metadata(dir)?;
         let parent = fs::metadata(dir.parent().ok_or_else(|| {
             EngineError::InvalidParams("Notification parent unavailable".into())
         })?)?;
@@ -68,15 +60,22 @@ fn publish() -> Result<()> {
             ));
         }
     }
+    Ok(())
+}
+
+fn marker_token() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let token = format!(
+    format!(
         "{}-{now}-{}",
         std::process::id(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    );
+    )
+}
+
+fn write_marker(dir: &std::path::Path, token: &str) -> Result<()> {
     let temp = dir.join(format!(".changes-{token}.tmp"));
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -102,8 +101,20 @@ fn publish() -> Result<()> {
     result
 }
 
-/// Discover the resolved path and current token without creating or modifying any file.
-pub fn status(_: &mut Session, params: &Value) -> Result<Value> {
+/// Best-effort publication must not turn a completed project save into an apparent failure.
+pub fn invalidate() {
+    if let Err(error) = publish() {
+        eprintln!("Magic change notification unavailable: {error}");
+    }
+}
+
+fn publish() -> Result<()> {
+    let dir = directory()?;
+    ensure_private_directory(&dir)?;
+    write_marker(&dir, &marker_token())
+}
+
+fn check_no_options(params: &Value) -> Result<()> {
     let allowed = ["_origin", "_client", "_request_id", "_control"];
     if params
         .as_object()
@@ -113,38 +124,46 @@ pub fn status(_: &mut Session, params: &Value) -> Result<Value> {
             "backstage.changes accepts no options".into(),
         ));
     }
+    Ok(())
+}
+
+fn read_marker(path: &std::path::Path) -> std::result::Result<Value, &'static str> {
+    let file = crate::read_only_file::open_regular(path).map_err(|e| match e {
+        EngineError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => "marker_missing",
+        EngineError::InvalidParams(_) => "marker_invalid",
+        _ => "marker_unreadable",
+    })?;
+    let meta = file.metadata().map_err(|_| "marker_unreadable")?;
+    if meta.len() > 4096 {
+        return Err("marker_invalid");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.uid() != rustix::process::getuid().as_raw() || meta.mode() & 0o077 != 0 {
+            return Err("marker_not_private");
+        }
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    file.take(4097)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "marker_unreadable")?;
+    if bytes.len() > 4096 {
+        return Err("marker_invalid");
+    }
+    let marker: Value = serde_json::from_slice(&bytes).map_err(|_| "marker_invalid")?;
+    if marker["version"] != 1 || marker["token"].as_str().is_none_or(str::is_empty) {
+        return Err("marker_invalid");
+    }
+    Ok(marker)
+}
+
+/// Discover the resolved path and current token without creating or modifying any file.
+pub fn status(_: &mut Session, params: &Value) -> Result<Value> {
+    check_no_options(params)?;
     let path = directory()?.join("changes.json");
-    let read = (|| -> std::result::Result<Value, &'static str> {
-        let file = crate::read_only_file::open_regular(&path).map_err(|e| match e {
-            EngineError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => "marker_missing",
-            EngineError::InvalidParams(_) => "marker_invalid",
-            _ => "marker_unreadable",
-        })?;
-        let meta = file.metadata().map_err(|_| "marker_unreadable")?;
-        if meta.len() > 4096 {
-            return Err("marker_invalid");
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if meta.uid() != rustix::process::getuid().as_raw() || meta.mode() & 0o077 != 0 {
-                return Err("marker_not_private");
-            }
-        }
-        use std::io::Read;
-        let mut bytes = Vec::new();
-        file.take(4097)
-            .read_to_end(&mut bytes)
-            .map_err(|_| "marker_unreadable")?;
-        if bytes.len() > 4096 {
-            return Err("marker_invalid");
-        }
-        let marker: Value = serde_json::from_slice(&bytes).map_err(|_| "marker_invalid")?;
-        if marker["version"] != 1 || marker["token"].as_str().is_none_or(str::is_empty) {
-            return Err("marker_invalid");
-        }
-        Ok(marker)
-    })();
+    let read = read_marker(&path);
     let token = read.as_ref().ok().and_then(|v| v["token"].as_str());
     Ok(
         json!({"ok":true,"path":path,"available":token.is_some(),"token":token,"reason":read.as_ref().err(),
