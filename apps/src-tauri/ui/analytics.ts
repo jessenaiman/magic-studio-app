@@ -46,12 +46,49 @@ function mayhemToolStat(tools = []) {
     signal: tools.length ? (found === tools.length ? 'ready' : 'needs-attention') : 'idle', detail: 'Executable on PATH · not a run'};
 }
 
+const MAYHEM_LANG_LABELS: Record<string, string> = {
+  rust: 'Rust', typescript: 'TypeScript', tsx: 'TSX · Remotion', javascript: 'JavaScript',
+  css: 'CSS', html: 'HTML · Shell', markdown: 'Markdown', python: 'Python',
+};
+
+function inferMayhemLang(file = '', explicit = '') {
+  if (explicit) return explicit;
+  const ext = file.split('.').pop() || '';
+  const map: Record<string, string> = {rs: 'rust', ts: 'typescript', tsx: 'tsx', js: 'javascript', mjs: 'javascript', css: 'css', html: 'html', md: 'markdown', py: 'python'};
+  return map[ext] || 'other';
+}
+
+function mayhemLangBadge(file = '', explicit = '', customLabel = '') {
+  const lang = inferMayhemLang(file, explicit);
+  const label = customLabel || MAYHEM_LANG_LABELS[lang] || lang;
+  return el('span', {class: 'report-lang', 'data-lang': lang}, label);
+}
+
+function mayhemOpenFile(comp: any, relPath: string, label: string) {
+  if (!relPath) return '—';
+  const fullPath = comp?.source_root ? `${comp.source_root}/${relPath}` : relPath;
+  return el('button', {class: 'file', title: `Open ${fullPath}`, 'aria-label': `Open ${relPath}`, onclick: () => openPath(fullPath)},
+    el('code', {}, label));
+}
+
 function mayhemHotspots(comp, limit) {
-  return new ReportTable({rows: (comp.hotspots || []).slice(0, limit), empty: comp.reason || 'No saved scan. Scan code to measure.', columns: [
+  return new ReportTable({rows: (comp.hotspots || []).slice(0, limit).map((fn) => ({...fn, lang: inferMayhemLang(fn.file, fn.lang)})), empty: comp.reason || 'No saved scan. Scan code to measure.', columns: [
+    {label: 'Lang', value: (fn) => mayhemLangBadge(fn.file, fn.lang)},
     {label: 'Function', value: (fn) => fn.name},
-    {label: 'Where', value: (fn) => el('code', {}, `${fn.file.split('/').pop()}:${fn.start_line}`), title: (fn) => `${fn.file}:${fn.start_line}–${fn.end_line}`},
+    {label: 'Where', value: (fn) => mayhemOpenFile(comp, fn.file, `${fn.file.split('/').pop()}:${fn.start_line}`), title: (fn) => `${fn.file}:${fn.start_line}–${fn.end_line}`},
     {label: 'CCN', value: (fn) => fn.ccn, numeric: true, bar: true},
     {label: 'NLOC', value: (fn) => fn.nloc, numeric: true},
+  ]}).element;
+}
+
+function mayhemLanguageBreakdown(comp) {
+  return new ReportTable({rows: comp.languages || [], empty: 'Run Scan code to build the per-language breakdown.', columns: [
+    {label: 'Language', value: (row) => mayhemLangBadge('', row.lang, row.label)},
+    {label: 'Lines', value: (row) => row.lines, numeric: true, bar: true},
+    {label: 'Files', value: (row) => row.files, numeric: true},
+    {label: 'Over CCN 15', value: (row) => row.over_15, numeric: true},
+    {label: 'Max CCN', value: (row) => row.max_ccn || '—', numeric: true},
+    {label: 'Biggest offender', value: (row) => row.top_file ? mayhemOpenFile(comp, row.top_file, `${row.top_file.split('/').pop()} (${reportValue(row.top_file_lines)} lines)`) : '—', title: (row) => row.top_file || null},
   ]}).element;
 }
 
@@ -167,27 +204,35 @@ function mayhemOverview(d) {
   const comp = d.complexity || {}, usage = d.usage || {};
   return [
     mayhemStats(...mayhemCodeStats(comp).slice(0, 2), mayhemUsageStats(usage)[0], mayhemToolStat(d.tools)),
+    new ReportSection({title: 'Language & web stack breakdown', note: 'Color-coded by language: Desktop UI uses HTML + TypeScript + CSS; Remotion uses TSX.'}, mayhemLanguageBreakdown(comp)).element,
     el('div', {class: 'report-columns'},
       new ReportSection({title: 'Complexity hotspots', note: mayhemCoverage(comp)}, mayhemHotspots(comp, 6)).element,
       new ReportSection({title: 'Usage today', note: 'Recorded by local agent tools · not billing'}, mayhemAgents(usage, true)).element),
   ];
 }
 
+function mayhemFileTable(comp, rows) {
+  return new ReportTable({rows: (rows || []).map((f) => ({...f, lang: inferMayhemLang(f.file, f.lang)})), empty: 'No saved scan.', columns: [
+    {label: 'Lang', value: (file) => mayhemLangBadge(file.file, file.lang)},
+    {label: 'File', value: (file) => mayhemOpenFile(comp, file.file, file.file.split('/').pop()), title: (file) => file.file},
+    {label: 'Lines', value: (file) => file.lines, numeric: true, bar: true},
+    {label: 'Total CCN', value: (file) => file.ccn, numeric: true, bar: true},
+    {label: 'Max CCN', value: (file) => file.max_ccn, numeric: true},
+    {label: 'Functions', value: (file) => file.functions, numeric: true},
+  ]}).element;
+}
+
 function mayhemCode(d) {
   const comp = d.complexity || {};
-  const files = new ReportTable({rows: comp.largest_ccn_files || [], empty: 'No saved scan.', columns: [
-    {label: 'File', value: (file) => el('code', {}, file.file.split('/').pop()), title: (file) => file.file},
-    {label: 'Total CCN', value: (file) => file.ccn, numeric: true, bar: true},
-    {label: 'Max', value: (file) => file.max_ccn, numeric: true},
-    {label: 'Functions', value: (file) => file.functions, numeric: true},
-    {label: 'Lines', value: (file) => file.lines, numeric: true},
-  ]}).element;
   const provenance = el('details', {class: 'report-provenance'}, el('summary', {}, 'Measurement source and coverage'),
     el('code', {}, `${comp.source_root || 'Source root unavailable'}\nrevision ${comp.source_revision || 'unavailable'}\n${comp.tool_path || 'Tool path unavailable'}\nTargets: ${(comp.targets || []).join(', ')}`));
   return [
     mayhemStats(...mayhemCodeStats(comp)),
+    new ReportSection({title: 'By language & biggest offenders', note: 'Physical lines (reading cost) and cyclomatic complexity (change cost) across Rust, TypeScript, CSS, Markdown, HTML, TSX, and Python.'}, mayhemLanguageBreakdown(comp)).element,
     new ReportSection({title: 'Function hotspots', note: 'CCN and NLOC are Lizard measurements; CCN 15 is this repository’s limit.'}, mayhemHotspots(comp, 25)).element,
-    new ReportSection({title: 'Most complex files', note: mayhemCoverage(comp)}, files, provenance).element,
+    el('div', {class: 'report-columns'},
+      new ReportSection({title: 'Largest files by line count', note: '2,000 lines is the long-file threshold.'}, mayhemFileTable(comp, comp.longest_files)).element,
+      new ReportSection({title: 'Most complex files by total CCN', note: mayhemCoverage(comp)}, mayhemFileTable(comp, comp.largest_ccn_files), provenance).element),
   ];
 }
 

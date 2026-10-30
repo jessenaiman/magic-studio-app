@@ -157,6 +157,80 @@ class Session:
         """Explicit selection may replace an old binding only after a successful open."""
         return self.execute("project.open", {"path": path})
 
+    def _route(self, cmd_id: str, req: dict[str, Any]) -> tuple[bool, str | None]:
+        """Work out the target path for this command and write it back into the request."""
+        selecting = cmd_id == "project.open"
+        target = req.get("path") if selecting else req.get("project")
+        global_command = cmd_id in {
+            "project.new", "project.intake", "project.catalog", "project.root",
+            "project.migrate", "project.identity", "command.list", "app.doctor",
+        }
+        if not target and not global_command and not selecting:
+            target = self.project_path
+        if target:
+            from cli_anything.magic.core.project import resolve_project_path
+            target = str(resolve_project_path(target))
+            req["path" if selecting else "project"] = target
+        return selecting, target
+
+    def _call_pinned(
+        self, cmd_id: str, req: dict[str, Any], target: str | None,
+    ) -> dict[str, Any]:
+        """Send to the pinned window, following it when that window restarted."""
+        if target and self.project_path and target != self.project_path:
+            raise RuntimeError("Pinned Studio targets a different project; explicitly open the intended project first")
+        try:
+            return backend.call_studio(
+                self.studio_endpoint, cmd_id, req,
+                expected_project=self.project_path, expected_instance=self.studio_instance,
+            )
+        except OSError as exc:
+            # The window restarted: the same project in exactly one live window is the same
+            # intent, so follow it (the expected-project guard still applies). Anything else
+            # stays an explicit choice.
+            live = self._live_for_pinned_project()
+            if len(live) != 1:
+                raise RuntimeError(self._unavailable_message()) from exc
+            self.bind_studio(live[0])
+            return backend.call_studio(
+                live[0]["endpoint"], cmd_id, req,
+                expected_project=self.project_path, expected_instance=live[0].get("instance"),
+            )
+
+    def _call_live(
+        self, cmd_id: str, req: dict[str, Any], target: str | None, dry_run: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        """Send to a live window, to the UI window, or run headless. Reports whether one was bound."""
+        live = backend.studio_for_project(target) if target else None
+        if live:
+            self.close()
+            result = backend.call_studio(
+                live["endpoint"], cmd_id, req, expected_project=target,
+                expected_instance=live.get("instance"),
+            )
+            if not dry_run:
+                self.bind_studio(live)
+            return result, True
+        if cmd_id.startswith(("ui.", "app.quit")) and backend.agent_caller():
+            raise RuntimeError(
+                "No Studio window is bound to this agent; run "
+                "'magic-cli studio open /absolute/Project.magic' first "
+                "(agent windows open on the agent workspace, never the user's window)."
+            )
+        if cmd_id.startswith("ui.") or cmd_id == "app.quit":
+            return backend.call_studio("auto", cmd_id, req, expected_project=target), False
+        return self.execute_headless(cmd_id, req), False
+
+    def _remember(self, cmd_id: str, result: dict[str, Any]) -> None:
+        """Keep the binding the engine reported, and drop it when nothing is open."""
+        if cmd_id in {"project.open", "project.new", "project.intake", "project.save"} and result.get("project"):
+            self.project_path = str(Path(result["project"]).resolve())
+            self.save_session()
+        elif cmd_id == "project.close":
+            self.project_path = None
+            self.save_session()
+        # Keep the pin after quit: subsequent calls must not pick another window.
+
     def execute(
         self, cmd_id: str, params: dict[str, Any] | None = None,
         dry_run: bool = False,
@@ -172,71 +246,16 @@ class Session:
         # Isolated read-only queries must not change the caller's target or writer session.
         if cmd_id in {"backstage.observe", "backstage.changes"}:
             return backend.execute_headless(cmd_id, req)
-        selecting = cmd_id == "project.open"
-        target = req.get("path") if selecting else req.get("project")
-        global_command = cmd_id in {
-            "project.new", "project.intake", "project.catalog", "project.root",
-            "project.migrate", "project.identity", "command.list", "app.doctor",
-        }
-        if not target and not global_command and not selecting:
-            target = self.project_path
-        if target:
-            from cli_anything.magic.core.project import resolve_project_path
-            target = str(resolve_project_path(target))
-            req["path" if selecting else "project"] = target
-
+        selecting, target = self._route(cmd_id, req)
         if self.studio_endpoint and not selecting:
-            if target and self.project_path and target != self.project_path:
-                raise RuntimeError("Pinned Studio targets a different project; explicitly open the intended project first")
-            try:
-                result = backend.call_studio(
-                    self.studio_endpoint, cmd_id, req,
-                    expected_project=self.project_path, expected_instance=self.studio_instance,
-                )
-            except OSError as exc:
-                # The window restarted: the same project in exactly one live window is the same
-                # intent, so follow it (the expected-project guard still applies). Anything else
-                # stays an explicit choice.
-                live = self._live_for_pinned_project()
-                if len(live) != 1:
-                    raise RuntimeError(self._unavailable_message()) from exc
-                self.bind_studio(live[0])
-                result = backend.call_studio(
-                    live[0]["endpoint"], cmd_id, req,
-                    expected_project=self.project_path, expected_instance=live[0].get("instance"),
-                )
+            result = self._call_pinned(cmd_id, req, target)
         else:
-            live = backend.studio_for_project(target) if target else None
-            if live:
-                self.close()
-                result = backend.call_studio(
-                    live["endpoint"], cmd_id, req, expected_project=target,
-                    expected_instance=live.get("instance"),
-                )
-                if not dry_run:
-                    self.bind_studio(live)
-            elif cmd_id.startswith(("ui.", "app.quit")) and backend.agent_caller():
-                raise RuntimeError(
-                    "No Studio window is bound to this agent; run "
-                    "'magic-cli studio open /absolute/Project.magic' first "
-                    "(agent windows open on the agent workspace, never the user's window)."
-                )
-            elif cmd_id.startswith("ui.") or cmd_id == "app.quit":
-                result = backend.call_studio("auto", cmd_id, req, expected_project=target)
-            else:
-                result = self.execute_headless(cmd_id, req)
+            result, live = self._call_live(cmd_id, req, target, dry_run)
             if selecting and not live and not dry_run and result.get("ok") is not False:
                 self.studio_endpoint = None
                 self.studio_instance = None
-
         if result.get("ok") is False:
             raise RuntimeError(result.get("error") or json.dumps(result))
         if not dry_run:
-            if cmd_id in {"project.open", "project.new", "project.intake", "project.save"} and result.get("project"):
-                self.project_path = str(Path(result["project"]).resolve())
-                self.save_session()
-            elif cmd_id == "project.close":
-                self.project_path = None
-                self.save_session()
-            # Keep the pin after quit: subsequent calls must not pick another window.
+            self._remember(cmd_id, result)
         return result

@@ -356,6 +356,7 @@ fn tally_rows(stdout: &str) -> ScanTally {
         tally.functions.push(json!({
             "name": name,
             "file": file,
+            "lang": file_lang(&file),
             "start_line": start_line,
             "end_line": end_line,
             "nloc": nloc,
@@ -365,6 +366,161 @@ fn tally_rows(stdout: &str) -> ScanTally {
         }));
     }
     tally
+}
+
+fn file_lang(file: &str) -> &'static str {
+    match Path::new(file).extension().and_then(|e| e.to_str()) {
+        Some("rs") => "rust",
+        Some("ts") => "typescript",
+        Some("tsx") => "tsx",
+        Some("js" | "mjs") => "javascript",
+        Some("css") => "css",
+        Some("html") => "html",
+        Some("md") => "markdown",
+        Some("py") => "python",
+        _ => "other",
+    }
+}
+
+fn lang_label(lang: &str) -> &'static str {
+    match lang {
+        "rust" => "Rust (.rs)",
+        "typescript" => "TypeScript (.ts)",
+        "tsx" => "TSX · Remotion (.tsx)",
+        "javascript" => "JavaScript (.js/.mjs)",
+        "css" => "CSS (.css)",
+        "html" => "HTML · Shell (.html)",
+        "markdown" => "Markdown (.md)",
+        "python" => "Python (.py)",
+        _ => "Other",
+    }
+}
+
+fn tracked_files_for_exts(root: &Path) -> Vec<String> {
+    let Ok(out) = std::process::Command::new("git")
+        .args([
+            "ls-files",
+            "*.rs",
+            "*.ts",
+            "*.tsx",
+            "*.js",
+            "*.mjs",
+            "*.css",
+            "*.html",
+            "*.md",
+            "*.py",
+        ])
+        .current_dir(root)
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+struct LangBucket {
+    files: usize,
+    lines: u64,
+    ccn: u64,
+    max_ccn: u64,
+    over_15: usize,
+    long_files: usize,
+    top_file: String,
+    top_file_lines: u64,
+}
+
+fn update_bucket_code(bucket: &mut LangBucket, ccn: u64, max_file_ccn: u64, over_15: usize) {
+    bucket.ccn = bucket.ccn.saturating_add(ccn);
+    bucket.max_ccn = bucket.max_ccn.max(max_file_ccn);
+    bucket.over_15 += over_15;
+}
+
+fn build_lang_summary(
+    root: &Path,
+    per_file: &std::collections::BTreeMap<String, (u64, usize, u64)>,
+    functions: &[Value],
+    long_file_limit: u64,
+) -> (Vec<Value>, Vec<Value>) {
+    let mut over_by_file: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
+    for func in functions {
+        if func["ccn"].as_u64().unwrap_or(0) > 15
+            && let Some(path) = func["file"].as_str()
+        {
+            *over_by_file.entry(path).or_insert(0) += 1;
+        }
+    }
+    let mut buckets: std::collections::BTreeMap<&'static str, LangBucket> =
+        std::collections::BTreeMap::new();
+    let mut all_files: Vec<Value> = Vec::new();
+    for file in tracked_files_for_exts(root) {
+        let Ok(text) = std::fs::read_to_string(root.join(&file)) else {
+            continue;
+        };
+        let lines = text.lines().count() as u64;
+        let lang = file_lang(&file);
+        let (ccn, fn_cnt, max_ccn) = per_file.get(&file).copied().unwrap_or((0, 0, 0));
+        let over_15 = over_by_file.get(file.as_str()).copied().unwrap_or(0);
+        let is_long = lines >= long_file_limit;
+        let bucket = buckets.entry(lang).or_insert(LangBucket {
+            files: 0,
+            lines: 0,
+            ccn: 0,
+            max_ccn: 0,
+            over_15: 0,
+            long_files: 0,
+            top_file: String::new(),
+            top_file_lines: 0,
+        });
+        bucket.files += 1;
+        bucket.lines = bucket.lines.saturating_add(lines);
+        if is_long {
+            bucket.long_files += 1;
+        }
+        if lines > bucket.top_file_lines {
+            bucket.top_file_lines = lines;
+            bucket.top_file.clone_from(&file);
+        }
+        update_bucket_code(bucket, ccn, max_ccn, over_15);
+        all_files.push(json!({
+            "file": file,
+            "lang": lang,
+            "lines": lines,
+            "ccn": ccn,
+            "functions": fn_cnt,
+            "max_ccn": max_ccn,
+            "over_15": over_15,
+            "long": is_long,
+        }));
+    }
+    all_files.sort_by_key(|row| std::cmp::Reverse(row["lines"].as_u64().unwrap_or(0)));
+    let mut lang_rows: Vec<Value> = buckets
+        .into_iter()
+        .map(|(lang, b)| {
+            json!({
+                "lang": lang,
+                "label": lang_label(lang),
+                "files": b.files,
+                "lines": b.lines,
+                "ccn": b.ccn,
+                "max_ccn": b.max_ccn,
+                "over_15": b.over_15,
+                "long_files": b.long_files,
+                "top_file": b.top_file,
+                "top_file_lines": b.top_file_lines,
+            })
+        })
+        .collect();
+    lang_rows.sort_by_key(|row| std::cmp::Reverse(row["lines"].as_u64().unwrap_or(0)));
+    (lang_rows, all_files)
 }
 
 fn file_cost_rows(
@@ -387,6 +543,7 @@ fn file_cost_rows(
             };
             json!({
                 "file": file,
+                "lang": file_lang(file),
                 "lines": lines,
                 "ccn": ccn,
                 "functions": functions,
@@ -397,13 +554,18 @@ fn file_cost_rows(
         .collect()
 }
 
-fn long_file_rows(file_rows: &[Value]) -> (Vec<Value>, usize) {
+fn long_file_rows(file_rows: &[Value], all_files: &[Value]) -> (Vec<Value>, usize) {
     let long_files: Vec<Value> = file_rows
         .iter()
         .filter(|row| row["long"].as_bool().unwrap_or(false))
         .cloned()
         .collect();
-    let longest_files: Vec<Value> = long_files.iter().take(15).cloned().collect();
+    let source = if all_files.is_empty() {
+        &long_files
+    } else {
+        all_files
+    };
+    let longest_files: Vec<Value> = source.iter().take(15).cloned().collect();
     (longest_files, long_files.len())
 }
 
@@ -450,7 +612,9 @@ fn measure(root: &Path) -> Value {
             std::cmp::Reverse(row["ccn"].as_u64().unwrap_or(0)),
         )
     });
-    let (longest_files, long_file_count) = long_file_rows(&file_rows);
+    let (languages, all_tracked_files) =
+        build_lang_summary(root, &tally.per_file, &tally.functions, long_file_limit);
+    let (longest_files, long_file_count) = long_file_rows(&file_rows, &all_tracked_files);
     let largest_ccn_files = largest_ccn_rows(&file_rows);
     let ui_files_analyzed = count_ui_files(&file_rows);
     let total_lines: u64 = file_rows
@@ -468,6 +632,7 @@ fn measure(root: &Path) -> Value {
         "functions_over_ccn_15": tally.over_15,
         "max_ccn": tally.max_ccn,
         "hotspots": hotspots,
+        "languages": languages,
         "long_file_threshold_lines": long_file_limit,
         "long_files": long_file_count,
         "longest_files": longest_files,
