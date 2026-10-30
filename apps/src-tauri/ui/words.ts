@@ -1395,6 +1395,7 @@ class WordsViewController {
     const right = wordsPanel.rightEl ||= el("aside", { id: "words-film" });
     left.replaceChildren(new PanelHeader({ id: "words-lyrics-head", title: "Lyrics" }).element, wordsTimeline(animations, end));
     right.replaceChildren(new PanelHeader({ id: "words-film-head", title: "Visual cues" }).element, wordsRoll(animations, end));
+    for (const [node, id] of [[main, "words-main"], [left, "words-lyrics"], [right, "words-film"]] as const) registerElement(node, id);
     if (main.parentElement !== view || left.parentElement !== view || right.parentElement !== view) {
       view.replaceChildren(left, main, right);
     }
