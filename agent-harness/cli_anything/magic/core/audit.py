@@ -53,7 +53,13 @@ TOOLS = {
         ("stylelint.config.*", ".stylelintrc*"),
     ),
     "lizard": ToolSpec("Lizard", ("lizard", "."), ("code-limits.json",)),
+    # Project Wallace design metrics: unique values per property, selector
+    # specificity and declaration reuse, in its own table or JSON.
+    "wallace": ToolSpec("Wallace", ("wallace",), ()),
 }
+
+# Third-party stylesheets are measured by their own projects, not ours.
+FOREIGN_CSS = {"vendor", "node_modules", "target"}
 
 
 def lizard_options(root: Path) -> list[str]:
@@ -75,6 +81,48 @@ def lizard_options(root: Path) -> list[str]:
     return options
 
 
+def has_config(directory: Path, name: str) -> bool:
+    configs = TOOLS[name].configs
+    return any(p.is_file() for pattern in configs for p in directory.glob(pattern))
+
+
+def config_root(root: Path, name: str) -> Path:
+    """Nearest directory up to the repository top that holds the tool's config.
+
+    Clippy stays on the given crate directory; a missing config reports there.
+    A tool without configuration runs from the repository top.
+    """
+    if name == "clippy":
+        return root
+    for directory in (root, *root.parents):
+        if has_config(directory, name):
+            return directory
+        if (directory / ".git").exists():
+            return root if TOOLS[name].configs else directory
+    return root
+
+
+def css_sources(target: Path) -> list[Path]:
+    """Our stylesheets under target, in stable order, without third-party CSS."""
+    if target.is_file():
+        return [target]
+    return sorted(
+        path for path in target.rglob("*.css")
+        if not FOREIGN_CSS.intersection(path.relative_to(target).parts)
+    )
+
+
+def with_target(command: list[str], root: Path, target: Path, name: str) -> list[str]:
+    """Point the native command at target when it is not the config root."""
+    if name == "wallace":
+        return [*command, str(target)] if target.is_file() else command
+    if target.is_file() or name == "lizard":
+        command[-1] = str(target)
+    elif target != root and name != "clippy":
+        command[-1] = str(target / "**/*.css") if name == "stylelint" else str(target)
+    return command
+
+
 def build_command(root: Path, target: Path, name: str) -> list[str]:
     tool = TOOLS[name]
     if target.is_file() and name == "clippy":
@@ -82,13 +130,11 @@ def build_command(root: Path, target: Path, name: str) -> list[str]:
             "Clippy checks crates, not individual files; "
             "use a crate directory or --tool lizard for file complexity"
         )
-    if not any(p.is_file() for pattern in tool.configs for p in root.glob(pattern)):
+    if tool.configs and not has_config(root, name):
         raise ValueError(
             f"missing repository configuration: {', '.join(tool.configs)}"
         )
-    command = list(tool.command)
-    if target.is_file() or name == "lizard":
-        command[-1] = str(target)
+    command = with_target(list(tool.command), root, target, name)
     if name == "lizard":
         modules = target.with_suffix("")
         if target.is_file() and target.suffix == ".rs" and modules.is_dir():
@@ -106,14 +152,22 @@ def build_command(root: Path, target: Path, name: str) -> list[str]:
 
 
 def run_native(
-    label: str, command: list[str], root: Path, dry_run: bool, *, diagnostic=False
+    label: str, command: list[str], root: Path, dry_run: bool, *, diagnostic=False,
+    stdin_files: list[Path] | None = None,
 ) -> int:
-    print(f"[{label}] {shlex.join(command)}", file=sys.stderr, flush=True)
+    shown = shlex.join(command)
+    if stdin_files is not None:
+        shown = f"cat {shlex.join(map(str, stdin_files))} | {shown}"
+    print(f"[{label}] {shown}", file=sys.stderr, flush=True)
     if dry_run:
         print(f"[{label}] not run (--dry-run)", file=sys.stderr, flush=True)
         return 0
+    stdin = None
+    if stdin_files is not None:
+        stdin = b"".join(path.read_bytes() + b"\n" for path in stdin_files)
     code = subprocess.run(
-        command, cwd=root, check=False, stdout=sys.stderr if diagnostic else None
+        command, cwd=root, check=False, input=stdin,
+        stdout=sys.stderr if diagnostic else None,
     ).returncode
     code = code if code >= 0 else 128 - code
     print(f"[{label}] exit {code}", file=sys.stderr, flush=True)
@@ -127,15 +181,21 @@ def run_audit(
     """Run selected tools, inheriting output; return the first nonzero status."""
     single_file = target.is_file()
     selected = tools or (("lizard",) if single_file else tuple(TOOLS))
-    root = target.parent if single_file else target
-    if single_file or set(selected) == {"lizard"}:
-        root = next((p for p in (root, *root.parents) if (p / ".git").exists()), root)
+    start = target.parent if single_file else target
     status = 0
     for name in dict.fromkeys(selected):
         tool = TOOLS[name]
         try:
+            root = config_root(start, name)
             command = build_command(root, target, name)
-            if name == "lizard" and output_format == "csv":
+            if name == "wallace" and not single_file:
+                sources = css_sources(target)
+                if not sources:
+                    raise ValueError(f"no stylesheets under {target}")
+                code = run_native(
+                    tool.label, command, root, dry_run, stdin_files=sources
+                )
+            elif name == "lizard" and output_format == "csv":
                 # Lizard's CSV printer returns zero even when thresholds fail.
                 # Keep stdout native CSV; use a native warning pass on stderr
                 # for enforcement, without inventing a report parser or score.

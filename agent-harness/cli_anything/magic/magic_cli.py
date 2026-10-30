@@ -193,7 +193,7 @@ def cli(
     type=click.Choice(tuple(audit_core.TOOLS)),
     help=(
         "Select a native tool; repeat to choose several. "
-        "Default: Lizard for a file, all five for a directory."
+        "Default: Lizard for a file, all six for a directory."
     ),
 )
 @click.option(
@@ -207,13 +207,17 @@ def audit(
 ) -> None:
     """Run native repository checks with unmodified tool output.
 
-    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard. Each tool uses
-    PATH (or root node_modules/.bin) and requires its repository configuration.
+    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace. Each
+    tool uses PATH (or root node_modules/.bin) and the nearest repository
+    configuration at or above PATH, up to the repository top.
     Missing tools/configuration are errors, not passing or skipped checks.
     Lizard shows function locations, file totals, CCN, length and cognitive
     complexity, with warnings ranked by CCN. code-limits.json requires
     max_function_ccn; optional max_function_lines (100),
     max_function_cognitive_complexity (15) set thresholds.
+    Wallace measures our stylesheets (not vendor/node_modules/target) as one
+    design: unique colours, font sizes and declarations, ID selectors and
+    specificity. Compare its table before and after a UI change.
     CSV mode also runs native warnings on stderr so violations still fail.
     Other tools keep their native formats.
 

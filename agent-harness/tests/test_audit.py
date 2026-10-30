@@ -139,6 +139,32 @@ class AuditTests(unittest.TestCase):
         self.assertIn("loading.rs", result.stdout)
         self.assertIn("2 file analyzed", result.stdout)
 
+    def fake_node_tool(self, name):
+        tool = self.root / "node_modules" / ".bin" / name
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text("#!/bin/sh\nexit 0\n")
+        tool.chmod(0o755)
+
+    def test_stylelint_in_subdirectory_uses_repository_config(self):
+        self.fake_node_tool("stylelint")
+        (self.root / "stylelint.config.mjs").write_text("export default {};\n")
+        ui = self.root / "ui"
+        ui.mkdir()
+        result = self.run_audit("--dry-run", "audit", str(ui), "--tool", "stylelint")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"{ui}/**/*.css", result.stderr)
+
+    def test_wallace_measures_our_stylesheets_without_vendor_css(self):
+        self.fake_node_tool("wallace")
+        ui = self.root / "ui"
+        (ui / "vendor").mkdir(parents=True)
+        (ui / "style.css").write_text(".a { color: red; }\n")
+        (ui / "vendor" / "lib.css").write_text(".b { color: blue; }\n")
+        result = self.run_audit("--dry-run", "audit", str(ui), "--tool", "wallace")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("style.css", result.stderr)
+        self.assertNotIn("lib.css", result.stderr)
+
     def test_clippy_rejects_file_scope_before_running_cargo(self):
         result = self.run_audit("audit", str(self.source), "--tool", "clippy")
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
