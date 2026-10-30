@@ -69,6 +69,21 @@ TOOLS = {
 # Third-party stylesheets are measured by their own projects, not ours.
 FOREIGN_CSS = {"vendor", "node_modules", "target"}
 
+# A build emits `.js` beside the `.ts` it came from; measure the source.
+GENERATED_UI = Path("apps/src-tauri/ui")
+
+
+def generated_script_excludes(root: Path) -> list[str]:
+    """Skip `.js` a build emits beside its `.ts`, so only the source is measured.
+
+    Lizard matches `-x` against the paths it walks, which are the absolute target
+    it was given; a repository-relative pattern silently matches nothing.
+    """
+    directory = root / GENERATED_UI
+    if not directory.is_dir() or not any(directory.glob("*.ts")):
+        return []
+    return ["-x", str(directory / "*.js")]
+
 
 def lizard_options(root: Path) -> list[str]:
     """The thresholds the repository already declares in code-limits.json."""
@@ -163,6 +178,7 @@ def build_command(root: Path, target: Path, name: str) -> list[str]:
         if target.is_file() and target.suffix == ".rs" and modules.is_dir():
             command.append(str(modules))
         command.extend(lizard_options(root))
+        command.extend(generated_script_excludes(root))
     found = shutil.which(command[0]) or shutil.which(
         str(root / "node_modules" / ".bin" / command[0])
     )
