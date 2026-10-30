@@ -5,6 +5,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const approvals = JSON.parse(readFileSync(join(here, 'approved-workflows.json'), 'utf8'));
 export const config = {
   runner: 'local',
+  logLevel: 'warn', // standard reports only; rerun for more detail
   specs: approvals.map(({ spec }) => join(here, spec)),
   maxInstances: 1,
   capabilities: [{ browserName: 'wry', 'tauri:options': { application: process.env.MAGICSTUDIO_SHELL_BIN, args: [process.env.MAGIC_ACCEPTANCE_PROJECT] } }],

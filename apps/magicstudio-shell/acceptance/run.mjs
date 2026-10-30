@@ -73,4 +73,26 @@ for (const approval of approvals) {
 for (const entry of songEntries) cpSync(join(song, entry), join(artifacts, 'project', entry), { recursive: true, errorOnExist: true, force: false });
 process.env.MAGIC_ACCEPTANCE_PROJECT = join(artifacts, 'project', 'Nelly.magic');
 const result = spawnSync(process.execPath, [join(here, 'node_modules/@wdio/cli/bin/wdio.js'), 'run', join(here, 'wdio.conf.mjs')], { stdio: 'inherit', env: process.env });
+if (result.status !== 0 && process.env.MAGIC_ACCEPTANCE_NO_ISSUES !== '1') fileIssue();
 finish(result.status ?? 1, result.status === 0 ? 'pass' : 'fail');
+
+// One GitHub issue per failing step, so an agent can pick it up; reuse an open one.
+function fileIssue() {
+  let steps = [];
+  try { steps = readFileSync(join(artifacts, 'steps.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line)); } catch {}
+  const failed = steps.filter((step) => step.status === 'fail' || step.status === 'blocked');
+  const failure = failed.at(-1) ?? { name: 'runner did not reach a workflow step', error: 'See the WDIO reports in the run folder.' };
+  const title = `Acceptance failure: ${failure.name}`;
+  const gh = (args) => spawnSync('gh', args, { encoding: 'utf8', cwd: repo });
+  const open = gh(['issue', 'list', '--state', 'open', '--search', `"${title}" in:title`, '--json', 'number,title']);
+  const existing = open.status === 0 ? JSON.parse(open.stdout || '[]').find((issue) => issue.title === title) : undefined;
+  const body = [
+    `Native acceptance run \`${artifacts.split('/').pop()}\` failed (build of \`${repo}\`).`,
+    '', `**Step:** ${failure.name}`,
+    failure.expectations ? `**Expected:** ${Object.values(failure.expectations).join('; ')}` : '',
+    '', '```', String(failure.error ?? '').split('\n').slice(0, 15).join('\n'), '```',
+    '', `Evidence (local, auto-pruned): \`${artifacts}\`. Rerun with \`npm test\` in \`apps/magicstudio-shell/acceptance\`.`,
+  ].join('\n');
+  const posted = existing ? gh(['issue', 'comment', String(existing.number), '--body', body]) : gh(['issue', 'create', '--title', title, '--body', body]);
+  console.log(posted.status === 0 ? `Failure reported: ${posted.stdout.trim()}` : `Could not report failure to GitHub: ${posted.stderr.trim()}`);
+}

@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "spec": "approved/nelly-save-as.spec.mjs",
+    "reference": "https://github.com/jessenaiman/magic-studio-app/issues/10#issuecomment-6478139342",
+    "approvedBy": "Jesse Naiman",
+    "approvedAt": "2026-10-28T15:07:10-04:00"
+  }
+]

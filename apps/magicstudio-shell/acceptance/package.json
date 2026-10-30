@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node run.mjs",
-    "check": "node --check run.mjs && node --check wdio.conf.mjs && node --check workflow.mjs"
+    "check": "node --check run.mjs && node --check wdio.conf.mjs && node --check workflow.mjs && node --check approved/nelly-save-as.spec.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
