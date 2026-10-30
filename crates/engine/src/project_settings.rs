@@ -62,6 +62,12 @@ pub fn root() -> Result<PathBuf> {
     configured_root(&stored()?)
 }
 
+/// An installed app's folder saved under `key` (such as `assetfurnace_home`); GUI windows
+/// launched by the desktop do not inherit a terminal's environment, so this is where they look.
+pub fn saved_path(key: &str) -> Option<PathBuf> {
+    stored().ok()?.get(key)?.as_str().map(PathBuf::from)
+}
+
 fn read_settings_file(output: &mut fs::File) -> Result<Value> {
     let mut bytes = Vec::new();
     output.read_to_end(&mut bytes)?;

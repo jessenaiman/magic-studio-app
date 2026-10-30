@@ -1140,10 +1140,10 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
             "Prepare reviewed artwork for animation",
             ["Rig & Matting"],
             None,
-            "{\"asset\":\"optional asset id\"}",
+            "{\"asset\":\"optional asset id\",\"stage\":\"optional: skeleton = AssetFurnace makes and rigs a 3D model first; review its skeleton before parts are cut\"}",
             has_asset,
             cmd_asset_build_cutout_rig
-        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering.",
+        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering. stage=skeleton first asks AssetFurnace (ASSETFURNACE_HOME) for a rigged 3D model and saves it with its skeleton beside the character.",
                "magic-cli --project /absolute/Project.magic animation prepare asset=babel"),
         cmd!(
             "rig.from_sheet",
