@@ -90,6 +90,8 @@ pub(crate) mod read_only_file;
 pub mod rig;
 pub mod sequence;
 pub mod session;
+mod session_layers;
+mod session_manifests;
 pub mod sheets;
 pub mod skills_registry;
 pub mod storyboard;
