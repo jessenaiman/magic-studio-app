@@ -27,6 +27,7 @@ pub struct ProjectRecord {
 }
 pub struct ProjectSnapshot {
     pub projects: Vec<ProjectRecord>,
+    pub catalog_observed: bool,
     pub source: String,
     pub error: Option<String>,
     pub worktrees: Vec<WorktreeRecord>,
@@ -37,6 +38,7 @@ impl Default for ProjectSnapshot {
     fn default() -> Self {
         Self {
             projects: vec![],
+            catalog_observed: false,
             source: "Native saved-project observation pending".into(),
             error: None,
             worktrees: vec![],
@@ -167,7 +169,7 @@ impl ProjectSnapshot {
             }
             projects.push(record);
         }
-        Self{projects,source:"Magic project.catalog: newest-ten navigation history; saved references, not directory inventory".into(),error:(!warnings.is_empty()).then(||warnings.join("; ")),..Self::default()}
+        Self{projects,catalog_observed:true,source:"Magic project.catalog: newest-ten navigation history; saved references, not directory inventory".into(),error:(!warnings.is_empty()).then(||warnings.join("; ")),..Self::default()}
     }
 }
 fn path(value: &Value) -> Option<PathBuf> {

@@ -295,7 +295,6 @@ Docs are part of the product. Provider setup docs often drive agent behavior.
 
 Check:
 
-- Does the PR update `docs/PROVIDERS.md` when adding a provider?
 - Does `docs/ARCHITECTURE.md` need an update for architectural changes?
 - Are setup instructions accurate on macOS, Windows, and Linux where claimed?
 - Do docs distinguish API keys, local installs, model downloads, and cached
