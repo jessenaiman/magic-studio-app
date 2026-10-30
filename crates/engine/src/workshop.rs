@@ -726,6 +726,53 @@ pub fn cmd_workshop_status(s: &mut Session, _: &Value) -> Result<Value> {
     workshop_status(s)
 }
 
+/// The audio already connected to this project: the session path, else the copy beside the video.
+fn connected_audio(s: &Session, dir: &Path, audio: &Path) -> Option<PathBuf> {
+    s.song_audio.clone().filter(|path| path.is_file()).or_else(|| {
+        audio
+            .file_name()
+            .map(|name| dir.join("hyperframes").join(name))
+            .filter(|path| path.is_file())
+    })
+}
+
+/// Same path, or the same bytes: relinking an identical recording is not a change.
+fn same_audio(old: &Path, audio: &Path) -> bool {
+    old == audio
+        || std::fs::read(old)
+            .ok()
+            .zip(std::fs::read(audio).ok())
+            .is_some_and(|(old, new)| old == new)
+}
+
+type AudioState = (Option<PathBuf>, String, Option<PathBuf>);
+
+fn audio_state(s: &Session) -> AudioState {
+    (
+        s.song_audio.clone(),
+        s.video_target.clone(),
+        s.video_project_path.clone(),
+    )
+}
+
+fn restore_audio_state(s: &mut Session, previous: AudioState) {
+    (s.song_audio, s.video_target, s.video_project_path) = previous;
+}
+
+/// The HyperFrames project and its preview server, then the project file that records both.
+fn hyperframes_setup(s: &mut Session, params: &Value) -> Result<Value> {
+    let video = crate::video_target::cmd_video_init(
+        s,
+        &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}),
+    )?;
+    let preview = crate::video_target::cmd_video_server_start(
+        s,
+        &json!({"resolve_video_cli":params["resolve_video_cli"]}),
+    )?;
+    crate::project::write_project_file(s)?;
+    Ok(json!({"ok":true,"video":video,"preview":preview}))
+}
+
 pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let raw = params
@@ -734,31 +781,12 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
         .ok_or_else(|| EngineError::InvalidParams("missing audio 'path'".into()))?;
     let audio = song_audio_path(s, raw)?;
     let exists = ensure_video_target_project(s, &dir, "hyperframes").is_ok();
-    let connected = s
-        .song_audio
-        .clone()
-        .filter(|path| path.is_file())
-        .or_else(|| {
-            audio
-                .file_name()
-                .map(|name| dir.join("hyperframes").join(name))
-                .filter(|path| path.is_file())
-        });
-    let unchanged = connected.as_ref().is_some_and(|old| {
-        old == &audio
-            || std::fs::read(old)
-                .ok()
-                .zip(std::fs::read(&audio).ok())
-                .is_some_and(|(old, new)| old == new)
-    });
+    let connected = connected_audio(s, &dir, &audio);
+    let unchanged = connected.as_ref().is_some_and(|old| same_audio(old, &audio));
     if exists && !unchanged {
         return Err(EngineError::InvalidParams("This HyperFrames project already has a timeline. Update its audio in HyperFrames before relinking the recording; the existing project was preserved".into()));
     }
-    let previous = (
-        s.song_audio.clone(),
-        s.video_target.clone(),
-        s.video_project_path.clone(),
-    );
+    let previous = audio_state(s);
     s.song_audio = Some(if exists && unchanged {
         connected.ok_or_else(|| {
             EngineError::InvalidParams("Existing audio connection is unavailable".into())
@@ -767,20 +795,9 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
         audio
     });
     s.video_target = "hyperframes".into();
-    let setup = (|| {
-        let video = crate::video_target::cmd_video_init(
-            s,
-            &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}),
-        )?;
-        let preview = crate::video_target::cmd_video_server_start(
-            s,
-            &json!({"resolve_video_cli":params["resolve_video_cli"]}),
-        )?;
-        crate::project::write_project_file(s)?;
-        Ok(json!({"ok":true,"video":video,"preview":preview}))
-    })();
+    let setup = hyperframes_setup(s, params);
     if setup.is_err() {
-        (s.song_audio, s.video_target, s.video_project_path) = previous;
+        restore_audio_state(s, previous);
         crate::project::write_project_file(s)?;
     }
     setup
@@ -906,13 +923,8 @@ pub fn cmd_workshop_add(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 /// Cuts a storyboard grid into storyboard/panel-NN.png with PhotoCraft.
-pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
-    let image = params
-        .get("image")
-        .and_then(Value::as_str)
-        .map(|p| resolve_workspace_path(s, p))
-        .ok_or_else(|| EngineError::InvalidParams("missing storyboard grid 'image'".into()))?;
+/// Grid shape and inset, defaulting to 3x2 panels with an 8px inset.
+fn grid_dims(params: &Value) -> (u32, u32, u32) {
     let columns = params
         .get("columns")
         .and_then(Value::as_u64)
@@ -924,15 +936,19 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
         .unwrap_or(2)
         .max(1) as u32;
     let inset = params.get("inset").and_then(Value::as_u64).unwrap_or(8) as u32;
-    let (w, h) = image::image_dimensions(&image)?;
-    let (cw, ch) = (w / columns, h / rows);
-    if cw <= 2 * inset || ch <= 2 * inset {
-        return Err(EngineError::InvalidParams(
-            "panels too small for that grid and inset".into(),
-        ));
-    }
-    let out_dir = dir.join(STORYBOARD_DIR);
-    std::fs::create_dir_all(&out_dir)?;
+    (columns, rows, inset)
+}
+
+/// One PhotoCraft crop per panel, written as storyboard/panel-NN.png.
+fn crop_panels(
+    dir: &Path,
+    image: &Path,
+    out_dir: &Path,
+    columns: u32,
+    rows: u32,
+    inset: u32,
+    (cw, ch): (u32, u32),
+) -> Result<Vec<PathBuf>> {
     let mut panels = Vec::new();
     for r in 0..rows {
         for c in 0..columns {
@@ -940,7 +956,7 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
             let out = out_dir.join(format!("panel-{n:02}.png"));
             let rect = json!({"x": c * cw + inset, "y": r * ch + inset, "width": cw - 2 * inset, "height": ch - 2 * inset});
             run_tool_in(
-                &dir,
+                dir,
                 "photocraft-cli",
                 &[
                     "run".into(),
@@ -956,36 +972,71 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
             panels.push(out);
         }
     }
-    let mut prompts_written = Vec::new();
-    if let Some(prompt_file) = params
+    Ok(panels)
+}
+
+/// A numbered prompt beside each panel whose prompt file has that panel number.
+fn write_prompts(
+    s: &Session,
+    params: &Value,
+    panels: &[PathBuf],
+    image: &Path,
+) -> Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
+    let Some(prompt_file) = params
         .get("prompts")
         .and_then(Value::as_str)
         .map(|p| resolve_workspace_path(s, p))
-    {
-        let numbered = numbered_prompts(&std::fs::read_to_string(&prompt_file)?);
-        let source = prompt_file
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default()
-            .to_string();
-        for (i, panel) in panels.iter().enumerate() {
-            if let Some(text) = numbered.get(&(i + 1)) {
-                let out = panel.with_extension("prompt.md");
-                std::fs::write(
-                    &out,
-                    format!(
-                        "{text}\n\nSource: {source} (panel {} of {})\n",
-                        i + 1,
-                        image
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or_default()
-                    ),
-                )?;
-                prompts_written.push(out);
-            }
-        }
+    else {
+        return Ok(written);
+    };
+    let numbered = numbered_prompts(&std::fs::read_to_string(&prompt_file)?);
+    let source = prompt_file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_string();
+    for (i, panel) in panels.iter().enumerate() {
+        let Some(text) = numbered.get(&(i + 1)) else {
+            continue;
+        };
+        let out = panel.with_extension("prompt.md");
+        std::fs::write(
+            &out,
+            format!(
+                "{text}\n\nSource: {source} (panel {} of {})\n",
+                i + 1,
+                image
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
+            ),
+        )?;
+        written.push(out);
     }
+    Ok(written)
+}
+
+/// Cuts a storyboard grid into storyboard/panel-NN.png with PhotoCraft.
+pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    let image = params
+        .get("image")
+        .and_then(Value::as_str)
+        .map(|p| resolve_workspace_path(s, p))
+        .ok_or_else(|| EngineError::InvalidParams("missing storyboard grid 'image'".into()))?;
+    let (columns, rows, inset) = grid_dims(params);
+    let (w, h) = image::image_dimensions(&image)?;
+    let (cw, ch) = (w / columns, h / rows);
+    if cw <= 2 * inset || ch <= 2 * inset {
+        return Err(EngineError::InvalidParams(
+            "panels too small for that grid and inset".into(),
+        ));
+    }
+    let out_dir = dir.join(STORYBOARD_DIR);
+    std::fs::create_dir_all(&out_dir)?;
+    let panels = crop_panels(&dir, &image, &out_dir, columns, rows, inset, (cw, ch))?;
+    let prompts_written = write_prompts(s, params, &panels, &image)?;
     let mut status = workshop_status(s)?;
     status["panels"] = json!(panels);
     status["prompts"] = json!(prompts_written);
@@ -1305,8 +1356,8 @@ pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Val
 }
 
 /// Every file the workshop knows about, grouped by stage.
-pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
+/// Every stage's files, then any other file in the project folder that none of them named.
+fn collected_files(s: &Session, dir: &Path) -> Vec<Value> {
     let mut files = Vec::new();
     if let Some(audio) = &s.song_audio {
         files.push(file_entry("audio", audio, true));
@@ -1314,58 +1365,69 @@ pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
     for f in files_in(&dir.join("liner-notes"), None) {
         files.push(file_entry("liner_notes", &f, true));
     }
-    for t in &transcript_files(&dir) {
+    for t in &transcript_files(dir) {
         files.push(file_entry("transcript", t, true));
     }
-    if let Some(fcproj) = video_project_path(&dir) {
+    if let Some(fcproj) = video_project_path(dir) {
         files.push(file_entry("transcript", &fcproj, true));
     }
     for f in files_in(&dir.join(STORYBOARD_DIR), None) {
         files.push(file_entry("storyboard", &f, true));
     }
-    for f in workshop_asset_files(&dir) {
+    for f in workshop_asset_files(dir) {
         files.push(file_entry("assets", &f, true));
     }
     let listed: Vec<PathBuf> = files
         .iter()
         .filter_map(|f| f["path"].as_str().map(PathBuf::from))
         .collect();
-    for f in files_in(&dir, None) {
+    for f in files_in(dir, None) {
         if !listed.contains(&f) && Some(&f) != s.project_path.as_ref() {
             files.push(file_entry("other", &f, true));
         }
     }
-    if let Some(group_filter) = params
+    files
+}
+
+fn retain_group(files: &mut Vec<Value>, params: &Value) {
+    let Some(group) = params
         .get("group")
         .and_then(Value::as_str)
         .map(str::to_ascii_lowercase)
-        && !group_filter.is_empty()
-    {
-        files.retain(|f| {
-            f["group"]
-                .as_str()
-                .is_some_and(|g| g.to_ascii_lowercase() == group_filter)
-        });
-    }
-    if let Some(q) = params
+        .filter(|g| !g.is_empty())
+    else {
+        return;
+    };
+    files.retain(|f| {
+        f["group"]
+            .as_str()
+            .is_some_and(|g| g.to_ascii_lowercase() == group)
+    });
+}
+
+fn retain_query(files: &mut Vec<Value>, params: &Value) {
+    let Some(q) = params
         .get("filter")
         .or_else(|| params.get("query"))
         .and_then(Value::as_str)
         .map(str::to_ascii_lowercase)
-        && !q.is_empty()
-    {
-        files.retain(|f| {
-            f["name"]
-                .as_str()
-                .is_some_and(|n| n.to_ascii_lowercase().contains(&q))
-                || f["path"]
-                    .as_str()
-                    .is_some_and(|p| p.to_ascii_lowercase().contains(&q))
-                || f["group"]
-                    .as_str()
-                    .is_some_and(|g| g.to_ascii_lowercase().contains(&q))
-        });
-    }
+        .filter(|q| !q.is_empty())
+    else {
+        return;
+    };
+    files.retain(|f| {
+        ["name", "path", "group"]
+            .iter()
+            .any(|key| f[key].as_str().is_some_and(|v| v.to_ascii_lowercase().contains(&q)))
+    });
+}
+
+/// Every file the workshop knows about, grouped by stage.
+pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    let mut files = collected_files(s, &dir);
+    retain_group(&mut files, params);
+    retain_query(&mut files, params);
     Ok(json!({"ok": true, "project_dir": dir, "count": files.len(), "files": files}))
 }
 
