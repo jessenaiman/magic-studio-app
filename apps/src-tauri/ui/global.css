@@ -124,10 +124,20 @@
 .report-detail { color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
 
 /* A share is a native <progress>: its value is an attribute, never an inline style. */
+[data-lang="rust"] { --lang-tone: var(--rust); }
+[data-lang="typescript"] { --lang-tone: var(--motion-blue); }
+[data-lang="tsx"] { --lang-tone: var(--info); }
+[data-lang="css"] { --lang-tone: var(--pose-purple); }
+[data-lang="html"] { --lang-tone: var(--tone-assets); }
+[data-lang="markdown"] { --lang-tone: var(--check-green); }
+[data-lang="python"] { --lang-tone: var(--depth-gold); }
+[data-lang="javascript"] { --lang-tone: var(--amber); }
+.report-lang { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border: thin solid var(--lang-tone, var(--line)); border-radius: var(--radius-sm); color: var(--lang-tone, var(--muted)); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
+.report-lang::before { content: ""; width: var(--dot-size-sm); height: var(--dot-size-sm); border-radius: 50%; background: var(--lang-tone, var(--muted)); }
 .report[data-look="bar"] { appearance: none; display: block; width: 100%; height: var(--space-1); border: 0; border-radius: var(--radius-sm); background: var(--surface-2); overflow: hidden; }
 .report[data-look="bar"]::-webkit-progress-bar { background: var(--surface-2); }
-.report[data-look="bar"]::-webkit-progress-value { background: var(--accent); }
-.report[data-look="bar"]::-moz-progress-bar { background: var(--accent); }
+.report[data-look="bar"]::-webkit-progress-value { background: var(--lang-tone, var(--accent)); }
+.report[data-look="bar"]::-moz-progress-bar { background: var(--lang-tone, var(--accent)); }
 td > .report[data-look="bar"] { display: inline-block; width: var(--size-80); margin-right: var(--space-2); vertical-align: middle; }
 
 .report-section { overflow: visible; }
