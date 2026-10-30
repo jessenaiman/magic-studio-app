@@ -261,7 +261,7 @@ fn has_asset(s: &Session) -> std::result::Result<(), String> {
 }
 
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`
-/// description. Every caller (CLI, MCP, app, bridge) goes through `Session::execute`, so a
+/// description. Every caller (CLI, MCP, app) goes through `Session::execute`, so a
 /// mistyped value fails the same way everywhere.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
     let (Ok(Value::Object(expected)), Some(given)) = (
@@ -630,6 +630,24 @@ pub fn build() -> Vec<CommandSpec> {
             [],
             None,
             "{\"id\":\"element ID\",\"value\":\"value\",\"instance\":0}",
+            always,
+            crate::command_center::requires_ui
+        ),
+        cmd!(
+            "ui.text_edit",
+            "Edit the focused text field using native WebKit (Linux)",
+            [],
+            None,
+            "{\"action\":\"edit.undo, edit.redo, edit.cut, edit.copy, edit.paste or edit.select_all\"}",
+            always,
+            crate::command_center::requires_ui
+        ),
+        cmd!(
+            "ui.menu",
+            "Open a shared File or text context menu",
+            [],
+            None,
+            "{\"menu\":\"file or text\",\"x\":0,\"y\":48}",
             always,
             crate::command_center::requires_ui
         ),

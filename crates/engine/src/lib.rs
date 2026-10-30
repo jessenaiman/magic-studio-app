@@ -97,6 +97,7 @@ pub mod skills_registry;
 pub mod storyboard;
 pub mod storyboard_crud;
 pub mod storyboard_design;
+mod storyboard_document;
 pub mod studio_cues;
 pub mod synfig;
 pub mod theatre;
@@ -137,7 +138,7 @@ pub type Result<T> = std::result::Result<T, EngineError>;
 
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`
 /// description (e.g. `"auto_cut": "true"` where the description says `false`). Every caller (CLI, MCP,
-/// app, bridge) goes through `Session::execute`, so a mistyped value fails the same way everywhere
+/// app) goes through `Session::execute`, so a mistyped value fails the same way everywhere
 /// instead of a handler silently falling back to its default.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
     let (Ok(Value::Object(expected)), Some(given)) = (

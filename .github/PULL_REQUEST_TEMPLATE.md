@@ -31,7 +31,7 @@ Closes #
 - [ ] No unrelated files (build artifacts, local config) are included in the diff.
 
 ## MOPS handoff
-<!-- Record this at agent check-in. Unknown is honest; no session discovery or resume script is required. Resume verified means the author verified the exact command for this session. Backstage only displays/copies it and never executes it. -->
+<!-- Record this at agent check-in. Unknown is honest; no session discovery or resume script is required. Use literal Session ID and Resume command text without Markdown wrappers. Resume verified is only the author’s recorded attestation. Backstage only displays/copies it and never executes it. -->
 - Task: Unknown
 - Issue: Unknown
 - Department: Unknown

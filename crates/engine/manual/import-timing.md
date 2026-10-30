@@ -17,7 +17,7 @@ $PROJECT, supplied $JSON and original $SRT.
 
 ## Command
 ```sh
-mc "$PROJECT" workshop.import_transcript path="$JSON" captions="$SRT"
+magic-cli --project "$PROJECT" workshop.import_transcript path="$JSON" captions="$SRT"
 ```
 
 ## Output

@@ -92,6 +92,14 @@ pub fn catalog(s: &mut crate::Session, params: &Value) -> crate::Result<Value> {
             let dir = path.parent().unwrap_or(path);
             let thumb = dir.join("storyboard/.preview/page-01.png");
             let is_open = active.as_deref() == Some(p.as_str());
+            let readiness = readiness(path);
+            let availability = if !path.is_file() {
+                "missing"
+            } else if readiness["openable"] == true {
+                "available"
+            } else {
+                "unreadable"
+            };
             json!({
                 "path": p,
                 "project_id": p,
@@ -100,9 +108,10 @@ pub fn catalog(s: &mut crate::Session, params: &Value) -> crate::Result<Value> {
                 "folder": dir,
                 "exists": path.is_file(),
                 "thumb": thumb.is_file().then(|| thumb.to_string_lossy().into_owned()),
-                "open_state": if is_open { "open" } else { "ready" },
+                "availability": availability,
+                "open_state": if is_open { "attached" } else { "not_observed_open" },
                 "sessions": [],
-                "readiness": readiness(path)
+                "readiness": readiness
             })
         })
         .collect();
@@ -117,20 +126,27 @@ pub fn catalog(s: &mut crate::Session, params: &Value) -> crate::Result<Value> {
 
 fn readiness(path: &Path) -> Value {
     let Ok(text) = fs::read_to_string(path) else {
-        return json!({"state":"unreadable","next_step":"Project file is missing or unreadable","editor_ready":false});
+        return json!({"state":"unreadable","openable":false,"next_step":"Locate the project file, or remove this entry from Recent.","editor_ready":false});
     };
     let Ok(doc) = serde_json::from_str::<Value>(&text) else {
-        return json!({"state":"unreadable","next_step":"Invalid project JSON","editor_ready":false});
+        return json!({"state":"unreadable","openable":false,"next_step":"The project file contains invalid JSON.","editor_ready":false});
     };
     if doc["format"].as_str() != Some("magicstudio.project") {
-        return json!({"state":"unreadable","next_step":"Not a Magic Studio project","editor_ready":false});
+        return json!({"state":"unreadable","openable":false,"next_step":"This file is not a Magic Studio project.","editor_ready":false});
     }
     let dir = path.parent().unwrap_or(path);
     let audio = doc["workshop"]["audio"]
         .as_str()
         .is_some_and(|a| !a.is_empty() && (dir.join(a).is_file() || Path::new(a).is_file()));
-    let transcript =
-        dir.join("transcript.json").is_file() || dir.join("lyrics/words.json").is_file();
+    let transcript = crate::workshop::transcript_files(dir).iter().any(|path| {
+        crate::workshop::transcript_document(path)
+            .ok()
+            .is_some_and(|document| {
+                document["words"]
+                    .as_array()
+                    .is_some_and(|words| !words.is_empty())
+            })
+    });
     let editor_ready = dir.join("hyperframes/index.html").is_file()
         || doc["workshop"]["video_project"]
             .as_str()
@@ -144,5 +160,5 @@ fn readiness(path: &Path) -> Value {
     } else {
         "Open project"
     };
-    json!({"audio_available":audio,"transcript_valid":transcript,"editor_ready":editor_ready,"approval":"not inferred","next_step":next,"problems":[],"quick_actions":[{"label":"Project details","view":"project","open_block":"song","enabled":true},{"label":"Lyrics / transcript","view":"project","open_block":"lyrics","enabled":transcript},{"label":"Running video editor","view":"studio","enabled":editor_ready}]})
+    json!({"openable":true,"audio_available":audio,"transcript_valid":transcript,"editor_ready":editor_ready,"approval":"not inferred","next_step":next,"problems":[],"quick_actions":[{"label":"Project","view":"project","open_block":"song","enabled":true},{"label":"Lyrics / transcript","view":"project","open_block":"lyrics","enabled":transcript},{"label":"Studio","view":"studio","enabled":editor_ready}]})
 }

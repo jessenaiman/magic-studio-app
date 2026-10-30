@@ -526,9 +526,8 @@ fn storyboard_inputs_changed(dir: &Path) -> Option<std::time::SystemTime> {
 pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<Value> {
     if params["template"].is_null() || params["template"].is_string() {
         let dir = project_dir(s)?;
-        let active_board = std::fs::read(dir.join("storyboard/movie-board.json"))
+        let active_board = crate::storyboard_document::load(&dir)
             .ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             .unwrap_or(Value::Null);
         let selected = cmd_storyboard_template(s, &json!({}))?;
         let raw_template = params["template"]
@@ -550,9 +549,8 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
                 .into_iter()
                 .next()
                 .or_else(|| {
-                    std::fs::read(dir.join("storyboard/movie-board.json"))
+                    crate::storyboard_document::load(&dir)
                         .ok()
-                        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
                         .and_then(|v| v["source_transcript"].as_str().map(PathBuf::from))
                         .filter(|p| p.is_file())
                 })
@@ -675,29 +673,25 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
             "saved"
         });
         let executable = crate::command_center::cli_program();
+        let proj = crate::command_center::shell_quote(
+            &s.project_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        );
         result["next_commands"] = json!([format!(
-            "{} --bridge auto exec storyboard.read scene=1 project={}",
+            "{} --project {} storyboard.read scene=1",
             crate::command_center::shell_quote(&executable),
-            crate::command_center::shell_quote(
-                &s.project_path
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            )
+            proj
         )]);
         result["resume_command"] = json!(format!(
-            "{} --bridge auto exec workshop.build_storyboard draft=true resume={} source={} project={}",
+            "{} --project {} workshop.build_storyboard draft=true resume={} source={}",
             crate::command_center::shell_quote(&executable),
+            proj,
             crate::command_center::shell_quote(&out.join("manifest.json").to_string_lossy()),
             crate::command_center::shell_quote(
                 params["source"].as_str().unwrap_or(&dir.to_string_lossy())
             ),
-            crate::command_center::shell_quote(
-                &s.project_path
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            )
         ));
         if let Some(transcript) = params["transcript"].as_str() {
             let command = format!(
@@ -722,9 +716,7 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
 /// Current storyboard build state: PDF exists, previews, staleness.
 pub fn cmd_workshop_storyboard(s: &mut Session, _: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    if let Ok(text) = std::fs::read_to_string(dir.join("storyboard/movie-board.json"))
-        && let Ok(mut board) = serde_json::from_str::<Value>(&text)
-    {
+    if let Ok(mut board) = crate::storyboard_document::load(&dir) {
         if board["design"]["placements"].is_array() {
             let base = crate::storyboard_design::base(&board);
             board["previews"] = base["previews"].clone();
@@ -774,8 +766,7 @@ pub fn cmd_storyboard_init(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     // The editable DeckCraft document is authoritative once created. Reopening never regenerates it.
     let active = dir.join("storyboard/movie-board.json");
-    if let Ok(bytes) = std::fs::read(&active)
-        && let Ok(board) = serde_json::from_slice::<Value>(&bytes)
+    if let Ok(board) = crate::storyboard_document::load(&dir)
         && board["deck"]
             .as_str()
             .is_some_and(|p| Path::new(p).is_file())
@@ -1015,9 +1006,7 @@ pub fn cmd_storyboard_read(s: &mut Session, params: &Value) -> Result<Value> {
     let mut result = json!({"target":format!("scene-{n}"),"ok": true, "scene": n, "title": scene_label(n - 1, scene), "kind": scene["kind"], "start": scene["start"], "end": scene["end"],
         "status": scene["status"], "notes": scene["notes"], "reference": scene["reference"], "teaching_reference": scene["teaching_reference"],
         "sections": scene["sections"], "lines": lines, "source": scene_doc_path(&dir, n), "page": first_scene_page(&dir) + n - 1});
-    if let Ok(text) = std::fs::read_to_string(dir.join("storyboard/movie-board.json"))
-        && let Ok(board) = serde_json::from_str::<Value>(&text)
-    {
+    if let Ok(board) = crate::storyboard_document::load(&dir) {
         let page = board["first_scene_page"].as_u64().unwrap_or(1) + n as u64 - 1;
         // The board's spans describe the scenes it was built from. After the song's scenes change
         // (new captions), a stale board must not hand its old spans back to the rebuild.

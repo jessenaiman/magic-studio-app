@@ -216,6 +216,18 @@ pub fn open_with_options(
     }
     let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR missing")?;
     let dir = PathBuf::from(runtime).join("magicstudio-studio");
+    // Linux reports a replaced running binary with a " (deleted)" suffix.
+    // Launch the replacement at the same exact path, never an unrelated PATH entry.
+    let replacement = executable
+        .to_str()
+        .and_then(|path| path.strip_suffix(" (deleted)"))
+        .map(PathBuf::from)
+        .filter(|path| path.is_file());
+    let executable = if executable.is_file() {
+        executable
+    } else {
+        replacement.as_deref().unwrap_or(executable)
+    };
     let mut command = std::process::Command::new(executable);
     if animate_only {
         command.arg("--animate");

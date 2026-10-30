@@ -35,7 +35,6 @@ pub struct Task {
     pub next_action: Option<String>,
     pub action: Option<String>,
     pub blocker: Option<String>,
-    pub verified_resume: bool,
     pub role_available: bool,
     pub worktree_available: bool,
     pub blocker_known: bool,
@@ -47,6 +46,14 @@ pub struct Task {
     pub ci: String,
     pub review_note: String,
     pub source: String,
+}
+impl Task {
+    /// Recorded PR text only. Copying never checks or restores a live session.
+    pub fn copyable_resume(&self) -> Option<&str> {
+        self.resume_command.as_deref().filter(|command| {
+            !command.is_empty() && command.len() <= 4096 && !command.chars().any(char::is_control)
+        })
+    }
 }
 pub struct Snapshot {
     pub tasks: Vec<Task>,

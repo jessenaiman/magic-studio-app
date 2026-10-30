@@ -5,9 +5,6 @@ use std::path::Path;
 fn invalid(s: &str) -> EngineError {
     EngineError::InvalidParams(s.into())
 }
-fn read(path: &Path) -> Result<Value> {
-    serde_json::from_slice(&std::fs::read(path)?).map_err(|e| invalid(&e.to_string()))
-}
 fn write(path: &Path, value: &Value) -> Result<()> {
     std::fs::write(
         path,
@@ -19,9 +16,10 @@ fn draft(s: &Session) -> Result<std::path::PathBuf> {
     Ok(crate::workshop::project_dir(s)?.join("storyboard/design-draft.json"))
 }
 pub fn inspect(s: &mut Session, _: &Value) -> Result<Value> {
-    let board = crate::workshop::project_dir(s)?.join("storyboard/movie-board.json");
+    let directory = crate::workshop::project_dir(s)?;
+    let board = directory.join("storyboard/movie-board.json");
     let board = if board.exists() {
-        read(&board)?
+        crate::storyboard_document::load(&directory)?
     } else {
         json!({})
     };
@@ -35,7 +33,7 @@ pub fn inspect(s: &mut Session, _: &Value) -> Result<Value> {
     doc["dirty"] = json!(false);
     let file = draft(s)?;
     if file.exists() {
-        let mut pending = read(&file)?;
+        let mut pending = crate::storyboard_document::related(&directory, &file)?;
         if pending["dirty"] == true
             || pending["placements"]
                 .as_array()
@@ -332,7 +330,7 @@ fn writing_area(shape: &Value, shapes: &Value) -> Value {
 /// Stage a native text replacement in the existing design draft, then use its Save path.
 pub(crate) fn edit_text(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
-    let board = read(&dir.join("storyboard/movie-board.json"))?;
+    let board = crate::storyboard_document::load(&dir)?;
     let page = p["page"]
         .as_u64()
         .or_else(|| {
@@ -393,7 +391,10 @@ pub(crate) fn base(board: &Value) -> Value {
     }
     if let Some(parent) = board["parent_deck"].as_str()
         && let Some(folder) = Path::new(parent).parent()
-        && let Ok(b) = read(&folder.join("manifest.json"))
+        && let Some(directory) = board["project"]
+            .as_str()
+            .and_then(|p| Path::new(p).parent())
+        && let Ok(b) = crate::storyboard_document::related(directory, &folder.join("manifest.json"))
     {
         return b;
     }
@@ -402,7 +403,7 @@ pub(crate) fn base(board: &Value) -> Value {
 
 pub fn place(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
-    let board = read(&dir.join("storyboard/movie-board.json"))?;
+    let board = crate::storyboard_document::load(&dir)?;
     let requested = p["scene"]
         .as_u64()
         .map(|scene| board["first_scene_page"].as_u64().unwrap_or(1) + scene.saturating_sub(1))
@@ -481,7 +482,7 @@ pub fn save(s: &mut Session, p: &Value) -> Result<Value> {
                 "Draft must be this project's generated storyboard manifest",
             ));
         }
-        let mut board = read(&path)?;
+        let mut board = crate::storyboard_document::related(&dir, &path)?;
         if board["project"] != json!(s.project_path) || board["draft"] != true {
             return Err(invalid("Not a draft for this open project"));
         }
@@ -518,7 +519,7 @@ pub fn save(s: &mut Session, p: &Value) -> Result<Value> {
         );
     }
     let dir = crate::workshop::project_dir(s)?;
-    let board = read(&dir.join("storyboard/movie-board.json"))?;
+    let board = crate::storyboard_document::load(&dir)?;
     let design = inspect(s, &json!({}))?;
     save_deck(s, board, &design)
 }

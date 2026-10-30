@@ -41,7 +41,7 @@ magic-cli --session-file /dev/null exec crew.list --params '{}'
 
 These are direct argument vectors, not shell strings. `/dev/null` is verified as a
 character device: the CLI cannot inherit a saved project/window binding. No
-`--project`, bridge, dry-run, project-open, discovery, agent/model call, or generic
+`--project`, desktop connection, dry-run, project-open, discovery, agent/model call, or generic
 command dispatcher is used. No repeat calls occur on tab/file selection. A refresh
 in flight is not duplicated; the prior observation stays visible until completion.
 Each call has a 10-second deadline and 1 MiB stdout/stderr limits. Only its own
@@ -167,18 +167,24 @@ not the network. This is not fully connected/live MOPS. Missing metadata is Unkn
 The single canonical PR rule is `.github/PULL_REQUEST_TEMPLATE.md`'s `## MOPS
 handoff` section. The obsolete lowercase duplicate template was examined, found
 unreferenced, and removed. Agents record their own harness, session ID, worktree,
-author-verified resume command and next action/blocker there. No session logging or
+recorded resume command and next action/blocker there. No session logging or
 extra session script is needed. Existing role files are neither moved nor created;
 role Open is enabled only for a discovered existing crew role target. A reported
 worktree is a resolved directory, not proof of its branch or live session state.
 
 Controls: arrows/j/k select PR; Enter/o opens its validated GitHub URL; l opens the
-verified role; p opens the recorded available folder; c requests copy of an
-**author-verified** resume command; f requests copying actual review feedback;
+verified role; p opens the recorded available folder; c requests copy of a
+recorded resume command; f requests copying actual review feedback;
 m opens the same PR's Mayhem evidence scope; d exposes full source fields, warnings
 and original PR body. Copy uses Crossterm OSC52 only and reports a request, not
-confirmed host clipboard success. Unknown/unverified resume commands and known
-unsupported terminals disable copy. No copied command is ever executed by Backstage.
+confirmed host clipboard success. Missing commands, control characters, commands
+over 4 KiB, and known unsupported terminals disable copy. Harness, session ID, worktree, and the
+legacy Resume verified field are recorded metadata, never live-session
+validation or prerequisites for copying the displayed command. Session ID and
+Resume command are literal text after the field colon and one optional space;
+do not wrap these values in Markdown backticks. Additional spaces, backticks,
+and shell redirection remain unchanged. No copied command is ever executed by
+Backstage.
 
 `--mayhem-pr-report NUMBER` with the same explicit MOPS inputs prints native PR
 base/head scope and missing matching audit-artifact evidence. It never substitutes

@@ -176,8 +176,29 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
 }
 fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     let inner = panel(f, area);
+    let empty_state = if app.refreshing {
+        (
+            "Loading",
+            "Reading saved projects",
+            "Reading existing project history.",
+        )
+    } else if let Some(error) = app.project_data.error.as_deref() {
+        ("Unavailable", "Unavailable", error)
+    } else if app.project_data.catalog_observed {
+        (
+            "0 observed",
+            "No saved projects",
+            "Open a project in Magic Studio to add it to recent history.",
+        )
+    } else {
+        (
+            "Not observed",
+            "Not observed",
+            "Press r to read existing project history.",
+        )
+    };
     let count = if app.project_data.projects.is_empty() {
-        "Unavailable".into()
+        empty_state.0.into()
     } else {
         format!("{} observed", app.project_data.projects.len())
     };
@@ -193,17 +214,14 @@ fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
         text(
             f,
             Rect::new(inner.x + 2, inner.y + 4, inner.width.saturating_sub(4), 1),
-            "▥  Unavailable",
+            format!("▥  {}", empty_state.1),
             GOLD,
             true,
         );
         text(
             f,
             Rect::new(inner.x + 2, inner.y + 6, inner.width.saturating_sub(4), 2),
-            app.project_data
-                .error
-                .as_deref()
-                .unwrap_or("Project inventory not observed"),
+            empty_state.2,
             MUTED,
             false,
         );

@@ -10,6 +10,7 @@ from typing import Any
 import click
 
 from cli_anything.magic import __version__
+from cli_anything.magic.core import audit as audit_core
 from cli_anything.magic.core.session import Session
 from cli_anything.magic.utils import magic_backend as backend
 
@@ -38,7 +39,7 @@ def emit(value: Any) -> None:
 def execute(ctx: click.Context, command: str, params: dict[str, Any]) -> Any:
     params.setdefault("_origin", "CLI")
     return ctx.obj["session"].execute(
-        command, params, dry_run=ctx.obj["dry_run"], bridge=ctx.obj["bridge"]
+        command, params, dry_run=ctx.obj["dry_run"]
     )
 
 
@@ -148,7 +149,6 @@ class RegistryGroup(click.Group):
     help="Separate caller session binding",
 )
 @click.option("--dry-run", is_flag=True, help="Preview mutations without applying them")
-@click.option("--bridge", hidden=True, help="Internal explicit window endpoint")
 @click.version_option(__version__, prog_name="magic-cli")
 @click.pass_context
 def cli(
@@ -157,7 +157,6 @@ def cli(
     project: str | None,
     session_file: str | None,
     dry_run: bool,
-    bridge: str | None,
 ) -> None:
     """Operate installed Magic Studio: projects, storyboard, and the desktop app.
 
@@ -176,11 +175,40 @@ def cli(
     """
     session = Session(session_file)
     ctx.call_on_close(session.close)
-    ctx.obj = {"session": session, "dry_run": dry_run, "bridge": bridge}
+    ctx.obj = {"session": session, "dry_run": dry_run}
     if project:
         session.select_project(project)
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
+
+
+@cli.command("audit")
+@click.argument(
+    "path", type=click.Path(exists=True, file_okay=False, path_type=Path), default="."
+)
+@click.option(
+    "--tool",
+    "tools",
+    multiple=True,
+    type=click.Choice(tuple(audit_core.TOOLS)),
+    help="Select a native tool; repeat to choose several. Default: all five.",
+)
+@click.pass_context
+def audit(ctx: click.Context, path: Path, tools: tuple[str, ...]) -> None:
+    """Run native repository checks with unmodified tool output.
+
+    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard. Each tool uses
+    PATH (or root node_modules/.bin) and requires its repository configuration.
+    Missing tools/configuration are errors, not passing or skipped checks.
+    Lizard emits native CSV using code-limits.json's max_function_ccn.
+
+    Each native exit code is printed; the command returns the first nonzero
+    status, or 0 if all selected tools return 0. Setup/invocation errors use 2;
+    signals use 128 + signal. Remaining selected tools still run after failure.
+    Global --dry-run validates setup and prints commands without running them.
+    No install, autofix, Codacy, AgentLinter, or upload feature is invoked.
+    """
+    ctx.exit(audit_core.run_audit(path.resolve(), tools, dry_run=ctx.obj["dry_run"]))
 
 
 @cli.command("commands")
@@ -236,7 +264,7 @@ def mcp(ctx: click.Context) -> None:
     from cli_anything.magic.core.mcp_server import run_mcp_stdio
 
     run_mcp_stdio(
-        ctx.obj["session"], bridge=ctx.obj["bridge"], dry_run=ctx.obj["dry_run"]
+        ctx.obj["session"], dry_run=ctx.obj["dry_run"]
     )
 
 

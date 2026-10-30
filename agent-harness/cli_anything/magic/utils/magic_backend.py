@@ -3,7 +3,7 @@
 Handles:
 1. Finding the native `magicstudio-shell` binary (repo target/debug, installed ~/.local/share/magic-studio/bin, or PATH).
 2. Discovering live Studio instances via `$XDG_RUNTIME_DIR/magicstudio-studio/*.sock` (`ui.feedback`).
-3. Communicating with a live Studio window over its Unix domain socket or `--control` TCP port.
+3. Communicating with a live Studio window over its private Unix domain socket.
 4. Executing headless engine commands via `magicstudio-shell --headless` (with no dependency on `mc`).
 5. Launching or focusing a Studio window (`magic-cli studio open [project]`) and waiting for `ui_ready == true`.
 """
@@ -78,7 +78,7 @@ def _long_running_commands() -> frozenset[str]:
 
 
 def command_timeout(cmd_id: str) -> float:
-    override = os.environ.get("MAGICSTUDIO_BRIDGE_TIMEOUT_MS")
+    override = os.environ.get("MAGICSTUDIO_COMMAND_TIMEOUT_MS")
     if override:
         try:
             value = float(override) / 1000
@@ -86,7 +86,7 @@ def command_timeout(cmd_id: str) -> float:
                 raise ValueError()
             return value
         except ValueError:
-            raise ValueError("MAGICSTUDIO_BRIDGE_TIMEOUT_MS must be a positive number") from None
+            raise ValueError("MAGICSTUDIO_COMMAND_TIMEOUT_MS must be a positive number") from None
     return 3600.0 if cmd_id in _long_running_commands() else 30.0
 
 
@@ -110,7 +110,7 @@ def _send_jsonl_line(sock: socket.socket, cmd_id: str, params: dict[str, Any]) -
     if resp.get("ok") is True:
         res = resp.get("result")
         return res if isinstance(res, dict) else {"value": res}
-    raise RuntimeError(str(resp.get("error") or "unknown Studio bridge error"))
+    raise RuntimeError(str(resp.get("error") or "unknown Studio command error"))
 
 
 def call_unix_socket(
@@ -130,20 +130,6 @@ def call_unix_socket(
     result.setdefault("endpoint", f"unix:{path_str}")
     result.setdefault("instance", Path(path_str).name)
     return result
-
-
-def call_tcp_bridge(
-    addr: str, cmd_id: str, params: dict[str, Any] | None = None,
-    timeout: float | None = None,
-) -> dict[str, Any]:
-    host, port_str = ("127.0.0.1", addr) if ":" not in addr else addr.rsplit(":", 1)
-    req = dict(params or {})
-    if "_client" not in req and os.environ.get("HERDR_PANE_ID"):
-        req["_client"] = f"herdr:{os.environ['HERDR_PANE_ID']}"
-    reply_timeout = command_timeout(cmd_id) if timeout is None else timeout
-    with socket.create_connection((host, int(port_str)), timeout=min(reply_timeout, 5.0)) as sock:
-        sock.settimeout(reply_timeout)
-        return _send_jsonl_line(sock, cmd_id, req)
 
 
 def discover_studios() -> dict[str, list[dict[str, Any]]]:
@@ -191,14 +177,14 @@ def studio_for_project(project_path: str | Path) -> dict[str, Any] | None:
     return None
 
 
-def call_bridge(
+def call_studio(
     endpoint: str,
     cmd_id: str,
     params: dict[str, Any] | None = None,
     expected_project: str | None = None,
     expected_instance: str | None = None,
 ) -> dict[str, Any]:
-    """Send a command to an explicit or discovered Studio bridge endpoint."""
+    """Send a command to a pinned or automatically discovered Studio window."""
     req_params = dict(params or {})
     if expected_project:
         req_params["_expected_project"] = str(Path(expected_project).resolve())
@@ -230,9 +216,9 @@ def call_bridge(
             "Multiple Studios available; select a project or studio window explicitly."
         )
 
-    if endpoint.startswith("unix:"):
-        return call_unix_socket(endpoint, cmd_id, req_params)
-    return call_tcp_bridge(endpoint, cmd_id, req_params)
+    if not endpoint.startswith("unix:"):
+        raise RuntimeError("Invalid Studio session endpoint; use studio open to select a window")
+    return call_unix_socket(endpoint, cmd_id, req_params)
 
 
 def execute_headless(

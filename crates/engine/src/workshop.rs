@@ -1851,7 +1851,7 @@ pub fn cmd_assets_request_sheet(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(
         json!({"ok": true, "brief": path, "items": items.len(), "next": [
         format!("Send the image agent: follow {} exactly", path.display()),
-        "When the sheet exists: cut each asset out (PhotoCraft via mc), check at full size, assets.fixlist_add asset=<id> status=done".to_string()]}),
+        "When the sheet exists: cut each asset out (PhotoCraft via magic-cli), check at full size, assets.fixlist_add asset=<id> status=done".to_string()]}),
     )
 }
 

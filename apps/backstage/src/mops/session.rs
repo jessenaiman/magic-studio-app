@@ -82,28 +82,20 @@ fn resume(
         Rect::new(inner.x, y + 3, inner.width, 3),
         field(task, |t| t.resume_command.as_deref()),
     );
-    let verified = can_copy && resume_verified(task);
+    let copy_enabled = can_copy && task.and_then(Task::copyable_resume).is_some();
     button(
         f,
         Rect::new(inner.x, y + 6, 29, 3),
         "Copy resume command",
-        verified,
+        copy_enabled,
         MopsAction::CopyResume,
         actions,
     );
     resume_note(
         f,
         Rect::new(inner.x + 31, y + 7, inner.width.saturating_sub(31), 1),
-        verified,
+        copy_enabled,
     );
-}
-fn resume_verified(task: Option<&Task>) -> bool {
-    task.is_some_and(|t| {
-        t.verified_resume
-            && t.resume_command
-                .as_deref()
-                .is_some_and(|s| !s.trim().is_empty())
-    })
 }
 fn command_box(f: &mut Frame, area: Rect, command: &str) {
     f.render_widget(
@@ -117,16 +109,16 @@ fn command_box(f: &mut Frame, area: Rect, command: &str) {
         Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), 1),
     );
 }
-fn resume_note(f: &mut Frame, area: Rect, verified: bool) {
+fn resume_note(f: &mut Frame, area: Rect, copy_enabled: bool) {
     text(
         f,
         area,
-        if verified {
-            "Copy only — never executes"
+        if copy_enabled {
+            "Recorded text — copy only"
         } else {
-            "Unknown / unverified — copy disabled"
+            "Missing/invalid text or clipboard unavailable"
         },
-        if verified { IVORY } else { MUTED },
+        if copy_enabled { IVORY } else { MUTED },
         false,
     );
 }

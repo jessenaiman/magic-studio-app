@@ -462,9 +462,9 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
   json!({"id":c.id,"label":c.label,"params":c.params,"menu":c.menu,"enabled":reason.is_none(),"block_reason":reason,"long_running":c.long_running})
  }).collect();
     let mapping = json!([
- {"control":"Home / Open Project","command":"project.open","source":"apps/magicstudio-shell/src/main.rs:project_open","status":"source verified; UI transport separate"},
- {"control":"Home / New song","command":"project.intake","source":"apps/magicstudio-shell/src/main.rs:project_create","status":"source verified; shared intake command"},
- {"control":"Add transcript","command":"workshop.import_transcript","source":"apps/magicstudio-shell/ui/app.js","status":"existing UI omits captions picker"},
+ {"control":"Home / Open Project","command":"project.open","source":"apps/src-tauri/src/main.rs:project_open","status":"source verified; UI transport separate"},
+ {"control":"Home / New song","command":"project.intake","source":"apps/src-tauri/src/main.rs:project_create","status":"source verified; shared intake command"},
+ {"control":"Add transcript","command":"workshop.import_transcript","source":"apps/src-tauri/ui/app.js","status":"existing UI omits captions picker"},
  {"control":"Save","command":"project.save","source":"crates/engine/src/commands.rs","status":"backend command; not every UI save control verified"}]);
     let provenance = dir
         .and_then(|d| fs::read(d.join("transcript-provenance.json")).ok())
@@ -485,7 +485,15 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
         json!({})
     };
     let design = if dir.is_some() {
-        crate::storyboard_design::inspect(s, &json!({}))?
+        match crate::storyboard_design::inspect(s, &json!({})) {
+            Ok(design) => design,
+            Err(error) => {
+                let reason = format!("Storyboard needs attention: {error}");
+                problems.push(json!(reason));
+                json!({"error":reason,"readiness":{"state":"failed","reason":reason},
+                    "progression":{"allowed":false,"reason":reason}})
+            }
+        }
     } else {
         json!({})
     };
@@ -665,7 +673,7 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
         );
     }
     Ok(
-        json!({"ok":true,"creative_followup":creative_followup,"observation":observation,"prerequisites":prerequisites,"metrics":metrics,"next_commands":next_commands,"studio_acknowledgement":"unobserved; query ui.feedback separately","warnings":saved["warnings"],"project":s.project_path,"audio":s.song_audio,"target":s.video_target,"transcript":{"path":transcript,"valid":valid,"words":parsed.as_ref().and_then(|v|v["words"].as_array()).map(Vec::len)},"problems":problems,"received":saved["received"],"steps":saved["steps"],"provenance":provenance,"actions":actions,"commands":commands,"ui_mapping":mapping,"activity":activity,"storyboard_doctor":doctor,"visual_review":"pending","studio":"Not launched or switched. Attach only to an explicitly selected existing control bridge."}),
+        json!({"ok":true,"creative_followup":creative_followup,"observation":observation,"prerequisites":prerequisites,"metrics":metrics,"next_commands":next_commands,"studio_acknowledgement":"unobserved; query ui.feedback separately","warnings":saved["warnings"],"project":s.project_path,"audio":s.song_audio,"target":s.video_target,"transcript":{"path":transcript,"valid":valid,"words":parsed.as_ref().and_then(|v|v["words"].as_array()).map(Vec::len)},"problems":problems,"received":saved["received"],"steps":saved["steps"],"provenance":provenance,"actions":actions,"commands":commands,"ui_mapping":mapping,"activity":activity,"storyboard_doctor":doctor,"visual_review":"pending","studio":"Not launched or switched. Attach only to the explicitly selected existing Studio window."}),
     )
 }
 

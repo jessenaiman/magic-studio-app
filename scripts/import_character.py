@@ -12,19 +12,8 @@ import json
 import os
 from pathlib import Path
 import shutil
-import socket
 import subprocess
 import sys
-
-
-def find_bridge_port() -> int | None:
-    """Find active Magic Studio control port between 9888 and 9899."""
-    for port in range(9888, 9900):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.1)
-            if s.connect_ex(('127.0.0.1', port)) == 0:
-                return port
-    return None
 
 
 def run_cmd(args: list[str]) -> tuple[int, str, str]:
@@ -37,10 +26,13 @@ def main():
     parser.add_argument('source', type=Path, help='Path to source character image')
     parser.add_argument('--name', type=str, help='Character asset name (default: file stem)')
     parser.add_argument('--out', type=Path, help='Custom output path for transparent PNG')
-    parser.add_argument('--bridge', type=int, help='Magic Studio control port (auto-detected if omitted)')
+    parser.add_argument('--project', type=Path, help='Target .magic project for loading the asset')
     parser.add_argument('--no-load', action='store_true', help='Only process and verify; do not load into live app')
     parser.add_argument('--force', action='store_true', help='Bypass confirmation prompt if checks fail')
     args = parser.parse_args()
+    if not args.no_load and args.project is None:
+        parser.error('--project is required when loading; use --no-load to process only')
+    project = args.project.resolve(strict=True) if args.project else None
 
     source = args.source.resolve(strict=True)
     name = args.name or source.stem.split('.')[0]
@@ -151,21 +143,18 @@ def main():
         print(f"\nDone. Output saved to: {out_path} (loading skipped).")
         return
 
-    bridge_port = args.bridge or find_bridge_port()
-    if not bridge_port:
-        print(f"\nDone. Output saved to: {out_path}.")
-        print("Notice: No live Magic Studio window found on control ports (9888–9899). Skipping GUI stage load.")
-        return
-
-    print(f"\n[3/3] Loading asset into live Magic Studio (port {bridge_port})...")
+    print(f"\n[3/3] Loading asset into Magic Studio project {project}...")
     add_cmd = [
-        animcraft_bin, '--bridge', str(bridge_port), 'exec', 'project.add_asset',
+        animcraft_bin, '--project', str(project), 'exec', 'project.add_asset',
         f'path={out_path}', f'name={name}', 'kind=image'
     ]
-    run_cmd(add_cmd)
+    code, stdout, stderr = run_cmd(add_cmd)
+    if code != 0:
+        sys.exit(f"Failed to add asset to project: {stderr or stdout}")
+    asset_id = json.loads(stdout)['asset_id']
 
     load_cmd = [
-        animcraft_bin, '--bridge', str(bridge_port), 'exec', 'project.load_asset',
+        animcraft_bin, '--project', str(project), 'exec', 'project.load_asset',
         f'id={asset_id}', 'reload=true'
     ]
     code, stdout, stderr = run_cmd(load_cmd)

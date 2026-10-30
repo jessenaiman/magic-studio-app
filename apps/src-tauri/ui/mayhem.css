@@ -1,0 +1,51 @@
+/* Mayhem workspace content; navigation is owned by app-bar.css. */
+#backstage-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px;
+}
+
+#backstage-panel[hidden] {
+  display: none;
+}
+
+#backstage-panel .backstage-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+#backstage-panel h3 {
+  margin: 0;
+  margin-right: auto;
+}
+
+#backstage-status {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+#backstage-terminal {
+  height: clamp(300px, 60vh, 720px);
+  min-width: 0;
+  background: var(--bg);
+  padding: 8px;
+}
+
+#backstage-terminal .xterm {
+  height: 100%;
+}
+
+#backstage-panel :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #tab-analytics:is(:hover, :focus-visible) .mayhem-siren {
+    animation: none;
+  }
+}

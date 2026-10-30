@@ -73,7 +73,7 @@ A fresh build downloads missing Rust, frontend, and Python dependencies.
 ```sh
 git clone https://github.com/jessenaiman/magic-studio-app.git
 cd magic-studio-app
-cargo build -p magicstudio-shell --release --locked
+cargo build -p magicstudio-shell -p backstage --release --locked
 python3 scripts/install_magic.py --profile release
 ```
 

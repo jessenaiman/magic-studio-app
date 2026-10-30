@@ -259,7 +259,7 @@ def main():
             )
         )
         return
-    mc = lambda *args: json.loads(
+    magic_cli = lambda *args: json.loads(
         subprocess.run(
             [
                 a.magic_cli,
@@ -272,10 +272,10 @@ def main():
             check=True,
         ).stdout
     )
-    doc = mc("words.read")["document"]
+    doc = magic_cli("words.read")["document"]
     times = {
         c["word_id"]: c["start"]
-        for s in mc("words.studio_track")["sections"]
+        for s in magic_cli("words.studio_track")["sections"]
         for c in s["clips"]
     }
     anims = [
@@ -290,7 +290,7 @@ def main():
     ]
     for anim_id, d in designs(recipe, anims).items():
         anim = next(x for x in doc["animations"] if x["animation_id"] == anim_id)
-        saved = mc(
+        saved = magic_cli(
             "words.save",
             f"animation_id={anim_id}",
             f"expected_source_revision={anim['source_revision']}",
@@ -299,7 +299,7 @@ def main():
             + json.dumps({"font": recipe.get("font")} if recipe.get("font") else {}),
             "design=" + json.dumps(d),
         )
-        applied = mc("words.apply", f"animation_id={anim_id}") if a.apply else {}
+        applied = magic_cli("words.apply", f"animation_id={anim_id}") if a.apply else {}
         print(
             json.dumps(
                 {
