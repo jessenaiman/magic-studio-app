@@ -537,84 +537,100 @@ fn numbered_prompts(text: &str) -> std::collections::BTreeMap<usize, String> {
     out
 }
 
+fn timed_span(v: &Value) -> Option<(f64, f64)> {
+    v.get("start")
+        .and_then(Value::as_f64)
+        .zip(v.get("end").and_then(Value::as_f64))
+}
+
+/// A word is usable when its text is nonempty and its timing is finite, nonnegative and ordered.
+fn word_timing_ok(a: f64, b: f64, last: f64) -> bool {
+    a >= 0.0 && a.is_finite() && b.is_finite() && b >= a && a >= last - 0.001
+}
+
+fn word_problems(words: &[Value]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut last = f64::MIN;
+    for (i, w) in words.iter().enumerate() {
+        let has_text = w
+            .get("text")
+            .and_then(Value::as_str)
+            .is_some_and(|t| !t.trim().is_empty());
+        match (has_text, timed_span(w)) {
+            (true, Some((a, b))) if word_timing_ok(a, b, last) => last = a,
+            (true, Some(_)) => problems.push(format!(
+                "word {} is out of order or ends before it starts",
+                i + 1
+            )),
+            _ => problems.push(format!("word {} needs text, start and end", i + 1)),
+        }
+        if problems.len() > 5 {
+            break;
+        }
+    }
+    problems
+}
+
+fn paragraph_timing_ok(a: f64, b: f64, previous: f64) -> bool {
+    a.is_finite() && b.is_finite() && a >= previous && a >= 0.0 && b >= a
+}
+
+/// Paragraphs are ordered, nonnegative, timed and nonempty — or they are not paragraphs.
+fn paragraphs_ordered(lines: &[Value]) -> bool {
+    let mut previous = 0.0;
+    for p in lines {
+        match timed_span(p) {
+            Some((a, b))
+                if paragraph_timing_ok(a, b, previous)
+                    && p["text"].as_str().is_some_and(|t| !t.trim().is_empty()) =>
+            {
+                previous = a;
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn paragraph_problems(lines: &[Value]) -> Option<String> {
+    if lines.is_empty() || !paragraphs_ordered(lines) {
+        return Some("paragraphs need ordered nonnegative start/end and nonempty text".into());
+    }
+    None
+}
+
+/// Nothing may end after the recording it claims to describe.
+fn duration_problems(doc: &Value, duration: f64) -> Vec<String> {
+    let mut problems = Vec::new();
+    for key in ["words", "paragraphs"] {
+        for (i, v) in doc[key].as_array().into_iter().flatten().enumerate() {
+            if v["end"].as_f64().is_some_and(|end| end > duration + 0.001) {
+                problems.push(format!("{key} item {} ends after the recording ({duration:.6}s). Check matching audio/transcript; original received bytes retained.",i+1));
+            }
+        }
+    }
+    problems
+}
+
 /// Checks a transcript has the shape audio.transcribe writes.
 pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
     let mut problems = Vec::new();
-    let timed = |v: &Value| {
-        v.get("start")
-            .and_then(Value::as_f64)
-            .zip(v.get("end").and_then(Value::as_f64))
-    };
     match doc.get("words").and_then(Value::as_array) {
         None => problems.push("missing \"words\": [{text, start, end}]".into()),
         Some(words) if words.is_empty() => problems.push("\"words\" is empty".into()),
-        Some(words) => {
-            let mut last = f64::MIN;
-            for (i, w) in words.iter().enumerate() {
-                let text_ok = w
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .is_some_and(|t| !t.trim().is_empty());
-                match (text_ok, timed(w)) {
-                    (true, Some((a, b)))
-                        if a >= 0.0
-                            && a.is_finite()
-                            && b.is_finite()
-                            && b >= a
-                            && a >= last - 0.001 =>
-                    {
-                        last = a
-                    }
-                    (true, Some(_)) => problems.push(format!(
-                        "word {} is out of order or ends before it starts",
-                        i + 1
-                    )),
-                    _ => problems.push(format!("word {} needs text, start and end", i + 1)),
-                }
-                if problems.len() > 5 {
-                    break;
-                }
-            }
-        }
+        Some(words) => problems.extend(word_problems(words)),
     }
     match doc.get("paragraphs").and_then(Value::as_array) {
         None => problems.push(
             "missing \"paragraphs\": [{text, start, end}] (the sung lines or stanzas)".into(),
         ),
-        Some(lines) => {
-            let mut previous = 0.0;
-            if lines.is_empty()
-                || lines.iter().any(|p| match timed(p) {
-                    Some((a, b))
-                        if a.is_finite()
-                            && b.is_finite()
-                            && a >= previous
-                            && a >= 0.0
-                            && b >= a
-                            && p["text"].as_str().is_some_and(|t| !t.trim().is_empty()) =>
-                    {
-                        previous = a;
-                        false
-                    }
-                    _ => true,
-                })
-            {
-                problems
-                    .push("paragraphs need ordered nonnegative start/end and nonempty text".into());
-            }
-        }
+        Some(lines) => problems.extend(paragraph_problems(lines)),
     }
     if let Some(duration) = doc["recording_duration_sec"]
         .as_f64()
         .filter(|v| v.is_finite() && *v >= 0.0)
     {
-        for key in ["words", "paragraphs"] {
-            for (i, v) in doc[key].as_array().into_iter().flatten().enumerate() {
-                if v["end"].as_f64().is_some_and(|end| end > duration + 0.001) {
-                    problems.push(format!("{key} item {} ends after the recording ({duration:.6}s). Check matching audio/transcript; original received bytes retained.",i+1));
-                }
-            }
-        }
+        problems.extend(duration_problems(doc, duration));
     }
     problems
 }
@@ -1514,24 +1530,36 @@ fn fixlist_next(items: &[Value]) -> Vec<String> {
     next
 }
 
-/// Measures one image layer and suggests clean vs recreate with the evidence.
-pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
-    let path = params
-        .get("path")
-        .and_then(Value::as_str)
-        .map(|p| resolve_workspace_path(s, p))
-        .ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
-    let img = image::open(&path)?.to_rgba8();
-    let (w, h) = img.dimensions();
-    let alpha = |x: u32, y: u32| img.get_pixel(x, y)[3];
-    let opaque = img.pixels().filter(|p| p[3] > 128).count() as f64;
-    let partial = img.pixels().filter(|p| p[3] > 8 && p[3] < 247).count() as f64;
+const CUT_SIDES: [&str; 4] = ["left", "right", "top", "bottom"];
+
+/// Everything one image layer measures, before any joint is excused.
+struct ImageMeasures {
+    size: (u32, u32),
+    opaque: f64,
+    partial: f64,
+    touching: f64,
+    raggedness: f64,
+    smear: f64,
+    smear_aspect: f64,
+    cuts: [u32; 4],
+    full_bleed: bool,
+}
+
+fn border_touch_ratio(img: &image::RgbaImage, (w, h): (u32, u32)) -> f64 {
     let border: Vec<(u32, u32)> = (0..w)
         .flat_map(|x| [(x, 0), (x, h - 1)])
         .chain((0..h).flat_map(|y| [(0, y), (w - 1, y)]))
         .collect();
-    let touching = border.iter().filter(|(x, y)| alpha(*x, *y) > 128).count() as f64
-        / border.len().max(1) as f64;
+    let touching = border
+        .iter()
+        .filter(|(x, y)| img.get_pixel(*x, *y)[3] > 128)
+        .count() as f64;
+    touching / border.len().max(1) as f64
+}
+
+/// Opaque pixels with a transparent neighbour: the outline length, as a pixel count.
+fn edge_pixels(img: &image::RgbaImage, (w, h): (u32, u32)) -> usize {
+    let alpha = |x: u32, y: u32| img.get_pixel(x, y)[3];
     let mut edge = 0usize;
     for y in 1..h.saturating_sub(1) {
         for x in 1..w.saturating_sub(1) {
@@ -1544,19 +1572,40 @@ pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
             }
         }
     }
-    let raggedness = edge as f64 / opaque.max(1.0).sqrt();
+    edge
+}
+
+fn opaque_median_luminance(img: &image::RgbaImage) -> f64 {
     let mut lum: Vec<f64> = img
         .pixels()
         .filter(|p| p[3] > 128)
         .map(|p| 0.299 * f64::from(p[0]) + 0.587 * f64::from(p[1]) + 0.114 * f64::from(p[2]))
         .collect();
     lum.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median = lum.get(lum.len() / 2).copied().unwrap_or(0.0);
-    let (smear, smear_aspect) = smear_band(&img, median);
-    let (measured_cuts, full_bleed) = straight_cuts(&img);
-    // A joint part (an arm, a wing) ends flat on the side where it joins; only the sides named
-    // in `joints` are excused. Any other straight cut (a clipped hand) is still missing artwork.
-    let sides = ["left", "right", "top", "bottom"];
+    lum.get(lum.len() / 2).copied().unwrap_or(0.0)
+}
+
+fn measure_image(img: &image::RgbaImage) -> ImageMeasures {
+    let size = img.dimensions();
+    let opaque = img.pixels().filter(|p| p[3] > 128).count() as f64;
+    let partial = img.pixels().filter(|p| p[3] > 8 && p[3] < 247).count() as f64;
+    let (smear, smear_aspect) = smear_band(img, opaque_median_luminance(img));
+    let (cuts, full_bleed) = straight_cuts(img);
+    ImageMeasures {
+        size,
+        opaque,
+        partial,
+        touching: border_touch_ratio(img, size),
+        raggedness: edge_pixels(img, size) as f64 / opaque.max(1.0).sqrt(),
+        smear,
+        smear_aspect,
+        cuts,
+        full_bleed,
+    }
+}
+
+/// Sides where a joint excuses a straight edge; anything else named is a request error.
+fn parse_joints(params: &Value) -> Result<Vec<&str>> {
     let joints: Vec<&str> = match params.get("joints") {
         None | Some(Value::Null) => Vec::new(),
         Some(Value::Array(list)) => list.iter().filter_map(Value::as_str).collect(),
@@ -1566,63 +1615,106 @@ pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
             ));
         }
     };
-    if let Some(bad) = joints.iter().find(|j| !sides.contains(j)) {
+    if let Some(bad) = joints.iter().find(|j| !CUT_SIDES.contains(j)) {
         return Err(EngineError::InvalidParams(format!(
             "unknown joint side '{bad}' (left, right, top, bottom)"
         )));
     }
-    let mut cuts = measured_cuts;
-    for (i, side) in sides.iter().enumerate() {
+    Ok(joints)
+}
+
+/// A joint part (an arm, a wing) ends flat on the side where it joins; only those are excused.
+fn apply_joints(measured: [u32; 4], joints: &[&str]) -> [u32; 4] {
+    let mut cuts = measured;
+    for (i, side) in CUT_SIDES.iter().enumerate() {
         if joints.contains(side) {
             cuts[i] = 0;
         }
     }
+    cuts
+}
+
+fn assess_reasons(measures: &ImageMeasures, touching: f64, cuts: [u32; 4]) -> Vec<String> {
     let mut reasons = Vec::new();
-    for (side, run) in sides.iter().zip(cuts) {
+    for (side, run) in CUT_SIDES.iter().zip(cuts) {
         if run > 0 {
             reasons.push(format!(
                 "artwork cut off in a straight line along the {side} edge ({run} px): it was cropped through, not drawn to end there"
             ));
         }
     }
-    // A full-bleed layer (a page, a background) fills its frame on purpose.
-    let touching = if full_bleed { 0.0 } else { touching };
     if touching > 0.15 {
         reasons.push(format!(
             "{:.0}% of the outline runs into the box edge (clipped)",
             touching * 100.0
         ));
     }
-    if raggedness > 9.0 {
+    if measures.raggedness > 9.0 {
         reasons.push(format!(
-            "ragged edge ({raggedness:.1} edge px per sqrt(area))"
+            "ragged edge ({:.1} edge px per sqrt(area))",
+            measures.raggedness
         ));
     }
-    if smear >= 0.02 && smear_aspect >= 3.0 {
+    if measures.smear >= 0.02 && measures.smear_aspect >= 3.0 {
         reasons.push(format!(
             "{:.0}% of the asset is a flat dark band (smeared hidden overlap?)",
-            smear * 100.0
+            measures.smear * 100.0
         ));
     }
-    if opaque == 0.0 {
+    if measures.opaque == 0.0 {
         reasons.push("no opaque pixels".into());
     }
-    // Missing artwork cannot be cleaned back: a cut means a new, complete drawing.
-    let suggestion = if opaque == 0.0 || touching > 0.35 || cuts.iter().any(|&run| run > 0) {
+    reasons
+}
+
+/// Missing artwork cannot be cleaned back: a cut means a new, complete drawing.
+fn assess_suggestion(
+    measures: &ImageMeasures,
+    touching: f64,
+    cuts: [u32; 4],
+    reasons: &[String],
+) -> &'static str {
+    if measures.opaque == 0.0 || touching > 0.35 || cuts.iter().any(|&run| run > 0) {
         "recreate"
     } else if reasons.is_empty() {
         "ok"
     } else {
         "clean"
+    }
+}
+
+fn assess_next(suggestion: &str) -> String {
+    match suggestion {
+        "recreate" => "Record it: assets.fixlist_add asset=<id> path=<png> decision=recreate problem=<what is wrong>".to_string(),
+        "clean" => "Record it: assets.fixlist_add asset=<id> path=<png> decision=clean problem=<what> tool=<exact command that fixes it>".to_string(),
+        _ => "Looks fine by measure; still check it at full size before using it.".to_string(),
+    }
+}
+
+/// Measures one image layer and suggests clean vs recreate with the evidence.
+pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
+    let path = params
+        .get("path")
+        .and_then(Value::as_str)
+        .map(|p| resolve_workspace_path(s, p))
+        .ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
+    let img = image::open(&path)?.to_rgba8();
+    let measures = measure_image(&img);
+    let joints = parse_joints(params)?;
+    let cuts = apply_joints(measures.cuts, &joints);
+    // A full-bleed layer (a page, a background) fills its frame on purpose.
+    let touching = if measures.full_bleed {
+        0.0
+    } else {
+        measures.touching
     };
+    let reasons = assess_reasons(&measures, touching, cuts);
+    let suggestion = assess_suggestion(&measures, touching, cuts, &reasons);
+    let (w, h) = measures.size;
     Ok(
         json!({"ok": true, "path": path, "size": [w, h], "suggestion": suggestion, "reasons": reasons,
-        "measures": {"clipped_border": touching, "full_bleed": full_bleed, "straight_cut_px": {"left": measured_cuts[0], "right": measured_cuts[1], "top": measured_cuts[2], "bottom": measured_cuts[3]}, "raggedness": raggedness, "smear_band": smear, "smear_aspect": smear_aspect, "soft_edge_pixels": partial / opaque.max(1.0)},
-        "next": [match suggestion {
-            "recreate" => "Record it: assets.fixlist_add asset=<id> path=<png> decision=recreate problem=<what is wrong>".to_string(),
-            "clean" => "Record it: assets.fixlist_add asset=<id> path=<png> decision=clean problem=<what> tool=<exact command that fixes it>".to_string(),
-            _ => "Looks fine by measure; still check it at full size before using it.".to_string(),
-        }]}),
+        "measures": {"clipped_border": touching, "full_bleed": measures.full_bleed, "straight_cut_px": {"left": measures.cuts[0], "right": measures.cuts[1], "top": measures.cuts[2], "bottom": measures.cuts[3]}, "raggedness": measures.raggedness, "smear_band": measures.smear, "smear_aspect": measures.smear_aspect, "soft_edge_pixels": measures.partial / measures.opaque.max(1.0)},
+        "next": [assess_next(suggestion)]}),
     )
 }
 
@@ -1638,87 +1730,169 @@ pub fn cmd_assets_assess(s: &mut Session, params: &Value) -> Result<Value> {
 /// of the frame is the edge of a full-bleed layer (a page, a background), not a cut; such a layer
 /// also continues past the frame on its other sides that touch the canvas, so those are not cuts
 /// either. A long edge inside the canvas is never full-bleed evidence.
-fn straight_cuts(img: &image::RgbaImage) -> ([u32; 4], bool) {
-    let (w, h) = (i64::from(img.width()), i64::from(img.height()));
-    let solid = |x: i64, y: i64| {
-        x >= 0 && y >= 0 && x < w && y < h && img.get_pixel(x as u32, y as u32)[3] > 128
-    };
-    let (mut x0, mut y0, mut x1, mut y1) = (w, h, -1, -1);
+fn point_at(vertical: bool, across: i64, along: i64) -> (i64, i64) {
+    if vertical {
+        (across, along)
+    } else {
+        (along, across)
+    }
+}
+
+fn solid(img: &image::RgbaImage, (w, h): (i64, i64), x: i64, y: i64) -> bool {
+    x >= 0 && y >= 0 && x < w && y < h && img.get_pixel(x as u32, y as u32)[3] > 128
+}
+
+/// Bounding box of the opaque pixels; None when nothing is opaque.
+fn solid_bounds(img: &image::RgbaImage) -> Option<(i64, i64, i64, i64)> {
+    let (mut x0, mut y0, mut x1, mut y1) = (i64::MAX, i64::MAX, -1, -1);
     for (x, y, p) in img.enumerate_pixels() {
         if p[3] > 128 {
             let (x, y) = (i64::from(x), i64::from(y));
             (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
         }
     }
-    if x1 < 0 {
-        return ([0; 4], false);
-    }
-    // Each side as (lines inward from the bounds, outward step, span along the side, is the
-    // side vertical). Points are (across, along) and map back to (x, y) through `at`.
-    let sides = [
-        (
-            (x0..=(x0 + 3).min(x1)).collect::<Vec<_>>(),
-            -1,
-            (y0, y1),
-            true,
-        ),
-        (((x1 - 3).max(x0)..=x1).rev().collect(), 1, (y0, y1), true),
-        ((y0..=(y0 + 3).min(y1)).collect(), -1, (x0, x1), false),
-        (((y1 - 3).max(y0)..=y1).rev().collect(), 1, (x0, x1), false),
-    ];
-    let at = |vertical: bool, across: i64, along: i64| {
-        if vertical {
-            (across, along)
-        } else {
-            (along, across)
+    (x1 >= 0).then_some((x0, y0, x1, y1))
+}
+
+/// One side of the artwork: the four lines just inside its bounds, the outward step, the span
+/// along the side, and whether the side is vertical. Points are (across, along).
+struct CutSide {
+    lines: Vec<i64>,
+    outward: i64,
+    span: (i64, i64),
+    vertical: bool,
+}
+
+fn cut_sides((x0, y0, x1, y1): (i64, i64, i64, i64)) -> [CutSide; 4] {
+    [
+        CutSide {
+            lines: (x0..=(x0 + 3).min(x1)).collect(),
+            outward: -1,
+            span: (y0, y1),
+            vertical: true,
+        },
+        CutSide {
+            lines: ((x1 - 3).max(x0)..=x1).rev().collect(),
+            outward: 1,
+            span: (y0, y1),
+            vertical: true,
+        },
+        CutSide {
+            lines: (y0..=(y0 + 3).min(y1)).collect(),
+            outward: -1,
+            span: (x0, x1),
+            vertical: false,
+        },
+        CutSide {
+            lines: ((y1 - 3).max(y0)..=y1).rev().collect(),
+            outward: 1,
+            span: (x0, x1),
+            vertical: false,
+        },
+    ]
+}
+
+/// How far the outline sits inward of `line` at `along` (None: nothing solid within 12 px).
+fn recede(
+    img: &image::RgbaImage,
+    (w, h): (i64, i64),
+    side: &CutSide,
+    line: i64,
+    along: i64,
+) -> Option<i64> {
+    (0..=12).find(|d| {
+        let (x, y) = point_at(side.vertical, line - side.outward * d, along);
+        solid(img, (w, h), x, y)
+    })
+}
+
+/// Furthest the outline pulls away within 7 px past an end (missing evidence counts as 13).
+fn pull_away(
+    img: &image::RgbaImage,
+    size: (i64, i64),
+    side: &CutSide,
+    line: i64,
+    end: i64,
+    step: i64,
+) -> i64 {
+    (1..=7)
+        .map(|k| recede(img, size, side, line, end + step * k).unwrap_or(13))
+        .max()
+        .unwrap_or(0)
+}
+
+/// A completed run counts as a cut when it is long enough and the outline pulls away past both ends.
+fn run_is_cut(
+    img: &image::RgbaImage,
+    size: (i64, i64),
+    side: &CutSide,
+    line: i64,
+    start: i64,
+    end: i64,
+    length: f64,
+) -> bool {
+    let before = pull_away(img, size, side, line, start, -1);
+    let after = pull_away(img, size, side, line, end - 1, 1);
+    let pulls_away = (before >= 3 && after >= 2) || (before >= 2 && after >= 3);
+    let run = (end - start) as u32;
+    run > 16 && f64::from(run) > length * 0.02 && pulls_away
+}
+
+/// Longest qualifying run of solid edge along one line, and whether the whole frame ran solid.
+fn line_runs(
+    img: &image::RgbaImage,
+    size: (i64, i64),
+    side: &CutSide,
+    line: i64,
+    length: f64,
+    frame: f64,
+    on_edge: bool,
+) -> (u32, bool) {
+    let frame_line = on_edge && line == side.lines[0];
+    let (mut best, mut bleed) = (0u32, false);
+    let mut start: Option<i64> = None;
+    for along in side.span.0..=side.span.1 + 1 {
+        let (x, y) = point_at(side.vertical, line, along);
+        let (ox, oy) = point_at(side.vertical, line + side.outward, along);
+        let edge =
+            along <= side.span.1 && solid(img, size, x, y) && !solid(img, size, ox, oy);
+        match (edge, start) {
+            (true, None) => start = Some(along),
+            (false, Some(s)) => {
+                let run = (along - s) as u32;
+                if frame_line && f64::from(run) >= frame * 0.9 {
+                    bleed = true;
+                } else if run_is_cut(img, size, side, line, s, along, length) {
+                    best = best.max(run);
+                }
+                start = None;
+            }
+            _ => {}
         }
+    }
+    (best, bleed)
+}
+
+fn straight_cuts(img: &image::RgbaImage) -> ([u32; 4], bool) {
+    let size = (i64::from(img.width()), i64::from(img.height()));
+    let (w, h) = size;
+    let Some(bounds) = solid_bounds(img) else {
+        return ([0; 4], false);
     };
+    let (x0, y0, x1, y1) = bounds;
+    let sides = cut_sides(bounds);
     // A full-bleed side has to be the frame itself: on the canvas edge, solid for 90% of it.
     let on_canvas_edge = [x0 == 0, x1 == w - 1, y0 == 0, y1 == h - 1];
     let mut runs = [0u32; 4];
     let mut bleed = [false; 4];
-    for (i, (lines, out, (a0, a1), vertical)) in sides.iter().enumerate() {
-        let length = (a1 - a0 + 1) as f64;
-        // How far the outline sits inward of `line` at position `along` (None: nothing there).
-        let recede = |line: i64, along: i64| {
-            (0..=12).find(|d| {
-                let (x, y) = at(*vertical, line - out * d, along);
-                solid(x, y)
-            })
-        };
-        for &line in lines {
-            let mut start = None;
-            for along in *a0..=a1 + 1 {
-                let (x, y) = at(*vertical, line, along);
-                let (ox, oy) = at(*vertical, line + out, along);
-                let edge = along <= *a1 && solid(x, y) && !solid(ox, oy);
-                match (edge, start) {
-                    (true, None) => start = Some(along),
-                    (false, Some(s)) => {
-                        let run = (along - s) as u32;
-                        let frame = if *vertical { h } else { w } as f64;
-                        if on_canvas_edge[i] && line == lines[0] && f64::from(run) >= frame * 0.9 {
-                            bleed[i] = true;
-                        } else {
-                            // Furthest the outline pulls away within 7 px past an end (None: gone).
-                            let away = |end: i64, step: i64| {
-                                (1..=7)
-                                    .map(|k| recede(line, end + step * k).unwrap_or(13))
-                                    .max()
-                                    .unwrap_or(0)
-                            };
-                            let (before, after) = (away(s, -1), away(along - 1, 1));
-                            let pulls_away =
-                                (before >= 3 && after >= 2) || (before >= 2 && after >= 3);
-                            if run > 16 && f64::from(run) > length * 0.02 && pulls_away {
-                                runs[i] = runs[i].max(run);
-                            }
-                        }
-                        start = None;
-                    }
-                    _ => {}
-                }
-            }
+    for (i, side) in sides.iter().enumerate() {
+        let length = (side.span.1 - side.span.0 + 1) as f64;
+        let frame = if side.vertical { h } else { w } as f64;
+        for &line in &side.lines {
+            let (run, whole_frame) =
+                line_runs(img, size, side, line, length, frame, on_canvas_edge[i]);
+            runs[i] = runs[i].max(run);
+            bleed[i] |= whole_frame;
         }
     }
     let full_bleed = bleed.iter().any(|&b| b);
