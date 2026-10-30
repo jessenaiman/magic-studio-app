@@ -44,50 +44,55 @@ for(const type of ['pointerdown','pointerup','pointercancel','input','keydown'])
  if(!pointers.size)setTimeout(reportKeyframes,0);
 },{capture:true,passive:true});
 studio.onSelectionChange(selection=>send('selection',{objects:selection.map(item=>({sheet:item.address.sheetId,part:item.address.objectKey||null}))}));
+function clearActiveListeners(){
+ stop?.();stopClock?.();stopPlaying?.();for(const fn of partStops)fn?.();partStops=[];lastRotations.clear();
+}
+function bindPartRotation(partId,partObj,strictPrev){
+ return partObj.onValuesChange(value=>{
+  const prev=lastRotations.get(partId);
+  lastRotations.set(partId,value.rotation);
+  const delta=prev===undefined?(strictPrev?Math.abs(value.rotation||0):1):Math.abs((value.rotation||0)-prev);
+  if(delta>1e-4)send('values',{part:partId,rotation:value.rotation,sync:synchronizing});
+ });
+}
+function collectSequencedParts(objects){
+ const sequencedParts=[];
+ for(const [partId,partObj] of objects){
+  try{if(sheet.sequence.__experimental_getKeyframes(partObj.props.rotation).length>0)sequencedParts.push(partId);}catch{}
+ }
+ return sequencedParts;
+}
+async function handleContextMessage(message){
+ const revision=++contextRevision, id=await theatreProjectId(message.project);
+ if(revision!==contextRevision)return;
+ clearActiveListeners();
+ project=projects.get(id)||getProject(id,message.state?{state:message.state}:undefined);
+ projects.set(id,project);
+ projectId=id;projectPath=message.project;
+ sheet=project.sheet(message.sheet||message.character);
+ const parts=Array.isArray(message.parts)&&message.parts.length?message.parts:[message.part];
+ const objects=new Map(parts.filter(Boolean).map(partId=>[partId,getSheetObject(id,sheet,partId)]));
+ object=objects.get(message.part)||getSheetObject(id,sheet,message.part);
+ await project.ready;
+ if(revision!==contextRevision)return;
+ studio.setSelection([object]);
+ mirroredPosition=sheet.sequence.position;
+ stop=bindPartRotation(message.part,object,false);
+ for(const [partId,partObj] of objects){
+  if(partId!==message.part)partStops.push(bindPartRotation(partId,partObj,true));
+ }
+ stopClock=onChange(sheet.sequence.pointer.position,time=>{if(!synchronizing&&Math.abs(time-mirroredPosition)>1e-7)send('seek',{time});});
+ stopPlaying=onChange(sheet.sequence.pointer.playing,playing=>send('playback',{playing}));
+ keyframeCount=countKeyframes();
+ send('ready',{part:message.part,sequencedParts:collectSequencedParts(objects)});
+}
 window.addEventListener('message',async event=>{
  if(event.source!==parent||!event.data?.magicTheatre)return;
  try{
   const message=event.data;
-  if(message.type==='context'){
-   const revision=++contextRevision, id=await theatreProjectId(message.project);
-   if(revision!==contextRevision)return;
-   stop?.();stopClock?.();stopPlaying?.();for(const fn of partStops)fn?.();partStops=[];lastRotations.clear();
-   project=projects.get(id);
-   if(!project){project=getProject(id,message.state?{state:message.state}:undefined);projects.set(id,project);}
-   projectId=id;projectPath=message.project;
-   sheet=project.sheet(message.sheet||message.character);
-   const parts=Array.isArray(message.parts)&&message.parts.length?message.parts:[message.part];
-   const objects=new Map();
-   for(const partId of parts){if(partId)objects.set(partId,getSheetObject(id,sheet,partId));}
-   object=objects.get(message.part)||getSheetObject(id,sheet,message.part);
-   await project.ready;
-   if(revision!==contextRevision)return;
-   studio.setSelection([object]);
-   mirroredPosition=sheet.sequence.position;
-   stop=object.onValuesChange(value=>{
-    const prev=lastRotations.get(message.part);
-    lastRotations.set(message.part,value.rotation);
-    if(prev===undefined||Math.abs((value.rotation||0)-prev)>1e-4)send('values',{part:message.part,rotation:value.rotation,sync:synchronizing});
-   });
-   for(const [partId,partObj] of objects){
-    if(partId===message.part)continue;
-    partStops.push(partObj.onValuesChange(value=>{
-     const prev=lastRotations.get(partId);
-     lastRotations.set(partId,value.rotation);
-     if(prev===undefined?Math.abs(value.rotation||0)>1e-4:Math.abs((value.rotation||0)-prev)>1e-4)send('values',{part:partId,rotation:value.rotation,sync:synchronizing});
-    }));
-   }
-   stopClock=onChange(sheet.sequence.pointer.position,time=>{if(!synchronizing&&Math.abs(time-mirroredPosition)>1e-7)send('seek',{time});});
-   stopPlaying=onChange(sheet.sequence.pointer.playing,playing=>send('playback',{playing}));
-   keyframeCount=countKeyframes();
-   const sequencedParts=[];
-   for(const [partId,partObj] of objects){
-    try{if(sheet.sequence.__experimental_getKeyframes(partObj.props.rotation).length>0)sequencedParts.push(partId);}catch{}
-   }
-   send('ready',{part:message.part,sequencedParts});
-  }else if(message.type==='interaction_barrier'){
-   send('interaction_barrier',{request:message.request,project:projectPath,revision:interactionRevision,active:pointers.size>0});
-  }else if(message.type==='export'){
+  if(message.type==='context')await handleContextMessage(message);
+  else if(message.type==='interaction_barrier')send('interaction_barrier',{request:message.request,project:projectPath,revision:interactionRevision,active:pointers.size>0});
+  else if(message.type==='export'){
    if(!project||message.project!==projectPath)throw new Error('Theatre export project mismatch; reload the intended project');
    send('exported',{request:message.request,project:projectPath,state:studio.createContentOfSaveFile(projectId)});
   }else if(message.type==='seek'&&sheet){
