@@ -69,6 +69,9 @@ pub fn project_document(s: &Session) -> Value {
     if !s.animation_sources.is_empty() {
         doc["animation_sources"] = json!(s.animation_sources);
     }
+    if let Some(mode) = &s.project_mode {
+        doc["mode"] = json!(mode);
+    }
     normalize_connections(&mut doc, path);
     doc
 }
@@ -92,7 +95,7 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
         normalize_connections(&mut saved, path);
     }
     let current = project_document(s);
-    ["assets", "workshop", "theatre", "animation_sources"]
+    ["assets", "workshop", "theatre", "animation_sources", "mode"]
         .iter()
         .any(|key| saved[*key] != current[*key])
 }
@@ -344,6 +347,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
 /// Create a new `.magic` session.
 pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
+    let mode = project_mode(params)?;
     let overwrite = params
         .get("overwrite")
         .and_then(Value::as_bool)
@@ -376,20 +380,38 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     reset_for_project(s, path.clone(), Vec::new());
     s.project_owner = Some(owner);
     s.song_audio = audio;
+    s.project_mode = mode;
     write_project_file(s)?;
-    let steps = bootstrap_new_project_workshop(s, &path, params);
+    // An animation study has no song or storyboard to prepare.
+    let steps = if s.project_mode.is_some() {
+        Vec::new()
+    } else {
+        bootstrap_new_project_workshop(s, &path, params)
+    };
     write_project_file(s)?;
     let warnings = recent_warning(s, &path, true);
     let workshop = super::workshop::workshop_status(s)?;
     Ok(json!({
         "ok": true,
         "project": path,
+        "mode": s.project_mode,
         "warnings": warnings,
         "steps": steps,
         "assets": s.project_assets,
         "workshop": workshop,
         "next_steps": workshop["next_steps"],
     }))
+}
+
+/// The project's mode: `animation` for a character study, absent for a song project.
+fn project_mode(value: &Value) -> Result<Option<String>> {
+    match value.get("mode").and_then(Value::as_str) {
+        None | Some("project") => Ok(None),
+        Some("animation") => Ok(Some("animation".into())),
+        Some(other) => Err(EngineError::InvalidParams(format!(
+            "mode must be animation or project, not {other}"
+        ))),
+    }
 }
 
 /// Open an existing `.magic` session.
@@ -471,6 +493,7 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     }
     s.theatre_state = doc.get("theatre").filter(|state| !state.is_null()).cloned();
     s.animation_sources = animation_sources;
+    s.project_mode = project_mode(&doc)?;
     s.song_audio = doc
         .pointer("/workshop/audio")
         .and_then(Value::as_str)
@@ -496,6 +519,7 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     Ok(json!({
         "ok": true,
         "project": path,
+        "mode": s.project_mode,
         "warnings": warnings,
         "assets": s.project_assets,
         "missing": missing,

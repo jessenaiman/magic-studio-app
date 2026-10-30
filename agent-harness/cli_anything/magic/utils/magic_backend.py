@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 import os
+import shlex
 import shutil
 import socket
 import selectors
@@ -338,13 +339,142 @@ def list_engine_commands() -> list[dict[str, Any]]:
     return execute_headless("command.list")["commands"]
 
 
+def agent_caller() -> bool:
+    """Herdr sets HERDR_PANE_ID in agent panes; their windows stay out of the way."""
+    return bool(os.environ.get("HERDR_PANE_ID"))
+
+
+def hyprctl_json(hyprctl: str, what: str) -> Any:
+    result = subprocess.run(  # noqa: S603 -- Fixed argv; no shell.
+        [hyprctl, what, "-j"], capture_output=True, text=True, check=False
+    )
+    return json.loads(result.stdout or "null")
+
+
+def empty_workspace(hyprctl: str) -> str:
+    """MAGIC_AGENT_WORKSPACE, else the emptiest of workspaces 1-4 (user-visible)."""
+    if chosen := os.environ.get("MAGIC_AGENT_WORKSPACE"):
+        return chosen
+    windows = {w["id"]: w["windows"] for w in hyprctl_json(hyprctl, "workspaces") or []}
+    return str(min(range(1, 5), key=lambda n: (windows.get(n, 0), n)))
+
+
+def launch_on_empty_workspace(cmd: list[str]) -> str | None:
+    """Start cmd unfocused on an empty workspace; its name, or None without Hyprland."""
+    hyprctl = shutil.which("hyprctl")
+    if not (hyprctl and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")):
+        return None
+    workspace = empty_workspace(hyprctl)
+    rule = f"[workspace {workspace} silent] {shlex.join(cmd)}"
+    result = subprocess.run(  # noqa: S603 -- Fixed argv; no shell.
+        [hyprctl, "dispatch", f"hl.dsp.exec_cmd({json.dumps(rule)})"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.strip() == "ok":
+        return workspace
+    detail = result.stdout or result.stderr
+    raise RuntimeError(f"Agent window launch failed: {detail}")
+
+
+def studio_command(
+    project: str | None, animate_only: bool, character: str | None
+) -> list[str]:
+    cmd = [find_magicstudio_shell()]
+    if animate_only:
+        cmd.append("--animate")
+    if character:
+        cmd.extend(["--character", character])
+    if project:
+        cmd.append(project)
+    elif not animate_only:
+        cmd.append("--new")
+    return cmd
+
+
+def ready_window(
+    entry: Path, pid: int | None, project: str | None
+) -> dict[str, Any] | None:
+    """The window behind a socket once its UI is ready for this pid/project."""
+    try:
+        live = call_unix_socket(entry, "ui.feedback", {}, timeout=1.5)
+    except Exception:
+        return None
+    # An unfocused agent window is not painted, so its frontend withholds the
+    # revision acknowledgement; its applied DOM is ready, marked unpainted.
+    applied = live.get("phase") == "ready" and live.get("rendered") is True
+    offscreen_ready = pid is None and applied and not live.get("errors")
+    if live.get("ui_ready") is not True and not offscreen_ready:
+        return None
+    live["painted"] = live.get("ui_ready") is True
+    if pid is not None and live.get("identity", {}).get("pid") != pid:
+        return None
+    if project and live.get("active_project") != project:
+        return None
+    live["endpoint"] = f"unix:{entry}"
+    live["instance"] = entry.name
+    return live
+
+
+def reuse_window(existing: dict[str, Any], project: str) -> dict[str, Any] | None:
+    """An agent reuses the window silently; a person brings it to the front."""
+    if agent_caller():
+        return existing
+    try:
+        call_unix_socket(
+            existing["endpoint"],
+            "ui.focus",
+            {
+                "_expected_instance": existing.get("instance"),
+                "_expected_project": project,
+            },
+        )
+        return existing
+    except Exception:
+        return None
+
+
+def wait_for_window(
+    proc: subprocess.Popen | None, before: set[str], project: str | None, timeout: float
+) -> dict[str, Any]:
+    """The new window: by pid when we started it, else the first new socket."""
+    pid = proc.pid if proc else None
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if live := find_new_window(before, pid, project):
+            return live
+        if proc and (ret := proc.poll()) is not None:
+            raise RuntimeError(f"Studio {pid} exited while opening (code {ret})")
+        time.sleep(0.1)
+    who = pid or "agent workspace"
+    raise RuntimeError(f"Studio window ({who}) not ready within {timeout}s.")
+
+
+def find_new_window(
+    before: set[str], pid: int | None, project: str | None
+) -> dict[str, Any] | None:
+    sock_dir = studio_socket_dir()
+    for entry in sock_dir.iterdir() if sock_dir and sock_dir.is_dir() else []:
+        new = entry.name.startswith(f"{pid}-") if pid else entry.name not in before
+        if new and entry.name.endswith(".sock"):
+            if live := ready_window(entry, pid, project):
+                return live
+    return None
+
+
 def open_studio_window(
     project_path: str | None = None,
     animate_only: bool = False,
     character: str | None = None,
     timeout: float = 30.0,
 ) -> dict[str, Any]:
-    """Launch or focus a Magic Studio window and wait until `ui_ready == true`."""
+    """Launch or reuse a Magic Studio window and wait until `ui_ready == true`.
+
+    A person's call focuses the window. An agent's call never focuses one: a new
+    agent window opens unfocused on an empty workspace (reported as "workspace"),
+    so the user keeps their windows and cursor and can switch there to watch.
+    """
     canonical_proj: str | None = None
     if project_path:
         p = Path(project_path)
@@ -352,61 +482,23 @@ def open_studio_window(
             raise RuntimeError(f"Project file does not exist: {project_path}")
         canonical_proj = str(p.resolve())
         existing = studio_for_project(canonical_proj)
-        if existing:
-            try:
-                call_unix_socket(
-                    existing["endpoint"],
-                    "ui.focus",
-                    {
-                        "_expected_instance": existing.get("instance"),
-                        "_expected_project": canonical_proj,
-                    },
-                )
-                return existing
-            except Exception:
-                pass
-
-    shell_bin = find_magicstudio_shell()
-    cmd = [shell_bin]
-    if animate_only:
-        cmd.append("--animate")
-    if character:
-        cmd.extend(["--character", character])
-    if canonical_proj:
-        cmd.append(canonical_proj)
-    elif not animate_only:
-        cmd.append("--new")
-
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    pid = proc.pid
+        if existing and (live := reuse_window(existing, canonical_proj)):
+            return live
+    cmd = studio_command(canonical_proj, animate_only, character)
     sock_dir = studio_socket_dir()
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if sock_dir and sock_dir.is_dir():
-            for entry in sock_dir.iterdir():
-                if not entry.name.startswith(f"{pid}-") or not entry.name.endswith(".sock"):
-                    continue
-                try:
-                    live = call_unix_socket(entry, "ui.feedback", {}, timeout=1.5)
-                    if live.get("ui_ready") is True and live.get("identity", {}).get("pid") == pid:
-                        if canonical_proj and live.get("active_project") != canonical_proj:
-                            continue
-                        live["endpoint"] = f"unix:{entry}"
-                        live["instance"] = entry.name
-                        return live
-                except Exception:
-                    pass
-        ret = proc.poll()
-        if ret is not None:
-            raise RuntimeError(f"Studio process {pid} exited during opening (code {ret})")
-        time.sleep(0.1)
-
-    raise RuntimeError(
-        f"Studio process {pid} started but has not reported a ready window within {timeout}s."
-    )
+    exists = sock_dir and sock_dir.is_dir()
+    before = {e.name for e in sock_dir.iterdir()} if exists else set()
+    proc = None
+    workspace = launch_on_empty_workspace(cmd) if agent_caller() else None
+    if workspace is None:
+        proc = subprocess.Popen(  # noqa: S603 -- Fixed argv; no shell.
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    live = wait_for_window(proc, before, canonical_proj, timeout)
+    if workspace:
+        live["workspace"] = workspace
+    return live

@@ -382,6 +382,9 @@ async function applyOpenedProject(opened, start = {}) {
   if(!path)throw new Error('Project command did not return its canonical location');
   state.data=opened;
   state.projectReceipt=opened;
+  // A character study opens in Animation only; a song project uses every workspace.
+  state.animateOnly = opened.mode === "animation" || document.body.classList.contains("animate-only");
+  document.body.classList.toggle("animation-mode", opened.mode === "animation");
   if (state.project !== path) { animationReset(); songStop(); transcriptReaderClose(); projectView.textDrafts.clear(); projectView.error=null; state.storyboardScene=null; state.storyboardUndo=null; }
   state.project = path;
   state.lyrics = null;
@@ -397,7 +400,7 @@ async function applyOpenedProject(opened, start = {}) {
   renderTarget();
   renderBlocks();
   renderStoryboard();
-  await setView(start.view || "project");
+  await setView(start.view || (opened.mode === "animation" ? "animation" : "project"));
   window.workshopDrawers?.close(false);
   await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
 }

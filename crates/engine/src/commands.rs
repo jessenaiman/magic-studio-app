@@ -967,7 +967,7 @@ pub fn build() -> Vec<CommandSpec> {
             "New Project",
             ["File"],
             Some("Cmd+N"),
-            "{\"path\":\"folder/name.magic\",\"audio\":\"optional song audio\",\"overwrite\":false}",
+            "{\"path\":\"folder/name.magic\",\"mode\":\"project (song, default) | animation (character study: Animation only, reusable in projects)\",\"audio\":\"optional song audio\",\"overwrite\":false}",
             always,
             cmd_project_new
         ),

@@ -193,6 +193,12 @@ class Session:
                 )
                 if not dry_run:
                     self.bind_studio(live)
+            elif cmd_id.startswith(("ui.", "app.quit")) and backend.agent_caller():
+                raise RuntimeError(
+                    "No Studio window is bound to this agent; run "
+                    "'magic-cli studio open /absolute/Project.magic' first "
+                    "(agent windows open on the agent workspace, never the user's window)."
+                )
             elif cmd_id.startswith("ui.") or cmd_id == "app.quit":
                 result = backend.call_studio("auto", cmd_id, req, expected_project=target)
             else:
