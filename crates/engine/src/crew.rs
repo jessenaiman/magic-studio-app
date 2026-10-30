@@ -80,40 +80,39 @@ fn path(root: &Path, id: &str) -> Result<PathBuf> {
     }
     Ok(path)
 }
-fn validate(doc: &Document, id: &str) -> Result<()> {
-    let d = &doc.department;
-    if d.id != id || d.title.trim().is_empty() || d.roles.is_empty() || d.candidates.len() > 64 {
+fn validate_candidate_id<'a>(c: &'a Candidate, ids: &mut HashSet<&'a String>) -> Result<()> {
+    if c.id.is_empty()
+        || c.id.len() > 64
+        || !c
+            .id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        || !ids.insert(&c.id)
+    {
         return Err(invalid(
-            "Department id, title, roles and candidate count must be valid",
+            "Candidate ids must be unique lowercase names without path components",
         ));
     }
-    let mut ids = HashSet::new();
-    for c in &d.candidates {
-        if c.id.is_empty()
-            || c.id.len() > 64
-            || !c
-                .id
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-            || !ids.insert(&c.id)
-        {
-            return Err(invalid(
-                "Candidate ids must be unique lowercase names without path components",
-            ));
-        }
-        if c.name.trim().is_empty()
-            || c.name.split_whitespace().count() != 1
-            || c.personality.trim().is_empty()
-            || !d.roles.contains(&c.role)
-        {
-            return Err(invalid(
-                "Each candidate needs a one-word name, personality and allowed department role",
-            ));
-        }
-        if !["candidate", "cast", "reserve", "wings"].contains(&c.status.as_str()) {
-            return Err(invalid("Casting must be candidate, cast, reserve or wings"));
-        }
+    Ok(())
+}
+
+fn validate_candidate(c: &Candidate, roles: &[String]) -> Result<()> {
+    if c.name.trim().is_empty()
+        || c.name.split_whitespace().count() != 1
+        || c.personality.trim().is_empty()
+        || !roles.contains(&c.role)
+    {
+        return Err(invalid(
+            "Each candidate needs a one-word name, personality and allowed department role",
+        ));
     }
+    if !["candidate", "cast", "reserve", "wings"].contains(&c.status.as_str()) {
+        return Err(invalid("Casting must be candidate, cast, reserve or wings"));
+    }
+    Ok(())
+}
+
+fn validate_lead(d: &Department, id: &str) -> Result<()> {
     if id == "review" {
         if d.lead.as_deref() != Some("human") {
             return Err(invalid("Jesse remains the human lead of the Review Desk"));
@@ -127,6 +126,21 @@ fn validate(doc: &Document, id: &str) -> Result<()> {
         return Err(invalid("Choose a cast member as department lead"));
     }
     Ok(())
+}
+
+fn validate(doc: &Document, id: &str) -> Result<()> {
+    let d = &doc.department;
+    if d.id != id || d.title.trim().is_empty() || d.roles.is_empty() || d.candidates.len() > 64 {
+        return Err(invalid(
+            "Department id, title, roles and candidate count must be valid",
+        ));
+    }
+    let mut ids = HashSet::new();
+    for c in &d.candidates {
+        validate_candidate_id(c, &mut ids)?;
+        validate_candidate(c, &d.roles)?;
+    }
+    validate_lead(d, id)
 }
 fn parse(markdown: &str, id: &str) -> Result<Document> {
     let (header, body) = markdown
@@ -180,19 +194,7 @@ pub fn cmd_list(s: &mut Session, p: &Value) -> Result<Value> {
         .collect::<Result<Vec<_>>>()?;
     Ok(json!({"workspace":root,"departments":departments}))
 }
-pub fn cmd_save(s: &mut Session, p: &Value) -> Result<Value> {
-    let root = workspace(s, p)?;
-    let id = p["department"]
-        .as_str()
-        .ok_or_else(|| invalid("department required"))?;
-    let file = path(&root, id)?;
-    let doc: Document =
-        serde_json::from_value(p["document"].clone()).map_err(|e| invalid(e.to_string()))?;
-    validate(&doc, id)?;
-    let markdown = render(&doc)?;
-    if markdown.len() > 512 * 1024 {
-        return Err(invalid("Cast file exceeds 512 KiB"));
-    }
+fn cast_lock(root: &Path) -> Result<std::fs::File> {
     let lock_path = root.join("crew/.cast.lock");
     fs::create_dir_all(root.join("crew"))?;
     if fs::symlink_metadata(&lock_path).is_ok_and(|m| m.file_type().is_symlink()) {
@@ -205,12 +207,10 @@ pub fn cmd_save(s: &mut Session, p: &Value) -> Result<Value> {
         .write(true)
         .open(lock_path)?;
     lock.lock()?;
-    let current = read(&root, id)?;
-    if p["expected_revision"].as_str() != current["revision"].as_str() {
-        return Err(invalid(
-            "Cast conflict: AGENTS.md changed; compare crew.list with the retained draft before saving",
-        ));
-    }
+    Ok(lock)
+}
+
+fn write_cast_file(file: &Path, markdown: &str) -> Result<()> {
     fs::create_dir_all(
         file.parent()
             .ok_or_else(|| invalid("Missing cast directory"))?,
@@ -227,11 +227,35 @@ pub fn cmd_save(s: &mut Session, p: &Value) -> Result<Value> {
         let mut out = OpenOptions::new().create_new(true).write(true).open(&tmp)?;
         out.write_all(markdown.as_bytes())?;
         out.sync_all()?;
-        fs::rename(&tmp, &file)
+        fs::rename(&tmp, file)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
     result?;
+    Ok(())
+}
+
+pub fn cmd_save(s: &mut Session, p: &Value) -> Result<Value> {
+    let root = workspace(s, p)?;
+    let id = p["department"]
+        .as_str()
+        .ok_or_else(|| invalid("department required"))?;
+    let file = path(&root, id)?;
+    let doc: Document =
+        serde_json::from_value(p["document"].clone()).map_err(|e| invalid(e.to_string()))?;
+    validate(&doc, id)?;
+    let markdown = render(&doc)?;
+    if markdown.len() > 512 * 1024 {
+        return Err(invalid("Cast file exceeds 512 KiB"));
+    }
+    let _lock = cast_lock(&root)?;
+    let current = read(&root, id)?;
+    if p["expected_revision"].as_str() != current["revision"].as_str() {
+        return Err(invalid(
+            "Cast conflict: AGENTS.md changed; compare crew.list with the retained draft before saving",
+        ));
+    }
+    write_cast_file(&file, &markdown)?;
     Ok(json!({"ok":true,"department":read(&root,id)?}))
 }

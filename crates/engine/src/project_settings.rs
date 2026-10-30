@@ -1,6 +1,6 @@
 //! One production project root, independent of navigation history and per-intake overrides.
 use crate::{EngineError, Result, Session};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
@@ -62,45 +62,58 @@ pub fn root() -> Result<PathBuf> {
     configured_root(&stored()?)
 }
 
+fn read_settings_file(output: &mut fs::File) -> Result<Value> {
+    let mut bytes = Vec::new();
+    output.read_to_end(&mut bytes)?;
+    if bytes.is_empty() {
+        Ok(json!({}))
+    } else {
+        parse(&bytes)
+    }
+}
+
+fn write_settings_file(output: &mut fs::File, settings: &Value) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(settings).map_err(|e| invalid(e.to_string()))?;
+    output.seek(SeekFrom::Start(0))?;
+    output.write_all(&bytes)?;
+    output.set_len(bytes.len() as u64)?;
+    output.sync_all()?;
+    Ok(())
+}
+
+fn persist_root(value: &Value) -> Result<()> {
+    let root = absolute(
+        value
+            .as_str()
+            .ok_or_else(|| invalid("Project root must be a string"))?,
+    )?;
+    if !root.is_dir() {
+        return Err(invalid(
+            "Project root directory is unavailable; mount or choose the intended directory first",
+        ));
+    }
+    let root = fs::canonicalize(root)?;
+    let path = file()?;
+    fs::create_dir_all(
+        path.parent()
+            .ok_or_else(|| invalid("Config directory unavailable"))?,
+    )?;
+    let mut output = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)?;
+    output.lock()?;
+    let mut settings = read_settings_file(&mut output)?;
+    settings["projects_root"] = json!(root);
+    write_settings_file(&mut output, &settings)
+}
+
 /// Without `root`, inspect the setting. Only this explicit command changes it.
 pub fn command(_: &mut Session, params: &Value) -> Result<Value> {
     if let Some(value) = params.get("root") {
-        let root = absolute(
-            value
-                .as_str()
-                .ok_or_else(|| invalid("Project root must be a string"))?,
-        )?;
-        if !root.is_dir() {
-            return Err(invalid(
-                "Project root directory is unavailable; mount or choose the intended directory first",
-            ));
-        }
-        let root = fs::canonicalize(root)?;
-        let path = file()?;
-        fs::create_dir_all(
-            path.parent()
-                .ok_or_else(|| invalid("Config directory unavailable"))?,
-        )?;
-        let mut output = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
-        output.lock()?;
-        let mut bytes = Vec::new();
-        output.read_to_end(&mut bytes)?;
-        let mut settings = if bytes.is_empty() {
-            json!({})
-        } else {
-            parse(&bytes)?
-        };
-        settings["projects_root"] = json!(root);
-        let bytes = serde_json::to_vec_pretty(&settings).map_err(|e| invalid(e.to_string()))?;
-        output.seek(SeekFrom::Start(0))?;
-        output.write_all(&bytes)?;
-        output.set_len(bytes.len() as u64)?;
-        output.sync_all()?;
+        persist_root(value)?;
     }
     let settings = stored()?;
     Ok(
