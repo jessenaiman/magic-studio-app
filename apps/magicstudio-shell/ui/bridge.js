@@ -41,6 +41,15 @@ function find(target, instance = null) {
 }
 
 window.magicBridge = {
+  menu(params) {
+    const menu = params.menu === 'file' ? window.applicationFileMenu : params.menu === 'text' ? window.textContextMenu : null;
+    if (!menu) throw new Error('Choose a menu: file or text');
+    if (params.close) { menu.close(); return {closed:params.menu}; }
+    const target = params.id ? find(params.id) : document.activeElement;
+    const rect = target?.getBoundingClientRect();
+    menu.open(params.x ?? rect?.left ?? 0, params.y ?? rect?.bottom ?? 48, target);
+    return {opened:params.menu};
+  },
   controls(params = {}) {
     const report = window.uiRegistry.inspect({ ...params, root: regionNode(params.region) });
     return { ...report, component_instance: report.instance };

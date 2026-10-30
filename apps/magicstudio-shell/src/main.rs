@@ -97,6 +97,7 @@ pub fn studio_identity(app: &tauri::AppHandle) -> Value {
 fn startup(app: tauri::AppHandle) -> Value {
     let mut start = launch_options();
     start["identity"] = studio_identity(&app);
+    start["menus"] = menu::labels();
     start
 }
 
@@ -1163,7 +1164,7 @@ fn main() {
         .manage(project_dispatch::Pending::default())
         .manage(feedback::Feedback::default())
         .manage(bridge::Pending::default())
-        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
+        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, menu::menu_action, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
         .setup(|app| {
             #[cfg(unix)]
             if let Some(path)=launch_options()["project"].as_str() {

@@ -73,11 +73,11 @@
     },
     "view-skills": {
       "component": "workspace",
-      "label": "Learning production manual"
+      "label": "Resources"
     },
     "view-analytics": {
       "component": "workspace",
-      "label": "Analytics and complexity metrics"
+      "label": "Mayhem observations and Backstage"
     },
     "analytics-surface": {
       "component": "surface",
@@ -86,7 +86,7 @@
     },
     "tab-analytics": {
       "component": "control",
-      "label": "Analytics",
+      "label": "Mayhem",
       "target": "view-analytics"
     },
     "analytics-refresh": {
@@ -307,8 +307,9 @@
       "indicator": "hidden"
     },
     "tab-skills": {
-      "component": "workspace",
-      "label": "Learning tab"
+      "component": "tab",
+      "label": "Resources",
+      "target": "view-skills"
     },
     "song": {
       "component": "panel",
@@ -1241,34 +1242,6 @@
       "indicator": "hidden",
       "command": "motion.edit.undo"
     },
-    "learning-cast": {
-      "component": "ghost",
-      "label": "MOPPETS cast"
-    },
-    "cast-page": {
-      "component": "panel",
-      "label": "Magic Studio cast"
-    },
-    "cast-lead": {
-      "component": "field-row",
-      "label": "Department lead"
-    },
-    "cast-search": {
-      "component": "field-row",
-      "label": "Find a candidate"
-    },
-    "cast-filter": {
-      "component": "field-row",
-      "label": "Casting filter"
-    },
-    "cast-candidates": {
-      "component": "panel",
-      "label": "Cast candidates"
-    },
-    "cast-saved-file": {
-      "component": "panel",
-      "label": "Saved AGENTS.md"
-    },
     "agent-toggle": {
       "component": "ghost",
       "label": "Sproket chat",
@@ -1564,6 +1537,47 @@
       "look": "form",
       "label": "New project",
       "target": "view-project"
+    },
+    "app-file": {
+      "component": "control",
+      "label": "File menu"
+    },
+    "workspace-tabs": {
+      "component": "navigation",
+      "label": "Workspaces"
+    },
+    "workspace-select": {
+      "component": "control",
+      "label": "Workspace"
+    },
+    "resources-page": {
+      "component": "home",
+      "label": "Resources"
+    },
+    "resources-empty": {
+      "component": "panel-empty",
+      "label": "Resources collection",
+      "look": "card"
+    },
+    "tab-project": {
+      "component": "tab",
+      "label": "Storyboard",
+      "target": "view-project"
+    },
+    "tab-animation": {
+      "component": "tab",
+      "label": "Animation",
+      "target": "view-animation"
+    },
+    "tab-design": {
+      "component": "tab",
+      "label": "Lyrics",
+      "target": "view-design"
+    },
+    "tab-studio": {
+      "component": "tab",
+      "label": "Studio",
+      "target": "view-studio"
     }
   },
   "rails": {

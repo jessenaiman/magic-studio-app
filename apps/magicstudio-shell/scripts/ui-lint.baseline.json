@@ -260,6 +260,126 @@
       "style_writes": 0,
       "geometry_without_custom_property": 0,
       "lines": 38
+    },
+    "app-bar.css": {
+      "px_outside_root": 0,
+      "hex_outside_root": 0,
+      "ms_outside_root": 0,
+      "raw_px_in_component_rules": 0,
+      "outside_in_overrides": 1,
+      "lines": 43,
+      "rules": 30,
+      "selectors": 39
+    },
+    "global.css": {
+      "px_outside_root": 0,
+      "hex_outside_root": 0,
+      "ms_outside_root": 0,
+      "raw_px_in_component_rules": 0,
+      "outside_in_overrides": 2,
+      "lines": 83,
+      "rules": 28,
+      "selectors": 36
+    },
+    "mayhem.css": {
+      "px_outside_root": 8,
+      "hex_outside_root": 0,
+      "ms_outside_root": 0,
+      "raw_px_in_component_rules": 0,
+      "outside_in_overrides": 0,
+      "lines": 51,
+      "rules": 9,
+      "selectors": 8
+    },
+    "menu.css": {
+      "px_outside_root": 10,
+      "hex_outside_root": 1,
+      "ms_outside_root": 0,
+      "raw_px_in_component_rules": 0,
+      "outside_in_overrides": 0,
+      "lines": 19,
+      "rules": 13,
+      "selectors": 14
+    },
+    "analytics.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 12,
+      "class_from_code": 1,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 165
+    },
+    "app-bar.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 7,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 64
+    },
+    "backstage-terminal.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 5,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 149
+    },
+    "menu.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 8,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 184
+    },
+    "project.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 5,
+      "class_from_code": 2,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 214
+    },
+    "resources.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 17
+    },
+    "song.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 2,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 167
+    },
+    "storyboard.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 197
     }
   }
 }
