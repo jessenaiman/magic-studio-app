@@ -34,13 +34,14 @@ async function blenderAnimationOpen(selection={}){
  const current=()=>revision===blenderViewRevision&&state.project===project&&state.view==='animation'&&motion.mode==='blender'&&blenderDialog===view;
  const controls=el('aside',{class:'motion-inspector blender-controls',id:'blender-controls','aria-label':'Blender animation controls'});
  const stage=el('div',{class:'motion-stage'});
- const status=el('span',{class:'muted',id:'blender-status',role:'status'},'Loading artwork…');
- const main=el('div',{class:'motion-main'},el('div',{class:'motion-stagebar',id:'motion-stagebar'},motionModeSwitch(),status),stage);
+ const toolbar=new PanelHeader({id:'motion-stagebar',titleId:'blender-status',title:'Loading artwork…',actions:[motionModeSwitch()]});
+ const status=toolbar.label;status.setAttribute('role','status');
+ const main=el('div',{class:'motion-main'},toolbar.element,stage);
  view.append(controls,main);
  const video=el('video',{id:'blender-preview',controls:true,loop:true,'aria-label':'Rendered Blender animation'});
  stage.append(video);
  let latest=null,job=null,jobState=null,selectionRevision=0;
- const report=(message,detail=message)=>{if(current()){status.textContent=message;status.title=detail;}};
+ const report=(message,detail=message)=>{if(current())toolbar.rename(message,detail);};
  try{
   const result=await motionCommand('project.list_assets');if(!current())return;
   const assets=result.assets||result.project_assets||[];

@@ -50,7 +50,8 @@ function motionButton(id,label,icon,fn){return el('button',{id,class:'icon',titl
 function motionSection(title,body,open=false,componentId=null){
  const id=componentId||uiConfig.sections?.[title];
  if(!id||!uiConfig.elements[id])throw Error(`Unconfigured animation panel: ${title}`);
- const heading=el('summary',{id:`${id}-head`},el('span',{class:'motion-section-icon',html:`<svg viewBox="0 0 24 24">${MOTION_ICONS[uiConfig.elements[id].icon]}</svg>`}),el('span',{class:'panel-title'},title),el('span',{class:'motion-section-chevron',html:ICONS.chev}));
+ const heading=new PanelHeader({id:`${id}-head`,title,collapsible:true,
+  icon:`<svg viewBox="0 0 24 24">${MOTION_ICONS[uiConfig.elements[id].icon]}</svg>`}).element;
  const node=el('details',{id,class:'motion-section'},heading,el('div',{class:'motion-section-body'},body));
  node.open=Object.hasOwn(motion.openSections,title)?motion.openSections[title]===true:open;
  node.addEventListener('toggle',()=>{
@@ -98,14 +99,15 @@ function animationShell(){
  const inspector=el('aside',{id:'motion-inspector','aria-label':'Animation controls'});
  const stage=el('div',{class:'motion-stage',id:'motion-stage'},el('canvas',{id:'motion-canvas','aria-label':'Character animation canvas',tabindex:0}));
  const grid=motionButton('motion-grid','Show or hide grid','grid',()=>{motion.grid=!motion.grid;localStorage.setItem('animation.grid',String(motion.grid));grid.setAttribute('aria-pressed',String(motion.grid));animationDraw();});grid.setAttribute('aria-pressed',String(motion.grid));
- const toolbar=el('div',{class:'motion-stagebar'},el('span',{id:'motion-caption',class:'muted'},'Loading artwork…'),el('div',{class:'motion-tools'},
+ const toolbar=new PanelHeader({id:'motion-stagebar',titleId:'motion-caption',title:'Loading artwork…',actions:[
   motionButton('motion-pen','Pen · draw a motion path','pen',()=>{animationPause();motion.pen=!motion.pen;$('motion-pen').setAttribute('aria-pressed',String(motion.pen));$('motion-canvas').classList.toggle('drawing',motion.pen);$('motion-path-section')?.setAttribute('open','');}), motionButton('motion-path-visible','Show or hide the motion path','eye',()=>{motion.pathVisible=!motion.pathVisible;$('motion-path-visible').setAttribute('aria-pressed',String(motion.pathVisible));animationDraw();}), grid, motionButton('motion-fit','Fit artwork','fit',()=>{motion.fit=true;motion.zoom=1;animationDraw();}),
   el('button',{id:'motion-actual',title:'Actual size · 100%','aria-label':'Actual size',onclick:()=>{motion.fit=false;motion.zoom=1;animationDraw();}},'1:1'),
   motionButton('motion-minus','Zoom out','minus',()=>{motion.zoom/=1.2;animationDraw();}),motionButton('motion-plus','Zoom in','plus',()=>{motion.zoom*=1.2;animationDraw();}),
-  el('button',{id:'btn-generate-all-sheets',class:'ghost','data-commands':'assets.agent_sheets',title:'Generate all missing turnaround, skeleton & pose sheets for this character',onclick:async()=>{if(!motion.character)return;try{toast(`Requesting all missing sheets for ${motion.character}…`);await motionCommand('assets.agent_sheets',{character:motion.character,kinds:['turnaround','skeleton','poses'],run:true});await animationRefresh();}catch(err){toast(String(err));}}},'+ All Sheets')));
+  el('button',{id:'btn-generate-all-sheets',class:'icon','aria-label':'Generate missing character sheets',html:`<svg viewBox="0 0 24 24">${MOTION_ICONS.layers}</svg>`,'data-commands':'assets.agent_sheets',title:'Generate all missing turnaround, skeleton & pose sheets for this character',onclick:async()=>{if(!motion.character)return;try{toast(`Requesting all missing sheets for ${motion.character}…`);await motionCommand('assets.agent_sheets',{character:motion.character,kinds:['turnaround','skeleton','poses'],run:true});await animationRefresh();}catch(err){toast(String(err));}}})]});
+ motion.stageHeader=toolbar;
  const transport=el('div',{class:'motion-transport'},motionButton('motion-play','Play motion','play',animationPlay),motionButton('motion-rewind','Return to start','reset',()=>{animationPause();motion.time=0;animationDraw();}),motionButton('motion-step-back','Previous frame','step',()=>animationStep(-1)),motionButton('motion-step','Next frame','step',()=>animationStep(1)),el('span',{id:'motion-time',class:'motion-time'},'0:00.000'),el('input',{id:'motion-scrub',type:'range',min:0,max:1,step:0.001,value:0,'aria-label':'Scrub motion',oninput:e=>animationSeek(Number(e.target.value))}));
  const partBar=el('div',{class:'motion-part-bar',id:'motion-part-bar',hidden:''});
- view.append(assets,el('div',{class:'motion-main'},toolbar,stage,transport,partBar),inspector);
+ view.append(assets,el('div',{class:'motion-main'},toolbar.element,stage,transport,partBar),inspector);
  if(motion.mode!=='composite'){
   const theatre=el('section',{class:'motion-theatre','aria-label':'Theatre timeline'});
   view.append(theatre);
@@ -402,7 +404,7 @@ window.addEventListener('focus',()=>{if(state.view==='animation'&&motion.mode!==
 async function animationSample(){
  if(!motion.meta?.tracks?.length)return;
  const request=++motion.request;animationPause();
- $('motion-caption').textContent='Sampling motion…';
+ motion.stageHeader.rename('Sampling motion…');
  try{const sample=await motionCommand('motion.sample',{character:motion.character,track:motion.track||motion.meta.tracks[0].id,rest:motion.rest,amount:motion.amount});if(request!==motion.request)return;if(sample.layer_ids&&(sample.layer_ids.length!==motion.meta.layers.length||sample.layer_ids.some((id,i)=>id!==motion.meta.layers[i].id)))throw Error('Layer order changed during sampling; refresh the object before playback.');motion.sample=sample;if(typeof timelineRender==='function')timelineRender();motion.time=Math.min(motion.time,sample.duration);$('motion-scrub').max=sample.duration;animationDraw();}catch(e){toast(String(e));}
 }
 async function animationRefresh(){
@@ -465,7 +467,7 @@ function animationDraw(){
  const frame=sample.frames[Math.min(sample.frames.length-1,Math.floor(motion.time*sample.fps))];
  frame.layers.forEach((l,i)=>{if(!l.opacity)return;ctx.save();ctx.transform(...l.matrix);theatreTransform(ctx,meta.layers[i]);ctx.globalAlpha=l.opacity;const crop=meta.layers[i].crop;ctx.drawImage(motion.images[i],crop[0],crop[1]);ctx.restore();});
  drawMotionPath(ctx,scale);
- $('motion-caption').textContent=`${motion.character} · ${motion.rest?'Rest pose':(meta.tracks.find(t=>t.id===motion.track)?.label||motion.track.replaceAll('-',' '))}`;
+ motion.stageHeader.rename(`${motion.character} · ${motion.rest?'Rest pose':(meta.tracks.find(t=>t.id===motion.track)?.label||motion.track.replaceAll('-',' '))}`);
  $('motion-time').textContent=`${Math.floor(motion.time/60)}:${(motion.time%60).toFixed(3).padStart(6,'0')}`;$('motion-scrub').value=motion.time;
  if($('motion-part-angle')&&document.activeElement!==$('motion-part-angle')){const deg=Math.round((magicTheatre.rotation||0)*10)/10;$('motion-part-angle').value=String(deg);if($('motion-part-angle-out'))$('motion-part-angle-out').textContent=`${deg}°`;}
  if(!motion.playing&&!motion.loading)animationRemember();
