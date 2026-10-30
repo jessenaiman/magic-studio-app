@@ -167,37 +167,202 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
     Ok(())
 }
 
+/// The writer lease a journaled command needs, except for the project lifecycle calls.
+fn writer_lease(
+    s: &Session,
+    id: &str,
+    project_edit: bool,
+) -> Result<Option<std::sync::Arc<std::fs::File>>> {
+    let lifecycle = matches!(
+        id,
+        "project.open" | "project.close" | "project.new" | "project.intake"
+    );
+    if !project_edit || lifecycle {
+        return Ok(None);
+    }
+    match s.project_path.as_deref() {
+        Some(path) => Ok(Some(project::claim(s, path)?)),
+        None => Ok(None),
+    }
+}
+
+fn announce_dispatch(s: &Session, id: &str, params: &Value) {
+    activity::command(
+        s.project_path.as_deref(),
+        id,
+        params,
+        "dispatch_running",
+        None,
+    );
+}
+
+/// The stage a finished command is recorded under.
+fn outcome_stage(value: &Value) -> &'static str {
+    if value["ok"] == false {
+        "engine_error"
+    } else if value["intake_ready"] == false {
+        "engine_needs_work"
+    } else {
+        "engine_success"
+    }
+}
+
+fn announce_result(s: &Session, id: &str, params: &Value, result: &Result<Value>) {
+    match result {
+        Ok(v) => activity::command(s.project_path.as_deref(), id, params, outcome_stage(v), None),
+        Err(e) => activity::command(
+            s.project_path.as_deref(),
+            id,
+            params,
+            "engine_error",
+            Some(&e.to_string()),
+        ),
+    }
+}
+
+/// An edit is a successful journaled command that left the project file unwritten.
+fn note_edit(
+    s: &mut Session,
+    project_edit: bool,
+    result: &Result<Value>,
+    saves_before: u64,
+    project_before: Option<&std::path::PathBuf>,
+) {
+    if !(project_edit && result.as_ref().is_ok_and(|v| v["ok"] != false)) {
+        return;
+    }
+    if s.project_saves
+        .load(std::sync::atomic::Ordering::Relaxed)
+        != saves_before
+        || s.project_path.as_ref() != project_before
+    {
+        s.edits_since_save = 0;
+    } else {
+        s.edits_since_save += 1;
+    }
+}
+
+/// Save As transfers ownership to a new path; never restore the source lease over it.
+fn restore_lease(
+    s: &mut Session,
+    prior: Option<std::sync::Arc<std::fs::File>>,
+    had_writer: bool,
+    project_before: Option<&std::path::PathBuf>,
+) {
+    if had_writer && s.project_path.as_ref() == project_before {
+        s.project_owner = prior;
+    }
+}
+
+/// The outliner name a call asked for, else the asset id read as words.
+fn outliner_name(params: &Value, asset_id: &str) -> String {
+    params
+        .get("name")
+        .or_else(|| params.get("asset"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| asset_id.replace('_', " "))
+}
+
+/// A validated intake keeps the asset's own path; a loaded manifest takes the one it names.
+fn outliner_path(
+    s: &Session,
+    id: &str,
+    params: &Value,
+    asset_path: std::path::PathBuf,
+) -> Option<std::path::PathBuf> {
+    if id == "intake.validate" && !asset_path.as_os_str().is_empty() {
+        return Some(asset_path);
+    }
+    params
+        .get("manifest")
+        .or_else(|| params.get("image"))
+        .and_then(Value::as_str)
+        .map(|path| commands::resolve_workspace_path(s, path))
+}
+
+/// Update the entry the outliner already has, else add one for this call.
+fn connect_asset_entry(
+    s: &mut Session,
+    id: &str,
+    asset_id: String,
+    name: String,
+    path: Option<std::path::PathBuf>,
+    params: &Value,
+) {
+    if let Some(existing) = s
+        .project_assets
+        .iter_mut()
+        .find(|entry| entry.id == asset_id)
+    {
+        if id == "intake.validate" && path.is_some() {
+            existing.path = path;
+        }
+        return;
+    }
+    s.project_assets.push(ProjectAsset {
+        id: asset_id,
+        name,
+        preset: params
+            .get("preset")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        path,
+        kind: "auto".into(),
+        parts: Vec::new(),
+    });
+}
+
+/// Older import/load callers also appear in the shared project outliner.
+fn connect_outliner_asset(s: &mut Session, id: &str, params: &Value) {
+    if !matches!(id, "intake.validate" | "asset.load_manifest") {
+        return;
+    }
+    let Some(asset) = s.current_asset() else {
+        return;
+    };
+    let asset_id = asset.id.clone();
+    let asset_path = asset.path.clone();
+    let name = outliner_name(params, &asset_id);
+    let path = outliner_path(s, id, params, asset_path);
+    connect_asset_entry(s, id, asset_id, name, path, params);
+}
+
+/// Keep the open project file in step with its asset connections.
+fn sync_project_file(
+    s: &mut Session,
+    spec: &CommandSpec,
+    id: &str,
+    assets_before: Option<&Value>,
+) -> Result<()> {
+    if !spec.journal
+        || matches!(id, "project.open" | "project.new" | "project.close")
+        || s.project_path.is_none()
+    {
+        return Ok(());
+    }
+    if serde_json::to_value(&s.project_assets).ok().as_ref() != assets_before {
+        commands::write_project_file(s)?;
+    }
+    Ok(())
+}
+
 impl Session {
     /// Execute one command by id with JSON parameters, returning JSON.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value> {
         let _context = activity::enter(id, &params);
         // Cast writes are journaled workshop files, independent of the open song's writer lease.
         let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
-        let _writer = if project_edit
-            && !matches!(
-                id,
-                "project.open" | "project.close" | "project.new" | "project.intake"
-            ) {
-            self.project_path
-                .as_deref()
-                .map(|path| project::claim(self, path))
-                .transpose()?
-        } else {
-            None
-        };
+        let _writer = writer_lease(self, id, project_edit)?;
         let prior_owner = self.project_owner.clone();
         if let Some(owner) = &_writer {
             self.project_owner = Some(owner.clone());
         }
         let record = self.record_user_state && commands::find(id).is_none_or(|c| c.journal);
         if record {
-            activity::command(
-                self.project_path.as_deref(),
-                id,
-                &params,
-                "dispatch_running",
-                None,
-            );
+            announce_dispatch(self, id, &params);
         }
         let started = std::time::Instant::now();
         let (saves_before, project_before) = (
@@ -206,19 +371,13 @@ impl Session {
             self.project_path.clone(),
         );
         let result = self.execute_inner(id, params.clone());
-        // An edit is a successful journaled command that left the project file unwritten.
-        if result.as_ref().is_ok_and(|v| v["ok"] != false) && project_edit {
-            if self
-                .project_saves
-                .load(std::sync::atomic::Ordering::Relaxed)
-                != saves_before
-                || self.project_path != project_before
-            {
-                self.edits_since_save = 0;
-            } else {
-                self.edits_since_save += 1;
-            }
-        }
+        note_edit(
+            self,
+            project_edit,
+            &result,
+            saves_before,
+            project_before.as_ref(),
+        );
         if record && let Ok(value) = &result {
             activity::result(
                 self.project_path.as_deref(),
@@ -228,33 +387,9 @@ impl Session {
             );
         }
         if record {
-            match &result {
-                Ok(v) => activity::command(
-                    self.project_path.as_deref(),
-                    id,
-                    &params,
-                    if v["ok"] == false {
-                        "engine_error"
-                    } else if v["intake_ready"] == false {
-                        "engine_needs_work"
-                    } else {
-                        "engine_success"
-                    },
-                    None,
-                ),
-                Err(e) => activity::command(
-                    self.project_path.as_deref(),
-                    id,
-                    &params,
-                    "engine_error",
-                    Some(&e.to_string()),
-                ),
-            };
+            announce_result(self, id, &params, &result);
         }
-        // Save As transfers ownership to a new path; never restore the source lease over it.
-        if _writer.is_some() && self.project_path == project_before {
-            self.project_owner = prior_owner;
-        }
+        restore_lease(self, prior_owner, _writer.is_some(), project_before.as_ref());
         result
     }
     fn execute_inner(&mut self, id: &str, params: Value) -> Result<Value> {
@@ -263,59 +398,8 @@ impl Session {
         (spec.enabled)(self).map_err(|e| EngineError::CommandFailed(id.to_string(), e))?;
         let assets_before = serde_json::to_value(&self.project_assets).ok();
         let out = (spec.run)(self, &params)?;
-        // Older import/load callers also appear in the shared project outliner.
-        if matches!(id, "intake.validate" | "asset.load_manifest")
-            && let Some(asset) = self.current_asset()
-        {
-            let asset_id = asset.id.clone();
-            let asset_path = asset.path.clone();
-            let display_name = params
-                .get("name")
-                .or_else(|| params.get("asset"))
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .unwrap_or_else(|| asset_id.replace('_', " "));
-            let path = if id == "intake.validate" && !asset_path.as_os_str().is_empty() {
-                Some(asset_path)
-            } else {
-                params
-                    .get("manifest")
-                    .or_else(|| params.get("image"))
-                    .and_then(Value::as_str)
-                    .map(|path| commands::resolve_workspace_path(self, path))
-            };
-            if let Some(existing) = self
-                .project_assets
-                .iter_mut()
-                .find(|entry| entry.id == asset_id)
-            {
-                if id == "intake.validate" && path.is_some() {
-                    existing.path = path;
-                }
-            } else {
-                self.project_assets.push(ProjectAsset {
-                    id: asset_id,
-                    name: display_name,
-                    preset: params
-                        .get("preset")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned),
-                    path,
-                    kind: "auto".into(),
-                    parts: Vec::new(),
-                });
-            }
-        }
-        // Keep the open project file in step with its asset connections.
-        if spec.journal
-            && !matches!(id, "project.open" | "project.new" | "project.close")
-            && self.project_path.is_some()
-            && serde_json::to_value(&self.project_assets).ok() != assets_before
-        {
-            commands::write_project_file(self)?;
-        }
+        connect_outliner_asset(self, id, &params);
+        sync_project_file(self, spec, id, assets_before.as_ref())?;
         if spec.journal {
             self.record(out.clone());
         }
