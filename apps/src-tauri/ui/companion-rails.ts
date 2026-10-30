@@ -75,8 +75,7 @@ function createCompanionRails({ root = document } = {}) {
     return found;
   }
 
-  /** @param {{name?: string, role?: any, target?: any}} [query] */
-  function resolve({ name, role = null, target = null } = {}) {
+  function resolve({ name, role = null, target = null }: {name?: string, role?: any, target?: any} = {}) {
     if (!target) return null;
     const candidates = eligibleSlots({ name, role, target }).filter(entry => {
       const rect = measure(entry.slot.id);

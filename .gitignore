@@ -174,3 +174,10 @@ apps/src-tauri/acceptance/artifacts/
 /apps/src-tauri/ui/feedback.js
 /apps/src-tauri/ui/report.js
 /apps/src-tauri/ui/app-bar.js
+/apps/src-tauri/ui/clip-placement.js
+/apps/src-tauri/ui/timeline.js
+/apps/src-tauri/ui/image-prompt.js
+/apps/src-tauri/ui/motion-authoring.js
+/apps/src-tauri/ui/animation-jobs.js
+/apps/src-tauri/ui/home.js
+/apps/src-tauri/ui/companion-rails.js

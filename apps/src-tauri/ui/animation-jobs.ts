@@ -22,7 +22,7 @@ async function loadRenderedClip(video,path,current){
  renderMediaUrl=URL.createObjectURL(new Blob(chunks,{type:String(path).toLowerCase().endsWith('.mp4')?'video/mp4':'video/webm'}));
  video.src=renderMediaUrl;video.load();
 }
-async function openAnimationJobs(selection={}){
+async function openAnimationJobs(selection: {character?: string, track?: string}={}){
  theatreRequireSaved();
  animationJobsDispose();
  const choice={character:selection.character??motion.character,track:selection.track??motion.track};
