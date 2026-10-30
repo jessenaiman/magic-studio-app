@@ -61,25 +61,9 @@ CANONICAL_ACTION_SLOTS = [
 ]
 
 
-def _classify_unlabelled_panel_with_vision_fallback(
-    crop: Image.Image,
-    index: int,
-    total_panels: int,
-    kind: str,
-    already_assigned: set[str],
-) -> tuple[str, str]:
-    """Hybrid fallback: use Jev vision verifier when configured, else silhouette geometry classifier."""
-    alpha = np.array(crop.getchannel("A")) > 20
-    ys, xs = np.nonzero(alpha)
-    if not len(xs):
-        return f"pose_{index:02d}", "empty_fallback"
-
-    if kind == "turnaround":
-        for candidate in CANONICAL_TURNAROUND_SLOTS:
-            if candidate not in already_assigned:
-                return candidate, "vision_turnaround_order"
-        return f"view_{index:02d}", "vision_turnaround_extra"
-
+def _silhouette_geometry(
+    alpha: np.ndarray, xs: np.ndarray, ys: np.ndarray
+) -> tuple[float, float, float]:
     bw = float(xs.max() - xs.min() + 1)
     bh = float(ys.max() - ys.min() + 1)
     aspect = bw / max(1.0, bh)
@@ -87,7 +71,16 @@ def _classify_unlabelled_panel_with_vision_fallback(
     bot_half = alpha[int((ys.min() + ys.max()) * 0.5) : ys.max() + 1, :]
     top_spread = float(top_half.sum()) / max(1.0, float(alpha.sum()))
     bot_spread = float(bot_half.sum()) / max(1.0, float(alpha.sum()))
+    return aspect, top_spread, bot_spread
 
+
+def _action_silhouette_label(
+    index: int,
+    aspect: float,
+    top_spread: float,
+    bot_spread: float,
+    already_assigned: set[str],
+) -> tuple[str, str]:
     # Silhouette / Jev vision geometry classification for unlabelled action cells
     preferred_order = [
         "standing",
@@ -121,6 +114,31 @@ def _classify_unlabelled_panel_with_vision_fallback(
         if cand not in already_assigned:
             return cand, "jev_vision_fallback"
     return f"pose_{index:02d}", "jev_vision_extra"
+
+
+def _classify_unlabelled_panel_with_vision_fallback(
+    crop: Image.Image,
+    index: int,
+    total_panels: int,
+    kind: str,
+    already_assigned: set[str],
+) -> tuple[str, str]:
+    """Hybrid fallback: use Jev vision verifier when configured, else silhouette geometry classifier."""
+    alpha = np.array(crop.getchannel("A")) > 20
+    ys, xs = np.nonzero(alpha)
+    if not len(xs):
+        return f"pose_{index:02d}", "empty_fallback"
+
+    if kind == "turnaround":
+        for candidate in CANONICAL_TURNAROUND_SLOTS:
+            if candidate not in already_assigned:
+                return candidate, "vision_turnaround_order"
+        return f"view_{index:02d}", "vision_turnaround_extra"
+
+    aspect, top_spread, bot_spread = _silhouette_geometry(alpha, xs, ys)
+    return _action_silhouette_label(
+        index, aspect, top_spread, bot_spread, already_assigned
+    )
 
 
 def _normalize_cell(
@@ -192,32 +210,8 @@ def _flip_horizontal(pc_bin: str, src_png: Path, dst_png: Path) -> bool:
     return proc.returncode == 0 and dst_png.is_file()
 
 
-def normalize_and_reorder_sheet(
-    source: str | Path,
-    out_dir: str | Path,
-    kind: str = "auto",
-    cell_size: tuple[int, int] = (560, 720),
-    expand_directions: bool = True,
-    tolerance: int = 25,
-    character_id: str = "character",
-) -> dict[str, Any]:
-    """Calculate panels, normalize cell sizes, label via OCR+Vision, reorder, and expand directional slots."""
-    src_path = Path(source).resolve()
-    out_root = Path(out_dir).resolve()
-    frames_dir = out_root / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
-
-    pc_bin = (
-        _find_image_cli() or shutil.which("photocraft-cli") or "photocraft-cli"
-    )
-    with Image.open(src_path) as im:
-        rgba = im.convert("RGBA")
+def _panel_boxes(rgba: Image.Image, kind: str, tolerance: int) -> tuple[list, int, int]:
     w, h = rgba.size
-
-    if kind == "auto":
-        low = src_path.name.lower()
-        kind = "turnaround" if "turnaround" in low else "action"
-
     raw = np.array(rgba)
     if raw[:, :, 3].min() < 255:
         mask = raw[:, :, 3] > 16
@@ -231,14 +225,50 @@ def normalize_and_reorder_sheet(
     boxes = detect_components(mask, "turnaround" if kind == "turnaround" else "action")
     if not boxes:
         boxes = [(0, 0, w, h)]
+    return boxes, w, h
 
-    ocr_hits: list[dict] = []
-    if kind == "action":
-        try:
-            ocr_hits = _ocr_labels(src_path)
-        except Exception:
-            ocr_hits = []
 
+def _panel_label(
+    idx: int,
+    b: tuple,
+    crop: Image.Image,
+    w: int,
+    h: int,
+    kind: str,
+    n_boxes: int,
+    ocr_hits: list[dict],
+    assigned_labels: set[str],
+) -> tuple[str, str]:
+    # 1. Try OCR label match first
+    candidates = [
+        l
+        for l in ocr_hits
+        if abs(l["x"] - (b[0] + b[2]) / 2) < (b[2] - b[0]) * 0.65
+        and b[3] - 8 <= l["y"] <= b[3] + h * 0.12
+    ]
+    ocr_match = min(
+        candidates,
+        key=lambda l: abs(l["y"] - b[3]) + abs(l["x"] - (b[0] + b[2]) / 2),
+        default=None,
+    )
+    if kind == "turnaround" and n_boxes == 5:
+        return VIEWS[idx], "turnaround_5view_order"
+    if ocr_match and ocr_match["label"] not in assigned_labels:
+        return ocr_match["label"], "tesseract_ocr"
+    return _classify_unlabelled_panel_with_vision_fallback(
+        crop, idx, n_boxes, kind, assigned_labels
+    )
+
+
+def _label_raw_panels(
+    rgba: Image.Image,
+    boxes: list,
+    w: int,
+    h: int,
+    kind: str,
+    ocr_hits: list[dict],
+    pc_bin: str,
+) -> list[dict[str, Any]]:
     assigned_labels: set[str] = set()
     raw_panels: list[dict[str, Any]] = []
     for idx, b in enumerate(boxes):
@@ -247,29 +277,9 @@ def normalize_and_reorder_sheet(
             crop = _clean_crop(rgba, box, pc_bin)
         except Exception:
             crop = rgba.crop(box)
-
-        # 1. Try OCR label match first
-        candidates = [
-            l
-            for l in ocr_hits
-            if abs(l["x"] - (b[0] + b[2]) / 2) < (b[2] - b[0]) * 0.65
-            and b[3] - 8 <= l["y"] <= b[3] + h * 0.12
-        ]
-        ocr_match = min(
-            candidates,
-            key=lambda l: abs(l["y"] - b[3]) + abs(l["x"] - (b[0] + b[2]) / 2),
-            default=None,
+        label, label_source = _panel_label(
+            idx, b, crop, w, h, kind, len(boxes), ocr_hits, assigned_labels
         )
-        if kind == "turnaround" and len(boxes) == 5:
-            label = VIEWS[idx]
-            label_source = "turnaround_5view_order"
-        elif ocr_match and ocr_match["label"] not in assigned_labels:
-            label = ocr_match["label"]
-            label_source = "tesseract_ocr"
-        else:
-            label, label_source = _classify_unlabelled_panel_with_vision_fallback(
-                crop, idx, len(boxes), kind, assigned_labels
-            )
         assigned_labels.add(label)
         raw_panels.append(
             {
@@ -280,23 +290,18 @@ def normalize_and_reorder_sheet(
                 "crop": crop,
             }
         )
+    return raw_panels
 
-    # Reorder panels into canonical sequence
-    canonical_order = (
-        CANONICAL_TURNAROUND_SLOTS if kind == "turnaround" else CANONICAL_ACTION_SLOTS
-    )
-    raw_panels.sort(
-        key=lambda p: (
-            canonical_order.index(p["label"])
-            if p["label"] in canonical_order
-            else 100 + p["originalIndex"]
-        )
-    )
 
-    cell_w, cell_h = int(cell_size[0]), int(cell_size[1])
+def _normalize_frame_entries(
+    raw_panels: list[dict[str, Any]],
+    out_root: Path,
+    pc_bin: str,
+    cell_w: int,
+    cell_h: int,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     normalized_frames: list[dict[str, Any]] = []
     by_label: dict[str, dict[str, Any]] = {}
-
     for new_idx, panel in enumerate(raw_panels):
         lbl = panel["label"]
         rel_file = f"frames/{new_idx:02d}_{lbl}.png"
@@ -315,48 +320,69 @@ def normalize_and_reorder_sheet(
         }
         normalized_frames.append(entry)
         by_label[lbl] = entry
+    return normalized_frames, by_label
 
+
+def _expand_directional_frames(
+    by_label: dict[str, dict[str, Any]],
+    normalized_frames: list[dict[str, Any]],
+    out_root: Path,
+    pc_bin: str,
+    character_id: str,
+) -> None:
     # Expand directional walking panels (`walk_right` <-> `walk_left`) via PhotoCraft flip when requested
-    if kind == "action" and expand_directions:
-        base_walk = (
-            by_label.get("walk_right")
-            or by_label.get("walking")
-            or by_label.get("walk_left")
-        )
-        if base_walk:
-            base_path = out_root / base_walk["file"]
-            if "walk_right" not in by_label:
-                wr_rel = f"frames/{len(normalized_frames):02d}_walk_right.png"
-                shutil.copy2(base_path, out_root / wr_rel)
-                wr_entry = {
-                    **base_walk,
-                    "index": len(normalized_frames),
-                    "label": "walk_right",
-                    "labelSource": f"alias_of_{base_walk['label']}",
-                    "file": wr_rel,
-                    "mirroredFallback": False,
-                }
-                normalized_frames.append(wr_entry)
-                by_label["walk_right"] = wr_entry
-            if "walk_left" not in by_label:
-                wl_rel = f"frames/{len(normalized_frames):02d}_walk_left.png"
-                wl_path = out_root / wl_rel
-                if _flip_horizontal(pc_bin, base_path, wl_path):
-                    wl_entry = {
-                        **base_walk,
-                        "index": len(normalized_frames),
-                        "label": "walk_left",
-                        "labelSource": "photocraft_flip_horizontal",
-                        "file": wl_rel,
-                        "mirroredFallback": True,
-                        "generateAsymmetricCmd": (
-                            f"magic-cli exec image.generate provider=codex character={character_id} "
-                            f"poses='[\"walking left profile view\"]'"
-                        ),
-                    }
-                    normalized_frames.append(wl_entry)
-                    by_label["walk_left"] = wl_entry
+    base_walk = (
+        by_label.get("walk_right")
+        or by_label.get("walking")
+        or by_label.get("walk_left")
+    )
+    if not base_walk:
+        return
+    base_path = out_root / base_walk["file"]
+    if "walk_right" not in by_label:
+        wr_rel = f"frames/{len(normalized_frames):02d}_walk_right.png"
+        shutil.copy2(base_path, out_root / wr_rel)
+        wr_entry = {
+            **base_walk,
+            "index": len(normalized_frames),
+            "label": "walk_right",
+            "labelSource": f"alias_of_{base_walk['label']}",
+            "file": wr_rel,
+            "mirroredFallback": False,
+        }
+        normalized_frames.append(wr_entry)
+        by_label["walk_right"] = wr_entry
+    if "walk_left" not in by_label:
+        wl_rel = f"frames/{len(normalized_frames):02d}_walk_left.png"
+        wl_path = out_root / wl_rel
+        if _flip_horizontal(pc_bin, base_path, wl_path):
+            wl_entry = {
+                **base_walk,
+                "index": len(normalized_frames),
+                "label": "walk_left",
+                "labelSource": "photocraft_flip_horizontal",
+                "file": wl_rel,
+                "mirroredFallback": True,
+                "generateAsymmetricCmd": (
+                    f"magic-cli exec image.generate provider=codex character={character_id} "
+                    f"poses='[\"walking left profile view\"]'"
+                ),
+            }
+            normalized_frames.append(wl_entry)
+            by_label["walk_left"] = wl_entry
 
+
+def _sheet_manifest(
+    kind: str,
+    character_id: str,
+    src_path: Path,
+    w: int,
+    h: int,
+    cell_w: int,
+    cell_h: int,
+    normalized_frames: list[dict[str, Any]],
+    by_label: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     required_slots = (
         CANONICAL_TURNAROUND_SLOTS
         if kind == "turnaround"
@@ -367,7 +393,7 @@ def normalize_and_reorder_sheet(
         f["label"] for f in normalized_frames if f.get("mirroredFallback")
     ]
 
-    manifest_doc = {
+    return {
         "schemaVersion": 1,
         "sheetType": kind,
         "character": character_id,
@@ -390,6 +416,77 @@ def normalize_and_reorder_sheet(
         },
         "frames": normalized_frames,
     }
+
+
+def normalize_and_reorder_sheet(
+    source: str | Path,
+    out_dir: str | Path,
+    kind: str = "auto",
+    cell_size: tuple[int, int] = (560, 720),
+    expand_directions: bool = True,
+    tolerance: int = 25,
+    character_id: str = "character",
+) -> dict[str, Any]:
+    """Calculate panels, normalize cell sizes, label via OCR+Vision, reorder, and expand directional slots."""
+    src_path = Path(source).resolve()
+    out_root = Path(out_dir).resolve()
+    frames_dir = out_root / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    pc_bin = (
+        _find_image_cli() or shutil.which("photocraft-cli") or "photocraft-cli"
+    )
+    with Image.open(src_path) as im:
+        rgba = im.convert("RGBA")
+
+    if kind == "auto":
+        low = src_path.name.lower()
+        kind = "turnaround" if "turnaround" in low else "action"
+
+    boxes, w, h = _panel_boxes(rgba, kind, tolerance)
+
+    ocr_hits: list[dict] = []
+    if kind == "action":
+        try:
+            ocr_hits = _ocr_labels(src_path)
+        except Exception:
+            ocr_hits = []
+
+    raw_panels = _label_raw_panels(rgba, boxes, w, h, kind, ocr_hits, pc_bin)
+
+    # Reorder panels into canonical sequence
+    canonical_order = (
+        CANONICAL_TURNAROUND_SLOTS if kind == "turnaround" else CANONICAL_ACTION_SLOTS
+    )
+    raw_panels.sort(
+        key=lambda p: (
+            canonical_order.index(p["label"])
+            if p["label"] in canonical_order
+            else 100 + p["originalIndex"]
+        )
+    )
+
+    cell_w, cell_h = int(cell_size[0]), int(cell_size[1])
+    normalized_frames, by_label = _normalize_frame_entries(
+        raw_panels, out_root, pc_bin, cell_w, cell_h
+    )
+
+    if kind == "action" and expand_directions:
+        _expand_directional_frames(
+            by_label, normalized_frames, out_root, pc_bin, character_id
+        )
+
+    manifest_doc = _sheet_manifest(
+        kind,
+        character_id,
+        src_path,
+        w,
+        h,
+        cell_w,
+        cell_h,
+        normalized_frames,
+        by_label,
+    )
     (out_root / "manifest.json").write_text(
         json.dumps(manifest_doc, indent=2) + "\n", encoding="utf-8"
     )

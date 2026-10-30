@@ -67,6 +67,231 @@ def _extend_back_under_front(
     return back_rgba
 
 
+def _layer_z(lid: str) -> int:
+    l = lid.lower()
+    if "ear" in l or "tail" in l:
+        return 10
+    if "leg" in l:
+        return 14
+    if "foot" in l:
+        return 16
+    if "torso" in l or "body" in l:
+        return 20
+    if "head" in l:
+        return 30
+    if "arm" in l or "wing" in l or "hand" in l:
+        return 35
+    return 25
+
+
+def _studio_layer_entry(
+    item: dict,
+    cw: int,
+    ch: int,
+    out_dir: Path | None,
+    canvas_layers_dir: Path | None,
+    canvas_arrays: dict[str, np.ndarray],
+) -> dict:
+    pid = item.get("id") or item.get("name") or "part"
+    file_rel = item.get("file") or f"{pid}.png"
+    parent = item.get("parent")
+    bind_pos = (
+        item.get("bindPosition") or item.get("center") or [cw / 2.0, ch / 2.0]
+    )
+    local_piv = item.get("pivot") or [0.0, 0.0]
+    canvas_piv = list(bind_pos)
+
+    already_ext = False
+    if out_dir is not None and canvas_layers_dir is not None:
+        src_png = (out_dir / file_rel).resolve()
+        if src_png.is_file():
+            with Image.open(src_png) as im:
+                rgba = im.convert("RGBA")
+            if rgba.size != (cw, ch):
+                full_im = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+                ox = int(round(float(bind_pos[0]) - float(local_piv[0])))
+                oy = int(round(float(bind_pos[1]) - float(local_piv[1])))
+                full_im.paste(rgba, (ox, oy), rgba.getchannel("A"))
+                canvas_arrays[pid] = np.array(full_im)
+            else:
+                already_ext = True
+                canvas_piv = [float(local_piv[0]), float(local_piv[1])]
+                canvas_arrays[pid] = np.array(rgba)
+            file_rel = f"canvas_layers/{pid}.png"
+
+    return {
+        "id": pid,
+        "file": file_rel,
+        "center": [round(float(bind_pos[0]), 1), round(float(bind_pos[1]), 1)],
+        "pivot": [
+            round(float(canvas_piv[0]), 1),
+            round(float(canvas_piv[1]), 1),
+        ],
+        "parent": parent,
+        "scale": 100.0,
+        "rotation": 0.0,
+        "opacity": 100.0,
+        "_already_extended": already_ext,
+    }
+
+
+def _extend_joint_pairs(
+    studio_layers: list[dict],
+    canvas_arrays: dict[str, np.ndarray],
+    full_rgba: np.ndarray,
+) -> None:
+    z_by_id = {lyr["id"]: i for i, lyr in enumerate(studio_layers)}
+    for lyr in studio_layers:
+        child_id = lyr["id"]
+        parent_id = lyr.get("parent")
+        if (
+            not parent_id
+            or child_id not in canvas_arrays
+            or parent_id not in canvas_arrays
+        ):
+            continue
+        piv = lyr["pivot"]
+        if lyr.get("_already_extended"):
+            continue
+        if z_by_id[child_id] < z_by_id[parent_id]:
+            ext_iters = 8 if child_id in ("ear_left", "ear_right") else 12
+            canvas_arrays[child_id] = _extend_back_under_front(
+                canvas_arrays[child_id],
+                canvas_arrays[parent_id],
+                full_rgba,
+                piv,
+                dilate_iters=ext_iters,
+            )
+        else:
+            canvas_arrays[parent_id] = _extend_back_under_front(
+                canvas_arrays[parent_id],
+                canvas_arrays[child_id],
+                full_rgba,
+                piv,
+                dilate_iters=12,
+            )
+
+
+def _extend_layers_under_joints(
+    studio_layers: list[dict],
+    canvas_arrays: dict[str, np.ndarray],
+    out_dir: Path,
+    cw: int,
+    ch: int,
+) -> None:
+    comp_im = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    for lyr in studio_layers:
+        pid = lyr["id"]
+        if pid in canvas_arrays:
+            comp_im.alpha_composite(Image.fromarray(canvas_arrays[pid]))
+    full_rgba = np.array(comp_im)
+    _extend_joint_pairs(studio_layers, canvas_arrays, full_rgba)
+    for lyr in studio_layers:
+        lyr.pop("_already_extended", None)
+        pid = lyr["id"]
+        if pid in canvas_arrays and lyr["file"].startswith("canvas_layers/"):
+            Image.fromarray(canvas_arrays[pid]).save(out_dir / lyr["file"])
+
+
+def _is_right(low: str) -> bool:
+    return "_r" in low or "right" in low
+
+
+def _scaled_rot_keys(kfs: list, key_field: str, scale: float) -> list:
+    return [
+        [float(kf["t"]), round(scale * float(kf.get(key_field, 0.0)), 2)]
+        for kf in kfs
+    ]
+
+
+def _secondary_sign(low: str, studio_layers: list, cw: float) -> float:
+    # If `ear_left` and `ear_right` share a close center crown pivot (< 12% canvas width apart),
+    # rotate them in the same direction so a center tuft/crest sways together without splitting.
+    ear_l = next((x for x in studio_layers if x["id"] == "ear_left"), None)
+    ear_r = next((x for x in studio_layers if x["id"] == "ear_right"), None)
+    shared_crest = (
+        ear_l is not None
+        and ear_r is not None
+        and abs(float(ear_r["pivot"][0]) - float(ear_l["pivot"][0]))
+        < 0.12 * cw
+    )
+    return 1.0 if shared_crest else (-1.0 if _is_right(low) else 1.0)
+
+
+def _part_motion(
+    pid: str, kfs: list, root_id: str | None, cw: float, studio_layers: list
+) -> dict | None:
+    low = pid.lower()
+    if pid == root_id:
+        pos_keys = [
+            [float(kf["t"]), [0.0, float(kf.get("rootDyPx", 0.0))]]
+            for kf in kfs
+        ]
+        return {
+            "position": [{"kind": "keys", "ease": "smooth", "keys": pos_keys}],
+        }
+    if "head" in low:
+        rot_keys = [
+            [float(kf["t"]), float(kf.get("headRotDeg", 0.0))] for kf in kfs
+        ]
+        return {
+            "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
+        }
+    if "arm" in low or "wing" in low or "hand" in low:
+        key_field = "armRRotDeg" if _is_right(low) else "armLRotDeg"
+        rot_keys = _scaled_rot_keys(kfs, key_field, 0.65)
+        return {
+            "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
+        }
+    if "leg" in low:
+        key_field = "legRRotDeg" if _is_right(low) else "legLRotDeg"
+        rot_keys = _scaled_rot_keys(kfs, key_field, 0.55)
+        return {
+            "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
+        }
+    if "foot" in low:
+        key_field = "legRRotDeg" if _is_right(low) else "legLRotDeg"
+        rot_keys = _scaled_rot_keys(kfs, key_field, 0.25)
+        return {
+            "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
+        }
+    if any(tag in low for tag in ("ear", "tail", "hair", "prop", "hat", "cape")):
+        sign = _secondary_sign(low, studio_layers, cw)
+        rot_keys = _scaled_rot_keys(kfs, "secondaryRotDeg", 0.45 * sign)
+        return {
+            "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
+        }
+    return None
+
+
+def _action_tracks(
+    traj_tracks: dict, studio_layers: list, root_id: str | None, cw: float
+) -> list[dict]:
+    action_ids = ["idle", "walk", "run", "jump", "wave", "talk_express"]
+    tracks: list[dict] = []
+    for act_id in action_ids:
+        t_spec = traj_tracks.get(act_id)
+        if not t_spec:
+            continue
+        dur = float(t_spec.get("duration") or 1.6)
+        kfs = t_spec.get("keyframes", [])
+        motion_map: dict[str, dict] = {}
+        for lyr in studio_layers:
+            motion = _part_motion(lyr["id"], kfs, root_id, cw, studio_layers)
+            if motion is not None:
+                motion_map[lyr["id"]] = motion
+        tracks.append(
+            {
+                "id": act_id,
+                "label": act_id.replace("_", " ").title(),
+                "duration": dur,
+                "loop": bool(t_spec.get("loop", True)),
+                "motion": motion_map,
+            }
+        )
+    return tracks
+
+
 def compile_studio_rig_json(
     character_id: str,
     canvas_size: list[int],
@@ -76,125 +301,23 @@ def compile_studio_rig_json(
 ) -> dict:
     """Compile a native Magic Studio `rig.json` with 6 timed tracks (`idle`, `walk`, `run`, `jump`, `wave`, `talk_express`)."""
     cw, ch = int(canvas_size[0]), int(canvas_size[1])
-    studio_layers: list[dict] = []
-    root_id: str | None = None
     out_dir = Path(out_path).parent if out_path is not None else None
     canvas_layers_dir = (out_dir / "canvas_layers") if out_dir is not None else None
     if canvas_layers_dir is not None:
         canvas_layers_dir.mkdir(parents=True, exist_ok=True)
 
     canvas_arrays: dict[str, np.ndarray] = {}
-    for item in layers_meta:
-        pid = item.get("id") or item.get("name") or "part"
-        file_rel = item.get("file") or f"{pid}.png"
-        parent = item.get("parent")
-        if not parent and root_id is None:
-            root_id = pid
-        bind_pos = (
-            item.get("bindPosition") or item.get("center") or [cw / 2.0, ch / 2.0]
-        )
-        local_piv = item.get("pivot") or [0.0, 0.0]
-        canvas_piv = list(bind_pos)
-
-        already_ext = False
-        if out_dir is not None and canvas_layers_dir is not None:
-            src_png = (out_dir / file_rel).resolve()
-            if src_png.is_file():
-                with Image.open(src_png) as im:
-                    rgba = im.convert("RGBA")
-                if rgba.size != (cw, ch):
-                    full_im = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-                    ox = int(round(float(bind_pos[0]) - float(local_piv[0])))
-                    oy = int(round(float(bind_pos[1]) - float(local_piv[1])))
-                    full_im.paste(rgba, (ox, oy), rgba.getchannel("A"))
-                    full_rel = f"canvas_layers/{pid}.png"
-                    canvas_arrays[pid] = np.array(full_im)
-                    file_rel = full_rel
-                else:
-                    already_ext = True
-                    canvas_piv = [float(local_piv[0]), float(local_piv[1])]
-                    full_rel = f"canvas_layers/{pid}.png"
-                    canvas_arrays[pid] = np.array(rgba)
-                    file_rel = full_rel
-
-        studio_layers.append(
-            {
-                "id": pid,
-                "file": file_rel,
-                "center": [round(float(bind_pos[0]), 1), round(float(bind_pos[1]), 1)],
-                "pivot": [
-                    round(float(canvas_piv[0]), 1),
-                    round(float(canvas_piv[1]), 1),
-                ],
-                "parent": parent,
-                "scale": 100.0,
-                "rotation": 0.0,
-                "opacity": 100.0,
-                "_already_extended": already_ext,
-            }
-        )
+    studio_layers = [
+        _studio_layer_entry(item, cw, ch, out_dir, canvas_layers_dir, canvas_arrays)
+        for item in layers_meta
+    ]
+    root_id = next((e["id"] for e in studio_layers if not e["parent"]), None)
 
     # Reorder layers back-to-front (`ears`, `leg_L`, `leg_R`, `torso`, `head`, `arm_L`, `arm_R`)
     # and extend lower-z layers underneath higher-z layers at each joint pivot so rotation never opens slits.
-    def _layer_z(lid: str) -> int:
-        l = lid.lower()
-        if "ear" in l or "tail" in l:
-            return 10
-        if "leg" in l:
-            return 14
-        if "foot" in l:
-            return 16
-        if "torso" in l or "body" in l:
-            return 20
-        if "head" in l:
-            return 30
-        if "arm" in l or "wing" in l or "hand" in l:
-            return 35
-        return 25
-
     studio_layers.sort(key=lambda lyr: _layer_z(lyr["id"]))
     if canvas_arrays and out_dir is not None:
-        comp_im = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-        for lyr in studio_layers:
-            pid = lyr["id"]
-            if pid in canvas_arrays:
-                comp_im.alpha_composite(Image.fromarray(canvas_arrays[pid]))
-        full_rgba = np.array(comp_im)
-        z_by_id = {lyr["id"]: i for i, lyr in enumerate(studio_layers)}
-        for lyr in studio_layers:
-            child_id = lyr["id"]
-            parent_id = lyr.get("parent")
-            if (
-                not parent_id
-                or child_id not in canvas_arrays
-                or parent_id not in canvas_arrays
-            ):
-                continue
-            piv = lyr["pivot"]
-            if lyr.get("_already_extended"):
-                continue
-            if z_by_id[child_id] < z_by_id[parent_id]:
-                ext_iters = 8 if child_id in ("ear_left", "ear_right") else 12
-                canvas_arrays[child_id] = _extend_back_under_front(
-                    canvas_arrays[child_id],
-                    canvas_arrays[parent_id],
-                    full_rgba,
-                    piv,
-                    dilate_iters=ext_iters,
-                )
-            else:
-                canvas_arrays[parent_id] = _extend_back_under_front(
-                    canvas_arrays[parent_id],
-                    canvas_arrays[child_id],
-                    full_rgba,
-                    piv,
-                    dilate_iters=12,
-                )
-        for lyr in studio_layers:
-            lyr.pop("_already_extended", None)
-            pid = lyr["id"]
-            if pid in canvas_arrays and lyr["file"].startswith("canvas_layers/"):
-                Image.fromarray(canvas_arrays[pid]).save(out_dir / lyr["file"])
+        _extend_layers_under_joints(studio_layers, canvas_arrays, out_dir, cw, ch)
 
     if root_id is None and studio_layers:
         root_id = studio_layers[0]["id"]
@@ -203,100 +326,7 @@ def compile_studio_rig_json(
     studio_tracks: list[dict] = [
         {"id": "rest", "label": "Rest", "duration": 2.0, "loop": True, "motion": {}},
     ]
-
-    action_ids = ["idle", "walk", "run", "jump", "wave", "talk_express"]
-    for act_id in action_ids:
-        t_spec = traj_tracks.get(act_id)
-        if not t_spec:
-            continue
-        dur = float(t_spec.get("duration") or 1.6)
-        kfs = t_spec.get("keyframes", [])
-        motion_map: dict[str, dict] = {}
-        for lyr in studio_layers:
-            pid = lyr["id"]
-            low = pid.lower()
-            if pid == root_id:
-                pos_keys = [
-                    [float(kf["t"]), [0.0, float(kf.get("rootDyPx", 0.0))]]
-                    for kf in kfs
-                ]
-                motion_map[pid] = {
-                    "position": [{"kind": "keys", "ease": "smooth", "keys": pos_keys}],
-                }
-            elif "head" in low:
-                rot_keys = [
-                    [float(kf["t"]), float(kf.get("headRotDeg", 0.0))] for kf in kfs
-                ]
-                motion_map[pid] = {
-                    "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
-                }
-            elif "arm" in low or "wing" in low or "hand" in low:
-                is_right = "_r" in low or "right" in low
-                key_field = "armRRotDeg" if is_right else "armLRotDeg"
-                rot_keys = [
-                    [float(kf["t"]), round(0.65 * float(kf.get(key_field, 0.0)), 2)]
-                    for kf in kfs
-                ]
-                motion_map[pid] = {
-                    "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
-                }
-            elif "leg" in low:
-                is_right = "_r" in low or "right" in low
-                key_field = "legRRotDeg" if is_right else "legLRotDeg"
-                rot_keys = [
-                    [float(kf["t"]), round(0.55 * float(kf.get(key_field, 0.0)), 2)]
-                    for kf in kfs
-                ]
-                motion_map[pid] = {
-                    "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
-                }
-            elif "foot" in low:
-                is_right = "_r" in low or "right" in low
-                key_field = "legRRotDeg" if is_right else "legLRotDeg"
-                rot_keys = [
-                    [float(kf["t"]), round(0.25 * float(kf.get(key_field, 0.0)), 2)]
-                    for kf in kfs
-                ]
-                motion_map[pid] = {
-                    "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
-                }
-            elif any(
-                tag in low for tag in ("ear", "tail", "hair", "prop", "hat", "cape")
-            ):
-                # If `ear_left` and `ear_right` share a close center crown pivot (< 12% canvas width apart),
-                # rotate them in the same direction so a center tuft/crest sways together without splitting.
-                ear_l = next((x for x in studio_layers if x["id"] == "ear_left"), None)
-                ear_r = next((x for x in studio_layers if x["id"] == "ear_right"), None)
-                shared_crest = (
-                    ear_l is not None
-                    and ear_r is not None
-                    and abs(float(ear_r["pivot"][0]) - float(ear_l["pivot"][0]))
-                    < 0.12 * cw
-                )
-                sign = (
-                    1.0
-                    if shared_crest
-                    else (-1.0 if ("_r" in low or "right" in low) else 1.0)
-                )
-                rot_keys = [
-                    [
-                        float(kf["t"]),
-                        round(0.45 * sign * float(kf.get("secondaryRotDeg", 0.0)), 2),
-                    ]
-                    for kf in kfs
-                ]
-                motion_map[pid] = {
-                    "rotation": [{"kind": "keys", "ease": "smooth", "keys": rot_keys}],
-                }
-        studio_tracks.append(
-            {
-                "id": act_id,
-                "label": act_id.replace("_", " ").title(),
-                "duration": dur,
-                "loop": bool(t_spec.get("loop", True)),
-                "motion": motion_map,
-            }
-        )
+    studio_tracks.extend(_action_tracks(traj_tracks, studio_layers, root_id, float(cw)))
 
     rig_doc = {
         "schemaVersion": 1,

@@ -64,11 +64,18 @@ function mayhemLangBadge(file = '', explicit = '', customLabel = '') {
   return el('span', {class: 'report-lang', 'data-lang': lang}, label);
 }
 
+function mayhemOpenFile(comp: any, relPath: string, label: string) {
+  if (!relPath) return '—';
+  const fullPath = comp?.source_root ? `${comp.source_root}/${relPath}` : relPath;
+  return el('button', {class: 'file', title: `Open ${fullPath}`, 'aria-label': `Open ${relPath}`, onclick: () => openPath(fullPath)},
+    el('code', {}, label));
+}
+
 function mayhemHotspots(comp, limit) {
   return new ReportTable({rows: (comp.hotspots || []).slice(0, limit).map((fn) => ({...fn, lang: inferMayhemLang(fn.file, fn.lang)})), empty: comp.reason || 'No saved scan. Scan code to measure.', columns: [
     {label: 'Lang', value: (fn) => mayhemLangBadge(fn.file, fn.lang)},
     {label: 'Function', value: (fn) => fn.name},
-    {label: 'Where', value: (fn) => el('code', {}, `${fn.file.split('/').pop()}:${fn.start_line}`), title: (fn) => `${fn.file}:${fn.start_line}–${fn.end_line}`},
+    {label: 'Where', value: (fn) => mayhemOpenFile(comp, fn.file, `${fn.file.split('/').pop()}:${fn.start_line}`), title: (fn) => `${fn.file}:${fn.start_line}–${fn.end_line}`},
     {label: 'CCN', value: (fn) => fn.ccn, numeric: true, bar: true},
     {label: 'NLOC', value: (fn) => fn.nloc, numeric: true},
   ]}).element;
@@ -81,7 +88,7 @@ function mayhemLanguageBreakdown(comp) {
     {label: 'Files', value: (row) => row.files, numeric: true},
     {label: 'Over CCN 15', value: (row) => row.over_15, numeric: true},
     {label: 'Max CCN', value: (row) => row.max_ccn || '—', numeric: true},
-    {label: 'Biggest offender', value: (row) => row.top_file ? el('code', {}, `${row.top_file.split('/').pop()} (${reportValue(row.top_file_lines)} lines)`) : '—', title: (row) => row.top_file || null},
+    {label: 'Biggest offender', value: (row) => row.top_file ? mayhemOpenFile(comp, row.top_file, `${row.top_file.split('/').pop()} (${reportValue(row.top_file_lines)} lines)`) : '—', title: (row) => row.top_file || null},
   ]}).element;
 }
 
@@ -204,10 +211,10 @@ function mayhemOverview(d) {
   ];
 }
 
-function mayhemFileTable(rows) {
+function mayhemFileTable(comp, rows) {
   return new ReportTable({rows: (rows || []).map((f) => ({...f, lang: inferMayhemLang(f.file, f.lang)})), empty: 'No saved scan.', columns: [
     {label: 'Lang', value: (file) => mayhemLangBadge(file.file, file.lang)},
-    {label: 'File', value: (file) => el('code', {}, file.file.split('/').pop()), title: (file) => file.file},
+    {label: 'File', value: (file) => mayhemOpenFile(comp, file.file, file.file.split('/').pop()), title: (file) => file.file},
     {label: 'Lines', value: (file) => file.lines, numeric: true, bar: true},
     {label: 'Total CCN', value: (file) => file.ccn, numeric: true, bar: true},
     {label: 'Max CCN', value: (file) => file.max_ccn, numeric: true},
@@ -224,8 +231,8 @@ function mayhemCode(d) {
     new ReportSection({title: 'By language & biggest offenders', note: 'Physical lines (reading cost) and cyclomatic complexity (change cost) across Rust, TypeScript, CSS, Markdown, HTML, TSX, and Python.'}, mayhemLanguageBreakdown(comp)).element,
     new ReportSection({title: 'Function hotspots', note: 'CCN and NLOC are Lizard measurements; CCN 15 is this repository’s limit.'}, mayhemHotspots(comp, 25)).element,
     el('div', {class: 'report-columns'},
-      new ReportSection({title: 'Largest files by line count', note: '2,000 lines is the long-file threshold.'}, mayhemFileTable(comp.longest_files)).element,
-      new ReportSection({title: 'Most complex files by total CCN', note: mayhemCoverage(comp)}, mayhemFileTable(comp.largest_ccn_files), provenance).element),
+      new ReportSection({title: 'Largest files by line count', note: '2,000 lines is the long-file threshold.'}, mayhemFileTable(comp, comp.longest_files)).element,
+      new ReportSection({title: 'Most complex files by total CCN', note: mayhemCoverage(comp)}, mayhemFileTable(comp, comp.largest_ccn_files), provenance).element),
   ];
 }
 
