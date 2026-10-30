@@ -63,6 +63,57 @@ function timelineDraw(canvas, curve, keys, duration) {
   }
 }
 
+// The click target of a row: pause, seek the clip to the pointer, redraw.
+function timelineSeekFrom(event, duration) {
+  const r = event.currentTarget.getBoundingClientRect();
+  animationPause();
+  motion.time = Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)) * duration;
+  animationDraw();
+}
+
+function timelineTick(at, text, end = false) {
+  const node = el('span', end ? { class: 'end' } : {}, text);
+  node.style.setProperty('--tick-position', `${at}%`);
+  return node;
+}
+
+function timelineRuler(duration) {
+  return el('div', { class: 'theatre-ruler' },
+    ...Array.from({ length: Math.floor(duration) + 1 }, (_, s) => timelineTick(100 * s / duration, `${s}s`)),
+    duration % 1 ? timelineTick(100, `${duration.toFixed(1)}s`, true) : null);
+}
+
+// One row per layer whose sample actually moves that channel's bound properties.
+function timelineRows(meta, series, track) {
+  return (track?.channels || [])
+    .map((channel) => {
+      const index = meta.layers.findIndex((l) => l.id === channel.layer);
+      return { channel, index, properties: index < 0 ? [] : timelineMoving(series[index], channel.properties) };
+    })
+    .filter((row) => row.properties.length);
+}
+
+function timelineRow(row, { meta, series, duration, drawn }) {
+  const { channel, index, properties } = row;
+  const layer = meta.layers[index], name = layer.label || layer.id, picked = motion.selected === layer.id;
+  const curve = timelineCurve(series[index], properties);
+  const canvas = el('canvas', { class: 'theatre-curve', 'aria-hidden': 'true', onclick: (event) => timelineSeekFrom(event, duration) });
+  drawn.push([canvas, curve, channel.keys?.[curve.kind] || []]);
+  const node = el('div', { class: `theatre-row${picked ? ' selected' : ''}` },
+    el('button', { class: 'theatre-channel', title: `Select ${name}`, 'aria-pressed': String(picked),
+      onclick: () => { motion.selected = layer.id; animationControls(); animationDraw(); updateMagicSelection(); } }, `${name} · ${properties.join(' + ')}`),
+    el('span', { class: 'theatre-motion' }, channel.summary), canvas);
+  node.style.setProperty('--tone', `var(${uiConfig.timeline_tones[curve.kind] || '--accent'})`);
+  return node;
+}
+
+function timelineNote(meta, rows) {
+  const picked = rows.find(({ index }) => meta.layers[index].id === motion.selected);
+  return picked
+    ? `${meta.layers[picked.index].label || picked.channel.layer} / ${picked.properties.join(' + ')} · ${picked.channel.summary}`
+    : `${rows.length} animated parts · select one to follow it`;
+}
+
 function timelineRender() {
   const box = $('theatre-curves');
   if (!box || typeof box.replaceChildren !== 'function') return;
@@ -72,36 +123,16 @@ function timelineRender() {
   if ($('theatre-info')) $('theatre-info').textContent = sample ? `Range 0.00–${sample.duration.toFixed(2)}s · ${sample.fps} fps · ${sample.loop ? 'loop' : 'once'}` : '';
   if (!meta || !sample) { box.replaceChildren(el('p', { class: 'panel-empty inline muted' }, 'Choose an action or clip to see its channels.')); return; }
   const series = timelineSeries(sample, meta);
-  const rows = (motion.rest ? [] : track?.channels || [])
-    .map((channel) => { const index = meta.layers.findIndex((l) => l.id === channel.layer); return { channel, index, properties: index < 0 ? [] : timelineMoving(series[index], channel.properties) }; })
-    .filter((row) => row.properties.length);
+  const rows = motion.rest ? [] : timelineRows(meta, series, track);
   if (!rows.length) { box.replaceChildren(el('p', { class: 'panel-empty inline muted' }, motion.rest ? 'Rest pose · nothing moves. Choose an action or clip.' : 'This clip animates no channels.')); return; }
   const duration = sample.duration || 1;
-  const tick = (at, text, end = false) => { const node = el('span', end ? { class: 'end' } : {}, text); node.style.setProperty('--tick-position', `${at}%`); return node; };
-  const ruler = el('div', { class: 'theatre-ruler' }, ...Array.from({ length: Math.floor(duration) + 1 }, (_, s) => tick(100 * s / duration, `${s}s`)), duration % 1 ? tick(100, `${duration.toFixed(1)}s`, true) : null);
-  const seek = (event) => {
-    const r = event.currentTarget.getBoundingClientRect();
-    animationPause(); motion.time = Math.max(0, Math.min(1, (event.clientX - r.left) / r.width)) * duration; animationDraw();
-  };
   const drawn = [];
-  const lines = rows.map(({ channel, index, properties }) => {
-    const layer = meta.layers[index], name = layer.label || layer.id, picked = motion.selected === layer.id;
-    const curve = timelineCurve(series[index], properties);
-    const canvas = el('canvas', { class: 'theatre-curve', 'aria-hidden': 'true', onclick: seek });
-    drawn.push([canvas, curve, channel.keys?.[curve.kind] || []]);
-    const row = el('div', { class: `theatre-row${picked ? ' selected' : ''}` },
-      el('button', { class: 'theatre-channel', title: `Select ${name}`, 'aria-pressed': String(picked),
-        onclick: () => { motion.selected = layer.id; animationControls(); animationDraw(); updateMagicSelection(); } }, `${name} · ${properties.join(' + ')}`),
-      el('span', { class: 'theatre-motion' }, channel.summary), canvas);
-    row.style.setProperty('--tone', `var(${uiConfig.timeline_tones[curve.kind] || '--accent'})`); return row;
-  });
-  const picked = rows.find(({ index }) => meta.layers[index].id === motion.selected);
-  const note = picked ? `${meta.layers[picked.index].label || picked.channel.layer} / ${picked.properties.join(' + ')} · ${picked.channel.summary}` : `${rows.length} animated parts · select one to follow it`;
+  const lines = rows.map((row) => timelineRow(row, { meta, series, duration, drawn }));
   box.replaceChildren(
     el('div', { class: 'theatre-grid' },
-      el('div', { id: 'theatre-ruler' }, el('span', {}, 'Layer / channel'), el('span', {}, 'Motion'), ruler),
+      el('div', { id: 'theatre-ruler' }, el('span', {}, 'Layer / channel'), el('span', {}, 'Motion'), timelineRuler(duration)),
       ...lines, el('div', { class: 'theatre-playhead', id: 'theatre-playhead' })),
-    el('div', { class: 'theatre-foot muted' }, el('span', {}, note), el('span', {}, 'Curves show the clip’s source motion · Keys edits Theatre rotation')));
+    el('div', { class: 'theatre-foot muted' }, el('span', {}, timelineNote(meta, rows)), el('span', {}, 'Curves show the clip’s source motion · Keys edits Theatre rotation')));
   for (const [canvas, curve, keys] of drawn) timelineDraw(canvas, curve, keys, duration);
   timelineWidth = box.clientWidth;
   timelineSeek(motion.time);

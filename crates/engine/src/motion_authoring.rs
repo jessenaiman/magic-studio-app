@@ -54,6 +54,52 @@ pub(crate) fn project_guard(s: &Session, p: &Value) -> Result<PathBuf> {
 // Mounting Theatre can create empty native sheets before any saved or visible edit.
 // Only recognized empty containers normalize to null; entries (including zero-valued
 // overrides and generated rotation seeds) are real state and must never be dropped.
+fn only_keys(object: &serde_json::Map<String, Value>, allowed: &[&str]) -> bool {
+    object.keys().all(|k| allowed.contains(&k.as_str()))
+}
+
+fn empty_overrides(overrides: &Value) -> bool {
+    let Some(object) = overrides.as_object() else {
+        return false;
+    };
+    only_keys(object, &["byObject"])
+        && overrides["byObject"]
+            .as_object()
+            .is_some_and(|o| o.is_empty())
+}
+
+fn empty_sequence(sequence: &Value) -> bool {
+    let Some(object) = sequence.as_object() else {
+        return false;
+    };
+    only_keys(
+        object,
+        &["type", "length", "subUnitsPerUnit", "tracksByObject"],
+    ) && sequence["tracksByObject"]
+        .as_object()
+        .is_some_and(|o| o.is_empty())
+}
+
+fn empty_sheet(sheet: &Value) -> bool {
+    let Some(fields) = sheet.as_object() else {
+        return false;
+    };
+    if !only_keys(fields, &["sequence", "staticOverrides"]) {
+        return false;
+    }
+    if let Some(overrides) = sheet.get("staticOverrides")
+        && !empty_overrides(overrides)
+    {
+        return false;
+    }
+    if let Some(sequence) = sheet.get("sequence")
+        && !empty_sequence(sequence)
+    {
+        return false;
+    }
+    true
+}
+
 fn empty_theatre(state: &Value) -> bool {
     if state.is_null() {
         return true;
@@ -64,53 +110,18 @@ fn empty_theatre(state: &Value) -> bool {
     let Some(root) = state.as_object() else {
         return false;
     };
-    if root
-        .keys()
-        .any(|k| !["definitionVersion", "revisionHistory", "sheetsById"].contains(&k.as_str()))
-    {
+    if !only_keys(
+        root,
+        &["definitionVersion", "revisionHistory", "sheetsById"],
+    ) {
         return false;
     }
     let Some(sheets) = state["sheetsById"].as_object() else {
         return false;
     };
-    sheets.values().all(|sheet| {
-        let Some(fields) = sheet.as_object() else {
-            return false;
-        };
-        if fields
-            .keys()
-            .any(|k| !["sequence", "staticOverrides"].contains(&k.as_str()))
-        {
-            return false;
-        }
-        if let Some(overrides) = sheet.get("staticOverrides") {
-            let Some(object) = overrides.as_object() else {
-                return false;
-            };
-            if object.keys().any(|k| k != "byObject")
-                || !overrides["byObject"]
-                    .as_object()
-                    .is_some_and(|o| o.is_empty())
-            {
-                return false;
-            }
-        }
-        if let Some(sequence) = sheet.get("sequence") {
-            let Some(object) = sequence.as_object() else {
-                return false;
-            };
-            if object.keys().any(|k| {
-                !["type", "length", "subUnitsPerUnit", "tracksByObject"].contains(&k.as_str())
-            }) || !sequence["tracksByObject"]
-                .as_object()
-                .is_some_and(|o| o.is_empty())
-            {
-                return false;
-            }
-        }
-        true
-    })
+    sheets.values().all(empty_sheet)
 }
+
 fn same_theatre(a: &Value, b: &Value) -> bool {
     a == b || (empty_theatre(a) && empty_theatre(b))
 }
