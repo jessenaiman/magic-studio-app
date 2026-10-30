@@ -13,7 +13,7 @@ from pipeline.prepare_character_parts import (
     export_part_layers,
     render_cutout_asset_sheet,
 )
-from pipeline.step_vector_trace import trace_part_layers_with_vectorcraft
+from pipeline.step_vector_trace import trace_part_layers
 
 
 def build_guided_cutout_rig(
@@ -71,7 +71,7 @@ def build_guided_cutout_rig(
 
     # Trace the prepared parts with the installed VectorCraft tool.
     try:
-        vc_res = trace_part_layers_with_vectorcraft(rig_plan_path)
+        vc_res = trace_part_layers(rig_plan_path)
         if vc_res.get("ok"):
             rig_plan = json.loads(rig_plan_path.read_text(encoding="utf-8"))
             rig_plan["vectorcraft"] = vc_res
