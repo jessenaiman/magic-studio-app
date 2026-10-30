@@ -103,7 +103,7 @@ function footerContext() {
     return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
   }
   if (state.view === 'studio') { const project = videoProject(); return project ? `Video project: ${project}` : 'No video project yet'; }
-  if (state.view === 'analytics') return 'Mayhem · Backstage, code complexity & app observations';
+  if (state.view === 'analytics') return 'Mayhem · code, usage and tool reports';
   const pages = state.data?.storyboard?.previews?.length || 0;
   const objects = (state.data?.assets?.assets || []).length;
   return [pages ? `Storyboard · Page ${state.page + 1} / ${pages}` : 'Storyboard · not built yet', pages ? state.pageTitles?.[state.page] : null,
