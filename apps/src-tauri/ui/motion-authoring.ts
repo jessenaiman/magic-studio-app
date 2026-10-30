@@ -269,27 +269,34 @@ function buildLayerStackSection(ctx: any) {
  return el('div',{class:'panel-fields'},...(layerCaps.supported?[layerPicker,layerReason,depth.node,el('div',{class:'motion-path-actions'},back,front,layerApply,layerUndo)]:[]));
 }
 
-function motionAuthoringPanels(meta){
- const project=state.project,character=motion.character,track=motion.track,part=meta.layers.find(l=>l.id===motion.selected),action=meta.tracks.find(t=>t.id===track),caps=action?.authoring||{},hash=meta.rig_sha256;
- const current=()=>state.project===project&&motion.character===character;
- const identity=(): Record<string, any>=>({expected_project:project,character,track,expected_rig_sha256:hash});
- const status=el('p',{id:'authoring-edit-status',role:'status'}),readback=el('pre',{id:'authoring-edit-result'}),cli=el('code',{id:'authoring-command'});
- const reason=(id,allowed)=>el('p',{id:`authoring-${id}-reason`,class:'muted'},allowed?'Changes replace only the edited action channels. Save project separately.':caps.reason||'A project-local authored action and authoring backend are required.');
- const editControls=[],key=`animation.editUndo.${project}.${character}`;
- const edit=createRigEditRunner({project,character,key,current,editControls,cli,status,readback});
- const run=(id,params)=>edit(id,params).catch(error=>{if(current()){status.textContent=String(error);status.className='image-error';}});
- const dirty=new Set<string>(),{values,partRows}=buildPartCoordinateRows(meta,part,action,dirty);
- const apply=el('button',{id:'authoring-part-apply','data-commands':'motion.part.set',onclick:()=>{try{return run('motion.part.set',buildPartRequest(part,dirty,values,identity));}catch(error){status.textContent=String(error);}}},'Apply part values');apply.disabled=!part||caps.part_set!==true;
- const reset=el('button',{id:'authoring-part-reset','data-commands':'motion.part.reset',onclick:()=>run('motion.part.reset',{...identity(),part:part.id,fields:['position','scale','rotation','pivot']})},'Reset part');reset.disabled=!part||caps.part_reset!==true;
- const undoEdit=()=>{try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(!saved)throw Error('No saved undo receipt.');return run('motion.edit.undo',{...identity(),expected_rig_sha256:hash,undo:saved.undo});}catch(error){status.textContent=String(error);}};
- const undo=el('button',{id:'authoring-undo','data-commands':'motion.edit.undo',onclick:undoEdit},'Undo rig edit');undo.disabled=!localStorage.getItem(key);undo.title='Undo is checked against the current rig hash; Theatre edits can block it.';
- const partChildren=part&&caps.part_set===true?[el('strong',{},part.label||part.id),...partRows,apply,reset,undo,el('details',{},el('summary',{},'Edit receipt and exact CLI'),cli,readback)]:[el('p',{class:'muted'},part?'This layer can be previewed with motion. Saved layer controls appear when available.':'Choose a layer to edit its position, scale, rotation and pivot.')];
- const partNode=el('div',{class:'panel-fields'},...partChildren);
- if(motion.lastEdit?.project===project&&motion.lastEdit.character===character){readback.textContent=JSON.stringify(motion.lastEdit,null,2);status.textContent='Rig saved · undo receipt available · project Save remains explicit.';}
- const {actionNode,actionApply,label,duration,loop}=buildActionPlacementSection({meta,character,track,action,caps,identity,current,run,status});
- const layersNode=buildLayerStackSection({meta,project,character,hash,part,key,undoEdit,run,status,editControls});
- const {poseNode,capture}=buildPoseAuthoringSection({project,character,track,caps,identity,current,reason});
- editControls.push(apply,reset,undo,actionApply,capture,...Object.values(values).flat().map(f=>f.input),label.input,duration.input,loop);
- for(const control of editControls)control.unavailable=control.disabled===true;
- return {status,part:partNode,action:actionNode,pose:caps.pose_export===true?poseNode:null,layers:layersNode};
+class MotionAuthoringController {
+  renderPanels(meta: any) {
+    const project=state.project,character=motion.character,track=motion.track,part=meta.layers.find(l=>l.id===motion.selected),action=meta.tracks.find(t=>t.id===track),caps=action?.authoring||{},hash=meta.rig_sha256;
+    const current=()=>state.project===project&&motion.character===character;
+    const identity=(): Record<string, any>=>({expected_project:project,character,track,expected_rig_sha256:hash});
+    const status=el('p',{id:'authoring-edit-status',role:'status'}),readback=el('pre',{id:'authoring-edit-result'}),cli=el('code',{id:'authoring-command'});
+    const reason=(id,allowed)=>el('p',{id:`authoring-${id}-reason`,class:'muted'},allowed?'Changes replace only the edited action channels. Save project separately.':caps.reason||'A project-local authored action and authoring backend are required.');
+    const editControls=[],key=`animation.editUndo.${project}.${character}`;
+    const edit=createRigEditRunner({project,character,key,current,editControls,cli,status,readback});
+    const run=(id,params)=>edit(id,params).catch(error=>{if(current()){status.textContent=String(error);status.className='image-error';}});
+    const dirty=new Set<string>(),{values,partRows}=buildPartCoordinateRows(meta,part,action,dirty);
+    const apply=el('button',{id:'authoring-part-apply','data-commands':'motion.part.set',onclick:()=>{try{return run('motion.part.set',buildPartRequest(part,dirty,values,identity));}catch(error){status.textContent=String(error);}}},'Apply part values');apply.disabled=!part||caps.part_set!==true;
+    const reset=el('button',{id:'authoring-part-reset','data-commands':'motion.part.reset',onclick:()=>run('motion.part.reset',{...identity(),part:part.id,fields:['position','scale','rotation','pivot']})},'Reset part');reset.disabled=!part||caps.part_reset!==true;
+    const undoEdit=()=>{try{const saved=JSON.parse(localStorage.getItem(key)||'null');if(!saved)throw Error('No saved undo receipt.');return run('motion.edit.undo',{...identity(),expected_rig_sha256:hash,undo:saved.undo});}catch(error){status.textContent=String(error);}};
+    const undo=el('button',{id:'authoring-undo','data-commands':'motion.edit.undo',onclick:undoEdit},'Undo rig edit');undo.disabled=!localStorage.getItem(key);undo.title='Undo is checked against the current rig hash; Theatre edits can block it.';
+    const partChildren=part&&caps.part_set===true?[el('strong',{},part.label||part.id),...partRows,apply,reset,undo,el('details',{},el('summary',{},'Edit receipt and exact CLI'),cli,readback)]:[el('p',{class:'muted'},part?'This layer can be previewed with motion. Saved layer controls appear when available.':'Choose a layer to edit its position, scale, rotation and pivot.')];
+    const partNode=el('div',{class:'panel-fields'},...partChildren);
+    if(motion.lastEdit?.project===project&&motion.lastEdit.character===character){readback.textContent=JSON.stringify(motion.lastEdit,null,2);status.textContent='Rig saved · undo receipt available · project Save remains explicit.';}
+    const {actionNode,actionApply,label,duration,loop}=buildActionPlacementSection({meta,character,track,action,caps,identity,current,run,status});
+    const layersNode=buildLayerStackSection({meta,project,character,hash,part,key,undoEdit,run,status,editControls});
+    const {poseNode,capture}=buildPoseAuthoringSection({project,character,track,caps,identity,current,reason});
+    editControls.push(apply,reset,undo,actionApply,capture,...Object.values(values).flat().map(f=>f.input),label.input,duration.input,loop);
+    for(const control of editControls)control.unavailable=control.disabled===true;
+    return {status,part:partNode,action:actionNode,pose:caps.pose_export===true?poseNode:null,layers:layersNode};
+  }
+}
+
+const motionAuthoringController = new MotionAuthoringController();
+function motionAuthoringPanels(meta: any){
+  return motionAuthoringController.renderPanels(meta);
 }
