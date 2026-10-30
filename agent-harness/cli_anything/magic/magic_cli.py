@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import signal
 import json
 import shlex
 import sys
@@ -375,6 +377,26 @@ def studio_open(ctx: click.Context, project: str | None) -> None:
 def studio_list() -> None:
     """List responsive windows without changing the current selection."""
     emit(backend.discover_studios())
+
+
+@studio.command("previews")
+@click.option("--stop-orphans", is_flag=True, help="Stop preview servers whose project has no open Studio window.")
+def studio_previews(stop_orphans: bool) -> None:
+    """List HyperFrames preview servers and which have no open Studio window.
+
+    One server runs per project whose Studio target was started; closing the window does not
+    stop it. Without --stop-orphans nothing is changed.
+
+    Example: magic-cli studio previews --stop-orphans
+    """
+    servers = backend.preview_servers()
+    stopped: list[int] = []
+    if stop_orphans:
+        for server in servers:
+            if not server["window_open"]:
+                os.kill(server["pid"], signal.SIGTERM)
+                stopped.append(server["pid"])
+    emit({"servers": servers, "stopped": stopped})
 
 
 @cli.group()

@@ -148,6 +148,7 @@ def discover_studios() -> dict[str, list[dict[str, Any]]]:
             feedback = call_unix_socket(entry, "ui.feedback", {}, timeout=1.5)
             feedback["endpoint"] = f"unix:{entry}"
             feedback["instance"] = entry.name
+            feedback["pid"] = studio_pid(entry.name)
             active = feedback.get("active_project")
             if active and Path(active).exists():
                 feedback["canonical_project"] = str(Path(active).resolve())
@@ -155,6 +156,43 @@ def discover_studios() -> dict[str, list[dict[str, Any]]]:
         except Exception as exc:
             errors.append({"endpoint": f"unix:{entry}", "error": str(exc)})
     return {"sessions": sessions, "errors": errors}
+
+
+def studio_pid(instance: str) -> int | None:
+    """The window's process id: Studio names its socket `<pid>-<nonce>.sock`."""
+    head = instance.split("-", 1)[0]
+    return int(head) if head.isdigit() else None
+
+
+def preview_servers() -> list[dict[str, Any]]:
+    """Running `hyperframes preview <dir>` servers, read from the process table.
+
+    One server exists per project whose Studio target was started; each says whether a Studio
+    window still has that project open, so leftovers from closed windows are visible.
+    """
+    open_dirs = {
+        str(Path(s["canonical_project"]).parent)
+        for s in discover_studios()["sessions"]
+        if s.get("canonical_project")
+    }
+    servers: list[dict[str, Any]] = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            argv = (proc / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        words = [a.decode(errors="replace") for a in argv if a]
+        if "preview" not in words or not any(w.endswith("/hyperframes") and "node_modules" in w for w in words[:2]):
+            continue
+        dirs = [w for w in words[words.index("preview") + 1 :] if not w.startswith("--")]
+        if not dirs:
+            continue
+        project = str(Path(dirs[0]).parent)
+        servers.append({"pid": int(proc.name), "directory": dirs[0], "project_dir": project,
+                        "window_open": project in open_dirs})
+    return sorted(servers, key=lambda r: r["pid"])
 
 
 def studio_for_project(project_path: str | Path) -> dict[str, Any] | None:
