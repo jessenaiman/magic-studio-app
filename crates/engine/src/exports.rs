@@ -8,14 +8,52 @@ use crate::{EngineError, Result, Session};
 
 use crate::workspace::{resolve_workspace_path, run_python_json, run_tool_in, workspace_root};
 
-/// Export a FilmCraft project: locate the rendered overlay/animation, then run `filmcraft-load`.
-pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Value> {
-    let active_id = s
-        .active_asset
-        .clone()
-        .unwrap_or_else(|| "track_b".to_string());
+/// Overlay locations in preference order: transparent alpha first, then the encoded renders.
+fn render_candidates(s: &Session, asset: &crate::session::Asset) -> Vec<PathBuf> {
+    let id = &asset.id;
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    // Prefer transparent RGBA WebM overlay tracks first so FilmCraft video tracks preserve alpha
+    if let Some(rig) = &asset.cutout_rig
+        && let Some(webm) = rig
+            .effectcraft
+            .get("webm_alpha_path")
+            .and_then(Value::as_str)
+    {
+        candidates.push(resolve_workspace_path(s, webm));
+    }
+    candidates.push(resolve_workspace_path(
+        s,
+        &format!("exports/pose_and_parts/{id}/{id}_effectcraft_cutout_alpha.webm"),
+    ));
+    if let Some(rig) = &asset.cutout_rig
+        && let Some(mp4) = rig.effectcraft.get("mp4_path").and_then(Value::as_str)
+    {
+        candidates.push(resolve_workspace_path(s, mp4));
+    }
+    candidates.push(resolve_workspace_path(
+        s,
+        &format!("exports/{id}_cutout.mp4"),
+    ));
+    candidates.push(resolve_workspace_path(
+        s,
+        &format!("exports/pose_and_parts/{id}/{id}_effectcraft_cutout.mp4"),
+    ));
+    candidates.push(resolve_workspace_path(
+        s,
+        &format!("exports/blender_characters/{id}/{id}_blender53.mp4"),
+    ));
+    if id == "hopper" {
+        candidates.push(resolve_workspace_path(
+            s,
+            "exports/hopper_4dir_blender53.mp4",
+        ));
+    }
+    candidates
+}
 
-    let media_path = if let Some(media_raw) = params
+/// The rendered overlay to import: the explicit media path, else the asset's first existing render.
+fn overlay_media(s: &Session, params: &Value) -> Result<PathBuf> {
+    if let Some(media_raw) = params
         .get("media")
         .and_then(Value::as_str)
         .filter(|m| !m.trim().is_empty())
@@ -27,61 +65,26 @@ pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Valu
                 p.display()
             )));
         }
-        p
-    } else {
-        let asset = s.current_asset().ok_or_else(|| {
-            EngineError::InvalidParams(
-                "no active asset; provide 'media' or load an asset with rendered animation".into(),
-            )
-        })?;
-        let id = &asset.id;
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        // Prefer transparent RGBA WebM overlay tracks first so FilmCraft video tracks preserve alpha
-        if let Some(rig) = &asset.cutout_rig
-            && let Some(webm) = rig
-                .effectcraft
-                .get("webm_alpha_path")
-                .and_then(Value::as_str)
-        {
-            candidates.push(resolve_workspace_path(s, webm));
-        }
-        candidates.push(resolve_workspace_path(
-            s,
-            &format!("exports/pose_and_parts/{id}/{id}_effectcraft_cutout_alpha.webm"),
-        ));
-        if let Some(rig) = &asset.cutout_rig
-            && let Some(mp4) = rig.effectcraft.get("mp4_path").and_then(Value::as_str)
-        {
-            candidates.push(resolve_workspace_path(s, mp4));
-        }
-        candidates.push(resolve_workspace_path(
-            s,
-            &format!("exports/{id}_cutout.mp4"),
-        ));
-        candidates.push(resolve_workspace_path(
-            s,
-            &format!("exports/pose_and_parts/{id}/{id}_effectcraft_cutout.mp4"),
-        ));
-        candidates.push(resolve_workspace_path(
-            s,
-            &format!("exports/blender_characters/{id}/{id}_blender53.mp4"),
-        ));
-        if id == "hopper" {
-            candidates.push(resolve_workspace_path(
-                s,
-                "exports/hopper_4dir_blender53.mp4",
-            ));
-        }
-        candidates
-            .into_iter()
-            .find(|p| p.is_file())
-            .ok_or_else(|| {
-                EngineError::InvalidParams(format!(
-                    "no rendered overlay/animation found for active asset '{id}'; build a cutout rig first or pass 'media'"
-                ))
-            })?
-    };
+        return Ok(p);
+    }
+    let asset = s.current_asset().ok_or_else(|| {
+        EngineError::InvalidParams(
+            "no active asset; provide 'media' or load an asset with rendered animation".into(),
+        )
+    })?;
+    let id = asset.id.clone();
+    render_candidates(s, asset)
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            EngineError::InvalidParams(format!(
+                "no rendered overlay/animation found for active asset '{id}'; build a cutout rig first or pass 'media'"
+            ))
+        })
+}
 
+/// The FilmCraft project and preview frame this import writes, from params or the asset id.
+fn edit_project_outputs(s: &Session, params: &Value, active_id: &str) -> (PathBuf, PathBuf) {
     let default_proj = format!("exports/{active_id}_filmcraft.fcproj");
     let default_frame = format!("exports/{active_id}_filmcraft_frame.png");
     let project_raw = params
@@ -93,10 +96,31 @@ pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Valu
         .get("frame_out")
         .and_then(Value::as_str)
         .unwrap_or(&default_frame);
+    (
+        resolve_workspace_path(s, project_raw),
+        resolve_workspace_path(s, frame_raw),
+    )
+}
 
-    let project_path = resolve_workspace_path(s, project_raw);
-    let frame_path = resolve_workspace_path(s, frame_raw);
+/// The pipeline reports both the import and the project it claims to have written.
+fn import_verified(out: &Value) -> bool {
+    out.get("importedToFilmCraft")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && out
+            .get("projectExists")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+}
 
+/// Export a FilmCraft project: locate the rendered overlay/animation, then run `filmcraft-load`.
+pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Value> {
+    let active_id = s
+        .active_asset
+        .clone()
+        .unwrap_or_else(|| "track_b".to_string());
+    let media_path = overlay_media(s, params)?;
+    let (project_path, frame_path) = edit_project_outputs(s, params, &active_id);
     let args = vec![
         media_path.to_string_lossy().into_owned(),
         "--project".into(),
@@ -105,15 +129,7 @@ pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Valu
         frame_path.to_string_lossy().into_owned(),
     ];
     let pipeline_out = run_python_json(s, "pipeline.import_video_sequence", &args)?;
-    let imported_ok = pipeline_out
-        .get("importedToFilmCraft")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        && pipeline_out
-            .get("projectExists")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-    if !imported_ok {
+    if !import_verified(&pipeline_out) {
         return Err(EngineError::CommandFailed(
             "export.edit_project".into(),
             format!("FilmCraft import verification failed: {pipeline_out}"),
@@ -203,8 +219,8 @@ pub fn cmd_export_character_iteration(s: &mut Session, params: &Value) -> Result
     }))
 }
 
-/// Export a layered motion spec via `pipeline/layered_motion.py`.
-pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Value> {
+/// The spec the call names, else the active asset's layered-motion plan.
+fn layered_spec(s: &Session, params: &Value) -> Result<PathBuf> {
     let spec_path = if let Some(spec_raw) = params.get("spec").and_then(Value::as_str)
         && !spec_raw.trim().is_empty()
     {
@@ -224,15 +240,23 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
             spec_path.display()
         )));
     }
-    let stem = spec_path
-        .file_stem()
-        .and_then(|v| v.to_str())
-        .unwrap_or("layered_motion");
-    let root = workspace_root(s);
-    let out_dir = match params.get("out_dir").and_then(Value::as_str) {
+    Ok(spec_path)
+}
+
+fn layered_out_dir(s: &Session, params: &Value, stem: &str) -> PathBuf {
+    match params.get("out_dir").and_then(Value::as_str) {
         Some(dir) if !dir.trim().is_empty() => resolve_workspace_path(s, dir),
-        _ => root.join("exports/layered_motion").join(stem),
-    };
+        _ => workspace_root(s).join("exports/layered_motion").join(stem),
+    }
+}
+
+/// The layered_motion.py arguments for the options this call asked for.
+fn layered_args(
+    root: &std::path::Path,
+    spec_path: &std::path::Path,
+    out_dir: &std::path::Path,
+    params: &Value,
+) -> Vec<String> {
     let script = root.join("pipeline/layered_motion.py");
     let mut args = vec![
         script.to_string_lossy().into_owned(),
@@ -276,8 +300,12 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
     {
         args.extend(["--quality".into(), qual.to_string()]);
     }
-    let stdout = run_tool_in(&root, "python3", &args)?;
-    let mut result: Value = stdout
+    args
+}
+
+/// The last JSON line the pipeline printed.
+fn last_json_line(stdout: &str) -> Result<Value> {
+    stdout
         .lines()
         .rev()
         .find_map(|line| serde_json::from_str(line).ok())
@@ -286,7 +314,21 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
                 "export.layered_motion".into(),
                 "layered_motion.py returned no result".into(),
             )
-        })?;
+        })
+}
+
+/// Export a layered motion spec via `pipeline/layered_motion.py`.
+pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Value> {
+    let spec_path = layered_spec(s, params)?;
+    let stem = spec_path
+        .file_stem()
+        .and_then(|v| v.to_str())
+        .unwrap_or("layered_motion");
+    let root = workspace_root(s);
+    let out_dir = layered_out_dir(s, params, stem);
+    let args = layered_args(&root, &spec_path, &out_dir, params);
+    let stdout = run_tool_in(&root, "python3", &args)?;
+    let mut result = last_json_line(&stdout)?;
     if let Some(obj) = result.as_object_mut() {
         obj.insert("command".into(), json!("export.layered_motion"));
         obj.insert("out_dir".into(), json!(out_dir.to_string_lossy()));
