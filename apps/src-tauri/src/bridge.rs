@@ -140,6 +140,8 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
         eval(app, "await acFeedback.report(); return true;")?;
     }
     match id {
+        "ui.menu" => page(app, "menu", &[params]),
+        "ui.text_edit" => crate::menu::edit_text(app, params["action"].as_str().ok_or("Choose an edit action")?),
         "ui.eval" => eval(app, params["js"].as_str().ok_or("ui.eval needs js")?),
         "ui.feedback" => crate::feedback::snapshot(app),
         "ui.focus" => {

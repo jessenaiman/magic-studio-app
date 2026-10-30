@@ -12,8 +12,8 @@ function fmtCount(value) {
   return Number(value).toLocaleString(undefined,{maximumFractionDigits:1});
 }
 function analyticsTime(seconds) {return seconds == null ? 'time unavailable' : new Date(seconds*1000).toLocaleString();}
-function analyticsCard(title,value,description) {return el('div',{class:'learning-summary'},el('h3',{},title),el('strong',{},value),el('p',{},description));}
-function analyticsGrid(...cards) {return el('div',{class:'learning-grid analytics-grid'},...cards);}
+function analyticsCard(title,value,description) {return el('div',{class:'reference-summary'},el('h3',{},title),el('strong',{},value),el('p',{},description));}
+function analyticsGrid(...cards) {return el('div',{class:'reference-grid analytics-grid'},...cards);}
 function analyticsCode(comp,key) {return comp.available === true ? fmtCount(comp[key]) : '—';}
 function analyticsMemory(kb) {return kb == null ? '—' : `${fmtCount(Number(kb)/1024)} MB`;}
 async function renderAnalytics(scan = false) {
@@ -30,18 +30,18 @@ async function renderAnalytics(scan = false) {
 }
 function analyticsMount() {
   if ($('analytics-layout')) return;
-  const nav=el('nav',{class:'learning-categories','aria-label':'Mayhem sections'},...ANALYTICS_SECTIONS.map(([id,label])=>el('button',{
+  const nav=el('nav',{class:'reference-categories','aria-label':'Mayhem sections'},...ANALYTICS_SECTIONS.map(([id,label])=>el('button',{
     id:`analytics-nav-${id}`,class:'ghost',onclick:()=>{analyticsState.section=id;analyticsRenderSurface();},
   },label)));
-  const rail=el('aside',{class:'learning-rail','aria-label':'Mayhem navigation'},el('h2',{},'Mayhem'),nav,el('div',{id:'analytics-rail-summary',class:'learning-task-list'}));
-  const actions=el('div',{class:'learning-actions'},
+  const rail=el('aside',{class:'reference-rail','aria-label':'Mayhem navigation'},el('h2',{},'Mayhem'),nav,el('div',{id:'analytics-rail-summary',class:'reference-task-list'}));
+  const actions=el('div',{class:'reference-actions'},
     el('button',{id:'analytics-refresh',class:'ghost',title:'Read saved scan and current telemetry without running Lizard','data-commands':'app.analytics',onclick:()=>renderAnalytics(false)},'Refresh data'),
     el('button',{id:'analytics-scan',class:'start',title:'Explicitly measure local Rust, Python and shell JavaScript with Lizard','data-commands':'app.analytics',onclick:()=>renderAnalytics(true)},'Refresh scan'));
-  const main=el('main',{class:'learning-main',id:'analytics-main'},
-    el('header',{class:'learning-bar'},el('h2',{id:'analytics-breadcrumb',class:'learning-breadcrumb'},'Mayhem'),actions),
+  const main=el('main',{class:'reference-main',id:'analytics-main'},
+    el('header',{class:'reference-bar'},el('h2',{id:'analytics-breadcrumb',class:'reference-breadcrumb'},'Mayhem'),actions),
     window.magicBackstageTerminal.mount(),
-    el('p',{id:'analytics-message',class:'learning-message',role:'status'}),el('div',{id:'analytics-surface',class:'learning-surface'}));
-  $('view-analytics').replaceChildren(el('div',{class:'learning-layout',id:'analytics-layout'},rail,main));
+    el('p',{id:'analytics-message',class:'reference-message',role:'status'}),el('div',{id:'analytics-surface',class:'reference-surface'}));
+  $('view-analytics').replaceChildren(el('div',{class:'reference-layout',id:'analytics-layout'},rail,main));
 }
 function analyticsDiagram(surface) {
   const selected=ANALYTICS_DIAGRAMS.find(item=>item.id===analyticsState.diagram)||ANALYTICS_DIAGRAMS[0];
@@ -49,7 +49,7 @@ function analyticsDiagram(surface) {
     ...ANALYTICS_DIAGRAMS.map(item=>el('option',{value:item.id},item.title)));
   picker.value=selected.id;
   surface.append(el('section',{class:'analytics-architecture','aria-label':'Architecture reference'},
-    el('div',{class:'learning-bar'},el('h2',{},'How the work fits together'),picker),
+    el('div',{class:'reference-bar'},el('h2',{},'How the work fits together'),picker),
     el('p',{class:'muted'},selected.source+(selected.revision?` · revision ${selected.revision}`:'')),
     el('iframe',{id:'analytics-diagram-frame',class:'analytics-diagram',title:selected.title,
       src:`analytics-diagrams/${selected.file}?theme=dark&embed=1`,sandbox:'allow-scripts',
@@ -123,10 +123,10 @@ function analyticsComplexity(surface,comp,section) {
   if(comp.last_scan_failures?.length)surface.append(el('p',{role:'status'},`Latest scan failed for: ${comp.last_scan_failures.join(', ')}`));
   if(section!=='complexity')return;
   for(const [key,title] of [['longest_files','Longest measured files'],['largest_ccn_files','Highest complexity files']]) {
-    surface.append(el('h3',{},title),analyticsGrid(...(comp[key]||[]).map((file,index)=>el('div',{class:'learning-summary',id:`analytics-${key}-${index}`},
+    surface.append(el('h3',{},title),analyticsGrid(...(comp[key]||[]).map((file,index)=>el('div',{class:'reference-summary',id:`analytics-${key}-${index}`},
       el('h3',{},file.file),el('code',{},`${fmtCount(file.lines)} lines · CCN ${fmtCount(file.ccn)} · max ${fmtCount(file.max_ccn)} · ${fmtCount(file.functions)} functions`)))));
   }
-  surface.append(el('h3',{},'Function hotspots'),analyticsGrid(...(comp.hotspots||[]).slice(0,24).map((fn,index)=>el('div',{class:'learning-summary',id:`analytics-hotspot-${index}`},
+  surface.append(el('h3',{},'Function hotspots'),analyticsGrid(...(comp.hotspots||[]).slice(0,24).map((fn,index)=>el('div',{class:'reference-summary',id:`analytics-hotspot-${index}`},
     el('h3',{},`${fn.name} · CCN ${fmtCount(fn.ccn)}`),el('code',{},`${fn.file}:${fn.start_line}–${fn.end_line}`),el('p',{},`${fmtCount(fn.nloc)} NLOC · ${fmtCount(fn.tokens)} code tokens · ${fmtCount(fn.params)} parameters`)))));
 }
 function analyticsCommands(surface,catalog) {
@@ -142,7 +142,7 @@ function analyticsCommandRows(commands) {
   const groups=new Map();for(const command of selected){const key=command.menu?.[0]||command.id.split('.')[0];if(!groups.has(key))groups.set(key,[]);groups.get(key).push(command);}
   root.replaceChildren(el('p',{class:'muted'},`${selected.length} of ${commands.length} commands · parameter descriptions are examples, not required/optional schemas`));
   for(const [name,items]of groups)root.append(el('details',{class:'analytics-command-group'},el('summary',{},`${name} · ${items.length}`),
-    ...items.map(command=>el('article',{class:'learning-summary'},el('h3',{},command.label),el('code',{},`magic exec ${command.id} [key=value ...]`),
+    ...items.map(command=>el('article',{class:'reference-summary'},el('h3',{},command.label),el('code',{},`magic exec ${command.id} [key=value ...]`),
       el('p',{},`Menu: ${(command.menu||[]).join(' / ')||'no menu placement'} · Shortcut: ${command.shortcut||'none'}`),el('pre',{},command.params)))));
 }
 
