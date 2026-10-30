@@ -17,7 +17,7 @@ $PROJECT and the exact assigned $TASK_ID.
 
 ## Command
 ```sh
-mc "$PROJECT" skills.info id="$TASK_ID"
+magic-cli --project "$PROJECT" skills.info id="$TASK_ID"
 ```
 
 ## Output

@@ -1,6 +1,6 @@
 //! Workspace & external Craft CLI resolution.
 //!
-//! Resolves the repository root (`studio_pipeline_cli.py`), the installed Craft
+//! Resolves the source checkout or installed runtime, the installed Craft
 //! CLIs (`photocraft-cli`, `effectcraft-cli`, `filmcraft-cli`), builds exact
 //! CLI argument vectors, and runs subprocess tools. Pure path logic: no session
 //! state is mutated here.
@@ -18,7 +18,7 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
         && let Some(home) = exe.parent().and_then(|p| p.parent())
     {
         let runtime = home.join("runtime");
-        if runtime.join("studio_pipeline_cli.py").is_file()
+        if runtime.join("installation.json").is_file()
             && runtime
                 .join("pipeline/templates/studio-template.deckcraft")
                 .is_file()
@@ -27,8 +27,7 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
         }
     }
     let current_root = |root: &Path| {
-        root.join("Cargo.toml").is_file()
-            && root.join("apps/magicstudio-shell/Cargo.toml").is_file()
+        root.join("Cargo.toml").is_file() && root.join("apps/src-tauri/Cargo.toml").is_file()
     };
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()

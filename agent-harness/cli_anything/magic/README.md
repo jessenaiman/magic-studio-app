@@ -28,11 +28,12 @@ environment with Rust/Cargo compatible with `Cargo.toml`, the platform's Tauri 2
 build prerequisites, Python 3.10+, `uv`, and Git already available:
 
 ```sh
-cargo build -p magicstudio-shell --locked
+cargo build -p magicstudio-shell -p backstage --locked
 python3 scripts/install_magic.py
 ```
 
-The installer requires the built `target/debug/magicstudio-shell`. It installs
+The installer requires the built `target/debug/magicstudio-shell` and
+`target/debug/backstage`. It installs
 `agent-harness` as a regular package into an application-owned Python environment
 under `~/.local/share/magic-studio/.venv`, using the Python running the installer
 without downloading another Python. It copies the native shell and tracked
@@ -42,15 +43,13 @@ under `~/.local`. Ensure `~/.local/bin` is on your `PATH`.
 For a release build, use matching profiles:
 
 ```sh
-cargo build -p magicstudio-shell --release --locked
+cargo build -p magicstudio-shell -p backstage --release --locked
 python3 scripts/install_magic.py --profile release
 ```
 
-`python3 scripts/install_magic.py --help` lists `--prefix`, `--python`, and
-`--migrate-legacy`. A custom `--python` must name an existing environment; the
-installer installs the harness and its dependencies there. `--migrate-legacy`
-changes only recognized old Magic entry points/configuration and is an explicit
-migration choice, not a prerequisite for a fresh installation.
+`python3 scripts/install_magic.py --help` lists `--prefix` and `--python`. A custom
+`--python` must name an existing environment; the installer installs the harness
+and its dependencies there.
 
 Rebuild and reinstall after embedded UI or native changes. If modifying the
 bundled frontend integrations, follow their [build instructions](../../../apps/magicstudio-shell/frontend/README.md)

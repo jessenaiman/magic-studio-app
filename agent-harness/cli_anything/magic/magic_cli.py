@@ -1,4 +1,5 @@
 """Magic's terminal adapter. Command vocabulary comes from the application registry."""
+
 from __future__ import annotations
 
 import json
@@ -36,11 +37,14 @@ def emit(value: Any) -> None:
 
 def execute(ctx: click.Context, command: str, params: dict[str, Any]) -> Any:
     params.setdefault("_origin", "CLI")
-    return ctx.obj["session"].execute(command, params, dry_run=ctx.obj["dry_run"], bridge=ctx.obj["bridge"])
+    return ctx.obj["session"].execute(
+        command, params, dry_run=ctx.obj["dry_run"], bridge=ctx.obj["bridge"]
+    )
 
 
 class RegistryGroup(click.Group):
     """Lazily derive `domain verb` (underscores become hyphens) from command IDs."""
+
     def __init__(self, *args: Any, prefix: str = "", **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.prefix = prefix
@@ -55,8 +59,36 @@ class RegistryGroup(click.Group):
         names = set(super().list_commands(ctx))
         for spec in self.specs():
             if spec["id"].startswith(self.prefix):
-                names.add(spec["id"][len(self.prefix):].split(".")[0].replace("_", "-"))
+                names.add(
+                    spec["id"][len(self.prefix) :].split(".")[0].replace("_", "-")
+                )
         return sorted(names)
+
+    def format_commands(
+        self, ctx: click.Context, formatter: click.HelpFormatter
+    ) -> None:
+        # Initial help must remain usable when the native registry is unavailable.
+        # Only static adapter commands are listed in that case; never invent domain IDs.
+        try:
+            super().format_commands(ctx, formatter)
+        except (RuntimeError, OSError) as error:
+            rows = [
+                (name, command.get_short_help_str())
+                for name, command in sorted(self.commands.items())
+                if not command.hidden
+            ]
+            if rows:
+                with formatter.section("Built-in commands"):
+                    formatter.write_dl(rows)
+            with formatter.section("Native commands unavailable"):
+                formatter.write_text(
+                    str(error).splitlines()[0].removesuffix(" Build it with:")
+                )
+                formatter.write_text(
+                    "Use the installed Magic application for registry commands; "
+                    "report the missing runtime rather than reinstalling or searching "
+                    "the machine."
+                )
 
     def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
         explicit = super().get_command(ctx, name)
@@ -67,22 +99,40 @@ class RegistryGroup(click.Group):
         children = any(s["id"].startswith(command_id + ".") for s in self.specs())
         if not spec and not children:
             return None
+
         def run(**args: Any) -> None:
             current = click.get_current_context()
             if current.invoked_subcommand:
                 return
             if spec:
-                emit(execute(current, command_id, parse_params(args.get("arguments", ()), args.get("params"))))
+                emit(
+                    execute(
+                        current,
+                        command_id,
+                        parse_params(args.get("arguments", ()), args.get("params")),
+                    )
+                )
             else:
                 click.echo(current.get_help())
-        help_text = f'{spec["label"]}. Parameters: {spec["params"]}' if spec else f'{name} commands from the application registry.'
+
+        help_text = (
+            f"{spec['label']}. Parameters: {spec['params']}"
+            if spec
+            else f"{name} commands from the application registry."
+        )
         options = [click.Option(["--params"], help="JSON parameter object")]
         # Groups may also be commands (e.g. motion.path); use --params for the parent.
         if not children:
             options.append(click.Argument(["arguments"], nargs=-1))
         if children:
-            group = RegistryGroup(name, prefix=command_id + ".", callback=run,
-                                  params=options, help=help_text, invoke_without_command=True)
+            group = RegistryGroup(
+                name,
+                prefix=command_id + ".",
+                callback=run,
+                params=options,
+                help=help_text,
+                invoke_without_command=True,
+            )
             group._specs = self.specs()
             return group
         return click.Command(name, callback=run, params=options, help=help_text)
@@ -91,16 +141,38 @@ class RegistryGroup(click.Group):
 @click.group(cls=RegistryGroup, invoke_without_command=True)
 @click.option("--json", "use_json", is_flag=True, help="JSON output (also the default)")
 @click.option("--project", type=click.Path(), help="Select the intended .magic project")
-@click.option("--session-file", type=click.Path(), envvar="MAGIC_SESSION_FILE", help="Separate caller session binding")
+@click.option(
+    "--session-file",
+    type=click.Path(),
+    envvar="MAGIC_SESSION_FILE",
+    help="Separate caller session binding",
+)
 @click.option("--dry-run", is_flag=True, help="Preview mutations without applying them")
 @click.option("--bridge", hidden=True, help="Internal explicit window endpoint")
 @click.version_option(__version__, prog_name="magic-cli")
 @click.pass_context
-def cli(ctx: click.Context, use_json: bool, project: str | None, session_file: str | None, dry_run: bool, bridge: str | None) -> None:
-    """Magic Studio commands. Launch the graphical application with `magic`.
+def cli(
+    ctx: click.Context,
+    use_json: bool,
+    project: str | None,
+    session_file: str | None,
+    dry_run: bool,
+    bridge: str | None,
+) -> None:
+    """Operate installed Magic Studio: projects, storyboard, and the desktop app.
 
-    Commands and parameter documentation come from the shared application registry.
-    Use key=value parameters or --params JSON; no REPL or per-operation ports.
+    \b
+    Open an existing project window:
+      magic-cli studio open /absolute/Song.magic
+    Read its storyboard through the shared engine:
+      magic-cli --project /absolute/Song.magic storyboard read
+
+    The app's Studio view embeds the project's linked HyperFrames workspace.
+    Select Studio and use its existing switch if off; do not create a second studio.
+
+    Use key=value arguments or --params JSON. Next: COMMAND --help for parameters,
+    commands [FILTER] for registry IDs, or studio open --help for window selection.
+    Use configured/supplied paths; report missing paths rather than search the machine.
     """
     session = Session(session_file)
     ctx.call_on_close(session.close)
@@ -115,7 +187,12 @@ def cli(ctx: click.Context, use_json: bool, project: str | None, session_file: s
 @click.argument("filter", required=False)
 @click.pass_context
 def commands(ctx: click.Context, filter: str | None) -> None:
-    """Discover registered command IDs and their parameter documentation."""
+    """List native command IDs and parameters; optional FILTER matches registry text.
+
+    Example: magic-cli commands storyboard
+
+    Next: magic-cli storyboard --help, then the chosen command's --help.
+    """
     emit(execute(ctx, "command.list", {"filter": filter or ""}))
 
 
@@ -124,8 +201,15 @@ def commands(ctx: click.Context, filter: str | None) -> None:
 @click.argument("arguments", nargs=-1)
 @click.option("--params", help="JSON parameter object")
 @click.pass_context
-def exec_command(ctx: click.Context, command: str, arguments: tuple[str, ...], params: str | None) -> None:
-    """Execute a registry ID directly."""
+def exec_command(
+    ctx: click.Context, command: str, arguments: tuple[str, ...], params: str | None
+) -> None:
+    """Execute COMMAND as a native registry ID with key=value or --params JSON.
+
+    Example: magic-cli --project /absolute/Song.magic exec workshop.status
+
+    Next: magic-cli commands FILTER to discover IDs and parameter documentation.
+    """
     emit(execute(ctx, command, parse_params(arguments, params)))
 
 
@@ -133,7 +217,10 @@ def exec_command(ctx: click.Context, command: str, arguments: tuple[str, ...], p
 @click.argument("file", type=click.File("r"), default="-")
 @click.pass_context
 def run(ctx: click.Context, file: Any) -> None:
-    """Run JSONL {id, params} steps in order; stop on error. Earlier steps remain applied."""
+    """Run JSONL {id, params} steps in order; stop on error.
+
+    Earlier steps remain applied.
+    """
     for number, line in enumerate(file, 1):
         if not line.strip() or line.lstrip().startswith(("#", "//")):
             continue
@@ -147,19 +234,33 @@ def run(ctx: click.Context, file: Any) -> None:
 def mcp(ctx: click.Context) -> None:
     """Serve Magic commands over MCP stdio using the official Python SDK."""
     from cli_anything.magic.core.mcp_server import run_mcp_stdio
-    run_mcp_stdio(ctx.obj["session"], bridge=ctx.obj["bridge"], dry_run=ctx.obj["dry_run"])
+
+    run_mcp_stdio(
+        ctx.obj["session"], bridge=ctx.obj["bridge"], dry_run=ctx.obj["dry_run"]
+    )
 
 
 @cli.group(cls=RegistryGroup, prefix="studio.")
 def studio() -> None:
-    """Select and inspect live Magic Studio windows."""
+    """Select a desktop window; list inspects responsive windows without rebinding.
+
+    Example: magic-cli studio open /absolute/Song.magic
+
+    Next: studio open --help for the optional project argument.
+    """
 
 
 @studio.command("open")
 @click.argument("project", required=False)
 @click.pass_context
 def studio_open(ctx: click.Context, project: str | None) -> None:
-    """Open/focus a project window, or a blank window if omitted."""
+    """Open/focus PROJECT, an existing .magic file; omit it for a blank window.
+
+    Example: magic-cli studio open /absolute/Song.magic
+
+    Next: magic-cli ui feedback to inspect the selected window. In the app,
+    select Studio for its linked HyperFrames workspace.
+    """
     if ctx.obj["dry_run"]:
         emit({"dry_run": True, "project": project})
         return
@@ -181,7 +282,13 @@ def session() -> None:
 @click.pass_context
 def session_status(ctx: click.Context) -> None:
     sess = ctx.obj["session"]
-    emit({"project": sess.project_path, "endpoint": sess.studio_endpoint, "instance": sess.studio_instance})
+    emit(
+        {
+            "project": sess.project_path,
+            "endpoint": sess.studio_endpoint,
+            "instance": sess.studio_instance,
+        }
+    )
 
 
 @session.command("clear")

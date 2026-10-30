@@ -44,11 +44,47 @@ use ratatui::layout::Rect;
 use std::{io, path::Path, process::Command};
 
 enum Wake {
+    Shutdown,
     MopsObserved(Box<handoff::Snapshot>),
     AuditObserved(Result<Box<audit::Comparison>, String>),
     Terminal(io::Result<Event>),
     Observed(Box<data::Snapshot>, Box<project_data::ProjectSnapshot>),
 }
+
+#[cfg(unix)]
+struct ShutdownSignals {
+    handle: signal_hook::iterator::Handle,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+#[cfg(unix)]
+impl ShutdownSignals {
+    fn new(sender: std::sync::mpsc::Sender<Wake>) -> io::Result<Self> {
+        let mut signals = signal_hook::iterator::Signals::new([
+            signal_hook::consts::SIGHUP,
+            signal_hook::consts::SIGTERM,
+        ])?;
+        let handle = signals.handle();
+        let thread = std::thread::spawn(move || {
+            if signals.forever().next().is_some() {
+                let _ = sender.send(Wake::Shutdown);
+            }
+        });
+        Ok(Self {
+            handle,
+            thread: Some(thread),
+        })
+    }
+}
+#[cfg(unix)]
+impl Drop for ShutdownSignals {
+    fn drop(&mut self) {
+        self.handle.close();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum View {
     Workshop,
@@ -764,6 +800,38 @@ fn configured_app(args: &[String]) -> io::Result<App> {
     }
     Ok(app)
 }
+
+/// A background observation requests an immediate redraw; it never waits for a key.
+enum UiEvent {
+    Input(Event),
+    Redraw,
+    Shutdown,
+}
+fn receive_ui_event(
+    receiver: &std::sync::mpsc::Receiver<Wake>,
+    app: &mut App,
+) -> io::Result<UiEvent> {
+    match receiver
+        .recv()
+        .map_err(|_| io::Error::other("UI event channel closed"))?
+    {
+        Wake::Shutdown => Ok(UiEvent::Shutdown),
+        Wake::Terminal(input) => input.map(UiEvent::Input),
+        Wake::MopsObserved(snapshot) => {
+            app.mops_observed(*snapshot);
+            Ok(UiEvent::Redraw)
+        }
+        Wake::AuditObserved(result) => {
+            app.audit_observed(result);
+            Ok(UiEvent::Redraw)
+        }
+        Wake::Observed(snapshot, projects) => {
+            app.observed(*snapshot, *projects);
+            Ok(UiEvent::Redraw)
+        }
+    }
+}
+
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(index) = args.iter().position(|a| a == "--mayhem-pr-report") {
@@ -794,6 +862,9 @@ fn main() -> io::Result<()> {
     let control = provider::Control::default();
     let _lifecycle = provider::Owner(control.clone());
     let (sender, receiver) = std::sync::mpsc::channel();
+    // Drop closes the signal listener after normal exit or an early UI error.
+    #[cfg(unix)]
+    let _shutdown = ShutdownSignals::new(sender.clone())?;
     let input_sender = sender.clone();
     std::thread::spawn(move || {
         loop {
@@ -816,23 +887,10 @@ fn main() -> io::Result<()> {
             app.opener_result = None;
         }
         terminal.draw(|f| ui::draw(f, &mut app))?;
-        let input = match receiver
-            .recv()
-            .map_err(|_| io::Error::other("UI event channel closed"))?
-        {
-            Wake::MopsObserved(snapshot) => {
-                app.mops_observed(*snapshot);
-                continue;
-            }
-            Wake::AuditObserved(result) => {
-                app.audit_observed(result);
-                continue;
-            }
-            Wake::Observed(snapshot, projects) => {
-                app.observed(*snapshot, *projects);
-                continue;
-            }
-            Wake::Terminal(input) => input?,
+        let input = match receive_ui_event(&receiver, &mut app)? {
+            UiEvent::Input(input) => input,
+            UiEvent::Redraw => continue,
+            UiEvent::Shutdown => break Ok(()),
         };
         match input {
             Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {

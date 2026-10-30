@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Magic Studio</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="global.css" />
+  <link rel="stylesheet" href="cast.css" />
+  <link rel="stylesheet" href="drawers.css" />
+  <link rel="stylesheet" href="menu.css" />
+  <link rel="stylesheet" href="mayhem.css" />
+  <link rel="stylesheet" href="vendor/backstage/backstage-terminal.css" />
+</head>
+<body>
+  <header id="app-bar" class="bar">
+    <div class="brand" id="brand" role="button" tabindex="0" title="Home · all projects" aria-label="Magic Studio · Home">
+      <span class="brand-word" aria-hidden="true"><span class="brand-magic">Magic</span> <span class="brand-studio">Studio</span></span><span class="brand-spark" aria-hidden="true">✧</span>
+    </div>
+    <span class="project-chip" title="Open project">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      <span id="project-name">No project</span>
+    </span>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="project" role="tab" aria-selected="true">Storyboard</button>
+      <button class="tab" data-view="animation" role="tab" aria-selected="false" title="Animate objects and polish their motion">Animation</button>
+      <button class="tab" data-view="design" role="tab" aria-selected="false" title="Lyrics and motion graphics timed to the lyrics">Lyrics</button>
+      <button class="tab" data-view="studio" role="tab" aria-selected="false">Studio</button>
+      <button class="tab" id="tab-skills" data-view="skills" role="tab" aria-selected="false" title="Knowledge skills and tech tools discovered for this project">Learning</button>
+      <button class="tab" id="tab-analytics" data-view="analytics" role="tab" aria-selected="false" title="Mayhem · health unknown. Check observations here first." data-health="unknown"><svg class="mayhem-siren" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 19h14M7 19v-7a5 5 0 0 1 10 0v7M12 2v2M3 6l2 2M21 6l-2 2M1 13h3M20 13h3"/></svg><span>Mayhem</span><small id="mayhem-health">Unknown</small></button>
+      <span class="tab-ink" aria-hidden="true"></span>
+    </nav>
+    <div class="drawer-toggles" aria-label="Studio assistants">
+      <button class="ghost" id="agent-toggle" data-drawer-toggle="sproket" aria-controls="magic-chat-pane" aria-expanded="false" aria-pressed="false" title="Sproket chat (Ctrl+\)" aria-label="Sproket chat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg><span class="drawer-label">Sproket</span></button>
+      <button class="ghost" id="gaffer-toggle" data-drawer-toggle="gaffer" aria-controls="magic-image-pane" aria-expanded="false" aria-pressed="false" title="Gaffer artwork" aria-label="Gaffer artwork"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 6-6 12 10"/><circle cx="16" cy="8" r="2"/></svg><span class="drawer-label">Gaffer</span></button>
+    </div>
+    <button class="target" id="target" aria-label="Studio server: click to start or stop" title="Studio server · click to start or stop">
+      <span class="dot off" id="server-dot"></span><span id="target-name">—</span>
+    </button>
+  </header>
+
+  <main>
+    <section class="view" id="view-home" aria-label="Home">
+      <div class="home">
+        <div class="home-hero">
+          <svg class="home-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.6" /></svg>
+          <div>
+            <h1>Magic Studio</h1>
+            <p class="muted">Songs into animated films.</p>
+          </div>
+          <div class="home-actions">
+            <button class="start" id="home-new" title="New song project (Ctrl+N)">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New song</span><kbd>Ctrl+N</kbd></button>
+            <button class="ghost" id="home-open" data-commands="project.open" title="Open a project (Ctrl+O)">
+              <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Open…</span><kbd>Ctrl+O</kbd></button>
+          </div>
+        </div>
+        <div class="group-label" id="recent-label">Recent</div>
+        <div class="recent" id="recent"></div>
+      </div>
+        <form class="panel-body" data-look="form" id="new-form" aria-label="New song project" hidden>
+          <label class="field-row">Name<input class="field" id="new-name" placeholder="Bumble Bee" autocomplete="off" required /></label>
+          <label class="field-row">Audio
+            <span class="field-row"><input class="field" id="new-audio" placeholder="Audio file…" required />
+              <button type="button" class="ghost" id="new-audio-pick" title="Choose the audio file">Choose…</button></span></label>
+          <details class="project-location"><summary>Project folder</summary>
+          <label class="field-row">Folder
+            <span class="field-row"><input class="field" id="new-root" readonly required />
+              <button type="button" class="ghost" id="new-root-pick" title="Choose where the project folder goes">Choose…</button></span></label>
+          </details>
+          <div class="field-row">
+            <button type="button" class="ghost" id="new-cancel">Cancel</button>
+            <button type="submit" class="start" id="new-create" data-commands="project.intake">Create</button>
+          </div>
+        </form>
+    </section>
+    <section class="view active" id="view-project" aria-label="Storyboard workspace">
+      <div class="project-body">
+        <!-- Left rail: collapsible blocks (song workflow) -->
+        <aside class="blocks" id="blocks" aria-label="Song workflow"></aside>
+
+        <!-- Main: storyboard title cards -->
+        <section class="storyboard" aria-label="Storyboard">
+          <div class="panel-head divided">
+            <div class="chips" id="sb-chips" role="tablist"></div>
+            <button id="sb-save-version" class="save-icon" title="Save new version" aria-label="Save new version"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg></button>
+            <div class="sb-nav">
+              <button class="icon" id="sb-prev" aria-label="Previous page" title="Previous page"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg></button>
+              <span id="sb-page">—</span>
+              <button class="icon" id="sb-next" aria-label="Next page" title="Next page"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg></button>
+              <button class="icon" id="sb-open-deck" aria-label="Open the editable storyboard in DeckCraft" title="Open the editable storyboard in DeckCraft"><svg viewBox="0 0 24 24"><path d="M14 3h7v7" /><path d="M21 3l-9 9" /><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" /></svg></button>
+            </div>
+          </div>
+          <div class="sb-title-wrap" id="sb-title-wrap">
+            <div class="sb-title-cards" id="sb-cards"></div>
+          </div>
+        </section>
+      </div>
+
+
+    </section>
+
+    <section class="view" id="view-animation" aria-label="Animation workspace"></section>
+    <section class="view" id="view-design" aria-label="Lyrics and motion graphics"></section>
+    <section class="view" id="view-studio">
+      <div class="studio-slot" id="studio-slot"></div>
+      <div class="panel-empty" id="studio-empty">
+        <p>The studio is off.</p>
+        <p class="muted">It only runs when you need it.</p>
+        <button class="start" id="studio-start">Start the studio</button>
+      </div>
+    </section>
+
+    <section class="view" id="view-skills" aria-label="Learning production manual"></section>
+    <section class="view" id="view-analytics" aria-label="Mayhem observations and Backstage terminal"></section>
+
+  </main>
+  <!-- One footer for every tab: workflow stages · what the active tab shows · save and studio state. -->
+  <footer class="app-footer" id="app-footer" role="contentinfo" aria-label="Application status footer">
+    <button class="footer-item" id="footer-instance" title="Studio instance and build · click to copy its project command">Connecting…</button>
+    <nav class="footer-stages" id="footer-stages" aria-label="Workflow stages"></nav>
+    <div class="footer-context" id="footer-context" aria-live="polite"></div>
+    <div class="panel-status row" id="footer-status">
+      <span class="footer-item" id="footer-save-state"></span>
+      <button class="footer-item" id="footer-server" title="Studio server · click to start or stop"></button>
+    </div>
+  </footer>
+      <!-- Shared top drawers preserve each assistant’s contents and drafts. -->
+      <aside class="workshop-drawers" id="magic-workstation" aria-label="Studio assistants" hidden>
+        <section id="magic-chat-pane" data-drawer="sproket" aria-label="Sproket chat" hidden>
+      <aside class="agent" id="agent" aria-label="Agent" aria-hidden="true">
+        <div class="panel-head" id="agent-head">
+          <span class="agent-title panel-title">Sproket <span class="agent-connection" id="agent-connection">· not configured</span></span>
+          <div class="agent-head-actions">
+            <button class="icon" id="agent-new" aria-label="New chat" title="Start a fresh chat · preserve previous history"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button class="icon" id="agent-config-toggle" data-drawer-settings="anim-agent-settings" aria-label="Agent settings" aria-controls="anim-agent-settings" aria-expanded="false" title="Agent settings: agent, model, thinking"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
+            <button class="icon" id="agent-close" data-drawer-close aria-label="Close Sproket chat" title="Hide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          </div>
+        </div>
+        <div id="anim-agent-settings" hidden>
+          <span class="agent-runtime" id="agent-runtime" title="The agent this app runs"></span>
+          <label>Agent<select id="agent-command" title="The system agent this app runs for each message"></select></label>
+          <label>Provider<input id="agent-provider" list="agent-providers" placeholder="CLI default" title="Exact provider ID; choose from the installed catalog" /><datalist id="agent-providers"></datalist></label>
+          <label>Model<input id="agent-model" list="agent-models" placeholder="CLI default" title="Exact model ID; saved for both app and CLI" /><datalist id="agent-models"></datalist></label>
+          <button class="ghost" id="agent-catalog-refresh" title="Read the installed model catalog without inference">Refresh models</button>
+          <small id="agent-catalog-status" role="status"></small>
+          <label class="companion-setting"><input type="checkbox" id="ambient-companions" /> Ambient companions (off by default)</label>
+          <small class="companion-note" id="companion-note">Sproket the dog watches for problems; Gaffer the cat follows the artwork. Their state is listed below.</small>
+          <ul class="companion-state" id="companion-state" aria-live="polite"></ul>
+          <small>Messages start fresh. Chat settings are separate from image generation.</small>
+          <label>Thinking<select id="agent-thinking" title="Reasoning effort">
+            <option value="">default</option><option value="off">off</option><option value="low">low</option>
+            <option value="medium">medium</option><option value="high">high</option></select></label>
+          <label>Extra args<input id="agent-extra" placeholder="--flag value" title="Extra command-line arguments" /></label>
+          <button class="start" id="agent-config-save" title="Save the agent settings">Save</button>
+        </div>
+        <div class="agent-log" id="agent-log" aria-live="polite"></div>
+        <div class="agent-attachments" id="agent-attachments"></div>
+        <div class="agent-compose" id="agent-compose">
+          <textarea id="agent-input" rows="3" placeholder="Describe a change…" aria-label="Message" title="Enter to send · Shift+Enter for a new line · Ctrl+Enter also sends"></textarea>
+          <div class="agent-actions">
+            <button class="ghost" id="agent-point" title="Point: click anything in the app to attach a picture of it">
+              <svg viewBox="0 0 24 24"><path d="M4 4l7 16 2.5-6.5L20 11z"/></svg><span>Point</span></button>
+            <span class="panel-status" id="agent-status"></span>
+            <button class="start" id="agent-send">Send</button>
+          </div>
+        </div>
+      </aside>
+        </section>
+        <section id="magic-image-pane" data-drawer="gaffer" aria-label="Gaffer artwork" hidden>
+          <div class="panel-head" id="magic-image-toggle"><span class="panel-title">Gaffer · Artwork</span><span id="magic-target-image" class="magic-target">No part selected</span><button class="icon" id="gaffer-config-toggle" data-drawer-settings="image-settings" aria-label="Artwork settings" aria-controls="image-settings" aria-expanded="false" title="Artwork settings"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button><button class="icon" id="gaffer-close" data-drawer-close aria-label="Close Gaffer artwork" title="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+          <div id="magic-image-tools" class="magic-image-tools"></div>
+        </section>
+      </aside>
+  <div class="point-overlay" id="point-overlay"><div class="point-box" id="point-box"></div><div class="point-hint">Click what you mean · Esc cancels</div></div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="feedback.js"></script>
+  <script src="companion-boxes.js"></script>
+  <script src="companion-rails.js"></script>
+  <script src="companion-sprites.js"></script>
+  <script src="app.js"></script>
+  <script src="song.js"></script>
+  <script src="project.js"></script>
+  <script src="storyboard.js"></script>
+  <script src="words.js"></script>
+  <script src="image-prompt.js"></script>
+  <script src="theatre.js"></script>
+  <script src="timeline.js"></script>
+  <script src="motion-authoring.js"></script>
+<script src="animation.js"></script>
+  <script src="blender-placement.js"></script>
+<script src="animation-native.js"></script>
+<script src="blender.js"></script>
+  <script src="sequence.js"></script>
+  <script src="drawers.js"></script>
+  <script src="agent.js"></script>
+  <script src="home.js"></script>
+  <script src="menu.js"></script>
+  <link rel="stylesheet" href="vendor/learning/learning-editor.css">
+  <script src="vendor/learning/learning-editor.js"></script>
+  <script src="cast.js"></script>
+  <script src="skills.js"></script>
+  <script src="vendor/backstage/backstage-terminal.js"></script>
+  <script src="backstage-terminal.js"></script>
+  <script src="analytics.js"></script>
+  <script src="bridge.js"></script>
+  <script src="companions.js"></script>
+</body>
+</html>

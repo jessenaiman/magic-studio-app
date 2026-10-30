@@ -33,11 +33,11 @@ fn scan_targets(root: &Path) -> Vec<String> {
     let mut targets: Vec<String> = vec![
         "crates/engine/src".to_string(),
         "agent-harness/cli_anything/magic".to_string(),
-        "apps/magicstudio-shell/src".to_string(),
+        "apps/src-tauri/src".to_string(),
         "pipeline".to_string(),
         "scripts".to_string(),
     ];
-    let ui_dir = root.join("apps/magicstudio-shell/ui");
+    let ui_dir = root.join("apps/src-tauri/ui");
     let Ok(entries) = std::fs::read_dir(ui_dir) else {
         return targets;
     };
@@ -49,7 +49,7 @@ fn scan_targets(root: &Path) -> Vec<String> {
                 return None;
             }
             path.file_name()
-                .map(|name| format!("apps/magicstudio-shell/ui/{}", name.to_string_lossy()))
+                .map(|name| format!("apps/src-tauri/ui/{}", name.to_string_lossy()))
         })
         .collect();
     ui_files.sort();
@@ -221,8 +221,8 @@ fn source_dirty(root: &Path) -> Option<bool> {
             "--",
             "crates/engine/src",
             "agent-harness/cli_anything/magic",
-            "apps/magicstudio-shell/src",
-            "apps/magicstudio-shell/ui",
+            "apps/src-tauri/src",
+            "apps/src-tauri/ui",
             "pipeline",
             "scripts",
             "code-limits.json",
@@ -373,7 +373,7 @@ fn measure(root: &Path) -> Value {
             row["file"]
                 .as_str()
                 .unwrap_or("")
-                .starts_with("apps/magicstudio-shell/ui/")
+                .starts_with("apps/src-tauri/ui/")
         })
         .count();
     let total_lines: u64 = file_rows

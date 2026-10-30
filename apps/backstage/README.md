@@ -14,6 +14,13 @@ Launch from a prepared source-development environment:
 cargo run -p backstage
 ```
 
+On Linux, desktop Mayhem also has an explicit **Launch Backstage** terminal control. Build
+`cargo build -p magicstudio-shell -p backstage` and launch
+`target/debug/magicstudio-shell` from the intended repository directory. The
+companion must sit beside the shell executable; no PATH or shell command is used.
+Mayhem navigation preserves one live session; q, Stop, or desktop exit ends it.
+Launch failures remain inline. The standalone command above remains supported.
+
 Recommended: 166×54, truecolor and Unicode. Use `--color=always` to explicitly
 override a process-inherited NO_COLOR setting without changing the desktop theme. Arrows/j/k select files; Enter/o or
 mouse Open requests the desktop association; p opens the observed project folder; d shows wrapped observations and

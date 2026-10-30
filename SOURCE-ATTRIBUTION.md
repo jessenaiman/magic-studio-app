@@ -9,3 +9,11 @@ The root LICENSE preserves the upstream GNU AGPL version 3. Existing component n
 The BGM Montage workflow comparison references the original
 [OpenMontage integration, PR #751](https://github.com/calesthio/OpenMontage/pull/751).
 It is upstream history, not a Magic Studio pull request.
+
+## Embedded Backstage terminal
+
+The desktop bundles xterm.js 6.0.0 and @xterm/addon-fit 0.11.0 (MIT).
+Upstream: https://github.com/xtermjs/xterm.js . Their full MIT notices are
+retained in `apps/magicstudio-shell/ui/vendor/backstage/` by the frontend build.
+The native PTY adapter uses portable-pty 0.9.0 (MIT), part of WezTerm:
+https://github.com/wez/wezterm/tree/main/pty .

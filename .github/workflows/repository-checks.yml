@@ -26,5 +26,5 @@ jobs:
           set -euo pipefail
           node --version
           git diff --check HEAD^ HEAD
-          for source in apps/magicstudio-shell/ui/*.js; do node --check "$source"; done
-          node apps/magicstudio-shell/scripts/ui-lint.mjs --report
+          for source in apps/src-tauri/ui/*.js; do node --check "$source"; done
+          node apps/src-tauri/scripts/ui-lint.mjs --report
