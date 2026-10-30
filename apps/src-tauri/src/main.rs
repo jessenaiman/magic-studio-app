@@ -1163,13 +1163,12 @@ fn main() {
         .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, menu::menu_action, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, desktop_commands::desktop_reply, studio_show, studio_hide, drawer_layout])
         .setup(|app| {
             #[cfg(unix)]
-            if let Some(path)=launch_options()["project"].as_str() {
-                if let Some(existing)=magicstudio_engine::studio_sessions::for_project(std::path::Path::new(path))? {
-                    if let Some(endpoint)=existing["endpoint"].as_str().and_then(|v|v.strip_prefix("unix:")) {
-                        magicstudio_engine::studio_sessions::request(std::path::Path::new(endpoint),"ui.focus",json!({"_expected_instance":existing["instance"],"_expected_project":path}))?;
-                        app.handle().exit(0);return Ok(());
-                    }
-                }
+            if let Some(path)=launch_options()["project"].as_str()
+                && let Some(existing)=magicstudio_engine::studio_sessions::for_project(std::path::Path::new(path))?
+                && let Some(endpoint)=existing["endpoint"].as_str().and_then(|v|v.strip_prefix("unix:"))
+            {
+                magicstudio_engine::studio_sessions::request(std::path::Path::new(endpoint),"ui.focus",json!({"_expected_instance":existing["instance"],"_expected_project":path}))?;
+                app.handle().exit(0);return Ok(());
             }
             let window = WindowBuilder::new(app, "main").title("Magic Studio").inner_size(1440.0, 900.0).build()?;
             let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
