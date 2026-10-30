@@ -83,52 +83,76 @@ pub fn sources(s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
-pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
-    crate::motion_authoring::project_guard(s, p)?;
-    let id = id(p)?.to_owned();
-    let revision = expected(p)?;
-    let actual = s
-        .animation_sources
-        .get(&id)
+/// The revision the session holds for this id, or 0 when the id is new.
+fn held_revision(s: &Session, id: &str) -> u64 {
+    s.animation_sources
+        .get(id)
         .and_then(|v| v["revision"].as_u64())
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
+
+/// Only these source extensions belong to a backend.
+fn backend_extensions(backend: &str) -> Result<&'static [&'static str]> {
+    match backend {
+        "blender" => Ok(&["blend"]),
+        _ => Err(bad("backend must be blender")),
+    }
+}
+
+fn require_source_extension(source: &Path, extensions: &[&str]) -> Result<()> {
+    if source.is_file()
+        && source
+            .extension()
+            .and_then(|v| v.to_str())
+            .is_some_and(|v| extensions.contains(&v))
+    {
+        return Ok(());
+    }
+    Err(bad("Source extension does not match backend"))
+}
+
+/// A character association is only offered when that character has a saved action track.
+fn require_saved_action(s: &mut Session, character: &str, track: &str) -> Result<()> {
+    let actions = crate::animation_jobs::cmd_animation_actions(s, &json!({"character":character}))?;
+    if actions["tracks"]
+        .as_array()
+        .is_some_and(|tracks| tracks.iter().any(|t| t["id"].as_str() == Some(track)))
+    {
+        return Ok(());
+    }
+    Err(bad("Source association requires a saved character action"))
+}
+
+/// A new source must fit the project limit; an existing one must match the held revision.
+fn require_writable(s: &Session, id: &str, revision: u64) -> Result<()> {
+    let actual = held_revision(s, id);
     if actual != revision {
         return Err(bad("Source revision changed; refresh before continuing"));
     }
     if actual == 0 && s.animation_sources.len() >= 256 {
         return Err(bad("Project source limit is 256"));
     }
+    Ok(())
+}
+
+pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
+    crate::motion_authoring::project_guard(s, p)?;
+    let id = id(p)?.to_owned();
+    let revision = expected(p)?;
+    require_writable(s, &id, revision)?;
     let backend = text(p, "backend")?;
-    let extensions: &[&str] = match backend {
-        "blender" => &["blend"],
-        _ => return Err(bad("backend must be blender")),
-    };
+    let extensions = backend_extensions(backend)?;
     let source = crate::workspace::resolve_workspace_path(s, text(p, "source")?).canonicalize()?;
-    if !source.is_file()
-        || !source
-            .extension()
-            .and_then(|v| v.to_str())
-            .is_some_and(|v| extensions.contains(&v))
-    {
-        return Err(bad(
-            "Source extension does not match backend",
-        ));
-    }
+    require_source_extension(&source, extensions)?;
     // A saved .blend packs its dependencies; no separate bundle directory.
-    let bundle: Option<std::path::PathBuf> = None;
+    let bundle: Option<PathBuf> = None;
     let character = p["character"].as_str().filter(|v| !v.is_empty());
     let track = p["track"].as_str().filter(|v| !v.is_empty());
     if character.is_some() != track.is_some() {
         return Err(bad("character and track must be supplied together"));
     }
     if let Some(character) = character {
-        let actions = crate::animation_jobs::cmd_animation_actions(s, &json!({"character":character}))?;
-        if !actions["tracks"]
-            .as_array()
-            .is_some_and(|tracks| tracks.iter().any(|t| t["id"].as_str() == track))
-        {
-            return Err(bad("Source association requires a saved character action"));
-        }
+        require_saved_action(s, character, track.unwrap_or_default())?;
     }
     let value = json!({"id":id,"backend":backend,"source":source,"bundle":bundle,"character":character,"track":track,"revision":next_revision(revision)?,"accepted":Value::Null});
     s.animation_sources.insert(id, value.clone());
@@ -174,20 +198,28 @@ pub fn render(s: &mut Session, p: &Value) -> Result<Value> {
     job["source_revision"] = source["revision"].clone();
     Ok(job)
 }
-fn accepted_result(source: &Value, result: &Value, receipt: &Path) -> Result<Value> {
-    if result["state"] != "completed" || result["partial"] != false {
-        return Err(bad(
-            "Accept requires a completed full render; partial previews are not accepted",
-        ));
+fn require_completed(result: &Value) -> Result<()> {
+    if result["state"] == "completed" && result["partial"] == false {
+        return Ok(());
     }
-    if result["backend"] != source["backend"]
-        || result["source_id"] != source["id"]
-        || result["source_revision"] != source["revision"]
+    Err(bad(
+        "Accept requires a completed full render; partial previews are not accepted",
+    ))
+}
+
+fn require_same_source(result: &Value, source: &Value) -> Result<()> {
+    if result["backend"] == source["backend"]
+        && result["source_id"] == source["id"]
+        && result["source_revision"] == source["revision"]
     {
-        return Err(bad(
-            "Render belongs to a different or stale source revision",
-        ));
+        return Ok(());
     }
+    Err(bad(
+        "Render belongs to a different or stale source revision",
+    ))
+}
+
+fn require_visible(result: &Value) -> Result<()> {
     if result
         .pointer("/alpha_evidence/clip_max")
         .and_then(Value::as_u64)
@@ -197,20 +229,27 @@ fn accepted_result(source: &Value, result: &Value, receipt: &Path) -> Result<Val
             "Rendered clip is fully transparent; inspect the native scene before accepting",
         ));
     }
-    let clip = PathBuf::from(text(result, "clip")?);
-    let metadata = fs::metadata(&clip)?;
+    Ok(())
+}
+
+fn require_accept_clip(clip: &Path) -> Result<()> {
+    let metadata = fs::metadata(clip)?;
     if !metadata.is_file() || metadata.len() > 512 * 1024 * 1024 {
         return Err(bad(
             "Accepted clip must be a regular file no larger than 512 MiB",
         ));
     }
+    Ok(())
+}
+
+fn clip_digest(clip: &Path) -> Result<String> {
     let mut digest = Sha256::new();
-    std::io::copy(&mut fs::File::open(&clip)?, &mut digest)?;
-    if result["clip_sha256"] != format!("{:x}", digest.finalize()) {
-        return Err(bad(
-            "Rendered clip hash changed; render again before accepting",
-        ));
-    }
+    std::io::copy(&mut fs::File::open(clip)?, &mut digest)?;
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+/// The receipt plus the render facts and the provenance the project keeps with it.
+fn accepted_record(receipt: &Path, result: &Value) -> Value {
     let mut accepted = json!({"receipt":receipt,"provenance":{}});
     for key in [
         "job",
@@ -243,8 +282,23 @@ fn accepted_result(source: &Value, result: &Value, receipt: &Path) -> Result<Val
     } else {
         accepted["provenance"]["source_bundle"] = Value::Null;
     }
-    Ok(accepted)
+    accepted
 }
+
+fn accepted_result(source: &Value, result: &Value, receipt: &Path) -> Result<Value> {
+    require_completed(result)?;
+    require_same_source(result, source)?;
+    require_visible(result)?;
+    let clip = PathBuf::from(text(result, "clip")?);
+    require_accept_clip(&clip)?;
+    if result["clip_sha256"] != clip_digest(&clip)? {
+        return Err(bad(
+            "Rendered clip hash changed; render again before accepting",
+        ));
+    }
+    Ok(accepted_record(receipt, result))
+}
+
 pub fn accept(s: &mut Session, p: &Value) -> Result<Value> {
     let mut source = current(s, p)?;
     let job = json!({"job":text(p,"job")?});
