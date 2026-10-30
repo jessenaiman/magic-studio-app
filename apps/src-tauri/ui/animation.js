@@ -18,7 +18,6 @@ function animationRestore(){
 }
 function animationReset(){
  theatreRequireSaved();animationRemember();
- effectcraftAnimationDispose();
  blenderDispose();
  animationPause();
  Object.assign(motion,{project:null,character:null,meta:null,sample:null,images:[],assets:[],time:0,track:'',rest:true,selected:null,photoDrafts:{},loading:false,request:motion.request+1,points:[],pathUndo:null,pathLayer:null,previewLoop:null,pen:false,fit:true,zoom:1});
@@ -45,8 +44,6 @@ const MOTION_ICONS = {
  reset:'<path d="M3 10a9 9 0 1 1 2 9M3 4v6h6"/>', fit:'<path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/>',
  minus:'<path d="M5 12h14"/>', plus:'<path d="M5 12h14M12 5v14"/>', eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
  layers:'<path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 18l9 5 9-5"/>', export:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>', step:'<path d="m5 5 10 7-10 7zM19 5v14"/>',
- timeline:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M12 13h6M12 17h4"/>',
- close:'<path d="m6 6 12 12M6 18 18 6"/>',
  trash:'<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>'
 };
 function motionButton(id,label,icon,fn){return el('button',{id,class:'icon',title:label,'aria-label':label,html:`<svg viewBox="0 0 24 24">${MOTION_ICONS[icon]}</svg>`,onclick:fn});}
@@ -106,7 +103,6 @@ function animationShell(){
   motionButton('motion-pen','Pen · draw a motion path','pen',()=>{animationPause();motion.pen=!motion.pen;$('motion-pen').setAttribute('aria-pressed',String(motion.pen));$('motion-canvas').classList.toggle('drawing',motion.pen);$('motion-path-section')?.setAttribute('open','');}), motionButton('motion-path-visible','Show or hide the motion path','eye',()=>{motion.pathVisible=!motion.pathVisible;$('motion-path-visible').setAttribute('aria-pressed',String(motion.pathVisible));animationDraw();}), grid, motionButton('motion-fit','Fit artwork','fit',()=>{motion.fit=true;motion.zoom=1;animationDraw();}),
   el('button',{id:'motion-actual',title:'Actual size · 100%','aria-label':'Actual size',onclick:()=>{motion.fit=false;motion.zoom=1;animationDraw();}},'1:1'),
   motionButton('motion-minus','Zoom out','minus',()=>{motion.zoom/=1.2;animationDraw();}),motionButton('motion-plus','Zoom in','plus',()=>{motion.zoom*=1.2;animationDraw();}),
-  motionButton('motion-effectcraft','Preview animation in EffectCraft','timeline',()=>effectcraftAnimationOpen().catch(error=>toast(String(error)))),
   el('button',{id:'btn-generate-all-sheets',class:'icon','aria-label':'Generate missing character sheets',html:`<svg viewBox="0 0 24 24">${MOTION_ICONS.layers}</svg>`,'data-commands':'assets.sheet_plan',title:'Review complete asset sheets and edit drawing prompts',onclick:()=>reviewAssetSheets(motion.character,null)})]});
  motion.stageHeader=toolbar;
  const transport=el('div',{class:'motion-transport'},motionButton('motion-play','Play motion','play',animationPlay),motionButton('motion-rewind','Return to start','reset',()=>{animationPause();motion.time=0;animationDraw();}),motionButton('motion-step-back','Previous frame','step',()=>animationStep(-1)),motionButton('motion-step','Next frame','step',()=>animationStep(1)),el('span',{id:'motion-time',class:'motion-time'},'0:00.000'),el('input',{id:'motion-scrub',type:'range',min:0,max:1,step:0.001,value:0,'aria-label':'Scrub motion',oninput:e=>animationSeek(Number(e.target.value))}));
@@ -275,14 +271,14 @@ function animationControls(){
 }
 function motionExportControl(){
  const status=el('div',{id:'motion-export-status',class:'why',role:'status'});let busy=false;
- const button=el('button',{class:'start',id:'motion-export','data-commands':'motion.export_track',title:'Export the current rest/action preview as a transparent track',onclick:async()=>{
+ const button=el('button',{class:'start',id:'motion-export','data-commands':'animation.render',title:'Export the current rest/action preview as a transparent track',onclick:async()=>{
   if(busy)return;const project=state.project,character=motion.character;
   try{
    theatreRequireSaved();
    const duration=motion.sample?.duration/motion.speed;
    if(!character||!motion.track||!Number.isFinite(duration)||duration<=0)throw Error('Choose a sampled action before exporting.');
    const params={character,track:motion.track,rest:motion.rest,amount:motion.amount,duration};busy=true;button.disabled=true;status.textContent='Rendering transparent track…';
-   const result=await motionCommand('motion.export_track',params);
+   const result=await motionCommand('animation.render',params);
    motion.lastExport={project,character,params,result};
    if(state.project!==project||motion.character!==character)return;
    const file=result.outputs?.[0]?.file;

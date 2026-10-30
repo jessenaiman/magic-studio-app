@@ -188,7 +188,7 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
     });
     if !ok {
         out["next"] = json!([
-            "Build a rig for it: asset.build_cutout_rig, or connect a rig spec with project.add_asset kind=cutout_rig."
+            "Build a rig for it: animation.prepare, or connect a rig spec with project.add_asset kind=cutout_rig."
         ]);
     }
     Ok(out)

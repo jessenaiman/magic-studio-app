@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare cutout artwork and its editable native EffectCraft composition."""
+"""Prepare reviewed cutout artwork with PhotoCraft and VectorCraft."""
 
 from __future__ import annotations
 
@@ -14,21 +14,15 @@ from pipeline.step_photocraft_parts import (
     render_cutout_asset_sheet,
 )
 from pipeline.step_vector_trace import trace_part_layers_with_vectorcraft
-from pipeline.effectcraft.cutout import build_effectcraft_cutout_animation
-from pipeline.blender_cutout_rig import export_blender_python_script
 
 
 def build_guided_cutout_rig(
     rgba_path: str | Path,
     character_id: str,
     out_dir: Optional[str | Path] = None,
-    mode: str = "sway",
-    speed: float = 1.0,
-    duration: float = 3.0,
     selected_parts: Optional[List[str]] = None,
-    out_mp4: Optional[str | Path] = None,
 ) -> Dict[str, Any]:
-    """Run Stage 3A -> Stage 3B -> Stage 3C sequentially."""
+    """Slice reviewed parts, save their rig plan, then trace them."""
     src_path = Path(rgba_path).resolve()
     if not src_path.exists():
         raise FileNotFoundError(f"Input image not found: {src_path}")
@@ -71,23 +65,11 @@ def build_guided_cutout_rig(
     render_cutout_asset_sheet(src_path, rig_plan, sheet_path)
     rig_plan["cutout_asset_sheet"] = str(sheet_path)
 
-    # 2. Stage 3C: EffectCraft rig composition & video render
-    ec_res = build_effectcraft_cutout_animation(
-        rig_plan,
-        pose_lib,
-        target_dir,
-        mode=mode,
-        speed=speed,
-        duration=duration,
-        out_mp4=Path(out_mp4) if out_mp4 else None,
-    )
-    rig_plan["effectcraft"] = ec_res
-
     rig_plan_path = target_dir / f"{character_id}_cutout_rig_plan.json"
     pose_lib_path = target_dir / f"{character_id}_pose_library.json"
     rig_plan_path.write_text(json.dumps(rig_plan, indent=2), encoding="utf-8")
 
-    # 3. Stage 3B: VectorCraft SVG tracing
+    # Trace the prepared parts with the installed VectorCraft tool.
     try:
         vc_res = trace_part_layers_with_vectorcraft(rig_plan_path)
         if vc_res.get("ok"):
@@ -110,84 +92,22 @@ def build_guided_cutout_rig(
         "photocraft_psd": pc_res["psd_path"],
         "part_count": len(pc_res["parts"]),
         "qa_telemetry": pc_res.get("qa_telemetry", {}),
-        "effectcraft": ec_res,
     }
-
-
-def export_existing(args):
-    path = Path(args.rig_plan).resolve()
-    if args.trace_svg_only:
-        return trace_part_layers_with_vectorcraft(path, preset=args.trace_preset)
-    plan = json.loads(path.read_text())
-    library = plan.get("pose_library", {})
-    output = Path(args.out_dir).resolve() if args.out_dir else path.parent
-    if args.blender_py_only:
-        target = (
-            Path(args.out_blender_py).resolve()
-            if args.out_blender_py
-            else output / f"{plan['character_id']}_blender_rig.py"
-        )
-        export_blender_python_script(
-            plan,
-            library,
-            target,
-            mode=args.mode,
-            speed=args.speed,
-            duration=args.duration,
-            glb_path=args.glb_path,
-            blend_path=args.blend_path,
-        )
-        return dict(ok=True, blender_py_path=str(target))
-    result = build_effectcraft_cutout_animation(
-        plan,
-        library,
-        output,
-        mode=args.mode,
-        speed=args.speed,
-        duration=args.duration,
-        out_mp4=Path(args.out_mp4) if args.out_mp4 else None,
-    )
-    plan["effectcraft"] = result
-    path.write_text(json.dumps(plan, indent=2) + "\n")
-    return dict(ok=True, effectcraft=result)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("image", nargs="?")
-    parser.add_argument("--character")
+    parser.add_argument("image")
+    parser.add_argument("--character", required=True)
     parser.add_argument("--out-dir")
-    parser.add_argument("--mode", default="sway")
-    parser.add_argument("--speed", type=float, default=1.0)
-    parser.add_argument("--duration", type=float, default=3.0)
     parser.add_argument("--parts")
-    parser.add_argument("--rig-plan")
-    parser.add_argument("--render-only", action="store_true")
-    parser.add_argument("--blender-py-only", action="store_true")
-    parser.add_argument("--trace-svg-only", action="store_true")
-    parser.add_argument("--trace-preset", default="16 Colors")
-    parser.add_argument("--out-mp4")
-    parser.add_argument("--out-blender-py")
-    parser.add_argument("--glb-path")
-    parser.add_argument("--blend-path")
     args = parser.parse_args(argv)
-    if args.rig_plan:
-        result = export_existing(args)
-    else:
-        if args.render_only or args.blender_py_only or args.trace_svg_only:
-            parser.error("Exporting an existing rig requires --rig-plan")
-        if not args.image or not args.character:
-            parser.error("Provide an image and --character")
-        result = build_guided_cutout_rig(
-            args.image,
-            args.character,
-            args.out_dir,
-            args.mode,
-            args.speed,
-            args.duration,
-            args.parts.split(",") if args.parts else None,
-            args.out_mp4,
-        )
+    result = build_guided_cutout_rig(
+        args.image,
+        args.character,
+        args.out_dir,
+        args.parts.split(",") if args.parts else None,
+    )
     print(json.dumps(result, indent=2))
     return 0
 

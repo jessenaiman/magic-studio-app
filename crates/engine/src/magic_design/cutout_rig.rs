@@ -24,10 +24,6 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
         })
         .filter(|s| !s.is_empty());
 
-    let mode = s.preview_mode.clone();
-    let speed = s.preview_speed as f64;
-    let default_dur = ((s.preview_range.1.saturating_sub(s.preview_range.0)).max(12) as f64) / 24.0;
-    let duration = default_dur;
     let parts_csv = rec_parts_csv;
 
     let out_dir = crate::workspace::workspace_root(s)
@@ -41,12 +37,6 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
         id.clone(),
         "--out-dir".into(),
         out_dir.to_string_lossy().into_owned(),
-        "--mode".into(),
-        mode.clone(),
-        "--speed".into(),
-        format!("{speed:.3}"),
-        "--duration".into(),
-        format!("{duration:.3}"),
     ];
     if let Some(p_csv) = &parts_csv {
         args.push("--parts".into());
@@ -64,9 +54,6 @@ pub fn cmd_asset_build_cutout_rig(s: &mut Session, params: &Value) -> Result<Val
     Ok(json!({
         "ok": true,
         "asset_id": id,
-        "mode": mode,
-        "speed": speed,
-        "duration": duration,
         "selected_parts": parts_csv,
         "output": out_dir,
         "synced_video_tracks": synced_video_tracks,

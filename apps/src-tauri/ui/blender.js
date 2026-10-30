@@ -2,7 +2,6 @@
 let blenderViewRevision=0,blenderDialog=null;
 let blenderMediaUrl=null,blenderMediaFetch=null,blenderPollTimer=null;
 function blenderDispose(){
- effectcraftAnimationDispose();
  clearTimeout(blenderPollTimer);blenderPollTimer=null;
  ++blenderViewRevision;blenderMediaFetch?.abort();blenderMediaFetch=null;
  const root=blenderDialog;blenderDialog=null;

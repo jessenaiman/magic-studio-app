@@ -569,7 +569,7 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
         &worker,
         include_str!("../../../pipeline/blender_animation_worker.py"),
     )?;
-    if request["rig_plan"].is_object() || backend == "effectcraft" {
+    if request["rig_plan"].is_object() {
         fs::create_dir_all(dir.join("pipeline"))?;
         fs::write(dir.join("pipeline/__init__.py"), "")?;
     }
@@ -598,12 +598,6 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
             request_path.to_string_lossy().into_owned(),
         ]
     } else {
-        if backend == "effectcraft" {
-            fs::create_dir_all(dir.join("pipeline/effectcraft"))?;
-            fs::write(dir.join("pipeline/effectcraft/__init__.py"), "")?;
-            fs::write(dir.join("pipeline/effectcraft/worker.py"), include_str!("../../../pipeline/effectcraft/worker.py"))?;
-            fs::write(dir.join("pipeline/effectcraft/project.py"), include_str!("../../../pipeline/effectcraft/project.py"))?;
-        }
         if backend == "mlt" {
             fs::write(
                 dir.join("mlt_worker.py"),
