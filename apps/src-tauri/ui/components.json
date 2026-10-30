@@ -1578,6 +1578,30 @@
       "component": "tab",
       "label": "Studio",
       "target": "view-studio"
+    },
+    "application-settings": {
+      "component": "dialog",
+      "label": "Application Settings"
+    },
+    "application-settings-title": {
+      "component": "title",
+      "label": "Application Settings"
+    },
+    "application-settings-form": {
+      "component": "form",
+      "label": "Application settings form"
+    },
+    "application-settings-root": {
+      "component": "field",
+      "label": "Production project root"
+    },
+    "application-settings-status": {
+      "component": "status",
+      "label": "Application settings status"
+    },
+    "application-settings-save": {
+      "component": "start",
+      "label": "Save Settings"
     }
   },
   "rails": {
