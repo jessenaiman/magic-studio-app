@@ -197,4 +197,7 @@ apps/src-tauri/acceptance/artifacts/
 /apps/src-tauri/ui/companion-sprites.js
 /apps/src-tauri/ui/app.js
 /apps/src-tauri/ui/animation.js
+/apps/src-tauri/ui/animation-stage.js
 /apps/src-tauri/ui/words.js
+/apps/src-tauri/ui/words-design.js
+/apps/src-tauri/ui/words-flow.js

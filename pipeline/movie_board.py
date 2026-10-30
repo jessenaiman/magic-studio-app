@@ -48,28 +48,79 @@ def canonical_scenes(scene_map):
     return scenes
 
 
+_SCENE_FIELD_ALIASES = {
+    "reference_prompt": ("reference_prompt", "image_prompt"),
+    "animation_prompt": ("animation_prompt",),
+    "layer_stack": ("layer_stack", "continuity", "linked_assets"),
+    "action": ("action", "action_staging", "staging"),
+    "animated_text": ("animated_text",),
+    "drawing_cues": ("drawing_cues", "drawing", "teaching_cues"),
+}
+_SCENE_FIELD_TARGETS = {
+    "reference_prompt": "image_prompt",
+    "layer_stack": "continuity",
+    "drawing_cues": "drawing",
+}
+_SCENE_NOTES_ONLY = {
+    "skills",
+    "build_steps",
+    "acceptance_checks",
+    "plan_vs_actual",
+    "visual_review",
+}
+
+
+def _resolve_scene_field(packet, normalized, field, names, used):
+    found = next(
+        (normalized[n] for n in names if n in normalized and normalized[n][1]),
+        None,
+    )
+    if found:
+        label, text = found
+        used.add(label)
+        return label, text
+    if field == "action":
+        plans = [
+            n[len("Scene plan: ") :]
+            for n in packet.get("notes", [])
+            if n.startswith("Scene plan: ")
+        ]
+        return "Notes / Scene plan", "\n".join(plans)
+    return field, ""
+
+
+def _record_mapped_scene_field(report, scene_id, field, role, label, text, sections):
+    if not text:
+        report["missing"].append(dict(scene=scene_id, field=role))
+        return
+    sections[field] = text
+    report["mapped"].append(dict(scene=scene_id, source=label, target=role))
+    if len(text) > 220:
+        report["fit_review"].append(
+            dict(
+                scene=scene_id,
+                field=role,
+                characters=len(text),
+                reason="Full source wording retained; review native shrink-to-fit at viewing size",
+            )
+        )
+
+
+def _record_remaining_scene_notes(report, scene_id, source, used):
+    for label, text in source.items():
+        if label in used:
+            continue
+        key = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+        if key in _SCENE_NOTES_ONLY:
+            report["retained_in_slide_notes"].append(
+                dict(scene=scene_id, source=label, characters=len(text))
+            )
+        else:
+            report["unmapped"].append(dict(scene=scene_id, source=label, text=text))
+
+
 def normalize_scene_content(packets, expected_fields):
     """Map existing labelled source text; preserve unknowns and full native slide notes."""
-    aliases = {
-        "reference_prompt": ("reference_prompt", "image_prompt"),
-        "animation_prompt": ("animation_prompt",),
-        "layer_stack": ("layer_stack", "continuity", "linked_assets"),
-        "action": ("action", "action_staging", "staging"),
-        "animated_text": ("animated_text",),
-        "drawing_cues": ("drawing_cues", "drawing", "teaching_cues"),
-    }
-    targets = {
-        "reference_prompt": "image_prompt",
-        "layer_stack": "continuity",
-        "drawing_cues": "drawing",
-    }
-    notes_only = {
-        "skills",
-        "build_steps",
-        "acceptance_checks",
-        "plan_vs_actual",
-        "visual_review",
-    }
     report = dict(
         expected_fields=list(expected_fields),
         mapped=[],
@@ -87,52 +138,15 @@ def normalize_scene_content(packets, expected_fields):
             re.sub(r"[^a-z0-9]+", "_", k.lower()).strip("_"): (k, v)
             for k, v in source.items()
         }
-        for field, names in aliases.items():
-            role = "user.scene." + targets.get(field, field)
+        for field, names in _SCENE_FIELD_ALIASES.items():
+            role = "user.scene." + _SCENE_FIELD_TARGETS.get(field, field)
             if role not in expected_fields:
                 continue
-            found = next(
-                (normalized[n] for n in names if n in normalized and normalized[n][1]),
-                None,
+            label, text = _resolve_scene_field(packet, normalized, field, names, used)
+            _record_mapped_scene_field(
+                report, packet["id"], field, role, label, text, sections
             )
-            if found:
-                label, text = found
-                used.add(label)
-            elif field == "action":
-                plans = [
-                    n[len("Scene plan: ") :]
-                    for n in packet.get("notes", [])
-                    if n.startswith("Scene plan: ")
-                ]
-                label = "Notes / Scene plan"
-                text = "\n".join(plans)
-            else:
-                label = field
-                text = ""
-            if text:
-                sections[field] = text
-                report["mapped"].append(
-                    dict(scene=packet["id"], source=label, target=role)
-                )
-                if len(text) > 220:
-                    report["fit_review"].append(
-                        dict(
-                            scene=packet["id"],
-                            field=role,
-                            characters=len(text),
-                            reason="Full source wording retained; review native shrink-to-fit at viewing size",
-                        )
-                    )
-            else:
-                report["missing"].append(dict(scene=packet["id"], field=role))
-        for label, text in source.items():
-            if label in used:
-                continue
-            key = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
-            item = dict(scene=packet["id"], source=label, text=text)
-            report["retained_in_slide_notes"].append(
-                dict(scene=packet["id"], source=label, characters=len(text))
-            ) if key in notes_only else report["unmapped"].append(item)
+        _record_remaining_scene_notes(report, packet["id"], source, used)
         content[packet["id"]] = dict(
             sections=sections,
             notes=packet.get("notes", []),
@@ -163,6 +177,106 @@ def template_schema(template, out):
         d.close()
 
 
+def _load_fish_linked_lyrics(line_source):
+    if not line_source.is_file():
+        return {}
+    raw = line_source.read_text().strip()
+    if not raw.startswith("window.FISH_DATA = "):
+        return {}
+    payload = json.loads(raw.split("=", 1)[1].strip().removesuffix(";"))
+    return {l["id"]: l for l in payload.get("lyrics", [])}
+
+
+def _packet_lyric_sections(original, sections):
+    return [
+        sections[k]
+        for k in original.get("script_section_id", "").split(",")
+        if k in sections
+        and sections[k].get("lyrics", True)
+        and sections[k].get("text") != "[instrumental]"
+    ]
+
+
+def _tag_packet_section_label(packet, first_lyric):
+    label = first_lyric.get("label", "").split(" line")[0]
+    if label.lower().startswith("chorus"):
+        occurrence = re.match(r"ch(\d+)", first_lyric["id"])
+        packet["kind"] = "chorus"
+        packet["section_label"] = "Chorus" + (" " + occurrence[1] if occurrence else "")
+    elif label.lower().startswith("verse"):
+        packet["kind"] = "verse"
+        packet["section_label"] = label
+
+
+def _find_line_onset_hits(words, tokens, expected, prev_start, curr_end):
+    return [
+        n
+        for n in range(len(words) - len(expected) + 1)
+        if tokens[n : n + len(expected)] == expected
+        and prev_start <= words[n]["start"] < curr_end
+    ]
+
+
+def _align_single_packet(i, packets, original, words, tokens, ctx, evidence):
+    lyrics = _packet_lyric_sections(original, ctx["sections"])
+    packet = packets[i]
+    if not lyrics:
+        if evidence is not None and i:
+            evidence.append(
+                dict(
+                    scene_id=packet["id"],
+                    status="unassessed",
+                    reason="No supplied lyric section opening",
+                )
+            )
+        return None
+    linked, line_source, script = ctx["linked"], ctx["line_source"], ctx["script"]
+    packet["source_lines"] = [
+        dict(
+            id=l["id"],
+            text=linked.get(l["id"], l)["text"],
+            source=str(line_source if l["id"] in linked else script),
+        )
+        for l in lyrics
+    ]
+    _tag_packet_section_label(packet, lyrics[0])
+    if not i:
+        return None
+    expected = [ctx["token"](t) for t in lyrics[0]["text"].split()]
+    hits = _find_line_onset_hits(
+        words, tokens, expected, packets[i - 1]["start_seconds"], packet["end_seconds"]
+    )
+    if evidence is not None:
+        evidence.append(
+            dict(
+                scene_id=packet["id"],
+                status="assessed" if len(hits) == 1 else "unassessed",
+                source_line=lyrics[0]["id"],
+                reason="Unique exact native-word match"
+                if len(hits) == 1
+                else f"Expected one native-word match; found {len(hits)}",
+            )
+        )
+    if len(hits) != 1:
+        return None
+    at = hits[0]
+    onset = words[at]["start"]
+    cut = packet["start_seconds"]
+    if onset >= cut:
+        return None
+    packets[i - 1]["end_seconds"] = onset
+    packet["start_seconds"] = onset
+    return dict(
+        scene=packet["id"],
+        previous_scene=packets[i - 1]["id"],
+        old_boundary=cut,
+        boundary=onset,
+        word=words[at]["id"],
+        source_line=lyrics[0]["id"],
+        convention="next source line onset; half-open intervals",
+    )
+
+
 def align_imported_sections(packets, words, source, evidence=None):
     """Repair cuts through an exact known lyric line; never estimate word times."""
     if not source:
@@ -173,18 +287,6 @@ def align_imported_sections(packets, words, source, evidence=None):
     if not plan.is_file() or not script.is_file():
         return []
     scenes = json.loads(plan.read_text()).get("scenes", [])
-    sections = {s["id"]: s for s in json.loads(script.read_text()).get("sections", [])}
-    line_source = root / "hyperframes/film-data.js"
-    linked = {}
-    if line_source.is_file():
-        raw = line_source.read_text().strip()
-        if raw.startswith("window.FISH_DATA = "):
-            linked = {
-                l["id"]: l
-                for l in json.loads(raw.split("=", 1)[1].strip().removesuffix(";")).get(
-                    "lyrics", []
-                )
-            }
     if len(scenes) != len(packets):
         if evidence is not None:
             evidence.append(
@@ -194,87 +296,24 @@ def align_imported_sections(packets, words, source, evidence=None):
                 )
             )
         return []
+    sections = {s["id"]: s for s in json.loads(script.read_text()).get("sections", [])}
+    line_source = root / "hyperframes/film-data.js"
     token = lambda text: re.sub(r"[^\w]+", "", text.casefold())
     tokens = [token(w["text"]) for w in words]
+    ctx = dict(
+        sections=sections,
+        linked=_load_fish_linked_lyrics(line_source),
+        line_source=line_source,
+        script=script,
+        token=token,
+    )
     changes = []
-    for i, (packet, original) in enumerate(zip(packets, scenes)):
-        lyrics = [
-            sections[k]
-            for k in original.get("script_section_id", "").split(",")
-            if k in sections
-            and sections[k].get("lyrics", True)
-            and sections[k].get("text") != "[instrumental]"
-        ]
-        if not lyrics:
-            if evidence is not None and i:
-                evidence.append(
-                    dict(
-                        scene_id=packet["id"],
-                        status="unassessed",
-                        reason="No supplied lyric section opening",
-                    )
-                )
-            continue
-        packet["source_lines"] = [
-            dict(
-                id=l["id"],
-                text=linked.get(l["id"], l)["text"],
-                source=str(line_source if l["id"] in linked else script),
-            )
-            for l in lyrics
-        ]
-        label = lyrics[0].get("label", "").split(" line")[0]
-        if label.lower().startswith("chorus"):
-            occurrence = re.match(r"ch(\d+)", lyrics[0]["id"])
-            packet["kind"] = "chorus"
-            packet["section_label"] = "Chorus" + (
-                " " + occurrence[1] if occurrence else ""
-            )
-        elif label.lower().startswith("verse"):
-            packet["kind"] = "verse"
-            packet["section_label"] = label
-        if not i:
-            continue
-        expected = [token(t) for t in lyrics[0]["text"].split()]
-        hits = [
-            n
-            for n in range(len(words) - len(expected) + 1)
-            if tokens[n : n + len(expected)] == expected
-            and packets[i - 1]["start_seconds"]
-            <= words[n]["start"]
-            < packet["end_seconds"]
-        ]
-        if evidence is not None:
-            evidence.append(
-                dict(
-                    scene_id=packet["id"],
-                    status="assessed" if len(hits) == 1 else "unassessed",
-                    source_line=lyrics[0]["id"],
-                    reason="Unique exact native-word match"
-                    if len(hits) == 1
-                    else f"Expected one native-word match; found {len(hits)}",
-                )
-            )
-        if len(hits) != 1:
-            continue
-        at = hits[0]
-        onset = words[at]["start"]
-        end = words[at + len(expected) - 1]["end"]
-        cut = packet["start_seconds"]
-        if onset < cut:
-            packets[i - 1]["end_seconds"] = onset
-            packet["start_seconds"] = onset
-            changes.append(
-                dict(
-                    scene=packet["id"],
-                    previous_scene=packets[i - 1]["id"],
-                    old_boundary=cut,
-                    boundary=onset,
-                    word=words[at]["id"],
-                    source_line=lyrics[0]["id"],
-                    convention="next source line onset; half-open intervals",
-                )
-            )
+    for i, original in enumerate(scenes):
+        change = _align_single_packet(
+            i, packets, original, words, tokens, ctx, evidence
+        )
+        if change is not None:
+            changes.append(change)
     return changes
 
 
@@ -338,6 +377,42 @@ def chorus_phrases(words):
     ]
 
 
+def _build_doctor_task(fix, pages, words, script_path, source_transcript):
+    page = next((i for i, g in pages if g["id"] == fix["previous_scene"]), None)
+    affected = [
+        w for w in words if fix["boundary"] <= w["start"] < fix["old_boundary"]
+    ]
+    return dict(
+        id="section-boundary:" + fix["previous_scene"] + ":" + fix["scene"],
+        priority=1,
+        scene_id=fix["previous_scene"],
+        page_id=page,
+        next_scene_id=fix["scene"],
+        suspected_flaw="Scene includes the opening of the next supplied section",
+        source_word_ids=[w["id"] for w in affected],
+        affected_lyrics=" ".join(w["text"] for w in affected),
+        source_range=[affected[0]["start"], affected[-1]["end"]] if affected else [],
+        expected=dict(boundary=fix["boundary"], convention=fix["convention"]),
+        actual=dict(boundary=fix["old_boundary"]),
+        evidence=dict(
+            script=str(script_path),
+            section_line=fix["source_line"],
+            native_transcript=source_transcript,
+            onset_word=fix["word"],
+        ),
+        confidence="Exact native-word match to a supplied section line; not a musical inference",
+        proposed_fix=f"Review {fix['previous_scene']} / page {page}, then set its end and {fix['scene']} start to {fix['boundary']}s; preserve every native word/timestamp",
+    )
+
+
+def _doctor_health_and_status(result):
+    if result["tasks"]:
+        return False, "issues_found"
+    if result["unassessed"] or not result["assessed"]:
+        return None, "insufficient_source_evidence"
+    return True, "no_supported_issues"
+
+
 def doctor(manifest, source):
     """Explicit, read-only check for scenes crossing supplied section onsets."""
     board = json.loads(Path(manifest).read_text())
@@ -384,50 +459,11 @@ def doctor(manifest, source):
     proposals = align_imported_sections(packets, words, root, evidence)
     result["assessed"] = [e for e in evidence if e["status"] == "assessed"]
     result["unassessed"] = [e for e in evidence if e["status"] != "assessed"]
-    for fix in proposals:
-        page = next((i for i, g in pages if g["id"] == fix["previous_scene"]), None)
-        affected = [
-            w for w in words if fix["boundary"] <= w["start"] < fix["old_boundary"]
-        ]
-        result["tasks"].append(
-            dict(
-                id="section-boundary:" + fix["previous_scene"] + ":" + fix["scene"],
-                priority=1,
-                scene_id=fix["previous_scene"],
-                page_id=page,
-                next_scene_id=fix["scene"],
-                suspected_flaw="Scene includes the opening of the next supplied section",
-                source_word_ids=[w["id"] for w in affected],
-                affected_lyrics=" ".join(w["text"] for w in affected),
-                source_range=[affected[0]["start"], affected[-1]["end"]]
-                if affected
-                else [],
-                expected=dict(boundary=fix["boundary"], convention=fix["convention"]),
-                actual=dict(boundary=fix["old_boundary"]),
-                evidence=dict(
-                    script=str(needed[1]),
-                    section_line=fix["source_line"],
-                    native_transcript=board["source_transcript"],
-                    onset_word=fix["word"],
-                ),
-                confidence="Exact native-word match to a supplied section line; not a musical inference",
-                proposed_fix=f"Review {fix['previous_scene']} / page {page}, then set its end and {fix['scene']} start to {fix['boundary']}s; preserve every native word/timestamp",
-            )
-        )
-    result["healthy"] = (
-        False
-        if result["tasks"]
-        else None
-        if result["unassessed"] or not result["assessed"]
-        else True
-    )
-    result["status"] = (
-        "issues_found"
-        if result["tasks"]
-        else "no_supported_issues"
-        if result["healthy"]
-        else "insufficient_source_evidence"
-    )
+    result["tasks"] = [
+        _build_doctor_task(fix, pages, words, needed[1], board["source_transcript"])
+        for fix in proposals
+    ]
+    result["healthy"], result["status"] = _doctor_health_and_status(result)
     return result
 
 
@@ -735,75 +771,277 @@ def _discover_project_inventory(source_root, packets, config):
     _fill_overview_defaults(source_root, config, draw_names)
 
 
-def build(
-    transcript,
-    source,
-    out,
-    title,
-    scene_map,
-    allow_timing_overrun=False,
-    panels=None,
-    template=None,
-):
-    # The transcript is already the CLI schema. No lyric reformatting or second editable document.
-    from storyboard_layout import generate, SIZE, SCENE_ART_REGION
+def _resolve_source_root(source, metadata):
+    if source:
+        return Path(source)
+    if metadata.get("project"):
+        return Path(metadata["project"]).parent
+    return None
 
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    packets = canonical_scenes(scene_map)
-    metadata = json.loads(Path(scene_map).read_text())
-    words_doc = json.loads(Path(transcript).read_text())
-    words = words_doc if isinstance(words_doc, list) else words_doc["words"]
-    words = [dict(w, id=w.get("id", f"w{i}")) for i, w in enumerate(words)]
-    source_root = (
-        Path(source)
-        if source
-        else Path(metadata["project"]).parent
-        if metadata.get("project")
-        else None
+
+def _build_scene_group(packet, words, panels):
+    selected = [
+        w
+        for w in words
+        if packet["start_seconds"] - 0.001 <= w["start"] < packet["end_seconds"] - 0.001
+    ]
+    group = dict(
+        id=packet["id"],
+        word_ids=[w["id"] for w in selected],
+        span_start=packet["start_seconds"],
+        span_end=packet["end_seconds"],
+        kind=packet.get("kind", "provisional scene"),
+        word_assignment="source-start timestamp; canonical scene cuts preserved",
+        status=packet.get("status", "needs review"),
+        notes=packet.get("notes") or [],
+        reason="Canonical CLI scene span; review grouping without forced verse taxonomy.",
+        section_label=packet.get("section_label"),
+        lyric_lines=source_line_breaks(selected, packet.get("source_lines", [])),
     )
-    alignment = []  # Project creation owns timing; storyboard edits never realign recorded words.
-    groups = []
+    if panels == packet["id"] or packet.get("panels"):
+        if group["kind"] != "chorus":
+            raise ValueError("Four-line panel layout requires a source-labelled chorus")
+        group["panels"] = chorus_phrases(selected)
+        for panel in group["panels"]:
+            panel["line_id"] = next(
+                (
+                    l["id"]
+                    for l in group["lyric_lines"]
+                    if set(panel["word_ids"]) <= set(l["word_ids"])
+                ),
+                None,
+            )
+    return group
+
+
+_EDITABLE_SCENE_FIELDS = {
+    "action",
+    "continuity",
+    "image_prompt",
+    "animation_prompt",
+    "animated_text",
+    "drawing",
+}
+_FIELD_TO_SECTION_KEY = {
+    "continuity": "layer_stack",
+    "image_prompt": "reference_prompt",
+    "drawing": "drawing_cues",
+}
+
+
+def _apply_saved_scene_text_fields(packets, config, mapping):
     for packet in packets:
-        selected = [
-            w
-            for w in words
-            if packet["start_seconds"] - 0.001
-            <= w["start"]
-            < packet["end_seconds"] - 0.001
+        scene_id = packet["id"]
+        sections = config["scene_content"][scene_id]["sections"]
+        for f in packet.get("text_fields", []):
+            field_name = f.get("field")
+            if (
+                not f.get("role", "").startswith("user.scene.")
+                or field_name not in _EDITABLE_SCENE_FIELDS
+            ):
+                continue
+            key = _FIELD_TO_SECTION_KEY.get(field_name, field_name)
+            if not sections.get(key) and _is_authored_text(f.get("value")):
+                sections[key] = f["value"]
+                role = "user.scene." + field_name
+                mapping["missing"] = [
+                    m
+                    for m in mapping["missing"]
+                    if not (m["scene"] == scene_id and m["field"] == role)
+                ]
+
+
+def _compute_timing_conflicts(groups, words):
+    return [
+        dict(
+            scene=g["id"],
+            word=w["id"],
+            text=w["text"],
+            start=w["start"],
+            end=w["end"],
+            scene_end=g["span_end"],
+            resolution="Source timing preserved; word occurrence assigned by its original start",
+        )
+        for g in groups
+        for w in words
+        if w["id"] in g["word_ids"] and w["end"] > g["span_end"] + 0.001
+    ]
+
+
+def _retained_page_content(previous, content, has_backgrounds):
+    return {
+        page["key"]: [
+            f
+            for f in content
+            if f.get("page") == i + 1
+            and f.get("role", "").startswith("user.")
+            and _is_authored_text(f.get("value"))
         ]
-        group = dict(
-            id=packet["id"],
-            word_ids=[w["id"] for w in selected],
-            span_start=packet["start_seconds"],
-            span_end=packet["end_seconds"],
-            kind=packet.get("kind", "provisional scene"),
-            word_assignment="source-start timestamp; canonical scene cuts preserved",
-            status=packet.get("status", "needs review"),
-            notes=packet.get("notes") or [],
-            reason="Canonical CLI scene span; review grouping without forced verse taxonomy.",
+        for i, page in enumerate(previous.get("page_plan", []))
+        if page["kind"] != "scene"
+        and not (page["kind"] == "locations" and has_backgrounds)
+    }
+
+
+def _retain_inventory_sheets(previous, config):
+    for kind, key in [("assets", "assets"), ("locations", "locations")]:
+        retained = [
+            record
+            for page in previous.get("page_plan", [])
+            if page["kind"] == kind
+            for record in page.get("sheet", [])
+            if record.get("id") != "inventory" and record.get("file")
+        ]
+        if retained:
+            config[key] = retained
+
+
+def _merge_location_notes_for_record(record, previous, content):
+    for i, page in enumerate(previous.get("page_plan", [])):
+        if page["kind"] != "locations":
+            continue
+        for slot, old in enumerate(page.get("sheet", [])):
+            if old["id"] != record["id"]:
+                continue
+            field = next(
+                (
+                    f
+                    for f in content
+                    if f.get("page") == i + 1
+                    and f.get("field") == f"sheet.{slot}.notes"
+                ),
+                None,
+            )
+            if field and _is_authored_text(field.get("value")):
+                record.update(notes=field["value"], notes_exact=True)
+
+
+def _restore_previous_inventory(metadata, config):
+    previous = metadata.get("previous_board") or {}
+    content = metadata.get("page_content") or []
+    has_bgs = metadata.get("backgrounds") is not None
+    config["page_content"] = _retained_page_content(previous, content, has_bgs)
+    _retain_inventory_sheets(previous, config)
+    if has_bgs:
+        config["locations"] = metadata["backgrounds"]
+        for record in config["locations"]:
+            _merge_location_notes_for_record(record, previous, content)
+
+
+def _finalize_mapping_and_write_inputs(
+    out, config, mapping, groups, packets, words, metadata, template
+):
+    overrun = max(w["end"] for w in words) - float(metadata["duration_sec"])
+    if overrun > 0.001:
+        config["timing_warning"] = (
+            f"Source word end {max(w['end'] for w in words):.6f}s exceeds measured audio {metadata['duration_sec']:.6f}s by {overrun:.6f}s. Raw words/timestamps retained; timing is not validated."
         )
-        group["section_label"] = packet.get("section_label")
-        group["lyric_lines"] = source_line_breaks(
-            selected, packet.get("source_lines", [])
+        mapping["timing_warning"] = config["timing_warning"]
+    mapping["needs_correction"] = bool(mapping["unmapped"])
+    mapping["template_file"] = str(template)
+    mapping["line_mapping"] = [
+        dict(
+            scene=g["id"],
+            line_ids=[l["id"] for l in g["lyric_lines"]],
+            status="exact source-word sequence"
+            if g["lyric_lines"]
+            else "unmapped native words retained; no line IDs invented",
         )
-        if panels == packet["id"] or packet.get("panels"):
-            if group["kind"] != "chorus":
-                raise ValueError(
-                    "Four-line panel layout requires a source-labelled chorus"
+        for g in groups
+    ]
+    mapping["import_alignment"] = []
+    mapping["source_words"] = len(words)
+    mapping["scene_spans"] = [[p["start_seconds"], p["end_seconds"]] for p in packets]
+    config["mapping"] = mapping
+    (out / "mapping.json").write_text(json.dumps(mapping, indent=2))
+    config_path = out / "template-inputs.json"
+    config_path.write_text(json.dumps(config, indent=2))
+    grouping = out / "scene-map-input.json"
+    grouping.write_text(json.dumps(dict(groups=groups), indent=2))
+    return config_path, grouping, overrun
+
+
+def _render_slide_previews(out, pdf_path, page_count):
+    pages = out / "pages"
+    pages.mkdir(exist_ok=True)
+    pdf_bin = shutil.which("pdfcraft-cli") or "pdfcraft-cli"
+    for i in range(page_count):
+        subprocess.run(
+            [
+                pdf_bin,
+                "render",
+                pdf_path,
+                "--page",
+                str(i + 1),
+                "--dpi",
+                "72",
+                "--out",
+                str(pages / f"slide-{i + 1:03}.png"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    return [str(p) for p in sorted(pages.glob("slide-*.png"))]
+
+
+def _remap_scene_placements(packets, page_plan, panels):
+    from storyboard_layout import fit_rect, panel_region, SCENE_ART_REGION
+
+    placements = []
+    for packet in packets:
+        page = next(
+            i + 1
+            for i, p in enumerate(page_plan)
+            if p.get("group", {}).get("id") == packet["id"]
+        )
+        for original in packet.get("saved_placements", []):
+            item = dict(original, page=page)
+            if panels == packet["id"] and not packet.get("panels"):
+                target = fit_rect(
+                    SCENE_ART_REGION[2], SCENE_ART_REGION[3], panel_region(3)
                 )
-            group["panels"] = chorus_phrases(selected)
-            for panel in group["panels"]:
-                panel["line_id"] = next(
-                    (
-                        l["id"]
-                        for l in group["lyric_lines"]
-                        if set(panel["word_ids"]) <= set(l["word_ids"])
-                    ),
-                    None,
-                )
-        groups.append(group)
-    config = dict(
+                scale = target[2] / SCENE_ART_REGION[2]
+                r = item["rect"]
+                item["rect"] = [
+                    target[0] + (r[0] - 60) * scale,
+                    target[1] + (r[1] - 220) * scale,
+                    r[2] * scale,
+                    r[3] * scale,
+                ]
+            placements.append(item)
+    return placements
+
+
+def _remap_inventory_placements(previous, page_plan, has_backgrounds):
+    placements = []
+    for original in previous.get("design", {}).get("placements", []):
+        old_page = previous.get("page_plan", [])[original["page"] - 1]
+        if old_page["kind"] == "scene" or (
+            old_page["kind"] == "locations" and has_backgrounds
+        ):
+            continue
+        page = next(
+            (i + 1 for i, p in enumerate(page_plan) if p["key"] == old_page["key"]),
+            None,
+        )
+        if page:
+            placements.append(dict(original, page=page))
+    return placements
+
+
+def _resolve_canonical_template(template):
+    canonical = (Path(_REPO_ROOT) / "pipeline/templates/studio-template.deckcraft").resolve()
+    resolved = Path(template).resolve() if template else canonical
+    if resolved != canonical:
+        raise ValueError(
+            "Magic Studio uses only pipeline/templates/studio-template.deckcraft"
+        )
+    return resolved
+
+
+def _initial_board_config(title, transcript, metadata, allow_timing_overrun, packets):
+    return dict(
         title=title,
         transcript=str(transcript),
         captions=metadata.get("captions"),
@@ -822,187 +1060,20 @@ def build(
             for p in packets
         },
     )
-    canonical_template = (
-        Path(_REPO_ROOT) / "pipeline/templates/studio-template.deckcraft"
-    )
-    template = Path(template).resolve() if template else canonical_template.resolve()
-    if template != canonical_template.resolve():
-        raise ValueError(
-            "Magic Studio uses only pipeline/templates/studio-template.deckcraft"
-        )
-    schema = template_schema(template, out)
-    config["scene_content"], mapping = normalize_scene_content(
-        packets, [f["role"] for f in schema["scene"]]
-    )
-    # Actual saved user fields take precedence over imported notes; lyrics remain native words.
-    for packet in packets:
-        for f in packet.get("text_fields", []):
-            if f.get("role", "").startswith("user.scene.") and f.get("field") in [
-                "action",
-                "continuity",
-                "image_prompt",
-                "animation_prompt",
-                "animated_text",
-                "drawing",
-            ]:
-                key = {
-                    "continuity": "layer_stack",
-                    "image_prompt": "reference_prompt",
-                    "drawing": "drawing_cues",
-                }.get(f["field"], f["field"])
-                if not config["scene_content"][packet["id"]]["sections"].get(
-                    key
-                ) and _is_authored_text(f.get("value")):
-                    config["scene_content"][packet["id"]]["sections"][key] = f["value"]
-                    role = "user.scene." + f["field"]
-                    mapping["missing"] = [
-                        m
-                        for m in mapping["missing"]
-                        if not (m["scene"] == packet["id"] and m["field"] == role)
-                    ]
-    config["fit_imported_text"] = True
-    config["scene_images"] = {
-        p["id"]: dict(file=p["reference"], name=Path(p["reference"]).name)
-        for p in packets
-        if p.get("reference") and Path(p["reference"]).is_file()
-    }
-    official = source_root / "artifacts/official_lyrics.json" if source_root else None
-    if official and official.is_file():
-        config["official_lyrics_source"] = str(official)
-    mapping["timing_conflicts"] = [
-        dict(
-            scene=g["id"],
-            word=w["id"],
-            text=w["text"],
-            start=w["start"],
-            end=w["end"],
-            scene_end=g["span_end"],
-            resolution="Source timing preserved; word occurrence assigned by its original start",
-        )
-        for g in groups
-        for w in words
-        if w["id"] in g["word_ids"] and w["end"] > g["span_end"] + 0.001
-    ]
-    config["asset_links"] = metadata.get("assets", [])
-    previous = metadata.get("previous_board") or {}
-    content = metadata.get("page_content") or []
-    config["page_content"] = {
-        page["key"]: [
-            f
-            for f in content
-            if f.get("page") == i + 1
-            and f.get("role", "").startswith("user.")
-            and _is_authored_text(f.get("value"))
-        ]
-        for i, page in enumerate(previous.get("page_plan", []))
-        if page["kind"] != "scene"
-        and not (
-            page["kind"] == "locations" and metadata.get("backgrounds") is not None
-        )
-    }
-    # Keep authored inventory pages; a scene edit must not replace them with a new asset search.
-    for kind, key in [("assets", "assets"), ("locations", "locations")]:
-        retained = [
-            record
-            for page in previous.get("page_plan", [])
-            if page["kind"] == kind
-            for record in page.get("sheet", [])
-            if record.get("id") != "inventory" and record.get("file")
-        ]
-        if retained:
-            config[key] = retained
-    if metadata.get("backgrounds") is not None:
-        config["locations"] = metadata["backgrounds"]
-        for record in config["locations"]:
-            for i, page in enumerate(previous.get("page_plan", [])):
-                if page["kind"] != "locations":
-                    continue
-                for slot, old in enumerate(page.get("sheet", [])):
-                    if old["id"] != record["id"]:
-                        continue
-                    field = next(
-                        (
-                            f
-                            for f in content
-                            if f.get("page") == i + 1
-                            and f.get("field") == f"sheet.{slot}.notes"
-                        ),
-                        None,
-                    )
-                    if field and _is_authored_text(field.get("value")):
-                        record.update(notes=field["value"], notes_exact=True)
-    _discover_project_inventory(source_root, packets, config)
-    overrun = max(w["end"] for w in words) - float(metadata["duration_sec"])
-    if overrun > 0.001:
-        config["timing_warning"] = (
-            f"Source word end {max(w['end'] for w in words):.6f}s exceeds measured audio {metadata['duration_sec']:.6f}s by {overrun:.6f}s. Raw words/timestamps retained; timing is not validated."
-        )
-        mapping["timing_warning"] = config["timing_warning"]
-    mapping["needs_correction"] = bool(mapping["unmapped"])
-    mapping["template_file"] = str(template)
-    mapping["template_schema"] = schema
-    mapping["line_mapping"] = [
-        dict(
-            scene=g["id"],
-            line_ids=[l["id"] for l in g["lyric_lines"]],
-            status="exact source-word sequence"
-            if g["lyric_lines"]
-            else "unmapped native words retained; no line IDs invented",
-        )
-        for g in groups
-    ]
-    mapping["import_alignment"] = alignment
-    mapping["source_words"] = len(words)
-    mapping["scene_spans"] = [[p["start_seconds"], p["end_seconds"]] for p in packets]
-    config["mapping"] = mapping
-    (out / "mapping.json").write_text(json.dumps(mapping, indent=2))
-    config_path = out / "template-inputs.json"
-    config_path.write_text(json.dumps(config, indent=2))
-    grouping = out / "scene-map-input.json"
-    grouping.write_text(json.dumps(dict(groups=groups), indent=2))
-    deck = out / "movie-board.deckcraft"
-    try:
-        result = generate(template, config_path, deck, grouping)
-    except Exception as error:
-        return dict(
-            ok=False,
-            status="draft blocked; active storyboard unchanged",
-            error=str(error),
-            template_file=str(template),
-            mapping=mapping,
-            config=str(config_path),
-            scene_map=str(scene_map),
-            correction="Resolve the reported source/template mismatch, then rerun the same CLI command; original data is retained",
-        )
-    pages = out / "pages"
-    pages.mkdir(exist_ok=True)
-    pdf_bin = shutil.which("pdfcraft-cli") or "pdfcraft-cli"
-    for i in range(len(result["page_plan"])):
-        subprocess.run(
-            [
-                pdf_bin,
-                "render",
-                result["pdf"],
-                "--page",
-                str(i + 1),
-                "--dpi",
-                "72",
-                "--out",
-                str(pages / f"slide-{i + 1:03}.png"),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+
+
+def _populate_board_result(result, ctx):
+    from storyboard_layout import SIZE, SCENE_ART_REGION
+
     validation = result["validation"]
     page_list = validation["pages"]
     first_scene = next(i for i, page in enumerate(page_list) if page["kind"] == "scene")
-    links = validation["link_regions"]
+    packets, transcript, deck = ctx["packets"], ctx["transcript"], ctx["deck"]
     result.update(
-        mapping=mapping,
+        mapping=ctx["mapping"],
         template="deckcraft",
-        template_file=str(template),
-        scene_map=str(scene_map),
+        template_file=str(ctx["template"]),
+        scene_map=str(ctx["scene_map"]),
         scene_targets=[p["id"] for p in packets],
         scene_count=len(packets),
         first_scene_page=first_scene + 1,
@@ -1010,12 +1081,12 @@ def build(
             f"{p['id']} · {p['start_seconds']:.3f}–{p['end_seconds']:.3f}"
             for p in packets
         ],
-        previews=[str(p) for p in sorted(pages.glob("slide-*.png"))],
+        previews=ctx["previews"],
         page_size=SIZE,
         stage_rect=SCENE_ART_REGION,
-        links=links,
+        links=validation["link_regions"],
         page_titles=[p["title"] for p in result["page_plan"]],
-        title=title,
+        title=ctx["title"],
         editor="DeckCraft native document; PDF export",
         source_transcript=str(transcript),
         source_transcript_sha256=hashlib.sha256(
@@ -1023,9 +1094,9 @@ def build(
         ).hexdigest(),
         source_producer_label=Path(transcript).parent.name,
         producer_executable_version="not recorded by native array",
-        source_words=len(words),
-        timing_valid=overrun <= 0.001,
-        timing_warning=config.get("timing_warning"),
+        source_words=ctx["word_count"],
+        timing_valid=ctx["overrun"] <= 0.001,
+        timing_warning=ctx["timing_warning"],
         next_commands=[
             shlex.join(["deckcraft-cli", "info", str(deck)]),
             shlex.join(
@@ -1041,47 +1112,94 @@ def build(
             ),
         ],
     )
-    # Keep saved placements linked; remap only a full-frame overlay on a newly panelled scene.
-    from storyboard_layout import fit_rect, panel_region, SCENE_ART_REGION
 
-    placements = []
-    for packet in packets:
-        page = next(
-            i + 1
-            for i, p in enumerate(result["page_plan"])
-            if p.get("group", {}).get("id") == packet["id"]
+
+def build(
+    transcript,
+    source,
+    out,
+    title,
+    scene_map,
+    allow_timing_overrun=False,
+    panels=None,
+    template=None,
+):
+    # The transcript is already the CLI schema. No lyric reformatting or second editable document.
+    from storyboard_layout import generate
+
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    packets = canonical_scenes(scene_map)
+    metadata = json.loads(Path(scene_map).read_text())
+    words_doc = json.loads(Path(transcript).read_text())
+    words = words_doc if isinstance(words_doc, list) else words_doc["words"]
+    words = [dict(w, id=w.get("id", f"w{i}")) for i, w in enumerate(words)]
+    source_root = _resolve_source_root(source, metadata)
+    groups = [_build_scene_group(p, words, panels) for p in packets]
+    config = _initial_board_config(
+        title, transcript, metadata, allow_timing_overrun, packets
+    )
+    template = _resolve_canonical_template(template)
+    schema = template_schema(template, out)
+    config["scene_content"], mapping = normalize_scene_content(
+        packets, [f["role"] for f in schema["scene"]]
+    )
+    mapping["template_schema"] = schema
+    _apply_saved_scene_text_fields(packets, config, mapping)
+    config["fit_imported_text"] = True
+    config["scene_images"] = {
+        p["id"]: dict(file=p["reference"], name=Path(p["reference"]).name)
+        for p in packets
+        if p.get("reference") and Path(p["reference"]).is_file()
+    }
+    official = source_root / "artifacts/official_lyrics.json" if source_root else None
+    if official and official.is_file():
+        config["official_lyrics_source"] = str(official)
+    mapping["timing_conflicts"] = _compute_timing_conflicts(groups, words)
+    config["asset_links"] = metadata.get("assets", [])
+    _restore_previous_inventory(metadata, config)
+    _discover_project_inventory(source_root, packets, config)
+    config_path, grouping, overrun = _finalize_mapping_and_write_inputs(
+        out, config, mapping, groups, packets, words, metadata, template
+    )
+    deck = out / "movie-board.deckcraft"
+    try:
+        result = generate(template, config_path, deck, grouping)
+    except Exception as error:
+        return dict(
+            ok=False,
+            status="draft blocked; active storyboard unchanged",
+            error=str(error),
+            template_file=str(template),
+            mapping=mapping,
+            config=str(config_path),
+            scene_map=str(scene_map),
+            correction="Resolve the reported source/template mismatch, then rerun the same CLI command; original data is retained",
         )
-        for original in packet.get("saved_placements", []):
-            item = dict(original, page=page)
-            if panels == packet["id"] and not packet.get("panels"):
-                target = fit_rect(
-                    SCENE_ART_REGION[2], SCENE_ART_REGION[3], panel_region(3)
-                )
-                scale = target[2] / SCENE_ART_REGION[2]
-                r = item["rect"]
-                item["rect"] = [
-                    target[0] + (r[0] - 60) * scale,
-                    target[1] + (r[1] - 220) * scale,
-                    r[2] * scale,
-                    r[3] * scale,
-                ]
-            placements.append(item)
-    for original in previous.get("design", {}).get("placements", []):
-        old_page = previous.get("page_plan", [])[original["page"] - 1]
-        if old_page["kind"] == "scene" or (
-            old_page["kind"] == "locations" and metadata.get("backgrounds") is not None
-        ):
-            continue
-        page = next(
-            (
-                i + 1
-                for i, p in enumerate(result["page_plan"])
-                if p["key"] == old_page["key"]
-            ),
-            None,
+    previews = _render_slide_previews(out, result["pdf"], len(result["page_plan"]))
+    _populate_board_result(
+        result,
+        dict(
+            mapping=mapping,
+            template=template,
+            scene_map=scene_map,
+            packets=packets,
+            previews=previews,
+            title=title,
+            transcript=transcript,
+            deck=deck,
+            word_count=len(words),
+            overrun=overrun,
+            timing_warning=config.get("timing_warning"),
+        ),
+    )
+    previous = metadata.get("previous_board") or {}
+    placements = _remap_scene_placements(packets, result["page_plan"], panels)
+    placements.extend(
+        _remap_inventory_placements(
+            previous, result["page_plan"], metadata.get("backgrounds") is not None
         )
-        if page:
-            placements.append(dict(original, page=page))
+    )
     if placements:
         result["design"] = dict(placements=placements, dirty=False)
     (out / "manifest.json").write_text(json.dumps(result, indent=2))
