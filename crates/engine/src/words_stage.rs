@@ -79,14 +79,86 @@ fn without_video_media(html: &str) -> String {
     out
 }
 
+fn is_image_file(p: &Path) -> bool {
+    p.is_file()
+        && p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
+}
+
+fn background_entry_from_dir(entry: &Path) -> Option<(String, Value)> {
+    if is_image_file(entry) {
+        let stem = entry.file_stem()?.to_str()?.to_owned();
+        let name = entry.file_name()?.to_str()?.to_owned();
+        return Some((stem.clone(), json!({"id":stem,"asset_id":stem,"name":name,"path":entry})));
+    }
+    let id = entry.file_name()?.to_str()?.to_owned();
+    let img = fs::read_dir(entry).ok()?.flatten().map(|e| e.path()).find(|p| is_image_file(p))?;
+    let panel = fs::read_to_string(entry.join("provenance.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v["from_panel"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| format!("z-{id}"));
+    let name = img.file_name()?.to_str()?.to_owned();
+    Some((format!("{panel}:{id}"), json!({"id":id,"asset_id":id,"name":name,"path":img})))
+}
+
+fn push_unique_image(out: &mut Vec<Value>, seen: &mut std::collections::HashSet<String>, item: Value) {
+    let id = item["id"].as_str().unwrap_or_default().to_owned();
+    let path = item["path"].as_str().unwrap_or_default().to_owned();
+    if !id.is_empty() && !path.is_empty() && seen.insert(id) && seen.insert(path) {
+        out.push(item);
+    }
+}
+
+pub(crate) fn project_backdrop_images(s: &Session, dir: &Path) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut bg_entries: Vec<(String, Value)> = fs::read_dir(dir.join("assets/backgrounds"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| background_entry_from_dir(&e.path()))
+        .collect();
+    bg_entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (_, item) in bg_entries {
+        push_unique_image(&mut out, &mut seen, item);
+    }
+    for p in crate::workshop::panel_files(dir) {
+        if let Some((_, item)) = background_entry_from_dir(&p) {
+            push_unique_image(&mut out, &mut seen, item);
+        }
+    }
+    for a in s.project_assets.iter().filter(|a| a.path.as_deref().is_some_and(is_image_file)) {
+        push_unique_image(&mut out, &mut seen, json!({"id":a.id,"asset_id":a.id,"name":a.name,"path":a.path}));
+    }
+    out
+}
+
+fn assign_default_backgrounds(doc: &mut Value, images: &[Value]) {
+    let Some(anims) = doc["animations"].as_array_mut() else { return };
+    if images.is_empty() || anims.is_empty() {
+        return;
+    }
+    let total = anims.len();
+    for (idx, anim) in anims.iter_mut().enumerate() {
+        let current = anim["background_asset"].as_str().unwrap_or_default();
+        if current.is_empty() || !images.iter().any(|img| img["id"].as_str() == Some(current)) {
+            let pick = ((idx * 2 + 1) * images.len()) / (total * 2);
+            anim["background_asset"] = images[pick.min(images.len() - 1)]["id"].clone();
+        }
+    }
+}
+
 fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Result<String> {
-    let asset = s
-        .project_assets
+    let images = project_backdrop_images(s, dir);
+    let asset = images
         .iter()
-        .find(|a| a.id == asset_id && a.kind == "image")
-        .and_then(|a| a.path.as_ref())
+        .find(|a| a["id"].as_str() == Some(asset_id))
+        .and_then(|a| a["path"].as_str())
+        .map(std::path::PathBuf::from)
         .ok_or_else(|| invalid("The scene image is no longer in this project"))?;
-    let bytes = fs::read(asset)?;
+    let bytes = fs::read(&asset)?;
     let name = format!(
         "{:x}.{}",
         Sha256::digest(&bytes),
@@ -368,10 +440,12 @@ fn graphic_cues(
 }
 
 fn load_or_default_doc(s: &mut Session, dir: &Path) -> Result<(Value, bool)> {
-    match load(dir)? {
-        Some(doc) => Ok((with_sung_sections(doc, &aligned(s)?)?, true)),
-        None => Ok((default_document(&aligned(s)?)?, false)),
-    }
+    let (mut doc, saved) = match load(dir)? {
+        Some(doc) => (with_sung_sections(doc, &aligned(s)?)?, true),
+        None => (default_document(&aligned(s)?)?, false),
+    };
+    assign_default_backgrounds(&mut doc, &project_backdrop_images(s, dir));
+    Ok((doc, saved))
 }
 
 fn apply_display_text_for_read(doc: &mut Value) {
@@ -410,12 +484,7 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
     let kinetic_library: Value =
         serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let graphics = graphic_cues(&doc, &kinetic_library, &studio_times(s));
-    let images: Vec<Value> = s
-        .project_assets
-        .iter()
-        .filter(|a| a.kind == "image")
-        .map(|a| json!({"id":a.id,"name":a.name,"path":a.path}))
-        .collect();
+    let images = project_backdrop_images(s, &dir);
     Ok(json!({
         "images": images,
         "graphics": graphics,
@@ -577,7 +646,7 @@ fn apply_design_and_effects(dir: &Path, anim: &mut Value, id: &str, p: &Value) -
     Ok(())
 }
 
-fn apply_background_edit(s: &Session, anim: &mut Value, background: &Value) -> Result<()> {
+fn apply_background_edit(s: &Session, dir: &Path, anim: &mut Value, background: &Value) -> Result<()> {
     if background.is_null() {
         anim["background_asset"] = Value::Null;
         return Ok(());
@@ -585,9 +654,9 @@ fn apply_background_edit(s: &Session, anim: &mut Value, background: &Value) -> R
     let asset_id = background
         .as_str()
         .ok_or_else(|| invalid("background_asset must be a project image id"))?;
-    let valid = s.project_assets.iter().any(|a| {
-        a.id == asset_id && a.kind == "image" && a.path.as_ref().is_some_and(|p| p.is_file())
-    });
+    let valid = project_backdrop_images(s, dir)
+        .iter()
+        .any(|a| a["id"].as_str() == Some(asset_id));
     if !valid {
         return Err(invalid("Choose an existing project image for this verse"));
     }
@@ -597,7 +666,7 @@ fn apply_background_edit(s: &Session, anim: &mut Value, background: &Value) -> R
 
 fn apply_save_payload(s: &Session, dir: &Path, anim: &mut Value, id: &str, p: &Value) -> Result<()> {
     if let Some(background) = p.get("background_asset") {
-        apply_background_edit(s, anim, background)?;
+        apply_background_edit(s, dir, anim, background)?;
     }
     if let Some(style) = p.get("style").filter(|v| !v.is_null()) {
         apply_style_edits(anim, style)?;
