@@ -64,5 +64,32 @@
       "librosa",
       "soundfile"
     ]
+  },
+  "imitation_hints": {
+    "about": "Agents use magic-cli only. magic-cli commands call the *craft CLIs internally.",
+    "photocraft-cli": "magic-cli image.break_apart, image.content_aware_fill, image.color_to_alpha, image.puppet_warp, image.image_size, asset.make_transparent, asset.extract_background, asset.cut_sheet, part.edit_image",
+    "effectcraft-cli": "magic-cli animation.prepare, motion.action_track, motion.path, animation.render",
+    "vectorcraft-cli": "a new magic-cli command (it calls vectorcraft-cli internally)",
+    "soundcraft-cli": "a new magic-cli command (it calls soundcraft-cli internally)"
+  },
+  "imitation_operations": {
+    "about": "Calls that edit pixels (not just read them). A file importing an imitation library with none of these is QA/reading and is not a task.",
+    "photocraft-cli": [
+      "\\bImageDraw\\b",
+      "\\.paste\\(",
+      "\\.crop\\(",
+      "\\.resize\\(",
+      "\\.rotate\\(",
+      "\\.transpose\\(",
+      "\\.putalpha\\(",
+      "\\.filter\\(",
+      "\\bImageOps\\.",
+      "\\bImageFilter\\.",
+      "\\bImage\\.new\\(",
+      "\\.alpha_composite\\(",
+      "\\bImage\\.composite\\(",
+      "\\bcv2\\.(inpaint|warpAffine|warpPerspective|resize|threshold|findContours|matchTemplate|GaussianBlur|morphologyEx|dilate|erode|floodFill|grabCut|drawContours|fillPoly)\\b",
+      "\\brembg\\b"
+    ]
   }
 }

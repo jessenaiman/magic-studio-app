@@ -250,7 +250,8 @@ def cli(
     ),
 )
 @click.option(
-    "--format", "output_format", type=click.Choice(("text", "csv")), default="text",
+    "--format", "output_format", type=click.Choice(("text", "csv", "json")),
+    default="text",
     show_default=True,
     help="Lizard output: ranked native text diagnostics or native CSV measurements.",
 )
@@ -259,13 +260,20 @@ def cli(
     help="Scope and --compare: git revision the change is measured from.",
 )
 @click.option(
+    "--tasks", is_flag=True,
+    help="Ranked one-fix tasks for agents (file:line, evidence, action, tool).",
+)
+@click.option(
+    "--limit", default=25, show_default=True, help="--tasks: how many; 0 = all."
+)
+@click.option(
     "--compare", is_flag=True,
     help="One before/now table of design and code metrics; nonzero if any got worse.",
 )
 @click.pass_context
 def audit(
     ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str,
-    base: str, compare: bool,
+    base: str, compare: bool, tasks: bool, limit: int,
 ) -> None:
     """Run native repository checks with unmodified tool output.
 
@@ -293,6 +301,11 @@ def audit(
     prints one table (before, now, change, better/worse; lower is better), the
     scope since --base, and each stylesheet's concerns with suggested files.
     It exits 1 when any metric got worse.
+
+    --tasks turns the same native findings into ranked one-fix tasks for
+    agents: code doing an ArtCraft app's job (with the CLI commands to chain),
+    app-named declarations, duplicated blocks, complex functions, inline and
+    dead styles, style-rule problems. --format json gives them as JSON.
     CSV mode also runs native warnings on stderr so violations still fail.
     Other tools keep their native formats.
 
@@ -309,6 +322,10 @@ def audit(
     that directory and inherits the repository limits.
     Clippy requires a crate directory. File checks use repository configuration.
     """
+    if tasks:
+        from cli_anything.magic.core.audit_tasks import report as task_report
+
+        ctx.exit(task_report(path.resolve(), limit, output_format == "json"))
     if compare:
         from cli_anything.magic.core.audit_compare import compare as compare_metrics
 
