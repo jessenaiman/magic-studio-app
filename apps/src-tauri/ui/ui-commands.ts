@@ -40,7 +40,39 @@ function find(target, instance = null) {
   throw new Error(`no element "${target}"; ui.elements lists them`);
 }
 
-window.magicUI = {
+function isTrackedControl(node, entries, registry) {
+  for (let n = node; n; n = n.parentElement) {
+    if (n.id && entries[n.id]) return true;
+    const host = n.getAttribute && n.getAttribute("data-box-id");
+    if (host && registry && typeof registry.get === "function" && registry.get(host)) return true;
+  }
+  return false;
+}
+
+function unconfiguredRow(node, index, entries, registry) {
+  const ownState = node.getAttribute('data-box-id') || (entries[node.id] ? node.id : null);
+  const reason = node.dataset.contractError
+    ? "missing-panel-header"
+    : (ownState && !registry?.get(ownState)) || !isTrackedControl(node, entries, registry)
+      ? "untracked"
+      : visualInlineStyle(node) ? "unstyled" : null;
+  if (!reason) return null;
+  const tag = node.tagName.toLowerCase();
+  const label = (node.title || node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 80);
+  const rect = node.getBoundingClientRect();
+  const container = entries[node.id]?.rail || node.closest('[data-companion-rail]')?.getAttribute('data-companion-rail') || null;
+  return {
+    id: node.id || `${tag}-${index + 1}`,
+    index: registry?.registerElement(node)?.index ?? null,
+    tag,
+    label: label || null,
+    reason,
+    container,
+    rect: [rect.x, rect.y, rect.width, rect.height],
+  };
+}
+
+class UiCommandController {
   menu(params) {
     const menu = params.menu === 'file' ? window.applicationFileMenu : params.menu === 'text' ? window.textContextMenu : null;
     if (!menu) throw new Error('Choose a menu: file or text');
@@ -49,16 +81,19 @@ window.magicUI = {
     const rect = target?.getBoundingClientRect();
     menu.open(params.x ?? rect?.left ?? 0, params.y ?? rect?.bottom ?? 48, target);
     return {opened:params.menu};
-  },
+  }
+
   controls(params: any = {}) {
     const report = window.uiRegistry.inspect({ ...params, root: regionNode(params.region) });
     return { ...report, component_instance: report.instance };
-  },
+  }
+
   attention(params: any = {}) {
     if (params.project !== state.project) throw new Error("Attention project does not match this Studio");
     window.companionBoxes.attention(params.id, params.clear ? null : params.reason);
     return { ok: true, project: state.project, panels: window.companionBoxes.panels() };
-  },
+  }
+
   state() {
     return {
       identity: state.identity||null,
@@ -68,11 +103,13 @@ window.magicUI = {
       storyboard_page: state.page + 1, drawer: window.workshopDrawers?.active||null, agent_open: agent.open, agent_session: agent.session,
       studio: serverUrl?.() || null, toast: $("toast").classList.contains("show") ? $("toast").textContent : null,
     };
-  },
+  }
+
   components(params: any = {}) {
     const report = this.controls(params);
     return { ...report, components: report.items, viewport: [innerWidth, innerHeight], phase: acFeedback.phase };
-  },
+  }
+
   elements(region) {
     const root = regionNode(region);
     if (!root) throw new Error(`no region "${region}"`);
@@ -81,7 +118,8 @@ window.magicUI = {
       return { id: idOf(n), kind: n.getAttribute("role") || n.tagName.toLowerCase(), label: n.title || n.getAttribute("aria-label") || "",
         rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] };
     });
-  },
+  }
+
   // A control is tracked when it, or an ancestor, is a panel the registry
   // knows or has an entry in the config. A control with neither is untracked.
   // A control with a visual inline style is unstyled; geometry set as custom
@@ -89,27 +127,10 @@ window.magicUI = {
   unconfigured() {
     const registry = window.companionBoxes;
     const entries = (window.uiConfig && window.uiConfig.elements) || {};
-    const tracked = (node) => {
-      for (let n = node; n; n = n.parentElement) {
-        if (n.id && entries[n.id]) return true;
-        const host = n.getAttribute && n.getAttribute("data-box-id");
-        if (host && registry && typeof registry.get === "function" && registry.get(host)) return true;
-      }
-      return false;
-    };
-    const rows = [];
     const nodes = [...document.querySelectorAll(`${CLICKABLE}, [id]`)];
-    nodes.forEach((node, i) => {
-      const ownState = node.getAttribute('data-box-id') || (entries[node.id] ? node.id : null);
-      const reason = node.dataset.contractError ? "missing-panel-header" : (ownState && !registry?.get(ownState)) || !tracked(node) ? "untracked" : visualInlineStyle(node) ? "unstyled" : null;
-      if (!reason) return;
-      const tag = node.tagName.toLowerCase();
-      const label = (node.title || node.getAttribute("aria-label") || node.textContent || "").trim().slice(0, 80);
-      const rect = node.getBoundingClientRect(), container = entries[node.id]?.rail || node.closest('[data-companion-rail]')?.getAttribute('data-companion-rail') || null;
-      rows.push({ id: node.id || `${tag}-${i + 1}`, index: registry?.registerElement(node)?.index ?? null, tag, label: label || null, reason, container, rect: [rect.x,rect.y,rect.width,rect.height] });
-    });
-    return rows;
-  },
+    return nodes.map((node, i) => unconfiguredRow(node, i, entries, registry)).filter(Boolean);
+  }
+
   click(target, instance = null, files = null) {
     if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const node = find(target, instance);
@@ -119,7 +140,8 @@ window.magicUI = {
     node.uiFiles = files;
     try { node.click(); } finally { delete node.uiFiles; }
     return { clicked: idOf(node) };
-  },
+  }
+
   drag(params) {
     if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const source=find(params.source,params.instance), target=find(params.target,params.instance);
@@ -134,7 +156,8 @@ window.magicUI = {
     target.dispatchEvent(new DragEvent('drop',options));
     source.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer}));
     return {source:idOf(source),target:idOf(target),drop_dispatched:true};
-  },
+  }
+
   set(target, value, instance = null) {
     if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const node = find(target, instance);
@@ -147,14 +170,16 @@ window.magicUI = {
     node.dispatchEvent(new Event("input", { bubbles: true }));
     node.dispatchEvent(new Event("change", { bubbles: true }));
     return { set: idOf(node) };
-  },
+  }
+
   key(key, target, instance = null) {
     if(document.body.inert)throw new Error('Project save is in progress; controls are temporarily unavailable');
     const node = target ? find(target, instance) : document.activeElement || document.body;
     const [mods, k] = [key.split("+").slice(0, -1).map((m) => m.toLowerCase()), key.split("+").pop()];
     node.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, ctrlKey: mods.includes("ctrl"), shiftKey: mods.includes("shift"), altKey: mods.includes("alt") }));
     return { key };
-  },
+  }
+
   // The region's rectangle (CSS px) with `pad` around it, inside the window; null = the whole page.
   rect(region, pad = 0) {
     if (!region) return null;
@@ -163,18 +188,9 @@ window.magicUI = {
     const r = node.getBoundingClientRect();
     const x = Math.max(0, r.left - pad), y = Math.max(0, r.top - pad);
     return [x, y, Math.min(innerWidth, r.right + pad) - x, Math.min(innerHeight, r.bottom + pad) - y];
-  },
-  // After an engine command from the CLI/MCP: follow a newly opened project, else reload its state.
-  async refresh(id, project, revision, result: any = {}, request_id = null, params: any = {}) {
-    if(project===state.project)window.uiRegistry?.event({command:id,project,view:state.view,request:request_id||result._request_id||`cli-revision-${revision}`,phase:'success',params,result});
-    try {
-    if (id === "agent.new_chat") {
-      await agentLoad(); agent.newChat = !result.session;
-      await acFeedback.acknowledge(revision,project);
-      return {refreshed:id,session:result.session,ack_engine_revision:revision};
-    }
-    if (project && project !== state.project) {const data=await invoke('project_state',{path:project});await applyOpenedProject({...result,...data,project,_ui_engine_revision:revision});return {refreshed:id,project,ack_engine_revision:revision};}
-    if (!project) {await showHome({closeProject:false});await acFeedback.acknowledge(revision,null);return {refreshed:id,ack_engine_revision:revision};}
+  }
+
+  async reloadCurrentProject(id, project, revision, result) {
     state.data = await invoke("project_state", { path: state.project });
     if(id==='workshop.build_storyboard'&&result.draft&&result.ok){
       state.data.storyboard=result;state.data.design={placements:[],text_fields:[]};
@@ -186,11 +202,36 @@ window.magicUI = {
     if (state.view === "animation") {await animationRefresh();motion.refreshError=null;}
     await acFeedback.acknowledge(revision,project);
     return { refreshed: id, ack_engine_revision:revision };
-    }catch(error){
+  }
+
+  // After an engine command from the CLI/MCP: follow a newly opened project, else reload its state.
+  async refresh(id, project, revision, result: any = {}, request_id = null, params: any = {}) {
+    if(project===state.project)window.uiRegistry?.event({command:id,project,view:state.view,request:request_id||result._request_id||`cli-revision-${revision}`,phase:'success',params,result});
+    try {
+      if (id === "agent.new_chat") {
+        await agentLoad(); agent.newChat = !result.session;
+        await acFeedback.acknowledge(revision,project);
+        return {refreshed:id,session:result.session,ack_engine_revision:revision};
+      }
+      if (project && project !== state.project) {
+        const data=await invoke('project_state',{path:project});
+        await applyOpenedProject({...result,...data,project,_ui_engine_revision:revision});
+        return {refreshed:id,project,ack_engine_revision:revision};
+      }
+      if (!project) {
+        await showHome({closeProject:false});
+        await acFeedback.acknowledge(revision,null);
+        return {refreshed:id,ack_engine_revision:revision};
+      }
+      return await this.reloadCurrentProject(id, project, revision, result);
+    } catch(error){
       const message=String(error);
       if(typeof motion!=='undefined')motion.refreshError=message;
       await acFeedback.report(null,null,{stage:'refresh_error',command:id,engine_succeeded:true,error:message});
       return {refreshed:false,command:id,engine_succeeded:true,refresh_error:message,ack_engine_revision:null};
     }
-  },
-};
+  }
+}
+
+const uiCommandController = new UiCommandController();
+window.magicUI = uiCommandController;
