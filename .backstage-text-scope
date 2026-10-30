@@ -13,7 +13,6 @@ pipeline
 :(exclude,glob)**/dist/**
 :(exclude,glob)**/target/**
 :(exclude,glob)**/analytics-diagrams/**
-:(exclude,glob)docs/architecture/*.html
 :(exclude,glob)**/*.lock
 :(exclude,glob)**/*.svg
 :(exclude,icase,glob)**/license*
