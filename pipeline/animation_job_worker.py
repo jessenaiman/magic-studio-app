@@ -427,7 +427,7 @@ def main():
                 [
                     request["magic_cli"],
                     "exec",
-                    "blender.prepare",
+                    "animation.scene.prepare",
                     "request=" + str(request_path),
                 ],
                 check=True,

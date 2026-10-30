@@ -1,6 +1,6 @@
 //! OpenToonz source adapter: render an already-authored `.tnz` scene to PNG frames with
 //! `tcomposer`. It never authors rigs or edits scenes, and it owns no scheduler: the shared
-//! bounded worker runs `opentoonz.render` and owns limits, status and cancellation.
+//! bounded worker runs `animation.drawing.render_frames` and owns limits, status and cancellation.
 //!
 //! Invocation facts come from OpenToonz `065cc14` (`tcomposer.cpp`, `sceneproperties.cpp`,
 //! `tcamera.cpp`, `tfilepath.cpp`): `-range` is one-based, a scene's stored output range is
@@ -747,7 +747,7 @@ pub fn cmd_start_drawing_job(s: &mut Session, p: &Value) -> Result<Value> {
     crate::animation_jobs::submit(s, p, request, "opentoonz")
 }
 
-/// `opentoonz.discover`: tool availability and, given a scene, what would render. No rendering.
+/// `animation.drawing.discover`: tool availability and, given a scene, what would render. No rendering.
 pub fn cmd_drawing_scene_info(s: &mut Session, p: &Value) -> Result<Value> {
     let tool = tcomposer();
     let stuff = stuff_dir();
@@ -801,14 +801,14 @@ pub fn cmd_drawing_scene_info(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(result)
 }
 
-/// `opentoonz.render`: run one validated plan to a fresh folder and verify its frames.
+/// `animation.drawing.render_frames`: run one validated plan to a fresh folder and verify its frames.
 /// Blocking; the shared bounded worker owns limits, progress, cancellation and receipts.
 /// With `request` (a job's request.json) it runs only inside that job's worker invocation,
 /// renders into `<job>/frames` and writes `<job>/opentoonz-manifest.json`.
 pub fn cmd_render_drawing_job(s: &mut Session, p: &Value) -> Result<Value> {
     let path = p["request"]
         .as_str()
-        .ok_or_else(|| invalid("Use opentoonz.start; render is a bounded-worker-only helper"))?;
+        .ok_or_else(|| invalid("Use animation.drawing.render; render is a bounded-worker-only helper"))?;
     if s.project_path.is_some() {
         return Err(invalid(
             "Worker rendering requires a separate headless worker session",

@@ -1021,7 +1021,7 @@ pub fn cmd_part_open_image_editor(s: &mut Session, params: &Value) -> Result<Val
         Value::Null
     };
     Ok(
-        json!({"ok":true,"command":"part.open_photocraft","part":part,"which":which,"file":file,
+        json!({"ok":true,"command":"part.edit_image","part":part,"which":which,"file":file,
         "original_file":original,"width":width,"height":height,"sha256":sha(&bytes),
         "photocraft_cli":photocraft_cli,"spawned":spawn,"draft":draft}),
     )

@@ -493,7 +493,7 @@ def render_drawing_scene(request, request_path):
         [
             request["magic_cli"],
             "exec",
-            "opentoonz.render",
+            "animation.drawing.render_frames",
             "request=" + str(helper_request),
         ],
         env=env,

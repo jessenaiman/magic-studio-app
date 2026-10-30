@@ -9,7 +9,7 @@ profile's artwork and mirrors it around that pivot with a negative scale.
 Inputs are the registered views produced by `image.register_frame` plus the
 generation receipt for the pose sheet. The output is the rig spec that
 `project.add_asset kind=cutout_rig` consumes, so the Animation tab and
-`blender.start` can render the turn.
+`animation.scene.render` can render the turn.
 
 Usage:
   python3 pipeline/build_volume_turn_rig.py \

@@ -378,12 +378,12 @@ function partsDrawer(compare){
 // PhotoCraft edits a draft copy; the live layer only changes through part.replace_image.
 function partImageEditorButton(part,id){
  const capability=part.image_edit;
- const button=el('button',{id,class:'ghost magic-part-card-open','data-commands':'part.open_photocraft','data-value-source':'motion.tracks.layers.image_edit',title:capability?.supported?'Edit a draft copy in PhotoCraft; save it to use as the candidate':capability?.reason||'Image editing capability is unknown','aria-label':`Open ${part.label||part.id} in PhotoCraft`,onclick:()=>openPartImageEditor(part)},'PhotoCraft');button.disabled=capability?.supported!==true;return button;
+ const button=el('button',{id,class:'ghost magic-part-card-open','data-commands':'part.edit_image','data-value-source':'motion.tracks.layers.image_edit',title:capability?.supported?'Edit a draft copy in PhotoCraft; save it to use as the candidate':capability?.reason||'Image editing capability is unknown','aria-label':`Open ${part.label||part.id} in PhotoCraft`,onclick:()=>openPartImageEditor(part)},'PhotoCraft');button.disabled=capability?.supported!==true;return button;
 }
 async function openPartImageEditor(part){
  if(part.image_edit?.supported!==true){toast(part.image_edit?.reason||'Image editing capability is unknown');return;}
  try{
-  const result=await motionCommand('part.open_photocraft',{asset:motion.character,part:part.id,spawn:true});
+  const result=await motionCommand('part.edit_image',{asset:motion.character,part:part.id,spawn:true});
   toast(`PhotoCraft: ${(result.draft?.file||result.file).split('/').pop()} · keep it ${result.width}×${result.height} · save to make it the candidate`);
   await refreshPartDrafts();
  }catch(error){toast(String(error));}
@@ -402,7 +402,7 @@ async function refreshPartDrafts(){
  for(const part of motion.meta?.layers||[]){
   let result;
   // Rigs without one PNG per part are read-only: they have no drafts to offer.
-  try{result=await motionCommand('part.open_photocraft',{asset:character,part:part.id});}catch{break;}
+  try{result=await motionCommand('part.edit_image',{asset:character,part:part.id});}catch{break;}
   if(result.draft)found[part.id]={...result.draft,current_sha256:result.sha256};
  }
  if(motion.character!==character||JSON.stringify(found)===JSON.stringify(motion.photoDrafts))return;

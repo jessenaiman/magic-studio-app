@@ -21,7 +21,11 @@ DECLARATIONS = (
     r"^\s*(async\s+)?(def|class|function)\s+\w*({n})\w*",
     r"^\s*(const|let|var)\s+\w*({n})\w*\s*=\s*(\(|async\b|function\b)",
 )
-COMMAND_ID = r"\"({n})\.[a-z_.]+\""
+# An ID with an app name in any segment: blender.start, part.open_photocraft.
+COMMAND_ID = (
+    r"\"[a-z_]+(?:\.[a-z_]+)*\.[a-z_]*({n})[a-z_]*(?:\.[a-z_]+)*\""  # later segment
+    r"|\"[a-z_]*({n})[a-z_]*(?:\.[a-z_]+)+\""  # first segment
+)
 
 
 def config(repo: Path) -> dict:
@@ -84,7 +88,10 @@ def findings(repo: Path, cfg: dict, within: Path | None = None) -> dict[str, lis
     }
 
 
-FILE_SUFFIXES = {".exe", ".js", ".json", ".py", ".rs", ".css", ".html", ".md", ".sh"}
+FILE_SUFFIXES = {
+    ".exe", ".js", ".json", ".py", ".rs", ".css", ".html", ".md", ".sh",
+    ".png", ".jpg", ".webp", ".psd",
+}
 
 
 def is_file_name(text: str, cfg: dict) -> bool:

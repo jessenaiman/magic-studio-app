@@ -115,14 +115,14 @@ pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Valu
             .unwrap_or(false);
     if !imported_ok {
         return Err(EngineError::CommandFailed(
-            "export.filmcraft".into(),
+            "export.edit_project".into(),
             format!("FilmCraft import verification failed: {pipeline_out}"),
         ));
     }
 
     Ok(json!({
         "ok": true,
-        "command": "export.filmcraft",
+        "command": "export.edit_project",
         "asset_id": active_id,
         "media": media_path.to_string_lossy(),
         "output": project_path.to_string_lossy(),
@@ -145,7 +145,7 @@ pub fn cmd_render_scene_source(s: &mut Session, params: &Value) -> Result<Value>
         ));
     }
     let mut result = crate::animation_links::render(s, params)?;
-    result["command"] = json!("export.blender");
+    result["command"] = json!("export.scene_render");
     Ok(result)
 }
 

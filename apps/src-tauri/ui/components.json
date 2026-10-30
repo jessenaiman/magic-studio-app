@@ -822,13 +822,13 @@
       "component": "start",
       "label": "Render preview",
       "indicator": "hidden",
-      "command": "blender.start"
+      "command": "animation.scene.render"
     },
     "blender-cancel": {
       "component": "ghost",
       "label": "Cancel render",
       "indicator": "hidden",
-      "command": "blender.cancel"
+      "command": "animation.cancel"
     },
     "blender-place-job": {
       "component": "muted",

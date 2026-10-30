@@ -143,11 +143,9 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "animation.sources"
         | "animation.status"
         | "animation.list"
-        | "blender.actions"
-        | "blender.status"
-        | "blender.list"
-        | "synfig.discover"
-        | "opentoonz.discover"
+        | "animation.scene.actions"
+        | "animation.vector.discover"
+        | "animation.drawing.discover"
         | "mlt.discover"
         | "song.lyrics"
         | "words.align"
@@ -188,11 +186,11 @@ const fn is_long_running_id(id: &str) -> bool {
         b"project.intake"
             | b"agent.send"
             | b"ui.eval"
-            | b"blender.start"
+            | b"animation.scene.render"
             | b"mlt.start"
-            | b"opentoonz.start"
-            | b"opentoonz.render"
-            | b"synfig.start"
+            | b"animation.drawing.render"
+            | b"animation.drawing.render_frames"
+            | b"animation.vector.render"
             | b"motion.pose.export"
             | b"animation.render"
             | b"motion.place_section"
@@ -210,8 +208,8 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"asset.cut_sheet"
             | b"turnaround.optimize_accuracy"
             | b"mesh.build_4dir"
-            | b"export.filmcraft"
-            | b"export.blender"
+            | b"export.edit_project"
+            | b"export.scene_render"
             | b"export.character_iteration"
             | b"export.layered_motion"
             | b"validate.motion"
@@ -308,7 +306,7 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
 pub fn build() -> Vec<CommandSpec> {
     vec![
         cmd!(
-            "blender.start",
+            "animation.scene.render",
             "Build / Render Blender Animation",
             ["Animation"],
             None,
@@ -317,13 +315,13 @@ pub fn build() -> Vec<CommandSpec> {
             crate::animation_jobs::cmd_start_scene_job
         ),
         query!(
-            "synfig.discover",
+            "animation.vector.discover",
             "Discover Synfig Native Renderer",
             "{}",
             crate::vector_scene::discover
         ),
         cmd!(
-            "synfig.start",
+            "animation.vector.render",
             "Render Saved Synfig Scene",
             ["Animation"],
             None,
@@ -389,34 +387,16 @@ pub fn build() -> Vec<CommandSpec> {
         ).help("Cancel the named render job, then check animation status until cancellation finishes.",
                "magic-cli --project /absolute/Project.magic animation cancel job=JOB_ID"),
         query!(
-            "blender.actions",
+            "animation.scene.actions",
             "Saved Blender Migration Actions",
             "{\"character\":\"rig id\"}",
             crate::animation_jobs::cmd_animation_actions
         ),
         query!(
-            "blender.prepare",
+            "animation.scene.prepare",
             "Headless Bounded Migration Preparation",
             "{\"request\":\"worker request.json\"}",
             crate::animation_jobs::cmd_prepare_animation_job
-        ),
-        query!(
-            "blender.status",
-            "Blender Job Progress",
-            "{\"job\":\"job id\"}",
-            crate::animation_jobs::cmd_animation_status
-        ),
-        query!(
-            "blender.list",
-            "Saved Blender Jobs",
-            "{}",
-            crate::animation_jobs::cmd_animation_list
-        ),
-        query!(
-            "blender.cancel",
-            "Cancel Blender Job",
-            "{\"job\":\"job id\"}",
-            crate::animation_jobs::cmd_animation_cancel
         ),
         query!(
             "mlt.discover",
@@ -434,7 +414,7 @@ pub fn build() -> Vec<CommandSpec> {
             crate::mlt::start
         ),
         cmd!(
-            "opentoonz.start",
+            "animation.drawing.render",
             "Render OpenToonz through shared worker",
             ["Animation"],
             None,
@@ -443,13 +423,13 @@ pub fn build() -> Vec<CommandSpec> {
             crate::drawing_scene::cmd_start_drawing_job
         ),
         query!(
-            "opentoonz.discover",
+            "animation.drawing.discover",
             "OpenToonz Availability and Render Plan",
             "{\"scene\":\"optional .tnz path; plans without rendering\",\"first\":\"optional one-based\",\"last\":\"optional one-based\"}",
             crate::drawing_scene::cmd_drawing_scene_info
         ),
         cmd!(
-            "opentoonz.render",
+            "animation.drawing.render_frames",
             "Render OpenToonz Scene Frames",
             ["Animation"],
             None,
@@ -1790,7 +1770,7 @@ pub fn build() -> Vec<CommandSpec> {
             crate::part_replacement::cmd_part_undo_image
         ),
         CommandSpec {
-            id: "part.open_photocraft",
+            id: "part.edit_image",
             label: "Open Part in PhotoCraft",
             menu: &["Animation", "Parts"],
             shortcut: None,
@@ -1866,7 +1846,7 @@ pub fn build() -> Vec<CommandSpec> {
             cmd_mesh_build_4dir
         ),
         cmd!(
-            "export.filmcraft",
+            "export.edit_project",
             "Export FilmCraft",
             ["File", "Export"],
             None,
@@ -1875,7 +1855,7 @@ pub fn build() -> Vec<CommandSpec> {
             cmd_import_video_sequence
         ),
         cmd!(
-            "export.blender",
+            "export.scene_render",
             "Render Blender Source",
             ["File", "Export"],
             None,
