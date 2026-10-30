@@ -390,7 +390,7 @@ async function openProject(path, start = {}) {
   catch (e) { toast(String(e)); throw e; }
 }
 
-// Apply an already executed CLI/bridge transition; never dispatch Open while refreshing it.
+// Apply an already executed desktop command transition; never dispatch Open while refreshing it.
 async function applyOpenedProject(opened, start = {}) {
   if(opened.reused_session){toast(opened.opened_new_instance?"Opened project in a separate window":"Focused the existing project session");return;}
   const path=opened.project;

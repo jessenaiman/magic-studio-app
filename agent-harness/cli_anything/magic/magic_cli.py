@@ -39,7 +39,7 @@ def emit(value: Any) -> None:
 def execute(ctx: click.Context, command: str, params: dict[str, Any]) -> Any:
     params.setdefault("_origin", "CLI")
     return ctx.obj["session"].execute(
-        command, params, dry_run=ctx.obj["dry_run"], bridge=ctx.obj["bridge"]
+        command, params, dry_run=ctx.obj["dry_run"]
     )
 
 
@@ -149,7 +149,6 @@ class RegistryGroup(click.Group):
     help="Separate caller session binding",
 )
 @click.option("--dry-run", is_flag=True, help="Preview mutations without applying them")
-@click.option("--bridge", hidden=True, help="Internal explicit window endpoint")
 @click.version_option(__version__, prog_name="magic-cli")
 @click.pass_context
 def cli(
@@ -158,7 +157,6 @@ def cli(
     project: str | None,
     session_file: str | None,
     dry_run: bool,
-    bridge: str | None,
 ) -> None:
     """Operate installed Magic Studio: projects, storyboard, and the desktop app.
 
@@ -177,7 +175,7 @@ def cli(
     """
     session = Session(session_file)
     ctx.call_on_close(session.close)
-    ctx.obj = {"session": session, "dry_run": dry_run, "bridge": bridge}
+    ctx.obj = {"session": session, "dry_run": dry_run}
     if project:
         session.select_project(project)
     if ctx.invoked_subcommand is None:
@@ -266,7 +264,7 @@ def mcp(ctx: click.Context) -> None:
     from cli_anything.magic.core.mcp_server import run_mcp_stdio
 
     run_mcp_stdio(
-        ctx.obj["session"], bridge=ctx.obj["bridge"], dry_run=ctx.obj["dry_run"]
+        ctx.obj["session"], dry_run=ctx.obj["dry_run"]
     )
 
 

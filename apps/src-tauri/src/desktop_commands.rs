@@ -1,12 +1,6 @@
-//! `--control <port>`: the TCP JSON-lines bridge that `magic-cli --bridge <port>` and its
-//! MCP server use to drive this window. One request per line, `{"id": "...", "params": {...}}`;
-//! one reply per line, `{"ok": true, "id", "result"}` or `{"ok": false, "id", "error"}`.
-//!
-//! `ui.*` and `app.quit` act on the window (the page answers through `ui/bridge.js`); every other
-//! id is an engine command run on the window's own session, after which the page refreshes.
+//! Guarded desktop operations shared by Tauri actions and same-user requests.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
 use std::sync::Mutex;
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
@@ -16,13 +10,13 @@ use tauri::{AppHandle, Manager};
 
 use crate::Engine;
 
-/// Replies the page owes the bridge, by token.
+/// Replies owed by the project webview, by token.
 #[derive(Default)]
 pub struct Pending(Mutex<(u64, HashMap<u64, Sender<Value>>)>);
 
 /// The page's answer to one `eval`.
 #[tauri::command]
-pub fn bridge_reply(pending: tauri::State<Pending>, token: u64, value: Value) {
+pub fn desktop_reply(pending: tauri::State<Pending>, token: u64, value: Value) {
     if let Some(tx) = pending.0.lock().ok().and_then(|mut p| p.1.remove(&token)) {
         let _ = tx.send(value);
     }
@@ -41,7 +35,7 @@ pub fn eval(app: &AppHandle, body: &str) -> Result<Value, String> {
         token
     };
     let reply = |v: &str| {
-        format!("window.__TAURI__.core.invoke(\"bridge_reply\", {{token: {token}, value: {v}}})")
+        format!("window.__TAURI__.core.invoke(\"desktop_reply\", {{token: {token}, value: {v}}})")
     };
     view.eval(format!(
         "(async () => {{ {body} }})().then(v => {}, e => {})",
@@ -59,12 +53,12 @@ pub fn eval(app: &AppHandle, body: &str) -> Result<Value, String> {
     }
 }
 
-/// `magicBridge.<name>(args…)` in the page.
+/// `magicUI.<name>(args…)` in the page.
 fn page(app: &AppHandle, name: &str, args: &[&Value]) -> Result<Value, String> {
     let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
     eval(
         app,
-        &format!("return await magicBridge.{name}({});", args.join(", ")),
+        &format!("return await magicUI.{name}({});", args.join(", ")),
     )
 }
 
@@ -111,7 +105,7 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
     }
     #[cfg(unix)]
     if let Some(expected) = params["_expected_instance"].as_str() {
-        let socket = app.state::<LocalSocket>();
+        let socket = app.state::<crate::local_ipc::LocalSocket>();
         if socket.0.file_name().and_then(|p| p.to_str()) != Some(expected) {
             return Err("Studio instance changed; explicit reattach required".into());
         }
@@ -122,15 +116,15 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
         return Ok(json!({
             "ok": true,
             "dry_run": true,
-            "route": "bridge",
+            "route": "desktop",
             "command": id,
             "params": params,
         }));
     }
-    if id == "project.open" {
-        if let Some(result) = crate::feedback::reuse_open(app, params)? {
-            return Ok(result);
-        }
+    if id == "project.open"
+        && let Some(result) = crate::feedback::reuse_open(app, params)?
+    {
+        return Ok(result);
     }
 
     if matches!(
@@ -215,7 +209,7 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(100));
                 #[cfg(unix)]
-                cleanup(&close_app);
+                crate::local_ipc::cleanup(&close_app);
                 close_app.exit(0);
             });
             Ok(
@@ -231,10 +225,8 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
             }
             crate::feedback::guard(app, id, ui_project_request)?;
             let mut supplied = params.clone();
-            if supplied.is_object() {
-                if supplied.get("_origin").is_none() {
-                    supplied["_origin"] = json!("CLI/MCP bridge");
-                }
+            if supplied.is_object() && supplied.get("_origin").is_none() {
+                supplied["_origin"] = json!("CLI/MCP");
             }
             if supplied["_request_id"].is_null() {
                 supplied["_request_id"] = json!(crate::feedback::new_request());
@@ -246,9 +238,11 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
             supplied
                 .as_object_mut()
                 .map(|p| p.remove("_ui_dispatch_token"));
-            let mut result = app
-                .state::<Engine>()
-                .with(None, |s| s.execute(id, supplied).map_err(|e| e.to_string()))?;
+            let mut result = tauri::async_runtime::block_on(crate::execute_engine_command(
+                app.clone(),
+                id.to_owned(),
+                supplied,
+            ))?;
             if magicstudio_engine::find_command(id).is_some_and(|c| !c.journal) {
                 return Ok(result);
             }
@@ -279,118 +273,6 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
                 ],
             )?;
             Ok(result)
-        }
-    }
-}
-
-/// Listens on 127.0.0.1:`port`, one thread per connection.
-pub fn serve(app: AppHandle, port: u16) -> Result<(), String> {
-    let listener = std::net::TcpListener::bind(("127.0.0.1", port))
-        .map_err(|e| format!("Studio port {port}: {e}"))?;
-    *app.state::<crate::ControlPort>()
-        .0
-        .lock()
-        .map_err(|e| e.to_string())? =
-        Some(listener.local_addr().map_err(|e| e.to_string())?.port());
-    std::thread::spawn(move || {
-        for stream in listener.incoming().flatten() {
-            let app = app.clone();
-            std::thread::spawn(move || {
-                let Ok(mut writer) = stream.try_clone() else {
-                    return;
-                };
-                for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                    if line.trim().is_empty() {
-                        continue;
-                    }
-                    let reply = match serde_json::from_str::<Value>(line.trim()) {
-                        Err(e) => json!({"ok": false, "error": e.to_string()}),
-                        Ok(req) => {
-                            let id = req["id"].as_str().unwrap_or("").to_string();
-                            let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
-                            match handle(&app, &id, &params) {
-                                Ok(result) => json!({"ok": true, "id": id, "result": result}),
-                                Err(error) => json!({"ok": false, "id": id, "error": error}),
-                            }
-                        }
-                    };
-                    if writeln!(writer, "{reply}").is_err() {
-                        break;
-                    }
-                }
-            });
-        }
-    });
-    Ok(())
-}
-
-/// Same-user window IPC. Files are private; discovery does not require visibility into host PIDs.
-#[cfg(unix)]
-pub fn serve_local(app: AppHandle) -> Result<(), String> {
-    use std::os::unix::{
-        fs::{DirBuilderExt, PermissionsExt},
-        net::UnixListener,
-    };
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .ok_or("XDG_RUNTIME_DIR is missing; private UI feedback unavailable")?;
-    let dir = std::path::PathBuf::from(&runtime).join("magicstudio-studio");
-    magicstudio_engine::local_ipc::private_path(std::path::Path::new(&runtime), true)?;
-    if !dir.exists() {
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dir)
-            .map_err(|e| e.to_string())?;
-    }
-    magicstudio_engine::local_ipc::private_path(&dir, true)?;
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_nanos();
-    let socket = dir.join(format!("{}-{nonce}.sock", std::process::id()));
-    let listener = UnixListener::bind(&socket).map_err(|e| e.to_string())?;
-    app.manage(LocalSocket(socket.clone()));
-    std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))
-        .map_err(|e| e.to_string())?;
-    std::thread::spawn(move || {
-        for stream in listener.incoming().flatten() {
-            if magicstudio_engine::local_ipc::peer(&stream).is_err() {
-                continue;
-            }
-            let app = app.clone();
-            std::thread::spawn(move || {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-                let Ok(mut writer) = stream.try_clone() else {
-                    return;
-                };
-                for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                    let reply = match serde_json::from_str::<Value>(&line) {
-                        Ok(v) => {
-                            let id = v["id"].as_str().unwrap_or_default();
-                            let p = v.get("params").cloned().unwrap_or(json!({}));
-                            match handle(&app, id, &p) {
-                                Ok(result) => json!({"ok":true,"result":result}),
-                                Err(e) => json!({"ok":false,"error":e}),
-                            }
-                        }
-                        Err(e) => json!({"ok":false,"error":e.to_string()}),
-                    };
-                    if writeln!(writer, "{reply}").is_err() {
-                        break;
-                    }
-                }
-            });
-        }
-    });
-    Ok(())
-}
-
-#[cfg(unix)]
-pub struct LocalSocket(pub std::path::PathBuf);
-#[cfg(unix)]
-pub fn cleanup(app: &AppHandle) {
-    if let Some(socket) = app.try_state::<LocalSocket>() {
-        if magicstudio_engine::local_ipc::private_path(&socket.0, false).is_ok() {
-            let _ = std::fs::remove_file(&socket.0);
         }
     }
 }

@@ -14,7 +14,7 @@ from mcp.types import CallToolResult, ImageContent, TextContent
 from cli_anything.magic.core.session import Session
 
 
-def run_mcp_stdio(session: Session, bridge: str | None = None, dry_run: bool = False) -> None:
+def run_mcp_stdio(session: Session, dry_run: bool = False) -> None:
     server = FastMCP(
         "Magic Studio",
         instructions="Discover Magic operations with command_list, then call command_run. "
@@ -32,7 +32,7 @@ def run_mcp_stdio(session: Session, bridge: str | None = None, dry_run: bool = F
     async def command_list(filter: str = "") -> CallToolResult:
         """Discover Magic registry IDs and engine-defined parameter documentation."""
         async with lock:
-            value = await anyio.to_thread.run_sync(session.execute, "command.list", {"filter": filter}, bridge)
+            value = await anyio.to_thread.run_sync(session.execute, "command.list", {"filter": filter})
             return result(value)
 
     @server.tool()
@@ -45,11 +45,11 @@ def run_mcp_stdio(session: Session, bridge: str | None = None, dry_run: bool = F
                 if id == "ui.look" and not dry_run and supplied.get("_dry_run") is not True:
                     with tempfile.TemporaryDirectory(prefix="magic-look-") as folder:
                         supplied.setdefault("output", str(Path(folder) / "window.png"))
-                        value = await anyio.to_thread.run_sync(session.execute, id, supplied, bridge, dry_run)
+                        value = await anyio.to_thread.run_sync(session.execute, id, supplied, dry_run)
                         image = base64.b64encode(Path(value["output"]).read_bytes()).decode("ascii")
                         return CallToolResult(content=[ImageContent(type="image", data=image, mimeType="image/png"),
                                                        TextContent(type="text", text=json.dumps(value))])
-                return result(await anyio.to_thread.run_sync(session.execute, id, supplied, bridge, dry_run))
+                return result(await anyio.to_thread.run_sync(session.execute, id, supplied, dry_run))
             except Exception as exc:
                 return CallToolResult(isError=True, content=[TextContent(type="text", text=str(exc))])
 

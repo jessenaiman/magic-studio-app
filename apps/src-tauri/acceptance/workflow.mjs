@@ -77,7 +77,7 @@ export async function createWorkflow({ browser, cliPath = process.env.MAGIC_ACCE
 
   async function cli({ name, args, targetProject = project, initializeProject = false, modifiesFiles = false, expectExit, expectResult, expectIdentity, expectUI, expectFiles, timeout = 60000 }) {
     assert(Array.isArray(args) && args.every((arg) => typeof arg === 'string'), 'CLI args must be a string array');
-    assert(!args.some((arg) => /^--(project|session-file|bridge)(=|$)/.test(arg)), 'Routing is owned by the workflow');
+    assert(!args.some((arg) => /^--(project|session-file)(=|$)/.test(arg)), 'Routing is owned by the workflow');
     const selected = inside(root, targetProject);
     if (initializeProject) assert.deepEqual(args, ['project', 'new', `path=${selected}`], 'Only explicit disposable project creation may omit initial --project selection');
     if (modifiesFiles || initializeProject) requirement(expectFiles, 'saved file state');
