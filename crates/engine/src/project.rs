@@ -292,7 +292,7 @@ pub fn cmd_project_migrate(_s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
-fn link_existing_hyperframes(s: &mut Session, dir: &Path, steps: &mut Vec<Value>) {
+fn link_existing_video_project(s: &mut Session, dir: &Path, steps: &mut Vec<Value>) {
     if !dir.join("hyperframes/index.html").is_file() {
         return;
     }
@@ -312,13 +312,13 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
         return steps;
     };
     let Some(raw_audio) = params.get("audio").and_then(Value::as_str).filter(|v| !v.is_empty()) else {
-        link_existing_hyperframes(s, dir, &mut steps);
+        link_existing_video_project(s, dir, &mut steps);
         return steps;
     };
     if params["skip_audio_setup"] == true {
         return steps;
     }
-    match super::workshop::cmd_workshop_set_audio(s, &json!({"path": raw_audio, "hyperframes_cli": params["hyperframes_cli"]})) {
+    match super::workshop::cmd_workshop_set_audio(s, &json!({"path": raw_audio, "resolve_video_cli": params["resolve_video_cli"]})) {
         Ok(_) => steps.push(json!({"command": "workshop.set_audio", "status": "complete; HyperFrames initialized and audio linked"})),
         Err(e) => {
             steps.push(json!({"command": "workshop.set_audio", "status": "failed", "error": e.to_string()}));
@@ -330,7 +330,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
         steps.push(json!({"command": "workshop.import_transcript", "status": "complete"}));
     } else if params.get("process_audio").and_then(Value::as_bool).unwrap_or(true) && params["prepare_only"] != true {
         let model = params.get("model").and_then(Value::as_str).unwrap_or("large-v3");
-        match super::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "hyperframes_cli": params["hyperframes_cli"]})) {
+        match super::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]})) {
             Ok(_) => steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"})),
             Err(e) => steps.push(json!({"command": "audio.analyze", "status": "failed", "error": e.to_string()})),
         }

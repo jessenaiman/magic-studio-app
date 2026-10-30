@@ -1,0 +1,95 @@
+{
+  "about": "Installed applications whose names are reserved. Magic code calls these apps; it never copies them or names its own files, declarations or command IDs after them. A name may appear in a native file extension of that app.",
+  "names": [
+    "photocraft",
+    "effectcraft",
+    "filmcraft",
+    "deckcraft",
+    "pdfcraft",
+    "figcraft",
+    "designcraft",
+    "vectorcraft",
+    "wordcraft",
+    "soundcraft",
+    "lightcraft",
+    "gridcraft",
+    "cadcraft",
+    "printcraft",
+    "artcraft",
+    "animationcraft",
+    "blender",
+    "synfig",
+    "opentoonz",
+    "hyperframes"
+  ],
+  "paths": [
+    "crates",
+    "apps",
+    "pipeline",
+    "lib",
+    "tools",
+    "scripts",
+    "agent-harness",
+    "schemas"
+  ],
+  "native_extensions": [
+    ".deckcraft",
+    ".sif",
+    ".sifz",
+    ".blend"
+  ],
+  "native_files": [
+    "hyperframes.json"
+  ],
+  "imitations": {
+    "about": "Libraries that do an ArtCraft app's job inside our code. Each listed file is a candidate to chain the named CLI instead; reading pixels only to verify a result is QA and may stay.",
+    "photocraft-cli": [
+      "PIL",
+      "cv2",
+      "skimage",
+      "rembg",
+      "imageio"
+    ],
+    "effectcraft-cli": [
+      "moviepy"
+    ],
+    "vectorcraft-cli": [
+      "svgwrite",
+      "cairo",
+      "potrace",
+      "svgpathtools"
+    ],
+    "soundcraft-cli": [
+      "pydub",
+      "librosa",
+      "soundfile"
+    ]
+  },
+  "imitation_hints": {
+    "about": "Agents use magic-cli only. magic-cli commands call the *craft CLIs internally.",
+    "photocraft-cli": "magic-cli image.break_apart, image.content_aware_fill, image.color_to_alpha, image.puppet_warp, image.image_size, asset.make_transparent, asset.extract_background, asset.cut_sheet, part.edit_image",
+    "effectcraft-cli": "magic-cli animation.prepare, motion.action_track, motion.path, animation.render",
+    "vectorcraft-cli": "a new magic-cli command (it calls vectorcraft-cli internally)",
+    "soundcraft-cli": "a new magic-cli command (it calls soundcraft-cli internally)"
+  },
+  "imitation_operations": {
+    "about": "Calls that edit pixels (not just read them). A file importing an imitation library with none of these is QA/reading and is not a task.",
+    "photocraft-cli": [
+      "\\bImageDraw\\b",
+      "\\.paste\\(",
+      "\\.crop\\(",
+      "\\.resize\\(",
+      "\\.rotate\\(",
+      "\\.transpose\\(",
+      "\\.putalpha\\(",
+      "\\.filter\\(",
+      "\\bImageOps\\.",
+      "\\bImageFilter\\.",
+      "\\bImage\\.new\\(",
+      "\\.alpha_composite\\(",
+      "\\bImage\\.composite\\(",
+      "\\bcv2\\.(inpaint|warpAffine|warpPerspective|resize|threshold|findContours|matchTemplate|GaussianBlur|morphologyEx|dilate|erode|floodFill|grabCut|drawContours|fillPoly)\\b",
+      "\\brembg\\b"
+    ]
+  }
+}

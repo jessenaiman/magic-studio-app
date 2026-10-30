@@ -80,7 +80,14 @@ pub fn build(views: &[(String, image::RgbaImage)], settings: ShapeSettings) -> M
         .find(|(lbl, _)| lbl.to_ascii_lowercase().contains("quarter"))
         .map(|(_, img)| img)
         .unwrap_or(front_img);
-    let side_img = find_view("side");
+    let side_img = views
+        .iter()
+        .find(|(label, _)| {
+            let label = label.to_ascii_lowercase();
+            label.contains("side") || label.contains("profile")
+        })
+        .map(|(_, image)| image)
+        .unwrap_or(&fallback_img);
     let back_img = find_view("back");
 
     let ShapeSettings {

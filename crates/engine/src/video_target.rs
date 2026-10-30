@@ -39,7 +39,7 @@ pub(crate) fn target_project_chip(s: &Session, dir: &Path, target: &str) -> Valu
 
 fn native_preview(dir: &Path, flags: &[String], executable: Option<&str>) -> Result<Value> {
     let project = dir.join("hyperframes");
-    let runtime = hyperframes_cli(executable, Some(&project))?;
+    let runtime = resolve_video_cli(executable, Some(&project))?;
     let mut args = vec![
         "preview".into(),
         project.to_string_lossy().into_owned(),
@@ -80,7 +80,7 @@ pub(crate) fn video_server_info(dir: &Path, _: &str) -> Value {
 
 /// The HyperFrames version a video project pins (`hyperframes@X` in its package.json scripts,
 /// or a `hyperframes` dependency), if it pins one.
-pub(crate) fn pinned_hyperframes(project: &Path) -> Option<String> {
+pub(crate) fn pinned_renderer_version(project: &Path) -> Option<String> {
     let text = std::fs::read_to_string(project.join("package.json")).ok()?;
     let json: Value = serde_json::from_str(&text).ok()?;
     let scripts = json["scripts"]
@@ -129,7 +129,7 @@ pub(crate) fn pinned_cli(project: &Path, npx_root: &Path, version: &str) -> Opti
 
 /// Resolve an explicitly selected executable, HYPERFRAMES_CLI, PATH, or an already-downloaded copy
 /// of the version the project pins; never install with npx. A failure says exactly what to do.
-pub(crate) fn hyperframes_cli(explicit: Option<&str>, project: Option<&Path>) -> Result<PathBuf> {
+pub(crate) fn resolve_video_cli(explicit: Option<&str>, project: Option<&Path>) -> Result<PathBuf> {
     let configured = explicit
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HYPERFRAMES_CLI").map(PathBuf::from));
@@ -144,10 +144,10 @@ pub(crate) fn hyperframes_cli(explicit: Option<&str>, project: Option<&Path>) ->
             .iter()
             .find(|p| !p.to_string_lossy().contains("/mise/shims/"))
             .cloned()
-            .or_else(discover_installed_hyperframes)
+            .or_else(discover_video_renderer)
             .or_else(|| paths.into_iter().next())
     };
-    let pinned = project.and_then(|dir| pinned_hyperframes(dir).map(|version| (dir, version)));
+    let pinned = project.and_then(|dir| pinned_renderer_version(dir).map(|version| (dir, version)));
     let cached = || {
         pinned.as_ref().and_then(|(dir, version)| {
             let npx = PathBuf::from(std::env::var_os("HOME")?).join(".npm/_npx");
@@ -155,8 +155,8 @@ pub(crate) fn hyperframes_cli(explicit: Option<&str>, project: Option<&Path>) ->
         })
     };
     let path=configured.or_else(cached).or_else(on_path).ok_or_else(||EngineError::InvalidParams(match &pinned {
-        Some((dir,version))=>format!("HyperFrames {version} not found. This project pins it in {}. Install it with `npm i -g hyperframes@{version}`, or set HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass hyperframes_cli=...). Nothing was installed.",dir.join("package.json").display()),
-        None=>"HyperFrames executable not found on PATH. Install it with `npm i -g hyperframes`, or set HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass hyperframes_cli=...). Nothing was installed.".into(),
+        Some((dir,version))=>format!("HyperFrames {version} not found. This project pins it in {}. Install it with `npm i -g hyperframes@{version}`, or set HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.",dir.join("package.json").display()),
+        None=>"HyperFrames executable not found on PATH. Install it with `npm i -g hyperframes`, or set HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.".into(),
     }))?;
     if !path.is_absolute() || !path.is_file() {
         return Err(EngineError::InvalidParams(format!(
@@ -167,7 +167,7 @@ pub(crate) fn hyperframes_cli(explicit: Option<&str>, project: Option<&Path>) ->
     Ok(path)
 }
 
-fn discover_installed_hyperframes() -> Option<PathBuf> {
+fn discover_video_renderer() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var_os("HOME")?);
     let mise_nodes = home.join(".local/share/mise/installs/node");
     if let Ok(entries) = std::fs::read_dir(&mise_nodes) {
@@ -221,7 +221,7 @@ pub(crate) fn discover_contained_audio(dir: &Path) -> Option<PathBuf> {
 }
 
 /// Run `hyperframes beats <hf> --json` per hyperframes-cli/references/beats.md after ensuring `data-timeline-role="music"`.
-pub(crate) fn run_hyperframes_beats(hf: &Path, runtime: &str) -> Option<&'static str> {
+pub(crate) fn detect_audio_beats(hf: &Path, runtime: &str) -> Option<&'static str> {
     let _ = ensure_music_audio_role(hf);
     if !hf.join("index.html").is_file() {
         return None;
@@ -235,9 +235,9 @@ pub(crate) fn run_hyperframes_beats(hf: &Path, runtime: &str) -> Option<&'static
     ok.then_some("hyperframes beats → beats/*.json")
 }
 
-fn init_hyperframes(s: &Session, dir: &Path, executable: Option<&str>) -> Result<PathBuf> {
+fn init_video_project(s: &Session, dir: &Path, executable: Option<&str>) -> Result<PathBuf> {
     let project = dir.join("hyperframes");
-    let cli = hyperframes_cli(executable, Some(&project))?;
+    let cli = resolve_video_cli(executable, Some(&project))?;
     let mut args = vec![
         "init".to_string(),
         project.to_string_lossy().into_owned(),
@@ -315,7 +315,7 @@ pub(crate) fn write_caption_source(
         .replace('<', "\\u003c");
     let groups =
         serde_json::to_string(groups).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    let html = include_str!("../../../pipeline/templates/hyperframes-captions.html")
+    let html = include_str!("../../../pipeline/templates/timed-captions.html")
         .replace("__AC_WORDS__", &text)
         .replace("__AC_GROUPS__", &groups)
         .replace("__AC_DURATION__", &duration.to_string());
@@ -461,7 +461,7 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
     }
     let reused = existed;
     let created = if !reused {
-        init_hyperframes(s, &dir, params["hyperframes_cli"].as_str())?
+        init_video_project(s, &dir, params["resolve_video_cli"].as_str())?
     } else {
         ensure_video_target_project(s, &dir, &target)?
     };
@@ -472,8 +472,8 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
         )));
     }
     ensure_music_audio_role(&dir.join("hyperframes"))?;
-    let runtime = hyperframes_cli(
-        params["hyperframes_cli"].as_str(),
+    let runtime = resolve_video_cli(
+        params["resolve_video_cli"].as_str(),
         Some(&dir.join("hyperframes")),
     )?;
     let native = run_tool_in(
@@ -552,8 +552,8 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
         "Official editable project with linked song and supplied timing when available; authored visuals and rendered output are separate steps"
     );
     if !reused {
-        status["runtime_executable"] = json!(hyperframes_cli(
-            params["hyperframes_cli"].as_str(),
+        status["runtime_executable"] = json!(resolve_video_cli(
+            params["resolve_video_cli"].as_str(),
             Some(&dir.join("hyperframes"))
         )?);
     }
@@ -567,7 +567,7 @@ pub fn cmd_video_server_start(s: &mut Session, params: &Value) -> Result<Value> 
     if let Some(port) = params["port"].as_u64() {
         flags.extend(["--port".into(), port.to_string()]);
     }
-    let native = native_preview(&dir, &flags, params["hyperframes_cli"].as_str())?;
+    let native = native_preview(&dir, &flags, params["resolve_video_cli"].as_str())?;
     if native["ready"] != true {
         return Err(EngineError::ExternalTool(
             "HyperFrames Studio".into(),
@@ -714,7 +714,7 @@ pub fn cmd_video_place_track(s: &mut Session, params: &Value) -> Result<Value> {
         request["source_motion"] = json!({"character":character,"track":track,"duration":clip["duration"],
             "spec":path,"canvas":source["canvas"],"rig_sha256":format!("{:x}",Sha256::digest(&bytes)),"relationship":"declared source clip; rendered media is a separate artifact"});
     }
-    let script = crate::workspace::workspace_root(s).join("pipeline/place_hyperframes_track.py");
+    let script = crate::workspace::workspace_root(s).join("pipeline/place_video_track.py");
     let output = run_tool_in(
         &dir,
         "python3",
@@ -822,7 +822,7 @@ pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
-    let cli = hyperframes_cli(params["hyperframes_cli"].as_str(), Some(&hf))?;
+    let cli = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
     let stage = unique_stage_dir(parent)?;
     let at_arg = times
         .iter()
@@ -1058,7 +1058,7 @@ fn render_video(
     fps: f64,
     workers: usize,
 ) -> Result<Value> {
-    let cli = hyperframes_cli(params["hyperframes_cli"].as_str(), Some(hf))?;
+    let cli = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(hf))?;
     let parent = out_path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -1153,7 +1153,7 @@ fn animation_job_request(s: &mut Session, params: &Value, job: &Value) -> Result
             "Pass animation_job/blender_job or path, not both".into(),
         ));
     }
-    let receipt = crate::blender::cmd_blender_status(s, &json!({"job":job}))?;
+    let receipt = crate::animation_jobs::cmd_animation_status(s, &json!({"job":job}))?;
     if receipt["state"] != "completed" {
         return Err(invalid(format!(
             "Animation job is {}, not completed",

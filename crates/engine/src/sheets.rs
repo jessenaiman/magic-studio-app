@@ -455,7 +455,10 @@ impl SheetPlan {
             let direction = params["prompts"][&key].as_str().or(params["prompts"][*kind].as_str()).filter(|p| !p.trim().is_empty())
                 .unwrap_or("Preserve the character's identity, silhouette, proportions, distinctive features and palette.");
             let template_prompt=format!("{}\n\n{}",style["prompt"].as_str().unwrap_or_default(),layout.prompt());
-            let prompt = format!("{direction}\n\n{template_prompt}");
+            let mut prompt = format!("{direction}\n\n{template_prompt}");
+            if let Some(note) = params["note"].as_str().filter(|note| !note.trim().is_empty()) {
+                prompt.push_str(&format!("\nUser direction: {note}"));
+            }
             let key = if requests.len() > 1 {format!("{key}-{:02}",index+1)} else {key};
             let existing = previous["sheets"].as_array().and_then(|v|v.iter().find(|v|v["kind"] == *kind && v["layout"]["motion"] == layout.motion));
             let file = existing.and_then(|v|v["file"].as_str()).map(PathBuf::from)
@@ -525,13 +528,10 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         )?;
         sheet["template_reference"] = json!(guide);
     }
-    let mut brief = format!(
+    let brief = format!(
         "Draw only the complete sheets in this JSON request. Attach BOTH the artwork `reference` and each sheet's `template_reference` PNG to the native image generation tool. The artwork controls identity; the numbered guide controls layout, frame order and drawing bounds. Keep dividers and captions outside drawing bounds. Follow every panel description. Report actual returned dimensions. Copy each whole result to its exact file path and leave its .layout.json intact. Save the exact image prompt beside it as .prompt.txt. Stop after drawing. Human review is required before resizing, cutting, registration, or rigging. Do not run preparation commands and do not create Markdown documents.\n{}",
         plan.value()
     );
-    if let Some(note) = params["note"].as_str().filter(|v| !v.trim().is_empty()) {
-        brief.push_str(&format!("\nUser direction: {note}"));
-    }
     let brief_path = output.join("request.txt");
     std::fs::write(&brief_path, &brief)?;
     let manifest = plan.directory.join(format!("{}-request.json", plan.asset));

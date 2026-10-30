@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -156,11 +157,14 @@ class RegistryGroup(click.Group):
             else:
                 click.echo(current.get_help())
 
-        help_text = (
-            f"{spec['label']}. Parameters: {spec['params']}"
-            if spec
-            else f"{name} commands from the application registry."
-        )
+        help_text = f"{name} commands from the application registry."
+        if spec:
+            help_text = (
+                f"{(spec.get('help') or spec['label']).rstrip('.')}.\n\n"
+                f"Parameters: {spec['params']}"
+            )
+            if spec.get("example"):
+                help_text += f"\n\n\b\nExample:\n  {spec['example']}"
         options = [click.Option(["--params"], help="JSON parameter object")]
         # Groups may also be commands (e.g. motion.path); use --params for the parent.
         if not children:
@@ -243,27 +247,66 @@ def cli(
     type=click.Choice(tuple(audit_core.TOOLS)),
     help=(
         "Select a native tool; repeat to choose several. "
-        "Default: Lizard for a file, all five for a directory."
+        "Default: Lizard for a file, all nine for a directory."
     ),
 )
 @click.option(
-    "--format", "output_format", type=click.Choice(("text", "csv")), default="text",
+    "--format", "output_format", type=click.Choice(("text", "csv", "json")),
+    default="text",
     show_default=True,
     help="Lizard output: ranked native text diagnostics or native CSV measurements.",
 )
+@click.option(
+    "--base", default="HEAD", show_default=True,
+    help="Scope and --compare: git revision the change is measured from.",
+)
+@click.option(
+    "--tasks", is_flag=True,
+    help="Ranked one-fix tasks for agents (file:line, evidence, action, tool).",
+)
+@click.option(
+    "--limit", default=25, show_default=True, help="--tasks: how many; 0 = all."
+)
+@click.option(
+    "--compare", is_flag=True,
+    help="One before/now table of design and code metrics; nonzero if any got worse.",
+)
 @click.pass_context
 def audit(
-    ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str
+    ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str,
+    base: str, compare: bool, tasks: bool, limit: int,
 ) -> None:
     """Run native repository checks with unmodified tool output.
 
-    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard. Each tool uses
-    PATH (or root node_modules/.bin) and requires its repository configuration.
+    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace,
+    jscpd, PurgeCSS, scope. Each
+    tool uses PATH (or root node_modules/.bin) and the nearest repository
+    configuration at or above PATH, up to the repository top.
     Missing tools/configuration are errors, not passing or skipped checks.
     Lizard shows function locations, file totals, CCN, length and cognitive
     complexity, with warnings ranked by CCN. code-limits.json requires
     max_function_ccn; optional max_function_lines (100),
     max_function_cognitive_complexity (15) set thresholds.
+    Wallace measures our stylesheets (not vendor/node_modules/target) as one
+    design: unique colours, font sizes and declarations, ID selectors and
+    specificity. Compare its table before and after a UI change. jscpd lists
+    repeated blocks (.jscpd.json): missed chances to share one class, helper
+    or component. PurgeCSS (purgecss.config.cjs) lists selectors no component
+    or page produces: dead styles; its JSON omits only the purged CSS text.
+    CSS is component code: read Stylelint, Wallace, jscpd and PurgeCSS
+    together after every UI change. scope prints git's diff stat since --base
+    for the whole repository, and untracked files, so changes outside PATH
+    show as creep.
+
+    --compare measures PATH at --base and now with the same configuration and
+    prints one table (before, now, change, better/worse; lower is better), the
+    scope since --base, and each stylesheet's concerns with suggested files.
+    It exits 1 when any metric got worse.
+
+    --tasks turns the same native findings into ranked one-fix tasks for
+    agents: code doing an ArtCraft app's job (with the CLI commands to chain),
+    app-named declarations, duplicated blocks, complex functions, inline and
+    dead styles, style-rule problems. --format json gives them as JSON.
     CSV mode also runs native warnings on stderr so violations still fail.
     Other tools keep their native formats.
 
@@ -280,8 +323,17 @@ def audit(
     that directory and inherits the repository limits.
     Clippy requires a crate directory. File checks use repository configuration.
     """
+    if tasks:
+        from cli_anything.magic.core.audit_tasks import report as task_report
+
+        ctx.exit(task_report(path.resolve(), limit, output_format == "json"))
+    if compare:
+        from cli_anything.magic.core.audit_compare import compare as compare_metrics
+
+        ctx.exit(compare_metrics(path.resolve(), base))
     ctx.exit(audit_core.run_audit(
-        path.resolve(), tools, dry_run=ctx.obj["dry_run"], output_format=output_format
+        path.resolve(), tools, dry_run=ctx.obj["dry_run"], output_format=output_format,
+        base=base,
     ))
 
 
@@ -400,11 +452,27 @@ def session_clear(ctx: click.Context) -> None:
     emit({"ok": True})
 
 
+def fix_routes(exc: Exception) -> str:
+    """A failure is a magic-cli gap: ask for a fix instead of working around it."""
+    command = shlex.join(["magic-cli", *sys.argv[1:]])
+    body = f"Command:\n    {command}\n\nError:\n    {str(exc)[:1500]}"
+    issue = shlex.join([
+        "gh", "issue", "create", "--title", f"magic-cli fails: {command[:70]}",
+        "--body", body,
+    ])
+    return (
+        "Request a magic-cli fix (do not work around it with the tool directly):\n"
+        "  quick       small and in scope: fix this magic-cli command now\n"
+        f"  issue       {issue}\n"
+        "  brainstorm  unsure which designer step or tool applies: ask Jesse first"
+    )
+
+
 def main() -> None:
     try:
         cli(prog_name="magic-cli")
     except (RuntimeError, OSError, ValueError) as exc:
-        click.echo(f"magic-cli: {exc}", err=True)
+        click.echo(f"magic-cli: {exc}\n\n{fix_routes(exc)}", err=True)
         sys.exit(1)
 
 

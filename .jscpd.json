@@ -1,0 +1,19 @@
+{
+  "format": [
+    "css",
+    "javascript",
+    "python",
+    "rust"
+  ],
+  "minTokens": 40,
+  "minLines": 1,
+  "ignore": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "**/target/**",
+    "references/**"
+  ],
+  "reporters": [
+    "console"
+  ]
+}

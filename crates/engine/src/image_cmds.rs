@@ -10,7 +10,7 @@ pub(crate) mod medium;
 pub use medium::cmd_image_apply_medium;
 
 use crate::workspace::{
-    build_photocraft_run_args, resolve_craft_cli, resolve_workspace_path, run_tool_in,
+    image_batch_args, resolve_craft_cli, resolve_workspace_path, run_tool_in,
     workspace_root,
 };
 
@@ -768,7 +768,7 @@ pub fn cmd_image_puppet_warp(s: &mut Session, params: &Value) -> Result<Value> {
         "density": params.get("density").and_then(Value::as_str).unwrap_or("normal"),
         "expansion": params.get("expansion").and_then(Value::as_f64).unwrap_or(2.0),
     });
-    let args = build_photocraft_run_args(
+    let args = image_batch_args(
         &source_path.to_string_lossy(),
         "edit.puppetWarp",
         Some(&warp_params.to_string()),
@@ -830,7 +830,7 @@ pub fn cmd_image_color_to_alpha(s: &mut Session, params: &Value) -> Result<Value
         "transparencyThreshold": transparency_threshold,
         "opacityThreshold": opacity_threshold,
     });
-    let args = build_photocraft_run_args(
+    let args = image_batch_args(
         &source_path.to_string_lossy(),
         "filter.other.colorToAlpha",
         Some(&color_params.to_string()),
@@ -993,7 +993,7 @@ pub fn cmd_image_image_size(s: &mut Session, params: &Value) -> Result<Value> {
     let body =
         json!({"width": width, "height": height, "anchor": anchor, "extensionColor": extension})
             .to_string();
-    let args = build_photocraft_run_args(
+    let args = image_batch_args(
         &source_path.to_string_lossy(),
         "image.imageSize",
         Some(&body),

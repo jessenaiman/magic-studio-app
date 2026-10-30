@@ -1,4 +1,4 @@
-"""Blender-side deterministic world builder used by ``blender_world``.
+"""Blender-side deterministic world builder used by ``build_scene``.
 
 No creative decisions live here: palette, density, asset choices, regions,
 paths, water, camera, and lighting arrive in the JSON world specification.

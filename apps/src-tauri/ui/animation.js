@@ -18,7 +18,7 @@ function animationRestore(){
 }
 function animationReset(){
  theatreRequireSaved();animationRemember();
- blenderDispose();
+ animationJobsDispose();
  animationPause();
  Object.assign(motion,{project:null,character:null,meta:null,sample:null,images:[],assets:[],time:0,track:'',rest:true,selected:null,photoDrafts:{},loading:false,request:motion.request+1,points:[],pathUndo:null,pathLayer:null,previewLoop:null,pen:false,fit:true,zoom:1});
  $('view-animation').replaceChildren();
@@ -244,7 +244,7 @@ function animationControls(){
   }},'Undo');
   undoButton.disabled=!savedUndo;
   compare.append(actionStatus,el('div',{class:'magic-part-actionbar'},
-   photoCraftPartButton(selected,'part-open-photocraft'),
+   partImageEditorButton(selected,'part-open-photocraft'),
    replaceButton,undoButton,
    el('button',{class:'ghost',id:'part-inspect-original',title:selected.file||'','aria-label':`Inspect original ${name}`,onclick:()=>selected.file&&openPath(selected.file)},'Original'),
    el('button',{class:'ghost',id:'part-copy-path',title:'Copy file path to clipboard','aria-label':`Copy asset path for ${name}`,onclick:()=>{if(selected.file&&navigator.clipboard)navigator.clipboard.writeText(selected.file).then(()=>toast('Copied asset path')).catch(()=>{});}},'Copy path')));
@@ -271,14 +271,14 @@ function animationControls(){
 }
 function motionExportControl(){
  const status=el('div',{id:'motion-export-status',class:'why',role:'status'});let busy=false;
- const button=el('button',{class:'start',id:'motion-export','data-commands':'motion.export_track',title:'Export the current rest/action preview as a transparent track',onclick:async()=>{
+ const button=el('button',{class:'start',id:'motion-export','data-commands':'animation.render',title:'Export the current rest/action preview as a transparent track',onclick:async()=>{
   if(busy)return;const project=state.project,character=motion.character;
   try{
    theatreRequireSaved();
    const duration=motion.sample?.duration/motion.speed;
    if(!character||!motion.track||!Number.isFinite(duration)||duration<=0)throw Error('Choose a sampled action before exporting.');
    const params={character,track:motion.track,rest:motion.rest,amount:motion.amount,duration};busy=true;button.disabled=true;status.textContent='Rendering transparent track…';
-   const result=await motionCommand('motion.export_track',params);
+   const result=await motionCommand('animation.render',params);
    motion.lastExport={project,character,params,result};
    if(state.project!==project||motion.character!==character)return;
    const file=result.outputs?.[0]?.file;
@@ -366,7 +366,7 @@ function partsDrawer(compare){
    el('button',{class:'magic-part-card-pick','aria-pressed':String(picked),'aria-label':`Select ${name} (${part.id})`,onclick:select},
     el('span',{class:'magic-part-card-name'},name),part.label&&part.label!==part.id?el('span',{class:'magic-part-card-id'},part.id):null,badge),
    el('div',{class:'magic-part-card-actions'},visible,
-    photoCraftPartButton(part,`part-open-photocraft-${part.id}`)));
+    partImageEditorButton(part,`part-open-photocraft-${part.id}`)));
  });
  const panels={parts:cards.length?el('div',{class:'magic-part-cards'},cards):el('p',{class:'why'},'This object has no rig parts.'),compare};
  if(!Object.hasOwn(panels,motion.partsTab))motion.partsTab='parts';
@@ -376,14 +376,14 @@ function partsDrawer(compare){
   tab('parts',`Parts (${meta.layers.length})`),tab('compare','Compare')),body);
 }
 // PhotoCraft edits a draft copy; the live layer only changes through part.replace_image.
-function photoCraftPartButton(part,id){
+function partImageEditorButton(part,id){
  const capability=part.image_edit;
- const button=el('button',{id,class:'ghost magic-part-card-open','data-commands':'part.open_photocraft','data-value-source':'motion.tracks.layers.image_edit',title:capability?.supported?'Edit a draft copy in PhotoCraft; save it to use as the candidate':capability?.reason||'Image editing capability is unknown','aria-label':`Open ${part.label||part.id} in PhotoCraft`,onclick:()=>openPartInPhotoCraft(part)},'PhotoCraft');button.disabled=capability?.supported!==true;return button;
+ const button=el('button',{id,class:'ghost magic-part-card-open','data-commands':'part.edit_image','data-value-source':'motion.tracks.layers.image_edit',title:capability?.supported?'Edit a draft copy in PhotoCraft; save it to use as the candidate':capability?.reason||'Image editing capability is unknown','aria-label':`Open ${part.label||part.id} in PhotoCraft`,onclick:()=>openPartImageEditor(part)},'PhotoCraft');button.disabled=capability?.supported!==true;return button;
 }
-async function openPartInPhotoCraft(part){
+async function openPartImageEditor(part){
  if(part.image_edit?.supported!==true){toast(part.image_edit?.reason||'Image editing capability is unknown');return;}
  try{
-  const result=await motionCommand('part.open_photocraft',{asset:motion.character,part:part.id,spawn:true});
+  const result=await motionCommand('part.edit_image',{asset:motion.character,part:part.id,spawn:true});
   toast(`PhotoCraft: ${(result.draft?.file||result.file).split('/').pop()} · keep it ${result.width}×${result.height} · save to make it the candidate`);
   await refreshPartDrafts();
  }catch(error){toast(String(error));}
@@ -402,7 +402,7 @@ async function refreshPartDrafts(){
  for(const part of motion.meta?.layers||[]){
   let result;
   // Rigs without one PNG per part are read-only: they have no drafts to offer.
-  try{result=await motionCommand('part.open_photocraft',{asset:character,part:part.id});}catch{break;}
+  try{result=await motionCommand('part.edit_image',{asset:character,part:part.id});}catch{break;}
   if(result.draft)found[part.id]={...result.draft,current_sha256:result.sha256};
  }
  if(motion.character!==character||JSON.stringify(found)===JSON.stringify(motion.photoDrafts))return;
@@ -418,7 +418,7 @@ async function animationSample(){
 async function animationRefresh(){
  if(state.view!=='animation')return;
  if(motion.mode==='composite'){seqRenderInspector();seqDraw();return;}
- if(motion.mode==='blender'){await blenderAnimationOpen();return;}
+ if(motion.mode==='blender'){await openAnimationJobs();return;}
  const project=state.project,request=++motion.request;
  animationPause();
  const catalog=await motionCommand('project.list_assets');

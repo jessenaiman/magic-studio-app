@@ -119,7 +119,7 @@ fn preprocess_sheet(
         std::fs::create_dir_all(out_dir)?;
         let prepass_out = out_dir.join("photocraft_prepass.png");
         let pc_params = params.get("photocraft_params").and_then(Value::as_str);
-        let pc_args = crate::workspace::build_photocraft_run_args(
+        let pc_args = crate::workspace::image_batch_args(
             &source_path.to_string_lossy(),
             pc_cmd,
             pc_params,

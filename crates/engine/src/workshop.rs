@@ -39,7 +39,7 @@ pub(crate) const ASSETS_DIR: &str = "assets";
 /// Video targets the song can be edited in; Remotion is the default.
 pub const VIDEO_TARGETS: &[&str] = &["remotion", "filmcraft", "hyperframes"];
 /// FilmCraft time base: ticks per second.
-pub(crate) const FILMCRAFT_TICKS_PER_SECOND: f64 = 254_016_000_000.0;
+pub(crate) const SEQUENCE_TICKS_PER_SECOND: f64 = 254_016_000_000.0;
 /// Asset fix list: one decision per problem asset ("clean" or "recreate").
 pub(crate) const FIXLIST: &str = "asset-fixes.json";
 
@@ -67,7 +67,7 @@ pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
     let seq: Value = serde_json::from_str(&out).ok()?;
     seq.get("duration")
         .and_then(Value::as_f64)
-        .map(|t| t / FILMCRAFT_TICKS_PER_SECOND)
+        .map(|t| t / SEQUENCE_TICKS_PER_SECOND)
 }
 
 /// The studio's own words, kept in data the user edits (never in code).
@@ -770,11 +770,11 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
     let setup = (|| {
         let video = crate::video_target::cmd_video_init(
             s,
-            &json!({"target":"hyperframes","captions":false,"hyperframes_cli":params["hyperframes_cli"]}),
+            &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}),
         )?;
         let preview = crate::video_target::cmd_video_server_start(
             s,
-            &json!({"hyperframes_cli":params["hyperframes_cli"]}),
+            &json!({"resolve_video_cli":params["resolve_video_cli"]}),
         )?;
         crate::project::write_project_file(s)?;
         Ok(json!({"ok":true,"video":video,"preview":preview}))
@@ -1861,7 +1861,7 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let hf = dir.join("hyperframes");
     let runtime =
-        crate::video_target::hyperframes_cli(params["hyperframes_cli"].as_str(), Some(&hf))?;
+        crate::video_target::resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
     let runtime = runtime.to_str().ok_or_else(|| {
         EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
     })?;
@@ -1949,7 +1949,7 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
                 .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
         )?;
         ran.push("hyperframes audio → audio-analysis.json");
-        if let Some(step) = crate::video_target::run_hyperframes_beats(&hf, runtime) {
+        if let Some(step) = crate::video_target::detect_audio_beats(&hf, runtime) {
             ran.push(step);
         }
     }

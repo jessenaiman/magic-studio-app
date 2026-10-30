@@ -99,7 +99,7 @@ function motionAuthoringPanels(meta){
    const rect=[Number(placeX.input.value||0),Number(placeY.input.value||0),Number(placeW.input.value||meta.canvas?.[0]||1920),Number(placeH.input.value||meta.canvas?.[1]||1080)];
    if(!Number.isFinite(startVal)||startVal<0||!Number.isFinite(durVal)||durVal<=0||!Number.isFinite(rateVal)||rateVal<=0)throw Error('Enter a valid non-negative start and positive duration/rate.');
    const sceneNum=placeScene.value?Number(placeScene.value):undefined;
-   const exported=await motionCommand('motion.export_track',{character,track:motion.track,rest:motion.rest,amount:motion.amount,duration:durVal,sync_video:true});
+   const exported=await motionCommand('animation.render',{character,track:motion.track,rest:motion.rest,amount:motion.amount,duration:durVal,sync_video:true});
    const videoFile=exported?.outputs?.[0]?.file;
    const clipId=sceneNum?`${character}-scene-${sceneNum}-${cleanTrack}`.replace(/[^a-zA-Z0-9_-]/g,'-'):(existingPlacement?.id||defaultClipId);
    const placeParams={id:clipId,character,track:motion.track,start:startVal,duration:durVal,playback_rate:rateVal,rect,...(videoFile?{path:videoFile}:{}),...(sceneNum?{scene:sceneNum}:{})};

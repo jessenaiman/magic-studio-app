@@ -8,7 +8,7 @@ import shutil
 import subprocess
 
 
-def load_animation_into_filmcraft(
+def import_animation_sequence(
     media_path: str,
     project_out: str,
     frame_png_out: str,
@@ -64,4 +64,4 @@ if __name__ == "__main__":
     parser.add_argument("--project", required=True)
     parser.add_argument("--frame-out", required=True)
     args = parser.parse_args()
-    print(json.dumps(load_animation_into_filmcraft(args.media, args.project, args.frame_out)))
+    print(json.dumps(import_animation_sequence(args.media, args.project, args.frame_out)))

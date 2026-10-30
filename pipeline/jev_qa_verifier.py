@@ -19,7 +19,7 @@ from typing import Any, Dict
 
 from PIL import Image
 from pipeline.pose_and_part_cutter import _ocr_labels
-from pipeline.intake_router import inspect_image_with_photocraft
+from pipeline.intake_router import inspect_image
 
 IMG2THREEJS_FORGE = Path.home() / ".codex" / "skills" / "img2threejs" / "forge"
 for _sub in ("stage1_intake", "stage4_review", "stage3_build", "_shared"):
@@ -113,7 +113,7 @@ def compare_reference_and_import_with_jev(
         else (pixel_rms_diff is not None and pixel_rms_diff <= 0.15)
     )
 
-    pc_info = inspect_image_with_photocraft(str(ren_p))
+    pc_info = inspect_image(str(ren_p))
 
     comparison_state = {
         "reference_image": {

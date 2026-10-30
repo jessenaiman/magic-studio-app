@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
-def trace_part_layers_with_vectorcraft(
+def trace_part_layers(
     rig_plan_path: Path,
     preset: str = "16 Colors",
 ) -> Dict[str, Any]:

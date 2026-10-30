@@ -22,7 +22,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[1])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from pipeline.step_filmcraft_timeline import build_filmcraft_marked_sequence
+from pipeline.mark_action_sequence import build_marked_sequence
 from pipeline.step_studio_rig_tracks import compile_studio_rig_json
 
 SIX_ACTIONS: list[tuple[str, str, list[str]]] = [
@@ -72,7 +72,7 @@ def render_contact_strip(
     strip.save(strip_path)
 
 
-def render_animated_six_actions_effectcraft(
+def render_action_track(
     slug: str,
     standing_file: str,
     exported_layers: list[dict],
@@ -332,16 +332,16 @@ def build_six_action_package(
 
     # If the standing frame manifest did not define part polygons, derive whole-shape PhotoCraft layers
     if not exported_layers:
-        from pipeline.step_photocraft_parts import (
+        from pipeline.prepare_character_parts import (
             discover_character_joints_and_polygons,
-            mask_and_export_layers_with_photocraft,
+            export_part_layers,
         )
 
         standing_img_path = (p_dir / standing_frame["file"]).resolve()
         disc = discover_character_joints_and_polygons(
             standing_img_path, character_id=slug
         )
-        pc_out = mask_and_export_layers_with_photocraft(
+        pc_out = export_part_layers(
             standing_img_path, disc, dest, slug
         )
         for p in pc_out["parts"]:
@@ -395,7 +395,7 @@ def build_six_action_package(
     rig_json_path = dest / "rig.json"
 
     render_contact_strip(title, action_tracks, strip_path)
-    ec_res = render_animated_six_actions_effectcraft(
+    ec_res = render_action_track(
         slug=slug,
         standing_file=str((p_dir / standing_frame["file"]).resolve()),
         exported_layers=exported_layers,
@@ -404,7 +404,7 @@ def build_six_action_package(
         mp4_path=mp4_path,
         jsx_path=jsx_path,
     )
-    fc_res = build_filmcraft_marked_sequence(
+    fc_res = build_marked_sequence(
         slug=slug,
         media_path=str(mp4_path),
         project_out=str(fcproj_path),

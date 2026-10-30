@@ -32,7 +32,7 @@ def classify_archetype_from_hint(hint_name: str = "", aspect: float = 1.0) -> di
     }
 
 
-def inspect_image_with_photocraft(image_path: str) -> dict:
+def inspect_image(image_path: str) -> dict:
     if not image_path or not os.path.exists(image_path):
         raise FileNotFoundError(image_path)
     photocraft = os.environ.get("PHOTOCRAFT_CLI") or shutil.which("photocraft-cli")
@@ -51,7 +51,7 @@ def inspect_image_with_photocraft(image_path: str) -> dict:
 def run_three_question_intake(
     image_path: str, answers_override: dict | None = None
 ) -> dict:
-    img_meta = inspect_image_with_photocraft(image_path)
+    img_meta = inspect_image(image_path)
     rec = classify_archetype_from_hint(image_path, img_meta["aspect"])
 
     api_key = os.environ.get("TYPESAFE_API_KEY", "")

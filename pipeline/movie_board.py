@@ -146,7 +146,7 @@ def normalize_scene_content(packets, expected_fields):
 
 
 def template_schema(template, out):
-    from deckcraft_template import Deck, inspect_pages, note
+    from storyboard_layout import Deck, inspect_pages, note
 
     d = Deck(template.parent, out)
     try:
@@ -746,7 +746,7 @@ def build(
     template=None,
 ):
     # The transcript is already the CLI schema. No lyric reformatting or second editable document.
-    from deckcraft_template import generate, SIZE, SCENE_ART_REGION
+    from storyboard_layout import generate, SIZE, SCENE_ART_REGION
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -1042,7 +1042,7 @@ def build(
         ],
     )
     # Keep saved placements linked; remap only a full-frame overlay on a newly panelled scene.
-    from deckcraft_template import fit_rect, panel_region, SCENE_ART_REGION
+    from storyboard_layout import fit_rect, panel_region, SCENE_ART_REGION
 
     placements = []
     for packet in packets:

@@ -127,12 +127,14 @@ async function backstageStop(){
 }
 function backstageTerminalMount(){
   queueMicrotask(backstageRecover);
-  return window.el('section',{id:'backstage-panel','aria-label':'Interactive Backstage terminal'},
-    window.el('div',{class:'backstage-controls'},window.el('h3',{},'Backstage · live terminal'),
-      window.el('button',{id:'backstage-start',class:'start',disabled:true,onclick:backstageStart},'Launch Backstage'),
-      window.el('button',{id:'backstage-stop',class:'ghost',disabled:true,onclick:backstageStop},'Stop')),
-    window.el('p',{id:'backstage-status',role:'status'},'Ready to launch. Backstage observes local production data; it never starts agents or models.'),
-    window.el('div',{id:'backstage-terminal','aria-label':'Backstage terminal'}));
+  const controls=window.el('div',{class:'backstage-controls'},
+    window.el('button',{id:'backstage-start',class:'start',disabled:true,onclick:backstageStart},'Launch Backstage'),
+    window.el('button',{id:'backstage-stop',class:'ghost',disabled:true,onclick:backstageStop},'Stop'));
+  const header=new PanelHeader({id:null,title:'Backstage · live terminal',actions:[controls]}).element;
+  header.classList.add('panel-head');header.dataset.look='heading';
+  return window.el('section',{id:'backstage-panel',class:'panel','aria-label':'Interactive Backstage terminal'},header,
+    window.el('p',{id:'backstage-status',class:'backstage-status',role:'status'},'Ready to launch. Backstage observes local production data; it never starts agents or models.'),
+    window.el('div',{id:'backstage-terminal',class:'backstage-terminal','aria-label':'Backstage terminal'}));
 }
 window.addEventListener('backstage-visible',()=>requestAnimationFrame(backstageFit));
 window.addEventListener('pagehide',()=>{

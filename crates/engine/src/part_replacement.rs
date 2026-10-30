@@ -857,7 +857,7 @@ fn installed_craft_binary(name: &str) -> Option<PathBuf> {
 }
 
 /// The PhotoCraft app's desktop entry (`gio launch` runs whatever version it points at).
-fn photocraft_desktop_entry() -> Option<PathBuf> {
+fn image_editor_entry() -> Option<PathBuf> {
     let data_home = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")));
@@ -954,7 +954,7 @@ fn original_backup(root: &Path, history: &Path, part: &str) -> Result<Option<Pat
 /// Resolve one rig part's PNG (current, or its retained original) and report
 /// what PhotoCraft would open. `spawn: true` launches the PhotoCraft app on an
 /// edit draft of it; the saved draft is the candidate for `part.replace_image`.
-pub fn cmd_part_open_photocraft(s: &mut Session, params: &Value) -> Result<Value> {
+pub fn cmd_part_open_image_editor(s: &mut Session, params: &Value) -> Result<Value> {
     let asset = asset_id(s, params)?;
     let part = params["part"]
         .as_str()
@@ -996,7 +996,7 @@ pub fn cmd_part_open_photocraft(s: &mut Session, params: &Value) -> Result<Value
         let mut launch = match installed_craft_binary("photocraft") {
             Some(app) => std::process::Command::new(app),
             None => {
-                let entry = photocraft_desktop_entry().ok_or_else(|| {
+                let entry = image_editor_entry().ok_or_else(|| {
                     invalid("PhotoCraft app is not installed (no `photocraft` binary or ai.storyteller.photocraft.desktop)")
                 })?;
                 let mut gio = std::process::Command::new("gio");
@@ -1021,7 +1021,7 @@ pub fn cmd_part_open_photocraft(s: &mut Session, params: &Value) -> Result<Value
         Value::Null
     };
     Ok(
-        json!({"ok":true,"command":"part.open_photocraft","part":part,"which":which,"file":file,
+        json!({"ok":true,"command":"part.edit_image","part":part,"which":which,"file":file,
         "original_file":original,"width":width,"height":height,"sha256":sha(&bytes),
         "photocraft_cli":photocraft_cli,"spawned":spawn,"draft":draft}),
     )

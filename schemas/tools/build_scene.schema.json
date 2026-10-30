@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "magicstudio/tools/blender_world",
+  "$id": "magicstudio/tools/build_scene",
   "title": "Blender World Input",
   "type": "object",
   "required": ["operation"],

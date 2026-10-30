@@ -44,6 +44,11 @@
       "composer",
       "form",
       "settings"
+    ],
+    "report": [
+      "stat",
+      "bar",
+      "table"
     ]
   },
   "densities": [
@@ -77,7 +82,7 @@
     },
     "view-analytics": {
       "component": "workspace",
-      "label": "Mayhem observations and Backstage"
+      "label": "Mayhem reports and Backstage"
     },
     "analytics-surface": {
       "component": "surface",
@@ -91,13 +96,13 @@
     },
     "analytics-refresh": {
       "component": "control",
-      "label": "Refresh data",
+      "label": "Refresh",
       "command": "app.analytics",
       "target": "view-analytics"
     },
     "analytics-scan": {
       "component": "control",
-      "label": "Refresh scan",
+      "label": "Scan code",
       "command": "app.analytics",
       "target": "view-analytics"
     },
@@ -817,13 +822,13 @@
       "component": "start",
       "label": "Render preview",
       "indicator": "hidden",
-      "command": "blender.start"
+      "command": "animation.scene.render"
     },
     "blender-cancel": {
       "component": "ghost",
       "label": "Cancel render",
       "indicator": "hidden",
-      "command": "blender.cancel"
+      "command": "animation.cancel"
     },
     "blender-place-job": {
       "component": "muted",
@@ -1304,7 +1309,7 @@
     "settings-head": {
       "component": "panel-head",
       "look": "heading",
-      "label": "Settings \u00b7 App & Project",
+      "label": "Settings · App & Project",
       "target": "magic-settings-pane",
       "indicator": "hidden"
     },
@@ -1711,6 +1716,11 @@
       "component": "editor-dialog",
       "label": "Native animation source tools",
       "indicator": "hidden"
+    },
+    "mayhem-sections": {
+      "component": "segmented",
+      "label": "Mayhem sections",
+      "target": "view-analytics"
     }
   },
   "rails": {
@@ -1898,19 +1908,19 @@
   "signals": {
     "0": {
       "label": "Idle",
-      "icon": "\ud83d\udca4"
+      "icon": "💤"
     },
     "1": {
       "label": "Active / ready",
-      "icon": "\ud83d\udfe2"
+      "icon": "🟢"
     },
     "2": {
       "label": "Needs attention",
-      "icon": "\ud83d\udfe1"
+      "icon": "🟡"
     },
     "3": {
       "label": "Error",
-      "icon": "\ud83d\udd34"
+      "icon": "🔴"
     }
   },
   "companions": {

@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw
 import scipy.ndimage as ndi
 
 
-def detect_face_landmarks_photocraft(rgba_path: Path) -> Optional[Dict[str, Any]]:
+def detect_face_landmarks(rgba_path: Path) -> Optional[Dict[str, Any]]:
     """Run photocraft-cli image.detectFaces to anchor head/neck joints."""
     pc_bin = shutil.which("photocraft-cli")
     if not pc_bin:
@@ -55,7 +55,7 @@ def discover_character_joints_and_polygons(
     def sy(v: float) -> int:
         return max(0, min(h - 1, int(round(y0 + v * bh))))
 
-    face = detect_face_landmarks_photocraft(rgba_path)
+    face = detect_face_landmarks(rgba_path)
     neck_v = 0.42
     if face and isinstance(face.get("rect"), list) and len(face["rect"]) == 4:
         chin_y = float(face["rect"][1]) + float(face["rect"][3])
@@ -443,7 +443,7 @@ def _clean_disconnected_islands(
             part_arrays[best_pid][comp] = full_rgba[comp]
 
 
-def mask_and_export_layers_with_photocraft(
+def export_part_layers(
     rgba_path: Path,
     discovery: Dict[str, Any],
     out_dir: Path,

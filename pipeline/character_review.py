@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from pipeline.deckcraft_template import Deck, SCENE_ART_REGION, SIZE, fit_rect
+from pipeline.storyboard_layout import Deck, SCENE_ART_REGION, SIZE, fit_rect
 
 
 def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dict:

@@ -53,7 +53,7 @@ articulated rig. `motion.place_section` places a layered section only after its
 motion gate succeeds. Discover the current parameter contracts before use.
 
 Blender mode runs renders in a separate resource-limited worker. The same workflow
-is exposed by `blender.start`, `blender.status`, `blender.cancel`, and `blender.list`.
+is exposed by `animation.scene.render`, `animation.status`, `animation.cancel`, and `animation.list`.
 Editable packed `.blend` scenes retain subsequent work. See
 [Blender animation](docs/workflows/blender-animation.md) and
 [reference → animation → video](docs/workflows/reference-to-animation-video.md)
