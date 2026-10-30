@@ -5,7 +5,7 @@
 const dataset = (name) => "data-" + name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
 
 module.exports = {
-  content: ["apps/src-tauri/ui/**/*.html", "apps/src-tauri/ui/**/*.js"],
+  content: ["apps/src-tauri/ui/**/*.html", "apps/src-tauri/ui/**/*.ts"],
   css: ["apps/src-tauri/ui/*.css"],
   skippedContentGlobs: ["**/vendor/**", "**/node_modules/**"],
   rejected: true,

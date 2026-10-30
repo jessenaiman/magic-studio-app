@@ -3,11 +3,14 @@
 // stylesheet, reached through a class or data-look; values come from :root tokens.
 const inline = "No inline styles: give the element a class or data-look and style it in CSS.";
 
+import tseslint from "typescript-eslint";
+
 export default [
-  { ignores: ["**/vendor/**", "**/node_modules/**", "target/**", "references/**"] },
+  // ui/*.js are generated from ui/*.ts by build.rs (gitignored); the .ts files are the source.
+  { ignores: ["**/vendor/**", "**/node_modules/**", "target/**", "references/**", "apps/src-tauri/ui/*.js"] },
   {
-    files: ["apps/src-tauri/ui/**/*.js"],
-    languageOptions: { ecmaVersion: "latest", sourceType: "script" },
+    files: ["apps/src-tauri/ui/**/*.ts"],
+    languageOptions: { parser: tseslint.parser, ecmaVersion: "latest", sourceType: "script" },
     rules: {
       "no-restricted-syntax": ["error",
         { selector: "MemberExpression[object.property.name='style'][property.name=/^(setProperty|removeProperty|cssText)$/]", message: inline },

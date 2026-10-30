@@ -2,6 +2,7 @@
   "format": [
     "css",
     "javascript",
+    "typescript",
     "python",
     "rust"
   ],
@@ -9,6 +10,7 @@
   "minLines": 1,
   "ignore": [
     "**/vendor/**",
+    "apps/src-tauri/ui/*.js",
     "**/node_modules/**",
     "**/target/**",
     "references/**"
