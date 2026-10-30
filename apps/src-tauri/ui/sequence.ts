@@ -27,7 +27,7 @@ function seqEase(name, u) {
  * @param {string} kind
  * @param {number[]} canvas
  */
-function seqSideValues(kind, [w, h]) {
+function seqSideValues(kind: string, [w, h]: number[]) {
   const rest = { position: [0, 0], rotation: 0, scale: [0, 0], opacity: 0 };
   const travel = 0.12;
   switch (kind) {

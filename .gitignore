@@ -189,3 +189,9 @@ apps/src-tauri/acceptance/artifacts/
 /apps/src-tauri/ui/asset-sheet-review.js
 /apps/src-tauri/ui/project.js
 /apps/src-tauri/ui/ui-commands.js
+/apps/src-tauri/ui/companions.js
+/apps/src-tauri/ui/analytics.js
+/apps/src-tauri/ui/sequence.js
+/apps/src-tauri/ui/agent.js
+/apps/src-tauri/ui/companion-boxes.js
+/apps/src-tauri/ui/companion-sprites.js

@@ -27,7 +27,7 @@ const SIGNAL_LABEL = { 0: "idle", 1: "in use", 2: "attention", 3: "problem" };
 
 function createCompanionBoxes() {
   const boxes = new Map();
-  const listeners = new Set();
+  const listeners = new Set<() => void>();
   const jobs = new Map();
   const jobId = value => typeof value === "string" ? value : value?.id || null;
   let quiet = false;
@@ -156,8 +156,7 @@ function createCompanionBoxes() {
 
   // The authoritative path: an event happened and says what the box is doing.
   // `fact` is what the engine or a correlated job reported.
-  /** @param {{id?: string, project?: any, context?: any, state?: any, reason?: any, priority?: any, request?: any, job?: any, resolution?: any, source?: string, observed_at?: any}} [event] */
-  function fact({ id, project = null, context = null, state = null, reason = null, priority = null, request = null, job = null, resolution = null, source = "engine", observed_at = null } = {}) {
+  function fact({ id, project = null, context = null, state = null, reason = null, priority = null, request = null, job = null, resolution = null, source = "engine", observed_at = null }: {id?: string, project?: any, context?: any, state?: any, reason?: any, priority?: any, request?: any, job?: any, resolution?: any, source?: string, observed_at?: any} = {}) {
     const box = register(id, { project, context });
     if (!box) return null;
     if (state && BOX_STATES.includes(state)) box.state = state;
@@ -195,7 +194,7 @@ function createCompanionBoxes() {
 
   // A command's receipt, kept beside the control it came from. Global Undo/Redo and Autosave read
   // this instead of every element growing its own save logic: one shape, written once.
-  function recordReceipt(id, result = {}) {
+  function recordReceipt(id: string, result: any = {}) {
     const box = boxes.get(canonical(id));
     if (!box) return null;
     const dirty = result.dirty;
@@ -226,7 +225,7 @@ function createCompanionBoxes() {
         reason: failed ? String(event.error || result.error || "Operation failed") : working ? "Working" : "Command completed", source: "command result" });
       if (event.phase === "success") recordReceipt(context.box, { ...result, command: event.command });
   }
-  function capture(command, params = {}) {
+  function capture(command: string, params: any = {}) {
       const action = typeof acFeedback === "undefined" ? null : acFeedback.action;
       const job = jobId(params.job) || jobId(params.job_id), owner = job ? jobs.get(`${state.project}:${job}`) : null;
       const node = document.getElementById(params?._control || action?.control) || [...document.querySelectorAll("[data-commands]")].find(n => (n.getAttribute("data-commands") || "").split(/\s+/).includes(command));

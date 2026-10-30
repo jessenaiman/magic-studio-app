@@ -6,8 +6,8 @@
 // OpenCode uses its existing installed API/session route; no image settings are changed here.
 const agent = {
   open: false, turns: [], config: null, sending: false, attachments: [], loaded: false,
-  newChat: true, models: [], timer: null, renderedReply: null,
-};
+  newChat: true, models: [], timer: null, renderedReply: null, session: null,
+} as any;
 
 const agentStatus = (text) => { $("agent-status").textContent = text; $("agent-status").title = text; };
 
@@ -123,7 +123,7 @@ async function agentReloadLog() {
 }
 
 // A reply receipt is emitted only after this project's actual assistant node is displayed.
-async function acknowledgeAgentReply(revision) {
+async function acknowledgeAgentReply(revision?: number) {
   const project = state.project;
   const turn = [...agent.turns].reverse().find((t) => t.role === "assistant" && t.request_id && t.project === project);
   if (!agent.open || !turn) return;
