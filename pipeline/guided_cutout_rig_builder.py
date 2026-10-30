@@ -118,13 +118,19 @@ def build_guided_cutout_rig(
     export_react_motion_component(
         rig_plan, pose_lib, react_motion_path, mode=mode, speed=speed, duration=duration
     )
-    export_blender_python_script(
-        rig_plan, pose_lib, blender_py_path, mode=mode, speed=speed, duration=duration
+    blender_ready = all(
+        rig_plan.get("joints", {}).get(part["id"], {}).get("rest_tail")
+        for part in rig_plan["parts"]
     )
+    if blender_ready:
+        export_blender_python_script(
+            rig_plan, pose_lib, blender_py_path, mode=mode, speed=speed, duration=duration
+        )
     rig_plan["exporters"] = {
         "threejs_path": str(threejs_path),
         "react_motion_path": str(react_motion_path),
-        "blender_py_path": str(blender_py_path),
+        "blender_py_path": str(blender_py_path) if blender_ready else None,
+        "blender_status": "script_ready" if blender_ready else "needs_reviewed_bone_endpoints",
         "effectcraft_jsx_path": ec_res.get("jsx_path"),
     }
     rig_plan_path.write_text(json.dumps(rig_plan, indent=2), encoding="utf-8")

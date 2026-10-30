@@ -104,7 +104,8 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
         "synfig" => &["sif", "sifz"],
         "opentoonz" => &["tnz"],
         "mlt" => &["json"],
-        _ => return Err(bad("backend must be blender, synfig, opentoonz or mlt")),
+        "effectcraft" => &["ecproj"],
+        _ => return Err(bad("backend must be blender, effectcraft, synfig, opentoonz or mlt")),
     };
     let source = crate::workspace::resolve_workspace_path(s, text(p, "source")?).canonicalize()?;
     if !source.is_file()
@@ -164,6 +165,7 @@ fn render_params(source: &Value, p: &Value) -> Result<Value> {
         "synfig" => &["first_frame", "last_frame", "fps", "width", "height"],
         "opentoonz" => &["first", "last", "step", "shrink", "nthreads"],
         "mlt" => &[],
+        "effectcraft" => &["comp", "first_frame", "last_frame"],
         _ => return Err(bad("Unsupported registered backend")),
     };
     for key in options.keys() {
@@ -176,7 +178,7 @@ fn render_params(source: &Value, p: &Value) -> Result<Value> {
     let mut request = Value::Object(options.clone());
     let key = match backend {
         "blender" => "blend",
-        "synfig" => "source",
+        "synfig" | "effectcraft" => "source",
         "opentoonz" => "scene",
         _ => "timeline",
     };
@@ -198,6 +200,7 @@ pub fn render(s: &mut Session, p: &Value) -> Result<Value> {
         "synfig" => crate::synfig::start(s, &request)?,
         "opentoonz" => crate::opentoonz::cmd_opentoonz_start(s, &request)?,
         "mlt" => crate::mlt::start(s, &request)?,
+        "effectcraft" => crate::effectcraft::start(s, &request)?,
         _ => return Err(bad("Unsupported registered backend")),
     };
     job["source_id"] = source["id"].clone();

@@ -9,25 +9,6 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-SECONDARY_APPENDAGE_PREFIXES = (
-    "ear_",
-    "tail",
-    "hair",
-    "prop_",
-    "cape",
-    "scarf",
-    "wing_",
-    "feather_",
-)
-
-
-def _is_secondary_appendage(part: Dict[str, Any]) -> bool:
-    pid = str(part.get("id", "")).lower()
-    return part.get("kind") == "appendage" or pid.startswith(
-        SECONDARY_APPENDAGE_PREFIXES
-    )
-
-
 def build_pose_library(character_id: str) -> Dict[str, Any]:
     """Pose-library-design timing & joint rotations."""
     return {
@@ -435,6 +416,8 @@ def build_effectcraft_cutout_animation(
                 json.dumps(
                     {"layer": pid, "path": "transform/rotation", "name": rot_ctrl}
                 ),
+                "essential.addMedia",
+                json.dumps({"layer": pid, "name": media_ctrl}),
             ]
         )
         template_values[media_ctrl] = part["full_layer_path"]
@@ -495,8 +478,6 @@ def build_effectcraft_cutout_animation(
                 ),
             ]
         )
-        if _is_secondary_appendage(part):
-            secondary_follow_parts.append(pid)
 
     run_args.extend(
         [
@@ -518,6 +499,19 @@ def build_effectcraft_cutout_animation(
         raise RuntimeError(
             f"effectcraft-cli rig build failed: {proc.stderr or proc.stdout}"
         )
+
+    from effectcraft_project import NativeProject
+    from effectcraft_motion import animate
+
+    native = NativeProject(ecproj_path, ec_bin)
+    for part in parts_sorted:
+        authored = part.get("effectcraft", {})
+        if authored:
+            animate(native, part["id"], authored)
+            if authored.get("puppet", {}).get("follow"):
+                secondary_follow_parts.append(part["id"])
+    native.command("essential.exportTemplate", comp=comp_name, path=str(ectemplate_path),
+                   name=f"{cid}_cutout_rig")
 
     values_json_path.write_text(
         json.dumps(template_values, indent=2) + "\n", encoding="utf-8"
@@ -737,9 +731,50 @@ def export_blender_python_script(
     spec = _build_serializable_rig_spec(
         rig_plan, pose_library, mode, speed, duration, glb_path
     )
+    import math
+
+    ids = {part["id"] for part in spec["parts"]}
+    if not ids or len(ids) != len(spec["parts"]):
+        raise ValueError("Blender rig requires distinct, nonempty part IDs")
+    parents = {part["id"]: part["parent"] for part in spec["parts"]}
+    for part in spec["parts"]:
+        tail = rig_plan.get("joints", {}).get(part["id"], {}).get("rest_tail")
+        if not isinstance(tail, (list, tuple)) or len(tail) != 2:
+            raise ValueError(f'{part["id"]}: joints.rest_tail must define the reviewed bone endpoint in canvas pixels')
+        tail = [float(v) for v in tail]
+        if not all(math.isfinite(v) for v in tail + part["pivot"]) or math.dist(tail, part["pivot"]) < 0.001:
+            raise ValueError(f'{part["id"]}: bone endpoints must be finite and distinct')
+        part["restTail"] = tail
+        visited, parent = {part["id"]}, part["parent"]
+        while parent:
+            if parent not in ids or parent in visited:
+                raise ValueError(f'{part["id"]}: missing or cyclic parent {parent}')
+            visited.add(parent)
+            parent = parents[parent]
+        part["fullLayerPath"] = str(Path(part["fullLayerPath"]).resolve(strict=True))
+    if not math.isfinite(speed) or speed <= 0 or not math.isfinite(duration) or duration <= 0:
+        raise ValueError("Blender animation speed and duration must be positive and finite")
+    sequence = pose_library.get("sequences", {}).get(mode)
+    if not isinstance(sequence, list) or not sequence:
+        raise ValueError(f"Missing authored animation sequence: {mode}")
+    spec["loop"] = bool(pose_library.get("loop", mode in {"idle", "walk", "run", "sway"}))
+    spec["beats"], cursor = [], 0.0
+    for pose in sequence:
+        if pose not in spec["poses"]:
+            raise ValueError(f"Missing animation pose: {pose}")
+        hold = float(spec["poses"][pose].get("hold_frames", 1))
+        if not math.isfinite(hold) or hold <= 0:
+            raise ValueError(f"Invalid hold_frames for pose: {pose}")
+        spec["beats"].append([cursor, pose])
+        cursor += hold / (24 * speed)
+    spec["beats"].append([cursor, sequence[0] if spec["loop"] else sequence[-1]])
+    spec["sourceImage"] = rig_plan.get("source_image")
+    spec["provenance"] = rig_plan.get("provenance", {})
+    runtime = Path(__file__).with_name("blender_cutout_rig.py").read_text()
     out_py_path.parent.mkdir(parents=True, exist_ok=True)
     out_py_path.write_text(
-        f"import bpy, json\nRIG_SPEC = json.loads({json.dumps(json.dumps(spec))})\n",
+        runtime + f"\nRIG_SPEC = json.loads({json.dumps(json.dumps(spec))})\n"
+        + f"build(RIG_SPEC, {str(Path(blend_path or out_py_path.with_suffix('.blend')).resolve())!r}, {str(Path(glb_path).resolve()) if glb_path else None!r})\n",
         encoding="utf-8",
     )
     return out_py_path

@@ -131,6 +131,8 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "motion.theatre.read"
         | "validate.motion"
         | "animation.sources"
+        | "effectcraft.discover"
+        | "effectcraft.inspect"
         | "animation.status"
         | "animation.list"
         | "blender.actions"
@@ -191,6 +193,8 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"words.design"
             | b"sequence.render"
             | b"animation.source.render"
+            | b"effectcraft.build"
+            | b"effectcraft.start"
             | b"video.init"
             | b"intake.validate"
             | b"intake.three_question"
@@ -302,7 +306,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Build / Render Blender Animation",
             ["Animation"],
             None,
-            "{\"character\":\"rig id for initial migration\",\"track\":\"track id\",\"blend\":\"optional saved .blend instead of migration\",\"resolution_percent\":50,\"max_frames\":90,\"memory_mb\":4096,\"timeout_seconds\":300}",
+            "{\"character\":\"rig id\",\"track\":\"track id\",\"rig_plan\":\"optional JSON with parts, joints.rest_tail and authored pose_library for skeletal cutout construction\",\"volume_plan\":\"registered views JSON; track=turntable or skeleton.tracks key; skeleton requires geometry_sha256, bones and weights\",\"voxel_resolution\":144,\"duration\":3,\"blend\":\"optional saved .blend instead of construction or migration\",\"resolution_percent\":50,\"max_frames\":90,\"memory_mb\":4096,\"timeout_seconds\":300}",
             always,
             crate::blender::cmd_blender_start
         ),
@@ -332,7 +336,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Register editable native source",
             ["Animation"],
             None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|synfig|opentoonz|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
+            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|effectcraft|synfig|opentoonz|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
             always,
             crate::animation_links::set
         ),
@@ -1847,10 +1851,10 @@ pub fn build() -> Vec<CommandSpec> {
         ),
         cmd!(
             "mesh.build_4dir",
-            "Build 4-Direction Mesh",
+            "Build Silhouette Mesh Approximation",
             ["Mesh"],
             None,
-            "{\"format\": \"glb\"}",
+            "{\"character\":\"loaded asset id\",\"output\":\"optional .glb path\",\"mesh_res\":32,\"inflation_depth_pct\":58,\"relief_detail_pct\":44,\"proj_blend_pct\":65,\"bump_intensity\":35}",
             always,
             cmd_mesh_build_4dir
         ),
@@ -1871,6 +1875,32 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"script\": \"path.jsx\"}",
             always,
             cmd_effectcraft_run_script
+        ),
+        query!(
+            "effectcraft.discover",
+            "Installed EffectCraft capabilities",
+            "{}",
+            crate::effectcraft::discover
+        ),
+        query!(
+            "effectcraft.inspect",
+            "Inspect native composition and model clips",
+            "{\"source\":\"saved .ecproj\"}",
+            crate::effectcraft::inspect
+        ),
+        cmd!(
+            "effectcraft.build",
+            "Build editable EffectCraft animation",
+            ["Animation"], None,
+            "{\"expected_project\":\"selected .magic\",\"spec\":\"scene JSON with layers, Puppet pins, recordings, follow, sketch, properties, model clips and controls\",\"out_dir\":\"new output directory\"}",
+            always, crate::effectcraft::build
+        ),
+        cmd!(
+            "effectcraft.start",
+            "Render saved EffectCraft composition",
+            ["Animation"], None,
+            "{\"source\":\"saved .ecproj\",\"comp\":\"optional composition name\",\"first_frame\":0,\"last_frame\":47,\"memory_mb\":4096,\"timeout_seconds\":300}",
+            always, crate::effectcraft::start
         ),
         cmd!(
             "export.filmcraft",

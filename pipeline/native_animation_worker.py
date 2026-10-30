@@ -578,6 +578,10 @@ def main(request_path):
             from mlt_worker import render
 
             result = render(request, job)
+        elif request["backend"] == "effectcraft":
+            from effectcraft_worker import render
+
+            result = render(request, job)
         else:
             raise ValueError("Unsupported native backend")
         result["worker_peak_rss_kib"] = resource.getrusage(

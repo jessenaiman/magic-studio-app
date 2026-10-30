@@ -5,6 +5,27 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[test]
+fn profile_sheet_labels_supply_mesh_depth() {
+    use magicstudio_engine::mesh_geometry::{ShapeSettings, build};
+    let silhouette = |half_width: u32| {
+        image::RgbaImage::from_fn(32, 32, |x, y| {
+            image::Rgba([180, 120, 60, if x.abs_diff(16) <= half_width && (2..30).contains(&y) { 255 } else { 0 }])
+        })
+    };
+    let settings = ShapeSettings { inflation_depth_pct: 58, relief_detail_pct: 0,
+        mesh_res: 16, proj_blend_pct: 0, bump_intensity: 0 };
+    let front = silhouette(12);
+    let side = silhouette(4);
+    let expected = build(&[("front".into(), front.clone()), ("side".into(), side.clone())], settings);
+    for label in ["Right profile", "Left profile"] {
+        let actual = build(&[("front".into(), front.clone()), (label.into(), side.clone())], settings);
+        assert_eq!(actual.positions, expected.positions);
+    }
+    let fallback = build(&[("front".into(), front)], settings);
+    assert_ne!(fallback.positions, expected.positions);
+}
+
 struct Fixture(PathBuf);
 
 impl Fixture {

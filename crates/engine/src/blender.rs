@@ -444,7 +444,36 @@ pub fn cmd_blender_prepare(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_blender_start(s: &mut Session, p: &Value) -> Result<Value> {
     let mut request = json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
         "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]});
-    if let Some(path) = p["blend"].as_str() {
+    if ["blend", "rig_plan", "volume_plan"].iter().filter(|key| p[**key].is_string()).count() > 1 {
+        return Err(invalid("Choose one of blend, rig_plan or volume_plan"));
+    }
+    if let Some(path) = p["volume_plan"].as_str() {
+        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
+        let bytes = read_bytes(&path)?;
+        let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+        if plan["slug"] != p["character"] || !p["character"].is_string() {
+            return Err(invalid("Volume construction requires character matching slug"));
+        }
+        let track = p["track"].as_str().ok_or_else(|| invalid("Choose turntable or an authored skeleton track"))?;
+        if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
+            return Err(invalid("Choose turntable or an authored skeleton track"));
+        }
+        request["volume_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+        request["duration"] = json!(bounded(p,"duration",4,1,600)?);
+        request["voxel_resolution"] = json!(bounded(p,"voxel_resolution",144,16,256)?);
+    } else if let Some(path) = p["rig_plan"].as_str() {
+        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
+        let bytes = read_bytes(&path)?;
+        let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+        if plan["character_id"] != p["character"] || !p["character"].is_string() {
+            return Err(invalid("character must match the rig plan's character_id"));
+        }
+        if !p["track"].is_string() || !plan["pose_library"]["poses"].is_object() {
+            return Err(invalid("Choose a track and include the authored pose_library in the rig plan"));
+        }
+        request["rig_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+        request["duration"] = json!(bounded(p,"duration",3,1,600)?);
+    } else if let Some(path) = p["blend"].as_str() {
         let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
         if path.extension().is_none_or(|e| e != "blend") {
             return Err(invalid("blend must be an existing .blend file"));
@@ -540,6 +569,15 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
         &worker,
         include_str!("../../../pipeline/blender_animation_worker.py"),
     )?;
+    if request["rig_plan"].is_object() {
+        fs::write(dir.join("step_effectcraft_rig.py"), include_str!("../../../pipeline/step_effectcraft_rig.py"))?;
+        fs::write(dir.join("blender_cutout_rig.py"), include_str!("../../../pipeline/blender_cutout_rig.py"))?;
+    }
+    if request["volume_plan"].is_object() {
+        fs::write(dir.join("volume_reconstruction.py"), include_str!("../../../pipeline/volume_reconstruction.py"))?;
+        fs::write(dir.join("blender_volume.py"), include_str!("../../../pipeline/blender_volume.py"))?;
+        fs::write(dir.join("blender_volume_rig.py"), include_str!("../../../pipeline/blender_volume_rig.py"))?;
+    }
     let command: Vec<String> = if backend == "blender" {
         vec![
             std::env::var("BLENDER_BIN").unwrap_or_else(|_| "blender".into()),
@@ -556,6 +594,10 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
             request_path.to_string_lossy().into_owned(),
         ]
     } else {
+        if backend == "effectcraft" {
+            fs::write(dir.join("effectcraft_worker.py"), include_str!("../../../pipeline/effectcraft_worker.py"))?;
+            fs::write(dir.join("effectcraft_project.py"), include_str!("../../../pipeline/effectcraft_project.py"))?;
+        }
         if backend == "mlt" {
             fs::write(
                 dir.join("mlt_worker.py"),

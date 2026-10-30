@@ -73,6 +73,7 @@ pub mod complexity;
 pub mod control_bindings;
 pub mod crew;
 pub mod doctor;
+pub mod effectcraft;
 pub mod exports;
 pub mod image_cmds;
 pub mod image_generation;
