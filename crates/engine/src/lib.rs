@@ -106,6 +106,9 @@ mod words_compose;
 mod words_stage;
 mod words_validate;
 pub mod workshop;
+pub mod workshop_fixlist;
+pub mod workshop_intake;
+pub mod workshop_transcript;
 pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
