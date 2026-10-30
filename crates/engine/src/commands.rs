@@ -297,6 +297,35 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
 // ---------- command registry (every id maps to one handler above) ----------
 
 pub fn build() -> Vec<CommandSpec> {
+    let mut specs = Vec::new();
+    for section in [
+        specs_animation_jobs,
+        specs_skills_and_crew,
+        specs_backstage,
+        specs_ui_controls,
+        specs_ui_inspection,
+        specs_motion_authoring,
+        specs_agent_and_sprocket,
+        specs_motion_and_character,
+        specs_theatre_and_project,
+        specs_asset_and_rig,
+        specs_image_and_sequence,
+        specs_words_part1,
+        specs_words_part2,
+        specs_assets_and_sheets,
+        specs_storyboard_part1,
+        specs_storyboard_part2,
+        specs_workshop_and_video,
+        specs_video_and_intake,
+        specs_part_and_manifest,
+        specs_export_and_diagnostics,
+    ] {
+        specs.extend(section());
+    }
+    specs
+}
+
+fn specs_animation_jobs() -> Vec<CommandSpec> {
     vec![
         cmd!(
             "animation.scene.render",
@@ -376,6 +405,11 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"request\":\"worker request.json\"}",
             crate::animation_jobs::cmd_prepare_animation_job
         ),
+    ]
+}
+
+fn specs_skills_and_crew() -> Vec<CommandSpec> {
+    vec![
         query!(
             "project.attach",
             "Attach Project Metadata Without Switching Studio",
@@ -457,6 +491,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::skills_registry::cmd_skills_edit
         ),
+    ]
+}
+
+fn specs_backstage() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "skills.import",
             "Import a cited draft reference (never execute)",
@@ -535,6 +574,11 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}",
             crate::activity::events
         ),
+    ]
+}
+
+fn specs_ui_controls() -> Vec<CommandSpec> {
+    vec![
         query!(
             "ui.state",
             "Live window state",
@@ -625,6 +669,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::command_center::requires_ui
         ),
+    ]
+}
+
+fn specs_ui_inspection() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "ui.focus",
             "Focus window",
@@ -709,6 +758,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::command_center::intake
         ),
+    ]
+}
+
+fn specs_motion_authoring() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "motion.layers.set",
             "Set planar layer stacking",
@@ -781,6 +835,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::motion::cmd_motion_undo_path
         ),
+    ]
+}
+
+fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
+    vec![
         query!(
             "agent.session",
             "Current Chat Session",
@@ -853,6 +912,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_agent_new_chat
         ),
+    ]
+}
+
+fn specs_motion_and_character() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "animation.render",
             "Render the selected animation",
@@ -917,6 +981,11 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"character\":\"asset id\",\"track\":\"track id\",\"fps\":30,\"rest\":false,\"amount\":100,\"time\":0}",
             crate::motion::cmd_motion_sample
         ),
+    ]
+}
+
+fn specs_theatre_and_project() -> Vec<CommandSpec> {
+    vec![
         query!(
             "motion.theatre.read",
             "Read native Theatre state",
@@ -998,6 +1067,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_project_close
         ),
+    ]
+}
+
+fn specs_asset_and_rig() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "project.add_asset",
             "Connect Project Asset",
@@ -1071,6 +1145,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::image_cmds::cmd_rig_from_sheet
         ),
+    ]
+}
+
+fn specs_image_and_sequence() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "image.break_apart",
             "Break Image Into Parts",
@@ -1146,6 +1225,11 @@ pub fn build() -> Vec<CommandSpec> {
             "{}",
             crate::lyrics::cmd_song_lyrics
         ),
+    ]
+}
+
+fn specs_words_part1() -> Vec<CommandSpec> {
+    vec![
         query!(
             "words.align",
             "Artist Words vs Timing Reference",
@@ -1215,6 +1299,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::words::cmd_words_design
         ),
+    ]
+}
+
+fn specs_words_part2() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "words.apply",
             "Use Designed Lyrics in the Video",
@@ -1294,6 +1383,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_assets_request_sheet
         ),
+    ]
+}
+
+fn specs_assets_and_sheets() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "image.register_frame",
             "Register a pose on a shared canvas",
@@ -1390,6 +1484,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::image_cmds::cmd_image_apply_medium
         ),
+    ]
+}
+
+fn specs_storyboard_part1() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "storyboard.create",
             "Create Storyboard / Split Scene",
@@ -1474,6 +1573,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::storyboard_design::save
         ),
+    ]
+}
+
+fn specs_storyboard_part2() -> Vec<CommandSpec> {
+    vec![
         query!(
             "storyboard.toc",
             "Storyboard Chapters",
@@ -1519,6 +1623,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_storyboard_approve
         ),
+    ]
+}
+
+fn specs_workshop_and_video() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "workshop.set_audio",
             "Set Song Audio",
@@ -1600,6 +1709,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_workshop_remove
         ),
+    ]
+}
+
+fn specs_video_and_intake() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "video.init",
             "Initialize Target Video Project",
@@ -1681,6 +1795,11 @@ pub fn build() -> Vec<CommandSpec> {
             has_asset,
             cmd_intake_compare_reference
         ),
+    ]
+}
+
+fn specs_part_and_manifest() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "part.show_all",
             "Show All Parts",
@@ -1766,6 +1885,11 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             cmd_turnaround_optimize_accuracy
         ),
+    ]
+}
+
+fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
+    vec![
         cmd!(
             "anim.preview_2d",
             "Preview 2D Animation",
