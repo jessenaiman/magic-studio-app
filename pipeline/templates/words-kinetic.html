@@ -37,7 +37,8 @@
           fontStyle: hero && S.hero_italic ? "italic" : "normal", fontSize: `${hero ? S.hero_size : S.size}px`, color: hero ? S.hero_color : S.color,
           webkitTextStroke: S.outline ? `${Math.max(2, (hero ? S.hero_size : S.size) * 0.07)}px ${S.outline}` : "" });
         box.appendChild(el);
-        return { w, el, act, hero, width: el.offsetWidth, height: el.offsetHeight };
+        const scale = Math.max(1, (hero && LIB.acts[act]?.to?.scale) || 1), rawW = el.offsetWidth, padX = rawW * (scale - 1) * 0.5;
+        return { w, el, act, hero, padX, width: rawW * scale, height: el.offsetHeight };
       });
       // Layout: rows that fit the frame, then the chosen arrangement.
       const giant = (e) => K.layout === "giant" && e.hero;
@@ -51,7 +52,7 @@
         const total = row.reduce((s, x) => s + x.width, 0) + gap * (row.length - 1);
         let x = (W - total) / 2;
         row.forEach((e, k) => {
-          let ex = x, ey = y0 + r * rowH + (rowH - e.height), rot = 0;
+          let ex = x + e.padX, ey = y0 + r * rowH + (rowH - e.height), rot = 0;
           if (K.layout === "scatter") { ex += (rand() - 0.5) * gap * 0.8; ey += (rand() - 0.5) * 30; rot = (rand() - 0.5) * 14; }
           Object.assign(e.el.style, { left: `${Math.round(ex)}px`, top: `${Math.round(ey)}px`, rotate: `${rot.toFixed(1)}deg` });
           x += e.width + gap;
@@ -62,8 +63,8 @@
         let cx = W * 0.08, cy = top ? H * 0.05 : H * 0.48;
         for (const e of els) {
           if (cx + e.width > W * 0.94) { cx = W * 0.08; cy += rowH * 0.95; }
-          Object.assign(e.el.style, { left: `${Math.round(cx)}px`, top: `${Math.round(cy)}px` });
-          cx += e.width + gap * 0.6; cy += S.size * 0.24;
+          Object.assign(e.el.style, { left: `${Math.round(cx + e.padX)}px`, top: `${Math.round(cy)}px` });
+          cx += e.width + Math.max(gap * 0.85, 22); cy += S.size * 0.24;
         }
       }
       // Giant word: a meaning word fills the frame on its own, outside the line.

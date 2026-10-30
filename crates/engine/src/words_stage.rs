@@ -150,7 +150,7 @@ fn assign_default_backgrounds(doc: &mut Value, images: &[Value]) {
     }
 }
 
-fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Result<String> {
+pub(crate) fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Result<String> {
     let images = project_backdrop_images(s, dir);
     let asset = images
         .iter()
@@ -197,8 +197,14 @@ fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
     for (idx, anim) in animations.iter().enumerate() {
         let Some(asset_id) = anim["background_asset"].as_str() else { continue };
         let Ok(name) = stage_backdrop_file(s, &dir, asset_id) else { continue };
-        let start = anim["song_anchor"].as_f64().unwrap_or(0.0);
-        let duration = anim["authored_duration"].as_f64().unwrap_or(10.0);
+        let anchor = anim["song_anchor"].as_f64().unwrap_or(0.0);
+        let start = if idx == 0 { 0.0 } else { anchor };
+        let raw_dur = anim["authored_duration"].as_f64().unwrap_or(10.0);
+        let end = animations
+            .get(idx + 1)
+            .and_then(|next| next["song_anchor"].as_f64())
+            .unwrap_or(anchor + raw_dur + 5.0);
+        let duration = (end - start).max(raw_dur);
         tags.push_str(&format!(
             "<img id=\"backdrop-{idx}\" class=\"clip\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.3}\" data-duration=\"{duration:.3}\" data-track-index=\"0\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1\">"
         ));

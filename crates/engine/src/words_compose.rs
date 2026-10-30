@@ -603,18 +603,19 @@ fn design_composition(
 fn without_placement(html: &str, id: &str) -> String {
     let mark = format!("data-magicstudio-words=\"{id}\"");
     let mut out = html.to_owned();
-    for (open, close) in [("<style ", "</style>\n"), ("<div ", "</div>\n")] {
-        while let Some(at) = out.find(&mark) {
-            let Some(begin) = out[..at].rfind(open) else {
-                break;
+    for (open, close) in [("<style ", "</style>\n"), ("<div ", "</div>\n"), ("<img ", ">\n")] {
+        let mut scan = 0;
+        while let Some(at) = out[scan..].find(&mark).map(|i| scan + i) {
+            let Some(begin) = out[..at].rfind(open).filter(|&b| !out[b..at].contains('>')) else {
+                scan = at + mark.len();
+                continue;
             };
-            if out[begin..at].contains('>') {
-                break;
-            }
             let Some(end) = out[at..].find(close).map(|e| at + e + close.len()) else {
-                break;
+                scan = at + mark.len();
+                continue;
             };
             out.replace_range(begin..end, "");
+            scan = begin;
         }
     }
     out
@@ -873,6 +874,10 @@ fn soften_webgpu_shader_guard(hf: &Path) {
     };
     let next = js
         .replace(
+            "function Ws(e,t){if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
+            "function Ws(e,t){if(e)return;",
+        )
+        .replace(
             "function OE(e){return T0=T0.then(()=>Ji.renderSyntheticFrame(e-Ji.__testing.getFrameDiagnostics().globalElapsedTime)),T0}",
             "function OE(e){return Ji.getFailureReason()?T0:(T0=T0.then(()=>Ji.renderSyntheticFrame(e-Ji.__testing.getFrameDiagnostics().globalElapsedTime)),T0)}",
         )
@@ -881,8 +886,8 @@ fn soften_webgpu_shader_guard(hf: &Path) {
             "if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
         )
         .replace(
-            "if(e)return;",
-            "if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
+            "let e=Ji.getFailureReason();if(e)return;",
+            "let e=Ji.getFailureReason();if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
         );
     if next != js {
         let _ = fs::write(&path, next);
@@ -918,6 +923,7 @@ fn mount_overlay(
     fs::write(
         dir.join("hyperframes").join(&own_src),
         source
+            .replace(" data-requires-webgpu", "")
             .replace(&format!("\"{block}\""), &format!("\"{own}\""))
             .replace(&format!("'{block}'"), &format!("'{own}'")),
     )?;
@@ -948,6 +954,76 @@ fn mount_overlay(
     Ok(Some(json!({"name":overlay,"block":block,"src":own_src,"start":overlay_start,"duration":overlay_duration})))
 }
 
+fn section_backdrop_span(track: &Value, scope: &Value, composed: &Value, html: &str) -> (f64, f64) {
+    let anchor = composed["song_anchor"].as_f64().unwrap_or(0.0);
+    let dur = composed["authored_duration"].as_f64().unwrap_or(0.0);
+    let secs = track["sections"].as_array();
+    let pos = secs.and_then(|s| {
+        s.iter()
+            .position(|sec| sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"])
+    });
+    let start = if pos == Some(0) { 0.0 } else { anchor };
+    let next_start = match (secs, pos) {
+        (Some(s), Some(i)) => s.get(i + 1).and_then(|n| n["start"].as_f64()),
+        _ => None,
+    };
+    let comp_dur = html
+        .split("data-duration=\"")
+        .nth(1)
+        .and_then(|v| v.split('"').next())
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(anchor + dur);
+    let end = next_start.unwrap_or_else(|| comp_dur.max(anchor + dur));
+    (start, (end - start).max(dur))
+}
+
+fn mount_section_backdrop(
+    s: &Session,
+    dir: &Path,
+    id: &str,
+    read: &Value,
+    composed: &Value,
+    track: &Value,
+    html: &mut String,
+    root: usize,
+    w: u64,
+    h: u64,
+) -> Option<Value> {
+    let anim = &read["document"]["animations"][0];
+    let asset_id = anim["background_asset"].as_str()?;
+    let name = crate::words_stage::stage_backdrop_file(s, dir, asset_id).ok()?;
+    let (start, duration) = section_backdrop_span(track, &anim["scope"], composed, html);
+    html.insert_str(
+        root,
+        &format!(
+            "<img id=\"{id}-backdrop\" class=\"clip lyric-backdrop-clip\" data-magicstudio-words=\"{id}\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.6}\" data-duration=\"{duration:.6}\" data-track-index=\"1\" style=\"position:absolute;inset:0;width:{w}px;height:{h}px;object-fit:cover;z-index:1\">\n"
+        ),
+    );
+    Some(json!({"asset_id":asset_id,"src":format!("compositions/words/backdrops/{name}"),"start":start,"duration":duration}))
+}
+
+fn insert_section_hide_style(html: &mut String, id: &str, clips: &[String], has_backdrop: bool) -> Result<()> {
+    if clips.is_empty() && !has_backdrop {
+        return Ok(());
+    }
+    let head = html
+        .find("</head>")
+        .ok_or_else(|| invalid("The video's index.html has no </head>; nothing written"))?;
+    let mut selectors = clips.to_vec();
+    if has_backdrop {
+        selectors.push("#animation".to_owned());
+    }
+    selectors.push(".caption".to_owned());
+    html.insert_str(
+        head,
+        &format!(
+            "<style data-magicstudio-words=\"{id}\">{} {{ visibility: hidden !important; }}</style>\n",
+            selectors.join(", ")
+        ),
+    );
+    Ok(())
+}
+
 pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let index = dir.join("hyperframes/index.html");
@@ -973,18 +1049,8 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
             .flat_map(|sec| sec["clips"].as_array().cloned().unwrap_or_default())
             .filter_map(|c| c["clip_id"].as_str().map(|c| format!("#{c}")))
             .collect();
-        if !clips.is_empty() {
-            let head = html
-                .find("</head>")
-                .ok_or_else(|| invalid("The video's index.html has no </head>; nothing written"))?;
-            html.insert_str(
-                head,
-                &format!(
-                    "<style data-magicstudio-words=\"{id}\">{}, .caption {{ visibility: hidden !important; }}</style>\n",
-                    clips.join(", ")
-                ),
-            );
-        }
+        let has_backdrop = read["document"]["animations"][0]["background_asset"].is_string();
+        insert_section_hide_style(&mut html, id, &clips, has_backdrop)?;
         let root = html
             .find("data-composition-id=")
             .and_then(|at| html[at..].find('>').map(|e| at + e + 1))
@@ -1027,6 +1093,9 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
         receipt["drawings"] = composed["drawings"].clone();
         if let Some(ov) = mount_overlay(s, &dir, id, &read, &mut html, root, track_index, w, h)? {
             receipt["overlay"] = ov;
+        }
+        if let Some(bg) = mount_section_backdrop(s, &dir, id, &read, &composed, &track, &mut html, root, w, h) {
+            receipt["backdrop"] = bg;
         }
         receipt["src"] = composed["src"].clone();
         receipt["start"] = composed["song_anchor"].clone();
