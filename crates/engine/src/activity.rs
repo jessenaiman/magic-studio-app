@@ -145,59 +145,86 @@ fn root(event: &Value) -> String {
         .map(str::to_owned)
         .unwrap_or_else(|| format!("legacy-{}", event["sequence"]))
 }
-/// Keep the three most recently triggered action groups independently for every project.
-fn retain(rows: Vec<Value>) -> Vec<Value> {
-    let mut groups = HashMap::<String, Vec<String>>::new();
-    let mut assigned = Vec::<Value>::new();
+/// A request id's project, for rows that recognised one before it was dropped as noise.
+fn request_projects(rows: &[Value]) -> HashMap<String, String> {
     let mut destinations = HashMap::<String, String>::new();
-    for event in &rows {
-        if let Some(id) = event["request_id"].as_str() {
-            let p = project(event);
-            if p != "unassigned" {
-                destinations.insert(id.into(), p);
-            }
-        }
-    }
-    for mut event in rows {
-        if event["kind"] == "cursor" {
+    for event in rows {
+        let Some(id) = event["request_id"].as_str() else {
             continue;
-        }
-        if event["stage"] == "handler_dispatch" && event["request_id"].is_null() {
-            continue;
-        }
-        if let Some(id) = event["request_id"].as_str()
-            && let Some(p) = destinations.get(id)
-        {
-            event["project"] = json!(p);
-        }
-        if event["stage"] == "frontend_ack"
-            && event["request_id"].is_null()
-            && let Some(prior) = assigned.iter().rev().find(|p| {
-                p["command"] == event["command"]
-                    && project(p) == project(&event)
-                    && p["request_id"].is_string()
-            })
-        {
-            event["request_id"] = prior["request_id"].clone();
-        }
-        let p = project(&event);
-        event["project"] = if p == "unassigned" {
-            Value::Null
-        } else {
-            json!(p)
         };
-        let key = root(&event);
-        event["root_request_id"] = json!(key);
-        let roots = groups.entry(p).or_default();
-        if !roots.contains(&key) {
-            roots.push(key);
+        let p = project(event);
+        if p != "unassigned" {
+            destinations.insert(id.into(), p);
         }
-        assigned.push(event);
     }
-    let keep: HashMap<String, HashSet<String>> = groups
+    destinations
+}
+
+/// Cursors and orphaned dispatch stages carry no action of their own.
+fn is_noise(event: &Value) -> bool {
+    event["kind"] == "cursor"
+        || (event["stage"] == "handler_dispatch" && event["request_id"].is_null())
+}
+
+fn adopt_project(event: &mut Value, destinations: &HashMap<String, String>) {
+    if let Some(id) = event["request_id"].as_str()
+        && let Some(p) = destinations.get(id)
+    {
+        event["project"] = json!(p);
+    }
+}
+
+/// A legacy acknowledgement joins the last retained root with the same command and project.
+fn adopt_request(event: &mut Value, assigned: &[Value]) {
+    if event["stage"] != "frontend_ack" || !event["request_id"].is_null() {
+        return;
+    }
+    let prior = assigned.iter().rev().find(|p| {
+        p["command"] == event["command"]
+            && project(p) == project(event)
+            && p["request_id"].is_string()
+    });
+    if let Some(prior) = prior {
+        event["request_id"] = prior["request_id"].clone();
+    }
+}
+
+/// Stamp the row's project and root, and remember that root under the project.
+fn stamp_row(
+    event: &mut Value,
+    destinations: &HashMap<String, String>,
+    assigned: &[Value],
+    groups: &mut HashMap<String, Vec<String>>,
+) {
+    adopt_project(event, destinations);
+    adopt_request(event, assigned);
+    let p = project(event);
+    event["project"] = if p == "unassigned" {
+        Value::Null
+    } else {
+        json!(p)
+    };
+    let key = root(event);
+    event["root_request_id"] = json!(key);
+    let roots = groups.entry(p).or_default();
+    if !roots.contains(&key) {
+        roots.push(key);
+    }
+}
+
+/// The three most recent roots of every project, as project → roots.
+fn kept_roots(groups: HashMap<String, Vec<String>>) -> HashMap<String, HashSet<String>> {
+    groups
         .into_iter()
         .map(|(p, roots)| (p, roots.into_iter().rev().take(3).collect()))
-        .collect();
+        .collect()
+}
+
+/// The newest 64 stages of every retained root, oldest first.
+fn select_recent(
+    assigned: Vec<Value>,
+    keep: &HashMap<String, HashSet<String>>,
+) -> Vec<Value> {
     let mut counts = HashMap::<(String, String), usize>::new();
     let mut selected = Vec::new();
     for event in assigned.into_iter().rev() {
@@ -214,6 +241,113 @@ fn retain(rows: Vec<Value>) -> Vec<Value> {
     selected.reverse();
     selected
 }
+
+/// Keep the three most recently triggered action groups independently for every project.
+fn retain(rows: Vec<Value>) -> Vec<Value> {
+    let destinations = request_projects(&rows);
+    let mut groups = HashMap::<String, Vec<String>>::new();
+    let mut assigned = Vec::<Value>::new();
+    for mut event in rows {
+        if is_noise(&event) {
+            continue;
+        }
+        stamp_row(&mut event, &destinations, &assigned, &mut groups);
+        assigned.push(event);
+    }
+    select_recent(assigned, &kept_roots(groups))
+}
+
+/// Create the directory with owner-only access and refuse a symlinked receipt file.
+fn prepare_access(path: &std::path::Path, dir: &std::path::Path) -> std::io::Result<()> {
+    fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    }
+    if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(std::io::Error::other(
+            "activity state must not be a symlink",
+        ));
+    }
+    Ok(())
+}
+
+/// The receipt file, exclusively locked, readable and writable by this user only.
+fn locked_receipt(path: &std::path::Path) -> std::io::Result<fs::File> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
+    file.lock()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+
+fn parse_lines(text: &str) -> Vec<Value> {
+    text.lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+fn max_sequence(rows: &[Value]) -> u64 {
+    rows.iter()
+        .filter_map(|v| v["sequence"].as_u64())
+        .max()
+        .unwrap_or(0)
+}
+
+/// Legacy acknowledgements can be associated only when command and project match a retained root.
+fn adopt_legacy_ack(event: &mut Value, rows: &[Value]) {
+    if !event["request_id"].is_null() || event["stage"] != "frontend_ack" {
+        return;
+    }
+    let previous = rows.iter().rev().find(|v| {
+        v["command"] == event["command"]
+            && project(v) == project(event)
+            && v["request_id"].is_string()
+    });
+    if let Some(previous) = previous {
+        event["request_id"] = previous["request_id"].clone();
+    }
+}
+
+/// A row that now knows its project fills the blank project on earlier rows of the same request.
+fn fill_blank_projects(rows: &mut [Value], event: &Value) {
+    let Some(request) = event["request_id"].as_str() else {
+        return;
+    };
+    if project(event) == "unassigned" {
+        return;
+    }
+    for old in rows {
+        if old["request_id"].as_str() == Some(request) && old["project"].is_null() {
+            old["project"] = event["project"].clone();
+        }
+    }
+}
+
+fn write_rows(file: &mut fs::File, rows: &[Value]) -> std::io::Result<()> {
+    let bytes = rows
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("
+")
+        + "
+";
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(bytes.as_bytes())?;
+    file.set_len(bytes.len() as u64)?;
+    file.sync_data()
+}
+
 pub fn append(mut event: Value) {
     if event["stage"] == "handler_dispatch" && event["request_id"].is_null() {
         return;
@@ -225,64 +359,16 @@ pub fn append(mut event: Value) {
         return;
     };
     let result = (|| -> std::io::Result<()> {
-        fs::create_dir_all(dir)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
-        }
-        if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
-            return Err(std::io::Error::other(
-                "activity state must not be a symlink",
-            ));
-        }
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
-        file.lock()?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        }
+        prepare_access(&path, dir)?;
+        let mut file = locked_receipt(&path)?;
         let mut text = String::new();
         file.read_to_string(&mut text)?;
-        let mut rows: Vec<Value> = text
-            .lines()
-            .filter_map(|l| serde_json::from_str(l).ok())
-            .collect();
-        let sequence = rows
-            .iter()
-            .filter_map(|v| v["sequence"].as_u64())
-            .max()
-            .unwrap_or(0)
-            + 1;
+        let mut rows = parse_lines(&text);
+        let sequence = max_sequence(&rows) + 1;
         event["sequence"] = json!(sequence);
         event["unix_micros"] = json!(now());
-        // Legacy acknowledgements can be associated only when command and project match a retained root.
-        if event["request_id"].is_null()
-            && event["stage"] == "frontend_ack"
-            && let Some(previous) = rows.iter().rev().find(|v| {
-                v["command"] == event["command"]
-                    && project(v) == project(&event)
-                    && v["request_id"].is_string()
-            })
-        {
-            event["request_id"] = previous["request_id"].clone();
-        }
-        if let Some(request) = event["request_id"].as_str() {
-            let p = project(&event);
-            if p != "unassigned" {
-                for old in &mut rows {
-                    if old["request_id"].as_str() == Some(request) && old["project"].is_null() {
-                        old["project"] = event["project"].clone();
-                    }
-                }
-            }
-        }
+        adopt_legacy_ack(&mut event, &rows);
+        fill_blank_projects(&mut rows, &event);
         if let Some(history) = history_path().filter(|_| notable(&event)) {
             remember(&history, &event)?;
         }
@@ -291,17 +377,7 @@ pub fn append(mut event: Value) {
         }
         let mut rows = retain(rows);
         rows.push(json!({"kind":"cursor","sequence":sequence}));
-        let bytes = rows
-            .iter()
-            .map(Value::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
-            + "\n";
-        file.seek(SeekFrom::Start(0))?;
-        file.write_all(bytes.as_bytes())?;
-        file.set_len(bytes.len() as u64)?;
-        file.sync_data()?;
-        Ok(())
+        write_rows(&mut file, &rows)
     })();
     if let Err(error) = result {
         eprintln!("activity receipt unavailable: {error}");
@@ -386,35 +462,25 @@ pub fn result(project: Option<&std::path::Path>, id: &str, value: &Value, elapse
         json!({"project":project,"project_id":project,"command":id,"command_id":context["_request_id"],"request_id":context["_request_id"],"stage":"command_result","elapsed_ms":elapsed_ms,"outputs":outputs,"ui_ack":"not implied by engine completion"}),
     );
 }
-pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
-    let (text, history) = if let Some(path) = path() {
-        if let Ok(mut file) = OpenOptions::new().read(true).open(path) {
-            file.lock_shared()?;
-            let mut text = String::new();
-            file.read_to_string(&mut text)?;
-            (
-                text,
-                history_path().map(|p| read_rows(&p)).unwrap_or_default(),
-            )
-        } else {
-            (String::new(), Vec::new())
-        }
-    } else {
-        (String::new(), Vec::new())
+/// The receipt text and the long-lived history, both empty when neither exists.
+fn read_log() -> crate::Result<(String, Vec<Value>)> {
+    let Some(path) = path() else {
+        return Ok((String::new(), Vec::new()));
     };
-    let all: Vec<Value> = text
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
-    let global = all
-        .iter()
-        .filter_map(|v| v["sequence"].as_u64())
-        .max()
-        .unwrap_or(0);
-    let rows = retain(all);
-    let cursor = p["after"].as_u64().unwrap_or(0);
-    let limit = p["limit"].as_u64().unwrap_or(100).clamp(1, 192) as usize;
-    let selected = p["project"]
+    let Ok(mut file) = OpenOptions::new().read(true).open(path) else {
+        return Ok((String::new(), Vec::new()));
+    };
+    file.lock_shared()?;
+    let mut text = String::new();
+    file.read_to_string(&mut text)?;
+    Ok((
+        text,
+        history_path().map(|p| read_rows(&p)).unwrap_or_default(),
+    ))
+}
+
+fn selected_project(s: &crate::Session, p: &Value) -> Option<String> {
+    p["project"]
         .as_str()
         .map(str::to_owned)
         .or_else(|| {
@@ -422,14 +488,13 @@ pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
                 .as_ref()
                 .map(|v| v.to_string_lossy().into_owned())
         })
-        .map(|v| project(&json!({"project":v})));
-    let matching: Vec<Value> = rows
-        .into_iter()
-        .filter(|v| selected.as_ref().is_none_or(|p| project(v) == *p))
-        .collect();
-    let first = matching.first().and_then(|v| v["sequence"].as_u64());
+        .map(|v| project(&json!({"project":v})))
+}
+
+/// One action per retained root: its first stage, its latest stage and the stages between.
+fn group_actions(matching: &[Value]) -> crate::Result<Vec<Value>> {
     let mut actions = Vec::<Value>::new();
-    for event in &matching {
+    for event in matching {
         let key = root(event);
         if let Some(action) = actions
             .iter_mut()
@@ -448,25 +513,49 @@ pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
             actions.push(json!({"root_request_id":key,"project":event["project"],"first_sequence":event["sequence"],"last_sequence":event["sequence"],"events":[event]}));
         }
     }
-    let history: Vec<Value> = history
+    Ok(actions)
+}
+
+/// The next cursor is the last event sent when more remain, otherwise the newest sequence.
+fn next_cursor(events: &[Value], cursor: u64, global: u64, more: bool) -> u64 {
+    if !more {
+        return global;
+    }
+    events
+        .last()
+        .and_then(|v| v["sequence"].as_u64())
+        .unwrap_or(cursor)
+}
+
+fn after(rows: Vec<Value>, selected: Option<&String>) -> Vec<Value> {
+    rows.into_iter()
+        .filter(|v| selected.is_none_or(|p| project(v) == *p))
+        .collect()
+}
+
+fn newer_than(rows: Vec<Value>, selected: Option<&String>, cursor: u64) -> Vec<Value> {
+    after(rows, selected)
         .into_iter()
-        .filter(|v| selected.as_ref().is_none_or(|p| project(v) == *p))
         .filter(|v| v["sequence"].as_u64().unwrap_or(0) > cursor)
-        .collect();
+        .collect()
+}
+
+pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
+    let (text, history) = read_log()?;
+    let all = parse_lines(&text);
+    let global = max_sequence(&all);
+    let rows = retain(all);
+    let cursor = p["after"].as_u64().unwrap_or(0);
+    let limit = p["limit"].as_u64().unwrap_or(100).clamp(1, 192) as usize;
+    let selected = selected_project(s, p);
+    let matching = after(rows, selected.as_ref());
+    let first = matching.first().and_then(|v| v["sequence"].as_u64());
+    let actions = group_actions(&matching)?;
+    let history = newer_than(history, selected.as_ref(), cursor);
     let history = history[history.len().saturating_sub(limit)..].to_vec();
-    let pending: Vec<Value> = matching
-        .into_iter()
-        .filter(|v| v["sequence"].as_u64().unwrap_or(0) > cursor)
-        .collect();
+    let pending = newer_than(matching, selected.as_ref(), cursor);
     let events: Vec<Value> = pending.iter().take(limit).cloned().collect();
-    let next = if pending.len() > events.len() {
-        events
-            .last()
-            .and_then(|v| v["sequence"].as_u64())
-            .unwrap_or(cursor)
-    } else {
-        global
-    };
+    let next = next_cursor(&events, cursor, global, pending.len() > events.len());
     Ok(
         json!({"ok":true,"events":events,"actions":actions,"next_cursor":next,"latest_global_cursor":global,"retained_from":first,"cursor_expired":cursor>global||first.is_some_and(|v|cursor>0&&cursor+1<v),"history":history,"project":selected,"retention":"three root actions per project; up to 64 recent causal stages per action; excess stages omitted; history keeps the last 512 saves, generations, keyframe edits, errors and page selection reports across projects","polling":"read-only snapshot; no actions consumed"}),
     )
