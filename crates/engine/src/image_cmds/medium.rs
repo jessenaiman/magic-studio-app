@@ -16,17 +16,8 @@ pub(crate) fn catalog() -> Value {
     ])
 }
 
-pub fn cmd_image_apply_medium(s: &mut Session, p: &Value) -> Result<Value> {
+fn resolve_medium_settings(p: &Value, medium_id: &str) -> Result<(String, Value)> {
     let invalid = |message: &str| EngineError::InvalidParams(message.into());
-    let source = crate::workspace::resolve_workspace_path(
-        s,
-        p["source"]
-            .as_str()
-            .ok_or_else(|| invalid("source image is required"))?,
-    )
-    .canonicalize()?;
-    image::image_dimensions(&source)?;
-    let medium_id = p["medium"].as_str().unwrap_or("cutout");
     let mediums = catalog();
     let medium = mediums
         .as_array()
@@ -41,6 +32,24 @@ pub fn cmd_image_apply_medium(s: &mut Session, p: &Value) -> Result<Value> {
             settings[key] = value.clone();
         }
     }
+    Ok((
+        medium["command"].as_str().unwrap_or_default().to_owned(),
+        settings,
+    ))
+}
+
+pub fn cmd_image_apply_medium(s: &mut Session, p: &Value) -> Result<Value> {
+    let invalid = |message: &str| EngineError::InvalidParams(message.into());
+    let source = crate::workspace::resolve_workspace_path(
+        s,
+        p["source"]
+            .as_str()
+            .ok_or_else(|| invalid("source image is required"))?,
+    )
+    .canonicalize()?;
+    image::image_dimensions(&source)?;
+    let medium_id = p["medium"].as_str().unwrap_or("cutout");
+    let (command, settings) = resolve_medium_settings(p, medium_id)?;
     let root = crate::workshop::project_dir(s)?.canonicalize()?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -61,7 +70,7 @@ pub fn cmd_image_apply_medium(s: &mut Session, p: &Value) -> Result<Value> {
     }
     args.extend([
         "--cmd".into(),
-        medium["command"].as_str().unwrap_or_default().into(),
+        command,
         "--params".into(),
         settings.to_string(),
         "--out".into(),
