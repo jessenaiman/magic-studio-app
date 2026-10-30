@@ -1149,6 +1149,8 @@ fn headless_dispatch(
     Ok(out)
 }
 
+mod text_matches;
+
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--headless") {
         std::process::exit(run_headless());
@@ -1163,7 +1165,7 @@ fn main() {
         .manage(project_dispatch::Pending::default())
         .manage(feedback::Feedback::default())
         .manage(bridge::Pending::default())
-        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
+        .invoke_handler(tauri::generate_handler![text_matches::text_matches, backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
         .setup(|app| {
             #[cfg(unix)]
             if let Some(path)=launch_options()["project"].as_str() {
