@@ -67,6 +67,171 @@ pub(super) fn styles() -> Value {
     ])
 }
 
+/// The panel lines a kind starts from before any caller description replaces them.
+fn default_panels(kind: &str, action: &ActionTemplate) -> Vec<String> {
+    match kind {
+        "turnaround" => vec![
+            "Front | Front view".into(),
+            "Right profile | Facing right".into(),
+            "Back | Back view".into(),
+            "Left profile | Facing left".into(),
+        ],
+        "skeleton" => vec!["Assembled reference | Complete asset in the reference pose".into()],
+        _ => action.panels.clone(),
+    }
+}
+
+/// `label | drawing direction`, split and trimmed; a line without `|` describes itself.
+fn split_label(text: &str) -> (String, String) {
+    let (label, description) = text.split_once('|').unwrap_or((text, text));
+    (label.trim().to_string(), description.trim().to_string())
+}
+
+/// One caller-supplied panel line, rejected when it is empty, too long or half empty.
+fn parse_panel_line(item: &Value) -> Result<(String, String)> {
+    let text = item
+        .as_str()
+        .filter(|s| !s.trim().is_empty() && s.len() <= 400)
+        .ok_or_else(|| {
+            invalid("Each panel needs 1 to 400 bytes: label | drawing direction")
+        })?;
+    let (label, description) = split_label(text);
+    if label.is_empty() || description.is_empty() {
+        return Err(invalid(
+            "Panel labels and drawing directions cannot be empty",
+        ));
+    }
+    Ok((label, description))
+}
+
+/// The ordered panel descriptions for this sheet, from the caller or the action template.
+fn panel_definitions(
+    kind: &str,
+    action: &ActionTemplate,
+    p: &Value,
+) -> Result<Vec<(String, String)>> {
+    let defaults = default_panels(kind, action);
+    let definitions: Vec<(String, String)> = match p.get("panels") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(parse_panel_line)
+            .collect::<Result<_>>()?,
+        None | Some(Value::Null) => defaults.iter().map(|text| split_label(text)).collect(),
+        _ => return Err(invalid("panels must be an ordered array of descriptions")),
+    };
+    if definitions.is_empty() || definitions.len() > 16 {
+        return Err(invalid(
+            "Specify 1 to 16 ordered panels; custom motion needs your frame descriptions",
+        ));
+    }
+    Ok(definitions)
+}
+
+fn columns_for(kind: &str, panels: usize) -> u32 {
+    if kind == "turnaround" {
+        4
+    } else {
+        (panels as u32).min(4)
+    }
+}
+
+fn checked_fps(p: &Value) -> Result<u64> {
+    let fps = p["fps"].as_u64().unwrap_or(12);
+    if !(1..=60).contains(&fps) {
+        return Err(invalid("fps must be 1 to 60"));
+    }
+    Ok(fps)
+}
+
+fn checked_hold(p: &Value, action: &ActionTemplate) -> Result<u64> {
+    let hold = p["hold_frames"]
+        .as_u64()
+        .unwrap_or(u64::from(action.hold_frames));
+    if !(1..=120).contains(&hold) {
+        return Err(invalid("hold_frames must be 1 to 120"));
+    }
+    Ok(hold)
+}
+
+/// Lay the descriptions out left to right, top to bottom, inside the 2048 canvas.
+fn build_panels(
+    definitions: Vec<(String, String)>,
+    columns: u32,
+    rows: u32,
+    hold: u64,
+) -> Vec<Panel> {
+    definitions
+        .into_iter()
+        .enumerate()
+        .map(|(i, (label, description))| {
+            let x = 48 + i as u32 % columns * (1952 / columns);
+            let y = 48 + i as u32 / columns * (1952 / rows);
+            let cell = [x, y, x + 1952 / columns, y + 1952 / rows];
+            let box_px = [x + 24, y + 88, cell[2] - 24, cell[3] - 32];
+            Panel {
+                label,
+                description,
+                cell,
+                box_px,
+                baseline: box_px[3] - 24,
+                hold_frames: hold as u32,
+            }
+        })
+        .collect()
+}
+
+const GUIDE_LINE: image::Rgb<u8> = image::Rgb([82, 101, 121]);
+const GUIDE_DASH: image::Rgb<u8> = image::Rgb([216, 224, 230]);
+
+/// A three pixel border inside the panel cell.
+fn draw_cell_border(image: &mut image::RgbImage, [x, y, r, b]: [u32; 4]) {
+    for xx in x..r {
+        for d in 0..3 {
+            image.put_pixel(xx, y + d, GUIDE_LINE);
+            image.put_pixel(xx, b - 1 - d, GUIDE_LINE);
+        }
+    }
+    for yy in y..b {
+        for d in 0..3 {
+            image.put_pixel(x + d, yy, GUIDE_LINE);
+            image.put_pixel(r - 1 - d, yy, GUIDE_LINE);
+        }
+    }
+}
+
+/// A dashed safe-area box: eight on, eight off.
+fn draw_dashed_box(image: &mut image::RgbImage, [l, t, rr, bb]: [u32; 4]) {
+    for xx in (l..rr).filter(|xx| (xx - l) % 16 < 8) {
+        image.put_pixel(xx, t, GUIDE_DASH);
+        image.put_pixel(xx, bb, GUIDE_DASH);
+    }
+    for yy in (t..bb).filter(|yy| (yy - t) % 16 < 8) {
+        image.put_pixel(l, yy, GUIDE_DASH);
+        image.put_pixel(rr, yy, GUIDE_DASH);
+    }
+}
+
+/// The short baseline ticks either side of the text box.
+fn draw_baseline_marks(image: &mut image::RgbImage, [l, _, r, _]: [u32; 4], baseline: u32) {
+    for xx in (l - 20..l - 4).chain(r + 4..r + 20) {
+        for d in 0..3 {
+            image.put_pixel(xx, baseline + d, GUIDE_LINE);
+        }
+    }
+}
+
+/// One `type.create` step per panel, on the blank guide, written to `png`.
+fn label_args(panels: &[Panel], blank: &Path, png: &Path) -> Vec<String> {
+    let mut args = vec!["run".into(), blank.to_string_lossy().into_owned()];
+    for (i, p) in panels.iter().enumerate() {
+        args.extend(["--cmd".into(),"type.create".into(),"--params".into(),json!({
+            "text":format!("{}. {}",i+1,p.label),"box":[p.cell[0]+12,p.cell[1]+8,p.cell[2]-p.cell[0]-24,64],
+            "size":24,"color":"#263b50"}).to_string()]);
+    }
+    args.extend(["--out".into(), png.to_string_lossy().into_owned()]);
+    args
+}
+
 impl SheetLayout {
     pub fn new(kind: &str, p: &Value) -> Result<Self> {
         if kind == "poses" && p.get("action_rows").is_some() {
@@ -79,83 +244,12 @@ impl SheetLayout {
             .ok_or_else(|| {
                 invalid("Choose a motion from assets.sheet_plan motions, or use custom")
             })?;
-        let defaults = match kind {
-            "turnaround" => vec![
-                "Front | Front view".into(),
-                "Right profile | Facing right".into(),
-                "Back | Back view".into(),
-                "Left profile | Facing left".into(),
-            ],
-            "skeleton" => vec!["Assembled reference | Complete asset in the reference pose".into()],
-            _ => action.panels,
-        };
-        let definitions: Vec<(String, String)> = match p.get("panels") {
-            Some(Value::Array(items)) => items
-                .iter()
-                .map(|item| {
-                    let text = item
-                        .as_str()
-                        .filter(|s| !s.trim().is_empty() && s.len() <= 400)
-                        .ok_or_else(|| {
-                            invalid("Each panel needs 1 to 400 bytes: label | drawing direction")
-                        })?;
-                    let (label, description) = text.split_once('|').unwrap_or((text, text));
-                    if label.trim().is_empty() || description.trim().is_empty() {
-                        return Err(invalid(
-                            "Panel labels and drawing directions cannot be empty",
-                        ));
-                    }
-                    Ok((label.trim().to_owned(), description.trim().to_owned()))
-                })
-                .collect::<Result<_>>()?,
-            None | Some(Value::Null) => defaults
-                .into_iter()
-                .map(|text| {
-                    let (label, description) = text.split_once('|').unwrap_or((&text, &text));
-                    (label.trim().into(), description.trim().into())
-                })
-                .collect(),
-            _ => return Err(invalid("panels must be an ordered array of descriptions")),
-        };
-        if definitions.is_empty() || definitions.len() > 16 {
-            return Err(invalid(
-                "Specify 1 to 16 ordered panels; custom motion needs your frame descriptions",
-            ));
-        }
-        let columns = if kind == "turnaround" {
-            4
-        } else {
-            (definitions.len() as u32).min(4)
-        };
+        let definitions = panel_definitions(kind, &action, p)?;
+        let columns = columns_for(kind, definitions.len());
         let rows = (definitions.len() as u32).div_ceil(columns);
-        let fps = p["fps"].as_u64().unwrap_or(12);
-        if !(1..=60).contains(&fps) {
-            return Err(invalid("fps must be 1 to 60"));
-        }
-        let hold = p["hold_frames"]
-            .as_u64()
-            .unwrap_or(u64::from(action.hold_frames));
-        if !(1..=120).contains(&hold) {
-            return Err(invalid("hold_frames must be 1 to 120"));
-        }
-        let panels = definitions
-            .into_iter()
-            .enumerate()
-            .map(|(i, (label, description))| {
-                let x = 48 + i as u32 % columns * (1952 / columns);
-                let y = 48 + i as u32 / columns * (1952 / rows);
-                let cell = [x, y, x + 1952 / columns, y + 1952 / rows];
-                let box_px = [x + 24, y + 88, cell[2] - 24, cell[3] - 32];
-                Panel {
-                    label,
-                    description,
-                    cell,
-                    box_px,
-                    baseline: box_px[3] - 24,
-                    hold_frames: hold as u32,
-                }
-            })
-            .collect();
+        let fps = checked_fps(p)?;
+        let hold = checked_hold(p, &action)?;
+        let panels = build_panels(definitions, columns, rows, hold);
         Ok(Self {
             schema_version: 1,
             kind: kind.into(),
@@ -281,43 +375,13 @@ impl SheetLayout {
             image::Rgb([255, 255, 255]),
         );
         for p in &self.panels {
-            let [x, y, r, b] = p.cell;
-            for xx in x..r {
-                for d in 0..3 {
-                    image.put_pixel(xx, y + d, image::Rgb([82, 101, 121]));
-                    image.put_pixel(xx, b - 1 - d, image::Rgb([82, 101, 121]));
-                }
-            }
-            for yy in y..b {
-                for d in 0..3 {
-                    image.put_pixel(x + d, yy, image::Rgb([82, 101, 121]));
-                    image.put_pixel(r - 1 - d, yy, image::Rgb([82, 101, 121]));
-                }
-            }
-            let [l, t, rr, bb] = p.box_px;
-            for xx in (l..rr).filter(|xx| (xx - l) % 16 < 8) {
-                image.put_pixel(xx, t, image::Rgb([216, 224, 230]));
-                image.put_pixel(xx, bb, image::Rgb([216, 224, 230]));
-            }
-            for yy in (t..bb).filter(|yy| (yy - t) % 16 < 8) {
-                image.put_pixel(l, yy, image::Rgb([216, 224, 230]));
-                image.put_pixel(rr, yy, image::Rgb([216, 224, 230]));
-            }
-            for xx in (p.box_px[0] - 20..p.box_px[0] - 4).chain(p.box_px[2] + 4..p.box_px[2] + 20) {
-                for d in 0..3 {
-                    image.put_pixel(xx, p.baseline + d, image::Rgb([82, 101, 121]));
-                }
-            }
+            draw_cell_border(&mut image, p.cell);
+            draw_dashed_box(&mut image, p.box_px);
+            draw_baseline_marks(&mut image, p.box_px, p.baseline);
         }
         let blank = png.with_extension("grid.png");
         image.save(&blank)?;
-        let mut args = vec!["run".into(), blank.to_string_lossy().into_owned()];
-        for (i, p) in self.panels.iter().enumerate() {
-            args.extend(["--cmd".into(),"type.create".into(),"--params".into(),json!({
-                "text":format!("{}. {}",i+1,p.label),"box":[p.cell[0]+12,p.cell[1]+8,p.cell[2]-p.cell[0]-24,64],
-                "size":24,"color":"#263b50"}).to_string()]);
-        }
-        args.extend(["--out".into(), png.to_string_lossy().into_owned()]);
+        let args = label_args(&self.panels, &blank, png);
         crate::workspace::run_tool_in(root, "photocraft-cli", &args)?;
         std::fs::remove_file(blank)?;
         Ok(())
