@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
 
 def build_pose_library(character_id: str) -> Dict[str, Any]:
     """Pose-library-design timing & joint rotations."""
@@ -330,6 +330,79 @@ def export_effectcraft_jsx_script(
     return out_jsx_path
 
 
+def _native_cutout_scene(rig_plan, pose_library, mode, speed, duration):
+    layers, controls = [], []
+    beats = _mode_beat_times(mode, speed)
+    for part in sorted(rig_plan["parts"], key=lambda p: p["layer"]):
+        pid, pivot = part["id"], [*part["pivot"], 0.0]
+        low, high = part["rotation"]
+        keys = []
+        for time, pose in beats:
+            rotation = (
+                pose_library["poses"]
+                .get(pose, {})
+                .get("parts", {})
+                .get(pid, {})
+                .get("rotation", 0.0)
+            )
+            keys.append(
+                [
+                    time,
+                    0.0 if mode == "static" else max(low, min(high, float(rotation))),
+                ]
+            )
+        authored = part.get("effectcraft", {})
+        properties = {
+            "transform/rotation": {"keys": keys, "expression": 'loopOut("cycle")'}
+        }
+        properties.update(authored.get("properties", {}))
+        layer = dict(
+            id=pid,
+            file=str(Path(part["full_layer_path"]).resolve()),
+            anchor=pivot,
+            position=pivot,
+            properties=properties,
+        )
+        if part.get("parent"):
+            layer["parent"] = part["parent"]
+        layer.update({k: authored[k] for k in ("puppet", "sketch") if k in authored})
+        layers.append(layer)
+        controls.extend(
+            [
+                dict(layer=pid, path="transform/rotation", name=f"{pid}_rotation"),
+                dict(layer=pid, media=True, name=f"{pid}_media"),
+            ]
+        )
+    canvas = [int(v) + int(v) % 2 for v in rig_plan["canvas_size"]]
+    return dict(
+        name=f"{rig_plan['character_id']}_cutout_rig",
+        canvas=canvas,
+        fps=24,
+        duration=duration,
+        layers=layers,
+        controls=controls,
+    )
+
+
+def _render_effectcraft(project, output, *options, required=True):
+    output.parent.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [
+            project.executable,
+            "--project",
+            str(project.path),
+            *options,
+            "--out",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    if required and result.returncode:
+        raise RuntimeError(result.stderr or result.stdout)
+
+
 def build_effectcraft_cutout_animation(
     rig_plan: Dict[str, Any],
     pose_library: Dict[str, Any],
@@ -340,266 +413,81 @@ def build_effectcraft_cutout_animation(
     out_mp4: Optional[Path] = None,
     out_jsx: Optional[Path] = None,
 ) -> Dict[str, Any]:
+    from time import time_ns
+
+    try:
+        from .effectcraft_scene import SceneBuilder
+        from .effectcraft_project import NativeProject
+    except ImportError:
+        from effectcraft_scene import SceneBuilder
+        from effectcraft_project import NativeProject
+
     cid = rig_plan["character_id"]
-    w, h = rig_plan["canvas_size"]
-    comp_w, comp_h = int(w) + (int(w) % 2), int(h) + (int(h) % 2)
-    comp_dur = max(0.5, float(duration))
-    ecproj_path = out_dir / f"{cid}_cutout_rig.ecproj"
-    ectemplate_path = out_dir / f"{cid}_cutout_rig.ectemplate"
-    values_json_path = out_dir / f"{cid}_values.json"
-    mp4_path = (
+    out_dir = Path(out_dir).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    duration = max(0.5, float(duration))
+    spec = _native_cutout_scene(rig_plan, pose_library, mode, speed, duration)
+    source = out_dir / f"{cid}_scene.json"
+    source.write_text(json.dumps(spec, indent=2) + "\n")
+    built = SceneBuilder(source, out_dir / "native" / str(time_ns())).build()
+    project = NativeProject(built["source"])
+    jsx = Path(out_jsx).resolve() if out_jsx else out_dir / f"{cid}_cutout_rig.jsx"
+    export_effectcraft_jsx_script(
+        rig_plan, pose_library, jsx, mode=mode, speed=speed, duration=duration
+    )
+    values = out_dir / f"{cid}_values.json"
+    values.write_text(
+        json.dumps(
+            {f"{p['id']}_media": p["full_layer_path"] for p in rig_plan["parts"]},
+            indent=2,
+        )
+        + "\n"
+    )
+    frame0 = out_dir / f"{cid}_ec_cutout_frame0.png"
+    frame1 = out_dir / f"{cid}_ec_cutout_frame1.png"
+    beats = _mode_beat_times(mode, speed)
+    peak = min(duration * 0.5, beats[1][0] if len(beats) > 1 else 0.35)
+    for frame, time in [(frame0, 0), (frame1, peak)]:
+        _render_effectcraft(
+            project, frame, "render-frame", "--time", str(time), "--transparent"
+        )
+    alpha = out_dir / f"{cid}_effectcraft_cutout_alpha.webm"
+    _render_effectcraft(
+        project,
+        alpha,
+        "render",
+        "--format",
+        "webm",
+        "--channels",
+        "rgba",
+        required=False,
+    )
+    video = (
         Path(out_mp4).resolve()
         if out_mp4
-        else (out_dir / f"{cid}_effectcraft_cutout.mp4")
+        else out_dir / f"{cid}_effectcraft_cutout.mp4"
     )
-    jsx_path = (
-        Path(out_jsx).resolve() if out_jsx else (out_dir / f"{cid}_cutout_rig.jsx")
-    )
-    frame0_path = out_dir / f"{cid}_ec_cutout_frame0.png"
-    frame1_path = out_dir / f"{cid}_ec_cutout_frame1.png"
-    webm_alpha_path = out_dir / f"{cid}_effectcraft_cutout_alpha.webm"
-
-    export_effectcraft_jsx_script(
-        rig_plan, pose_library, jsx_path, mode=mode, speed=speed, duration=comp_dur
-    )
-    parts_sorted = sorted(rig_plan["parts"], key=lambda p: p["layer"])
-    ec_bin = shutil.which("effectcraft-cli") or "effectcraft-cli"
-    comp_name = f"{cid}_cutout_rig"
-    run_args: List[str] = [
-        ec_bin,
-        "--empty",
-        "run",
-        "comp.new",
-        json.dumps(
-            {
-                "name": comp_name,
-                "width": comp_w,
-                "height": comp_h,
-                "duration": comp_dur,
-                "frameRate": 24,
-            }
-        ),
-        "essential.setPrimary",
-        json.dumps({"comp": comp_name}),
-        "essential.setName",
-        json.dumps({"comp": comp_name, "name": f"{cid} Reusable Cutout Template"}),
+    _render_effectcraft(project, video, "render", "--format", "h264")
+    followed = [
+        p["id"]
+        for p in rig_plan["parts"]
+        if p.get("effectcraft", {}).get("puppet", {}).get("follow")
     ]
-    template_values: Dict[str, Any] = {}
-    secondary_follow_parts: List[str] = []
-
-    for part in parts_sorted:
-        pid = part["id"]
-        px, py = float(part["pivot"][0]), float(part["pivot"][1])
-        media_ctrl = f"{pid}_media"
-        rot_ctrl = f"{pid}_rotation"
-        run_args.extend(
-            [
-                "file.import",
-                json.dumps(
-                    {
-                        "paths": [part["full_layer_path"]],
-                        "sequence": False,
-                        "addToComp": True,
-                    }
-                ),
-                "layer.rename",
-                json.dumps({"name": pid}),
-                "prop.set",
-                json.dumps(
-                    {"layer": pid, "path": "transform/anchor", "value": [px, py, 0.0]}
-                ),
-                "prop.set",
-                json.dumps(
-                    {"layer": pid, "path": "transform/position", "value": [px, py, 0.0]}
-                ),
-                "essential.addProperty",
-                json.dumps(
-                    {"layer": pid, "path": "transform/rotation", "name": rot_ctrl}
-                ),
-                "essential.addMedia",
-                json.dumps({"layer": pid, "name": media_ctrl}),
-            ]
-        )
-        template_values[media_ctrl] = part["full_layer_path"]
-
-    for part in parts_sorted:
-        if part.get("parent"):
-            run_args.extend(
-                [
-                    "layer.setParent",
-                    json.dumps(
-                        {
-                            "layers": [part["id"]],
-                            "parent": part["parent"],
-                            "compensate": True,
-                        }
-                    ),
-                ]
-            )
-
-    beat_times = _mode_beat_times(mode, speed)
-    poses = pose_library["poses"]
-    for part in parts_sorted:
-        pid = part["id"]
-        r_min, r_max = part["rotation"]
-        for t_sec, pose_name in beat_times:
-            rot_val = (
-                0.0
-                if mode == "static"
-                else float(
-                    poses.get(pose_name, {})
-                    .get("parts", {})
-                    .get(pid, {})
-                    .get("rotation", 0.0)
-                )
-            )
-            run_args.extend(
-                [
-                    "prop.addKey",
-                    json.dumps(
-                        {
-                            "layer": pid,
-                            "path": "transform/rotation",
-                            "time": t_sec,
-                            "value": max(float(r_min), min(float(r_max), rot_val)),
-                        }
-                    ),
-                ]
-            )
-        run_args.extend(
-            [
-                "prop.setExpression",
-                json.dumps(
-                    {
-                        "layer": pid,
-                        "path": "transform/rotation",
-                        "expression": 'loopOut("cycle")',
-                    }
-                ),
-            ]
-        )
-
-    run_args.extend(
-        [
-            "essential.exportTemplate",
-            json.dumps(
-                {
-                    "comp": comp_name,
-                    "path": str(ectemplate_path),
-                    "name": f"{cid}_cutout_rig",
-                }
-            ),
-            "--save-as",
-            str(ecproj_path),
-            "--json",
-        ]
+    return dict(
+        ecproj_path=built["source"],
+        ectemplate_path=built["template"],
+        values_json_path=str(values),
+        secondary_follow_parts=followed,
+        jsx_path=str(jsx),
+        webm_alpha_path=str(alpha) if alpha.is_file() else None,
+        mp4_path=str(video),
+        frame0_path=str(frame0),
+        frame1_path=str(frame1),
+        mode=mode,
+        speed=speed,
+        duration=duration,
+        mp4_bytes=video.stat().st_size,
     )
-    proc = subprocess.run(run_args, capture_output=True, text=True, timeout=60)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"effectcraft-cli rig build failed: {proc.stderr or proc.stdout}"
-        )
-
-    from effectcraft_project import NativeProject
-    from effectcraft_motion import animate
-
-    native = NativeProject(ecproj_path, ec_bin)
-    for part in parts_sorted:
-        authored = part.get("effectcraft", {})
-        if authored:
-            animate(native, part["id"], authored)
-            if authored.get("puppet", {}).get("follow"):
-                secondary_follow_parts.append(part["id"])
-    native.command("essential.exportTemplate", comp=comp_name, path=str(ectemplate_path),
-                   name=f"{cid}_cutout_rig")
-
-    values_json_path.write_text(
-        json.dumps(template_values, indent=2) + "\n", encoding="utf-8"
-    )
-    mp4_path.parent.mkdir(parents=True, exist_ok=True)
-    peak_time = (
-        f"{min(comp_dur * 0.5, beat_times[1][0] if len(beat_times) > 1 else 0.35):.2f}"
-    )
-    subprocess.run(
-        [
-            ec_bin,
-            "--project",
-            str(ecproj_path),
-            "render-frame",
-            "--time",
-            "0.0",
-            "--transparent",
-            "--out",
-            str(frame0_path),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=30,
-    )
-    subprocess.run(
-        [
-            ec_bin,
-            "--project",
-            str(ecproj_path),
-            "render-frame",
-            "--time",
-            peak_time,
-            "--transparent",
-            "--out",
-            str(frame1_path),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=30,
-    )
-    subprocess.run(
-        [
-            ec_bin,
-            "--project",
-            str(ecproj_path),
-            "render",
-            "--out",
-            str(webm_alpha_path),
-            "--format",
-            "webm",
-            "--channels",
-            "rgba",
-        ],
-        check=False,
-        capture_output=True,
-        timeout=60,
-    )
-    subprocess.run(
-        [
-            ec_bin,
-            "--project",
-            str(ecproj_path),
-            "render",
-            "--out",
-            str(mp4_path),
-            "--format",
-            "h264",
-        ],
-        check=True,
-        capture_output=True,
-        timeout=60,
-    )
-
-    return {
-        "ecproj_path": str(ecproj_path),
-        "ectemplate_path": str(ectemplate_path) if ectemplate_path.exists() else None,
-        "values_json_path": str(values_json_path),
-        "secondary_follow_parts": secondary_follow_parts,
-        "jsx_path": str(jsx_path),
-        "webm_alpha_path": str(webm_alpha_path) if webm_alpha_path.exists() else None,
-        "mp4_path": str(mp4_path),
-        "frame0_path": str(frame0_path),
-        "frame1_path": str(frame1_path),
-        "mode": mode,
-        "speed": speed,
-        "duration": comp_dur,
-        "mp4_bytes": mp4_path.stat().st_size if mp4_path.exists() else 0,
-    }
 
 
 def render_ectemplate_with_values(
@@ -610,7 +498,11 @@ def render_ectemplate_with_values(
     channels: str = "rgb",
 ) -> Dict[str, Any]:
     """Render a reusable .ectemplate with a values.json override file via effectcraft-cli."""
-    ec_bin = shutil.which("effectcraft-cli") or "effectcraft-cli"
+    try:
+        from .effectcraft_project import effectcraft_cli
+    except ImportError:
+        from effectcraft_project import effectcraft_cli
+    ec_bin = effectcraft_cli()
     out_path = Path(out_path).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -740,24 +632,40 @@ def export_blender_python_script(
     for part in spec["parts"]:
         tail = rig_plan.get("joints", {}).get(part["id"], {}).get("rest_tail")
         if not isinstance(tail, (list, tuple)) or len(tail) != 2:
-            raise ValueError(f'{part["id"]}: joints.rest_tail must define the reviewed bone endpoint in canvas pixels')
+            raise ValueError(
+                f"{part['id']}: joints.rest_tail must define the reviewed bone endpoint in canvas pixels"
+            )
         tail = [float(v) for v in tail]
-        if not all(math.isfinite(v) for v in tail + part["pivot"]) or math.dist(tail, part["pivot"]) < 0.001:
-            raise ValueError(f'{part["id"]}: bone endpoints must be finite and distinct')
+        if (
+            not all(math.isfinite(v) for v in tail + part["pivot"])
+            or math.dist(tail, part["pivot"]) < 0.001
+        ):
+            raise ValueError(
+                f"{part['id']}: bone endpoints must be finite and distinct"
+            )
         part["restTail"] = tail
         visited, parent = {part["id"]}, part["parent"]
         while parent:
             if parent not in ids or parent in visited:
-                raise ValueError(f'{part["id"]}: missing or cyclic parent {parent}')
+                raise ValueError(f"{part['id']}: missing or cyclic parent {parent}")
             visited.add(parent)
             parent = parents[parent]
         part["fullLayerPath"] = str(Path(part["fullLayerPath"]).resolve(strict=True))
-    if not math.isfinite(speed) or speed <= 0 or not math.isfinite(duration) or duration <= 0:
-        raise ValueError("Blender animation speed and duration must be positive and finite")
+    if (
+        not math.isfinite(speed)
+        or speed <= 0
+        or not math.isfinite(duration)
+        or duration <= 0
+    ):
+        raise ValueError(
+            "Blender animation speed and duration must be positive and finite"
+        )
     sequence = pose_library.get("sequences", {}).get(mode)
     if not isinstance(sequence, list) or not sequence:
         raise ValueError(f"Missing authored animation sequence: {mode}")
-    spec["loop"] = bool(pose_library.get("loop", mode in {"idle", "walk", "run", "sway"}))
+    spec["loop"] = bool(
+        pose_library.get("loop", mode in {"idle", "walk", "run", "sway"})
+    )
     spec["beats"], cursor = [], 0.0
     for pose in sequence:
         if pose not in spec["poses"]:
@@ -773,7 +681,8 @@ def export_blender_python_script(
     runtime = Path(__file__).with_name("blender_cutout_rig.py").read_text()
     out_py_path.parent.mkdir(parents=True, exist_ok=True)
     out_py_path.write_text(
-        runtime + f"\nRIG_SPEC = json.loads({json.dumps(json.dumps(spec))})\n"
+        runtime
+        + f"\nRIG_SPEC = json.loads({json.dumps(json.dumps(spec))})\n"
         + f"build(RIG_SPEC, {str(Path(blend_path or out_py_path.with_suffix('.blend')).resolve())!r}, {str(Path(glb_path).resolve()) if glb_path else None!r})\n",
         encoding="utf-8",
     )

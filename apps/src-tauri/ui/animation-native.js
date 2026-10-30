@@ -5,16 +5,17 @@ function nativeAnimationDispose(){
  clearTimeout(session.timer);if(typeof blenderMediaFetch!=='undefined')blenderMediaFetch?.abort();if(typeof blenderMediaUrl!=='undefined'&&blenderMediaUrl){URL.revokeObjectURL(blenderMediaUrl);blenderMediaUrl=null;}session.video.pause();session.video.removeAttribute('src');session.video.load();session.dialog.close();session.dialog.remove();
 }
 async function nativeAnimationOpen(selection={}){
+ if(nativeAnimationSession?.dialog?.open)return;
  theatreRequireSaved();blenderDispose();
  const project=state.project,session={timer:null},current=()=>nativeAnimationSession===session&&state.project===project&&state.view==='animation';nativeAnimationSession=session;
  const field=(key,label,type='number')=>{const input=el('input',{id:`native-${key}`,type,step:'any','aria-label':label});return {input,node:el('label',{},label,input)}};
- const backend=el('select',{id:'native-backend','aria-label':'Native animation backend'},el('option',{value:'effectcraft'},'EffectCraft'),el('option',{value:'blender'},'Blender'),el('option',{value:'synfig'},'Synfig'),el('option',{value:'opentoonz'},'OpenToonz'),el('option',{value:'mlt'},'MLT assembly'));backend.value=selection.backend||'synfig';
+ const backend=el('select',{id:'native-backend','aria-label':'Native animation backend'},el('option',{value:'effectcraft'},'EffectCraft'),el('option',{value:'blender'},'Blender'),el('option',{value:'synfig'},'Synfig'),el('option',{value:'opentoonz'},'OpenToonz'),el('option',{value:'mlt'},'MLT assembly'));backend.value=selection.backend||'effectcraft';
  const source=field('source','Saved Synfig .sif / .sifz','text'),bundle=field('bundle','Dependency bundle (blank = backend default)','text');
  const optional=[['first_frame','First frame (inclusive)',0,18000],['last_frame','Last frame (inclusive)',0,18000],['fps','Frames per second',0.001,120],['width','Width (pixels)',2,4096],['height','Height (pixels)',2,4096]].map(([key,label,min,max])=>({key,min,max,...field(key,label)}));
  const timeline=field('timeline','Saved assembly timeline JSON','text'),blend=field('blend','Saved Blender .blend','text');
  const blenderFields=[['max_frames','Maximum frames',1,18000],['resolution_percent','Resolution percent',10,100]].map(([key,label,min,max])=>({key,min,max,...field(key,label)}));
  const ecSource=field('effectcraft-source','Saved EffectCraft .ecproj','text'),ecComp=field('effectcraft-comp','Composition (blank = saved selection)','text');
- const ecFields=[['first_frame','First frame (inclusive)',0,18000],['last_frame','Last frame (inclusive)',0,18000]].map(([key,label,min,max])=>({key,min,max,...field(`effectcraft-${key}`,label)}));ecFields.forEach((f,i)=>f.key=['first_frame','last_frame'][i]);
+ const ecFields=[['first_frame','First frame (inclusive)',0,18000],['last_frame','Last frame (inclusive)',0,18000]].map(([key,label,min,max])=>({key,min,max,...field(`effectcraft-${key}`,label)}));
  const tnz=field('tnz','Saved OpenToonz .tnz','text');
  const toonzFields=[['first','First scene frame (one-based)',1,Number.MAX_SAFE_INTEGER],['last','Last scene frame (inclusive)',1,Number.MAX_SAFE_INTEGER],['step','Frame step (held at scene FPS)',1,Number.MAX_SAFE_INTEGER],['shrink','Shrink divisor',1,16]].map(([key,label,min,max])=>({key,min,max,...field(key,label)}));
  const threads={key:'nthreads',...field('nthreads','Threads (positive integer, single, half or all)','text')};toonzFields.push(threads);

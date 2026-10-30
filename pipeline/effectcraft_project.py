@@ -29,15 +29,34 @@ def nodes(tree):
             yield from nodes(child)
 
 
+def effectcraft_cli():
+    explicit = os.environ.get("EFFECTCRAFT_CLI")
+    if explicit:
+        return explicit
+    home = Path.home() / ".local/share"
+    try:
+        installed = json.loads((home / "artcraft-launcher/installed.json").read_text())
+        version = installed["apps"]["effectcraft"]["version"]
+        tool = home / "effectcraft" / version / "effectcraft-cli"
+        if tool.is_file():
+            return str(tool)
+    except (OSError, ValueError, KeyError):
+        pass
+    return "effectcraft-cli"
+
+
 class NativeProject:
     def __init__(self, path, executable=None):
         self.path = Path(path).resolve()
-        self.executable = executable or os.environ.get("EFFECTCRAFT_CLI", "effectcraft-cli")
+        self.executable = executable or effectcraft_cli()
         self.receipts = []
 
     def call(self, *args):
-        result = subprocess.run(
-            [self.executable, *map(str, args)], capture_output=True, text=True, timeout=180
+        result = subprocess.run(  # noqa: S603 -- Native CLI argv, without a shell.
+            [self.executable, *map(str, args)],
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
         if result.returncode:
             raise RuntimeError((result.stderr or result.stdout).strip())
@@ -50,13 +69,19 @@ class NativeProject:
         # One argument per line preserves exact JSON and avoids the shell/ARG_MAX.
         with tempfile.TemporaryDirectory(prefix="effectcraft-commands-") as temporary:
             args = Path(temporary) / "arguments.txt"
-            args.write_text("\n".join(
-                part for command, params in commands
-                for part in (command, json.dumps(params, allow_nan=False))
-            ) + "\n")
+            args.write_text(
+                "\n".join(
+                    part
+                    for command, params in commands
+                    for part in (command, json.dumps(params, allow_nan=False))
+                )
+                + "\n"
+            )
             prefix = ["--empty"] if new else ["--project", self.path]
             target = Path(destination or self.path)
-            result = self.call(*prefix, "run", "--args-file", args, "--save-as", target, "--json")
+            result = self.call(
+                *prefix, "run", "--args-file", args, "--save-as", target, "--json"
+            )
         rows = result["result"]
         if len(rows) != len(commands):
             raise RuntimeError("EffectCraft returned an incomplete command receipt")
@@ -79,8 +104,14 @@ class NativeProject:
     def enum_options(self, layer, path):
         # Older CLI property replies omit enum labels; the native saved UI retains them.
         prop = self.call("get", "-", layer, path, "--project", self.path, "--json")
-        node = next((n for n in nodes(json.loads(self.path.read_text()))
-                     if n.get("uid") == prop["uid"]), {})
+        node = next(
+            (
+                n
+                for n in nodes(json.loads(self.path.read_text()))
+                if n.get("uid") == prop["uid"]
+            ),
+            {},
+        )
         return node.get("ui", {}).get("options", [])
 
     def inspect(self):
@@ -88,12 +119,32 @@ class NativeProject:
         comp = info.get("activeComp")
         layers = []
         for layer in (comp or {}).get("layers", []):
-            props = self.call("props", "-", layer["id"], "--flat", "--project", self.path, "--json")
-            layers.append(dict(
-                id=layer["id"], name=layer["name"], type=layer["type"],
-                properties=props["properties"],
-                clips=self.enum_options(layer["id"], "geometryOptions/animation")
-                if layer["type"] == "3D Model" else [],
-            ))
-        return dict(source=str(self.path), sha256=digest(self.path),
-                    version=info["version"], composition=comp, layers=layers)
+            props = self.call(
+                "props", "-", layer["id"], "--flat", "--project", self.path, "--json"
+            )
+            layers.append(
+                dict(
+                    id=layer["id"],
+                    name=layer["name"],
+                    type=layer["type"],
+                    properties=props["properties"],
+                    clips=self.enum_options(layer["id"], "geometryOptions/animation")
+                    if layer["type"] == "3D Model"
+                    else [],
+                )
+            )
+        controls = self.call(
+            "exec", "essential.list", "--params", "{}", "--project", self.path, "--json"
+        )
+        errors = self.call(
+            "exec", "expr.errors", "--params", "{}", "--project", self.path, "--json"
+        )
+        return dict(
+            source=str(self.path),
+            sha256=digest(self.path),
+            version=info["version"],
+            composition=comp,
+            layers=layers,
+            controls=controls,
+            expression_errors=errors,
+        )
