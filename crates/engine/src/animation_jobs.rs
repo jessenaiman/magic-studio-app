@@ -357,79 +357,122 @@ pub(crate) fn require_worker_invocation(request: &Value) -> Result<()> {
 }
 
 /// Only the headless helper evaluates legacy motion; never attach a Studio project here.
-pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
+fn require_headless_session(s: &Session) -> Result<()> {
     if s.project_path.is_some() {
         return Err(invalid(
             "Preparation requires a separate headless worker session",
         ));
     }
-    let path = PathBuf::from(
+    Ok(())
+}
+
+fn request_path(p: &Value) -> Result<PathBuf> {
+    Ok(PathBuf::from(
         p["request"]
             .as_str()
             .ok_or_else(|| invalid("request is required"))?,
-    );
-    let request = read_json(&path)?;
-    require_worker_invocation(&request)?;
-    let mut asset: crate::ProjectAsset =
-        serde_json::from_value(request["asset"].clone()).map_err(|e| invalid(e.to_string()))?;
-    let spec = asset
-        .path
-        .clone()
-        .ok_or_else(|| invalid("Missing rig path"))?;
-    let bytes = read_bytes(&spec)?;
+    ))
+}
+
+/// The rig file, its hash and its parsed contents.
+fn read_rig(spec: &Path) -> Result<(Vec<u8>, Value, String)> {
+    let bytes = read_bytes(spec)?;
     let hash = format!("{:x}", Sha256::digest(&bytes));
-    let mut raw: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-    let base = spec
-        .parent()
-        .ok_or_else(|| invalid("Missing rig directory"))?;
-    let snapshot = path.with_file_name("rig-snapshot");
-    fs::create_dir_all(&snapshot)?;
-    fs::write(snapshot.join("original-rig.json"), bytes)?;
-    let resolve = |value: &mut Value| {
-        if let Some(text) = value.as_str().filter(|v| !v.is_empty()) {
-            let original = PathBuf::from(text);
-            *value = json!(if original.is_absolute() {
-                original
-            } else {
-                base.join(original)
-            });
-        }
+    let raw: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+    Ok((bytes, raw, hash))
+}
+
+/// A rig path field is relative to the rig spec unless it is already absolute.
+fn resolve_relative(base: &Path, value: &mut Value) {
+    let Some(text) = value.as_str().filter(|v| !v.is_empty()) else {
+        return;
     };
+    let original = PathBuf::from(text);
+    *value = json!(if original.is_absolute() {
+        original
+    } else {
+        base.join(original)
+    });
+}
+
+/// Snapshot reads the rig from beside the spec, so keep every media path absolute.
+fn resolve_rig_paths(raw: &mut Value, base: &Path) {
     for key in [
         "source",
         "source_image",
         "photocraft_psd",
         "cutout_asset_sheet",
     ] {
-        resolve(&mut raw[key]);
+        resolve_relative(base, &mut raw[key]);
     }
     if let Some(layers) = raw["layers"].as_array_mut() {
         for layer in layers {
-            resolve(&mut layer["file"]);
+            resolve_relative(base, &mut layer["file"]);
         }
     }
     if let Some(parts) = raw["parts"].as_array_mut() {
         for part in parts {
             for key in ["cropped_path", "full_layer_path"] {
-                resolve(&mut part[key]);
+                resolve_relative(base, &mut part[key]);
             }
         }
     }
-    if let Some(layers) = raw["layers"].as_object() {
-        for id in layers.keys() {
-            if id.is_empty()
-                || !id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
-            {
-                return Err(invalid("Unsafe keyed layer id"));
-            }
-            fs::copy(
-                base.join(format!("{id}.png")),
-                snapshot.join(format!("{id}.png")),
-            )?;
+}
+
+fn safe_layer_id(id: &str) -> bool {
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+}
+
+/// Keyed layers are copied by name, so the name must be one that cannot escape the snapshot.
+fn copy_keyed_layers(raw: &Value, base: &Path, snapshot: &Path) -> Result<()> {
+    let Some(layers) = raw["layers"].as_object() else {
+        return Ok(());
+    };
+    for id in layers.keys() {
+        if !safe_layer_id(id) {
+            return Err(invalid("Unsafe keyed layer id"));
         }
+        fs::copy(
+            base.join(format!("{id}.png")),
+            snapshot.join(format!("{id}.png")),
+        )?;
     }
+    Ok(())
+}
+
+/// Evaluate the motion against the isolated snapshot, never against the live project.
+fn write_sample(
+    path: &Path,
+    isolated: &mut Session,
+    motion: &Value,
+    hash: &str,
+    spec: &Path,
+) -> Result<()> {
+    let mut meta = crate::motion::cmd_motion_tracks(isolated, motion)?;
+    let sample = crate::motion::cmd_motion_sample(isolated, motion)?;
+    meta["rig_sha256"] = json!(hash);
+    meta["spec"] = json!(spec);
+    write_json(
+        &path.with_file_name("sample.json"),
+        &json!({"meta":meta,"sample":sample}),
+    )
+}
+
+/// Snapshot the rig beside the request, then evaluate the motion against that copy.
+fn prepare_rig(path: &Path, request: &Value, mut asset: crate::ProjectAsset) -> Result<()> {
+    let spec = asset
+        .path
+        .clone()
+        .ok_or_else(|| invalid("Missing rig path"))?;
+    let (bytes, mut raw, hash) = read_rig(&spec)?;
+    let base = spec
+        .parent()
+        .ok_or_else(|| invalid("Missing rig directory"))?;
+    let snapshot = path.with_file_name("rig-snapshot");
+    fs::create_dir_all(&snapshot)?;
+    fs::write(snapshot.join("original-rig.json"), bytes)?;
+    resolve_rig_paths(&mut raw, base);
+    copy_keyed_layers(&raw, base, &snapshot)?;
     let snapshot_path = snapshot.join("rig.json");
     write_json(&snapshot_path, &raw)?;
     asset.path = Some(snapshot_path);
@@ -437,90 +480,143 @@ pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
         project_assets: vec![asset],
         ..Session::default()
     };
-    let mut meta = crate::motion::cmd_motion_tracks(&mut isolated, &request["motion"])?;
-    let sample = crate::motion::cmd_motion_sample(&mut isolated, &request["motion"])?;
-    meta["rig_sha256"] = json!(hash);
-    meta["spec"] = json!(spec);
-    write_json(
-        &path.with_file_name("sample.json"),
-        &json!({"meta":meta,"sample":sample}),
-    )?;
+    write_sample(path, &mut isolated, &request["motion"], &hash, &spec)
+}
+
+pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
+    require_headless_session(s)?;
+    let path = request_path(p)?;
+    let request = read_json(&path)?;
+    require_worker_invocation(&request)?;
+    let asset: crate::ProjectAsset =
+        serde_json::from_value(request["asset"].clone()).map_err(|e| invalid(e.to_string()))?;
+    prepare_rig(&path, &request, asset)?;
     Ok(json!({"ok":true,"prepared":true}))
 }
-pub fn cmd_start_scene_job(s: &mut Session, p: &Value) -> Result<Value> {
-    let mut request = json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
-        "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]});
-    if ["blend", "rig_plan", "volume_plan"].iter().filter(|key| p[**key].is_string()).count() > 1 {
+
+fn scene_request(s: &Session, p: &Value) -> Result<Value> {
+    Ok(json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
+        "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]}))
+}
+
+/// One scene source per job: a blend, a rig plan or a volume plan.
+fn validate_scene_source(p: &Value) -> Result<()> {
+    let chosen = ["blend", "rig_plan", "volume_plan"]
+        .iter()
+        .filter(|key| p[**key].is_string())
+        .count();
+    if chosen > 1 {
         return Err(invalid("Choose one of blend, rig_plan or volume_plan"));
     }
-    if let Some(path) = p["volume_plan"].as_str() {
-        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        let bytes = read_bytes(&path)?;
-        let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-        if plan["slug"] != p["character"] || !p["character"].is_string() {
-            return Err(invalid("Volume construction requires character matching slug"));
-        }
-        let track = p["track"].as_str().ok_or_else(|| invalid("Choose turntable or an authored skeleton track"))?;
-        if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
-            return Err(invalid("Choose turntable or an authored skeleton track"));
-        }
-        request["volume_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-        request["duration"] = json!(bounded(p,"duration",4,1,600)?);
-        request["voxel_resolution"] = json!(bounded(p,"voxel_resolution",144,16,256)?);
-    } else if let Some(path) = p["rig_plan"].as_str() {
-        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        let bytes = read_bytes(&path)?;
-        let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-        if plan["character_id"] != p["character"] || !p["character"].is_string() {
-            return Err(invalid("character must match the rig plan's character_id"));
-        }
-        if !p["track"].is_string() || !plan["pose_library"]["poses"].is_object() {
-            return Err(invalid("Choose a track and include the authored pose_library in the rig plan"));
-        }
-        request["rig_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-        request["duration"] = json!(bounded(p,"duration",3,1,600)?);
-    } else if let Some(path) = p["blend"].as_str() {
-        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        if path.extension().is_none_or(|e| e != "blend") {
-            return Err(invalid("blend must be an existing .blend file"));
-        }
-        request["blend"] = json!(path);
-    } else {
-        let character = p["character"]
-            .as_str()
-            .ok_or_else(|| invalid("character is required for legacy migration"))?;
-        crate::motion_authoring::theatre_guard(
-            s,
-            character,
-            p["track"].as_str().filter(|id| !id.is_empty()),
-        )?;
-        let actions = cmd_animation_actions(s, p)?;
-        if !p["track"].is_string()
-            || !actions["tracks"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|t| t["id"] == p["track"])
-        {
-            return Err(invalid("Choose a saved animation track"));
-        }
-        request["asset"] =
-            serde_json::to_value(entry(s, p)?).map_err(|e| invalid(e.to_string()))?;
-        request["motion"] = json!({"character":p["character"],"track":p["track"],"fps":p["fps"].as_f64().unwrap_or(30.0)});
-        // Use the rig's authored rate unless explicitly overridden.
-        if p.get("fps").is_none()
-            && let Some(motion) = request["motion"].as_object_mut()
-        {
-            motion.remove("fps");
-        }
-        let exe = std::env::current_exe()?;
-        let executable = [exe.with_file_name("magic-cli")]
+    Ok(())
+}
+
+/// A plan file the job carries: its resolved path, bytes and parsed contents.
+fn read_plan(s: &Session, p: &Value, key: &str) -> Result<(PathBuf, Vec<u8>, Value)> {
+    let text = p[key]
+        .as_str()
+        .ok_or_else(|| invalid("A plan path is required"))?;
+    let path = crate::workspace::resolve_workspace_path(s, text).canonicalize()?;
+    let bytes = read_bytes(&path)?;
+    let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+    Ok((path, bytes, plan))
+}
+
+fn volume_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
+    let (path, bytes, plan) = read_plan(s, p, "volume_plan")?;
+    if plan["slug"] != p["character"] || !p["character"].is_string() {
+        return Err(invalid("Volume construction requires character matching slug"));
+    }
+    let track = p["track"]
+        .as_str()
+        .ok_or_else(|| invalid("Choose turntable or an authored skeleton track"))?;
+    if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
+        return Err(invalid("Choose turntable or an authored skeleton track"));
+    }
+    request["volume_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+    request["duration"] = json!(bounded(p,"duration",4,1,600)?);
+    request["voxel_resolution"] = json!(bounded(p,"voxel_resolution",144,16,256)?);
+    Ok(())
+}
+
+fn rig_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
+    let (path, bytes, plan) = read_plan(s, p, "rig_plan")?;
+    if plan["character_id"] != p["character"] || !p["character"].is_string() {
+        return Err(invalid("character must match the rig plan's character_id"));
+    }
+    if !p["track"].is_string() || !plan["pose_library"]["poses"].is_object() {
+        return Err(invalid(
+            "Choose a track and include the authored pose_library in the rig plan",
+        ));
+    }
+    request["rig_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+    request["duration"] = json!(bounded(p,"duration",3,1,600)?);
+    Ok(())
+}
+
+fn blend_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
+    let text = p["blend"]
+        .as_str()
+        .ok_or_else(|| invalid("blend must be an existing .blend file"))?;
+    let path = crate::workspace::resolve_workspace_path(s, text).canonicalize()?;
+    if path.extension().is_none_or(|e| e != "blend") {
+        return Err(invalid("blend must be an existing .blend file"));
+    }
+    request["blend"] = json!(path);
+    Ok(())
+}
+
+/// Legacy migration evaluates the project's saved motion, so it needs the theatre state
+/// to agree with disk and the same magic-cli binary beside the app.
+fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()> {
+    let character = p["character"]
+        .as_str()
+        .ok_or_else(|| invalid("character is required for legacy migration"))?;
+    crate::motion_authoring::theatre_guard(
+        s,
+        character,
+        p["track"].as_str().filter(|id| !id.is_empty()),
+    )?;
+    let actions = cmd_animation_actions(s, p)?;
+    if !p["track"].is_string()
+        || !actions["tracks"]
+            .as_array()
             .into_iter()
-            .find(|p| p.is_file())
-            .ok_or_else(|| {
-                invalid("Install magic beside Magic Studio to prepare legacy animations")
-            })?;
-        request["magic_cli"] = json!(executable);
+            .flatten()
+            .any(|t| t["id"] == p["track"])
+    {
+        return Err(invalid("Choose a saved animation track"));
+    }
+    request["asset"] = serde_json::to_value(entry(s, p)?).map_err(|e| invalid(e.to_string()))?;
+    request["motion"] = json!({"character":p["character"],"track":p["track"],"fps":p["fps"].as_f64().unwrap_or(30.0)});
+    // Use the rig's authored rate unless explicitly overridden.
+    if p.get("fps").is_none()
+        && let Some(motion) = request["motion"].as_object_mut()
+    {
+        motion.remove("fps");
+    }
+    let exe = std::env::current_exe()?;
+    let executable = [exe.with_file_name("magic-cli")]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            invalid("Install magic beside Magic Studio to prepare legacy animations")
+        })?;
+    request["magic_cli"] = json!(executable);
+    Ok(())
+}
+
+pub fn cmd_start_scene_job(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut request = scene_request(s, p)?;
+    validate_scene_source(p)?;
+    if p["volume_plan"].is_string() {
+        volume_plan_request(s, p, &mut request)?;
+    } else if p["rig_plan"].is_string() {
+        rig_plan_request(s, p, &mut request)?;
+    } else if p["blend"].is_string() {
+        blend_request(s, p, &mut request)?;
+    } else {
+        legacy_request(s, p, &mut request)?;
     }
     submit(s, p, request, "blender")
 }
