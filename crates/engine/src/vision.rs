@@ -1,7 +1,7 @@
 //! In-memory pixel analysis: `analyze_rgba_image` and `analyze_viewport_region` run without
 //! external screenshot/review steps, and `vision.analyze` dispatches them against a loaded asset.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::{EngineError, Result, Session};
 
@@ -182,42 +182,35 @@ pub fn analyze_viewport_region(rgba: &[u8], w: u32, h: u32, bg_colors: &[[u8; 3]
     })
 }
 
-/// Analyze a single image or all frames/parts of a loaded character asset.
-pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
-    if let Some(img_raw) = params.get("image").and_then(Value::as_str) {
-        let resolved = resolve_workspace_path(s, img_raw);
-        let img = image::open(&resolved)
-            .map_err(|e| {
-                EngineError::InvalidParams(format!("cannot open {}: {e}", resolved.display()))
-            })?
-            .into_rgba8();
-        let metrics = analyze_rgba_image(&img);
-        return Ok(json!({
-            "ok": true,
-            "command": "vision.analyze",
-            "mode": "single_image",
-            "path": resolved,
-            "vision": metrics,
-        }));
-    }
+fn vision_single_image(s: &Session, img_raw: &str) -> Result<Value> {
+    let resolved = resolve_workspace_path(s, img_raw);
+    let img = image::open(&resolved)
+        .map_err(|e| {
+            EngineError::InvalidParams(format!("cannot open {}: {e}", resolved.display()))
+        })?
+        .into_rgba8();
+    let metrics = analyze_rgba_image(&img);
+    Ok(json!({
+        "ok": true,
+        "command": "vision.analyze",
+        "mode": "single_image",
+        "path": resolved,
+        "vision": metrics,
+    }))
+}
 
-    let character = params
+fn vision_character_id(s: &Session, params: &Value) -> String {
+    params
         .get("character")
         .or_else(|| params.get("preset"))
         .or_else(|| params.get("asset"))
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| s.active_asset.clone())
-        .unwrap_or_else(|| "hopper".to_string());
+        .unwrap_or_else(|| "hopper".to_string())
+}
 
-    if !s.assets.contains_key(&character) {
-        let _ = crate::magic_design::cmd_asset_load_manifest(s, &json!({ "preset": character }));
-    }
-
-    let asset = s.assets.get(&character).cloned().ok_or_else(|| {
-        EngineError::InvalidParams(format!("character `{character}` could not be loaded"))
-    })?;
-
+fn vision_turnaround_views(asset: &crate::Asset) -> (Vec<Value>, Vec<i64>) {
     let mut turnaround_views = Vec::new();
     let mut foot_ys = Vec::new();
     if let Some(tm) = &asset.turnaround_manifest {
@@ -237,14 +230,20 @@ pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
             }
         }
     }
-    let measured_pixel_drift_y_px = if foot_ys.len() >= 2 {
+    (turnaround_views, foot_ys)
+}
+
+fn pixel_drift(foot_ys: &[i64]) -> Option<i64> {
+    if foot_ys.len() >= 2 {
         let min_fy = foot_ys.iter().copied().min().unwrap_or(0);
         let max_fy = foot_ys.iter().copied().max().unwrap_or(0);
         Some(max_fy - min_fy)
     } else {
         None
-    };
+    }
+}
 
+fn vision_pose_frames(asset: &crate::Asset) -> Vec<Value> {
     let mut pose_frames = Vec::new();
     let mut standing_foot_y: Option<i64> = None;
     if let Some(pm) = &asset.pose_manifest {
@@ -273,7 +272,10 @@ pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
             }
         }
     }
+    pose_frames
+}
 
+fn vision_part_layers(asset: &crate::Asset) -> Vec<Value> {
     let mut part_layers = Vec::new();
     let parts_source = asset
         .turnaround_manifest
@@ -295,7 +297,25 @@ pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
             }
         }
     }
+    part_layers
+}
 
+/// Analyze a single image or all frames/parts of a loaded character asset.
+pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
+    if let Some(img_raw) = params.get("image").and_then(Value::as_str) {
+        return vision_single_image(s, img_raw);
+    }
+    let character = vision_character_id(s, params);
+    if !s.assets.contains_key(&character) {
+        let _ = crate::magic_design::cmd_asset_load_manifest(s, &json!({ "preset": character }));
+    }
+    let asset = s.assets.get(&character).cloned().ok_or_else(|| {
+        EngineError::InvalidParams(format!("character `{character}` could not be loaded"))
+    })?;
+    let (turnaround_views, foot_ys) = vision_turnaround_views(&asset);
+    let measured_pixel_drift_y_px = pixel_drift(&foot_ys);
+    let pose_frames = vision_pose_frames(&asset);
+    let part_layers = vision_part_layers(&asset);
     Ok(json!({
         "ok": true,
         "command": "vision.analyze",
