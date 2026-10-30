@@ -217,6 +217,41 @@ fn add_clip_sheets(state: &mut Value, asset: &str, clips: &[Value]) -> Vec<Value
     }
     results
 }
+/// Record a clip stage for every clip the conversion is about to touch.
+fn announce_clips(s: &Session, pending: &[&Value], stage: &str, error: Option<&str>) {
+    for clip in pending {
+        clip_event(s, stage, clip, error);
+    }
+}
+
+/// A Theatre document with nothing in it, which the first conversion starts from.
+fn empty_state() -> Value {
+    json!({"definitionVersion":"0.4.0","revisionHistory":[],"sheetsById":{}})
+}
+
+/// The first conversion names its revision, so the history is never left empty.
+fn name_first_revision(state: &mut Value) {
+    if state["revisionHistory"]
+        .as_array()
+        .is_some_and(|r| r.is_empty())
+    {
+        state["revisionHistory"] = json!(["mc-clips-convert-0"]);
+    }
+}
+
+/// Persist the converted sheets, restoring the previous state and recording the failure if it cannot.
+fn commit_sheets(s: &mut Session, state: Value, pending: &[&Value]) -> Result<()> {
+    let previous = s.theatre_state.replace(state);
+    if let Err(error) = crate::project::write_project_file(s) {
+        s.theatre_state = previous;
+        if s.record_user_state {
+            announce_clips(s, pending, "clip_sheet_failed", Some(&error.to_string()));
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
 pub fn convert(s: &mut Session, params: &Value) -> Result<Value> {
     selected_project(s, params, false)?;
     let (asset, clips) = clips(s, params)?;
@@ -225,40 +260,20 @@ pub fn convert(s: &mut Session, params: &Value) -> Result<Value> {
         .filter(|c| c["status"] != "converted")
         .collect();
     if s.record_user_state {
-        for clip in &pending {
-            clip_event(s, "clip_sheet_started", clip, None);
-        }
+        announce_clips(s, &pending, "clip_sheet_started", None);
     }
-    let mut state = s.theatre_state.clone().unwrap_or_else(
-        || json!({"definitionVersion":"0.4.0","revisionHistory":[],"sheetsById":{}}),
-    );
+    let mut state = s.theatre_state.clone().unwrap_or_else(empty_state);
     let legacy_kept = state["sheetsById"].get(&asset).is_some();
     // New sheets start empty: Theatre holds only edits made in it, added on top of the engine
     // motion. A sampled copy of the engine motion goes stale the moment the rig changes.
     let results = add_clip_sheets(&mut state, &asset, &clips);
     let created = results.iter().filter(|r| r["created"] == true).count();
     if created > 0 {
-        if state["revisionHistory"]
-            .as_array()
-            .is_some_and(|r| r.is_empty())
-        {
-            state["revisionHistory"] = json!(["mc-clips-convert-0"]);
-        }
-        let previous = s.theatre_state.replace(state);
-        if let Err(error) = crate::project::write_project_file(s) {
-            s.theatre_state = previous;
-            if s.record_user_state {
-                for clip in &pending {
-                    clip_event(s, "clip_sheet_failed", clip, Some(&error.to_string()));
-                }
-            }
-            return Err(error);
-        }
+        name_first_revision(&mut state);
+        commit_sheets(s, state, &pending)?;
     }
     if s.record_user_state {
-        for clip in &pending {
-            clip_event(s, "clip_sheet_converted", clip, None);
-        }
+        announce_clips(s, &pending, "clip_sheet_converted", None);
     }
     Ok(
         json!({"ok":true,"character":asset,"created":created,"clips":results,"legacy_sheet_kept":legacy_kept}),
