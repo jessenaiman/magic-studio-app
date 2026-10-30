@@ -84,6 +84,16 @@ class Session:
         }
         _locked_save_json(self.session_file, state)
 
+    def _unavailable_message(self) -> str:
+        """Name the live windows for the pinned project; never rebind to one silently."""
+        message = "Pinned Studio is unavailable; no other window or file writer was selected. "
+        live = [x for x in backend.discover_studios()["sessions"]
+                if self.project_path and self.project_path in (x.get("canonical_project"), x.get("active_project"))]
+        if live:
+            found = ", ".join(f"pid {x.get('pid')} ({x.get('instance')})" for x in live)
+            return message + f"A live window has this project open: {found}. Reattach with: magic-cli studio open {self.project_path}"
+        return message + "No live window has this project open. Use project open or studio open to explicitly reattach."
+
     def bind_studio(self, live: dict[str, Any]) -> None:
         """Bind the session to a live Studio window receipt."""
         self._headless_error = None
@@ -181,8 +191,7 @@ class Session:
                     expected_project=self.project_path, expected_instance=self.studio_instance,
                 )
             except OSError as exc:
-                raise RuntimeError("Pinned Studio is unavailable; no other window or file writer was selected. "
-                                   "Use project open or studio open to explicitly reattach.") from exc
+                raise RuntimeError(self._unavailable_message()) from exc
         else:
             live = backend.studio_for_project(target) if target else None
             if live:
