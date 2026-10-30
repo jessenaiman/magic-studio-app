@@ -186,49 +186,55 @@ fn owner_observation(state: &Value, details: Option<&Value>, error: Option<Strin
     };
     json!({"worker_owner":owner,"worker_owner_status":if owner.is_null(){"idle"}else{"observed"},"worker_owner_error":error})
 }
+/// A unit the app itself started: the receiving state and the job name prefix must agree.
+fn names_worker_job(state: &Value) -> bool {
+    matches!(
+        state["ActiveState"].as_str(),
+        Some("active" | "activating" | "deactivating" | "reloading")
+    ) && state["Description"].as_str().is_some_and(|id| {
+        id.starts_with("magicstudio-blender-") || id.starts_with("magicstudio-native-")
+    })
+}
+
+/// The recorded owner, when its job, directory and invocation agree with the observed unit.
+fn owner_details(state: &Value) -> Result<Value> {
+    let owner = read_json(&owner_path()?)?;
+    if owner["job"] != state["Description"] {
+        return Err(invalid("Runtime owner does not match observed worker"));
+    }
+    let dir = Path::new(
+        owner["directory"]
+            .as_str()
+            .ok_or_else(|| invalid("Owner directory unavailable"))?,
+    );
+    let details = job_details(dir)?;
+    if details["job"] != state["Description"]
+        || (details["invocation_id"].is_string()
+            && details["invocation_id"] != state["InvocationID"])
+    {
+        return Err(invalid(
+            "Owner job/invocation does not match observed worker",
+        ));
+    }
+    Ok(details)
+}
+
 fn worker_owner(observed: &Result<Value>) -> Value {
-    match observed {
+    let state = match observed {
+        Ok(state) => state,
         Err(error) => {
-            json!({"worker_owner":Value::Null,"worker_owner_status":"unavailable","worker_owner_error":error.to_string()})
+            return json!({"worker_owner":Value::Null,"worker_owner_status":"unavailable","worker_owner_error":error.to_string()})
         }
-        Ok(state) if !occupied(state) => owner_observation(state, None, None),
-        Ok(state)
-            if !matches!(
-                state["ActiveState"].as_str(),
-                Some("active" | "activating" | "deactivating" | "reloading")
-            ) || !state["Description"].as_str().is_some_and(|id| {
-                id.starts_with("magicstudio-blender-") || id.starts_with("magicstudio-native-")
-            }) =>
-        {
-            json!({"worker_owner":Value::Null,"worker_owner_status":"unavailable","worker_owner_error":"No recognizable worker job identity/state was observed"})
-        }
-        Ok(state) => {
-            let details = (|| -> Result<Value> {
-                let owner = read_json(&owner_path()?)?;
-                if owner["job"] != state["Description"] {
-                    return Err(invalid("Runtime owner does not match observed worker"));
-                }
-                let dir = Path::new(
-                    owner["directory"]
-                        .as_str()
-                        .ok_or_else(|| invalid("Owner directory unavailable"))?,
-                );
-                let details = job_details(dir)?;
-                if details["job"] != state["Description"]
-                    || (details["invocation_id"].is_string()
-                        && details["invocation_id"] != state["InvocationID"])
-                {
-                    return Err(invalid(
-                        "Owner job/invocation does not match observed worker",
-                    ));
-                }
-                Ok(details)
-            })();
-            match details {
-                Ok(details) => owner_observation(state, Some(&details), None),
-                Err(error) => owner_observation(state, None, Some(error.to_string())),
-            }
-        }
+    };
+    if !occupied(state) {
+        return owner_observation(state, None, None);
+    }
+    if !names_worker_job(state) {
+        return json!({"worker_owner":Value::Null,"worker_owner_status":"unavailable","worker_owner_error":"No recognizable worker job identity/state was observed"});
+    }
+    match owner_details(state) {
+        Ok(details) => owner_observation(state, Some(&details), None),
+        Err(error) => owner_observation(state, None, Some(error.to_string())),
     }
 }
 fn add_owner(value: &mut Value, owner: &Value) {
@@ -351,79 +357,122 @@ pub(crate) fn require_worker_invocation(request: &Value) -> Result<()> {
 }
 
 /// Only the headless helper evaluates legacy motion; never attach a Studio project here.
-pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
+fn require_headless_session(s: &Session) -> Result<()> {
     if s.project_path.is_some() {
         return Err(invalid(
             "Preparation requires a separate headless worker session",
         ));
     }
-    let path = PathBuf::from(
+    Ok(())
+}
+
+fn request_path(p: &Value) -> Result<PathBuf> {
+    Ok(PathBuf::from(
         p["request"]
             .as_str()
             .ok_or_else(|| invalid("request is required"))?,
-    );
-    let request = read_json(&path)?;
-    require_worker_invocation(&request)?;
-    let mut asset: crate::ProjectAsset =
-        serde_json::from_value(request["asset"].clone()).map_err(|e| invalid(e.to_string()))?;
-    let spec = asset
-        .path
-        .clone()
-        .ok_or_else(|| invalid("Missing rig path"))?;
-    let bytes = read_bytes(&spec)?;
+    ))
+}
+
+/// The rig file, its hash and its parsed contents.
+fn read_rig(spec: &Path) -> Result<(Vec<u8>, Value, String)> {
+    let bytes = read_bytes(spec)?;
     let hash = format!("{:x}", Sha256::digest(&bytes));
-    let mut raw: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-    let base = spec
-        .parent()
-        .ok_or_else(|| invalid("Missing rig directory"))?;
-    let snapshot = path.with_file_name("rig-snapshot");
-    fs::create_dir_all(&snapshot)?;
-    fs::write(snapshot.join("original-rig.json"), bytes)?;
-    let resolve = |value: &mut Value| {
-        if let Some(text) = value.as_str().filter(|v| !v.is_empty()) {
-            let original = PathBuf::from(text);
-            *value = json!(if original.is_absolute() {
-                original
-            } else {
-                base.join(original)
-            });
-        }
+    let raw: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+    Ok((bytes, raw, hash))
+}
+
+/// A rig path field is relative to the rig spec unless it is already absolute.
+fn resolve_relative(base: &Path, value: &mut Value) {
+    let Some(text) = value.as_str().filter(|v| !v.is_empty()) else {
+        return;
     };
+    let original = PathBuf::from(text);
+    *value = json!(if original.is_absolute() {
+        original
+    } else {
+        base.join(original)
+    });
+}
+
+/// Snapshot reads the rig from beside the spec, so keep every media path absolute.
+fn resolve_rig_paths(raw: &mut Value, base: &Path) {
     for key in [
         "source",
         "source_image",
         "photocraft_psd",
         "cutout_asset_sheet",
     ] {
-        resolve(&mut raw[key]);
+        resolve_relative(base, &mut raw[key]);
     }
     if let Some(layers) = raw["layers"].as_array_mut() {
         for layer in layers {
-            resolve(&mut layer["file"]);
+            resolve_relative(base, &mut layer["file"]);
         }
     }
     if let Some(parts) = raw["parts"].as_array_mut() {
         for part in parts {
             for key in ["cropped_path", "full_layer_path"] {
-                resolve(&mut part[key]);
+                resolve_relative(base, &mut part[key]);
             }
         }
     }
-    if let Some(layers) = raw["layers"].as_object() {
-        for id in layers.keys() {
-            if id.is_empty()
-                || !id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
-            {
-                return Err(invalid("Unsafe keyed layer id"));
-            }
-            fs::copy(
-                base.join(format!("{id}.png")),
-                snapshot.join(format!("{id}.png")),
-            )?;
+}
+
+fn safe_layer_id(id: &str) -> bool {
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+}
+
+/// Keyed layers are copied by name, so the name must be one that cannot escape the snapshot.
+fn copy_keyed_layers(raw: &Value, base: &Path, snapshot: &Path) -> Result<()> {
+    let Some(layers) = raw["layers"].as_object() else {
+        return Ok(());
+    };
+    for id in layers.keys() {
+        if !safe_layer_id(id) {
+            return Err(invalid("Unsafe keyed layer id"));
         }
+        fs::copy(
+            base.join(format!("{id}.png")),
+            snapshot.join(format!("{id}.png")),
+        )?;
     }
+    Ok(())
+}
+
+/// Evaluate the motion against the isolated snapshot, never against the live project.
+fn write_sample(
+    path: &Path,
+    isolated: &mut Session,
+    motion: &Value,
+    hash: &str,
+    spec: &Path,
+) -> Result<()> {
+    let mut meta = crate::motion::cmd_motion_tracks(isolated, motion)?;
+    let sample = crate::motion::cmd_motion_sample(isolated, motion)?;
+    meta["rig_sha256"] = json!(hash);
+    meta["spec"] = json!(spec);
+    write_json(
+        &path.with_file_name("sample.json"),
+        &json!({"meta":meta,"sample":sample}),
+    )
+}
+
+/// Snapshot the rig beside the request, then evaluate the motion against that copy.
+fn prepare_rig(path: &Path, request: &Value, mut asset: crate::ProjectAsset) -> Result<()> {
+    let spec = asset
+        .path
+        .clone()
+        .ok_or_else(|| invalid("Missing rig path"))?;
+    let (bytes, mut raw, hash) = read_rig(&spec)?;
+    let base = spec
+        .parent()
+        .ok_or_else(|| invalid("Missing rig directory"))?;
+    let snapshot = path.with_file_name("rig-snapshot");
+    fs::create_dir_all(&snapshot)?;
+    fs::write(snapshot.join("original-rig.json"), bytes)?;
+    resolve_rig_paths(&mut raw, base);
+    copy_keyed_layers(&raw, base, &snapshot)?;
     let snapshot_path = snapshot.join("rig.json");
     write_json(&snapshot_path, &raw)?;
     asset.path = Some(snapshot_path);
@@ -431,96 +480,323 @@ pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
         project_assets: vec![asset],
         ..Session::default()
     };
-    let mut meta = crate::motion::cmd_motion_tracks(&mut isolated, &request["motion"])?;
-    let sample = crate::motion::cmd_motion_sample(&mut isolated, &request["motion"])?;
-    meta["rig_sha256"] = json!(hash);
-    meta["spec"] = json!(spec);
-    write_json(
-        &path.with_file_name("sample.json"),
-        &json!({"meta":meta,"sample":sample}),
-    )?;
+    write_sample(path, &mut isolated, &request["motion"], &hash, &spec)
+}
+
+pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
+    require_headless_session(s)?;
+    let path = request_path(p)?;
+    let request = read_json(&path)?;
+    require_worker_invocation(&request)?;
+    let asset: crate::ProjectAsset =
+        serde_json::from_value(request["asset"].clone()).map_err(|e| invalid(e.to_string()))?;
+    prepare_rig(&path, &request, asset)?;
     Ok(json!({"ok":true,"prepared":true}))
 }
-pub fn cmd_start_scene_job(s: &mut Session, p: &Value) -> Result<Value> {
-    let mut request = json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
-        "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]});
-    if ["blend", "rig_plan", "volume_plan"].iter().filter(|key| p[**key].is_string()).count() > 1 {
+
+fn scene_request(s: &Session, p: &Value) -> Result<Value> {
+    Ok(json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
+        "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]}))
+}
+
+/// One scene source per job: a blend, a rig plan or a volume plan.
+fn validate_scene_source(p: &Value) -> Result<()> {
+    let chosen = ["blend", "rig_plan", "volume_plan"]
+        .iter()
+        .filter(|key| p[**key].is_string())
+        .count();
+    if chosen > 1 {
         return Err(invalid("Choose one of blend, rig_plan or volume_plan"));
     }
-    if let Some(path) = p["volume_plan"].as_str() {
-        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        let bytes = read_bytes(&path)?;
-        let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-        if plan["slug"] != p["character"] || !p["character"].is_string() {
-            return Err(invalid("Volume construction requires character matching slug"));
-        }
-        let track = p["track"].as_str().ok_or_else(|| invalid("Choose turntable or an authored skeleton track"))?;
-        if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
-            return Err(invalid("Choose turntable or an authored skeleton track"));
-        }
-        request["volume_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-        request["duration"] = json!(bounded(p,"duration",4,1,600)?);
-        request["voxel_resolution"] = json!(bounded(p,"voxel_resolution",144,16,256)?);
-    } else if let Some(path) = p["rig_plan"].as_str() {
-        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        let bytes = read_bytes(&path)?;
-        let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-        if plan["character_id"] != p["character"] || !p["character"].is_string() {
-            return Err(invalid("character must match the rig plan's character_id"));
-        }
-        if !p["track"].is_string() || !plan["pose_library"]["poses"].is_object() {
-            return Err(invalid("Choose a track and include the authored pose_library in the rig plan"));
-        }
-        request["rig_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-        request["duration"] = json!(bounded(p,"duration",3,1,600)?);
-    } else if let Some(path) = p["blend"].as_str() {
-        let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        if path.extension().is_none_or(|e| e != "blend") {
-            return Err(invalid("blend must be an existing .blend file"));
-        }
-        request["blend"] = json!(path);
-    } else {
-        let character = p["character"]
-            .as_str()
-            .ok_or_else(|| invalid("character is required for legacy migration"))?;
-        crate::motion_authoring::theatre_guard(
-            s,
-            character,
-            p["track"].as_str().filter(|id| !id.is_empty()),
-        )?;
-        let actions = cmd_animation_actions(s, p)?;
-        if !p["track"].is_string()
-            || !actions["tracks"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|t| t["id"] == p["track"])
-        {
-            return Err(invalid("Choose a saved animation track"));
-        }
-        request["asset"] =
-            serde_json::to_value(entry(s, p)?).map_err(|e| invalid(e.to_string()))?;
-        request["motion"] = json!({"character":p["character"],"track":p["track"],"fps":p["fps"].as_f64().unwrap_or(30.0)});
-        // Use the rig's authored rate unless explicitly overridden.
-        if p.get("fps").is_none()
-            && let Some(motion) = request["motion"].as_object_mut()
-        {
-            motion.remove("fps");
-        }
-        let exe = std::env::current_exe()?;
-        let executable = [exe.with_file_name("magic-cli")]
+    Ok(())
+}
+
+/// A plan file the job carries: its resolved path, bytes and parsed contents.
+fn read_plan(s: &Session, p: &Value, key: &str) -> Result<(PathBuf, Vec<u8>, Value)> {
+    let text = p[key]
+        .as_str()
+        .ok_or_else(|| invalid("A plan path is required"))?;
+    let path = crate::workspace::resolve_workspace_path(s, text).canonicalize()?;
+    let bytes = read_bytes(&path)?;
+    let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+    Ok((path, bytes, plan))
+}
+
+fn volume_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
+    let (path, bytes, plan) = read_plan(s, p, "volume_plan")?;
+    if plan["slug"] != p["character"] || !p["character"].is_string() {
+        return Err(invalid("Volume construction requires character matching slug"));
+    }
+    let track = p["track"]
+        .as_str()
+        .ok_or_else(|| invalid("Choose turntable or an authored skeleton track"))?;
+    if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
+        return Err(invalid("Choose turntable or an authored skeleton track"));
+    }
+    request["volume_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+    request["duration"] = json!(bounded(p,"duration",4,1,600)?);
+    request["voxel_resolution"] = json!(bounded(p,"voxel_resolution",144,16,256)?);
+    Ok(())
+}
+
+fn rig_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
+    let (path, bytes, plan) = read_plan(s, p, "rig_plan")?;
+    if plan["character_id"] != p["character"] || !p["character"].is_string() {
+        return Err(invalid("character must match the rig plan's character_id"));
+    }
+    if !p["track"].is_string() || !plan["pose_library"]["poses"].is_object() {
+        return Err(invalid(
+            "Choose a track and include the authored pose_library in the rig plan",
+        ));
+    }
+    request["rig_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+    request["duration"] = json!(bounded(p,"duration",3,1,600)?);
+    Ok(())
+}
+
+fn blend_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
+    let text = p["blend"]
+        .as_str()
+        .ok_or_else(|| invalid("blend must be an existing .blend file"))?;
+    let path = crate::workspace::resolve_workspace_path(s, text).canonicalize()?;
+    if path.extension().is_none_or(|e| e != "blend") {
+        return Err(invalid("blend must be an existing .blend file"));
+    }
+    request["blend"] = json!(path);
+    Ok(())
+}
+
+/// Legacy migration evaluates the project's saved motion, so it needs the theatre state
+/// to agree with disk and the same magic-cli binary beside the app.
+fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()> {
+    let character = p["character"]
+        .as_str()
+        .ok_or_else(|| invalid("character is required for legacy migration"))?;
+    crate::motion_authoring::theatre_guard(
+        s,
+        character,
+        p["track"].as_str().filter(|id| !id.is_empty()),
+    )?;
+    let actions = cmd_animation_actions(s, p)?;
+    if !p["track"].is_string()
+        || !actions["tracks"]
+            .as_array()
             .into_iter()
-            .find(|p| p.is_file())
-            .ok_or_else(|| {
-                invalid("Install magic beside Magic Studio to prepare legacy animations")
-            })?;
-        request["magic_cli"] = json!(executable);
+            .flatten()
+            .any(|t| t["id"] == p["track"])
+    {
+        return Err(invalid("Choose a saved animation track"));
+    }
+    request["asset"] = serde_json::to_value(entry(s, p)?).map_err(|e| invalid(e.to_string()))?;
+    request["motion"] = json!({"character":p["character"],"track":p["track"],"fps":p["fps"].as_f64().unwrap_or(30.0)});
+    // Use the rig's authored rate unless explicitly overridden.
+    if p.get("fps").is_none()
+        && let Some(motion) = request["motion"].as_object_mut()
+    {
+        motion.remove("fps");
+    }
+    let exe = std::env::current_exe()?;
+    let executable = [exe.with_file_name("magic-cli")]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            invalid("Install magic beside Magic Studio to prepare legacy animations")
+        })?;
+    request["magic_cli"] = json!(executable);
+    Ok(())
+}
+
+pub fn cmd_start_scene_job(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut request = scene_request(s, p)?;
+    validate_scene_source(p)?;
+    if p["volume_plan"].is_string() {
+        volume_plan_request(s, p, &mut request)?;
+    } else if p["rig_plan"].is_string() {
+        rig_plan_request(s, p, &mut request)?;
+    } else if p["blend"].is_string() {
+        blend_request(s, p, &mut request)?;
+    } else {
+        legacy_request(s, p, &mut request)?;
     }
     submit(s, p, request, "blender")
 }
 
 /// All native backends use the same slot, lock, limits, receipts and cancellation.
 /// Keep the historical job directory so existing Blender receipts remain readable.
+/// What the submission names, sizes and describes about one job.
+struct JobPlan<'a> {
+    backend: &'a str,
+    id: String,
+    stamp: u128,
+    memory: u64,
+    seconds: u64,
+}
+
+fn job_stamp() -> Result<u128> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| invalid(e.to_string()))?
+        .as_nanos())
+}
+
+fn fill_request(request: &mut Value, s: &Session, p: &Value, plan: &JobPlan) {
+    request["unit"] = json!(UNIT);
+    request["project"] = json!(s.project_path);
+    request["backend"] = json!(plan.backend);
+    request["source_id"] = p["source_id"].clone();
+    request["source_revision"] = p["source_revision"].clone();
+    request["job"] = json!(plan.id);
+    request["limits"] = json!({"memory_max_bytes":plan.memory*1024*1024,"swap_max_bytes":0,"cpu_quota_percent":200,"timeout_seconds":plan.seconds});
+    request["submitted_at"] = json!((plan.stamp / 1_000_000).to_string());
+}
+
+/// The job record and its starting progress state, both written before the unit starts.
+fn write_job_records(
+    dir: &Path,
+    s: &Session,
+    p: &Value,
+    request: &Value,
+    plan: &JobPlan,
+) -> Result<()> {
+    write_json(
+        &dir.join("job.json"),
+        &json!({"job":plan.id,"job_id":plan.id,"unit":UNIT,"project":s.project_path,
+        "backend":plan.backend,"source_id":p["source_id"],"source_revision":p["source_revision"],"created_ns":plan.stamp.to_string(),"character":p["character"],"track":p["track"],"source_blend":request["blend"],
+        "limits":request["limits"],"submitted_at":request["submitted_at"],"started_at":Value::Null,"cancellation_requested_at":Value::Null}),
+    )?;
+    write_json(
+        &dir.join("progress.json"),
+        &json!({"state":if request["blend"].is_string(){"loading"}else{"preparing"}}),
+    )
+}
+
+/// The worker script, plus the pipeline modules a rig or volume plan runs beside it.
+fn write_worker_payloads(dir: &Path, request: &Value) -> Result<()> {
+    fs::write(
+        dir.join("worker.py"),
+        include_str!("../../../pipeline/animation_job_worker.py"),
+    )?;
+    if request["rig_plan"].is_object() {
+        fs::create_dir_all(dir.join("pipeline"))?;
+        fs::write(dir.join("pipeline/__init__.py"), "")?;
+        fs::write(dir.join("pipeline/rig_motion.py"), include_str!("../../../pipeline/rig_motion.py"))?;
+        fs::write(dir.join("pipeline/build_cutout_skeleton.py"), include_str!("../../../pipeline/build_cutout_skeleton.py"))?;
+    }
+    if request["volume_plan"].is_object() {
+        fs::write(dir.join("volume_reconstruction.py"), include_str!("../../../pipeline/volume_reconstruction.py"))?;
+        fs::write(dir.join("build_volume_scene.py"), include_str!("../../../pipeline/build_volume_scene.py"))?;
+        fs::write(dir.join("bind_volume_skeleton.py"), include_str!("../../../pipeline/bind_volume_skeleton.py"))?;
+    }
+    Ok(())
+}
+
+fn worker_command(backend: &str, worker: &Path, request_path: &Path) -> Result<Vec<String>> {
+    if backend != "blender" {
+        return Err(EngineError::InvalidParams(format!(
+            "Unsupported animation backend: {backend}"
+        )));
+    }
+    Ok(vec![
+        std::env::var("BLENDER_BIN").unwrap_or_else(|_| "blender".into()),
+        "--background".into(),
+        "--factory-startup".into(),
+        "--disable-autoexec".into(),
+        "--threads".into(),
+        "2".into(),
+        "--python-exit-code".into(),
+        "1".into(),
+        "--python".into(),
+        worker.to_string_lossy().into_owned(),
+        "--".into(),
+        request_path.to_string_lossy().into_owned(),
+    ])
+}
+
+/// The unit that runs the worker: limits, log capture and the finalizing receipt hook.
+fn systemd_command(
+    dir: &Path,
+    plan: &JobPlan,
+    worker: &Path,
+    request_path: &Path,
+    command: &[String],
+) -> Command {
+    let mut cmd = Command::new("systemd-run");
+    cmd.args(["--user", "--quiet", "--collect"])
+        .arg(format!("--unit={UNIT}"))
+        .arg(format!("--description={}", plan.id))
+        .arg(format!("--property=MemoryMax={}M", plan.memory))
+        .args([
+            "--property=MemorySwapMax=0",
+            "--property=CPUQuota=200%",
+            "--property=TimeoutStopSec=5",
+            "--property=KillMode=control-group",
+            "--property=MemoryAccounting=yes",
+            "--property=CPUAccounting=yes",
+        ])
+        .arg(format!("--property=RuntimeMaxSec={}", plan.seconds))
+        .arg(format!(
+            "--property=StandardOutput=append:{}",
+            dir.join("worker.log").display()
+        ))
+        .arg(format!(
+            "--property=StandardError=append:{}",
+            dir.join("worker.log").display()
+        ))
+        .arg(format!(
+            "--property=ExecStopPost=/usr/bin/python3 {} --finalize {}",
+            systemd_quote(worker),
+            systemd_quote(request_path)
+        ))
+        .arg("--")
+        .args(command);
+    cmd
+}
+
+/// A start that systemd-run refused still leaves a receipt, so a later status can report it.
+fn write_failure_receipt(
+    dir: &Path,
+    s: &Session,
+    request: &Value,
+    id: &str,
+    error: &str,
+) -> Result<()> {
+    write_json(
+        &dir.join("result.json"),
+        &json!({"job":id,"job_id":id,"project":s.project_path,"unit":UNIT,
+        "invocation_id":Value::Null,"state":"failed","termination_reason":"submission","updated_at":now(),
+        "telemetry":telemetry(&json!({})),"limits":request["limits"],"submitted_at":request["submitted_at"],
+        "started_at":Value::Null,"cancellation_requested_at":Value::Null,"error":error}),
+    )
+}
+
+/// systemd-run's own failure text, if the unit did not start.
+fn submission_error(output: std::io::Result<std::process::Output>) -> Option<String> {
+    match output {
+        Ok(output) if output.status.success() => None,
+        Ok(output) => Some(String::from_utf8_lossy(&output.stderr).into_owned()),
+        Err(error) => Some(error.to_string()),
+    }
+}
+
+/// The job directory as the worker will read it: request, records, payloads.
+fn prepare_job_dir(
+    dir: &Path,
+    s: &Session,
+    p: &Value,
+    request: &Value,
+    plan: &JobPlan,
+) -> Result<(PathBuf, PathBuf)> {
+    fs::create_dir_all(dir)?;
+    write_json(&dir.join("request.json"), request)?;
+    write_job_records(dir, s, p, request, plan)?;
+    write_worker_payloads(dir, request)?;
+    Ok((dir.join("worker.py"), dir.join("request.json")))
+}
+
+fn record_owner(dir: &Path, plan: &JobPlan) -> Result<()> {
+    write_json(&owner_path()?, &json!({"job":plan.id,"directory":dir}))
+}
+
 pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) -> Result<Value> {
     let _slot = worker_lock()?;
     let active = service()?;
@@ -532,127 +808,26 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
     }
     let memory = bounded(p, "memory_mb", 4096, 512, 8192)?;
     let seconds = bounded(p, "timeout_seconds", 300, 10, 3600)?;
-    request["unit"] = json!(UNIT);
-    request["project"] = json!(s.project_path);
-    request["backend"] = json!(backend);
-    request["source_id"] = p["source_id"].clone();
-    request["source_revision"] = p["source_revision"].clone();
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| invalid(e.to_string()))?
-        .as_nanos();
-    let kind = if backend == "blender" {
-        "blender"
-    } else {
-        "native"
-    };
+    let stamp = job_stamp()?;
+    let kind = if backend == "blender" { "blender" } else { "native" };
     let id = format!("magicstudio-{kind}-{}-{stamp}", std::process::id());
-    request["job"] = json!(id);
-    request["limits"] = json!({"memory_max_bytes":memory*1024*1024,"swap_max_bytes":0,"cpu_quota_percent":200,"timeout_seconds":seconds});
-    request["submitted_at"] = json!((stamp / 1_000_000).to_string());
-    let dir = root(s)?.join(&id);
-    fs::create_dir_all(&dir)?;
-    let request_path = dir.join("request.json");
-    write_json(&request_path, &request)?;
-    write_json(
-        &dir.join("job.json"),
-        &json!({"job":id,"job_id":id,"unit":UNIT,"project":s.project_path,
-        "backend":backend,"source_id":p["source_id"],"source_revision":p["source_revision"],"created_ns":stamp.to_string(),"character":p["character"],"track":p["track"],"source_blend":request["blend"],
-        "limits":request["limits"],"submitted_at":request["submitted_at"],"started_at":Value::Null,"cancellation_requested_at":Value::Null}),
-    )?;
-    write_json(
-        &dir.join("progress.json"),
-        &json!({"state":if request["blend"].is_string(){"loading"}else{"preparing"}}),
-    )?;
-    let worker = dir.join("worker.py");
-    fs::write(
-        &worker,
-        include_str!("../../../pipeline/animation_job_worker.py"),
-    )?;
-    if request["rig_plan"].is_object() {
-        fs::create_dir_all(dir.join("pipeline"))?;
-        fs::write(dir.join("pipeline/__init__.py"), "")?;
-    }
-    if request["rig_plan"].is_object() {
-        fs::write(dir.join("pipeline/rig_motion.py"), include_str!("../../../pipeline/rig_motion.py"))?;
-        fs::write(dir.join("pipeline/build_cutout_skeleton.py"), include_str!("../../../pipeline/build_cutout_skeleton.py"))?;
-    }
-    if request["volume_plan"].is_object() {
-        fs::write(dir.join("volume_reconstruction.py"), include_str!("../../../pipeline/volume_reconstruction.py"))?;
-        fs::write(dir.join("build_volume_scene.py"), include_str!("../../../pipeline/build_volume_scene.py"))?;
-        fs::write(dir.join("bind_volume_skeleton.py"), include_str!("../../../pipeline/bind_volume_skeleton.py"))?;
-    }
-    let command: Vec<String> = if backend == "blender" {
-        vec![
-            std::env::var("BLENDER_BIN").unwrap_or_else(|_| "blender".into()),
-            "--background".into(),
-            "--factory-startup".into(),
-            "--disable-autoexec".into(),
-            "--threads".into(),
-            "2".into(),
-            "--python-exit-code".into(),
-            "1".into(),
-            "--python".into(),
-            worker.to_string_lossy().into_owned(),
-            "--".into(),
-            request_path.to_string_lossy().into_owned(),
-        ]
-    } else {
-        return Err(EngineError::InvalidParams(format!(
-            "Unsupported animation backend: {backend}"
-        )));
-    };
-    write_json(&owner_path()?, &json!({"job":id,"directory":dir}))?;
+    let plan = JobPlan { backend, id, stamp, memory, seconds };
+    fill_request(&mut request, s, p, &plan);
+    let dir = root(s)?.join(&plan.id);
+    let (worker, request_path) = prepare_job_dir(&dir, s, p, &request, &plan)?;
+    let command = worker_command(backend, &worker, &request_path)?;
+    record_owner(&dir, &plan)?;
     // systemd-run waits for the start transaction while holding the start/cancel lock.
-    let output = Command::new("systemd-run")
-        .args(["--user", "--quiet", "--collect"])
-        .arg(format!("--unit={UNIT}"))
-        .arg(format!("--description={id}"))
-        .arg(format!("--property=MemoryMax={memory}M"))
-        .args([
-            "--property=MemorySwapMax=0",
-            "--property=CPUQuota=200%",
-            "--property=TimeoutStopSec=5",
-            "--property=KillMode=control-group",
-            "--property=MemoryAccounting=yes",
-            "--property=CPUAccounting=yes",
-        ])
-        .arg(format!("--property=RuntimeMaxSec={seconds}"))
-        .arg(format!(
-            "--property=StandardOutput=append:{}",
-            dir.join("worker.log").display()
-        ))
-        .arg(format!(
-            "--property=StandardError=append:{}",
-            dir.join("worker.log").display()
-        ))
-        .arg(format!(
-            "--property=ExecStopPost=/usr/bin/python3 {} --finalize {}",
-            systemd_quote(&worker),
-            systemd_quote(&request_path)
-        ))
-        .arg("--")
-        .args(&command)
-        .output();
-    let submission_error = match output {
-        Ok(output) if output.status.success() => None,
-        Ok(output) => Some(String::from_utf8_lossy(&output.stderr).into_owned()),
-        Err(error) => Some(error.to_string()),
-    };
-    if let Some(error) = submission_error {
-        write_json(
-            &dir.join("result.json"),
-            &json!({"job":id,"job_id":id,"project":s.project_path,"unit":UNIT,
-            "invocation_id":Value::Null,"state":"failed","termination_reason":"submission","updated_at":now(),
-            "telemetry":telemetry(&json!({})),"limits":request["limits"],"submitted_at":request["submitted_at"],
-            "started_at":Value::Null,"cancellation_requested_at":Value::Null,"error":error}),
-        )?;
+    let mut unit = systemd_command(&dir, &plan, &worker, &request_path, &command);
+    if let Some(error) = submission_error(unit.output()) {
+        write_failure_receipt(&dir, s, &request, &plan.id, &error)?;
         return Err(EngineError::ExternalTool("systemd-run".into(), error));
     }
     Ok(
-        json!({"ok":true,"job":id,"state":"submitted","directory":dir,"memory_limit_mb":memory,"timeout_seconds":seconds,"limits":request["limits"],"submitted_at":request["submitted_at"]}),
+        json!({"ok":true,"job":plan.id,"state":"submitted","directory":dir,"memory_limit_mb":plan.memory,"timeout_seconds":plan.seconds,"limits":request["limits"],"submitted_at":request["submitted_at"]}),
     )
 }
+
 fn systemd_quote(path: &Path) -> String {
     format!(
         "\"{}\"",
