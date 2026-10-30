@@ -46,9 +46,9 @@
   gap: var(--size-3);
 }
 
-.panel-fields input:not([type="checkbox"]),
+.panel-fields input:not([type="checkbox"], [type="color"]),
 .panel-fields select,
-.panel-body[data-look="settings"] input,
+.panel-body[data-look="settings"] input:not([type="checkbox"], [type="color"]),
 .panel-body[data-look="settings"] select {
   width: 100%;
   min-width: 0;
@@ -94,6 +94,11 @@
    sections. :where() keeps it at zero specificity, so a component may recolour it. */
 :where(.report-label, .report[data-look="table"] th, .panel-head[data-look="ruler"], .theatre-label, .stanza-label, .char-subhead) {
   color: var(--faint); font-size: var(--text-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+
+/* Shared checkerboard surfaces for transparent artwork, parts, and timeline film strips. */
+:where(.panel-empty.compare, .magic-image-tools .image-result, .magic-compare-frame img, .magic-part-thumb img, .magic-part-card-thumb img, .magic-asset-tile img, .magic-asset-tile .magic-asset-placeholder, .words-tl > .words-line, .words-cue-film, .artwork-review-canvas) {
+  background: repeating-conic-gradient(var(--surface) 0% 25%, var(--surface-2) 0% 50%) 0 0 / var(--checker-size, var(--space-4)) var(--checker-size, var(--space-4));
 }
 
 /* Report component: headline stats, proportional bars and data tables for data

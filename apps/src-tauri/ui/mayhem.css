@@ -1,6 +1,5 @@
 /* Mayhem's Backstage terminal on the shared panel surface; navigation is owned by app-bar.css. */
-.backstage-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.backstage-controls .start { --primary-action-top: 0; }
+.backstage-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); --primary-action-top: 0; }
 .backstage-status { margin: 0; padding: var(--space-3) var(--space-3) var(--space-2); color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .backstage-terminal { height: clamp(var(--size-300), 60vh, var(--size-700)); min-width: 0; margin: 0 var(--space-3) var(--space-3); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--bg); }
 .backstage-terminal .xterm { height: 100%; }

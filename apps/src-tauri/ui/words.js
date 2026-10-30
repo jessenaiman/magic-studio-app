@@ -311,10 +311,9 @@ function wordsDrawLine(world, anim, lineId, t, interactive) {
 
 // The designer's stage: the selected line on plain paper, the song under it.
 function wordsCanvas(anim) {
-  const [W, H] = wordsWorld(), world = el("div", { class: "lyric-world" });
+  const world = el("div", { class: "lyric-world" });
   const scene = wordsPanel.scene && serverUrl() ? el("iframe", { class: "lyric-scene", title: "The scene behind the lyrics", tabindex: "-1" }) : null;
   const box = el("div", { class: "lyric-canvas", "aria-label": "Line designer" }, scene, world);
-  box.style.setProperty("--w", `${W}px`); box.style.setProperty("--h", `${H}px`);
   wordsPanel.canvas = { box, world, scene };
   wordsFitter.observe(box);
   if (scene) wordsCommand("words.lyrics_view", { show: "scene" }).then((view) => {
@@ -372,9 +371,9 @@ function wordsPlay() {
 }
 
 function wordsSetChipVars(chip, font, weight, italic, color, scale) {
+  chip.dataset.weight = String(weight);
+  if (italic) chip.dataset.italic = "true";
   chip.style.setProperty("--word-font", font);
-  chip.style.setProperty("--word-weight", String(weight));
-  chip.style.setProperty("--word-slant", italic ? "italic" : "normal");
   chip.style.setProperty("--word-color", color);
   chip.style.setProperty("--word-scale", String(scale));
 }
@@ -489,10 +488,12 @@ function wordsGaps(animations) {
     el("span", {}, "Instrumental"), el("span", { class: "meta" }, `${wordsClock(a)} – ${wordsClock(b)}`)), a, b - a));
 }
 
+const wordsTicks = (end) => Array.from({ length: Math.ceil(end / 10) }, (_, i) => wordsPlace(el("span", { class: "words-tick" }, wordsClock(i * 10)), i * 10));
+
 // Left: the lyrics on the song clock, each section a band and each sung line a film bar on the roll.
 function wordsTimeline(animations, end) {
   return wordsPlace(el("div", { class: "words-tl words-roll", "aria-label": "Lyrics on the song timeline" },
-    ...Array.from({ length: Math.ceil(end / 10) }, (_, i) => wordsPlace(el("span", { class: "words-tick" }, wordsClock(i * 10)), i * 10)),
+    ...wordsTicks(end),
     ...wordsGaps(animations),
     ...animations.map((a, idx) => wordsBand(a, "button", { "data-section": a.animation_id, onclick: () => { const first = wordsLines(a)[0]; if (first) wordsSelectLine(a, first); } }, animations[idx + 1] ? wordsSpan(animations[idx + 1]).start : Infinity)),
     ...wordsRows(animations).map(([a, j, line, at, len]) => wordsPlace(el("div", { class: `words-line${j ? "" : " first"}${a.animation_id === wordsPanel.selected && wordsPanel.line === line.id ? " active" : ""}`,
@@ -540,11 +541,10 @@ function wordsRoll(animations, end) {
       el("span", { class: "words-cue-caption" }, cue.name)), cue.start, cue.end - cue.start);
     frame.style.setProperty("--cue-lane", String(lane));
     frame.style.setProperty("--cue-ink", cue.color || "var(--accent)");
-    if (cue.draw_end != null) frame.style.setProperty("--draw-share", `${100 * (cue.draw_end - cue.start) / (cue.end - cue.start)}%`);
     return frame;
   });
   const roll = wordsPlace(el("div", { class: "words-tl words-roll", "aria-label": "Motion graphics on the song timeline" },
-    ...Array.from({ length: Math.ceil(end / 10) }, (_, i) => wordsPlace(el("span", { class: "words-tick" }, wordsClock(i * 10)), i * 10)),
+    ...wordsTicks(end),
     ...frames, !cues.length ? el("p", { class: "words-graphics-empty" }, "Pick a word, then add a drawing to show its meaning here.") : null,
     el("span", { class: "words-tl-head" })), 0, end);
   roll.style.setProperty("--cue-lanes", String(Math.max(1, laneEnds.length)));
@@ -811,7 +811,7 @@ function wordsPositionArrowNotes(group, t, start, end) {
     const bob = Math.sin((u * 2.5 + idx * 0.4) * Math.PI * 2) * 5;
     const fade = u < 0.12 ? u / 0.12 : u > 0.88 ? (1 - u) / 0.12 : 1;
     note.setAttribute("transform", `translate(${pt.x.toFixed(1)}, ${(pt.y - 4 + bob).toFixed(1)})`);
-    note.style.setProperty("opacity", fade.toFixed(2));
+    note.setAttribute("opacity", fade.toFixed(2));
   });
 }
 
@@ -1670,18 +1670,12 @@ function wordsBuildChoiceCard(kind, key, item, on, onclick) {
   }
   if (kind === "letterings") {
     card.classList.add("words-lettering-card");
-    const sample = el("span", { class: "words-lettering-sample", "aria-hidden": "true" }, "Sing ");
-    const hero = el("span", {}, item.name);
-    sample.style.setProperty("--sample-font", `"${item.style.font}", sans-serif`);
-    sample.style.setProperty("--sample-weight", String(item.style.weight || 700));
-    sample.style.setProperty("--sample-color", item.style.color);
-    sample.style.setProperty("--sample-outline", item.style.outline || "transparent");
-    hero.style.setProperty("--hero-font", `"${item.style.hero_font || item.style.font}", sans-serif`);
-    hero.style.setProperty("--hero-weight", String(item.style.hero_weight || 700));
-    hero.style.setProperty("--hero-slant", item.style.hero_italic ? "italic" : "normal");
-    hero.style.setProperty("--hero-color", item.style.hero_color);
-    hero.style.setProperty("--hero-size", `${Math.min(1.5, (item.style.hero_size || 110) / (item.style.size || 64))}em`);
-    sample.appendChild(hero);
+    const s = item.style, sample = el("span", { class: "words-lettering-sample", "aria-hidden": "true", "data-weight": String(s.weight || 700), "data-italic": s.hero_italic ? "true" : undefined }, "Sing ", el("span", {}, item.name));
+    sample.style.setProperty("--sample-font", `"${s.font}", sans-serif`);
+    sample.style.setProperty("--sample-color", s.color);
+    sample.style.setProperty("--sample-outline", s.outline || "transparent");
+    sample.style.setProperty("--hero-font", `"${s.hero_font || s.font}", sans-serif`);
+    sample.style.setProperty("--hero-color", s.hero_color);
     card.replaceChildren(sample);
   }
   return card;
@@ -1786,13 +1780,11 @@ function wordsSelectionBar(anim, lib, k, picked) {
     el("div", { class: "words-selection-actions" },
       el("button", {
         id: "words-replay-line",
-        class: "ghost",
         title: "Play just this line's animation",
         onclick: () => wordsPreviewLine(anim, line.id, true)
       }, "▶ Replay line"),
       el("button", {
         id: "words-loop-line",
-        class: `ghost${wordsPanel.loopLine ? " active" : ""}`,
         "aria-pressed": String(wordsPanel.loopLine),
         title: "Loop this line continuously while trying animations",
         onclick: () => {
