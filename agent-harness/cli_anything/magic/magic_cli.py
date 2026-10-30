@@ -36,11 +36,51 @@ def emit(value: Any) -> None:
     click.echo(json.dumps(value, indent=2))
 
 
+_COMMAND_HINTS: dict[str, str] = {
+    "call": "Use 'magic-cli exec <command.id> key=value ...' or 'magic-cli <domain> <verb> key=value ...'.",
+    "status": "Use 'magic-cli workshop status', 'magic-cli center status', or 'magic-cli session status'.",
+    "project.status": "Use 'magic-cli workshop status' or 'magic-cli center status'.",
+    "storyboard.build": "Use 'magic-cli workshop build-storyboard' or 'magic-cli storyboard init'.",
+    "audio.transcribe": "Use 'magic-cli audio analyze' (transcribes words, exports SRT, and runs HyperFrames section/beat analysis).",
+}
+
+
+def _unknown_command_hint(prefix: str, name: str, choices: list[str]) -> str:
+    import difflib
+
+    scoped = f"{prefix}{name.replace('-', '_')}"
+    hint = _COMMAND_HINTS.get(scoped) or _COMMAND_HINTS.get(name)
+    close = difflib.get_close_matches(name, choices, n=3, cutoff=0.5)
+    parts: list[str] = []
+    if hint:
+        parts.append(f"Hint: {hint}")
+    if close:
+        parts.append(f"Did you mean: {', '.join(close)}?")
+    domain = prefix.rstrip(".")
+    parts.append(
+        f"Next: run 'magic-cli commands {domain}' or 'magic-cli {domain.replace('_', '-')} --help'."
+        if domain
+        else "Next: run 'magic-cli commands [FILTER]' or 'magic-cli --help'."
+    )
+    return " ".join(parts)
+
+
 def execute(ctx: click.Context, command: str, params: dict[str, Any]) -> Any:
     params.setdefault("_origin", "CLI")
-    return ctx.obj["session"].execute(
+    result = ctx.obj["session"].execute(
         command, params, dry_run=ctx.obj["dry_run"]
     )
+    if (
+        command == "ui.eval"
+        and isinstance(result, dict)
+        and result.get("result") is None
+        and isinstance(params.get("js"), str)
+        and "return " not in params["js"]
+    ):
+        result["hint"] = (
+            "ui.eval wraps your script in `async () => { ... }`; prefix the expression with `return ` to receive its value."
+        )
+    return result
 
 
 class RegistryGroup(click.Group):
@@ -137,6 +177,16 @@ class RegistryGroup(click.Group):
             group._specs = self.specs()
             return group
         return click.Command(name, callback=run, params=options, help=help_text)
+
+    def resolve_command(
+        self, ctx: click.Context, args: list[str]
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            bad = args[0] if args else ""
+            hint = _unknown_command_hint(self.prefix, bad, self.list_commands(ctx))
+            raise click.UsageError(f"{exc.message}\n{hint}", ctx=exc.ctx) from exc
 
 
 @click.group(cls=RegistryGroup, invoke_without_command=True)
