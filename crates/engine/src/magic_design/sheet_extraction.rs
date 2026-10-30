@@ -34,18 +34,18 @@ pub fn cmd_asset_cut_sheet(s: &mut Session, params: &Value) -> Result<Value> {
 
     let effective_source = preprocess_sheet(params, &source_path, &out_dir, &root)?;
     let mut cut_params = params.clone();
-    if cut_params.get("layout").is_none() {
-        if let Some(layout) = crate::sheets::layout::for_sheet(&source_path)? {
-            let source_size = image::image_dimensions(&source_path)?;
-            if image::image_dimensions(&effective_source)? != source_size {
-                return Err(EngineError::InvalidParams("Preprocessing changed the sheet canvas; its saved panel layout no longer applies".into()));
-            }
-            std::fs::create_dir_all(&out_dir)?;
-            let file = out_dir.join("template.layout.json");
-            std::fs::write(&file, layout.to_string())?;
-            cut_params["layout"] = json!(file);
-            cut_params["kind"] = layout["sheetType"].clone();
+    if cut_params.get("layout").is_none()
+        && let Some(layout) = crate::sheets::layout::for_sheet(&source_path)?
+    {
+        let source_size = image::image_dimensions(&source_path)?;
+        if image::image_dimensions(&effective_source)? != source_size {
+            return Err(EngineError::InvalidParams("Preprocessing changed the sheet canvas; its saved panel layout no longer applies".into()));
         }
+        std::fs::create_dir_all(&out_dir)?;
+        let file = out_dir.join("template.layout.json");
+        std::fs::write(&file, layout.to_string())?;
+        cut_params["layout"] = json!(file);
+        cut_params["kind"] = layout["sheetType"].clone();
     }
     let cut_args = cut_arguments(
         s,

@@ -66,7 +66,7 @@ pub(crate) fn matte_image(s: &Session, source: &std::path::Path, p: &Value) -> R
     let directory = root.join("assets/reference-previews");
     std::fs::create_dir_all(&directory)?;
     let out = directory.join(format!("matte-{stamp}.png"));
-    let operation = remove_background(s, &source, &out, p)?;
+    let operation = remove_background(s, source, &out, p)?;
     let pixels = image::open(&out)?.into_rgba8();
     let visible = pixels.pixels().filter(|p| p[3] > 0).count();
     let transparent = pixels.pixels().filter(|p| p[3] < 255).count();
