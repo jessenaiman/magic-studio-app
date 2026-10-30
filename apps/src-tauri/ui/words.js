@@ -5,10 +5,10 @@
 // film roll of the designed lines (right) run down the page on the song clock; the stage, the
 // line's lanes and the options for what is picked stay pinned in the centre. The Video view plays
 // the finished HyperFrames video through its preview player.
-const wordsPanel = { mode:"lyrics", links:{color:null,front:true,pulse:true}, linkDrag:null, editor: null, cue: null, cueDrag: null, previewRange: null, autoPlay: false, read: null, align: null, studio: null, selected: null, line: null, item: null, picked: [], designs: new Map(), styleEdits: {}, stage: null, time: 0, playing: false, size: null, lanes: null, view: "design", tab: "look", scene: true, sceneAt: null, followed: null, canvas: null, audio: null, drag: null, server: null, player: null, show: "still", offset: 0, timeLabel: null, effects: null };
+const wordsPanel = { mode:"lyrics", topShelf:"scene", shelf:"acts", links:{color:null,front:false,pulse:true,hidden:false}, linkDrag:null, cue: null, cueDrag: null, previewRange: null, autoPlay: false, loopLine: false, stageDirty: false, pendingSeek: null, read: null, align: null, studio: null, selected: null, line: null, item: null, picked: [], designs: new Map(), styleEdits: {}, stage: null, time: 0, playing: false, size: { width: 1920, height: 1080 }, lanes: null, view: "design", tab: "look", scene: true, sceneAt: null, followed: null, canvas: null, audio: null, drag: null, server: null, player: null, show: "still", offset: 0, timeLabel: null, effects: null };
 try {const links=JSON.parse(localStorage.getItem("magicstudio.lyrics.links")||"{}");
   if(/^#[0-9a-f]{6}$/i.test(links.color))wordsPanel.links.color=links.color;
-  for(const key of ["front","pulse"])if(typeof links[key]==="boolean")wordsPanel.links[key]=links[key];
+  for(const key of ["front","pulse","hidden"])if(typeof links[key]==="boolean")wordsPanel.links[key]=links[key];
 }catch{}
 // How a designed lyric item moves on its accent word (the engine's MOVES), and what each does.
 const WORDS_MOVES = [["quiet", "Quiet", "Fades in and holds"], ["sleep", "Sleep", "Letters sink one by one"], ["settle", "Settle", "Drops and squashes into place"],
@@ -43,7 +43,6 @@ function wordsLabel(anim) {
 }
 
 async function wordsOpen() {
-  if(wordsPanel.editor?.dirty) return;
   const view = $("view-design");
   if (!view) return;
   view.replaceChildren(el("p", { class: "panel-empty inline" }, "Loading the words…"));
@@ -147,14 +146,15 @@ function wordsPlace(node, at, len) {
 }
 // Every sung line of every section, as [section, line index, line, start, length].
 function wordsRows(animations) {
-  return animations.flatMap((a) => {
-    const span = wordsSpan(a), lines = wordsLines(a);
-    return lines.map((line, j) => { const at = wordsAt(line.words[0]); return [a, j, line, at, (lines[j + 1] ? wordsAt(lines[j + 1].words[0]) : span.end) - at]; });
+  return animations.flatMap((a, idx) => {
+    const span = wordsSpan(a), lines = wordsLines(a), nextStart = animations[idx + 1] ? wordsSpan(animations[idx + 1]).start : Infinity;
+    const secEnd = Math.min(span.end, nextStart);
+    return lines.map((line, j) => { const at = wordsAt(line.words[0]); return [a, j, line, at, Math.max(0.2, (lines[j + 1] ? wordsAt(lines[j + 1].words[0]) : secEnd) - at)]; });
   });
 }
-const wordsBand = (a, tag, extra = {}) => { const span = wordsSpan(a);
+const wordsBand = (a, tag, extra = {}, nextStart = Infinity) => { const span = wordsSpan(a), end = Math.min(span.end, nextStart);
   return wordsPlace(el(tag, { class: `words-band${a.animation_id === wordsPanel.selected ? " active" : ""}`, "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", ...extra },
-    el("strong", {}, wordsLabel(a)), el("span", { class: "meta" }, wordsClock(span.start))), span.start, span.end - span.start); };
+    el("strong", {}, wordsLabel(a)), el("span", { class: "meta" }, wordsClock(span.start))), span.start, Math.max(0.2, end - span.start)); };
 
 // The lines of a section that hold a given word, and a line's words.
 const wordsLineWords = (anim, lineId) => anim.words.filter((w) => w.line_id === lineId);
@@ -162,9 +162,23 @@ const wordsLineWords = (anim, lineId) => anim.words.filter((w) => w.line_id === 
 const wordsWorld = () => [wordsPanel.size?.width || 1920, wordsPanel.size?.height || 1080];
 // A line's span on the song clock: from its first sung word to the next line (or the section's end).
 function wordsLineSpan(anim, lineId) {
-  const lines = wordsLines(anim), k = lines.findIndex((l) => l.id === lineId);
+  const lines = wordsLines(anim), k = Math.max(0, lines.findIndex((l) => l.id === lineId));
   const start = wordsAt(lines[k].words[0]);
   return { start, end: lines[k + 1] ? wordsAt(lines[k + 1].words[0]) : wordsSpan(anim).end };
+}
+function wordsLineWindow(anim, lineId = wordsPanel.line) {
+  const sec = wordsSpan(anim), span = wordsLineSpan(anim, lineId || wordsLines(anim)[0]?.id);
+  return { start: Math.max(sec.start, span.start - 0.15), end: Math.min(sec.end, Math.max(span.start + 0.6, span.end)) };
+}
+function wordsPreviewLine(anim = wordsCurrent(), lineId = wordsPanel.line, play = true) {
+  if (!anim) return;
+  const targetLine = lineId || wordsLines(anim)[0]?.id;
+  if (!targetLine) return;
+  const span = wordsLineSpan(anim, targetLine);
+  wordsPanel.previewRange = wordsLineWindow(anim, targetLine);
+  wordsPanel.autoPlay = play;
+  wordsPanel.time = play ? wordsPanel.previewRange.start : Math.max(span.start, span.end - 0.18);
+  wordsVideoRange();
 }
 // The design a line shows: an unsaved edit, else the saved one, else a plain line.
 function wordsDesign(anim, lineId) {
@@ -216,6 +230,54 @@ function wordsMeasure(anim, text, size, look) {
 const wordsEase = { out2: (x) => 1 - (1 - x) ** 2, out3: (x) => 1 - (1 - x) ** 3, sin: (x) => 0.5 - 0.5 * Math.cos(Math.PI * x) };
 const wordsClamp = (x) => Math.max(0, Math.min(1, x));
 
+function wordsItemMotionOffset(motion, settled, arc) {
+  const map = {
+    settle: [0, 6 * settled],
+    fall: [0, 20 * settled],
+    rise: [24 * settled, -22 * Math.sin(arc * Math.PI) - 18 * settled],
+    east: [18 * settled, 0],
+    west: [-18 * settled, 0],
+    loop: [12 * Math.sin(arc * Math.PI * 2), 7 * (Math.cos(arc * Math.PI * 2) - 1)]
+  };
+  return map[motion] || [0, 0];
+}
+
+function wordsItemPulse(local, a) {
+  if (local < a || local >= a + 0.43) return 1;
+  return local < a + 0.13 ? 1 + 0.12 * (local - a) / 0.13 : 1.12 - 0.12 * (local - a - 0.13) / 0.3;
+}
+
+function wordsBuildSleepSpans(text, local, a) {
+  return [...text].map((ch, k) => {
+    const u = wordsEase.sin(wordsClamp((local - a - k * 0.035) / 0.8)), letter = el("span", {}, ch);
+    letter.style.setProperty("--ty", `${7 * u + 3 * Math.sin(k * 0.6) * Math.sin(u * Math.PI)}px`);
+    letter.style.setProperty("--lr", `${-0.6 * u}deg`);
+    return letter;
+  });
+}
+
+function wordsDrawLineItem(world, words, span, local, interactive, W, it, i) {
+  const text = it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ");
+  const accentWord = words.find((w) => w.word_id === it.accent);
+  const a = (accentWord ? wordsAt(accentWord) : span.start) - span.start;
+  const settled = wordsEase.out3(wordsClamp((local - a) / 0.65)), arc = wordsClamp((local - a) / 0.75);
+  const pulse = wordsItemPulse(local, a);
+  const [tx, ty] = wordsItemMotionOffset(it.motion, settled, arc);
+  const node = el("div", { class: `lyric-item${interactive && wordsPanel.item === i ? " active" : ""}`, "data-weight": String(it.weight), "data-italic": String(it.italic), "data-font": it.font || "song" });
+  if (it.outline) { node.dataset.outline = ""; node.style.setProperty("--outline", it.outline); }
+  const sy = it.motion === "pop" ? pulse : (it.motion === "settle" ? 1 - 0.035 * settled : 1);
+  for (const [key, value] of [["--x", `${it.x}px`], ["--y", `${it.y}px`], ["--size", `${it.size}px`], ["--ink", it.color], ["--rot", `${it.rotate}deg`],
+    ["--o", String(wordsEase.out2(wordsClamp((local + 0.4) / 0.4)))], ["--tx", `${tx}px`], ["--ty", `${ty}px`],
+    ["--sx", String(it.motion === "pop" ? pulse : 1)], ["--sy", String(sy)]]) node.style.setProperty(key, value);
+  node.append(...(it.motion === "sleep" ? wordsBuildSleepSpans(text, local, a) : [el("span", {}, text)]));
+  if (interactive) node.onpointerdown = (event) => {
+    event.preventDefault();
+    wordsPanel.item = i; wordsPanel.drag = { i, x: event.clientX, y: event.clientY, from: [it.x, it.y], scale: world.getBoundingClientRect().width / W, moved: false };
+    wordsRender();
+  };
+  return node;
+}
+
 // One frame of a designed line at song time t, drawn into a composition-sized world. Every value
 // the stylesheet needs goes in as a custom property; the motion follows the Pterodactyl lettering.
 function wordsDrawLine(world, anim, lineId, t, interactive) {
@@ -231,32 +293,7 @@ function wordsDrawLine(world, anim, lineId, t, interactive) {
     svg.innerHTML = d.paths.map((p) => `<path d="${p.d}" pathLength="1" fill="none" stroke="${p.stroke}" stroke-width="${p.width}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="${1 - wordsClamp((local - p.from) / Math.max(0.01, p.to - p.from))}"/>`).join("");
     return svg;
   });
-  const items = design.items.map((it, i) => {
-    const text = it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ");
-    const accentWord = words.find((w) => w.word_id === it.accent);
-    const a = (accentWord ? wordsAt(accentWord) : span.start) - span.start;
-    const settled = wordsEase.out3(wordsClamp((local - a) / 0.65)), arc = wordsClamp((local - a) / 0.75);
-    const pulse = local < a ? 1 : local < a + 0.13 ? 1 + 0.12 * (local - a) / 0.13 : local < a + 0.43 ? 1.12 - 0.12 * (local - a - 0.13) / 0.3 : 1;
-    const [tx, ty] = { settle: [0, 6 * settled], fall: [0, 20 * settled], rise: [24 * settled, -22 * Math.sin(arc * Math.PI) - 18 * settled], east: [18 * settled, 0], west: [-18 * settled, 0],
-      loop: [12 * Math.sin(arc * Math.PI * 2), 7 * (Math.cos(arc * Math.PI * 2) - 1)] }[it.motion] || [0, 0];
-    const node = el("div", { class: `lyric-item${interactive && wordsPanel.item === i ? " active" : ""}`, "data-weight": String(it.weight), "data-italic": String(it.italic), "data-font": it.font || "song" });
-    if (it.outline) { node.dataset.outline = ""; node.style.setProperty("--outline", it.outline); }
-    for (const [key, value] of [["--x", `${it.x}px`], ["--y", `${it.y}px`], ["--size", `${it.size}px`], ["--ink", it.color], ["--rot", `${it.rotate}deg`],
-      ["--o", String(wordsEase.out2(wordsClamp((local + 0.4) / 0.4)))], ["--tx", `${tx}px`], ["--ty", `${ty}px`],
-      ["--sx", String(it.motion === "pop" ? pulse : 1)], ["--sy", String(it.motion === "pop" ? pulse : it.motion === "settle" ? 1 - 0.035 * settled : 1)]]) node.style.setProperty(key, value);
-    if (it.motion === "sleep") node.append(...[...text].map((ch, k) => {
-      const u = wordsEase.sin(wordsClamp((local - a - k * 0.035) / 0.8)), letter = el("span", {}, ch);
-      letter.style.setProperty("--ty", `${7 * u + 3 * Math.sin(k * 0.6) * Math.sin(u * Math.PI)}px`); letter.style.setProperty("--lr", `${-0.6 * u}deg`);
-      return letter;
-    }));
-    else node.append(el("span", {}, text));
-    if (interactive) node.onpointerdown = (event) => {
-      event.preventDefault();
-      wordsPanel.item = i; wordsPanel.drag = { i, x: event.clientX, y: event.clientY, from: [it.x, it.y], scale: world.getBoundingClientRect().width / W, moved: false };
-      wordsRender();
-    };
-    return node;
-  });
+  const items = design.items.map((it, i) => wordsDrawLineItem(world, words, span, local, interactive, W, it, i));
   world.replaceChildren(...strokes, ...items);
 }
 
@@ -322,107 +359,100 @@ function wordsPlay() {
   requestAnimationFrame(tick);
 }
 
+function wordsSetChipVars(chip, font, weight, italic, color, scale) {
+  chip.style.setProperty("--word-font", font);
+  chip.style.setProperty("--word-weight", String(weight));
+  chip.style.setProperty("--word-slant", italic ? "italic" : "normal");
+  chip.style.setProperty("--word-color", color);
+  chip.style.setProperty("--word-scale", String(scale));
+}
+
+function wordsApplyItemChipStyle(chip, anim, it) {
+  const font = it.font === "song" || !it.font ? wordsSongFont(anim) : it.font;
+  const color = /^#[0-9a-f]{6}$/i.test(it.color) ? it.color : "currentColor";
+  const scale = Math.min(1.7, Math.max(0.8, (it.size || 110) / 110)).toFixed(2);
+  wordsSetChipVars(chip, font, it.weight || 400, it.italic, color, scale);
+}
+
+function wordsApplyKineticChipStyle(chip, kin, wordId) {
+  const st = kin.style || {}, hero = !!kin.acts?.[wordId];
+  const font = (hero ? st.hero_font : null) || st.font || "sans-serif";
+  const weight = (hero ? st.hero_weight : null) || st.weight || 700;
+  const color = (hero ? st.hero_color : null) || st.color || "currentColor";
+  const scale = hero ? Math.min(1.7, (st.hero_size || 110) / (st.size || 64)) : 1;
+  if (hero) chip.dataset.hero = "true";
+  wordsSetChipVars(chip, font, weight, hero && st.hero_italic, color, scale);
+}
+
+function wordsApplyChipStyle(chip, anim, w, it) {
+  if (it) wordsApplyItemChipStyle(chip, anim, it);
+  if (anim.kinetic) wordsApplyKineticChipStyle(chip, anim.kinetic, w.word_id);
+  if (wordsPanel.designs.has(w.line_id)) chip.dataset.changed = "";
+}
+
+function wordsTogglePickedWord(w, sameLine) {
+  if (!sameLine) return [w.word_id];
+  return wordsPanel.picked.includes(w.word_id)
+    ? wordsPanel.picked.filter((id) => id !== w.word_id)
+    : [...wordsPanel.picked, w.word_id];
+}
+
+function wordsSwitchSection(id) {
+  if (id === wordsPanel.selected) return true;
+  if (wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length) {
+    if (!confirm("Discard unsaved lyric changes?")) return false;
+  }
+  wordsPanel.designs.clear(); wordsPanel.styleEdits = {};
+  wordsPanel.selected = id;
+  return true;
+}
+
+function wordsChipClick(anim, w, index, event) {
+  event.stopPropagation();
+  const sameLine = anim.animation_id === wordsPanel.selected && wordsPanel.line === w.line_id;
+  if (!wordsSwitchSection(anim.animation_id)) return;
+  wordsVideo("pause"); wordsPanel.playing = false; wordsPanel.autoPlay = false;
+  const nextPicked = wordsTogglePickedWord(w, sameLine && event.shiftKey);
+  wordsPanel.picked = nextPicked.length ? nextPicked : [w.word_id];
+  wordsPanel.cue = null; wordsPanel.shelf = "acts";
+  wordsPanel.line = w.line_id; wordsPanel.item = index;
+  wordsPanel.followed = `${anim.animation_id}/${w.line_id}`;
+  wordsPanel.previewRange = wordsLineWindow(anim, w.line_id);
+  wordsPanel.time = wordsAt(w) + 0.12;
+  wordsRender(); wordsSeekSong(wordsPanel.time);
+  requestAnimationFrame(() => wordsEnsureBelowVideo(wordsLineSpan(anim, w.line_id).start));
+}
+
+function wordsSelectLine(anim, line) {
+  if (!wordsSwitchSection(anim.animation_id)) return;
+  wordsVideo("pause"); wordsPanel.playing = false;
+  const hero = line.words.find((w) => anim.kinetic?.acts?.[w.word_id]) || line.words[0];
+  wordsPanel.line = line.id; wordsPanel.item = null; wordsPanel.cue = null;
+  wordsPanel.picked = hero ? [hero.word_id] : [];
+  if (!wordsPanel.shelf || wordsPanel.shelf === "cues") wordsPanel.shelf = "arrive";
+  wordsPanel.followed = `${anim.animation_id}/${line.id}`;
+  const span = wordsLineSpan(anim, line.id), lastWord = line.words.at(-1);
+  wordsPanel.previewRange = wordsLineWindow(anim, line.id);
+  wordsPanel.autoPlay = wordsPanel.loopLine;
+  wordsPanel.time = wordsPanel.loopLine ? wordsPanel.previewRange.start : Math.min(span.end - 0.12, (lastWord ? wordsAt(lastWord) : span.start) + 0.18);
+  wordsRender();
+  if (wordsPanel.loopLine) wordsVideoRange(); else wordsSeekSong(wordsPanel.time);
+  requestAnimationFrame(() => wordsEnsureBelowVideo(span.start));
+}
+
 // Lyric tags: each sung word of the line, laid on a grid; a hero word shows its lettering and move.
 function wordsChip(anim, w) {
   const design = wordsDesign(anim, w.line_id), index = design.items.findIndex((it) => it.word_ids.includes(w.word_id)), it = design.items[index];
-  const on = anim.animation_id === wordsPanel.selected && wordsPanel.line === w.line_id && (wordsPanel.picked.includes(w.word_id) || (!wordsPanel.picked.length && wordsPanel.item === index));
+  const isPicked = wordsPanel.picked.includes(w.word_id) || (!wordsPanel.picked.length && wordsPanel.item === index);
+  const on = anim.animation_id === wordsPanel.selected && wordsPanel.line === w.line_id && isPicked;
   const move = it && it.motion !== "quiet" ? WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] : "";
-  // The word in its own lettering: the line design's font, weight, slant, colour and relative size.
+  const at = wordsAt(w), clip = wordsClip(w.word_id, anim), dur = clip?.duration ?? Math.max(0.2, (+w.end || at + 0.35) - at);
   const chip = el("button", { class: `word lettered${on ? " active" : ""}`, "data-word-id": w.word_id,
-    title: `${w.text} · ${wordsClock(wordsAt(w))}${move ? ` · ${move}` : ""} · Shift-click adds words`,
-    onclick: (event) => {
-      event.stopPropagation();
-      if(wordsPanel.editor){wordsAfterEdit(()=>wordsChip(wordsCurrent(),w).onclick(event));return;}
-      if (anim.animation_id !== wordsPanel.selected) wordsSelect(anim.animation_id);
-      if (anim.animation_id !== wordsPanel.selected) return;
-      const same = wordsPanel.line === w.line_id && event.shiftKey;
-      wordsPanel.picked = same ? (wordsPanel.picked.includes(w.word_id) ? wordsPanel.picked.filter((id) => id !== w.word_id) : [...wordsPanel.picked, w.word_id]) : [w.word_id];
-      wordsPanel.line = w.line_id; wordsPanel.item = index; wordsPanel.time = wordsLineSpan(anim, w.line_id).start; wordsPanel.previewRange = null; wordsPanel.autoPlay = true; wordsRender(); wordsVideoRange();
-      if(!event.shiftKey)requestAnimationFrame(()=>wordsBeginEdit(wordsCurrent(),w.line_id,event));
-    } }, w.text);
-  if (it) {
-    chip.style.setProperty("--word-font", it.font === "song" || !it.font ? wordsSongFont(anim) : it.font);
-    chip.style.setProperty("--word-weight", String(it.weight || 400));
-    chip.style.setProperty("--word-slant", it.italic ? "italic" : "normal");
-    chip.style.setProperty("--word-color", /^#[0-9a-f]{6}$/i.test(it.color) ? it.color : "currentColor");
-    chip.style.setProperty("--word-scale", Math.min(1.7, Math.max(0.8, (it.size || 110) / 110)).toFixed(2));
-  }
-  if (anim.kinetic) {
-    const st = anim.kinetic.style || {}, hero = !!anim.kinetic.acts?.[w.word_id];
-    chip.style.setProperty("--word-font", hero ? st.hero_font || st.font || "sans-serif" : st.font || "sans-serif");
-    chip.style.setProperty("--word-weight", String(hero ? st.hero_weight || 700 : st.weight || 700));
-    chip.style.setProperty("--word-slant", hero && st.hero_italic ? "italic" : "normal");
-    chip.style.setProperty("--word-color", hero ? st.hero_color || "currentColor" : st.color || "currentColor");
-    chip.style.setProperty("--word-scale", String(hero ? Math.min(1.7, (st.hero_size || 110) / (st.size || 64)) : 1));
-  }
-  if (wordsPanel.designs.has(w.line_id)) chip.dataset.changed = "";
+    "data-start": at.toFixed(3), "data-end": (at + dur).toFixed(3),
+    title: `${w.text} · ${wordsClock(at)}${move ? ` · ${move}` : ""} · Click to edit word act (Shift-click adds words)`,
+    onclick: (event) => wordsChipClick(anim, w, index, event) }, w.text);
+  wordsApplyChipStyle(chip, anim, w, it);
   return chip;
-}
-// Keep every original word ID and audio anchor. Inserted wording shares the nearest existing beat.
-function wordsPresentationEdits(words, text) {
-  const old = words.flatMap((w, slot) => w.text.split(/\s+/).filter(Boolean).map((text) => ({ text, slot })));
-  const next = text.trim().split(/\s+/).filter(Boolean);
-  if (next.length > 256 || text.length > 4096) throw new Error("Keep a lyric line under 256 words");
-  const dp = Array.from({ length: old.length+1 }, () => Array(next.length+1).fill(0));
-  for (let i=old.length; i>=0; i--) for (let j=next.length; j>=0; j--) {
-    if (i === old.length) dp[i][j] = next.length-j;
-    else if (j === next.length) dp[i][j] = old.length-i;
-    else dp[i][j] = Math.min((old[i].text === next[j] ? 0 : 1)+dp[i+1][j+1], 1+dp[i+1][j], 1+dp[i][j+1]);
-  }
-  const slots = words.map(() => []); let i=0, j=0;
-  while (i<old.length || j<next.length) {
-    if (i<old.length && j<next.length && dp[i][j] === (old[i].text === next[j] ? 0 : 1)+dp[i+1][j+1]) { slots[old[i].slot].push(next[j]); i++; j++; }
-    else if (i<old.length && dp[i][j] === 1+dp[i+1][j]) i++;
-    else { slots[old[Math.max(0,i-1)]?.slot || 0].push(next[j]); j++; }
-  }
-  return words.map((w, slot) => ({ word_id:w.word_id, display_text:slots[slot].join(" ") }));
-}
-function wordsBeginEdit(anim, lineId, event) {
-  if (wordsPanel.mode !== "lyrics" || wordsPanel.editor) return;
-  const node = [...$("view-design").querySelectorAll(".words-line")].find((n) => n.dataset.animationId === anim.animation_id && n.dataset.lineId === lineId);
-  if (!node) return;
-  const words = wordsLineWords(anim,lineId), original = words.map(w=>w.text).join(" ");
-  const spans = [...node.querySelectorAll(".word")].map((chip) => {
-    const span = el("span", { class:"word lettered" }, `${chip.textContent} `);
-    for (let i=0;i<chip.style.length;i++) { const key=chip.style[i]; if(key.startsWith("--word-"))span.style.setProperty(key,chip.style.getPropertyValue(key)); }
-    return span;
-  });
-  node.replaceChildren(...spans); node.setAttribute("contenteditable","true"); node.setAttribute("role","textbox");
-  node.setAttribute("aria-label","Edit lyric line"); node.setAttribute("spellcheck","true");
-  const editor = wordsPanel.editor = { node, animation:anim.animation_id, lineId, words, original, text:original, revision:anim.source_revision, project:state.project, dirty:false };
-  node.oninput = () => { editor.text=node.innerText.trim().replace(/\s+/g," "); editor.dirty=editor.text!==original; wordsPanel.autoPlay=false; wordsVideo("pause"); };
-  node.onpaste = (e) => { e.preventDefault(); document.execCommand("insertText",false,e.clipboardData.getData("text/plain").replace(/\s+/g," ")); };
-  node.onkeydown = (e) => {
-    if (e.isComposing) return;
-    if(e.key === "Escape") { e.preventDefault(); e.stopPropagation(); wordsPanel.editor=null; wordsRender(); }
-    else if(e.key === "Enter") { e.preventDefault(); e.stopPropagation(); wordsCommitEdit(editor); }
-  };
-  node.onblur = () => wordsCommitEdit(editor);
-  node.focus();
-  const selection = getSelection(), range = event && document.caretRangeFromPoint?.(event.clientX,event.clientY);
-  if(range && node.contains(range.startContainer)){selection.removeAllRanges();selection.addRange(range);}
-  else {const end=document.createRange();end.selectNodeContents(node);end.collapse(false);selection.removeAllRanges();selection.addRange(end);}
-}
-async function wordsCommitEdit(editor) {
-  if (editor.promise) return editor.promise;
-  if (wordsPanel.editor !== editor) return true;
-  if (!editor.dirty) { wordsPanel.editor=null; editor.node.removeAttribute("contenteditable"); return true; }
-  editor.promise = (async () => {
-    try {
-      const result=await wordsCommand("words.save",{animation_id:editor.animation,expected_source_revision:editor.revision,words:wordsPresentationEdits(editor.words,editor.text),origin:"lyrics-inline",_expected_project:editor.project});
-      if(result.conflict) throw new Error("This line changed elsewhere. Your text is still here; copy it before reloading.");
-      if(wordsPanel.read.in_video?.includes(editor.animation)) await wordsCommand("words.apply",{animation_id:editor.animation,_expected_project:editor.project});
-      if(wordsPanel.editor===editor) wordsPanel.editor=null;
-      if(state.project===editor.project){wordsPanel.stage=null;await wordsOpen();}
-      return true;
-    } catch(error) {editor.promise=null;editor.node.setAttribute("aria-invalid","true");toast(String(error).replace(/^.*?: /,""));return false;}
-  })();
-  return editor.promise;
-}
-function wordsAfterEdit(action) {
-  const editor=wordsPanel.editor;
-  if(!editor){action();return;}
-  wordsCommitEdit(editor).then((saved)=>{if(saved)action();});
 }
 
 // The design items the picked words belong to (or the one clicked item).
@@ -440,18 +470,17 @@ function wordsGaps(animations) {
     el("span", {}, "Instrumental"), el("span", { class: "meta" }, `${wordsClock(a)} – ${wordsClock(b)}`)), a, b - a));
 }
 
-// Left: the lyrics on the song clock, each section a band and each sung line its tags.
+// Left: the lyrics on the song clock, each section a band and each sung line a film bar on the roll.
 function wordsTimeline(animations, end) {
-  return wordsPlace(el("div", { class: "words-tl", "aria-label": "Lyrics on the song timeline" }, ...wordsGaps(animations),
-    ...animations.map((a) => wordsBand(a, "button", { "data-section": a.animation_id, onclick: () => a.animation_id === wordsPanel.selected || wordsSelect(a.animation_id) })),
+  return wordsPlace(el("div", { class: "words-tl words-roll", "aria-label": "Lyrics on the song timeline" },
+    ...Array.from({ length: Math.ceil(end / 10) }, (_, i) => wordsPlace(el("span", { class: "words-tick" }, wordsClock(i * 10)), i * 10)),
+    ...wordsGaps(animations),
+    ...animations.map((a, idx) => wordsBand(a, "button", { "data-section": a.animation_id, onclick: () => { const first = wordsLines(a)[0]; if (first) wordsSelectLine(a, first); } }, animations[idx + 1] ? wordsSpan(animations[idx + 1]).start : Infinity)),
     ...wordsRows(animations).map(([a, j, line, at, len]) => wordsPlace(el("div", { class: `words-line${j ? "" : " first"}${a.animation_id === wordsPanel.selected && wordsPanel.line === line.id ? " active" : ""}`,
-      "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", "data-animation-id": a.animation_id, "data-line-id":line.id, tabindex:"0",
-      ondblclick:(event)=>{event.preventDefault();wordsBeginEdit(wordsCurrent(),line.id,event);},
-      onkeydown:(event)=>{if(event.target.isContentEditable)return;if(event.key==="Enter" || (event.key.length===1&&!event.ctrlKey&&!event.metaKey)){event.preventDefault();wordsBeginEdit(wordsCurrent(),line.id);if(event.key!=="Enter")document.execCommand("insertText",false,event.key);}},
-      title: "Click around the words to design the whole line",
-      onclick: (event) => { if(event.currentTarget.isContentEditable)return; if(wordsPanel.editor){const target=event.currentTarget;wordsAfterEdit(()=>target.click());return;} if (a.animation_id !== wordsPanel.selected) wordsSelect(a.animation_id); if (a.animation_id !== wordsPanel.selected) return;
-        wordsPanel.line = line.id; wordsPanel.item = null; wordsPanel.picked = []; wordsPanel.time = wordsLineSpan(a, line.id).start; wordsPanel.previewRange = null; wordsPanel.autoPlay = true; wordsRender(); wordsVideoRange();
-        requestAnimationFrame(()=>wordsBeginEdit(wordsCurrent(),line.id,event)); } },
+      "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", "data-animation-id": a.animation_id, "data-line-id": line.id, tabindex: "0",
+      title: "Click line to focus and edit its entrance or words below the preview",
+      onkeydown: (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); wordsSelectLine(a, line); } },
+      onclick: () => wordsSelectLine(a, line) },
       ...line.words.map((w) => wordsChip(a, w))), at, len)),
     el("span", { class: "words-tl-head" })), 0, end);
 }
@@ -465,7 +494,6 @@ function wordsRoll(animations, end) {
     laneEnds[lane] = cue.end; return { cue, lane };
   });
   const frames = placed.map(({ cue, lane }) => {
-    const anim = animations.find((a) => a.animation_id === cue.animation_id);
     const thumb = (progress) => {
       const image = cue.kind === "drawing" ? wordsStroke(cue.stroke) : wordsOptionPreview("overlays", cue.overlay);
       image.setAttribute("class", "words-cue-preview");
@@ -517,26 +545,35 @@ function wordsCueIntersects(cue, animationId, start, end, wordIds) {
   return cue.animation_id === animationId && (cue.word_ids?.length
     ? cue.word_ids.some((id) => wordIds.includes(id)) : cue.start < end && cue.end > start);
 }
-function wordsCueWindow(cue, line) {
-  return { start: Math.max(0, Math.min(cue.start, line.start) - .25), end: Math.max(cue.end, line.end) + .25 };
+function wordsCueWindow(anim, cue, line) {
+  const sec = wordsSpan(anim);
+  return { start: Math.max(sec.start, Math.min(cue.start, line.start) - .15), end: Math.min(sec.end, Math.max(cue.end, line.end)) };
 }
 function wordsPreviewCue(cue) {
   const anim = wordsPanel.read.document.animations.find((a) => a.animation_id === cue.animation_id);
-  if (!anim) return;
-  if (anim.animation_id !== wordsPanel.selected) wordsSelect(anim.animation_id);
-  if (anim.animation_id !== wordsPanel.selected) return;
+  if (!anim || !wordsSwitchSection(anim.animation_id)) return;
+  wordsVideo("pause"); wordsPanel.playing = false;
   wordsPanel.line = cue.line_id || wordsLines(anim)[0]?.id;
-  wordsPanel.picked = cue.word_ids || []; wordsPanel.cue = cue.id;
-  wordsPanel.previewRange = wordsCueWindow(cue, wordsLineSpan(anim, wordsPanel.line));
-  wordsPanel.autoPlay = true; wordsPanel.time = wordsPanel.previewRange.start;
-  wordsRender(); wordsVideoRange();
+  const fallbackWord = wordsLines(anim).find((l) => l.id === wordsPanel.line)?.words[0]?.word_id;
+  wordsPanel.picked = cue.word_ids?.length ? cue.word_ids : (fallbackWord ? [fallbackWord] : []);
+  wordsPanel.cue = cue.id;
+  wordsPanel.shelf = "cues";
+  if (cue.kind === "overlay") wordsPanel.topShelf = "overlay";
+  wordsPanel.followed = `${anim.animation_id}/${wordsPanel.line}`;
+  const lineSpan = wordsLineSpan(anim, wordsPanel.line);
+  wordsPanel.previewRange = wordsCueWindow(anim, cue, lineSpan);
+  wordsPanel.autoPlay = wordsPanel.loopLine;
+  wordsPanel.time = wordsPanel.loopLine ? wordsPanel.previewRange.start : Math.min(lineSpan.end - 0.12, Math.max(cue.start + 0.35, lineSpan.end - 0.18));
+  wordsRender();
+  if (wordsPanel.loopLine) wordsVideoRange(); else wordsSeekSong(wordsPanel.time);
+  requestAnimationFrame(() => wordsEnsureBelowVideo(cue.start));
 }
 async function wordsRetimeCue(cue, start, end) {
   const anim = wordsCurrent();
   if (!anim?.kinetic || (cue.index == null && cue.kind !== "overlay")) return;
   start = Math.max(0,start);
   end = Math.max(start + .05, end);
-  wordsPanel.previewRange = wordsCueWindow({ ...cue, start, end }, wordsLineSpan(anim, cue.line_id || wordsLines(anim)[0]?.id));
+  wordsPanel.previewRange = wordsCueWindow(anim, { ...cue, start, end }, wordsLineSpan(anim, cue.line_id || wordsLines(anim)[0]?.id));
   wordsPanel.autoPlay = false;
   // An overlay is timed from its anchor (the engine's overlay_offset / overlay_duration).
   if (cue.kind === "overlay") return wordsKinetic({ overlay_offset: +(start - cue.anchor).toFixed(2), overlay_duration: +(end - start).toFixed(2) });
@@ -588,20 +625,26 @@ function wordsNearestAnchor(time) {
   }
   return nearest;
 }
-async function wordsRelinkCue(cue,target) {
-  if(!target||cue.index==null)return;
-  const source=wordsPanel.read.document.animations.find(a=>a.animation_id===cue.animation_id),project=state.project;
-  if(!source)return;
+async function wordsApplyChangedSections(sections, project) {
+  for (const id of sections) {
+    if (wordsPanel.read.in_video?.includes(id)) await wordsCommand("words.apply", { animation_id: id, _expected_project: project });
+  }
+}
+
+async function wordsRelinkCue(cue, target) {
+  if (!target || cue.index == null) return;
+  const source = wordsPanel.read.document.animations.find((a) => a.animation_id === cue.animation_id), project = state.project;
+  if (!source) return;
   wordsVideo("pause");
   try {
-    const result=await wordsCommand("words.link",{animation_id:source.animation_id,index:cue.index,word_id:target.word.word_id,target_animation_id:target.anim.animation_id,
-      expected_source_revision:source.source_revision,expected_target_revision:target.anim.source_revision,_expected_project:project});
-    if(result.conflict){toast("These lyrics changed elsewhere; reloaded before moving the link");return wordsOpen();}
-    for(const id of result.changed_sections)if(wordsPanel.read.in_video?.includes(id))await wordsCommand("words.apply",{animation_id:id,_expected_project:project});
-    if(state.project!==project)return;
-    wordsPanel.selected=result.animation_id;wordsPanel.line=target.word.line_id;wordsPanel.picked=[target.word.word_id];
-    wordsPanel.cue=`${result.animation_id}-draw-${result.index}`;wordsPanel.stage=null;wordsPanel.previewRange=null;await wordsOpen();
-  } catch(error){toast(String(error).replace(/^.*?: /,""));if(state.project===project)await wordsOpen();}
+    const result = await wordsCommand("words.link", { animation_id: source.animation_id, index: cue.index, word_id: target.word.word_id, target_animation_id: target.anim.animation_id,
+      expected_source_revision: source.source_revision, expected_target_revision: target.anim.source_revision, _expected_project: project });
+    if (result.conflict) { toast("These lyrics changed elsewhere; reloaded before moving the link"); return wordsOpen(); }
+    await wordsApplyChangedSections(result.changed_sections, project);
+    if (state.project !== project) return;
+    wordsPanel.selected = result.animation_id; wordsPanel.line = target.word.line_id; wordsPanel.picked = [target.word.word_id];
+    wordsPanel.cue = `${result.animation_id}-draw-${result.index}`; wordsPanel.stage = null; wordsPanel.previewRange = null; await wordsOpen();
+  } catch (error) { toast(String(error).replace(/^.*?: /, "")); if (state.project === project) await wordsOpen(); }
 }
 function wordsAnchorDrag(event,cue) {
   event.preventDefault();event.stopPropagation();wordsVideo("pause");
@@ -620,53 +663,102 @@ addEventListener("pointerup",()=>{
 });
 addEventListener("pointercancel",()=>{if(wordsPanel.linkDrag){wordsPanel.linkDrag=null;wordsArrows($("view-design"));}});
 
+function wordsLinkAnchorHandle(cue, x1, y1) {
+  const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  for (const [key, value] of Object.entries({ cx: x1, cy: y1, r: 7, class: "words-link-anchor", role: "button", tabindex: 0, "aria-label": `Relink ${cue.name} from ${cue.word || "this word"}` })) {
+    handle.setAttribute(key, String(value));
+  }
+  handle.onpointerdown = (event) => wordsAnchorDrag(event, cue);
+  handle.onclick = (event) => { event.stopPropagation(); wordsPreviewCue(cue); };
+  handle.onkeydown = (event) => {
+    if (event.key === "Enter") { event.preventDefault(); wordsPreviewCue(cue); return; }
+    if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    const all = wordsPanel.read.document.animations.flatMap((anim) => anim.words.map((word) => ({ anim, word, at: wordsAt(word) }))).filter((x) => Number.isFinite(x.at)).sort((a, b) => a.at - b.at);
+    const index = all.findIndex((x) => x.anim.animation_id === cue.animation_id && x.word.word_id === cue.word_ids?.[0]);
+    wordsRelinkCue(cue, all[index + (event.key === "ArrowUp" ? -1 : 1)]);
+  };
+  return handle;
+}
+
+function wordsCurveControlY(view, box, y1, y2, active) {
+  const preview = view.querySelector(".words-preview, .lyric-canvas");
+  if (!preview || !active) return [y1, y2];
+  const floor = preview.getBoundingClientRect().bottom - box.top + view.scrollTop + 18;
+  return [Math.max(y1, floor), Math.max(y2, floor)];
+}
+
+function wordsArrowNode(view, box, scale, cue, frame, line) {
+  const start = Number(line.style.getPropertyValue("--at-s")), end = start + Number(line.style.getPropertyValue("--len-s"));
+  const chips = [...line.querySelectorAll("[data-word-id]")];
+  if (!wordsCueIntersects(cue, line.dataset.animationId, start, end, chips.map((c) => c.dataset.wordId))) return null;
+  const sourceChip = chips.find((c) => cue.word_ids?.includes(c.dataset.wordId));
+  const lineRect = line.getBoundingClientRect(), frameRect = frame.getBoundingClientRect();
+  const x1 = lineRect.right - box.left + view.scrollLeft + 5, x2 = frameRect.left - box.left + view.scrollLeft;
+  const timeline = line.parentElement.getBoundingClientRect();
+  const target = wordsPanel.linkDrag?.cue.id === cue.id ? wordsPanel.linkDrag.target : null;
+  const anchorAt = target?.at ?? cue.anchor ?? (sourceChip ? Number(sourceChip.dataset.start) : start);
+  const y1 = timeline.top - box.top + view.scrollTop + anchorAt * scale;
+  const fraction = (Math.max(start, cue.start) - cue.start) / Math.max(0.05, cue.end - cue.start);
+  const y2 = frameRect.top - box.top + view.scrollTop + Math.min(frameRect.height - 4, Math.max(4, frameRect.height * fraction));
+  const flowStart = Math.min(anchorAt, cue.start), flowEnd = Math.max(flowStart + 0.65, cue.draw_end ?? cue.end);
+  const active = wordsPanel.cue ? wordsPanel.cue === cue.id : line.classList.contains("active");
+  const [cy1, cy2] = wordsCurveControlY(view, box, y1, y2, active);
+  const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  group.setAttribute("class", `words-arrow-group${active ? " active" : ""}`);
+  group.setAttribute("data-cue-id", cue.id);
+  group.setAttribute("data-line-id", line.dataset.lineId || "");
+  group.setAttribute("data-start", flowStart.toFixed(3));
+  group.setAttribute("data-end", flowEnd.toFixed(3));
+  group.style.setProperty("--link-a", wordsPanel.links.color || (line.dataset.kind === "chorus" ? "var(--tone-lyrics)" : "var(--tone-transcript)"));
+  group.style.setProperty("--link-b", `color-mix(in srgb, ${cue.color || "var(--accent)"} 55%, var(--text))`);
+  const curve = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  curve.setAttribute("d", `M ${x1} ${y1} C ${(x1 + x2) / 2} ${cy1}, ${(x1 + x2) / 2} ${cy2}, ${x2 - 6} ${y2}`);
+  curve.setAttribute("class", `words-arrow-curve${active ? " active" : ""}`);
+  curve.setAttribute("data-kind", line.dataset.kind);
+  curve.setAttribute("aria-hidden", "true");
+  curve.onclick = () => wordsPreviewCue(cue);
+  const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  head.setAttribute("d", `M ${x2 - 6} ${y2} l -12 -6 m 12 6 l -12 6`);
+  head.setAttribute("class", `words-arrow-head${active ? " active" : ""}`);
+  head.setAttribute("aria-hidden", "true");
+  const notes = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  notes.setAttribute("class", "words-arrow-notes");
+  notes.setAttribute("aria-hidden", "true");
+  for (const glyph of ["♪", "♫", "♬"]) {
+    const note = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    note.setAttribute("class", "words-music-note");
+    note.setAttribute("text-anchor", "middle");
+    note.setAttribute("dominant-baseline", "central");
+    note.textContent = glyph;
+    notes.appendChild(note);
+  }
+  group.append(curve, head, notes);
+  if (cue.index != null && wordsPanel.mode === "timing") group.appendChild(wordsLinkAnchorHandle(cue, x1, y1));
+  return group;
+}
+
 // Connections describe meaning and timing, never matching row numbers.
 function wordsArrows(view) {
   view.querySelector(":scope > svg.words-arrows")?.remove();
+  if (wordsPanel.links.hidden) return;
   const lines = [...view.querySelectorAll(".words-tl > .words-line")], frames = [...view.querySelectorAll(".words-roll > .words-graphic")];
   if (!lines.length || !frames.length || !frames[0].offsetParent) return;
   const box = view.getBoundingClientRect(), svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", `words-arrows${wordsPanel.links.pulse?" blending":""}${wordsPanel.links.front?" front":""}`);
-  svg.setAttribute("role","group");svg.setAttribute("aria-label","Lyric and drawing connections");
+  svg.setAttribute("class", `words-arrows${wordsPanel.links.pulse ? " blending" : ""}${wordsPanel.links.front ? " front" : ""}`);
+  svg.setAttribute("role", "group"); svg.setAttribute("aria-label", "Lyric and drawing connections");
   svg.style.setProperty("--arrows-width", `${view.scrollWidth}px`); svg.style.setProperty("--arrows-height", `${view.scrollHeight}px`);
-  const at = (r, side) => [r[side] - box.left + view.scrollLeft, r.top + r.height / 2 - box.top + view.scrollTop];
+  const scale = parseFloat(getComputedStyle(view).getPropertyValue("--song-s")) || 18;
   for (const frame of frames) {
     const cue = wordsPanel.read.graphics.find((c) => c.id === frame.dataset.cueId);
     if (!cue) continue;
     for (const line of lines) {
-      const start = Number(line.style.getPropertyValue("--at-s")), end = start + Number(line.style.getPropertyValue("--len-s"));
-      const chips = [...line.querySelectorAll("[data-word-id]")];
-      if (!wordsCueIntersects(cue, line.dataset.animationId, start, end, chips.map((c) => c.dataset.wordId))) continue;
-      const source = chips.find((c) => cue.word_ids?.includes(c.dataset.wordId)) || line;
-      const [edge] = at(line.getBoundingClientRect(), "right"), [x2] = at(frame.getBoundingClientRect(), "left");
-      const scale=parseFloat(getComputedStyle(view).getPropertyValue("--song-s"))||18;
-      const timeline=line.parentElement.getBoundingClientRect();
-      const target=wordsPanel.linkDrag?.cue.id===cue.id?wordsPanel.linkDrag.target:null;
-      const x1=edge+5,y1=timeline.top-box.top+view.scrollTop+(target?.at??cue.anchor??start)*scale;
-      const r = frame.getBoundingClientRect(), fraction = (Math.max(start, cue.start) - cue.start) / (cue.end - cue.start);
-      const y2 = r.top - box.top + view.scrollTop + Math.min(r.height - 4, Math.max(4, r.height * fraction));
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2 - 6} ${y2} l -12 -6 m 12 6 l -12 6`);
-      const active=wordsPanel.cue?wordsPanel.cue===cue.id:line.classList.contains("active");
-      path.setAttribute("class",active?"active":"");path.setAttribute("data-kind",line.dataset.kind);
-      path.style.setProperty("--link-a",wordsPanel.links.color||(line.dataset.kind==="chorus"?"var(--tone-lyrics)":"var(--tone-transcript)"));
-      path.style.setProperty("--link-b",`color-mix(in srgb, ${cue.color||"var(--accent)"} 55%, var(--text))`);
-      path.setAttribute("aria-hidden","true");path.onclick=()=>wordsPreviewCue(cue);svg.appendChild(path);
-      if(cue.index!=null&&wordsPanel.mode==="timing") {
-        const handle=document.createElementNS("http://www.w3.org/2000/svg","circle");
-        for(const [key,value] of Object.entries({cx:x1,cy:y1,r:7,class:"words-link-anchor",role:"button",tabindex:0,"aria-label":`Relink ${cue.name} from ${cue.word||"this word"}`}))handle.setAttribute(key,String(value));
-        handle.onpointerdown=event=>wordsAnchorDrag(event,cue);handle.onclick=event=>{event.stopPropagation();wordsPreviewCue(cue);};
-        handle.onkeydown=event=>{
-          if(event.key==="Enter"){event.preventDefault();wordsPreviewCue(cue);return;}
-          if(!["ArrowUp","ArrowDown"].includes(event.key))return;event.preventDefault();
-          const all=wordsPanel.read.document.animations.flatMap(anim=>anim.words.map(word=>({anim,word,at:wordsAt(word)}))).filter(x=>Number.isFinite(x.at)).sort((a,b)=>a.at-b.at);
-          const index=all.findIndex(x=>x.anim.animation_id===cue.animation_id&&x.word.word_id===cue.word_ids?.[0]);
-          wordsRelinkCue(cue,all[index+(event.key==="ArrowUp"?-1:1)]);
-        };svg.appendChild(handle);
-      }
+      const node = wordsArrowNode(view, box, scale, cue, frame, line);
+      if (node) svg.appendChild(node);
     }
   }
   view.appendChild(svg);
+  wordsAnimateFlow(view, wordsPanel.time);
 }
 
 // Centre, under the stage: the line's minimal lanes. Timing only; the Studio owns clip length.
@@ -690,6 +782,101 @@ function wordsLanes(anim) {
   return wordsPanel.lanes;
 }
 
+function wordsPositionArrowNotes(group, t, start, end) {
+  const curve = group.querySelector(".words-arrow-curve");
+  if (!curve || typeof curve.getTotalLength !== "function") return;
+  const len = curve.getTotalLength();
+  if (!len) return;
+  const span = Math.max(0.4, end - start);
+  const progress = wordsPanel.playing ? wordsClamp((t - start) / span) : (performance.now() / 2600) % 1;
+  const notes = group.querySelectorAll(".words-music-note");
+  notes.forEach((note, idx) => {
+    const u = (progress * 1.15 + idx * 0.28) % 1;
+    const pt = curve.getPointAtLength(u * len);
+    const bob = Math.sin((u * 2.5 + idx * 0.4) * Math.PI * 2) * 5;
+    const fade = u < 0.12 ? u / 0.12 : u > 0.88 ? (1 - u) / 0.12 : 1;
+    note.setAttribute("transform", `translate(${pt.x.toFixed(1)}, ${(pt.y - 4 + bob).toFixed(1)})`);
+    note.style.setProperty("opacity", fade.toFixed(2));
+  });
+}
+
+function wordsPickPrimaryArrow(groups, t) {
+  if (!wordsPanel.playing) {
+    const picked = groups.find((g) => (wordsPanel.cue ? g.dataset.cueId === wordsPanel.cue : g.dataset.lineId === wordsPanel.line));
+    if (picked) return picked;
+  }
+  const candidates = groups.filter((g) => {
+    const s = Number(g.dataset.start), e = Number(g.dataset.end);
+    return Number.isFinite(s) && t >= s - 0.12 && t <= e + 0.25;
+  });
+  if (candidates.length) {
+    return candidates.reduce((best, g) => (Number(g.dataset.start) >= Number(best.dataset.start) ? g : best));
+  }
+  return groups.find((g) => g.dataset.lineId === wordsPanel.line) || null;
+}
+
+function wordsUpdateArrowGroup(group, primary, t) {
+  const s = Number(group.dataset.start), e = Number(group.dataset.end);
+  const isPrimary = group === primary;
+  const flowing = isPrimary;
+  const past = !isPrimary && Number.isFinite(e) && t > e + 0.2;
+  group.classList.toggle("flowing", flowing);
+  group.classList.toggle("primary", isPrimary);
+  group.classList.toggle("past", past);
+  group.classList.toggle("upcoming", !isPrimary && !past);
+  for (const p of group.querySelectorAll("path")) p.classList.toggle("active", isPrimary);
+  if (flowing) wordsPositionArrowNotes(group, t, s, e);
+}
+
+let wordsNoteLoopId = 0;
+function wordsEnsureNoteLoop() {
+  if (wordsNoteLoopId) return;
+  const step = () => {
+    const view = $("view-design");
+    const primary = view?.classList.contains("active") ? view.querySelector("svg.words-arrows .words-arrow-group.primary") : null;
+    if (!primary) { wordsNoteLoopId = 0; return; }
+    if (!wordsPanel.playing) {
+      wordsPositionArrowNotes(primary, wordsPanel.time, Number(primary.dataset.start) || 0, Number(primary.dataset.end) || 1);
+    }
+    wordsNoteLoopId = requestAnimationFrame(step);
+  };
+  wordsNoteLoopId = requestAnimationFrame(step);
+}
+
+function wordsUpdateGraphicFrame(frame, t) {
+  const cue = wordsPanel.read?.graphics?.find((c) => c.id === frame.dataset.cueId);
+  const active = !!cue && t >= cue.start - 0.05 && t <= cue.end + 0.1;
+  const past = !!cue && t > cue.end + 0.25;
+  frame.classList.toggle("playing", active);
+  frame.classList.toggle("past", wordsPanel.playing && past && !active);
+  if (active && cue.kind === "drawing") {
+    const drawSpan = Math.max(0.15, (cue.draw_end ?? cue.end) - cue.start);
+    const u = wordsClamp((t - cue.start) / drawSpan);
+    frame.querySelectorAll(".words-cue-preview path").forEach((path, i) => {
+      path.setAttribute("stroke-dashoffset", String((1 - wordsClamp(u * 0.75 + (i + 1) * 0.25)).toFixed(3)));
+    });
+  }
+}
+
+function wordsAnimateFlow(view, t) {
+  if (!view) return;
+  for (const line of view.querySelectorAll(".words-tl > .words-line")) {
+    const s = Number(line.style.getPropertyValue("--at-s")), e = s + Number(line.style.getPropertyValue("--len-s"));
+    const singing = t >= s - 0.1 && t <= e + 0.15;
+    line.classList.toggle("singing-line", singing);
+    line.classList.toggle("past", wordsPanel.playing && t > e + 0.2 && !singing);
+  }
+  for (const chip of view.querySelectorAll(".words-line > .word.lettered")) {
+    const s = Number(chip.dataset.start), e = Number(chip.dataset.end);
+    chip.classList.toggle("singing", Number.isFinite(s) && t >= s - 0.05 && t <= e + 0.18);
+  }
+  const groups = [...view.querySelectorAll("svg.words-arrows .words-arrow-group")];
+  const primary = wordsPickPrimaryArrow(groups, t);
+  for (const group of groups) wordsUpdateArrowGroup(group, primary, t);
+  for (const frame of view.querySelectorAll(".words-roll > .words-graphic")) wordsUpdateGraphicFrame(frame, t);
+  if (primary) wordsEnsureNoteLoop();
+}
+
 // The playhead, on every timeline of the page; while playing, the page keeps it in view.
 function wordsNow(t) {
   const view = $("view-design"), anim = wordsCurrent();
@@ -698,19 +885,24 @@ function wordsNow(t) {
     const span = wordsLineSpan(anim, wordsPanel.line), from = span.start - 0.4;
     wordsPanel.lanes.style.setProperty("--at", `${(100 * wordsClamp((t - from) / (span.end - from))).toFixed(3)}%`);
   }
+  wordsAnimateFlow(view, t);
   if (wordsPanel.playing) wordsFollow(t);
 }
-// The lyrics and the film roll move with the song: the moment t sits level with the transport under the
-// stage, so the playheads track playback there. While playing this tracks every frame; a new pick glides.
+// The lyrics and the film roll move with the song: the moment t and the white playhead bar sit right
+// below the video preview so the active lyric line and its musical connection curve run below the stage.
 function wordsFollow(t, smooth = false) {
   const view = $("view-design"), tl = view?.querySelector(".words-tl");
-  const eye = view?.querySelector(".words-preview .transport, .words-toolbar") || view?.querySelector(".lyric-canvas, .words-preview");
+  const eye = view?.querySelector(".words-preview, .lyric-canvas");
   if (!tl || !eye) return;
   const seconds = Number(tl.style.getPropertyValue("--len-s")), box = view.getBoundingClientRect();
-  // Both measured in the view's scroll space (offsetTop is relative to the column, not the view).
-  const tlTop = tl.getBoundingClientRect().top - box.top + view.scrollTop, eyeY = eye.getBoundingClientRect().top - box.top;
+  const eyeY = Math.max(120, eye.getBoundingClientRect().bottom - box.top + 18);
+  view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
+  const tlTop = tl.getBoundingClientRect().top - box.top + view.scrollTop;
   const target = tlTop + tl.clientHeight * t / seconds - eyeY;
   view.scrollTo({ top: Math.max(0, target), behavior: smooth ? "smooth" : "instant" });
+}
+function wordsEnsureBelowVideo(t) {
+  wordsFollow(t, true);
 }
 
 const wordsCard = (on, title, does, onclick) => el("button", { class: "effect", role: "radio", "aria-checked": String(!!on), title: `${title} · ${does}`, "aria-label": title, onclick },
@@ -791,24 +983,43 @@ function wordsModeTabs() {
 }
 function wordsSetMode(mode) {
   if(!Object.hasOwn(WORDS_VIEW_ICONS,mode))return;
-  if(wordsPanel.editor){wordsAfterEdit(()=>wordsSetMode(mode));return;}
   if(mode!=="motion"){document.querySelector(".words-sketch")?.remove();document.querySelector(".words-sketch-cancel")?.remove();}
   wordsPanel.mode=mode;
-  const view=$("view-design");if(view)view.dataset.wordsMode=mode;
-  $("words-view-modes")?.querySelectorAll("[data-words-mode]").forEach(n=>n.setAttribute("aria-selected",String(n.dataset.wordsMode===mode)));
-  const controls=$("words-workspace-controls"),anim=wordsCurrent();
-  if(controls&&anim)controls.replaceChildren(...wordsInnerControls(anim));
-  if(view)requestAnimationFrame(()=>{wordsWidth(view);wordsFit();wordsArrows(view);});
+  if (mode === "motion") { wordsPanel.topShelf = "overlay"; wordsPanel.shelf = "cues"; }
+  else if (mode === "lyrics" && !wordsPanel.topShelf) { wordsPanel.topShelf = "scene"; wordsPanel.shelf = "acts"; }
+  wordsRender();
 }
+function wordsPersistLinks() {
+  try { localStorage.setItem("magicstudio.lyrics.links", JSON.stringify(wordsPanel.links)); } catch {}
+  wordsArrows($("view-design"));
+}
+
+function wordsLinksToggleButton() {
+  const shown = !wordsPanel.links.hidden;
+  const label = shown ? "Hide lyric-to-cue links" : "Show lyric-to-cue links";
+  return el("button", {
+    class: "icon words-links-toggle",
+    "aria-label": label,
+    title: label,
+    "aria-pressed": String(shown),
+    html: '<svg viewBox="0 0 24 24"><path d="M4 17c4-10 8 4 16-10"/><circle cx="4" cy="17" r="2"/><circle cx="20" cy="7" r="2"/></svg>',
+    onclick: (e) => {
+      wordsPanel.links.hidden = !wordsPanel.links.hidden;
+      e.currentTarget.setAttribute("aria-pressed", String(!wordsPanel.links.hidden));
+      wordsPersistLinks();
+    }
+  });
+}
+
 function wordsLinkControls() {
-  const links=wordsPanel.links;
-  const refresh=()=>{try{localStorage.setItem("magicstudio.lyrics.links",JSON.stringify(links));}catch{}wordsArrows($("view-design"));};
-  const colour=el("input",{type:"color","aria-label":"Connection colour",title:"Connection colour",oninput:e=>{links.color=e.target.value;e.target.defaultValue=e.target.value;refresh();}});
-  colour.value=colour.defaultValue=links.color||"#70c4ff";
-  const toggle=(key,label,icon)=>el("button",{class:"icon","aria-label":label,title:label,"aria-pressed":String(links[key]),html:icon,onclick:e=>{links[key]=!links[key];e.currentTarget.setAttribute("aria-pressed",String(links[key]));refresh();}});
-  return el("div",{id:"words-link-controls",class:"transport"},el("span",{class:"group-label"},"Connections"),colour,
-    toggle("front","Bring connections in front",'<svg viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12"/><path d="M8 4h12v12M11 13l8-8M13 5h6v6"/></svg>'),
-    toggle("pulse","Slow connection colour blend",'<svg viewBox="0 0 24 24"><path d="M3 12c3-8 6 8 9 0s6 8 9 0"/></svg>'));
+  const links = wordsPanel.links;
+  const colour = el("input", { type: "color", "aria-label": "Connection colour", title: "Connection colour", oninput: (e) => { links.color = e.target.value; e.target.defaultValue = e.target.value; wordsPersistLinks(); } });
+  colour.value = colour.defaultValue = links.color || "#70c4ff";
+  const toggle = (key, label, icon) => el("button", { class: "icon", "aria-label": label, title: label, "aria-pressed": String(links[key]), html: icon, onclick: (e) => { links[key] = !links[key]; e.currentTarget.setAttribute("aria-pressed", String(links[key])); wordsPersistLinks(); } });
+  return el("div", { id: "words-link-controls", class: "transport" }, el("span", { class: "group-label" }, "Connections"), colour,
+    wordsLinksToggleButton(),
+    toggle("front", "Bring connections in front", '<svg viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12"/><path d="M8 4h12v12M11 13l8-8M13 5h6v6"/></svg>'),
+    toggle("pulse", "Slow connection colour blend", '<svg viewBox="0 0 24 24"><path d="M3 12c3-8 6 8 9 0s6 8 9 0"/></svg>'));
 }
 function wordsMotionActions(anim) {
   return el("div",{class:"transport","aria-label":"Add visual cue"},
@@ -878,70 +1089,85 @@ function wordsCueEditor(anim) {
   return el("div",{class:"words-timing-summary","data-cue-kind":cue.kind},el("strong",{},cue.name),
     field("Start",cue.start,v=>wordsRetimeCue(cue,v,v+cue.end-cue.start)),field("End",cue.end,v=>wordsRetimeCue(cue,cue.start,v)),
     el("button",{class:"icon","aria-label":"Replay linked learning moment",title:"Replay the lyric and this cue together",html:ICONS.play,onclick:()=>wordsPreviewCue(cue)}),
-    wordsPanel.mode==="motion" ? wordsDrawingEdit(anim,cue) : null,
+    wordsDrawingEdit(anim,cue),
     el("button",{class:"icon","aria-label":"Delete selected visual cue",title:"Delete this cue",onclick:()=>{wordsPanel.cue=null;wordsKinetic(cue.kind==="overlay"?{overlay:"none"}:{draws:anim.kinetic.draws.filter((_,i)=>i!==cue.index)});},html:'<svg viewBox="0 0 24 24"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg>'}),
-    el("p",{class:"muted"},cue.word?`Linked to “${cue.word}” · drag the left point to choose another word.`:"This effect overlaps the connected lyric lines."));
+    el("p",{class:"muted"},cue.word?`Linked to “${cue.word}” · drag the left point to choose another word.`:"This atmosphere effect spans the section; adjust Start/End or pick another Atmosphere above."));
 }
 function wordsTimingPanel(anim) {
   return el("section",{class:"words-timing","aria-label":"Timing controls"},wordsLinkControls(),wordsCueEditor(anim));
 }
 function wordsInnerControls(anim) {
   if(wordsPanel.mode==="timing")return [wordsTimingPanel(anim)];
-  if(anim.kinetic)return wordsPanel.mode==="motion"?[wordsMotionActions(anim),wordsCueEditor(anim),wordsLayers(anim)]:[wordsLayers(anim)];
+  if(anim.kinetic)return [wordsLayers(anim)];
   wordsPanel.tab=wordsPanel.mode==="motion"?"draw":"look";
   return [wordsLanes(anim),...wordsOptions(anim)];
 }
 
-function wordsRender() {
-  if(wordsPanel.editor?.dirty) return;
-  const view = $("view-design");
-  const anim = wordsCurrent();
-  const animations = wordsPanel.read?.document?.animations || [];
-  if (!anim) { view.replaceChildren(el("p", { class: "panel-empty inline" }, "No lyric sections yet.")); return; }
-  if (!wordsLines(anim).some((l) => l.id === wordsPanel.line)) { wordsPanel.line = wordsLines(anim)[0]?.id || null; wordsPanel.item = null; wordsPanel.time = wordsPanel.line ? wordsPose(anim, wordsPanel.line) : 0; }
-  const end = Math.max(...animations.map((a) => wordsSpan(a).end)) + 4;
-  const design = wordsPanel.line ? wordsDesign(anim, wordsPanel.line) : null, it = design?.items[wordsPanel.item];
-  const lineNo = wordsLines(anim).findIndex((l) => l.id === wordsPanel.line) + 1;
-  const itemText = it ? it.word_ids.map((id) => anim.words.find((w) => w.word_id === id)?.text).join(" ") : "";
-
-  const changes = wordsPanel.designs.size + Object.keys(wordsPanel.styleEdits).length;
-  const saveLabel=changes ? `Save ${changes} change${changes > 1 ? "s" : ""}` : "Saved";
-  const save = el("button", { id:"words-save", class:"icon", title:saveLabel, "aria-label":saveLabel, onclick:wordsSave,
-    html:'<svg viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3h2zM7 3v6h9V3M7 21v-8h10v8"/></svg>' });
-  save.disabled = !changes;
+function wordsDesignerToolbar(anim) {
   const segmented = (label, current, options, pick) => el("div", { class: "segmented", role: "tablist", "aria-label": label },
     ...options.map(([key, name]) => el("button", { role: "tab", "aria-selected": String(current === key), onclick: () => pick(key) }, name)));
+  const inVideo = wordsPanel.read.in_video?.includes(anim.animation_id);
+  return el("div", { class: "words-toolbar" },
+    el("button", { class: "icon", "aria-label": "Play this line", title: "Play from this line", onclick: wordsPlay, html: ICONS.play }),
+    el("span", { class: "meta" }, wordsClock(wordsLineSpan(anim, wordsPanel.line).start)),
+    segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => { wordsPanel.scene = key === "scene"; wordsRender(); }),
+    el("span", { class: "words-spacer" }),
+    el("button", { class: "ghost", title: inVideo ? "Put the video's original lyrics back for this section" : "Replace this section's lyrics in the video with the designed lines", onclick: () => wordsApply(!inVideo) },
+      inVideo ? "In the video · Restore original" : "Use in the video"));
+}
 
+function wordsHeaderMeta(anim) {
+  const lines = wordsLines(anim);
+  if (!lines.some((l) => l.id === wordsPanel.line)) {
+    wordsPanel.line = lines[0]?.id || null;
+    wordsPanel.item = null;
+    if (!wordsPanel.playing) wordsPanel.time = wordsPanel.line ? wordsLineSpan(anim, wordsPanel.line).start + 0.35 : 0;
+  }
+  const activeLine = lines.find((l) => l.id === wordsPanel.line) || lines[0];
+  if (activeLine && !wordsPanel.picked.some((id) => anim.words.some((w) => w.word_id === id))) {
+    const hero = activeLine.words.find((w) => anim.kinetic?.acts?.[w.word_id]) || activeLine.words[0];
+    if (hero) wordsPanel.picked = [hero.word_id];
+  }
+  const design = wordsPanel.line ? wordsDesign(anim, wordsPanel.line) : null, it = design?.items[wordsPanel.item];
+  const lineNo = lines.findIndex((l) => l.id === wordsPanel.line) + 1;
+  const itemText = it ? it.word_ids.map((id) => anim.words.find((w) => w.word_id === id)?.text).join(" ") : "";
+  return { lineNo, description: `${wordsLabel(anim)} · line ${lineNo}${it ? ` · ${itemText}` : ""}` };
+}
+
+function wordsRender() {
+  const view = $("view-design"), anim = wordsCurrent(), animations = wordsPanel.read?.document?.animations || [];
+  if (!anim) { view.replaceChildren(el("p", { class: "panel-empty inline" }, "No lyric sections yet.")); return; }
+  const { lineNo, description } = wordsHeaderMeta(anim);
+  const end = Math.max(...animations.map((a) => wordsSpan(a).end)) + 4;
+  const changes = wordsPanel.designs.size + Object.keys(wordsPanel.styleEdits).length;
+  const saveLabel = changes ? `Save ${changes} change${changes > 1 ? "s" : ""} & sync Studio` : "Save & view in HyperFrames Studio";
+  const save = el("button", { id: "words-save", class: "icon", title: saveLabel, "aria-label": saveLabel, onclick: () => wordsSave(!changes),
+    html: '<svg viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3h2zM7 3v6h9V3M7 21v-8h10v8"/></svg>' });
   const designer = wordsPanel.view === "design" && wordsPanel.line && !anim.kinetic;
   const main = el("section", { id: "words-main", "aria-label": `${wordsLabel(anim)} lyrics` },
-    new PanelHeader({id:"words-main-head",title:`${wordsLabel(anim)} · ${lineNo}`,
-      description:`${wordsLabel(anim)} · line ${lineNo}${it ? ` · ${itemText}` : ""}`,
-      actions:[wordsModeTabs(),save]}).element,
+    new PanelHeader({ id: "words-main-head", title: `${wordsLabel(anim)} · ${lineNo}`, description,
+      actions: [wordsModeTabs(), wordsLinksToggleButton(), save] }).element,
     wordsPanel.read.reference_changed ? el("p", { class: "not-linked" }, "The timing reference changed since this was saved; check the words before saving.") : null,
+    wordsUpperTracks(anim),
     designer ? wordsCanvas(anim) : wordsStage(anim),
-    // The stage's controls sit in one row under it, so the stage stays high in the column.
-    designer ? el("div", { class: "words-toolbar" },
-      designer ? el("button", { class: "icon", "aria-label": "Play this line", title: "Play from this line", onclick: wordsPlay, html: ICONS.play }) : null,
-      designer ? el("span", { class: "meta" }, wordsClock(wordsLineSpan(anim, wordsPanel.line).start)) : null,
-
-      designer ? segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => { wordsPanel.scene = key === "scene"; wordsRender(); }) : null,
-      el("span", { class: "words-spacer" }),
-      wordsPanel.read.in_video?.includes(anim.animation_id)
-        ? el("button", { class: "ghost", title: "Put the video's original lyrics back for this section", onclick: () => wordsApply(false) }, "In the video · Restore original")
-        : el("button", { class: "ghost", title: "Replace this section's lyrics in the video with the designed lines", onclick: () => wordsApply(true) }, "Use in the video")) : null,
-    el("div",{id:"words-workspace-controls"},...wordsInnerControls(anim)));
+    designer ? wordsDesignerToolbar(anim) : null,
+    el("div", { id: "words-workspace-controls" }, ...wordsInnerControls(anim)));
 
   view.replaceChildren(
-    el("aside", { id: "words-lyrics" }, new PanelHeader({id:"words-lyrics-head", title:"Lyrics"}).element, wordsTimeline(animations, end)),
+    el("aside", { id: "words-lyrics" }, new PanelHeader({ id: "words-lyrics-head", title: "Lyrics" }).element, wordsTimeline(animations, end)),
     main,
-    el("aside", { id: "words-film" }, new PanelHeader({id:"words-film-head", title:"Visual cues"}).element, wordsRoll(animations, end)));
-  view.dataset.wordsMode=wordsPanel.mode;
-  wordsViewFitter.observe(view); if($("magic-workstation"))wordsViewFitter.observe($("magic-workstation")); wordsWidth(view);
+    el("aside", { id: "words-film" }, new PanelHeader({ id: "words-film-head", title: "Visual cues" }).element, wordsRoll(animations, end)));
+  view.dataset.wordsMode = wordsPanel.mode;
+  view.onscroll = () => wordsArrows(view);
+  wordsViewFitter.observe(view); if ($("magic-workstation")) wordsViewFitter.observe($("magic-workstation")); wordsWidth(view);
   requestAnimationFrame(() => {
-    wordsCanvasDraw(); wordsFitClock(view); wordsArrows(view);
-    // A new pick brings its line level with the stage.
+    wordsCanvasDraw(); wordsFitClock(view);
     const pick = `${wordsPanel.selected}/${wordsPanel.line}`;
-    if (pick !== wordsPanel.followed && wordsPanel.line && !wordsPanel.playing) { wordsPanel.followed = pick; wordsFollow(wordsLineSpan(anim, wordsPanel.line).start, true); }
+    if (pick !== wordsPanel.followed && wordsPanel.line && !wordsPanel.playing) {
+      wordsPanel.followed = pick;
+      wordsFollow(wordsPanel.time || wordsLineSpan(anim, wordsPanel.line).start, false);
+    }
+    wordsArrows(view);
   });
   wordsNow(wordsPanel.time);
   wordsFit();
@@ -999,46 +1225,108 @@ function wordsStyleFields(anim) {
 }
 
 function wordsUseButton(anim) {
-  const used=wordsPanel.read.in_video?.includes(anim.animation_id);
-  const label=used?"Restore original video lyrics":"Use this lyric design in the video";
-  return el("button",{class:"icon",title:label,"aria-label":label,"aria-pressed":String(!!used),onclick:()=>wordsApply(!used),
-    html:'<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 12 3 3 7-7"/></svg>'});
+  const used = wordsPanel.read.in_video?.includes(anim.animation_id);
+  const label = used ? "Restore original video lyrics" : "Use this lyric design in the video";
+  return el("button", { class: "icon", title: label, "aria-label": label, "aria-pressed": String(!!used), onclick: () => wordsApply(!used),
+    html: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 12 3 3 7-7"/></svg>' });
+}
+
+function wordsAvailableBackdrops() {
+  const seen = new Set(), list = [];
+  for (const img of [...(wordsPanel.backgrounds?.images || []), ...(wordsPanel.read?.images || [])]) {
+    const id = img.asset_id || img.id;
+    if (!id || !img.path || seen.has(id)) continue;
+    seen.add(id);
+    list.push({ id, name: img.name || id, path: img.path });
+  }
+  return list;
+}
+
+async function wordsPickBackdrop(anim, assetId) {
+  const heldTime = wordsPanel.time, wasPlaying = wordsPanel.playing;
+  try {
+    const result = await wordsCommand("words.save", {
+      animation_id: anim.animation_id,
+      expected_source_revision: anim.source_revision,
+      background_asset: assetId,
+      _expected_project: state.project
+    });
+    if (result.conflict) { toast("This verse changed elsewhere; reloaded"); return wordsOpen(); }
+    anim.source_revision = result.animation.source_revision;
+    anim.background_asset = assetId;
+    wordsPanel.show = assetId ? "still" : "stage";
+    document.querySelector("#words-main .words-backdrop")?.replaceWith(wordsBackdropPicker(anim));
+    await wordsShow(wordsPanel.show);
+    wordsPanel.time = heldTime;
+    wordsSeekSong(heldTime);
+    if (wasPlaying) wordsVideo("play");
+  } catch (error) { toast(String(error)); }
 }
 
 function wordsBackdropPicker(anim) {
-  const backgrounds=wordsPanel.backgrounds||{images:[]};
-  return el("div",{class:"words-backdrop",role:"group","aria-label":"Storyboard backgrounds"},
-    el("span",{class:"meta"},"Scene"),
-    backgrounds.images?.length ? el("div",{class:"words-backgrounds"},...backgrounds.images.map(image=>el("button",{
-      class:"words-background",title:image.name,"aria-label":`Use background ${image.name}`,"aria-pressed":String(anim.background_asset===image.asset_id),
-      onclick:async()=>{
-        try {const result=await wordsCommand("words.save",{animation_id:anim.animation_id,expected_source_revision:anim.source_revision,background_asset:image.asset_id,_expected_project:state.project});
-          if(result.conflict)toast("This verse changed elsewhere; reloaded");
-          wordsPanel.stage=null;await wordsOpen();
-        }catch(error){toast(String(error));}
-      }
-    },el("img",{src:convertFileSrc(image.path),alt:image.name,loading:"lazy"}))))
-      : el("span",{class:"muted",title:backgrounds.error||"Assign images in the storyboard’s Backgrounds & locations section"},
-        backgrounds.error ? "Storyboard backgrounds unavailable" : "Add backgrounds in Storyboard"));
+  const images = wordsAvailableBackdrops();
+  const isFullVideo = wordsPanel.show === "stage" || !anim.background_asset;
+  const videoBtn = el("button", {
+    class: "words-background words-background-mode",
+    title: "Play full animated video scene",
+    "aria-label": "Use full video scene",
+    "aria-pressed": String(isFullVideo),
+    onclick: () => { wordsPanel.show = "stage"; document.querySelector("#words-main .words-backdrop")?.replaceWith(wordsBackdropPicker(anim)); wordsShow("stage"); }
+  }, el("span", { class: "words-background-label" }, "Video"));
+  return el("div", { class: "words-backdrop", role: "group", "aria-label": "Scene backgrounds" },
+    el("span", { class: "meta" }, "Scene"),
+    el("div", { class: "words-backgrounds" },
+      videoBtn,
+      ...images.map((image) => el("button", {
+        class: "words-background",
+        title: image.name,
+        "aria-label": `Use background ${image.name}`,
+        "aria-pressed": String(!isFullVideo && anim.background_asset === image.id),
+        onclick: () => wordsPickBackdrop(anim, image.id)
+      }, el("img", { src: convertFileSrc(image.path), alt: image.name, loading: "lazy" })))));
+}
+
+function wordsSongSpan() {
+  const animations = wordsPanel.read?.document?.animations || [];
+  const studioEnds = (wordsPanel.studio?.sections || []).map((s) => Number(s.end) || 0);
+  const animEnds = animations.map((a) => wordsSpan(a).end || 0);
+  return { start: 0, end: Math.max(10, ...studioEnds, ...animEnds) };
+}
+
+function wordsToggleSongPlay() {
+  if (wordsPanel.playing) { wordsVideo("pause"); return; }
+  wordsPanel.previewRange = null;
+  const full = wordsSongSpan(), o = wordsPanel.offset;
+  wordsVideo("set-play-range", { startSeconds: 0, endSeconds: Math.max(1, full.end - o) });
+  if (wordsPanel.time >= full.end - 0.5) wordsSeekSong(0);
+  wordsVideo("play");
+}
+
+function wordsStageEmptyMessage(url) {
+  if (!url) return "Start the Studio server to play the video here.";
+  return wordsPanel.studio?.error
+    ? `The video's lyric clips could not be read: ${wordsPanel.studio.error}`
+    : "The video has no lyric clips for this section.";
 }
 
 // The stage is the finished video, kept across re-renders so editing never reloads it.
 function wordsStage(anim) {
-  const section = wordsStudioSection(anim);
-  if (wordsPanel.stage && wordsPanel.stage.dataset.animation === anim.animation_id) return wordsPanel.stage;
+  const section = wordsStudioSection(anim), songSpan = wordsSongSpan();
   const url = serverUrl();
   wordsPanel.server = url || null;
   if (!section || !url) {
     wordsPanel.stage = null;
-    return el("p", { class: "panel-empty inline" }, !url ? "Start the Studio server to play the video here."
-      : wordsPanel.studio?.error ? `The video's lyric clips could not be read: ${wordsPanel.studio.error}` : "The video has no lyric clips for this section.");
+    return el("p", { class: "panel-empty inline" }, wordsStageEmptyMessage(url));
   }
-  const scrub = el("input", { type: "range", id: "words-scrub", min: String(section.start), max: String(section.end), step: "0.01", "aria-label": "Video time",
-    oninput: (e) => { e.target.defaultValue = e.target.value; wordsSeekSong(Number(e.target.value)); } });
-  scrub.value = scrub.defaultValue = String(section.start); // a view control, never an unsaved edit
-  // The preview player of the HyperFrames server, same project id as the Studio link.
-  const server = new URL(url);
-  const project = server.hash.split("/")[1] || "hyperframes";
+  if (wordsPanel.stage && wordsPanel.show !== "edited") {
+    wordsPanel.stage.dataset.animation = anim.animation_id;
+    if (wordsPanel.stageDirty) wordsShow(wordsPanel.show);
+    return wordsPanel.stage;
+  }
+  const scrub = el("input", { type: "range", id: "words-scrub", min: "0", max: String(songSpan.end), step: "0.01", "aria-label": "Video time",
+    oninput: (e) => { e.target.defaultValue = e.target.value; wordsPanel.previewRange = null; wordsSeekSong(Number(e.target.value)); } });
+  scrub.value = scrub.defaultValue = String(wordsPanel.time || section.start);
+  const server = new URL(url), project = server.hash.split("/")[1] || "hyperframes";
   wordsPanel.player = `${server.origin}/api/projects/${project}/preview`;
   const frame = el("iframe", { id: "words-video-frame", title: "Lyric and drawing preview", allow: "autoplay" });
   frame.addEventListener("load", wordsVideoRange);
@@ -1046,40 +1334,50 @@ function wordsStage(anim) {
   wordsPanel.stage = el("div", { class: "words-preview", "data-animation": anim.animation_id },
     anim.effects?.text ? el("div", { class: "segmented", role: "tablist", "aria-label": "What the stage shows" },
       view("still", "Scene image"), view("edited", `Edited · ${anim.effects.text.name}`)) : null,
-    wordsBackdropPicker(anim),
     el("div", { class: "stage", id: "words-preview" }, frame),
     el("div", { class: "transport" },
-      wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play this section", title: "Play this section of the video", onclick: () => wordsVideo(wordsPanel.playing ? "pause" : "play"), html: ICONS.play }),
+      wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play song", title: "Play or pause the entire song", onclick: wordsToggleSongPlay, html: ICONS.play }),
       scrub,
-      wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(section.start)} – ${wordsClock(section.end)}`),wordsUseButton(anim)));
+      wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || 0)} / ${wordsClock(songSpan.end)}`), wordsUseButton(anim)));
   if (wordsPanel.show === "edited" && !anim.effects?.text) wordsPanel.show = "still";
   wordsShow(wordsPanel.show, frame);
   return wordsPanel.stage;
 }
 
+async function wordsResolveShowUrl(show, anim) {
+  if (show === "edited") {
+    return `${wordsPanel.player}/comp/${(await wordsCommand("words.compose", { animation_id: anim.animation_id })).src}`;
+  }
+  if (!["lyrics", "stage", "still"].includes(show)) return wordsPanel.player;
+  const effectiveShow = show === "still" && !anim.background_asset && !wordsAvailableBackdrops().length ? "stage" : show;
+  return `${wordsPanel.player}/comp/${(await wordsCommand("words.lyrics_view", { show: effectiveShow, animation_id: anim.animation_id })).src}`;
+}
+
 // The stage shows the scene's backdrop with the music and the lyrics (words.lyrics_view show=stage), the whole video,
-// or the section as edited (its composition from words.compose). The edited section starts at its
-// song_anchor, so its times are offset from the song's.
+// or the section as edited (its composition from words.compose).
 async function wordsShow(show, frame = $("words-video-frame")) {
   const anim = wordsCurrent();
   wordsPanel.show = show;
   wordsPanel.stage?.querySelectorAll('[role="tab"]').forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.show === show)));
   if (!frame || !wordsPanel.player || !anim) return;
-  let src = wordsPanel.player;
   wordsPanel.offset = show === "edited" ? anim.song_anchor || 0 : 0;
   try {
-    if (["lyrics", "stage", "still"].includes(show)) {
-      if(show === "still" && !anim.background_asset) { frame.removeAttribute("src"); return; }
-      src = `${wordsPanel.player}/comp/${(await wordsCommand("words.lyrics_view", { show, animation_id:anim.animation_id })).src}`;
-    }
-    if (show === "edited") src = `${wordsPanel.player}/comp/${(await wordsCommand("words.compose", { animation_id: anim.animation_id })).src}`;
-  } catch (error) { toast(String(error).replace(/^.*?: /, "")); return; }
-  if (frame.getAttribute("src") !== src) frame.setAttribute("src", src);
-  else wordsVideoRange();
+    const src = await wordsResolveShowUrl(show, anim);
+    const cleanCurrent = (frame.getAttribute("src") || "").split("?")[0];
+    if (cleanCurrent !== src || wordsPanel.stageDirty) {
+      wordsPanel.stageDirty = false;
+      frame.setAttribute("src", `${src}?v=${Date.now()}`);
+    } else wordsVideoRange();
+  } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
 }
 
 // Seek the stage to a song time, whichever view it shows.
 function wordsSeekSong(t) {
+  wordsPanel.time = t;
+  wordsPanel.pendingSeek = t;
+  const scrub = $("words-scrub");
+  if (scrub) { scrub.value = String(t); scrub.defaultValue = scrub.value; }
+  if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(t)} / ${wordsClock(wordsSongSpan().end)}`;
   wordsVideo("seek", { timeSeconds: Math.max(0, t - wordsPanel.offset), seekMode: "commit" });
 }
 
@@ -1097,15 +1395,14 @@ function wordsVideo(action, params = {}) {
   $("words-video-frame")?.contentWindow?.postMessage({ source: "hf-parent", type: "control", action, ...params }, "*");
 }
 
-// Hold the player to the selected section: it plays and loops only that stretch of the song.
+// Set the player's range to the full song by default, or to previewRange when replaying a specific cue.
 function wordsVideoRange() {
   const anim = wordsCurrent();
-  const section = wordsPanel.previewRange || (anim && wordsPanel.line ? wordsLineSpan(anim, wordsPanel.line) : wordsStudioSection(anim));
-  if (!section) return;
-  wordsVideo("pause");
+  if (!anim) return;
+  const full = wordsSongSpan(), range = wordsPanel.previewRange || full;
   const o = wordsPanel.offset;
-  wordsVideo("set-play-range", { startSeconds: Math.max(0, section.start - o), endSeconds: section.end - o });
-  wordsSeekSong(section.start);
+  wordsVideo("set-play-range", { startSeconds: Math.max(0, range.start - o), endSeconds: Math.max(1, range.end - o) });
+  if (!wordsPanel.playing) wordsSeekSong(wordsPanel.autoPlay && wordsPanel.previewRange ? range.start : (wordsPanel.time || wordsSpan(anim).start || 0));
   if (wordsPanel.autoPlay) wordsVideo("play");
 }
 
@@ -1115,10 +1412,62 @@ function wordsFit(size = wordsPanel.size) {
   if (!frame || !box || !size) return;
   wordsPanel.size = size;
   frame.style.setProperty("--w", `${size.width}px`); frame.style.setProperty("--h", `${size.height}px`);
-  const scale=Math.min(box.clientWidth/size.width,box.clientHeight/size.height);
-  frame.style.setProperty("--scale",String(scale));
-  frame.style.setProperty("--frame-x",`${(box.clientWidth-size.width*scale)/2}px`);
-  frame.style.setProperty("--frame-y",`${(box.clientHeight-size.height*scale)/2}px`);
+  const scale = Math.min(box.clientWidth / size.width, box.clientHeight / size.height);
+  frame.style.setProperty("--scale", String(scale));
+  frame.style.setProperty("--frame-x", `${(box.clientWidth - size.width * scale) / 2}px`);
+  frame.style.setProperty("--frame-y", `${(box.clientHeight - size.height * scale) / 2}px`);
+}
+
+function wordsFollowLivePlayback(song) {
+  const animations = wordsPanel.read?.document?.animations || [];
+  const unsaved = wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length;
+  if (unsaved || wordsPanel.previewRange) return;
+  const here = animations.find((a) => { const s = wordsSpan(a); return song >= s.start - 0.3 && song < s.end + 0.1; });
+  const view = $("view-design");
+  if (here && here.animation_id !== wordsPanel.selected) {
+    wordsPanel.selected = here.animation_id;
+    view?.querySelectorAll(".words-band[data-section]").forEach((b) => b.classList.toggle("active", b.dataset.section === here.animation_id));
+    document.querySelector("#words-main .words-upper-tracks")?.replaceWith(wordsUpperTracks(here));
+    $("words-workspace-controls")?.replaceChildren(...wordsInnerControls(here));
+  }
+  const current = wordsCurrent();
+  if (!current) return;
+  const line = wordsLines(current).findLast((l) => wordsAt(l.words[0]) <= song + 0.25) || wordsLines(current)[0];
+  if (line && line.id !== wordsPanel.line) {
+    wordsPanel.line = line.id;
+    view?.querySelectorAll(".words-tl > .words-line").forEach((r) => r.classList.toggle("active", r.dataset.animationId === current.animation_id && r.dataset.lineId === line.id));
+    const lineNo = wordsLines(current).findIndex((l) => l.id === line.id) + 1;
+    const headTitle = $("words-main-head")?.querySelector(".title");
+    if (headTitle) headTitle.textContent = `${wordsLabel(current)} · ${lineNo}`;
+  }
+}
+
+function wordsHandlePreviewBoundary(song, isPlaying) {
+  const range = wordsPanel.previewRange;
+  if (!range || song < range.end - 0.04) return false;
+  if (wordsPanel.loopLine) {
+    wordsSeekSong(range.start);
+    if (!isPlaying) wordsVideo("play");
+    return true;
+  }
+  if (isPlaying) {
+    wordsVideo("pause");
+    wordsSeekSong(Math.max(range.start, range.end - 0.18));
+    return true;
+  }
+  return false;
+}
+
+function wordsSyncPendingSeek(song, isPlaying) {
+  if (wordsPanel.pendingSeek == null) return false;
+  if (Math.abs(song - wordsPanel.pendingSeek) <= 0.35 || isPlaying) {
+    wordsPanel.pendingSeek = null;
+    if (wordsPanel.autoPlay && !isPlaying) wordsVideo("play");
+    return false;
+  }
+  wordsSeekSong(wordsPanel.pendingSeek);
+  if (wordsPanel.autoPlay) wordsVideo("play");
+  return true;
 }
 
 // The player reports its time, play state and stage size; the transport follows it.
@@ -1126,16 +1475,18 @@ addEventListener("message", (event) => {
   const frame = $("words-video-frame");
   if (!frame || event.source !== frame.contentWindow || event.data?.source !== "hf-preview") return;
   const data = event.data;
-  if (data.type === "stage-size") wordsFit({ width: data.width, height: data.height });
+  if (data.type === "stage-size") { wordsFit({ width: data.width, height: data.height }); wordsVideoRange(); }
   if (data.type === "state") {
-    const song = data.currentTime + wordsPanel.offset; // the player's time, on the song clock
+    const song = data.currentTime + wordsPanel.offset;
+    if (wordsSyncPendingSeek(song, data.isPlaying)) return;
     wordsPanel.time = song; wordsPanel.playing = !!data.isPlaying;
-    if (data.isPlaying) wordsPanel.autoPlay = false;
+    if (wordsHandlePreviewBoundary(song, data.isPlaying)) return;
+    if (data.isPlaying) { wordsPanel.autoPlay = false; wordsFollowLivePlayback(song); }
     const scrub = $("words-scrub");
     if (scrub) { scrub.value = String(song); scrub.defaultValue = scrub.value; }
-    if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = wordsClock(song);
+    if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(song)} / ${wordsClock(wordsSongSpan().end)}`;
     wordsNow(song);
-    wordsPanel.playButton?.setAttribute("aria-label", data.isPlaying ? "Pause this section" : "Play this section");
+    wordsPanel.playButton?.setAttribute("aria-label", data.isPlaying ? "Pause song" : "Play song");
   }
 });
 // The view's own width (not the window's) picks its layout; see #view-design.narrow / .tight.
@@ -1146,7 +1497,7 @@ function wordsWidth(view = $("view-design")) {
   view.classList.toggle("tight", view.clientWidth < 600);
 }
 let wordsObservedWidth = -1;
-const wordsViewFitter = new ResizeObserver((entries) => {
+const wordsViewFitter = new ResizeObserver(() => {
   const view=$("view-design");if(!view)return;
   const width=`${view.clientWidth}:${innerHeight}:${view.getBoundingClientRect().top}`;
   if(width===wordsObservedWidth)return; wordsObservedWidth=width;
@@ -1164,14 +1515,20 @@ new MutationObserver(() => {
 // Kinetic sections: the layers under the stage, each a row of library cards. A pick saves the section and,
 // when it is in the video, composes it again so the stage shows the change.
 async function wordsKinetic(change) {
-  if(wordsPanel.editor){const saved=await wordsCommitEdit(wordsPanel.editor);if(!saved)return;}
   const anim = wordsCurrent();
   if (!anim?.kinetic) return;
+  const heldLine = wordsPanel.line || wordsLines(anim)[0]?.id;
   const kinetic = { ...anim.kinetic, ...change };
   try {
     const result = await wordsCommand("words.save", { animation_id: anim.animation_id, expected_source_revision: anim.source_revision, origin: "magicstudio-design", kinetic });
     if (result.conflict) { toast("Someone changed these lyrics first; reloaded the latest"); return wordsOpen(); }
-    if (wordsPanel.read.in_video?.includes(anim.animation_id)) { await wordsCommand("words.apply", { animation_id: anim.animation_id }); wordsPanel.stage = null; }
+    await wordsCommand("words.apply", { animation_id: anim.animation_id, use: true });
+    wordsPanel.line = heldLine;
+    wordsPanel.followed = `${anim.animation_id}/${heldLine}`;
+    wordsPanel.previewRange = wordsLineWindow(anim, heldLine);
+    wordsPanel.autoPlay = true;
+    wordsPanel.time = wordsPanel.previewRange.start;
+    wordsPanel.stageDirty = true;
     await wordsOpen();
   } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
 }
@@ -1227,66 +1584,182 @@ function wordsOptionPreview(kind, key) {
   return svg;
 }
 
-function wordsLayers(anim) {
-  const lib = wordsPanel.read.kinetic_library || {}, k = anim.kinetic;
-  const row = (label, kind, current, pick) => [el("div", { class: "group-label" }, label), el("div", { class: "words-effects" },
-    ...Object.entries(lib[kind] || {}).map(([key, item]) => {
-      const card = wordsCard(current === key, item.name, item.does, () => pick(key));
-      if (["layouts", "entrances", "overlays"].includes(kind)) card.prepend(wordsOptionPreview(kind, key));
-      if (kind === "letterings") {
-        const sample = el("span", { class: "words-lettering-sample", "aria-hidden": "true" }, "Sing ");
-        const hero = el("span", {}, "out");
-        sample.style.setProperty("--sample-font", `"${item.style.font}", sans-serif`);
-        sample.style.setProperty("--sample-weight", String(item.style.weight || 700));
-        sample.style.setProperty("--sample-color", item.style.color);
-        sample.style.setProperty("--sample-outline", item.style.outline || "transparent");
-        hero.style.setProperty("--hero-font", `"${item.style.hero_font || item.style.font}", sans-serif`);
-        hero.style.setProperty("--hero-weight", String(item.style.hero_weight || 700));
-        hero.style.setProperty("--hero-slant", item.style.hero_italic ? "italic" : "normal");
-        hero.style.setProperty("--hero-color", item.style.hero_color);
-        hero.style.setProperty("--hero-size", `${Math.min(1.7, (item.style.hero_size || 110) / (item.style.size || 64))}em`);
-        sample.appendChild(hero); card.prepend(sample);
-      }
-      return card;
-    }))];
-  if(wordsPanel.mode==="motion" && wordsPanel.motionAdd==="effect")return el("section",{class:"words-layers"},...row("Add scene effect","overlays",k.overlay||"none",overlay=>wordsKinetic({overlay})));
-  const picked = wordsPanel.picked.filter((id) => anim.words.some((w) => w.word_id === id));
-  const text = (id) => anim.words.find((w) => w.word_id === id)?.text || id;
+function wordsBuildChoiceCard(kind, key, item, on, onclick) {
+  const card = wordsCard(on, item.name, item.does, onclick);
+  if (["layouts", "entrances", "overlays"].includes(kind)) {
+    card.classList.add("words-diagram-card");
+    card.prepend(wordsOptionPreview(kind, key));
+  }
+  if (kind === "letterings") {
+    card.classList.add("words-lettering-card");
+    const sample = el("span", { class: "words-lettering-sample", "aria-hidden": "true" }, "Sing ");
+    const hero = el("span", {}, item.name);
+    sample.style.setProperty("--sample-font", `"${item.style.font}", sans-serif`);
+    sample.style.setProperty("--sample-weight", String(item.style.weight || 700));
+    sample.style.setProperty("--sample-color", item.style.color);
+    sample.style.setProperty("--sample-outline", item.style.outline || "transparent");
+    hero.style.setProperty("--hero-font", `"${item.style.hero_font || item.style.font}", sans-serif`);
+    hero.style.setProperty("--hero-weight", String(item.style.hero_weight || 700));
+    hero.style.setProperty("--hero-slant", item.style.hero_italic ? "italic" : "normal");
+    hero.style.setProperty("--hero-color", item.style.hero_color);
+    hero.style.setProperty("--hero-size", `${Math.min(1.5, (item.style.hero_size || 110) / (item.style.size || 64))}em`);
+    sample.appendChild(hero);
+    card.replaceChildren(sample);
+  }
+  return card;
+}
+
+function wordsMeaningShelf(anim, lib, k, picked, text) {
   const actsFor = (act) => { const acts = { ...k.acts }; for (const id of picked) { if (act) acts[id] = act; else delete acts[id]; } return acts; };
-  return el("section", { class: "words-layers", "aria-label": `${wordsLabel(anim)} layers` },
-    el("div", { class: "words-head" }, el("strong", {}, `${wordsPanel.mode === "motion" ? "Motion · drawings & effects" : "Lyrics · text & lettering"}`), el("span", { class: "words-spacer" }),
-      wordsPanel.mode === "lyrics" ? el("button", { class: "ghost", title: "Shuffle the lyric layout and entrance; keep drawings", onclick: () => wordsShuffle(true) }, "Shuffle") : null),
-    ...(wordsPanel.mode === "lyrics" ? [
-    ...row("Layout", "layouts", k.layout, (layout) => wordsKinetic({ layout })),
-    ...row("Words arrive", "entrances", k.entrance, (entrance) => wordsKinetic({ entrance })),
-    el("div", { class: "group-label" }, "Meaning words · pick words in the lyrics, then an act"),
-    // One chip per meaning word and act; a word sung several times picks every time it is sung.
-    el("div", { class: "words-meaning" }, ...Object.values(Object.entries(k.acts || {}).reduce((groups, [id, act]) => {
-      const key = `${text(id).toLowerCase().replace(/[^a-z]/g, "")}|${act}`;
-      (groups[key] ??= { ids: [], act, word: text(id).replace(/[^\p{L}'-]/gu, "") }).ids.push(id);
-      return groups;
-    }, {})).map((g) => el("button", { class: `chip${g.ids.some((id) => picked.includes(id)) ? " active" : ""}`, title: "Pick every time this word is sung",
-      onclick: () => { wordsPanel.picked = g.ids; wordsPanel.line = anim.words.find((w) => w.word_id === g.ids[0])?.line_id; wordsRender(); } },
-      `${g.word}${g.ids.length > 1 ? ` ×${g.ids.length}` : ""} · ${lib.acts?.[g.act]?.name || g.act}`))),
+  const groups = Object.values(Object.entries(k.acts || {}).reduce((acc, [id, act]) => {
+    const key = `${text(id).toLowerCase().replace(/[^a-z]/g, "")}|${act}`;
+    (acc[key] ??= { ids: [], act, word: text(id).replace(/[^\p{L}'-]/gu, "") }).ids.push(id);
+    return acc;
+  }, {}));
+  return [
+    el("div", { class: "words-meaning" }, ...groups.map((g) => el("button", {
+      class: `chip${g.ids.some((id) => picked.includes(id)) ? " active" : ""}`,
+      title: "Pick every time this word is sung",
+      onclick: () => { wordsPanel.picked = g.ids; wordsPanel.line = anim.words.find((w) => w.word_id === g.ids[0])?.line_id; wordsRender(); }
+    }, `${g.word}${g.ids.length > 1 ? ` ×${g.ids.length}` : ""} · ${lib.acts?.[g.act]?.name || g.act}`))),
     picked.length ? el("div", { class: "words-effects" },
       wordsCard(false, "No act", "Arrives like the other words", () => wordsKinetic({ acts: actsFor(null) })),
       ...Object.entries(lib.acts || {}).map(([key, item]) => wordsCard(picked.every((id) => k.acts?.[id] === key), item.name, item.does, () => wordsKinetic({ acts: actsFor(key) }))))
-      : el("p", { class: "muted" }, "Click a word in the lyrics on the left to give it an act."),
-    ...row("Lettering", "letterings", Object.entries(lib.letterings || {}).find(([, l]) => Object.entries(l.style).every(([key, value]) => k.style?.[key] === value))?.[0],
-      (key) => wordsKinetic({ style: lib.letterings[key].style })),
-    ] : []),
-    ...(["lyrics","motion"].includes(wordsPanel.mode) && wordsPanel.motionAdd!=="effect" ? [
-    // Drawings: a stroke anchored to a word, drawn on at its sung time (picked words get the stroke).
-    el("div", { class: "group-label" }, wordsPanel.mode === "lyrics" ? "Letter marks · underline and decorate words" : "Drawings · select a cue to edit it"),
-    el("div", { class: "words-meaning" }, ...(k.draws || []).map((d,i)=>({...d,index:i})).filter(d=>(d.track||lib.strokes?.[d.stroke]?.track||"graphics")===(wordsPanel.mode==="lyrics"?"lettering":"graphics")).map((d) => el("button", { class: "chip", title: `Edit ${d.drawing?.name || lib.strokes?.[d.stroke]?.name || d.stroke} for ${text(d.word_id)}`, "aria-label": `Edit drawing for ${text(d.word_id)}`,
-      onclick: () => {wordsPanel.cue=`${anim.animation_id}-draw-${d.index}`;wordsPanel.picked=[d.word_id];wordsRender();} }, `${text(d.word_id)} · ${d.drawing?.name || lib.strokes?.[d.stroke]?.name || d.stroke}`))),
-    picked.length ? el("div", { class: "words-effects" }, ...Object.entries(lib.strokes || {}).filter(([,item])=>(item.track||"graphics")===(wordsPanel.mode==="lyrics"?"lettering":"graphics")).map(([key, item]) => {
+      : el("p", { class: "muted" }, "Click a word in the lyrics on the left to give it an act.")
+  ];
+}
+
+function wordsStrokesShelf(anim, lib, k, picked, text, trackKind) {
+  return [
+    el("div", { class: "words-meaning" }, ...(k.draws || []).map((d, i) => ({ ...d, index: i })).filter((d) => (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === trackKind).map((d) => el("button", {
+      class: "chip",
+      title: `Edit ${d.drawing?.name || lib.strokes?.[d.stroke]?.name || d.stroke} for ${text(d.word_id)}`,
+      "aria-label": `Edit drawing for ${text(d.word_id)}`,
+      onclick: () => { wordsPanel.cue = `${anim.animation_id}-draw-${d.index}`; wordsPanel.picked = [d.word_id]; wordsRender(); }
+    }, `${text(d.word_id)} · ${d.drawing?.name || lib.strokes?.[d.stroke]?.name || d.stroke}`))),
+    picked.length ? el("div", { class: "words-effects" }, ...Object.entries(lib.strokes || {}).filter(([, item]) => (item.track || "graphics") === trackKind).map(([key, item]) => {
       const card = wordsCard(picked.every((id) => k.draws?.some((d) => d.word_id === id && d.stroke === key)), item.name, item.does,
-        () => wordsKinetic({ draws: [...(k.draws || []).filter((d) => !(picked.includes(d.word_id)&&d.stroke===key)), ...picked.map((word_id) => ({ word_id, stroke: key, place: key === "down" ? "beside" : "under" }))] }));
+        () => wordsKinetic({ draws: [...(k.draws || []).filter((d) => !(picked.includes(d.word_id) && d.stroke === key)), ...picked.map((word_id) => ({ word_id, stroke: key, place: key === "down" ? "beside" : "under" }))] }));
       const svg = wordsStroke(item); svg.setAttribute("class", "words-stroke-sample"); card.prepend(svg); return card;
-    }))
-      : null,
-    ...(wordsPanel.mode === "motion" ? row("Overlay · a transparent layer over the scene", "overlays", k.overlay || "none", (overlay) => wordsKinetic({ overlay })) : [])] : []));
+    })) : null
+  ];
+}
+
+function wordsChoiceRow(lib, kind, current, pick) {
+  return el("div", { class: `words-effects words-effects-${kind}` },
+    ...Object.entries(lib[kind] || {}).map(([key, item]) => wordsBuildChoiceCard(kind, key, item, current === key, () => pick(key))));
+}
+
+function wordsShelfTab(activeKey, key, label, value, onToggle) {
+  const on = activeKey === key;
+  return el("button", {
+    id: `words-track-${key}`,
+    class: `chip words-shelf-tab${on ? " active" : ""}`,
+    "aria-pressed": String(on),
+    title: on ? `Hide ${label} track` : `Open ${label} track`,
+    onclick: onToggle
+  }, el("span", { class: "muted" }, `${label}: `), el("strong", {}, value));
+}
+
+function wordsSelectionBar(anim, lib, k, picked) {
+  const lines = wordsLines(anim), lineIdx = Math.max(0, lines.findIndex((l) => l.id === wordsPanel.line));
+  const line = lines[lineIdx] || lines[0];
+  if (!line) return null;
+  const span = wordsLineSpan(anim, line.id);
+  const cue = wordsPanel.cue ? wordsPanel.read.graphics?.find((c) => c.id === wordsPanel.cue) : null;
+  const badge = cue ? `Cue: ${cue.name}` : `${wordsLabel(anim)} · Line ${lineIdx + 1}`;
+  const allPicked = line.words.length > 1 && line.words.every((w) => picked.includes(w.word_id));
+  return el("div", { class: "words-selection-bar", role: "region", "aria-label": "Selected line and words" },
+    el("div", { class: "words-selection-meta" },
+      el("strong", { class: "words-selection-badge" }, badge),
+      el("span", { class: "meta" }, `${wordsClock(span.start)} – ${wordsClock(span.end)}`)),
+    el("div", { class: "words-selection-words" },
+      ...line.words.map((w) => {
+        const act = k.acts?.[w.word_id], actName = act ? (lib.acts?.[act]?.name || act) : null;
+        const on = picked.includes(w.word_id);
+        return el("button", {
+          class: `chip words-line-word${on ? " active" : ""}${act ? " has-act" : ""}`,
+          "data-word-id": w.word_id,
+          title: `${w.text} (${wordsClock(wordsAt(w))}) · Click to edit word act`,
+          onclick: () => {
+            wordsPanel.cue = null; wordsPanel.picked = [w.word_id]; wordsPanel.shelf = "acts";
+            wordsPanel.followed = `${anim.animation_id}/${line.id}`;
+            wordsPanel.time = wordsAt(w) + 0.12;
+            wordsRender(); wordsSeekSong(wordsPanel.time);
+          }
+        }, actName ? `${w.text} · ${actName}` : w.text);
+      }),
+      line.words.length > 1 ? el("button", {
+        class: `chip words-line-word${allPicked ? " active" : ""}`,
+        title: "Select all words in this line",
+        onclick: () => {
+          wordsPanel.cue = null; wordsPanel.picked = line.words.map((w) => w.word_id); wordsPanel.shelf = "acts";
+          wordsPanel.followed = `${anim.animation_id}/${line.id}`; wordsRender();
+        }
+      }, "All line") : null),
+    el("div", { class: "words-selection-actions" },
+      el("button", {
+        id: "words-replay-line",
+        class: "ghost",
+        title: "Play just this line's animation",
+        onclick: () => wordsPreviewLine(anim, line.id, true)
+      }, "▶ Replay line"),
+      el("button", {
+        id: "words-loop-line",
+        class: `ghost${wordsPanel.loopLine ? " active" : ""}`,
+        "aria-pressed": String(wordsPanel.loopLine),
+        title: "Loop this line continuously while trying animations",
+        onclick: () => {
+          wordsPanel.loopLine = !wordsPanel.loopLine;
+          if (wordsPanel.loopLine) wordsPreviewLine(anim, line.id, true);
+          else wordsVideo("pause");
+          wordsRender();
+        }
+      }, wordsPanel.loopLine ? "⟳ Looping" : "⟳ Loop")));
+}
+
+function wordsUpperTracks(anim) {
+  const lib = wordsPanel.read?.kinetic_library || {}, k = anim?.kinetic;
+  if (!k) return wordsBackdropPicker(anim);
+  const curLettering = Object.entries(lib.letterings || {}).find(([, l]) => Object.entries(l.style).every(([key, value]) => k.style?.[key] === value))?.[0];
+  const top = wordsPanel.topShelf;
+  const pickTop = (key) => () => { wordsPanel.topShelf = wordsPanel.topShelf === key ? null : key; wordsRender(); };
+  const sceneName = wordsPanel.show === "stage" || !anim.background_asset ? "Video" : (wordsAvailableBackdrops().find((b) => b.id === anim.background_asset)?.name || anim.background_asset);
+  return el("section", { class: "words-layers words-upper-tracks", "aria-label": `${wordsLabel(anim)} scene and look tracks` },
+    el("div", { class: "words-shelf-bar words-upper-bar", role: "toolbar", "aria-label": "Scene and look tracks" },
+      wordsShelfTab(top, "scene", "Scene", sceneName, pickTop("scene")),
+      wordsShelfTab(top, "lettering", "Style", lib.letterings?.[curLettering]?.name || "Custom", pickTop("lettering")),
+      wordsShelfTab(top, "layout", "Layout", lib.layouts?.[k.layout]?.name || k.layout, pickTop("layout")),
+      wordsShelfTab(top, "overlay", "Atmosphere", lib.overlays?.[k.overlay || "none"]?.name || (k.overlay || "None"), pickTop("overlay")),
+      el("span", { class: "words-spacer" }),
+      el("button", { class: "ghost", title: "Shuffle the lyric layout and entrance; keep drawings", onclick: () => wordsShuffle(true) }, "Shuffle")),
+    top === "scene" ? wordsBackdropPicker(anim) : null,
+    top === "lettering" ? wordsChoiceRow(lib, "letterings", curLettering, (key) => wordsKinetic({ style: lib.letterings[key].style })) : null,
+    top === "layout" ? wordsChoiceRow(lib, "layouts", k.layout, (layout) => wordsKinetic({ layout })) : null,
+    top === "overlay" ? wordsChoiceRow(lib, "overlays", k.overlay || "none", (overlay) => wordsKinetic({ overlay })) : null);
+}
+
+function wordsLayers(anim) {
+  const lib = wordsPanel.read.kinetic_library || {}, k = anim.kinetic;
+  const picked = wordsPanel.picked.filter((id) => anim.words.some((w) => w.word_id === id));
+  const text = (id) => anim.words.find((w) => w.word_id === id)?.text || id;
+  const shelf = wordsPanel.shelf;
+  const pickBottom = (key) => () => { wordsPanel.shelf = wordsPanel.shelf === key ? null : key; wordsRender(); };
+  const graphicsCount = (k.draws || []).filter((d) => (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === "graphics").length;
+  const marksCount = (k.draws || []).filter((d) => (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === "lettering").length;
+  return el("section", { class: "words-layers words-lower-tracks", "aria-label": `${wordsLabel(anim)} motion and meaning tracks` },
+    wordsSelectionBar(anim, lib, k, picked),
+    el("div", { class: "words-shelf-bar words-lower-bar", role: "toolbar", "aria-label": "Motion and meaning tracks" },
+      wordsShelfTab(shelf, "arrive", "Arrive", lib.entrances?.[k.entrance]?.name || k.entrance, pickBottom("arrive")),
+      wordsShelfTab(shelf, "acts", "Meaning", `${Object.keys(k.acts || {}).length} words`, pickBottom("acts")),
+      wordsShelfTab(shelf, "cues", "Cues", `${graphicsCount} drawn`, pickBottom("cues")),
+      wordsShelfTab(shelf, "marks", "Marks", `${marksCount}`, pickBottom("marks")),
+      el("span", { class: "words-spacer" }),
+      el("button", { class: "ghost", "aria-label": "Draw cue on scene", onclick: () => wordsDrawCue(anim) }, "Draw cue")),
+    shelf === "arrive" ? wordsChoiceRow(lib, "entrances", k.entrance, (entrance) => wordsKinetic({ entrance })) : null,
+    shelf === "acts" ? el("div", { class: "words-shelf-body" }, ...wordsMeaningShelf(anim, lib, k, picked, text)) : null,
+    shelf === "cues" ? el("div", { class: "words-shelf-body" }, ...wordsStrokesShelf(anim, lib, k, picked, text, "graphics"), wordsCueEditor(anim)) : null,
+    shelf === "marks" ? el("div", { class: "words-shelf-body" }, ...wordsStrokesShelf(anim, lib, k, picked, text, "lettering")) : null);
 }
 
 async function wordsApply(use) {
@@ -1301,19 +1774,31 @@ async function wordsApply(use) {
   } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
 }
 
-async function wordsSave() {
-  const anim = wordsCurrent();
-  if (!anim) return;
+async function wordsFlushPendingEdits(anim) {
+  const hasEdits = wordsPanel.designs.size > 0 || Object.keys(wordsPanel.styleEdits).length > 0;
+  if (!hasEdits) return true;
   const params = { animation_id: anim.animation_id, expected_source_revision: anim.source_revision, origin: "magicstudio-design" };
   if (wordsPanel.designs.size) params.design = Object.fromEntries(wordsPanel.designs);
   if (Object.keys(wordsPanel.styleEdits).length) params.style = wordsPanel.styleEdits;
+  const result = await wordsCommand("words.save", params);
+  wordsPanel.designs.clear(); wordsPanel.styleEdits = {};
+  if (result.conflict) { toast("Someone changed these lyrics first; reloaded the latest"); await wordsOpen(); return false; }
+  return true;
+}
+
+async function wordsSave(openStudio = false) {
+  const anim = wordsCurrent();
+  if (!anim) return;
   try {
-    const result = await wordsCommand("words.save", params);
-    if (result.conflict) { toast("Someone changed these lyrics first; reloaded the latest"); wordsPanel.designs.clear(); wordsPanel.styleEdits = {}; return wordsOpen(); }
-    wordsPanel.designs.clear(); wordsPanel.styleEdits = {};
-    // A section already in the video is composed again, so the video shows what was just saved.
-    if (wordsPanel.read.in_video?.includes(anim.animation_id)) { await wordsCommand("words.apply", { animation_id: anim.animation_id }); wordsPanel.stage = null; }
-    toast(`Saved ${wordsLabel(anim)} · rev ${result.animation.source_revision}${wordsPanel.read.in_video?.includes(anim.animation_id) ? " · the video is updated" : ""}`);
+    if (!(await wordsFlushPendingEdits(anim))) return;
+    await wordsCommand("words.apply", { animation_id: anim.animation_id, use: true });
+    if (!serverUrl() && typeof designCommand === "function") {
+      await designCommand("video.server_start");
+      if (typeof renderTarget === "function") renderTarget();
+    }
+    wordsPanel.stage = null;
     await wordsOpen();
+    if (openStudio && typeof setView === "function") await setView("studio");
+    toast(openStudio ? `Synced ${wordsLabel(anim)} · viewing live in HyperFrames Studio` : `Saved & synced ${wordsLabel(anim)} to HyperFrames video`);
   } catch (error) { toast(String(error)); }
 }

@@ -61,9 +61,9 @@
       if (K.layout === "cascade") {
         let cx = W * 0.08, cy = top ? H * 0.05 : H * 0.48;
         for (const e of els) {
-          if (cx + e.width > W * 0.94) { cx = W * 0.08; cy += rowH * 0.5; }
+          if (cx + e.width > W * 0.94) { cx = W * 0.08; cy += rowH * 0.95; }
           Object.assign(e.el.style, { left: `${Math.round(cx)}px`, top: `${Math.round(cy)}px` });
-          cx += e.width + gap * 0.6; cy += S.size * 0.32;
+          cx += e.width + gap * 0.6; cy += S.size * 0.24;
         }
       }
       // Giant word: a meaning word fills the frame on its own, outside the line.
@@ -103,10 +103,11 @@
       if (DATA.layer === "text" && !lettering || DATA.layer === "drawings" && lettering) continue;
       const [, , vw, vh] = stroke.view_box.split(" ").map(Number), box = el.parentElement;
       const w = d.width || (d.place === "beside" ? el.offsetHeight * 0.8 * vw / vh : Math.max(el.offsetWidth, 160)), h = w * vh / vw;
+      const rowRight = Math.max(el.offsetLeft + el.offsetWidth, ...[...box.querySelectorAll(".w")].filter((s) => Math.abs(s.offsetTop - el.offsetTop) < el.offsetHeight * 0.7).map((s) => s.offsetLeft + s.offsetWidth));
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("viewBox", stroke.view_box);
       Object.assign(svg.style, { position: "absolute", overflow: "visible", width: `${w}px`, height: `${h}px`,
-        left: `${d.x ?? (d.place === "beside" ? el.offsetLeft + el.offsetWidth + 16 : el.offsetLeft + (el.offsetWidth - w) / 2)}px`,
+        left: `${d.x ?? (d.place === "beside" ? rowRight + 16 : el.offsetLeft + (el.offsetWidth - w) / 2)}px`,
         top: `${d.y ?? (d.place === "beside" ? el.offsetTop : el.offsetTop + el.offsetHeight * 0.95)}px`, opacity: "0" });
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", stroke.d); path.setAttribute("fill", "none"); path.setAttribute("stroke", d.color || S.hero_color);

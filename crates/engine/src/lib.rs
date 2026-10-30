@@ -105,6 +105,8 @@ pub mod turnaround;
 pub mod video_target;
 pub mod vision;
 pub mod words;
+mod words_compose;
+mod words_stage;
 pub mod workshop;
 pub mod workspace;
 

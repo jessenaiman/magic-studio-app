@@ -887,30 +887,52 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .words-band[data-kind="chorus"] { --band: var(--tone-lyrics); }
 .words-band.active { background: color-mix(in srgb, var(--band) 14%, transparent); }
 .words-band > .meta { color: var(--faint); }
-.words-tl > .words-line { left: var(--space-2); right: var(--space-2); height: calc(var(--len-s) * var(--song-s) - var(--space-1)); display: block; line-height: 1.25;
-  padding: var(--space-1) var(--space-2); border-left: medium solid transparent; border-radius: var(--radius-sm); background: var(--lettering-paper); overflow: hidden; cursor: pointer; }
+.words-tl > .words-line { --band: var(--tone-transcript); left: var(--space-4); right: var(--space-4); z-index: 1; height: calc(var(--len-s) * var(--song-s) - var(--space-1)); display: block; line-height: 1.3;
+  padding: var(--space-1) var(--space-2); border: thin solid var(--line); border-left: medium solid var(--band); border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(var(--surface) 0% 25%, var(--surface-2) 0% 50%) 0 0 / var(--space-4) var(--space-4); color: var(--text); overflow: hidden; cursor: pointer; transition: opacity var(--fast) var(--ease); }
+.words-tl > .words-line[data-kind="chorus"] { --band: var(--tone-lyrics); }
 /* A sung word in its own lettering; the line's design sets these through --word-* values. */
 /* Arrows from each lyric line to its film-roll frame: transparent, over the page, never in the way. */
 #view-design.active { position: relative; }
 #view-design > svg.words-arrows { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; width: var(--arrows-width); height: var(--arrows-height); }
-#view-design > svg.words-arrows path { fill: none; stroke: var(--link-a, var(--tone-transcript)); stroke-width: 2; opacity: .32; pointer-events: stroke; cursor: pointer; stroke-dasharray: 5 4; }
-#view-design > svg.words-arrows path.active { opacity: .75; stroke-width: 3; }
+#view-design > svg.words-arrows path { fill: none; stroke: var(--link-a, var(--tone-transcript)); stroke-width: 1.75; pointer-events: stroke; cursor: pointer; stroke-dasharray: 5 4; }
+#view-design > svg.words-arrows .words-arrow-group { opacity: .08; transition: opacity var(--fast) var(--ease); }
+#view-design > svg.words-arrows .words-arrow-group.past { opacity: .035; }
+#view-design > svg.words-arrows .words-arrow-group:is(.primary, .flowing) { opacity: .95; filter: drop-shadow(0 0 var(--space-2) var(--accent)); }
+#view-design > svg.words-arrows .words-arrow-group:is(.primary, .flowing) path { stroke: var(--link-b, var(--accent)); stroke-width: 2.75; stroke-dasharray: none; }
+#view-design > svg.words-arrows .words-arrow-group:not(.flowing) .words-arrow-notes { display: none; }
+#view-design > svg.words-arrows .words-music-note { fill: var(--depth-gold); font-size: var(--text-md); font-weight: 700; pointer-events: none; }
 #view-design > svg.words-arrows.front { z-index: 4; }
-#view-design > svg.words-arrows.front path { stroke-dasharray: none; }
-/* Kinetic layers under the stage: rows of library cards and the section's meaning words. */
+#view-design > svg.words-arrows.front .words-arrow-group { opacity: .22; }
+#view-design > svg.words-arrows.front .words-arrow-group:is(.primary, .flowing) { opacity: 1; }
+/* Kinetic layers under the stage: compact camera-lens filter ring and un-boxed swatches. */
 .words-layers { display: flex; flex-direction: column; gap: var(--space-2); }
-.words-layers .words-effects { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-5) * 3.4), 1fr)); gap: var(--space-1); }
-.words-layers .effect { padding: var(--space-1) var(--space-2); }
+.words-shelf-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border: thin solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 88%, transparent); overflow-x: auto; }
+.words-shelf-bar > button { flex-shrink: 0; padding: var(--size-3) var(--size-8); font-size: var(--text-xs); height: auto; }
+.words-shelf-tab.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); color: var(--text); }
+.words-shelf-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.words-layers .words-effects { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-1); }
+.words-layers .effect { padding: var(--space-1) var(--space-2); min-width: 0; }
+.words-layers .effect.words-lettering-card { padding: 0; border: thin solid var(--line); border-radius: var(--radius-sm); background: var(--lettering-paper); overflow: hidden; }
+.words-layers .effect.words-lettering-card[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 var(--size-1) var(--accent); }
+.words-layers .effect.words-diagram-card { position: relative; padding: 0; border: thin solid var(--line); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
+.words-layers .effect.words-diagram-card > strong { position: absolute; left: var(--space-1); bottom: var(--size-2); font-size: var(--text-xs); pointer-events: none; }
 .words-layers .effect > .muted { display: none; }
 .words-meaning { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.words-line > .word.lettered { display: inline; padding: 0 .12em; border: 0; border-radius: var(--radius-sm); background: none; color: var(--word-color, var(--lettering-ink));
+.words-line > .word.lettered { display: inline; padding: 0 .14em; border: 0; border-radius: var(--radius-sm); background: none; color: color-mix(in srgb, var(--word-color, var(--text)) 22%, var(--text));
   font-family: var(--word-font, inherit); font-weight: var(--word-weight, 400); font-style: var(--word-slant, normal); font-size: calc(var(--text-md) * var(--word-scale, 1)); cursor: text; }
+.words-line > .word.lettered[data-hero="true"] { color: color-mix(in srgb, var(--word-color, var(--tone-lyrics)) 78%, white); box-shadow: inset 0 -.1em 0 color-mix(in srgb, var(--word-color, var(--tone-lyrics)) 50%, transparent); }
+.words-line > .word.lettered.singing { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: inset 0 -.18em 0 var(--accent); }
 .words-line > .word.lettered:hover { box-shadow: inset 0 -.12em 0 var(--muted); }
 .words-line > .word.lettered.active { box-shadow: inset 0 -.18em 0 var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .words-line > .word.lettered[data-changed] { text-decoration: underline dotted var(--faint); }
-.words-tl > .words-line.active { border-left-color: var(--accent); }
+.words-tl > .words-line:is(.active, .singing-line, :hover) { border-color: var(--accent); border-left-color: var(--accent); outline: thin solid var(--accent); }
+.words-tl > :is(.words-line, .words-graphic).past { opacity: .42; }
+.words-tl > .words-graphic.playing { border-color: var(--accent); outline: thin solid var(--accent); }
 .words-tl > .first { margin-top: var(--space-5); height: calc(var(--len-s) * var(--song-s) - var(--space-5) - var(--space-1)); }
-.words-tl > .words-tl-head { top: calc(var(--now-s, 0) * var(--song-s)); z-index: 1; border-top: medium solid var(--playhead); pointer-events: none; }
+.words-tl > .words-tl-head { top: calc(var(--now-s, 0) * var(--song-s)); z-index: 0; height: var(--size-3); border: 0; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, transparent, var(--depth-gold) 18%, var(--accent) 50%, var(--depth-gold) 82%, transparent);
+  box-shadow: 0 0 var(--space-3) var(--accent), 0 0 var(--space-4) var(--depth-gold); pointer-events: none; }
 /* An instrumental: a quiet hatched block where nothing is sung. */
 .words-tl > .words-gap { height: calc(var(--len-s) * var(--song-s) - var(--space-1)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1);
   border: thin dashed var(--line); border-radius: var(--radius-sm); color: var(--faint); font-size: var(--text-sm); letter-spacing: .08em; text-transform: uppercase;
@@ -918,7 +940,7 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .words-gap > .meta { text-transform: none; letter-spacing: 0; font-size: var(--text-xs); }
 .words-roll > .words-gap { left: var(--space-4); right: var(--space-4); }
 /* The film roll: sprocket holes down both edges, a time mark every ten seconds. */
-.words-roll { padding-inline: var(--space-4); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 thin color-mix(in srgb, black 60%, var(--line));
+.words-roll { margin-top: var(--words-playhead-y, 380px); margin-bottom: calc(var(--words-available, 700px) * .45); padding-inline: var(--space-4); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 thin color-mix(in srgb, black 60%, var(--line));
   background: radial-gradient(ellipse 34% 26%, color-mix(in srgb, var(--surface-2) 70%, black) 92%, transparent 100%) left top / var(--space-4) var(--text-xl) repeat-y,
     radial-gradient(ellipse 34% 26%, color-mix(in srgb, var(--surface-2) 70%, black) 92%, transparent 100%) right top / var(--space-4) var(--text-xl) repeat-y,
     color-mix(in srgb, var(--bg) 70%, black); }
@@ -928,7 +950,7 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 /* A frame fills the strip's width, edge to edge; the strip's black shows as the gap between frames. */
 .words-frame { height: calc(var(--len-s) * var(--song-s) - var(--space-1)); padding: 0; overflow: hidden; border: 0; border-radius: 0;
   background: color-mix(in srgb, var(--tone-lyrics) 14%, white); cursor: pointer; }
-.words-roll > .words-frame { left: var(--space-4); right: var(--space-4); }
+.words-roll > .words-frame { left: var(--space-4); right: var(--space-4); z-index: 1; }
 .words-frame:hover, .words-frame.active { box-shadow: inset 0 0 0 medium var(--accent); }
 /* The line's minimal lanes: when its words are sung, when items move, when strokes draw. */
 .words-lanes { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: thin solid var(--line); border-radius: var(--radius); background: var(--surface); }
@@ -961,7 +983,7 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 
 /* Resources uses the shared Home and empty-state components. */
 #view-skills { overflow-y:auto; justify-content:center; }
-.words-lettering-sample { display: block; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--lettering-paper); font-family: var(--sample-font); font-weight: var(--sample-weight); color: var(--sample-color); -webkit-text-stroke: .04em var(--sample-outline); paint-order: stroke fill; line-height: 1.7; }
+.words-lettering-sample { display: flex; align-items: baseline; justify-content: center; gap: .25em; width: 100%; height: 100%; box-sizing: border-box; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--lettering-paper); font-family: var(--sample-font); font-weight: var(--sample-weight); font-size: var(--text-xs); color: var(--sample-color); -webkit-text-stroke: .04em var(--sample-outline); paint-order: stroke fill; line-height: 1.4; white-space: nowrap; overflow: hidden; }
 .words-stroke-sample { display: block; width: 100%; height: calc(var(--space-5) * 1.5); margin-bottom: var(--space-1); color: var(--accent); }
 
 .words-lettering-sample > span { font-family: var(--hero-font); font-weight: var(--hero-weight); font-style: var(--hero-slant); color: var(--hero-color); font-size: var(--hero-size); }
@@ -987,7 +1009,7 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 @keyframes words-option-arrive { from { opacity: 0; transform: translate(var(--preview-x, 0), var(--preview-y, 0)) scale(var(--preview-scale, 1)); filter: blur(var(--preview-blur, 0)); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes words-option-type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
 
-.words-roll > .words-graphic { left: calc(var(--space-4) + (100% - var(--space-4) * 2) * var(--cue-lane) / var(--cue-lanes)); right: auto; width: calc((100% - var(--space-4) * 2) / var(--cue-lanes) - var(--space-1)); height: calc(var(--len-s) * var(--song-s)); border: thin solid var(--line); border-left: medium solid var(--cue-ink); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; }
+.words-roll > .words-graphic { left: calc(var(--space-4) + (100% - var(--space-4) * 2) * var(--cue-lane) / var(--cue-lanes)); right: auto; z-index: 1; width: calc((100% - var(--space-4) * 2) / var(--cue-lanes) - var(--space-1)); height: calc(var(--len-s) * var(--song-s)); border: thin solid var(--line); border-left: medium solid var(--cue-ink); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; }
 .words-graphic.active, .words-graphic:focus-visible, .words-graphic:hover { border-color: var(--accent); outline: thin solid var(--accent); }
 .words-cue-film { height: 100%; overflow: hidden; display: flex; flex-direction: column; justify-content: space-around; background: repeating-conic-gradient(var(--surface) 0% 25%, var(--surface-2) 0% 50%) 0 0 / var(--space-4) var(--space-4); }
 .words-cue-film > svg.words-cue-preview { display: block; width: 100%; height: 30%; min-height: 0; color: var(--cue-ink); }
@@ -1001,11 +1023,15 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 .words-cue-preview .cue { fill: none; stroke: var(--accent); }
 .words-cue-preview .speck { fill: var(--muted); }
 .words-roll > .words-graphics-empty { position: sticky; top: var(--space-5); margin: var(--space-4); color: var(--muted); font-size: var(--text-sm); }
-.words-layers .words-effects { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.words-layers .words-effects { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 
-.words-line[contenteditable="true"] { outline: thin solid var(--accent); outline-offset: calc(var(--space-1) * -1); cursor: text; caret-color: var(--lettering-ink); }
-.words-line[contenteditable="true"] > span.word { cursor: text; user-select: text; }
-.words-line[aria-invalid="true"] { outline-color: var(--amber); }
+.words-selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); margin-bottom: var(--space-1); border: thin solid var(--line); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--surface) 88%, black); }
+.words-selection-meta { display: flex; align-items: center; gap: var(--space-2); margin-right: var(--space-1); }
+.words-selection-badge { font-size: var(--text-xs); color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+.words-selection-words { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); flex: 1 1 auto; min-width: 0; }
+.words-selection-actions { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
+.words-selection-actions > button.active { border-color: var(--accent); color: var(--accent); background: var(--surface-2); }
+.words-line-word.has-act:not(.active) { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .words-backdrop { display: flex; align-items: center; gap: var(--space-2); }
 .words-backdrop select { flex: 1; min-width: 0; }
 
@@ -1039,19 +1065,21 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 .words-background[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 var(--size-1) var(--accent); }
 .words-background:hover { border-color: var(--accent); }
 
-/* Lyrics centre: no box and no opaque fill over the connectors; the scene is a flush 16:9 drawing surface
-   (1920x1080) sized from the height it may take, and the transport sits right on its lower edge. */
-#view-design.active > #words-main { height: var(--words-available); background: none; border: 0; box-shadow: none; padding: 0; gap: var(--space-2); }
-#words-main .words-preview { gap: 0; }
-#words-main .words-preview > #words-preview { max-height: none; width: min(100%, calc(var(--words-available) * .46 * 16 / 9)); aspect-ratio: 16 / 9; border: 0; border-radius: 0; }
-#words-main .words-preview > .transport { margin-top: 0; border-top: 0; }
+/* Lyrics centre: the 16:9 video preview sits in the middle like a camera viewfinder, flanked by
+   Scene/Look tracks above and Motion/Meaning/Cue tracks below. */
+#view-design.active > #words-main { height: var(--words-available); background: none; border: 0; box-shadow: none; padding: 0; gap: var(--space-2); justify-content: space-between; }
+#words-main .words-upper-tracks { flex-shrink: 0; }
+#words-main .words-preview { gap: 0; align-items: center; margin-block: auto; }
+#words-main .words-preview > #words-preview { max-height: none; width: min(100%, calc(var(--words-available) * .42 * 16 / 9)); aspect-ratio: 16 / 9; border: thin solid var(--line); border-radius: var(--radius) var(--radius) 0 0; }
+#words-main .words-preview > .transport { width: min(100%, calc(var(--words-available) * .42 * 16 / 9)); margin-top: 0; border: thin solid var(--line); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); background: color-mix(in srgb, var(--surface) 92%, transparent); }
 #words-main .words-timing-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 #words-main .words-timing-summary input[type="number"] { width: 6em; }
-/* The inspector gets the remaining space below the surface; its body owns scrolling. */
-#words-main > #words-workspace-controls { flex: 1 1 0; }
+/* The lower track deck sits below the centered video surface. */
+#words-main > #words-workspace-controls { flex: 1 1 auto; max-height: calc(var(--words-available) * .34); }
 
-#words-workspace-controls .words-option-preview { height: var(--size-48); width: 100%; }
-#words-workspace-controls .words-effects { grid-template-columns: repeat(3,minmax(0,1fr)); }
+#words-main .words-option-preview { height: var(--size-42); width: 100%; margin-bottom: 0; }
+#words-main .words-effects { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-1); }
+.words-background-mode { display: flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 600; color: var(--text); }
 
 .words-sketch { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; cursor: crosshair; touch-action: none; }
 .words-sketch-cancel { position: absolute; top: var(--space-2); right: var(--space-2); z-index: 6; }
