@@ -102,9 +102,8 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
     let extensions: &[&str] = match backend {
         "blender" => &["blend"],
         "synfig" => &["sif", "sifz"],
-        "opentoonz" => &["tnz"],
         "mlt" => &["json"],
-        _ => return Err(bad("backend must be blender, synfig, opentoonz or mlt")),
+        _ => return Err(bad("backend must be blender, synfig or mlt")),
     };
     let source = crate::workspace::resolve_workspace_path(s, text(p, "source")?).canonicalize()?;
     if !source.is_file()
@@ -117,12 +116,9 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
             "Source extension does not match backend; MLT uses assembly JSON",
         ));
     }
-    let bundle = if matches!(backend, "synfig" | "opentoonz") {
+    let bundle = if backend == "synfig" {
         let root = if let Some(raw) = p["bundle"].as_str().filter(|v| !v.is_empty()) {
             crate::workspace::resolve_workspace_path(s, raw)
-        } else if backend == "opentoonz" {
-            crate::drawing_scene::project_root(&source)
-                .unwrap_or_else(|| source.parent().unwrap_or(&source).to_path_buf())
         } else {
             source.parent().unwrap_or(&source).to_path_buf()
         };
@@ -162,7 +158,6 @@ fn render_params(source: &Value, p: &Value) -> Result<Value> {
     let native: &[&str] = match backend {
         "blender" => &["max_frames", "resolution_percent"],
         "synfig" => &["first_frame", "last_frame", "fps", "width", "height"],
-        "opentoonz" => &["first", "last", "step", "shrink", "nthreads"],
         "mlt" => &[],
         _ => return Err(bad("Unsupported registered backend")),
     };
@@ -177,7 +172,6 @@ fn render_params(source: &Value, p: &Value) -> Result<Value> {
     let key = match backend {
         "blender" => "blend",
         "synfig" => "source",
-        "opentoonz" => "scene",
         _ => "timeline",
     };
     request[key] = source["source"].clone();
@@ -196,7 +190,6 @@ pub fn render(s: &mut Session, p: &Value) -> Result<Value> {
     let mut job = match text(&source, "backend")? {
         "blender" => crate::animation_jobs::cmd_start_scene_job(s, &request)?,
         "synfig" => crate::vector_scene::start(s, &request)?,
-        "opentoonz" => crate::drawing_scene::cmd_start_drawing_job(s, &request)?,
         "mlt" => crate::mlt::start(s, &request)?,
         _ => return Err(bad("Unsupported registered backend")),
     };

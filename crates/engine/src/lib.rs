@@ -81,7 +81,6 @@ pub mod mesh_geometry;
 pub mod mlt;
 pub mod motion;
 pub mod motion_authoring;
-pub mod drawing_scene;
 pub mod panels;
 pub mod part_replacement;
 pub mod parts;

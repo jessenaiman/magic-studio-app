@@ -10,7 +10,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 import re
 import resource
 import shutil
@@ -404,161 +404,6 @@ def render_vector_scene(request, job):
     )
 
 
-def snapshot_tree(source, target):
-    source = Path(source).resolve()
-    if not source.is_dir() or target.resolve().is_relative_to(source):
-        raise ValueError("Bundle must be a directory outside job output")
-    target.mkdir(parents=True)
-    manifest = []
-    size = 0
-    for path in sorted(source.rglob("*")):
-        if path.is_symlink():
-            raise ValueError("Bundle symlinks unsupported")
-        if path.is_dir():
-            continue
-        if not path.is_file():
-            raise ValueError("Bundle contains non-regular file")
-        size += path.stat().st_size
-        if size > 1024**3 or len(manifest) >= 4096:
-            raise ValueError("Bundle exceeds 1 GiB/4096 files")
-        out = target / path.relative_to(source)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, out)
-        digest = sha256(out)
-        if sha256(path) != digest:
-            raise ValueError("Source changed while snapshotting")
-        manifest.append({"path": str(out.relative_to(target)), "sha256": digest})
-    return manifest
-
-
-def validate_native_references(path):
-    # Inspect parsed scalar values, never XML delimiters such as quotes or />.
-    # Native .tnz path text can itself be quoted; keep the frozen bytes unchanged.
-    if path.stat().st_size > 64 * 1024 * 1024:
-        raise ValueError("Native XML exceeds 64 MiB")
-    content = path.read_bytes()
-    if (
-        len(content) > 64 * 1024 * 1024
-        or b"<!DOCTYPE" in content.upper()
-        or b"<!ENTITY" in content.upper()
-    ):
-        raise ValueError("Oversized or externally defined native XML is unsupported")
-    # OpenToonz TIStream is XML-like: strings contain literal ampersands (even
-    # in its own stock format options). Escape only in the parser view so XML
-    # syntax can be inspected without interpreting native filename text as entities.
-    root = ET.fromstring(content.replace(b"&", b"&amp;"))
-    for node in root.iter():
-        for value in [node.text or "", *node.attrib.values()]:
-            value = value.strip()
-            if len(value) >= 2 and value[0] in ('"', "'") and value[-1] == value[0]:
-                value = value[1:-1].strip()
-            normalized = value.replace("\\", "/")
-            if (
-                normalized.startswith("/")
-                or PureWindowsPath(value).drive
-                or ".." in normalized.split("/")
-            ):
-                raise ValueError(
-                    "Absolute/escaping native resource references unsupported; make bundle self-contained"
-                )
-
-
-def render_drawing_scene(request, request_path):
-    from worker import write_json
-
-    job = request_path.parent
-    original = Path(request["scene"]).resolve()
-    root = Path(request["bundle"]).resolve()
-    if not original.is_relative_to(root):
-        raise ValueError("Scene outside bundle")
-    snapshot = job / "source-bundle"
-    manifest = snapshot_tree(root, snapshot)
-    frozen = snapshot / original.relative_to(root)
-    # Native project aliases must not resolve outside the frozen bundle.
-    for path in [frozen, *snapshot.glob("*_otprj.xml")]:
-        validate_native_references(path)
-    stuff = job / "toonz-stuff"
-    stuff_manifest = snapshot_tree(Path(request["stuff"]), stuff)
-    prepared = dict(request, scene=str(frozen), bundle=str(snapshot))
-    helper_request = job / "opentoonz-request.json"
-    write_json(helper_request, prepared)
-    env = dict(
-        os.environ,
-        OPENTOONZ_TCOMPOSER=request["tcomposer"],
-        OPENTOONZ_STUFF=str(stuff),
-        QT_QPA_PLATFORM="offscreen",
-    )
-    write_json(job / "progress.json", {"state": "rendering"})
-    subprocess.run(
-        [
-            request["magic_cli"],
-            "exec",
-            "animation.drawing.render_frames",
-            "request=" + str(helper_request),
-        ],
-        env=env,
-        check=True,
-    )
-    native = json.loads((job / "opentoonz-manifest.json").read_text())
-    if any(sha256(snapshot / v["path"]) != v["sha256"] for v in manifest):
-        raise ValueError("Frozen source bundle changed during native rendering")
-    first, last, step = (int(native["range"][k]) for k in ("first", "last", "step"))
-    if not 1 <= last - first + 1 <= 18000:
-        raise ValueError("Requested timeline exceeds 18000 output frames")
-    expected = list(range(first, last + 1, step))
-    paths = [Path(p).resolve() for p in native["frames"]]
-    if len(paths) != len(expected) or any(p.parent != job / "frames" for p in paths):
-        raise ValueError("Invalid native frame manifest")
-    expanded = []
-    mapping = []
-    for source_frame, path in zip(expected, paths):
-        for frame in range(source_frame, min(last + 1, source_frame + step)):
-            expanded.append(path)
-            mapping.append(
-                {
-                    "frame": frame,
-                    "scene_frame": source_frame,
-                    "path": str(path),
-                    "sha256": sha256(path),
-                }
-            )
-    width, height = int(native["width"]), int(native["height"])
-    fps = float(native["fps"])
-    encoded = encode_frames(request, job, expanded, fps, width, height)
-    bundle = {
-        "path": str(frozen),
-        "bundle": str(snapshot),
-        "original_path": str(original),
-        "sha256": sha256(frozen),
-        "dependencies": manifest,
-        "bundle_sha256": hashlib.sha256(
-            json.dumps(manifest, sort_keys=True).encode()
-        ).hexdigest(),
-        "runtime_stuff": {"path": str(stuff), "dependencies": stuff_manifest},
-    }
-    return dict(
-        encoded,
-        backend="opentoonz",
-        state="completed",
-        frames=str(job / "frames"),
-        frame_mapping=mapping,
-        source_bundle=bundle,
-        tool=native["tool"],
-        first_frame=first,
-        last_frame=last,
-        fps=fps,
-        clip_seconds=len(expanded) / fps,
-        width=width,
-        height=height,
-        canvas=[width, height],
-        world_rect=[0, 0, width, height],
-        selected_range=native["range"],
-        partial=first != 1 or last != native["scene_frame_count"],
-        source_job=request["job"],
-        sampling="step frames held to preserve scene timing",
-    )
-
-
 def main(request_path):
     from worker import write_json, job_metadata, service_metrics
 
@@ -572,8 +417,6 @@ def main(request_path):
         job_metadata(request_path, request, service_metrics(request["unit"]))
         if request["backend"] == "synfig":
             result = render_vector_scene(request, job)
-        elif request["backend"] == "opentoonz":
-            result = render_drawing_scene(request, request_path)
         elif request["backend"] == "mlt":
             from mlt_worker import render
 

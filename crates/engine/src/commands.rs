@@ -145,7 +145,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "animation.list"
         | "animation.scene.actions"
         | "animation.vector.discover"
-        | "animation.drawing.discover"
         | "mlt.discover"
         | "song.lyrics"
         | "words.align"
@@ -188,8 +187,6 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"ui.eval"
             | b"animation.scene.render"
             | b"mlt.start"
-            | b"animation.drawing.render"
-            | b"animation.drawing.render_frames"
             | b"animation.vector.render"
             | b"motion.pose.export"
             | b"animation.render"
@@ -341,7 +338,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Register editable native source",
             ["Animation"],
             None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|synfig|opentoonz|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
+            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|synfig|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
             always,
             crate::animation_links::set
         ).help("Link an editable file to a project and optionally associate a character action, then save the project.",
@@ -412,30 +409,6 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"timeline\":\"generic timeline JSON path\",\"memory_mb\":4096,\"timeout_seconds\":300}",
             always,
             crate::mlt::start
-        ),
-        cmd!(
-            "animation.drawing.render",
-            "Render OpenToonz through shared worker",
-            ["Animation"],
-            None,
-            "{\"scene\":\"saved .tnz\",\"bundle\":\"optional self-contained project root\",\"first\":1,\"last\":24,\"step\":1,\"shrink\":1,\"nthreads\":2,\"memory_mb\":4096,\"timeout_seconds\":300}",
-            always,
-            crate::drawing_scene::cmd_start_drawing_job
-        ),
-        query!(
-            "animation.drawing.discover",
-            "OpenToonz Availability and Render Plan",
-            "{\"scene\":\"optional .tnz path; plans without rendering\",\"first\":\"optional one-based\",\"last\":\"optional one-based\"}",
-            crate::drawing_scene::cmd_drawing_scene_info
-        ),
-        cmd!(
-            "animation.drawing.render_frames",
-            "Render OpenToonz Scene Frames",
-            ["Animation"],
-            None,
-            "{\"request\":\"worker mode: job request.json (scene, range); only inside its bounded worker\",\"scene\":\".tnz path\",\"out\":\"new absolute frames folder\",\"first\":\"optional one-based\",\"last\":\"optional one-based\",\"step\":1,\"shrink\":1,\"nthreads\":2}",
-            always,
-            crate::drawing_scene::cmd_render_drawing_job
         ),
         query!(
             "project.attach",
