@@ -1,151 +1,249 @@
 // Navigation preserves this intentional single PTY session; it never starts one.
-const backstageInvoke=window.__TAURI__.core.invoke;
-const backstageTerminal={terminal:null,fit:null,running:false,busy:false,session:null,generation:0,closing:false,stopping:false,input:null,resize:null};
-function backstageStatus(message){document.getElementById('backstage-status').textContent=message;}
-function backstageControls(){
-  document.getElementById('backstage-start').disabled=backstageTerminal.busy||backstageTerminal.running;
-  document.getElementById('backstage-stop').disabled=backstageTerminal.busy||!backstageTerminal.running;
-}
-function backstageFit(){
-  const host=document.getElementById('backstage-terminal');
-  if(!backstageTerminal.fit||!host?.getBoundingClientRect().width||!host.getBoundingClientRect().height)return;
-  const dimensions=backstageTerminal.fit.proposeDimensions();
-  if(dimensions)backstageTerminal.terminal.resize(Math.max(2,Math.min(500,dimensions.cols)),Math.max(2,Math.min(200,dimensions.rows)));
-}
-function backstageResize(cols,rows){
-  const session=backstageTerminal.session;
-  if(!backstageTerminal.running||session===null)return;
-  let request=backstageTerminal.resize;
-  if(request?.session===session){request.latest={cols,rows};return;}
-  request={session,latest:{cols,rows}};backstageTerminal.resize=request;
-  (async()=>{
-    while(request.latest&&backstageTerminal.running&&backstageTerminal.session===session){
-      const dimensions=request.latest;request.latest=null;
-      await backstageInvoke('backstage_resize',{session,...dimensions});
+const backstageInvoke = window.__TAURI__.core.invoke;
+
+class BackstageTerminalController {
+  busy = false;
+  closing = false;
+  fit: any = null;
+  generation = 0;
+  input: any = null;
+  resize: any = null;
+  running = false;
+  session: any = null;
+  stopping = false;
+  terminal: any = null;
+
+  constructor() {
+    window.addEventListener('backstage-visible', () => requestAnimationFrame(() => this.fitTerminal()));
+    window.addEventListener('pagehide', () => this.onPageHide());
+    window.addEventListener('pageshow', () => this.onPageShow());
+  }
+
+  status(message: string) {
+    document.getElementById('backstage-status').textContent = message;
+  }
+
+  controls() {
+    (document.getElementById('backstage-start') as HTMLButtonElement).disabled = this.busy || this.running;
+    (document.getElementById('backstage-stop') as HTMLButtonElement).disabled = this.busy || !this.running;
+  }
+
+  fitTerminal() {
+    const host = document.getElementById('backstage-terminal');
+    if (!this.fit || !host?.getBoundingClientRect().width || !host.getBoundingClientRect().height) return;
+    const dimensions = this.fit.proposeDimensions();
+    if (dimensions) this.terminal.resize(Math.max(2, Math.min(500, dimensions.cols)), Math.max(2, Math.min(200, dimensions.rows)));
+  }
+
+  resizeTerminal(cols: number, rows: number) {
+    const session = this.session;
+    if (!this.running || session === null) return;
+    let request = this.resize;
+    if (request?.session === session) { request.latest = {cols, rows}; return; }
+    request = {session, latest: {cols, rows}};
+    this.resize = request;
+    (async () => {
+      while (request.latest && this.running && this.session === session) {
+        const dimensions = request.latest;
+        request.latest = null;
+        await backstageInvoke('backstage_resize', {session, ...dimensions});
+      }
+    })().catch(error => {
+      if (this.running && this.session === session) this.status(`Terminal resize failed: ${error}`);
+    }).finally(() => { if (this.resize === request) this.resize = null; });
+  }
+
+  send(data: string, binary = false) {
+    const queue = this.input, session = this.session;
+    if (!this.running || session === null || !queue || queue.cancelled) return;
+    if (data.length > 65536) { this.status('Terminal input is too large; send at most 64 KiB at a time.'); return; }
+    const bytes = binary ? Uint8Array.from(data, char => char.charCodeAt(0)) : new TextEncoder().encode(data);
+    if (queue.pending + bytes.length > 65536) { this.status('Terminal input is busy; this input was not queued.'); return; }
+    queue.pending += bytes.length;
+    queue.promise = queue.promise.then(async () => {
+      for (let offset = 0; offset < bytes.length; offset += 8192) {
+        if (queue.cancelled || !this.running || this.session !== session) return;
+        await backstageInvoke('backstage_write', {session, bytes: Array.from(bytes.slice(offset, offset + 8192))});
+      }
+    }).catch(error => {
+      if (!queue.cancelled && this.session === session) this.status(`Terminal input failed: ${error}`);
+    }).finally(() => { queue.pending -= bytes.length; });
+  }
+
+  async recover() {
+    ++this.generation;
+    if (this.input) this.input.cancelled = true;
+    this.busy = true;
+    this.controls();
+    try {
+      const session = await backstageInvoke('backstage_current');
+      this.session = session;
+      this.running = session !== null;
+      if (session !== null) {
+        this.status('A previous Backstage session is closing or still running. Stop it before launching a new terminal.');
+      }
+    } catch (error) {
+      this.status(`Could not inspect Backstage session: ${error}`);
+    } finally {
+      this.busy = false;
+      this.controls();
     }
-  })().catch(error=>{
-    if(backstageTerminal.running&&backstageTerminal.session===session)backstageStatus(`Terminal resize failed: ${error}`);
-  }).finally(()=>{if(backstageTerminal.resize===request)backstageTerminal.resize=null;});
-}
-function backstageSend(data: string,binary=false){
-  const queue=backstageTerminal.input,session=backstageTerminal.session;
-  if(!backstageTerminal.running||session===null||!queue||queue.cancelled)return;
-  if(data.length>65536){backstageStatus('Terminal input is too large; send at most 64 KiB at a time.');return;}
-  const bytes=binary?Uint8Array.from(data,char=>char.charCodeAt(0)):new TextEncoder().encode(data);
-  if(queue.pending+bytes.length>65536){backstageStatus('Terminal input is busy; this input was not queued.');return;}
-  queue.pending+=bytes.length;
-  queue.promise=queue.promise.then(async()=>{
-    for(let offset=0;offset<bytes.length;offset+=8192){
-      if(queue.cancelled||!backstageTerminal.running||backstageTerminal.session!==session)return;
-      await backstageInvoke('backstage_write',{session,bytes:Array.from(bytes.slice(offset,offset+8192))});
-    }
-  }).catch(error=>{
-    if(!queue.cancelled&&backstageTerminal.session===session)backstageStatus(`Terminal input failed: ${error}`);
-  }).finally(()=>{queue.pending-=bytes.length;});
-}
-async function backstageRecover(){
-  ++backstageTerminal.generation;
-  if(backstageTerminal.input)backstageTerminal.input.cancelled=true;
-  backstageTerminal.busy=true;backstageControls();
-  try{
-    const session=await backstageInvoke('backstage_current');
-    backstageTerminal.session=session;backstageTerminal.running=session!==null;
-    if(session!==null){
-      backstageStatus('A previous Backstage session is closing or still running. Stop it before launching a new terminal.');
-    }
-  }catch(error){backstageStatus(`Could not inspect Backstage session: ${error}`);}
-  finally{backstageTerminal.busy=false;backstageControls();}
-}
-async function backstageStart(){
-  if(backstageTerminal.busy||backstageTerminal.running)return;
-  backstageTerminal.busy=true;backstageControls();backstageStatus('Launching Backstage…');
-  const generation=++backstageTerminal.generation;
-  backstageTerminal.session=null;
-  backstageTerminal.input={promise:Promise.resolve(),pending:0,cancelled:false};
-  let ended=false,terminalError=null;
-  try{
-    if(!window.MagicBackstage)throw new Error('Terminal assets unavailable. Rebuild the desktop frontend.');
-    if(!backstageTerminal.terminal){
-      const {Terminal,FitAddon}=window.MagicBackstage;
-      const theme=getComputedStyle(document.documentElement);
-      const terminal=new Terminal({fontSize:13,scrollback:1000,screenReaderMode:true,cursorBlink:false,
-        theme:{background:theme.getPropertyValue('--bg').trim(),foreground:theme.getPropertyValue('--text').trim(),cursor:theme.getPropertyValue('--accent').trim()}});
-      const fit=new FitAddon();terminal.loadAddon(fit);terminal.open(document.getElementById('backstage-terminal'));
-      backstageTerminal.terminal=terminal;backstageTerminal.fit=fit;
-      terminal.onData(data=>backstageSend(data));
-      terminal.onBinary(data=>backstageSend(data,true));
-      terminal.onResize(({cols,rows})=>backstageResize(cols,rows));
-      terminal.attachCustomKeyEventHandler(event=>!(event.key==='Tab'&&event.shiftKey));
-      new ResizeObserver(backstageFit).observe(document.getElementById('backstage-terminal'));
-    }
-    const terminal=backstageTerminal.terminal;
-    terminal.reset();backstageFit();
-    const output=new window.__TAURI__.core.Channel();
-    output.onmessage=message=>{
-      if(generation!==backstageTerminal.generation)return;
-      if(message.kind==='data'){
-        if(!ended&&!backstageTerminal.closing&&!backstageTerminal.stopping){backstageTerminal.session=message.session;backstageTerminal.running=true;}
-        terminal.write(new Uint8Array(message.bytes),()=>{
-          backstageInvoke('backstage_ack',{session:message.session,sequence:message.sequence}).catch(error=>{
-            if(generation===backstageTerminal.generation&&backstageTerminal.running)backstageStatus(`Terminal output acknowledgement failed: ${error}`);
+  }
+
+  ensureTerminalInstance() {
+    if (!window.MagicBackstage) throw new Error('Terminal assets unavailable. Rebuild the desktop frontend.');
+    if (this.terminal) return this.terminal;
+    const {Terminal, FitAddon} = window.MagicBackstage;
+    const theme = getComputedStyle(document.documentElement);
+    const terminal = new Terminal({
+      fontSize: 13,
+      scrollback: 1000,
+      screenReaderMode: true,
+      cursorBlink: false,
+      theme: {
+        background: theme.getPropertyValue('--bg').trim(),
+        foreground: theme.getPropertyValue('--text').trim(),
+        cursor: theme.getPropertyValue('--accent').trim(),
+      },
+    });
+    const fit = new FitAddon();
+    terminal.loadAddon(fit);
+    terminal.open(document.getElementById('backstage-terminal'));
+    this.terminal = terminal;
+    this.fit = fit;
+    terminal.onData(data => this.send(data));
+    terminal.onBinary(data => this.send(data, true));
+    terminal.onResize(({cols, rows}) => this.resizeTerminal(cols, rows));
+    terminal.attachCustomKeyEventHandler(event => !(event.key === 'Tab' && event.shiftKey));
+    new ResizeObserver(() => this.fitTerminal()).observe(document.getElementById('backstage-terminal'));
+    return terminal;
+  }
+
+  createOutputChannel(generation: number, terminal: any, state: {ended: boolean, terminalError: string | null}) {
+    const output = new window.__TAURI__.core.Channel();
+    output.onmessage = message => {
+      if (generation !== this.generation) return;
+      if (message.kind === 'data') {
+        if (!state.ended && !this.closing && !this.stopping) {
+          this.session = message.session;
+          this.running = true;
+        }
+        terminal.write(new Uint8Array(message.bytes), () => {
+          backstageInvoke('backstage_ack', {session: message.session, sequence: message.sequence}).catch(error => {
+            if (generation === this.generation && this.running) this.status(`Terminal output acknowledgement failed: ${error}`);
           });
         });
-      }else if(message.kind==='exit'){
-        ended=true;backstageTerminal.running=false;backstageTerminal.session=null;
-        backstageTerminal.input.cancelled=true;
-        backstageStatus(terminalError||message.error||`Backstage exited · ${message.success?'normal exit':`status ${message.code}`}. Launch again when needed.`);backstageControls();
-      }else if(message.kind==='error'){terminalError=message.message;backstageStatus(message.message);}
+      } else if (message.kind === 'exit') {
+        state.ended = true;
+        this.running = false;
+        this.session = null;
+        this.input.cancelled = true;
+        this.status(state.terminalError || message.error || `Backstage exited · ${message.success ? 'normal exit' : `status ${message.code}`}. Launch again when needed.`);
+        this.controls();
+      } else if (message.kind === 'error') {
+        state.terminalError = message.message;
+        this.status(message.message);
+      }
     };
-    const session=await backstageInvoke('backstage_start',{cols:terminal.cols,rows:terminal.rows,output});
-    if(backstageTerminal.closing){await backstageInvoke('backstage_stop',{session});return;}
-    if(!ended){
-      backstageTerminal.session=session;backstageTerminal.running=true;
-      backstageStatus('Backstage running · q quits · Shift+Tab returns to desktop controls. Navigation preserves this session.');
-      backstageFit();backstageResize(terminal.cols,terminal.rows);terminal.focus();
+    return output;
+  }
+
+  async start() {
+    if (this.busy || this.running) return;
+    this.busy = true;
+    this.controls();
+    this.status('Launching Backstage…');
+    const generation = ++this.generation;
+    this.session = null;
+    this.input = {promise: Promise.resolve(), pending: 0, cancelled: false};
+    const channelState = {ended: false, terminalError: null};
+    try {
+      const terminal = this.ensureTerminalInstance();
+      terminal.reset();
+      this.fitTerminal();
+      const output = this.createOutputChannel(generation, terminal, channelState);
+      const session = await backstageInvoke('backstage_start', {cols: terminal.cols, rows: terminal.rows, output});
+      if (this.closing) { await backstageInvoke('backstage_stop', {session}); return; }
+      if (!channelState.ended) {
+        this.session = session;
+        this.running = true;
+        this.status('Backstage running · q quits · Shift+Tab returns to desktop controls. Navigation preserves this session.');
+        this.fitTerminal();
+        this.resizeTerminal(terminal.cols, terminal.rows);
+        terminal.focus();
+      }
+    } catch (error) {
+      this.running = false;
+      this.input.cancelled = true;
+      this.status(`Could not launch Backstage: ${error}`);
+      await this.recover();
+    } finally {
+      this.busy = false;
+      this.controls();
     }
-  }catch(error){
-    backstageTerminal.running=false;backstageTerminal.input.cancelled=true;
-    backstageStatus(`Could not launch Backstage: ${error}`);
-    // A page reload or another in-flight launch may already own the singleton.
-    // Recover its identity so Stop remains available instead of trapping the user.
-    await backstageRecover();
-  }finally{backstageTerminal.busy=false;backstageControls();}
-}
-async function backstageStop(){
-  if(backstageTerminal.busy||!backstageTerminal.running||backstageTerminal.session===null)return;
-  const session=backstageTerminal.session;
-  backstageTerminal.busy=true;backstageTerminal.running=false;backstageTerminal.stopping=true;
-  if(backstageTerminal.input)backstageTerminal.input.cancelled=true;
-  backstageControls();backstageStatus('Stopping Backstage…');
-  try{
-    // Stop never waits behind keyboard/paste delivery.
-    await backstageInvoke('backstage_stop',{session});
-    ++backstageTerminal.generation;
-    backstageTerminal.session=null;backstageTerminal.running=false;backstageStatus('Backstage stopped. Launch again when needed.');
-  }catch(error){backstageStatus(`Could not stop Backstage: ${error}`);await backstageRecover();}
-  finally{backstageTerminal.stopping=false;backstageTerminal.busy=false;backstageControls();}
-}
-function backstageTerminalMount(){
-  queueMicrotask(backstageRecover);
-  const controls=window.el('div',{class:'backstage-controls'},
-    window.el('button',{id:'backstage-start',class:'start',disabled:true,onclick:backstageStart},'Launch Backstage'),
-    window.el('button',{id:'backstage-stop',class:'ghost',disabled:true,onclick:backstageStop},'Stop'));
-  const header=new PanelHeader({id:null,title:'Backstage · live terminal',actions:[controls]}).element;
-  header.classList.add('panel-head');header.dataset.look='heading';
-  return window.el('section',{id:'backstage-panel',class:'panel','aria-label':'Interactive Backstage terminal'},header,
-    window.el('p',{id:'backstage-status',class:'backstage-status',role:'status'},'Ready to launch. Backstage observes local production data; it never starts agents or models.'),
-    window.el('div',{id:'backstage-terminal',class:'backstage-terminal','aria-label':'Backstage terminal'}));
-}
-window.addEventListener('backstage-visible',()=>requestAnimationFrame(backstageFit));
-window.addEventListener('pagehide',()=>{
-  backstageTerminal.closing=true;
-  if(backstageTerminal.input)backstageTerminal.input.cancelled=true;
-  const session=backstageTerminal.session;
-  if(session!==null)backstageInvoke('backstage_stop',{session}).catch(()=>{});
-});
+  }
 
-window.addEventListener('pageshow',()=>{
-  if(backstageTerminal.closing){backstageTerminal.closing=false;if(document.getElementById('backstage-panel'))backstageRecover();}
-});
+  async stop() {
+    if (this.busy || !this.running || this.session === null) return;
+    const session = this.session;
+    this.busy = true;
+    this.running = false;
+    this.stopping = true;
+    if (this.input) this.input.cancelled = true;
+    this.controls();
+    this.status('Stopping Backstage…');
+    try {
+      await backstageInvoke('backstage_stop', {session});
+      ++this.generation;
+      this.session = null;
+      this.running = false;
+      this.status('Backstage stopped. Launch again when needed.');
+    } catch (error) {
+      this.status(`Could not stop Backstage: ${error}`);
+      await this.recover();
+    } finally {
+      this.stopping = false;
+      this.busy = false;
+      this.controls();
+    }
+  }
 
-window.magicBackstageTerminal={mount:backstageTerminalMount};
+  mount() {
+    queueMicrotask(() => this.recover());
+    const controls = window.el('div', {class: 'backstage-controls'},
+      window.el('button', {id: 'backstage-start', class: 'start', disabled: true, onclick: () => this.start()}, 'Launch Backstage'),
+      window.el('button', {id: 'backstage-stop', class: 'ghost', disabled: true, onclick: () => this.stop()}, 'Stop'));
+    const header = new PanelHeader({id: null, title: 'Backstage · live terminal', actions: [controls]}).element;
+    header.classList.add('panel-head');
+    header.dataset.look = 'heading';
+    return window.el('section', {id: 'backstage-panel', class: 'panel', 'aria-label': 'Interactive Backstage terminal'}, header,
+      window.el('p', {id: 'backstage-status', class: 'backstage-status', role: 'status'}, 'Ready to launch. Backstage observes local production data; it never starts agents or models.'),
+      window.el('div', {id: 'backstage-terminal', class: 'backstage-terminal', 'aria-label': 'Backstage terminal'}));
+  }
+
+  onPageHide() {
+    this.closing = true;
+    if (this.input) this.input.cancelled = true;
+    const session = this.session;
+    if (session !== null) backstageInvoke('backstage_stop', {session}).catch(() => {});
+  }
+
+  onPageShow() {
+    if (this.closing) {
+      this.closing = false;
+      if (document.getElementById('backstage-panel')) this.recover();
+    }
+  }
+}
+
+const backstageTerminal = new BackstageTerminalController();
+function backstageStatus(message: string) { backstageTerminal.status(message); }
+function backstageControls() { backstageTerminal.controls(); }
+function backstageFit() { backstageTerminal.fitTerminal(); }
+function backstageResize(cols: number, rows: number) { backstageTerminal.resizeTerminal(cols, rows); }
+function backstageSend(data: string, binary = false) { backstageTerminal.send(data, binary); }
+async function backstageRecover() { return backstageTerminal.recover(); }
+async function backstageStart() { return backstageTerminal.start(); }
+async function backstageStop() { return backstageTerminal.stop(); }
+function backstageTerminalMount() { return backstageTerminal.mount(); }
+window.magicBackstageTerminal = {mount: backstageTerminalMount};
