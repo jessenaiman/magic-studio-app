@@ -65,7 +65,133 @@ pub struct Snapshot {
     pub scope: String,
     pub projects_root: Option<PathBuf>,
     pub projects_found: bool,
+    pub library: Option<Result<Library, String>>,
     pub provider_detail: String,
+}
+
+/// The projects root's top level, classified by the one rule Magic uses: a project is
+/// a `.magic` file at the root or one folder down. Anything else at the top level is
+/// unknown — listed for inspection, never treated as disposable. Reads are bounded.
+pub struct Library {
+    pub projects: Vec<PathBuf>,
+    pub unknown_files: Vec<PathBuf>,
+    pub unknown_folders: Vec<PathBuf>,
+    pub truncated: bool,
+}
+/// Button targets that open the details overlay listing the classified library:
+/// `INSPECT - k` for library row k (projects, unknown files, unknown folders).
+pub const INSPECT: usize = usize::MAX - 1;
+pub fn inspect_row(target: usize) -> Option<usize> {
+    INSPECT.checked_sub(target).filter(|k| *k < 3)
+}
+const LIBRARY_ENTRIES: usize = 2048;
+const FOLDER_ENTRIES: usize = 256;
+impl Library {
+    pub fn read(root: &Path) -> std::io::Result<Self> {
+        let mut library = Self {
+            projects: vec![],
+            unknown_files: vec![],
+            unknown_folders: vec![],
+            truncated: false,
+        };
+        let mut entries = fs::read_dir(root)?;
+        for entry in entries.by_ref().take(LIBRARY_ENTRIES) {
+            let path = entry?.path();
+            let meta = fs::symlink_metadata(&path)?;
+            if meta.is_file() && is_project(&path) {
+                library.projects.push(path);
+            } else if meta.is_dir() {
+                let inside = Self::folder_projects(&path, &mut library.truncated);
+                if inside.is_empty() {
+                    library.unknown_folders.push(path);
+                } else {
+                    library.projects.extend(inside);
+                }
+            } else {
+                library.unknown_files.push(path);
+            }
+        }
+        library.truncated |= entries.next().is_some();
+        for list in [
+            &mut library.projects,
+            &mut library.unknown_files,
+            &mut library.unknown_folders,
+        ] {
+            list.sort();
+        }
+        Ok(library)
+    }
+    fn folder_projects(folder: &Path, truncated: &mut bool) -> Vec<PathBuf> {
+        let Ok(mut entries) = fs::read_dir(folder) else {
+            return vec![];
+        };
+        let found = entries
+            .by_ref()
+            .take(FOLDER_ENTRIES)
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| is_project(p) && fs::symlink_metadata(p).is_ok_and(|m| m.is_file()))
+            .collect();
+        *truncated |= entries.next().is_some();
+        found
+    }
+}
+impl Library {
+    /// The audit rows: label, count text, status, and the items behind the count.
+    pub fn rows(&self) -> [(&'static str, String, Status, &[PathBuf]); 3] {
+        let count = |n: usize, one: &str, many: &str| {
+            format!(
+                "{n} {}{}",
+                if n == 1 { one } else { many },
+                if self.truncated {
+                    " (bounded read)"
+                } else {
+                    ""
+                }
+            )
+        };
+        let unknown = |n: usize| {
+            if n == 0 {
+                Status::None
+            } else {
+                Status::Present
+            }
+        };
+        [
+            (
+                "Project count",
+                count(self.projects.len(), "project", "projects"),
+                if self.projects.is_empty() {
+                    Status::None
+                } else {
+                    Status::Found
+                },
+                &self.projects,
+            ),
+            (
+                "Unknown files",
+                count(self.unknown_files.len(), "file", "files"),
+                unknown(self.unknown_files.len()),
+                &self.unknown_files,
+            ),
+            (
+                "Unknown folders",
+                count(self.unknown_folders.len(), "folder", "folders"),
+                unknown(self.unknown_folders.len()),
+                &self.unknown_folders,
+            ),
+        ]
+    }
+}
+/// One observation's state, shown as a coloured dot and word.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Status {
+    Found,
+    Present,
+    None,
+    Unavailable,
+}
+fn is_project(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e == "magic")
 }
 impl Snapshot {
     pub fn read() -> Self {
@@ -122,6 +248,7 @@ impl Snapshot {
             files,
             projects_root: None,
             projects_found: false,
+            library: None,
             provider_detail: "Magic CLI observation pending".into(),
             scope: if root.is_some() {
                 "REPOSITORY SOURCE • runtime config / cast unavailable"
@@ -184,6 +311,7 @@ impl Snapshot {
         }) {
             Ok((root, config, source)) => {
                 self.projects_found = root.is_dir();
+                self.library = Some(Library::read(&root).map_err(|e| e.to_string()));
                 self.projects_root = Some(root);
                 self.files[1] = FileRecord::observe(
                     "Project settings".into(),
