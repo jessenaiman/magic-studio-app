@@ -36,7 +36,6 @@ an actual publication has been configured and verified.
 - [Pipeline internals](ARCHITECTURE.md): retained Python/YAML production toolkit.
 - [Agent guide](../AGENT_GUIDE.md): choose the right production layer.
 - [Reference → animation → video](workflows/reference-to-animation-video.md).
-- [Providers](PROVIDERS.md): capability-specific production integrations.
 - [Source attribution](../SOURCE-ATTRIBUTION.md) and [license](../LICENSE).
 
 Historical reviews and implementation handoffs under `architecture/` and
