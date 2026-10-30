@@ -6,13 +6,13 @@ motion as keyframes; it does not manufacture a volumetric character from flat ar
 
 ## Run
 
-Open a `.magic` project in one persistent `mc run` session, or use its explicit live bridge.
+Run commands with `--project /path/to/Song.magic` (or after `magic-cli studio open /path/to/Song.magic`):
 
-```text
-mc --bridge PORT exec blender.start character=little_fish_layered track=swim-cruise
-mc --bridge PORT exec animation.status job=RETURNED_JOB_ID
-mc --bridge PORT exec animation.cancel job=RETURNED_JOB_ID
-mc --bridge PORT exec animation.list
+```sh
+magic-cli --project /path/to/Song.magic blender.start character=little_fish_layered track=swim-cruise
+magic-cli --project /path/to/Song.magic animation.status job=RETURNED_JOB_ID
+magic-cli --project /path/to/Song.magic animation.cancel job=RETURNED_JOB_ID
+magic-cli --project /path/to/Song.magic animation.list
 ```
 
 `animation.status/list/cancel` are the canonical generic job commands (they cover
@@ -53,7 +53,7 @@ record keeps the provenance frozen at render time; later rig edits do not rewrit
 ## Process and memory ownership
 
 Requires Linux user systemd, Blender and FFmpeg with libvpx-vp9. `BLENDER_BIN` selects
-Blender; otherwise PATH is used. The Python worker is embedded in mc at build time.
+Blender; otherwise PATH is used. The Python worker is embedded in the native engine at build time.
 No Blender TCP daemon or generated character-specific Python is required.
 
 All current jobs share the fixed user service `magicstudio-animation-worker.service`.
@@ -71,7 +71,7 @@ lock and cannot stop a replacement job.
 `blender.actions character=ID` reads at most 16 MiB of saved rig JSON and returns
 `{character,tracks:[{id,duration,loop,standard:false}],layers:[],canvas,spec}`.
 It never loads artwork or samples motion. Start stores a small request; the bounded
-Blender worker invokes adjacent `mc exec blender.prepare request=...` headlessly to use
+Blender worker invokes adjacent `magic-cli exec blender.prepare request=...` headlessly to use
 the existing Rust evaluator inside the same cgroup. Preparation requires the matching
 service invocation. It freezes the original rig bytes in `rig-snapshot/original-rig.json`,
 resolves original artwork references and evaluates a job-local `rig-snapshot/rig.json`.

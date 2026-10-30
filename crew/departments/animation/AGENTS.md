@@ -156,7 +156,7 @@ Follow the repository AGENTS.md and the human’s current task. This department 
 - Only cast members may take an assigned role. Reserves wait for an explicit assignment; candidates and the wings are an audition list.
 - A lead assigns a clear job within this department. Borrowing a MOP from another department needs an explicit task and its home rules.
 - Launch only when asked, through Magic Studio and Herdr. Keep active work visible; never start the whole cast or create a checkout per puppet.
-- Read the relevant skill completely, discover actual mc commands, and report real results. Unknown models, capabilities and token counts stay unknown.
+- Read the relevant skill completely, discover actual magic-cli commands, and report real results. Unknown models, capabilities and token counts stay unknown.
 - Share the department rules. Personality adds warmth to the work; it never replaces a deliverable with jokes or heartbeat messages.
 - Preserve source art, editable projects and concurrent work. Use the shared build cache and keep the machine budget in view.
 - Add meaningful checks when needed and run them. Report the real command and result. Do not claim an unrun check passed.

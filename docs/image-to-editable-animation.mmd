@@ -2,12 +2,12 @@
 %% Snapshot: baf70771fc0b3b13a0839a4cef8ab5bf628a512a; 2026-10-28 UTC.
 %% Sources: crates/engine/src/commands.rs; image_cmds.rs:98,145-196,217-302;
 %% motion.rs:1069-1178; project.rs:272,315; exports.rs:539-604.
-%% One mc run session retains open-project state. No live window required for these commands.
+%% One magic-cli run session retains open-project state. No live window required for these commands.
 %% No required text-LLM call in this selected path. PhotoCraft/local processing still consumes compute.
 %%{init: {"theme":"base","themeVariables":{"fontFamily":"system-ui","actorBkg":"#e5f3f1","actorBorder":"#377b74","signalColor":"#506d79"}}}%%
 sequenceDiagram
   autonumber
-  participant CLI as mc run · one session
+  participant CLI as magic-cli run · one session
   participant E as Shared Rust engine
   participant PC as PhotoCraft CLI
   participant F as Project + editable files

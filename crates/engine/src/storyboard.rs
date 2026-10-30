@@ -675,29 +675,25 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
             "saved"
         });
         let executable = crate::command_center::cli_program();
+        let proj = crate::command_center::shell_quote(
+            &s.project_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        );
         result["next_commands"] = json!([format!(
-            "{} --bridge auto exec storyboard.read scene=1 project={}",
+            "{} --project {} storyboard.read scene=1",
             crate::command_center::shell_quote(&executable),
-            crate::command_center::shell_quote(
-                &s.project_path
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            )
+            proj
         )]);
         result["resume_command"] = json!(format!(
-            "{} --bridge auto exec workshop.build_storyboard draft=true resume={} source={} project={}",
+            "{} --project {} workshop.build_storyboard draft=true resume={} source={}",
             crate::command_center::shell_quote(&executable),
+            proj,
             crate::command_center::shell_quote(&out.join("manifest.json").to_string_lossy()),
             crate::command_center::shell_quote(
                 params["source"].as_str().unwrap_or(&dir.to_string_lossy())
             ),
-            crate::command_center::shell_quote(
-                &s.project_path
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            )
         ));
         if let Some(transcript) = params["transcript"].as_str() {
             let command = format!(

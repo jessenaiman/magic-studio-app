@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Expand shared layer references into the standalone specs used by Studio and mc."""
+"""Expand shared layer references into the standalone specs used by Studio and magic-cli."""
 import argparse
 from copy import deepcopy
 import json
