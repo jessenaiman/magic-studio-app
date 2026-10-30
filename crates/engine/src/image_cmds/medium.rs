@@ -1,6 +1,6 @@
 //! Reference-medium previews through real PhotoCraft filters; originals stay untouched.
 use crate::{EngineError, Result, Session};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub(crate) fn catalog() -> Value {
     json!([
