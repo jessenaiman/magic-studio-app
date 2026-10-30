@@ -46,10 +46,66 @@ async function imagePromptCompleted(project, draft, result, captured) {
   } catch (error) { draft.refreshError = `Artwork created; view refresh failed: ${String(error)}`; }
 }
 
-function imagePromptBlock() {
-  const project = state.project;
+function imageDraftFor(project) {
   let draft = imageDrafts.get(project);
   if (!draft) { draft = { prompt: '', model: 'gpt-6-luna', busy: false, result: null, error: '', startedAt: null, target: null, candidateTarget: null, timer: null }; imageDrafts.set(project, draft); }
+  return draft;
+}
+
+function imageTargetLabel(draft) {
+  return draft.target ? `${draft.target.name} · ${draft.target.partId}` : '';
+}
+
+function imagePaneState(draft) {
+  return draft.error ? 'failed' : draft.busy ? 'working' : draft.result ? 'ready' : 'idle';
+}
+
+function imageSetStatus(status, draft, targetLabel, elapsed) {
+  status.dataset.signal = draft.error ? '3' : draft.result ? '2' : '0';
+  if (draft.busy) status.textContent = `Creating artwork · ${elapsed()}s${targetLabel ? ` · ${targetLabel}` : ''}`;
+  else if (draft.error) status.textContent = draft.error;
+  else if (draft.result) status.textContent = `Ready · ${draft.result.width} × ${draft.result.height} · Review candidate${draft.candidateTarget ? ` · ${draft.candidateTarget.name} (${draft.candidateTarget.partId})` : ''}${draft.refreshError ? ` · ${draft.refreshError}` : ''}`;
+  else status.textContent = 'Describe the artwork you want to create.';
+  status.title=draft.result?`Completed in ${draft.completedElapsed??0}s · ${draft.result.native_tool_receipt_verified?'native receipt verified':'receipt unavailable'}`:status.textContent;
+}
+
+function imageResultElements(draft) {
+  if (!draft.result?.image) return [];
+  return [el('img', { class: 'image-result', src: convertFileSrc(draft.result.image), alt: 'Generated candidate artwork · needs visual review' }),
+    el('button', { class: 'ghost', id: 'image-open-result', onclick: () => openPath(draft.result.image) }, 'Open generated image')];
+}
+
+async function imageGenerate(draft, project, prompt, generate, updateStatus, elapsed) {
+  if (!draft.prompt.trim()) { prompt.focus(); return; }
+  if (draft.busy) return;
+  // Freeze the target and reference at invocation time; later selection changes cannot retarget this job.
+  if (motion?.selected && !selectedPartTarget()) {
+    draft.error = 'This part has no project-local full source reference. Generation was not started.';
+    updateStatus();
+    return;
+  }
+  const captured = selectedPartTarget();
+  draft.target = captured;
+  draft.busy = true; draft.error = ''; draft.refreshError = ''; draft.result = null; draft.startedAt = performance.now();
+  generate.disabled = true;
+  updateStatus();
+  draft.timer = setInterval(updateStatus, 250);
+  const submitted: {prompt: any, model: any, quality: string, references?: any} = { prompt: draft.prompt, model: draft.model, quality: 'auto' };
+  if (captured) submitted.references = captured.references;
+  try {
+    const result = await invoke('engine_command', { id: 'image.generate', params: submitted });
+    draft.completedElapsed = elapsed();
+    await imagePromptCompleted(project, draft, result, captured);
+  } catch (error) { draft.completedElapsed = elapsed(); draft.error = String(error); }
+  finally {
+    clearInterval(draft.timer); draft.timer = null; draft.busy = false;
+    if (state.project === project) renderBlocks();
+  }
+}
+
+function imagePromptBlock() {
+  const project = state.project;
+  const draft = imageDraftFor(project);
   const prompt = el('textarea', { id: 'image-prompt', rows: '3', placeholder: 'Describe the artwork or part repair…', 'aria-label': 'Gaffer artwork prompt' });
   prompt.value = prompt.defaultValue = draft.prompt;
   prompt.addEventListener('input', () => { draft.prompt = prompt.value; updateCommand(); });
@@ -71,44 +127,11 @@ function imagePromptBlock() {
   }
   updateCommand();
   const elapsed = () => Math.max(0, Math.floor((performance.now() - draft.startedAt) / 1000));
-  const targetLabel = draft.target ? `${draft.target.name} · ${draft.target.partId}` : '';
+  const targetLabel = imageTargetLabel(draft);
   const status = el('p', { id: 'image-status', role: 'status', 'aria-live': 'polite', class: 'why' });
-  function updateStatus() {
-    status.dataset.signal = draft.error ? '3' : draft.result ? '2' : '0';
-    if (draft.busy) status.textContent = `Creating artwork · ${elapsed()}s${targetLabel ? ` · ${targetLabel}` : ''}`;
-    else if (draft.error) status.textContent = draft.error;
-    else if (draft.result) status.textContent = `Ready · ${draft.result.width} × ${draft.result.height} · Review candidate${draft.candidateTarget ? ` · ${draft.candidateTarget.name} (${draft.candidateTarget.partId})` : ''}${draft.refreshError ? ` · ${draft.refreshError}` : ''}`;
-    else status.textContent = 'Describe the artwork you want to create.';
-    status.title=draft.result?`Completed in ${draft.completedElapsed??0}s · ${draft.result.native_tool_receipt_verified?'native receipt verified':'receipt unavailable'}`:status.textContent;
-  }
+  function updateStatus() { imageSetStatus(status, draft, targetLabel, elapsed); }
   updateStatus();
-  const generate = el('button', { id: 'image-generate', 'data-commands': 'image.generate', 'aria-label': 'Gaffer: generate artwork candidate', onclick: async () => {
-    if (!draft.prompt.trim()) { prompt.focus(); return; }
-    if (draft.busy) return;
-    // Freeze the target and reference at invocation time; later selection changes cannot retarget this job.
-    if (motion?.selected && !selectedPartTarget()) {
-      draft.error = 'This part has no project-local full source reference. Generation was not started.';
-      updateStatus();
-      return;
-    }
-    const captured = selectedPartTarget();
-    draft.target = captured;
-    draft.busy = true; draft.error = ''; draft.refreshError = ''; draft.result = null; draft.startedAt = performance.now();
-    generate.disabled = true;
-    updateStatus();
-    draft.timer = setInterval(updateStatus, 250);
-    const submitted: {prompt: any, model: any, quality: string, references?: any} = { prompt: draft.prompt, model: draft.model, quality: 'auto' };
-    if (captured) submitted.references = captured.references;
-    try {
-      const result = await invoke('engine_command', { id: 'image.generate', params: submitted });
-      draft.completedElapsed = elapsed();
-      await imagePromptCompleted(project, draft, result, captured);
-    } catch (error) { draft.completedElapsed = elapsed(); draft.error = String(error); }
-    finally {
-      clearInterval(draft.timer); draft.timer = null; draft.busy = false;
-      if (state.project === project) renderBlocks();
-    }
-  } }, draft.busy ? 'Generating…' : 'Generate candidate');
+  const generate = el('button', { id: 'image-generate', 'data-commands': 'image.generate', 'aria-label': 'Gaffer: generate artwork candidate', onclick: async () => { await imageGenerate(draft, project, prompt, generate, updateStatus, elapsed); } }, draft.busy ? 'Generating…' : 'Generate candidate');
   generate.disabled = draft.busy;
   const copy = el('button', { class: 'ghost', id: 'image-copy-command', title: 'Copy the exact image command without executing it', onclick: async () => {
     try { await navigator.clipboard.writeText(command.textContent); toast('Image command copied · nothing executed'); }
@@ -118,8 +141,7 @@ function imagePromptBlock() {
     el('details', {}, el('summary', {}, 'CLI command'), command, copy));
   settings.hidden=$('gaffer-config-toggle')?.getAttribute('aria-expanded')!=='true';
   const body = [el('label', { for: 'image-prompt' }, 'Prompt'), prompt,status,generate,settings];
-  if (draft.result?.image) body.push(el('img', { class: 'image-result', src: convertFileSrc(draft.result.image), alt: 'Generated candidate artwork · needs visual review' }),
-    el('button', { class: 'ghost', id: 'image-open-result', onclick: () => openPath(draft.result.image) }, 'Open generated image'));
-  window.uiRegistry.fact({ id: 'magic-image-pane', project: state.project, state: draft.error ? 'failed' : draft.busy ? 'working' : draft.result ? 'ready' : 'idle', reason: draft.error || null, source: 'artwork result' });
+  body.push(...imageResultElements(draft));
+  window.uiRegistry.fact({ id: 'magic-image-pane', project: state.project, state: imagePaneState(draft), reason: draft.error || null, source: 'artwork result' });
   return el('div', { id: 'image-tools-body' }, ...body);
 }
