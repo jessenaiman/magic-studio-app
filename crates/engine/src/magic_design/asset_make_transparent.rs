@@ -85,6 +85,45 @@ pub(crate) fn matte_image(s: &Session, source: &std::path::Path, p: &Value) -> R
     Ok(result)
 }
 
+fn photocraft_background_args(source: &std::path::Path, out: &std::path::Path, p: &Value) -> Vec<String> {
+    let mut args = vec!["run".into(), source.to_string_lossy().into_owned()];
+    let keep = p["keep_polygons"].as_array();
+    if p.get("rect").is_some() || keep.is_some() {
+        let has_rect = p.get("rect").is_some();
+        args.extend([
+            "--cmd".into(),
+            "layer.new.layerFromBackground".into(),
+            "--cmd".into(),
+            if has_rect { "select.object" } else { "select.subject" }.into(),
+            "--params".into(),
+            if has_rect { json!({"rect":p["rect"]}).to_string() } else { "{}".into() },
+        ]);
+        for polygon in keep.into_iter().flatten() {
+            args.extend([
+                "--cmd".into(),
+                "select.lasso".into(),
+                "--params".into(),
+                json!({"points":polygon,"mode":"add"}).to_string(),
+            ]);
+        }
+        args.extend([
+            "--cmd".into(),
+            "select.inverse".into(),
+            "--cmd".into(),
+            "edit.clear".into(),
+        ]);
+    } else {
+        args.extend([
+            "--cmd".into(),
+            "layer.removeBackground".into(),
+            "--params".into(),
+            "{\"refine\":true}".into(),
+        ]);
+    }
+    args.extend(["--out".into(), out.to_string_lossy().into_owned()]);
+    args
+}
+
 /// Shared import operation. Backend and model are selectable; tool versions are discovered.
 pub(crate) fn remove_background(
     s: &Session,
@@ -123,49 +162,7 @@ pub(crate) fn remove_background(
             "backend must be auto, rembg, or photocraft".into(),
         ));
     }
-    let mut args = vec!["run".into(), source.to_string_lossy().into_owned()];
-    let keep = p["keep_polygons"].as_array();
-    if p.get("rect").is_some() || keep.is_some() {
-        args.extend([
-            "--cmd".into(),
-            "layer.new.layerFromBackground".into(),
-            "--cmd".into(),
-            if p.get("rect").is_some() {
-                "select.object"
-            } else {
-                "select.subject"
-            }
-            .into(),
-            "--params".into(),
-            if p.get("rect").is_some() {
-                json!({"rect":p["rect"]}).to_string()
-            } else {
-                "{}".into()
-            },
-        ]);
-        for polygon in keep.into_iter().flatten() {
-            args.extend([
-                "--cmd".into(),
-                "select.lasso".into(),
-                "--params".into(),
-                json!({"points":polygon,"mode":"add"}).to_string(),
-            ]);
-        }
-        args.extend([
-            "--cmd".into(),
-            "select.inverse".into(),
-            "--cmd".into(),
-            "edit.clear".into(),
-        ]);
-    } else {
-        args.extend([
-            "--cmd".into(),
-            "layer.removeBackground".into(),
-            "--params".into(),
-            "{\"refine\":true}".into(),
-        ]);
-    }
-    args.extend(["--out".into(), out.to_string_lossy().into_owned()]);
+    let args = photocraft_background_args(source, out, p);
     let tool_output = crate::workspace::run_tool_in(
         &crate::workspace::workspace_root(s),
         "photocraft-cli",

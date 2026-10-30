@@ -3,6 +3,40 @@ use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
+fn apply_saved_sheet_layout(
+    cut_params: &mut Value,
+    source_path: &Path,
+    effective_source: &Path,
+    out_dir: &Path,
+) -> Result<()> {
+    if cut_params.get("layout").is_none()
+        && let Some(layout) = crate::sheets::layout::for_sheet(source_path)?
+    {
+        let source_size = image::image_dimensions(source_path)?;
+        if image::image_dimensions(effective_source)? != source_size {
+            return Err(EngineError::InvalidParams("Preprocessing changed the sheet canvas; its saved panel layout no longer applies".into()));
+        }
+        std::fs::create_dir_all(out_dir)?;
+        let file = out_dir.join("template.layout.json");
+        std::fs::write(&file, layout.to_string())?;
+        cut_params["layout"] = json!(file);
+        cut_params["kind"] = layout["sheetType"].clone();
+    }
+    Ok(())
+}
+
+fn attach_cut_manifest(s: &mut Session, asset_id: &str, loaded_manifest: LoadedManifest) {
+    if let Some(asset_mut) = s.assets.get_mut(asset_id) {
+        if loaded_manifest.sheet_type == "turnaround" {
+            asset_mut.turnaround_manifest = Some(loaded_manifest);
+        } else {
+            asset_mut.pose_manifest = Some(loaded_manifest);
+        }
+        asset_mut.sync_parts_from_manifests();
+    }
+    s.active_asset = Some(asset_id.to_string());
+}
+
 /// Slice a reviewed source sheet and attach its manifest.
 pub fn cmd_asset_cut_sheet(s: &mut Session, params: &Value) -> Result<Value> {
     let asset_id = params
@@ -34,19 +68,7 @@ pub fn cmd_asset_cut_sheet(s: &mut Session, params: &Value) -> Result<Value> {
 
     let effective_source = preprocess_sheet(params, &source_path, &out_dir, &root)?;
     let mut cut_params = params.clone();
-    if cut_params.get("layout").is_none()
-        && let Some(layout) = crate::sheets::layout::for_sheet(&source_path)?
-    {
-        let source_size = image::image_dimensions(&source_path)?;
-        if image::image_dimensions(&effective_source)? != source_size {
-            return Err(EngineError::InvalidParams("Preprocessing changed the sheet canvas; its saved panel layout no longer applies".into()));
-        }
-        std::fs::create_dir_all(&out_dir)?;
-        let file = out_dir.join("template.layout.json");
-        std::fs::write(&file, layout.to_string())?;
-        cut_params["layout"] = json!(file);
-        cut_params["kind"] = layout["sheetType"].clone();
-    }
+    apply_saved_sheet_layout(&mut cut_params, &source_path, &effective_source, &out_dir)?;
     let cut_args = cut_arguments(
         s,
         &cut_params,
@@ -74,15 +96,7 @@ pub fn cmd_asset_cut_sheet(s: &mut Session, params: &Value) -> Result<Value> {
     response["tolerance"] = json!(tolerance);
     response["use_ocr"] = json!(use_ocr);
     response["pipeline"] = pipeline_out;
-    if let Some(asset_mut) = s.assets.get_mut(&asset_id) {
-        if loaded_manifest.sheet_type == "turnaround" {
-            asset_mut.turnaround_manifest = Some(loaded_manifest);
-        } else {
-            asset_mut.pose_manifest = Some(loaded_manifest);
-        }
-        asset_mut.sync_parts_from_manifests();
-    }
-    s.active_asset = Some(asset_id.clone());
+    attach_cut_manifest(s, &asset_id, loaded_manifest);
 
     Ok(response)
 }
