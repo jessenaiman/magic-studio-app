@@ -77,7 +77,9 @@ class StudioMenu {
   async activate(action) {
     this.close();
     if (action.startsWith('file.') || action === 'app.settings') return window.studioMenu(action);
-    try { await invoke('menu_action', {action}); }
+    // Closing must not count its own IPC as pending editing work. The native
+    // CloseRequested handler still checks every real pending operation and draft.
+    try { await (action === 'app.quit' ? nativeInvoke : invoke)('menu_action', {action}); }
     catch (error) { toast(String(error)); }
   }
   onKey(event) {
