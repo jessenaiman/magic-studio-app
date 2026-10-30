@@ -60,6 +60,45 @@ pub struct EvaluatedPin {
     pub dst: [f32; 2],
 }
 
+fn check_part(parts: &[String], p: &str) -> Result<(), String> {
+    if parts.iter().any(|id| id == p) {
+        Ok(())
+    } else {
+        Err(format!("control binding references missing part '{p}'"))
+    }
+}
+
+fn check_control(c: &str) -> Result<(), String> {
+    if CONTROLS.contains(&c) {
+        Ok(())
+    } else {
+        Err(format!("unknown control '{c}'"))
+    }
+}
+
+fn validate_joint(parts: &[String], j: &JointBinding) -> Result<(), String> {
+    check_part(parts, &j.part)?;
+    check_control(&j.control)?;
+    if !j.rotation_deg.is_finite() || !j.translation.iter().all(|x| x.is_finite()) {
+        return Err("joint binding gains must be finite".into());
+    }
+    Ok(())
+}
+
+fn validate_pin(parts: &[String], p: &PinBinding) -> Result<(), String> {
+    check_part(parts, &p.part)?;
+    if let Some(c) = &p.control {
+        check_control(c)?;
+    }
+    if !p.src.iter().chain(&p.delta).all(|x| x.is_finite()) {
+        return Err("pin coordinates and gains must be finite".into());
+    }
+    if p.control.is_none() && p.delta != [0.0, 0.0] {
+        return Err("fixed pins must have zero delta".into());
+    }
+    Ok(())
+}
+
 impl ControlBindings {
     /// Whether a control has an explicit route. Facial raster preview owns only
     /// mouth opening; eyes require authored joints or pins.
@@ -77,41 +116,14 @@ impl ControlBindings {
     /// Reject unsupported controls, dangling part references and invalid arithmetic
     /// before a plan is installed. Missing mappings intentionally do nothing.
     pub fn validate(&self, parts: &[String]) -> Result<(), String> {
-        let part = |p: &str| {
-            if parts.iter().any(|id| id == p) {
-                Ok(())
-            } else {
-                Err(format!("control binding references missing part '{p}'"))
-            }
-        };
-        let control = |c: &str| {
-            if CONTROLS.contains(&c) {
-                Ok(())
-            } else {
-                Err(format!("unknown control '{c}'"))
-            }
-        };
         if let Some(face) = &self.face {
-            part(&face.part)?;
+            check_part(parts, &face.part)?;
         }
         for j in &self.joints {
-            part(&j.part)?;
-            control(&j.control)?;
-            if !j.rotation_deg.is_finite() || !j.translation.iter().all(|x| x.is_finite()) {
-                return Err("joint binding gains must be finite".into());
-            }
+            validate_joint(parts, j)?;
         }
         for p in &self.pins {
-            part(&p.part)?;
-            if let Some(c) = &p.control {
-                control(c)?;
-            }
-            if !p.src.iter().chain(&p.delta).all(|x| x.is_finite()) {
-                return Err("pin coordinates and gains must be finite".into());
-            }
-            if p.control.is_none() && p.delta != [0.0, 0.0] {
-                return Err("fixed pins must have zero delta".into());
-            }
+            validate_pin(parts, p)?;
         }
         Ok(())
     }
