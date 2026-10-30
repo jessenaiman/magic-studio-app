@@ -1,5 +1,11 @@
 # Magic Studio
 
+[![UI TypeScript OO](https://img.shields.io/badge/UI_TypeScript_OO-32%2F32_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/40)
+[![Tauri Desktop Shell](https://img.shields.io/badge/Tauri_Shell-8%2F8_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/42)
+[![Rust Engine Lizard](https://img.shields.io/badge/Rust_Engine_Lizard-56%2F57_files_clean_%C2%B7_93%25_reduced-success)](https://github.com/jessenaiman/magic-studio-app/issues/41)
+[![Cargo Clippy](https://img.shields.io/badge/cargo_clippy--D_warnings-passing-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/40)
+[![Mayhem Analytics](https://img.shields.io/badge/Mayhem_Scan-171_files_%C2%B7_3%2C500_fns_%C2%B7_0_UI%2FShell_hotspots-blue)](crates/engine/src/complexity.rs)
+
 **Songs into animated films.**
 
 Plan scenes, animate artwork, design lyrics, and compose a music video in one
