@@ -465,6 +465,10 @@ _BG_NOTES = {
     "barn-closed": "Scene 1 Intro Plate (0.00–1.80s): Dawn at the closed red-brown cut-paper barn doors with a warm crack of light.",
     "meadow-golden": "Scene 4 Sky & Scene 8 Golden-Hour Rest Plate (15.48–20.64s): Warm evening meadow & far-barn sky plates.",
     "far-barn-sky": "Scene 4 Mid-Air Zoom Plate (6.50–8.80s): Open sky with distant barn for the BZZZZZZ close-up.",
+    "bunnies-on-ground": "Main Lyric Backdrop (words-verse-1-1, 0.39–12.1s) & Scene 1–3 plate: Stitched wool-felt bunnies on burlap/kraft ground by twig fence.",
+    "rabbit-hole-underground": "Scene 4–6 Cutaway Burrow Plate (12.1–24.6s): Torn-paper grass above & corrugated-cardboard UNDERGROUND burrow below.",
+    "garden-lettuce-carrots": "Alternate Lyric Backdrop (words-verse-2-1, 24.6–33.9s) & Scene 7–9 plate: Crinkled tissue-paper lettuce & painted carrot tops in soil.",
+    "farmer-looking-burrow": "Scene 10–12 Finale Plate (33.9–47.5s): Collage straw-hat/denim farmer looking around while cotton tails dive underground.",
 }
 _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
@@ -544,39 +548,69 @@ def _first_existing_file(source_root, rel_paths):
 
 def _discover_assets(source_root, draw_names):
     short_draws = ", ".join(n.replace("Ink Action: ", "") for n in draw_names[:4])
-    specs = [
-        (
-            "bee",
-            "Bumble Bee (Cutout Rig)",
+    is_bunnies = (source_root / "assets/characters/bunny/bunny-assembled.png").is_file()
+    specs = (
+        [
             (
-                "assets/characters/bee/bee-assembled.png",
-                "assets/bee-rest-pose.png",
-                "assets/characters/bee/parts/body-clean.png",
+                "bunny",
+                "Little Felt Bunnies (Cutout Rig)",
+                ("assets/characters/bunny/bunny-assembled.png",),
+                "Blanket-stitched oatmeal wool-felt bunny puppet with gingham inner ears, button eyes & 3D cotton-pom tail.",
             ),
-            "Ochre felt bee rig (wing-l/r, sack-l/r, body, antenna-l/r, eyes-open/closed) · 5 Studio WebM tracks (z-index 10).",
-        ),
-        (
-            "flower",
-            "Meadow Flower (Cutout Rig)",
             (
-                "assets/characters/flower/flower-assembled.png",
-                "assets/characters/flower/parts/head.png",
+                "garden-kit",
+                "Garden Vocabulary Prop Kit",
+                ("assets/characters/garden/garden-assembled.png",),
+                "Mixed-media props: crinkled tissue CRISPY LETTUCE, painted CRUNCHY CARROT TOPS, cardboard RABBIT HOLE & denim FARMER.",
             ),
-            "Felt meadow flower rig (stem, head, petal-1..5, pollen centre) · Petals sway on independent phases in Verse 2.",
-        ),
-        (
-            "storyboard-grid",
-            "Story Progression Grid",
-            ("assets/references/storyboard-grid-v1.png",),
-            "6 painted gouache & cut-paper story beats (story-1..6.jpg): Dawn Barn, Exit with Sacks, BZZZ Zoom, Flower Loop, Pollen/Honey Dips, Golden Rest.",
-        ),
-        (
-            "teaching-cues",
-            "Ink-Art & Teaching Cues",
-            ("assets/references/teaching-cues-v1.png",),
-            f"7 lyric ink-art action drawings (z-index 77: {short_draws}) + parent-baby tickle cues (teach-1..6.jpg).",
-        ),
-    ]
+            (
+                "storyboard-grid",
+                "Story Progression Grid",
+                ("assets/references/storyboard-grid-v1.png",),
+                "6 handmade mixed-media story beats (story-1..6.jpg): Sitting on Ground, Heard Farmer, Hop & Scurry, Underground, Garden, Burrow.",
+            ),
+            (
+                "teaching-cues",
+                "Ink & Chalk Learning Cues",
+                ("assets/references/teaching-cues-v1.png",),
+                f"10 animated ink/chalk vocabulary drawings (z-index 77: {short_draws}) + hide-and-seek play cues (teach-1..6.jpg).",
+            ),
+        ]
+        if is_bunnies
+        else [
+            (
+                "bee",
+                "Bumble Bee (Cutout Rig)",
+                (
+                    "assets/characters/bee/bee-assembled.png",
+                    "assets/bee-rest-pose.png",
+                    "assets/characters/bee/parts/body-clean.png",
+                ),
+                "Ochre felt bee rig (wing-l/r, sack-l/r, body, antenna-l/r, eyes-open/closed) · 5 Studio WebM tracks (z-index 10).",
+            ),
+            (
+                "flower",
+                "Meadow Flower (Cutout Rig)",
+                (
+                    "assets/characters/flower/flower-assembled.png",
+                    "assets/characters/flower/parts/head.png",
+                ),
+                "Felt meadow flower rig (stem, head, petal-1..5, pollen centre) · Petals sway on independent phases in Verse 2.",
+            ),
+            (
+                "storyboard-grid",
+                "Story Progression Grid",
+                ("assets/references/storyboard-grid-v1.png",),
+                "6 painted gouache & cut-paper story beats (story-1..6.jpg): Dawn Barn, Exit with Sacks, BZZZ Zoom, Flower Loop, Pollen/Honey Dips, Golden Rest.",
+            ),
+            (
+                "teaching-cues",
+                "Ink-Art & Teaching Cues",
+                ("assets/references/teaching-cues-v1.png",),
+                f"7 lyric ink-art action drawings (z-index 77: {short_draws}) + parent-baby tickle cues (teach-1..6.jpg).",
+            ),
+        ]
+    )
     assets = []
     for item_id, name, rel_paths, note in specs:
         img = _first_existing_file(source_root, rel_paths)
@@ -597,6 +631,8 @@ def _upgrade_assembled_character_cards(source_root, assets):
     mapping = {
         "bee": "assets/characters/bee/bee-assembled.png",
         "flower": "assets/characters/flower/flower-assembled.png",
+        "bunny": "assets/characters/bunny/bunny-assembled.png",
+        "garden-kit": "assets/characters/garden/garden-assembled.png",
     }
     for item in assets:
         rel = mapping.get(item.get("id"))
@@ -604,7 +640,46 @@ def _upgrade_assembled_character_cards(source_root, assets):
             item["file"] = str((source_root / rel).resolve())
 
 
-def _fill_overview_defaults(config, draw_names):
+def _fill_bunnies_overview(config, locs, draws_label):
+    if not config.get("story"):
+        config["story"] = (
+            "Three blanket-stitched wool-felt bunnies sit still on burlap ground as the denim-and-plaid farmer walks by, "
+            "hop and scurry to hide right underground in a corrugated-cardboard burrow, hop back one by one to eat "
+            "crinkled tissue-paper crispy lettuce and painted crunchy carrot tops, and dive back underground. "
+            "Paired with action-animating kinetic lyrics and 10 ink/chalk visual-learning drawings."
+        )
+    if not config.get("background_main") and locs:
+        loc0 = locs[0]
+        config["background_main"] = (
+            f"{loc0['name']} ({Path(loc0['file']).name}) & Cutaway Burrow (rabbit-hole-underground.png): "
+            "Mapped to Verse 1 lyrics (words-verse-1-1, 0.39–21.40s) & Scenes 1–6. Burlap/kraft ground, twig fence, "
+            "and corrugated-cardboard UNDERGROUND burrow cross-section."
+        )
+    if not config.get("background_alternate") and len(locs) > 1:
+        loc1 = locs[1]
+        config["background_alternate"] = (
+            f"{loc1['name']} ({Path(loc1['file']).name}) & Farmer Looking (farmer-looking-burrow.png): "
+            "Mapped to Verse 2 lyrics (words-verse-2-1, 21.40–41.48s) & Scenes 7–12. Mixed-media vegetable garden "
+            "with crinkled tissue-paper crispy lettuce, painted carrot tops, and golden-hour burrow finale."
+        )
+    if not config.get("cast"):
+        config["cast"] = (
+            "Cast & Mixed-Media Learning Props: (1) Oatmeal Wool-Felt Bunnies with gingham ears & 3D cotton-pom tails; "
+            "(2) Garden Vocabulary Kit (crinkled tissue Crispy Lettuce, painted Crunchy Carrot Tops, corrugated-cardboard "
+            f"Rabbit Hole & Underground burrow, straw-hat/denim Farmer); (3) 10 Ink/Chalk Learning Drawings ({draws_label})."
+        )
+
+
+def _fill_overview_defaults(source_root, config, draw_names):
+    locs = config.get("locations") or []
+    draws_label = (
+        ", ".join(n.replace("Ink Action: ", "") for n in draw_names)
+        if draw_names
+        else "Bee Out of Barn, Honey Sacks, Buzz Zigzag, Circle Palm, Tap Pollen, Honey Drop, Rub Tummy"
+    )
+    if (source_root / "assets/characters/bunny/bunny-assembled.png").is_file():
+        _fill_bunnies_overview(config, locs, draws_label)
+        return
     if not config.get("story"):
         config["story"] = (
             "A felt bumble bee wakes at the red-brown barn, tumbles out with a honey sack under each arm, "
@@ -612,7 +687,6 @@ def _fill_overview_defaults(config, draw_names):
             "and rests in golden light. Paired with big visual-learning kinetic lyrics (cascade layout, "
             "paper-grain overlay) and 7 ink-art action drawings for parent-and-baby play."
         )
-    locs = config.get("locations") or []
     if not config.get("background_main") and locs:
         loc0 = locs[0]
         config["background_main"] = (
@@ -628,11 +702,6 @@ def _fill_overview_defaults(config, draw_names):
             "the central felt flower rig and golden-hour rest finale."
         )
     if not config.get("cast"):
-        draws_label = (
-            ", ".join(n.replace("Ink Action: ", "") for n in draw_names)
-            if draw_names
-            else "Bee Out of Barn, Honey Sacks, Buzz Zigzag, Circle Palm, Tap Pollen, Honey Drop, Rub Tummy"
-        )
         config["cast"] = (
             "Cast & Visual-Learning Props: (1) Ochre Felt Bumble Bee rig with burlap honey sacks under each arm "
             "(5 transparent WebM studio tracks in #view-studio only); (2) Felt Meadow Flower rig (stem, head, "
@@ -654,7 +723,7 @@ def _discover_project_inventory(source_root, packets, config):
             config["assets"] = assets
     else:
         _upgrade_assembled_character_cards(source_root, config["assets"])
-    _fill_overview_defaults(config, draw_names)
+    _fill_overview_defaults(source_root, config, draw_names)
 
 
 def build(
