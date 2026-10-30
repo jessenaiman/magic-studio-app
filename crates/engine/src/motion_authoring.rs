@@ -150,9 +150,7 @@ struct Edit {
     character: String,
     _lock: fs::File,
 }
-fn begin(s: &Session, p: &Value) -> Result<Edit> {
-    let project = project_guard(s, p)?;
-    let character = text(p, "character")?.to_owned();
+fn resolve_authoring_rig_path(s: &Session, project: &Path, character: &str) -> Result<PathBuf> {
     let entry = s
         .project_assets
         .iter()
@@ -170,6 +168,13 @@ fn begin(s: &Session, p: &Value) -> Result<Edit> {
     ) {
         return Err(bad("Authoring requires a project-local saved rig"));
     }
+    Ok(rig)
+}
+
+fn begin(s: &Session, p: &Value) -> Result<Edit> {
+    let project = project_guard(s, p)?;
+    let character = text(p, "character")?.to_owned();
+    let rig = resolve_authoring_rig_path(s, &project, &character)?;
     let lock = fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -294,14 +299,7 @@ pub fn part_set(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn part_reset(s: &mut Session, p: &Value) -> Result<Value> {
     part_edit(s, p, true)
 }
-fn part_edit(s: &mut Session, p: &Value, reset: bool) -> Result<Value> {
-    let mut edit = begin(s, p)?;
-    let (track, track_id) = ensure_track_index(s, &mut edit, p)?;
-    let part = text(p, "part")?;
-    let layer = edit.raw["layers"]
-        .as_array()
-        .and_then(|a| a.iter().position(|v| v["id"] == part))
-        .ok_or_else(|| bad("Part not found"))?;
+fn parse_part_edit_fields(p: &Value, reset: bool) -> Result<Vec<String>> {
     let fields: Vec<String> = if reset {
         p["fields"]
             .as_array()
@@ -328,81 +326,104 @@ fn part_edit(s: &mut Session, p: &Value, reset: bool) -> Result<Value> {
     {
         return Err(bad("Choose position, scale, rotation or pivot"));
     }
-    theatre_guard(
-        s,
-        &edit.character,
-        if fields.iter().any(|f| f == "pivot") {
-            None
-        } else {
-            Some(text(p, "track")?)
-        },
-    )?;
+    Ok(fields)
+}
+
+fn apply_part_pivot_edit(l: &mut Value, p: &Value, reset: bool) -> Result<()> {
+    if reset {
+        if let Some(original) = l.get("authoring_original_pivot").cloned() {
+            l["pivot"] = original;
+        }
+    } else {
+        let value = pair(&p["pivot"], -65536., 65536., "pivot")?;
+        if l.get("authoring_original_pivot").is_none() {
+            l["authoring_original_pivot"] = l["pivot"].clone();
+        }
+        l["pivot"] = value;
+    }
+    Ok(())
+}
+
+fn apply_part_channel_edit(
+    t: &mut Value,
+    part: &str,
+    field: &str,
+    p: &Value,
+    reset: bool,
+) -> Result<()> {
+    if !t["motion"].is_object() {
+        t["motion"] = json!({});
+    }
+    if !t["motion"][part].is_object() {
+        t["motion"][part] = json!({});
+    }
+    if reset {
+        if let Some(o) = t["motion"][part].as_object_mut() {
+            o.remove(field);
+        }
+        return Ok(());
+    }
+    let value = match field {
+        "position" => pair(&p[field], -65536., 65536., "position")?,
+        "scale" => {
+            let v = pair(&p[field], 1., 1000., "scale")?;
+            json!([
+                v[0].as_f64().unwrap_or(100.) - 100.,
+                v[1].as_f64().unwrap_or(100.) - 100.
+            ])
+        }
+        _ => json!(number(&p[field], -3600., 3600., "rotation")?),
+    };
+    t["motion"][part][field] = json!([{"kind":"keys","keys":[[0,value]],"ease":"linear"}]);
+    Ok(())
+}
+
+fn apply_part_fields_edit(
+    raw: &mut Value,
+    layer: usize,
+    track: usize,
+    part: &str,
+    fields: &[String],
+    p: &Value,
+    reset: bool,
+) -> Result<()> {
     for field in fields {
         if field == "pivot" {
-            let l = &mut edit.raw["layers"][layer];
-            if reset {
-                if let Some(original) = l.get("authoring_original_pivot").cloned() {
-                    l["pivot"] = original;
-                }
-            } else {
-                let value = pair(&p["pivot"], -65536., 65536., "pivot")?;
-                if l.get("authoring_original_pivot").is_none() {
-                    l["authoring_original_pivot"] = l["pivot"].clone();
-                }
-                l["pivot"] = value;
-            }
+            apply_part_pivot_edit(&mut raw["layers"][layer], p, reset)?;
         } else {
-            let t = &mut edit.raw["tracks"][track];
-            if !t["motion"].is_object() {
-                t["motion"] = json!({});
-            }
-            if !t["motion"][part].is_object() {
-                t["motion"][part] = json!({});
-            }
-            if reset {
-                if let Some(o) = t["motion"][part].as_object_mut() {
-                    o.remove(&field);
-                }
-            } else {
-                let value = match field.as_str() {
-                    "position" => pair(&p[&field], -65536., 65536., "position")?,
-                    "scale" => {
-                        let v = pair(&p[&field], 1., 1000., "scale")?;
-                        json!([
-                            v[0].as_f64().unwrap_or(100.) - 100.,
-                            v[1].as_f64().unwrap_or(100.) - 100.
-                        ])
-                    }
-                    _ => json!(number(&p[&field], -3600., 3600., "rotation")?),
-                };
-                t["motion"][part][&field] =
-                    json!([{"kind":"keys","keys":[[0,value]],"ease":"linear"}]);
-            }
+            apply_part_channel_edit(&mut raw["tracks"][track], part, field, p, reset)?;
         }
     }
+    Ok(())
+}
+
+fn part_edit(s: &mut Session, p: &Value, reset: bool) -> Result<Value> {
+    let mut edit = begin(s, p)?;
+    let (track, track_id) = ensure_track_index(s, &mut edit, p)?;
+    let part = text(p, "part")?;
+    let layer = edit.raw["layers"]
+        .as_array()
+        .and_then(|a| a.iter().position(|v| v["id"] == part))
+        .ok_or_else(|| bad("Part not found"))?;
+    let fields = parse_part_edit_fields(p, reset)?;
+    let guard_track = if fields.iter().any(|f| f == "pivot") {
+        None
+    } else {
+        Some(text(p, "track")?)
+    };
+    theatre_guard(s, &edit.character, guard_track)?;
+    apply_part_fields_edit(&mut edit.raw, layer, track, part, &fields, p, reset)?;
     let after = serde_json::to_vec_pretty(&edit.raw).map_err(|e| bad(e.to_string()))?;
     let mut res = publish(s, &edit, after)?;
     res["track"] = json!(track_id);
     Ok(res)
 }
-/// Global planar stacking, independent of transform parenting.
-pub fn layers_set(s: &mut Session, p: &Value) -> Result<Value> {
-    let mut edit = begin(s, p)?;
-    theatre_guard(s, &edit.character, None)?;
-    let layers = edit.raw["layers"]
-        .as_array()
-        .ok_or_else(|| bad("Ordered layered rig required"))?;
-    if layers.is_empty() || layers.len() > 1024 {
-        return Err(bad("Layer count must be 1..1024"));
-    }
-    let mut ids: Vec<String> = layers
-        .iter()
-        .map(|v| text(v, "id").map(str::to_owned))
-        .collect::<Result<_>>()?;
-    let unique: std::collections::BTreeSet<_> = ids.iter().cloned().collect();
-    if unique.len() != ids.len() {
-        return Err(bad("Rig has duplicate part IDs"));
-    }
+
+fn resolve_reordered_layer_ids(
+    p: &Value,
+    mut ids: Vec<String>,
+    unique: &std::collections::BTreeSet<String>,
+) -> Result<Vec<String>> {
     if let Some(order) = p.get("order") {
         if p.get("depth").is_some() || p.get("part").is_some() {
             return Err(bad("Pass order or part+depth, not both"));
@@ -418,24 +439,44 @@ pub fn layers_set(s: &mut Session, p: &Value) -> Result<Value> {
             })
             .collect::<Result<_>>()?;
         let set: std::collections::BTreeSet<_> = requested.iter().cloned().collect();
-        if requested.len() != ids.len() || set != unique {
+        if requested.len() != ids.len() || &set != unique {
             return Err(bad("order must contain every part exactly once"));
         }
-        ids = requested;
-    } else {
-        let part = text(p, "part")?;
-        let depth = p["depth"]
-            .as_u64()
-            .filter(|v| (*v as usize) < ids.len())
-            .ok_or_else(|| bad("depth must be a zero-based stack index"))?
-            as usize;
-        let index = ids
-            .iter()
-            .position(|id| id == part)
-            .ok_or_else(|| bad("Part not found"))?;
-        let id = ids.remove(index);
-        ids.insert(depth, id);
+        return Ok(requested);
     }
+    let part = text(p, "part")?;
+    let depth = p["depth"]
+        .as_u64()
+        .filter(|v| (*v as usize) < ids.len())
+        .ok_or_else(|| bad("depth must be a zero-based stack index"))? as usize;
+    let index = ids
+        .iter()
+        .position(|id| id == part)
+        .ok_or_else(|| bad("Part not found"))?;
+    let id = ids.remove(index);
+    ids.insert(depth, id);
+    Ok(ids)
+}
+
+/// Global planar stacking, independent of transform parenting.
+pub fn layers_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut edit = begin(s, p)?;
+    theatre_guard(s, &edit.character, None)?;
+    let layers = edit.raw["layers"]
+        .as_array()
+        .ok_or_else(|| bad("Ordered layered rig required"))?;
+    if layers.is_empty() || layers.len() > 1024 {
+        return Err(bad("Layer count must be 1..1024"));
+    }
+    let ids: Vec<String> = layers
+        .iter()
+        .map(|v| text(v, "id").map(str::to_owned))
+        .collect::<Result<_>>()?;
+    let unique: std::collections::BTreeSet<_> = ids.iter().cloned().collect();
+    if unique.len() != ids.len() {
+        return Err(bad("Rig has duplicate part IDs"));
+    }
+    let ids = resolve_reordered_layer_ids(p, ids, &unique)?;
     let reordered: Vec<Value> = ids
         .iter()
         .map(|id| {
@@ -475,11 +516,130 @@ pub(crate) fn layer_capabilities(s: &Session, character: &str, spec: &Path, raw:
     json!({"supported":reason.is_none(),"reason":reason,"semantics":"back_to_front_zero_based","hierarchy_changed":false,"physical_z":false})
 }
 
-pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
-    let mut edit = begin(s, p)?;
-    let (i, track_id) = ensure_track_index(s, &mut edit, p)?;
-    let track = &mut edit.raw["tracks"][i];
-    let old_duration = track["duration"].as_f64().unwrap_or(1.0).max(0.1);
+fn retime_ellipse_term(term: &mut Value, r: f64) {
+    if term["kind"] != "ellipse" {
+        return;
+    }
+    if let Some(from) = term["from"].as_f64() {
+        term["from"] = json!((from * r * 1000.0).round() / 1000.0);
+    }
+    if let Some(to) = term["to"].as_f64() {
+        term["to"] = json!((to * r * 1000.0).round() / 1000.0);
+    }
+}
+
+fn retime_motion_term(
+    term: &mut Value,
+    duration: f64,
+    ratio: Option<f64>,
+    retime: bool,
+) -> Result<()> {
+    if let Some(keys) = term["keys"].as_array_mut() {
+        if let Some(r) = ratio.filter(|_| retime) {
+            for k in keys.iter_mut() {
+                if let Some(t) = k[0].as_f64() {
+                    k[0] = json!((t * r * 1000.0).round() / 1000.0);
+                }
+            }
+        } else if keys
+            .iter()
+            .any(|k| k[0].as_f64().is_some_and(|t| t > duration))
+        {
+            return Err(bad(
+                "Duration would exclude existing keys; retime them first",
+            ));
+        }
+    }
+    if let Some(r) = ratio.filter(|_| retime) {
+        retime_ellipse_term(term, r);
+    }
+    Ok(())
+}
+
+fn apply_track_duration_change(
+    track: &mut Value,
+    old_duration: f64,
+    duration_val: &Value,
+    retime: bool,
+) -> Result<f64> {
+    let duration = number(duration_val, 0.1, 600., "duration")?;
+    let ratio = if (old_duration - duration).abs() > 1e-9 && old_duration > 0.0 {
+        Some(duration / old_duration)
+    } else {
+        None
+    };
+    let all_terms = track["motion"]
+        .as_object_mut()
+        .into_iter()
+        .flatten()
+        .flat_map(|(_, ch)| ch.as_object_mut().into_iter().flatten())
+        .flat_map(|(_, terms)| terms.as_array_mut().into_iter().flatten());
+    for term in all_terms {
+        retime_motion_term(term, duration, ratio, retime)?;
+    }
+    track["duration"] = json!(duration);
+    Ok(duration)
+}
+
+fn retime_theatre_sheet_keyframes(sheet: &mut Value, ratio: f64) {
+    if (ratio - 1.0).abs() <= 1e-6 {
+        return;
+    }
+    let all_kfs = sheet["sequence"]["tracksByObject"]
+        .as_object_mut()
+        .into_iter()
+        .flatten()
+        .flat_map(|(_, obj)| obj["trackData"].as_object_mut().into_iter().flatten())
+        .flat_map(|(_, tr)| tr["keyframes"].as_array_mut().into_iter().flatten());
+    for kf in all_kfs {
+        if let Some(pos) = kf["position"].as_f64() {
+            kf["position"] = json!((pos * ratio * 1000.0).round() / 1000.0);
+        }
+    }
+}
+
+fn sync_action_duration_dependents(
+    s: &mut Session,
+    character: &str,
+    track_id: &str,
+    old_duration: f64,
+    new_dur: f64,
+    sync_video: bool,
+    res: &mut Value,
+) {
+    let mut theatre_updated = false;
+    if let Some(state) = s.theatre_state.as_mut()
+        && let Some(sheets) = state["sheetsById"].as_object_mut()
+    {
+        let sheet_id = crate::theatre::clip_sheet_id(character, track_id);
+        if let Some(sheet) = sheets.get_mut(&sheet_id) {
+            let old_seq_len = sheet["sequence"]["length"]
+                .as_f64()
+                .unwrap_or(old_duration)
+                .max(0.1);
+            let ratio = new_dur / old_seq_len;
+            sheet["sequence"]["length"] = json!(new_dur);
+            retime_theatre_sheet_keyframes(sheet, ratio);
+            theatre_updated = true;
+        }
+    }
+    if theatre_updated {
+        let _ = crate::project::write_project_file(s);
+        res["theatre_synced"] = json!(true);
+    }
+    if sync_video
+        && let Ok(synced) =
+            crate::video_target::sync_placed_tracks_duration(s, character, track_id, new_dur)
+    {
+        res["video_tracks_synced"] = synced;
+    }
+}
+
+fn apply_action_meta_updates(
+    track: &mut Value,
+    old_duration: f64,
+    p: &Value,
+) -> Result<(Option<f64>, bool)> {
     let mut new_duration_opt = None;
     let mut changed = p["track"].as_str().is_some_and(|t| t.starts_with('@'));
     if let Some(label) = p.get("label") {
@@ -491,66 +651,24 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
         changed = true;
     }
     if let Some(duration) = p.get("duration") {
-        let duration = number(duration, 0.1, 600., "duration")?;
         let retime = p["retime"].as_bool().unwrap_or(true);
-        let ratio = if (old_duration - duration).abs() > 1e-9 && old_duration > 0.0 {
-            Some(duration / old_duration)
-        } else {
-            None
-        };
-        for channels in track["motion"]
-            .as_object_mut()
-            .into_iter()
-            .flatten()
-            .map(|(_, v)| v)
-        {
-            for terms in channels
-                .as_object_mut()
-                .into_iter()
-                .flatten()
-                .map(|(_, v)| v)
-            {
-                for term in terms.as_array_mut().into_iter().flatten() {
-                    if let Some(keys) = term["keys"].as_array_mut() {
-                        if let Some(r) = ratio
-                            && retime
-                        {
-                            for k in keys.iter_mut() {
-                                if let Some(t) = k[0].as_f64() {
-                                    k[0] = json!((t * r * 1000.0).round() / 1000.0);
-                                }
-                            }
-                        } else if keys
-                            .iter()
-                            .any(|k| k[0].as_f64().is_some_and(|t| t > duration))
-                        {
-                            return Err(bad(
-                                "Duration would exclude existing keys; retime them first",
-                            ));
-                        }
-                    }
-                    if let Some(r) = ratio
-                        && retime
-                        && term["kind"] == "ellipse"
-                    {
-                        if let Some(from) = term["from"].as_f64() {
-                            term["from"] = json!((from * r * 1000.0).round() / 1000.0);
-                        }
-                        if let Some(to) = term["to"].as_f64() {
-                            term["to"] = json!((to * r * 1000.0).round() / 1000.0);
-                        }
-                    }
-                }
-            }
-        }
-        track["duration"] = json!(duration);
-        new_duration_opt = Some(duration);
+        let new_dur = apply_track_duration_change(track, old_duration, duration, retime)?;
+        new_duration_opt = Some(new_dur);
         changed = true;
     }
     if let Some(value) = p.get("loop") {
         track["loop"] = json!(value.as_bool().ok_or_else(|| bad("loop must be boolean"))?);
         changed = true;
     }
+    Ok((new_duration_opt, changed))
+}
+
+pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut edit = begin(s, p)?;
+    let (i, track_id) = ensure_track_index(s, &mut edit, p)?;
+    let track = &mut edit.raw["tracks"][i];
+    let old_duration = track["duration"].as_f64().unwrap_or(1.0).max(0.1);
+    let (new_duration_opt, changed) = apply_action_meta_updates(track, old_duration, p)?;
     if !changed {
         return Err(bad("Supply label, duration or loop"));
     }
@@ -558,53 +676,15 @@ pub fn action_set(s: &mut Session, p: &Value) -> Result<Value> {
     let mut res = publish(s, &edit, after)?;
     res["track"] = json!(track_id);
     if let Some(new_dur) = new_duration_opt {
-        let mut theatre_updated = false;
-        if let Some(state) = s.theatre_state.as_mut()
-            && let Some(sheets) = state["sheetsById"].as_object_mut()
-        {
-            let sheet_id = crate::theatre::clip_sheet_id(&edit.character, &track_id);
-            if let Some(sheet) = sheets.get_mut(&sheet_id) {
-                let old_seq_len = sheet["sequence"]["length"]
-                    .as_f64()
-                    .unwrap_or(old_duration)
-                    .max(0.1);
-                let ratio = new_dur / old_seq_len;
-                sheet["sequence"]["length"] = json!(new_dur);
-                if (ratio - 1.0).abs() > 1e-6
-                    && let Some(objs) = sheet["sequence"]["tracksByObject"].as_object_mut()
-                {
-                    for (_, obj) in objs {
-                        if let Some(tdata) = obj["trackData"].as_object_mut() {
-                            for (_, tr) in tdata {
-                                if let Some(kfs) = tr["keyframes"].as_array_mut() {
-                                    for kf in kfs {
-                                        if let Some(pos) = kf["position"].as_f64() {
-                                            kf["position"] =
-                                                json!((pos * ratio * 1000.0).round() / 1000.0);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                theatre_updated = true;
-            }
-        }
-        if theatre_updated {
-            let _ = crate::project::write_project_file(s);
-            res["theatre_synced"] = json!(true);
-        }
-        if p["sync_video"].as_bool().unwrap_or(true)
-            && let Ok(synced) = crate::video_target::sync_placed_tracks_duration(
-                s,
-                &edit.character,
-                &track_id,
-                new_dur,
-            )
-        {
-            res["video_tracks_synced"] = synced;
-        }
+        sync_action_duration_dependents(
+            s,
+            &edit.character,
+            &track_id,
+            old_duration,
+            new_dur,
+            p["sync_video"].as_bool().unwrap_or(true),
+            &mut res,
+        );
     }
     Ok(res)
 }
@@ -686,37 +766,8 @@ pub(crate) fn static_overrides(track: &Value, layers: &Value) -> Value {
     result
 }
 
-pub fn pose_export(s: &mut Session, p: &Value) -> Result<Value> {
-    use image::Pixel;
-    let edit = begin(s, p)?;
-    let ti = track_index(&edit.raw, p)?;
-    let track = text(p, "track")?;
-    let ui_state = p.get("theatre_state").ok_or_else(|| {
-        bad("Capture current UI theatre_state (or null); required to detect unsaved edits")
-    })?;
-    if !same_theatre(ui_state, s.theatre_state.as_ref().unwrap_or(&Value::Null)) {
-        return Err(bad(
-            "Unsaved Theatre edits differ from saved state; pose export refused",
-        ));
-    }
-    theatre_guard(s, &edit.character, Some(track))?;
-    let time = number(
-        &p["time"],
-        0.,
-        edit.raw["tracks"][ti]["duration"].as_f64().unwrap_or(0.),
-        "time",
-    )?;
-    let rest = p
-        .get("rest")
-        .map(|v| v.as_bool().ok_or_else(|| bad("rest must be boolean")))
-        .transpose()?
-        .unwrap_or(false);
-    let amount = p
-        .get("amount")
-        .map(|v| number(v, 0., 100., "amount"))
-        .transpose()?
-        .unwrap_or(100.);
-    let canvas = edit.raw["canvas"]
+fn checked_pose_canvas(raw: &Value) -> Result<(u32, u32)> {
+    let canvas = raw["canvas"]
         .as_array()
         .ok_or_else(|| bad("Saved canvas required"))?;
     let w = canvas
@@ -729,83 +780,105 @@ pub fn pose_export(s: &mut Session, p: &Value) -> Result<Value> {
         .and_then(Value::as_u64)
         .filter(|n| *n > 0 && *n <= 4096)
         .ok_or_else(|| bad("Canvas height must be 1..4096"))? as u32;
-    let count = edit.raw["layers"].as_array().map_or(0, Vec::len);
+    let count = raw["layers"].as_array().map_or(0, Vec::len);
     if w as u64 * h as u64 > 4 * 1024 * 1024
         || w as u64 * h as u64 * count as u64 > 64 * 1024 * 1024
     {
         return Err(bad("Pose exceeds bounded pixel budget"));
     }
-    let reference = if let Some(id) = p.get("reference_asset") {
-        let id = id
-            .as_str()
-            .ok_or_else(|| bad("reference_asset must be an asset ID"))?;
-        let asset = s
-            .project_assets
-            .iter()
-            .find(|a| a.id == id)
-            .ok_or_else(|| bad("Reference asset not connected"))?;
-        let path = asset
-            .path
-            .as_ref()
-            .ok_or_else(|| bad("Reference has no file"))?;
-        let mut hash = Sha256::new();
-        std::io::copy(&mut fs::File::open(path)?, &mut hash)?;
-        json!({"asset_id":id,"path":path,"sha256":format!("{:x}",hash.finalize())})
-    } else {
-        Value::Null
+    Ok((w, h))
+}
+
+fn resolve_pose_reference_asset(s: &Session, p: &Value) -> Result<Value> {
+    let Some(id) = p.get("reference_asset") else {
+        return Ok(Value::Null);
     };
-    // Force reloading the hash-verified source before using the single shared sampler.
-    invalidate(s, &edit.character);
-    let meta = crate::motion::cmd_motion_tracks(s, &json!({"character":edit.character}))?;
-    let sample = crate::motion::cmd_motion_sample(
-        s,
-        &json!({"character":edit.character,"track":track,"time":time,"rest":rest,"amount":amount}),
-    )?;
-    let mut image = image::RgbaImage::new(w, h);
-    for (layer, pose) in meta["layers"].as_array().into_iter().flatten().zip(
-        sample["frames"][0]["layers"]
-            .as_array()
-            .into_iter()
-            .flatten(),
-    ) {
-        let opacity = pose["opacity"].as_f64().unwrap_or(0.);
-        if opacity <= 0. {
-            continue;
-        }
-        let m: Vec<f64> = pose["matrix"]
-            .as_array()
-            .ok_or_else(|| bad("Missing sampled matrix"))?
-            .iter()
-            .map(|v| v.as_f64().ok_or_else(|| bad("Bad sampled matrix")))
-            .collect::<Result<_>>()?;
-        if m.len() != 6 {
-            return Err(bad("Invalid affine matrix"));
-        }
-        let det = m[0] * m[3] - m[1] * m[2];
-        if det.abs() < 1e-10 {
-            continue;
-        }
-        let source = image::open(text(layer, "file")?)?.into_rgba8();
-        let cx = layer["crop"][0].as_f64().unwrap_or(0.);
-        let cy = layer["crop"][1].as_f64().unwrap_or(0.);
-        for y in 0..h {
-            for x in 0..w {
-                let dx = x as f64 + 0.5 - m[4];
-                let dy = y as f64 + 0.5 - m[5];
-                let sx = (m[3] * dx - m[2] * dy) / det - cx;
-                let sy = (-m[1] * dx + m[0] * dy) / det - cy;
-                if sx >= 0. && sy >= 0. && sx < source.width() as f64 && sy < source.height() as f64
-                {
-                    let mut pixel = *source.get_pixel(sx.floor() as u32, sy.floor() as u32);
-                    pixel.0[3] = (pixel.0[3] as f64 * opacity.clamp(0., 1.)).round() as u8;
-                    image.get_pixel_mut(x, y).blend(&pixel);
-                }
+    let id = id
+        .as_str()
+        .ok_or_else(|| bad("reference_asset must be an asset ID"))?;
+    let asset = s
+        .project_assets
+        .iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| bad("Reference asset not connected"))?;
+    let path = asset
+        .path
+        .as_ref()
+        .ok_or_else(|| bad("Reference has no file"))?;
+    let mut hash = Sha256::new();
+    std::io::copy(&mut fs::File::open(path)?, &mut hash)?;
+    Ok(json!({"asset_id":id,"path":path,"sha256":format!("{:x}",hash.finalize())}))
+}
+
+fn parse_pose_affine_matrix(pose: &Value) -> Result<[f64; 6]> {
+    let m: Vec<f64> = pose["matrix"]
+        .as_array()
+        .ok_or_else(|| bad("Missing sampled matrix"))?
+        .iter()
+        .map(|v| v.as_f64().ok_or_else(|| bad("Bad sampled matrix")))
+        .collect::<Result<_>>()?;
+    m.try_into().map_err(|_| bad("Invalid affine matrix"))
+}
+
+fn composite_sampled_pose_layer(
+    image: &mut image::RgbaImage,
+    w: u32,
+    h: u32,
+    layer: &Value,
+    pose: &Value,
+) -> Result<()> {
+    use image::Pixel;
+    let opacity = pose["opacity"].as_f64().unwrap_or(0.);
+    if opacity <= 0. {
+        return Ok(());
+    }
+    let m = parse_pose_affine_matrix(pose)?;
+    let det = m[0] * m[3] - m[1] * m[2];
+    if det.abs() < 1e-10 {
+        return Ok(());
+    }
+    let source = image::open(text(layer, "file")?)?.into_rgba8();
+    let cx = layer["crop"][0].as_f64().unwrap_or(0.);
+    let cy = layer["crop"][1].as_f64().unwrap_or(0.);
+    let alpha_scale = opacity.clamp(0., 1.);
+    for y in 0..h {
+        for x in 0..w {
+            let dx = x as f64 + 0.5 - m[4];
+            let dy = y as f64 + 0.5 - m[5];
+            let sx = (m[3] * dx - m[2] * dy) / det - cx;
+            let sy = (-m[1] * dx + m[0] * dy) / det - cy;
+            if sx >= 0. && sy >= 0. && sx < source.width() as f64 && sy < source.height() as f64 {
+                let mut pixel = *source.get_pixel(sx.floor() as u32, sy.floor() as u32);
+                pixel.0[3] = (pixel.0[3] as f64 * alpha_scale).round() as u8;
+                image.get_pixel_mut(x, y).blend(&pixel);
             }
         }
     }
-    if bytes(&edit.rig)? != edit.before {
-        return Err(bad("Rig changed during pose sampling"));
-    }
+    Ok(())
+}
+
+fn parse_pose_sample_params(p: &Value, track_dur: f64) -> Result<(f64, bool, f64)> {
+    let time = number(&p["time"], 0., track_dur, "time")?;
+    let rest = p
+        .get("rest")
+        .map(|v| v.as_bool().ok_or_else(|| bad("rest must be boolean")))
+        .transpose()?
+        .unwrap_or(false);
+    let amount = p
+        .get("amount")
+        .map(|v| number(v, 0., 100., "amount"))
+        .transpose()?
+        .unwrap_or(100.);
+    Ok((time, rest, amount))
+}
+
+fn save_exported_pose_image(
+    s: &mut Session,
+    edit: &Edit,
+    track: &str,
+    time: f64,
+    image: &image::RgbaImage,
+) -> Result<(PathBuf, PathBuf, Value)> {
     let id = format!("pose-{}", stamp()?);
     let dir = edit
         .project
@@ -821,6 +894,67 @@ pub fn pose_export(s: &mut Session, p: &Value) -> Result<Value> {
         s,
         &json!({"path":path,"id":id,"kind":"image","name":format!("{} · {} at {time}s (pending)",edit.character,track)}),
     )?;
+    Ok((path, receipt, registered))
+}
+
+fn sample_and_render_pose(
+    s: &mut Session,
+    edit: &Edit,
+    track: &str,
+    time: f64,
+    rest: bool,
+    amount: f64,
+    w: u32,
+    h: u32,
+) -> Result<(Value, Value, image::RgbaImage)> {
+    // Force reloading the hash-verified source before using the single shared sampler.
+    invalidate(s, &edit.character);
+    let meta = crate::motion::cmd_motion_tracks(s, &json!({"character":edit.character}))?;
+    let sample = crate::motion::cmd_motion_sample(
+        s,
+        &json!({"character":edit.character,"track":track,"time":time,"rest":rest,"amount":amount}),
+    )?;
+    let mut image = image::RgbaImage::new(w, h);
+    for (layer, pose) in meta["layers"].as_array().into_iter().flatten().zip(
+        sample["frames"][0]["layers"]
+            .as_array()
+            .into_iter()
+            .flatten(),
+    ) {
+        composite_sampled_pose_layer(&mut image, w, h, layer, pose)?;
+    }
+    if bytes(&edit.rig)? != edit.before {
+        return Err(bad("Rig changed during pose sampling"));
+    }
+    Ok((meta, sample, image))
+}
+
+fn verify_pose_theatre_state(s: &Session, p: &Value, character: &str, track: &str) -> Result<()> {
+    let ui_state = p.get("theatre_state").ok_or_else(|| {
+        bad("Capture current UI theatre_state (or null); required to detect unsaved edits")
+    })?;
+    if !same_theatre(ui_state, s.theatre_state.as_ref().unwrap_or(&Value::Null)) {
+        return Err(bad(
+            "Unsaved Theatre edits differ from saved state; pose export refused",
+        ));
+    }
+    theatre_guard(s, character, Some(track))
+}
+
+pub fn pose_export(s: &mut Session, p: &Value) -> Result<Value> {
+    let edit = begin(s, p)?;
+    let ti = track_index(&edit.raw, p)?;
+    let track = text(p, "track")?;
+    verify_pose_theatre_state(s, p, &edit.character, track)?;
+    let (time, rest, amount) = parse_pose_sample_params(
+        p,
+        edit.raw["tracks"][ti]["duration"].as_f64().unwrap_or(0.),
+    )?;
+    let (w, h) = checked_pose_canvas(&edit.raw)?;
+    let reference = resolve_pose_reference_asset(s, p)?;
+    let (meta, sample, image) =
+        sample_and_render_pose(s, &edit, track, time, rest, amount, w, h)?;
+    let (path, receipt, registered) = save_exported_pose_image(s, &edit, track, time, &image)?;
     let value = json!({"ok":true,"asset_id":registered["asset_id"],"path":path,"receipt":receipt,"approval":"pending","project_saved":false,"source_character":edit.character,"track":track,"time":time,"rest":rest,"amount":amount,"reference":reference,"rig_sha256":digest(&edit.before),"image_sha256":digest(&fs::read(&path)?),"sampler":"motion.sample","sampling":"nearest-neighbor affine PNG; saved canvas, clipped to canvas","canvas":[w,h],"theatre_applied":false,"sample":sample,"layers":meta["layers"]});
     fs::write(
         &receipt,

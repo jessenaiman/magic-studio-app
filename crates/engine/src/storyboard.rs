@@ -119,20 +119,15 @@ pub(crate) fn caption_file(dir: &Path) -> Option<PathBuf> {
     Some(dir.join("hyperframes/transcript.srt")).filter(|p| p.is_file())
 }
 
-/// Scenes from the video target's own captions (`<target>/transcript.srt`): one scene per
-/// caption (its number, time and words), plus an instrumental scene for each stretch of
-/// `CAPTION_GAP` seconds or more without one. Scenes tile the song. None without a caption file.
-pub(crate) fn caption_scenes(dir: &Path) -> Option<Vec<Value>> {
-    let srt = caption_file(dir)?;
-    let text = std::fs::read_to_string(&srt).ok()?;
-    let secs = |s: &str| -> Option<f64> {
-        let (hms, ms) = s.trim().split_once([',', '.'])?;
-        let mut parts = hms.split(':').map(|v| v.parse::<f64>().ok());
-        let (h, m, sec) = (parts.next()??, parts.next()??, parts.next()??);
-        Some(h * 3600.0 + m * 60.0 + sec + ms.parse::<f64>().ok()? / 1000.0)
-    };
-    let cues: Vec<(usize, f64, f64, String)> = text
-        .replace("\r\n", "\n")
+fn parse_srt_seconds(s: &str) -> Option<f64> {
+    let (hms, ms) = s.trim().split_once([',', '.'])?;
+    let mut parts = hms.split(':').map(|v| v.parse::<f64>().ok());
+    let (h, m, sec) = (parts.next()??, parts.next()??, parts.next()??);
+    Some(h * 3600.0 + m * 60.0 + sec + ms.parse::<f64>().ok()? / 1000.0)
+}
+
+fn parse_srt_cues(text: &str) -> Vec<(usize, f64, f64, String)> {
+    text.replace("\r\n", "\n")
         .split("\n\n")
         .filter_map(|block| {
             let lines: Vec<&str> = block
@@ -143,13 +138,25 @@ pub(crate) fn caption_scenes(dir: &Path) -> Option<Vec<Value>> {
             let at = lines.iter().position(|l| l.contains("-->"))?;
             let (a, b) = lines[at].split_once("-->")?;
             let number = lines.first().and_then(|n| n.parse().ok()).unwrap_or(0);
-            Some((number, secs(a)?, secs(b)?, lines[at + 1..].join(" ")))
+            Some((
+                number,
+                parse_srt_seconds(a)?,
+                parse_srt_seconds(b)?,
+                lines[at + 1..].join(" "),
+            ))
         })
-        .collect();
+        .collect()
+}
+
+fn resolve_caption_total_duration(
+    dir: &Path,
+    srt: &Path,
+    cues: &[(usize, f64, f64, String)],
+) -> Option<f64> {
     let audiomap: Option<Value> = std::fs::read_to_string(srt.with_file_name("audiomap.json"))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok());
-    let total = audiomap
+    audiomap
         .and_then(|m| m["audio"]["duration_sec"].as_f64())
         .or_else(|| {
             std::fs::read(dir.join("transcript-provenance.json"))
@@ -158,7 +165,17 @@ pub(crate) fn caption_scenes(dir: &Path) -> Option<Vec<Value>> {
                 .and_then(|v| v["duration_sec"].as_f64())
         })
         .or_else(|| song_seconds(dir))
-        .or_else(|| cues.last().map(|c| c.2))?;
+        .or_else(|| cues.last().map(|c| c.2))
+}
+
+/// Scenes from the video target's own captions (`<target>/transcript.srt`): one scene per
+/// caption (its number, time and words), plus an instrumental scene for each stretch of
+/// `CAPTION_GAP` seconds or more without one. Scenes tile the song. None without a caption file.
+pub(crate) fn caption_scenes(dir: &Path) -> Option<Vec<Value>> {
+    let srt = caption_file(dir)?;
+    let text = std::fs::read_to_string(&srt).ok()?;
+    let cues = parse_srt_cues(&text);
+    let total = resolve_caption_total_duration(dir, &srt, &cues)?;
     let instrumental =
         |from: f64, to: f64| json!({"kind": "instrumental", "start": from, "end": to, "lines": []});
     let mut out = Vec::new();
@@ -222,6 +239,47 @@ pub(crate) fn scene_doc_path(dir: &Path, n: usize) -> PathBuf {
     dir.join(STORYBOARD_DIR).join(format!("scene-{n}.md"))
 }
 
+fn parse_scene_doc_frontmatter(doc: &mut SceneDoc, t: &str) {
+    if let Some(st) = t.strip_prefix("status:") {
+        doc.status = st.trim().to_string();
+    } else if let Some(r) = t.strip_prefix("reference:") {
+        doc.reference = Some(r.trim().to_string()).filter(|r| !r.is_empty());
+    } else if let Some(tr) = t.strip_prefix("teaching_reference:") {
+        doc.teaching_reference = Some(tr.trim().to_string()).filter(|r| !r.is_empty());
+    } else if let Some(tm) = t.strip_prefix("time:")
+        && let Some((a, b)) = tm.trim().split_once(['-', '–'])
+        && let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>())
+    {
+        doc.time = Some((a, b));
+    }
+}
+
+fn parse_scene_doc_section_line(doc: &mut SceneDoc, section: &str, line: &str, t: &str) {
+    if section == "notes" {
+        if let Some(note) = t.strip_prefix("- ") {
+            doc.notes.push(note.to_string());
+        }
+    } else if section == "lyrics" {
+        if let Some((n, words)) = t.split_once(':')
+            && let Ok(n) = n.trim().parse::<usize>()
+        {
+            doc.lyrics.insert(n, words.trim().to_string());
+        }
+    } else if section == "cues" {
+        if let Some((n, cue)) = t.split_once(':')
+            && let Ok(n) = n.trim().parse::<usize>()
+        {
+            doc.cues.insert(n, cue.trim().to_string());
+        }
+    } else if !t.starts_with("<!--") {
+        let entry = doc.sections.entry(section.to_owned()).or_default();
+        if !entry.is_empty() {
+            entry.push('\n');
+        }
+        entry.push_str(line);
+    }
+}
+
 pub(crate) fn read_scene_doc(dir: &Path, n: usize) -> SceneDoc {
     let mut doc = SceneDoc {
         status: "draft".into(),
@@ -244,40 +302,9 @@ pub(crate) fn read_scene_doc(dir: &Path, n: usize) -> SceneDoc {
                 .map(|(k, _)| (*k).to_string())
                 .unwrap_or_else(|| h.trim().to_lowercase());
         } else if section.is_empty() {
-            if let Some(st) = t.strip_prefix("status:") {
-                doc.status = st.trim().to_string();
-            } else if let Some(r) = t.strip_prefix("reference:") {
-                doc.reference = Some(r.trim().to_string()).filter(|r| !r.is_empty());
-            } else if let Some(tr) = t.strip_prefix("teaching_reference:") {
-                doc.teaching_reference = Some(tr.trim().to_string()).filter(|r| !r.is_empty());
-            } else if let Some(tm) = t.strip_prefix("time:")
-                && let Some((a, b)) = tm.trim().split_once(['-', '–'])
-                && let (Ok(a), Ok(b)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>())
-            {
-                doc.time = Some((a, b));
-            }
-        } else if section == "notes" {
-            if let Some(note) = t.strip_prefix("- ") {
-                doc.notes.push(note.to_string());
-            }
-        } else if section == "lyrics" {
-            if let Some((n, words)) = t.split_once(':')
-                && let Ok(n) = n.trim().parse::<usize>()
-            {
-                doc.lyrics.insert(n, words.trim().to_string());
-            }
-        } else if section == "cues" {
-            if let Some((n, cue)) = t.split_once(':')
-                && let Ok(n) = n.trim().parse::<usize>()
-            {
-                doc.cues.insert(n, cue.trim().to_string());
-            }
-        } else if !t.starts_with("<!--") {
-            let entry = doc.sections.entry(section.clone()).or_default();
-            if !entry.is_empty() {
-                entry.push('\n');
-            }
-            entry.push_str(line);
+            parse_scene_doc_frontmatter(&mut doc, t);
+        } else {
+            parse_scene_doc_section_line(&mut doc, &section, line, t);
         }
     }
     for v in doc.sections.values_mut() {
@@ -326,6 +353,72 @@ fn write_scene_doc(dir: &Path, n: usize, label: &str, doc: &SceneDoc) -> Result<
     Ok(())
 }
 
+fn explicit_scenes_from_docs(docs: &[SceneDoc], doc: &Value) -> Vec<Value> {
+    let lines = lyric_lines(doc);
+    docs.iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let (a, b) = d.time.unwrap_or_default();
+            let sung: Vec<Value> = lines
+                .iter()
+                .filter(|(t, _)| *t >= a - 0.01 && *t < b - 0.01)
+                .map(|(t, text)| json!({"start": t, "text": text}))
+                .collect();
+            let kind = if sung.is_empty() {
+                "instrumental"
+            } else {
+                "scene"
+            };
+            json!({"kind": kind, "verse": i + 1, "start": a, "end": b, "lines": sung})
+        })
+        .collect()
+}
+
+fn apply_scene_doc_lines(lines: &mut Vec<Value>, start_sec: f64, sd: &SceneDoc) {
+    for (j, line) in lines.iter_mut().enumerate() {
+        if let Some(words) = sd.lyrics.get(&(j + 1)) {
+            line["heard"] = line["text"].clone();
+            line["text"] = json!(words);
+        }
+        if let Some(cue) = sd.cues.get(&(j + 1)) {
+            line["cue"] = json!(cue);
+        }
+    }
+    let max_idx = sd
+        .lyrics
+        .keys()
+        .chain(sd.cues.keys())
+        .copied()
+        .max()
+        .unwrap_or(0);
+    for k in (lines.len() + 1)..=max_idx {
+        let mut entry = json!({
+            "start": start_sec,
+            "text": sd.lyrics.get(&k).cloned().unwrap_or_default()
+        });
+        if let Some(cue) = sd.cues.get(&k) {
+            entry["cue"] = json!(cue);
+        }
+        lines.push(entry);
+    }
+}
+
+fn apply_scene_doc_overrides(dir: &Path, scene: &mut Value, sd: SceneDoc) {
+    let start_sec = scene["start"].as_f64().unwrap_or(0.0);
+    if let Some(lines) = scene["lines"].as_array_mut() {
+        apply_scene_doc_lines(lines, start_sec, &sd);
+        if !lines.is_empty() {
+            scene["kind"] = json!("scene");
+        }
+    }
+    scene["status"] = json!(sd.status);
+    scene["notes"] = json!(sd.notes);
+    scene["title"] = json!(sd.title);
+    scene["reference"] = json!(sd.reference.as_ref().map(|r| dir.join(r)));
+    scene["teaching_reference"] = json!(sd.teaching_reference.as_ref().map(|r| dir.join(r)));
+    scene["sections"] = json!(sd.sections);
+}
+
 /// The song's scenes: explicit intervals from scene files when every one has a `time:`,
 /// otherwise transcript stanzas and gaps.
 pub(crate) fn storyboard_scenes(dir: &Path) -> Result<Vec<Value>> {
@@ -349,24 +442,7 @@ pub(crate) fn storyboard_scenes(dir: &Path) -> Result<Vec<Value>> {
     let mut list = if let (Some(list), false) = (captions, explicit) {
         list
     } else if explicit {
-        let lines = lyric_lines(&doc);
-        docs.iter()
-            .enumerate()
-            .map(|(i, d)| {
-                let (a, b) = d.time.unwrap_or_default();
-                let sung: Vec<Value> = lines
-                    .iter()
-                    .filter(|(t, _)| *t >= a - 0.01 && *t < b - 0.01)
-                    .map(|(t, text)| json!({"start": t, "text": text}))
-                    .collect();
-                let kind = if sung.is_empty() {
-                    "instrumental"
-                } else {
-                    "scene"
-                };
-                json!({"kind": kind, "verse": i + 1, "start": a, "end": b, "lines": sung})
-            })
-            .collect()
+        explicit_scenes_from_docs(&docs, &doc)
     } else {
         scenes(&doc, song_seconds(dir))
     };
@@ -375,44 +451,7 @@ pub(crate) fn storyboard_scenes(dir: &Path) -> Result<Vec<Value>> {
             .get(i)
             .cloned()
             .unwrap_or_else(|| read_scene_doc(dir, i + 1));
-        let start_sec = scene["start"].as_f64().unwrap_or(0.0);
-        if let Some(lines) = scene["lines"].as_array_mut() {
-            for (j, line) in lines.iter_mut().enumerate() {
-                if let Some(words) = sd.lyrics.get(&(j + 1)) {
-                    line["heard"] = line["text"].clone();
-                    line["text"] = json!(words);
-                }
-                if let Some(cue) = sd.cues.get(&(j + 1)) {
-                    line["cue"] = json!(cue);
-                }
-            }
-            let max_idx = sd
-                .lyrics
-                .keys()
-                .chain(sd.cues.keys())
-                .copied()
-                .max()
-                .unwrap_or(0);
-            for k in (lines.len() + 1)..=max_idx {
-                let mut entry = json!({
-                    "start": start_sec,
-                    "text": sd.lyrics.get(&k).cloned().unwrap_or_default()
-                });
-                if let Some(cue) = sd.cues.get(&k) {
-                    entry["cue"] = json!(cue);
-                }
-                lines.push(entry);
-            }
-            if !lines.is_empty() {
-                scene["kind"] = json!("scene");
-            }
-        }
-        scene["status"] = json!(sd.status);
-        scene["notes"] = json!(sd.notes);
-        scene["title"] = json!(sd.title);
-        scene["reference"] = json!(sd.reference.as_ref().map(|r| dir.join(r)));
-        scene["teaching_reference"] = json!(sd.teaching_reference.as_ref().map(|r| dir.join(r)));
-        scene["sections"] = json!(sd.sections);
+        apply_scene_doc_overrides(dir, scene, sd);
     }
     Ok(list)
 }
@@ -524,202 +563,269 @@ fn storyboard_inputs_changed(dir: &Path) -> Option<std::time::SystemTime> {
         .max()
 }
 
+fn resolve_build_transcript(s: &Session, dir: &Path, params: &Value) -> Result<PathBuf> {
+    if let Some(path) = params["transcript"].as_str() {
+        if params["draft"] != true {
+            return Err(EngineError::InvalidParams(
+                "An explicit source transcript requires draft=true; active data is preserved"
+                    .into(),
+            ));
+        }
+        return Ok(resolve_workspace_path(s, path).canonicalize()?);
+    }
+    transcript_files(dir)
+        .into_iter()
+        .next()
+        .or_else(|| {
+            crate::storyboard_document::load(dir)
+                .ok()
+                .and_then(|v| v["source_transcript"].as_str().map(PathBuf::from))
+                .filter(|p| p.is_file())
+        })
+        .ok_or_else(|| EngineError::InvalidParams("Import the existing transcript first".into()))
+}
+
+fn resolve_build_output_dir(s: &Session, dir: &Path, params: &Value) -> Result<PathBuf> {
+    if let Some(resume) = params["resume"].as_str() {
+        let manifest = resolve_workspace_path(s, resume).canonicalize()?;
+        if !manifest.starts_with(dir.join("storyboard").canonicalize()?)
+            || manifest.file_name().and_then(|n| n.to_str()) != Some("manifest.json")
+        {
+            return Err(EngineError::InvalidParams(
+                "Resume must be this project's storyboard draft manifest".into(),
+            ));
+        }
+        return manifest
+            .parent()
+            .ok_or_else(|| EngineError::InvalidParams("Draft has no folder".into()))
+            .map(Path::to_path_buf);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    Ok(dir.join("storyboard").join(format!("movie-board-{stamp}")))
+}
+
+fn resolve_build_scenes(
+    s: &mut Session,
+    dir: &Path,
+    params: &Value,
+    active_board: &Value,
+) -> Result<Vec<Value>> {
+    if let Some(scenes) = params["_scenes"].as_array() {
+        return Ok(scenes.clone());
+    }
+    if active_board["page_plan"].is_array() && active_board["empty_template"] != true {
+        return Ok(crate::storyboard_crud::packets(s)?.2);
+    }
+    Ok(storyboard_scenes(dir)?
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut scene)| {
+            scene["target"] = json!(format!("scene-{}", i + 1));
+            scene["scene"] = json!(i + 1);
+            scene
+        })
+        .collect())
+}
+
+fn write_build_scene_map(
+    s: &mut Session,
+    dir: &Path,
+    out: &Path,
+    params: &Value,
+    active_board: &Value,
+    transcript: &Path,
+    scenes: &[Value],
+) -> Result<PathBuf> {
+    let scene_map = out.join("scene-map.json");
+    let page_content = if params["_page_content"].is_array() {
+        params["_page_content"].clone()
+    } else {
+        crate::storyboard_design::inspect(s, &json!({}))?["text_fields"].clone()
+    };
+    let previous_board = if params["_previous_board"].is_object() {
+        params["_previous_board"].clone()
+    } else {
+        active_board.clone()
+    };
+    let provenance = std::fs::read(dir.join("transcript-provenance.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .unwrap_or(Value::Null);
+    let recording_duration = song_seconds(dir);
+    let timing_extent = recording_duration
+        .or_else(|| provenance["duration_sec"].as_f64())
+        .or_else(|| scenes.last().and_then(|v| v["end"].as_f64()));
+    let captions = if params["transcript"].is_string() {
+        Value::Null
+    } else if active_board["source_transcript"] == json!(transcript) {
+        active_board["source_captions"].clone()
+    } else {
+        json!(caption_file(dir))
+    };
+    std::fs::write(
+        &scene_map,
+        serde_json::to_vec_pretty(&json!({
+            "scenes":scenes,"page_content":page_content,"previous_board":previous_board,
+            "backgrounds":params["_backgrounds"],"source":"canonical CLI scene spans",
+            "transcript":transcript,"captions":captions,"duration_sec":timing_extent,
+            "recording_duration_verified":recording_duration.is_some(),
+            "audio":s.song_audio,"project":s.project_path,"assets":s.project_assets
+        }))
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+    )?;
+    Ok(scene_map)
+}
+
+fn build_movie_board_args(
+    s: &Session,
+    params: &Value,
+    template: &Path,
+    transcript: &Path,
+    scene_map: &Path,
+    out: &Path,
+    title: String,
+) -> Result<Vec<String>> {
+    let script = crate::workspace::workspace_root(s).join("pipeline/movie_board.py");
+    let mut args = vec![
+        script.to_string_lossy().into_owned(),
+        "--template".into(),
+        template.to_string_lossy().into_owned(),
+        "--transcript".into(),
+        transcript.to_string_lossy().into_owned(),
+        "--scene-map".into(),
+        scene_map.to_string_lossy().into_owned(),
+        "--out".into(),
+        out.to_string_lossy().into_owned(),
+        "--title".into(),
+        title,
+    ];
+    if params["allow_timing_overrun"] == true {
+        if params["draft"] != true {
+            return Err(EngineError::InvalidParams(
+                "Timing-overrun source may only produce an explicitly warned draft".into(),
+            ));
+        }
+        args.push("--allow-timing-overrun".into());
+    }
+    if let Some(source) = params["source"].as_str() {
+        args.extend([
+            "--source".into(),
+            resolve_workspace_path(s, source)
+                .to_string_lossy()
+                .into_owned(),
+        ]);
+    }
+    if let Some(panels) = params["panels"].as_str() {
+        args.extend(["--panels".into(), panels.into()]);
+    }
+    Ok(args)
+}
+
+fn finalize_storyboard_build_result(
+    s: &Session,
+    dir: &Path,
+    out: &Path,
+    params: &Value,
+    mut result: Value,
+) -> Result<Value> {
+    result["project"] = json!(s.project_path);
+    result["manifest"] = json!(out.join("manifest.json"));
+    result["draft"] =
+        json!(params["draft"] == true || result["mapping"]["needs_correction"] == true);
+    result["status"] = json!(if result["ok"] == false {
+        "draft generation failed; active storyboard unchanged"
+    } else if result["timing_valid"] == false {
+        "editable draft with raw timing warning; not validated"
+    } else if result["mapping"]["needs_correction"] == true {
+        "draft needs source mapping correction"
+    } else if result["draft"] == true {
+        "draft ready for review; active storyboard unchanged"
+    } else {
+        "saved"
+    });
+    let executable = crate::command_center::cli_program();
+    let proj = crate::command_center::shell_quote(
+        &s.project_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    );
+    result["next_commands"] = json!([format!(
+        "{} --project {} storyboard.read scene=1",
+        crate::command_center::shell_quote(&executable),
+        proj
+    )]);
+    result["resume_command"] = json!(format!(
+        "{} --project {} workshop.build_storyboard draft=true resume={} source={}",
+        crate::command_center::shell_quote(&executable),
+        proj,
+        crate::command_center::shell_quote(&out.join("manifest.json").to_string_lossy()),
+        crate::command_center::shell_quote(
+            params["source"].as_str().unwrap_or(&dir.to_string_lossy())
+        ),
+    ));
+    if let Some(transcript) = params["transcript"].as_str() {
+        let command = format!(
+            "{} transcript={} allow_timing_overrun={}",
+            result["resume_command"].as_str().unwrap_or_default(),
+            crate::command_center::shell_quote(transcript),
+            params["allow_timing_overrun"] == true
+        );
+        result["resume_command"] = json!(command);
+    }
+    std::fs::write(out.join("manifest.json"), result.to_string())?;
+    if result["ok"] == true && result["draft"] != true {
+        std::fs::write(dir.join("storyboard/movie-board.json"), result.to_string())?;
+    }
+    let diag = diagnose_storyboard_and_workshop(s, dir);
+    result["scene_diagnostics"] = diag.clone();
+    if let Some(steps) = diag["next_steps"].as_array()
+        && !steps.is_empty()
+    {
+        result["next_steps"] = json!(steps);
+    }
+    Ok(result)
+}
+
 /// Builds storyboard/storyboard.pdf with pdfcraft-cli.
 pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<Value> {
-    if params["template"].is_null() || params["template"].is_string() {
-        let dir = project_dir(s)?;
-        let active_board = crate::storyboard_document::load(&dir)
-            .ok()
-            .unwrap_or(Value::Null);
-        let selected = cmd_storyboard_template(s, &json!({}))?;
-        let raw_template = params["template"]
-            .as_str()
-            .or(selected["path"].as_str())
-            .or(active_board["template_file"].as_str())
-            .unwrap_or(DEFAULT_STORYBOARD_TEMPLATE);
-        let template = resolve_storyboard_template(s, raw_template)?;
-        let transcript = if let Some(path) = params["transcript"].as_str() {
-            if params["draft"] != true {
-                return Err(EngineError::InvalidParams(
-                    "An explicit source transcript requires draft=true; active data is preserved"
-                        .into(),
-                ));
-            }
-            resolve_workspace_path(s, path).canonicalize()?
-        } else {
-            transcript_files(&dir)
-                .into_iter()
-                .next()
-                .or_else(|| {
-                    crate::storyboard_document::load(&dir)
-                        .ok()
-                        .and_then(|v| v["source_transcript"].as_str().map(PathBuf::from))
-                        .filter(|p| p.is_file())
-                })
-                .ok_or_else(|| {
-                    EngineError::InvalidParams("Import the existing transcript first".into())
-                })?
-        };
-        let title = s
-            .project_path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .and_then(|n| n.to_str())
-            .unwrap_or("Movie board");
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        let out = if let Some(resume) = params["resume"].as_str() {
-            let manifest = resolve_workspace_path(s, resume).canonicalize()?;
-            if !manifest.starts_with(dir.join("storyboard").canonicalize()?)
-                || manifest.file_name().and_then(|n| n.to_str()) != Some("manifest.json")
-            {
-                return Err(EngineError::InvalidParams(
-                    "Resume must be this project's storyboard draft manifest".into(),
-                ));
-            }
-            manifest
-                .parent()
-                .ok_or_else(|| EngineError::InvalidParams("Draft has no folder".into()))?
-                .to_path_buf()
-        } else {
-            dir.join("storyboard").join(format!("movie-board-{stamp}"))
-        };
-        let title = title.to_owned();
-        let scenes = if let Some(scenes) = params["_scenes"].as_array() {
-            scenes.clone()
-        } else if active_board["page_plan"].is_array() && active_board["empty_template"] != true {
-            crate::storyboard_crud::packets(s)?.2
-        } else {
-            storyboard_scenes(&dir)?
-                .into_iter()
-                .enumerate()
-                .map(|(i, mut scene)| {
-                    scene["target"] = json!(format!("scene-{}", i + 1));
-                    scene["scene"] = json!(i + 1);
-                    scene
-                })
-                .collect()
-        };
-        std::fs::create_dir_all(&out)?;
-        let scene_map = out.join("scene-map.json");
-        let page_content = if params["_page_content"].is_array() {
-            params["_page_content"].clone()
-        } else {
-            crate::storyboard_design::inspect(s, &json!({}))?["text_fields"].clone()
-        };
-        let previous_board = if params["_previous_board"].is_object() {
-            params["_previous_board"].clone()
-        } else {
-            active_board.clone()
-        };
-        let provenance = std::fs::read(dir.join("transcript-provenance.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-            .unwrap_or(Value::Null);
-        let recording_duration = song_seconds(&dir);
-        let timing_extent = recording_duration
-            .or_else(|| provenance["duration_sec"].as_f64())
-            .or_else(|| scenes.last().and_then(|v| v["end"].as_f64()));
-        std::fs::write(&scene_map,serde_json::to_vec_pretty(&json!({"scenes":scenes,"page_content":page_content,"previous_board":previous_board,"backgrounds":params["_backgrounds"],"source":"canonical CLI scene spans","transcript":transcript,"captions":if params["transcript"].is_string(){Value::Null}else if active_board["source_transcript"]==json!(transcript){active_board["source_captions"].clone()}else{json!(caption_file(&dir))},"duration_sec":timing_extent,"recording_duration_verified":recording_duration.is_some(),"audio":s.song_audio,"project":s.project_path,"assets":s.project_assets})).map_err(|e|EngineError::InvalidParams(e.to_string()))?)?;
-        let script = crate::workspace::workspace_root(s).join("pipeline/movie_board.py");
-        let mut args = vec![
-            script.to_string_lossy().into_owned(),
-            "--template".into(),
-            template.to_string_lossy().into_owned(),
-            "--transcript".into(),
-            transcript.to_string_lossy().into_owned(),
-            "--scene-map".into(),
-            scene_map.to_string_lossy().into_owned(),
-            "--out".into(),
-            out.to_string_lossy().into_owned(),
-            "--title".into(),
-            title,
-        ];
-        if params["allow_timing_overrun"] == true {
-            if params["draft"] != true {
-                return Err(EngineError::InvalidParams(
-                    "Timing-overrun source may only produce an explicitly warned draft".into(),
-                ));
-            }
-            args.push("--allow-timing-overrun".into());
-        }
-        if let Some(source) = params["source"].as_str() {
-            args.extend([
-                "--source".into(),
-                resolve_workspace_path(s, source)
-                    .to_string_lossy()
-                    .into_owned(),
-            ]);
-        }
-        if let Some(panels) = params["panels"].as_str() {
-            args.extend(["--panels".into(), panels.into()]);
-        }
-        let output = run_tool_in(&dir, "python3", &args)?;
-        let mut result: Value =
-            serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-        result["project"] = json!(s.project_path);
-        result["manifest"] = json!(out.join("manifest.json"));
-        result["draft"] =
-            json!(params["draft"] == true || result["mapping"]["needs_correction"] == true);
-        result["status"] = json!(if result["ok"] == false {
-            "draft generation failed; active storyboard unchanged"
-        } else if result["timing_valid"] == false {
-            "editable draft with raw timing warning; not validated"
-        } else if result["mapping"]["needs_correction"] == true {
-            "draft needs source mapping correction"
-        } else if result["draft"] == true {
-            "draft ready for review; active storyboard unchanged"
-        } else {
-            "saved"
-        });
-        let executable = crate::command_center::cli_program();
-        let proj = crate::command_center::shell_quote(
-            &s.project_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-        );
-        result["next_commands"] = json!([format!(
-            "{} --project {} storyboard.read scene=1",
-            crate::command_center::shell_quote(&executable),
-            proj
-        )]);
-        result["resume_command"] = json!(format!(
-            "{} --project {} workshop.build_storyboard draft=true resume={} source={}",
-            crate::command_center::shell_quote(&executable),
-            proj,
-            crate::command_center::shell_quote(&out.join("manifest.json").to_string_lossy()),
-            crate::command_center::shell_quote(
-                params["source"].as_str().unwrap_or(&dir.to_string_lossy())
-            ),
+    if !params["template"].is_null() && !params["template"].is_string() {
+        return Err(EngineError::InvalidParams(
+            "Only the native storyboard template is supported".into(),
         ));
-        if let Some(transcript) = params["transcript"].as_str() {
-            let command = format!(
-                "{} transcript={} allow_timing_overrun={}",
-                result["resume_command"].as_str().unwrap_or_default(),
-                crate::command_center::shell_quote(transcript),
-                params["allow_timing_overrun"] == true
-            );
-            result["resume_command"] = json!(command);
-        }
-        std::fs::write(out.join("manifest.json"), result.to_string())?;
-        if result["ok"] == true && result["draft"] != true {
-            std::fs::write(dir.join("storyboard/movie-board.json"), result.to_string())?;
-        }
-        let diag = diagnose_storyboard_and_workshop(s, &dir);
-        result["scene_diagnostics"] = diag.clone();
-        if let Some(steps) = diag["next_steps"].as_array()
-            && !steps.is_empty()
-        {
-            result["next_steps"] = json!(steps);
-        }
-        return Ok(result);
     }
-    Err(EngineError::InvalidParams(
-        "Only the native storyboard template is supported".into(),
-    ))
+    let dir = project_dir(s)?;
+    let active_board = crate::storyboard_document::load(&dir)
+        .ok()
+        .unwrap_or(Value::Null);
+    let selected = cmd_storyboard_template(s, &json!({}))?;
+    let raw_template = params["template"]
+        .as_str()
+        .or(selected["path"].as_str())
+        .or(active_board["template_file"].as_str())
+        .unwrap_or(DEFAULT_STORYBOARD_TEMPLATE);
+    let template = resolve_storyboard_template(s, raw_template)?;
+    let transcript = resolve_build_transcript(s, &dir, params)?;
+    let title = s
+        .project_path
+        .as_ref()
+        .and_then(|p| p.file_stem())
+        .and_then(|n| n.to_str())
+        .unwrap_or("Movie board")
+        .to_owned();
+    let out = resolve_build_output_dir(s, &dir, params)?;
+    let scenes = resolve_build_scenes(s, &dir, params, &active_board)?;
+    std::fs::create_dir_all(&out)?;
+    let scene_map =
+        write_build_scene_map(s, &dir, &out, params, &active_board, &transcript, &scenes)?;
+    let args = build_movie_board_args(s, params, &template, &transcript, &scene_map, &out, title)?;
+    let output = run_tool_in(&dir, "python3", &args)?;
+    let result: Value =
+        serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    finalize_storyboard_build_result(s, &dir, &out, params, result)
 }
 
 /// Current storyboard build state: PDF exists, previews, staleness.
@@ -771,6 +877,64 @@ pub fn cmd_storyboard_template(s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
+fn init_empty_template_board(s: &mut Session, dir: &Path, active: &Path) -> Result<Value> {
+    let selected = cmd_storyboard_template(s, &json!({}))?;
+    let Some(template) = selected["path"].as_str() else {
+        let board = json!({"ok":true,"project":s.project_path,"empty_template":true,"template_required":true,"previews":[],"page_plan":[],"scene_count":0,"design":{"placements":[],"dirty":false}});
+        std::fs::write(active, board.to_string())?;
+        return Ok(board);
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let out = dir.join(STORYBOARD_DIR).join(format!("template-{stamp}"));
+    std::fs::create_dir_all(&out)?;
+    let deck = out.join("movie-board.deckcraft");
+    let pdf = out.join("movie-board.pdf");
+    let pages = out.join("pages");
+    run_tool_in(
+        dir,
+        "deckcraft-cli",
+        &[
+            "run".into(),
+            "--in".into(),
+            template.into(),
+            "--save".into(),
+            deck.to_string_lossy().into_owned(),
+            "--export".into(),
+            pdf.to_string_lossy().into_owned(),
+        ],
+    )?;
+    run_tool_in(
+        dir,
+        "deckcraft-cli",
+        &[
+            "render".into(),
+            deck.to_string_lossy().into_owned(),
+            "--all".into(),
+            "--scale".into(),
+            "1".into(),
+            pages.to_string_lossy().into_owned(),
+        ],
+    )?;
+    let info: Value = serde_json::from_str(&run_tool_in(
+        dir,
+        "deckcraft-cli",
+        &["info".into(), deck.to_string_lossy().into_owned()],
+    )?)
+    .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let mut previews = std::fs::read_dir(&pages)?
+        .filter_map(|e| e.ok().map(|v| v.path()))
+        .filter(|v| v.extension().is_some_and(|e| e == "png"))
+        .collect::<Vec<_>>();
+    previews.sort();
+    let board = json!({"ok":true,"project":s.project_path,"deck":deck,"pdf":pdf,"template_file":template,"manifest":out.join("manifest.json"),"empty_template":true,"template_required":false,"previews":previews,"page_size":info["slideSize"],"page_plan":[],"scene_count":0,"first_scene_page":previews.len()+1,"links":[],"design":{"placements":[],"dirty":false}});
+    std::fs::write(out.join("manifest.json"), board.to_string())?;
+    std::fs::write(active, board.to_string())?;
+    Ok(board)
+}
+
 pub fn cmd_storyboard_init(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     // The editable DeckCraft document is authoritative once created. Reopening never regenerates it.
@@ -798,61 +962,7 @@ pub fn cmd_storyboard_init(s: &mut Session, params: &Value) -> Result<Value> {
         std::fs::create_dir_all(dir.join(folder))?;
     }
     if params["empty"] == true {
-        let selected = cmd_storyboard_template(s, &json!({}))?;
-        let Some(template) = selected["path"].as_str() else {
-            let board = json!({"ok":true,"project":s.project_path,"empty_template":true,"template_required":true,"previews":[],"page_plan":[],"scene_count":0,"design":{"placements":[],"dirty":false}});
-            std::fs::write(active, board.to_string())?;
-            return Ok(board);
-        };
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        let out = dir.join(STORYBOARD_DIR).join(format!("template-{stamp}"));
-        std::fs::create_dir_all(&out)?;
-        let deck = out.join("movie-board.deckcraft");
-        let pdf = out.join("movie-board.pdf");
-        let pages = out.join("pages");
-        run_tool_in(
-            &dir,
-            "deckcraft-cli",
-            &[
-                "run".into(),
-                "--in".into(),
-                template.into(),
-                "--save".into(),
-                deck.to_string_lossy().into_owned(),
-                "--export".into(),
-                pdf.to_string_lossy().into_owned(),
-            ],
-        )?;
-        run_tool_in(
-            &dir,
-            "deckcraft-cli",
-            &[
-                "render".into(),
-                deck.to_string_lossy().into_owned(),
-                "--all".into(),
-                "--scale".into(),
-                "1".into(),
-                pages.to_string_lossy().into_owned(),
-            ],
-        )?;
-        let info: Value = serde_json::from_str(&run_tool_in(
-            &dir,
-            "deckcraft-cli",
-            &["info".into(), deck.to_string_lossy().into_owned()],
-        )?)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-        let mut previews = std::fs::read_dir(&pages)?
-            .filter_map(|e| e.ok().map(|v| v.path()))
-            .filter(|v| v.extension().is_some_and(|e| e == "png"))
-            .collect::<Vec<_>>();
-        previews.sort();
-        let board = json!({"ok":true,"project":s.project_path,"deck":deck,"pdf":pdf,"template_file":template,"manifest":out.join("manifest.json"),"empty_template":true,"template_required":false,"previews":previews,"page_size":info["slideSize"],"page_plan":[],"scene_count":0,"first_scene_page":previews.len()+1,"links":[],"design":{"placements":[],"dirty":false}});
-        std::fs::write(out.join("manifest.json"), board.to_string())?;
-        std::fs::write(active, board.to_string())?;
-        return Ok(board);
+        return init_empty_template_board(s, &dir, &active);
     }
     // Canonical scene spans are parsed data, not another editable Markdown storyboard.
     let mut result = cmd_workshop_build_storyboard(s, &json!({}))?;
@@ -1083,6 +1193,125 @@ pub fn cmd_storyboard_edit(s: &mut Session, params: &Value) -> Result<Value> {
     crate::storyboard_crud::update(s, params)
 }
 
+fn packet_text_of(v: &Value) -> Option<String> {
+    match v {
+        Value::String(t) => Some(t.clone()),
+        Value::Array(items) => Some(
+            items
+                .iter()
+                .map(|i| {
+                    format!(
+                        "- {}",
+                        i.as_str()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| i.to_string())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        Value::Null => None,
+        other => Some(other.to_string()),
+    }
+}
+
+fn build_imported_scene_doc(
+    dir: &Path,
+    src: &Path,
+    n: usize,
+    sc: &Value,
+    packet: &Value,
+) -> Result<SceneDoc> {
+    let mut doc = SceneDoc {
+        status: "draft".into(),
+        ..Default::default()
+    };
+    doc.title = packet["title"].as_str().map(str::to_owned).or_else(|| {
+        sc.get("description")
+            .and_then(Value::as_str)
+            .map(|d| d.chars().take(60).collect())
+    });
+    doc.time = sc
+        .get("start_seconds")
+        .and_then(Value::as_f64)
+        .zip(sc.get("end_seconds").and_then(Value::as_f64));
+    if let Some(reference) = packet["reference"]
+        .as_str()
+        .map(|r| src.join(r))
+        .filter(|p| p.is_file())
+    {
+        let ext = reference
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png");
+        let rel = format!("{STORYBOARD_DIR}/scene-{n}-reference.{ext}");
+        std::fs::copy(&reference, dir.join(&rel))?;
+        doc.reference = Some(rel);
+    }
+    let skills = packet["skills"].as_array().map(|a| {
+        a.iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    });
+    let skills = match (skills, packet["combination"].as_str()) {
+        (Some(k), Some(c)) => Some(format!("{k}\n{c}")),
+        (k, c) => k.or(c.map(str::to_owned)),
+    };
+    for (key, value) in [
+        ("skills", skills),
+        ("reference_prompt", packet_text_of(&packet["reference_prompt"])),
+        ("animation_prompt", packet_text_of(&packet["animation_prompt"])),
+        ("layer_stack", packet_text_of(&packet["layer_stack_proposal"])),
+        ("build_steps", packet_text_of(&packet["build_steps"])),
+        ("acceptance_checks", packet_text_of(&packet["output_checks"])),
+        ("plan_vs_actual", packet_text_of(&packet["plan_vs_actual"])),
+    ] {
+        if let Some(v) = value.filter(|v| !v.trim().is_empty()) {
+            doc.sections.insert(key.into(), v);
+        }
+    }
+    if let Some(desc) = sc.get("description").and_then(Value::as_str) {
+        doc.notes.push(format!("Scene plan: {desc}"));
+    }
+    if let Some(status) = packet["status"].as_str() {
+        doc.notes.push(format!("Imported status: {status}"));
+    }
+    Ok(doc)
+}
+
+fn write_imported_scene_docs(
+    dir: &Path,
+    src: &Path,
+    plan_scenes: &[Value],
+    packets: &Option<Value>,
+) -> Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(dir.join(STORYBOARD_DIR))?;
+    let mut written = Vec::new();
+    for (i, sc) in plan_scenes.iter().enumerate() {
+        let n = i + 1;
+        let id = sc.get("id").and_then(Value::as_str).unwrap_or_default();
+        let packet = packets
+            .as_ref()
+            .and_then(|p| p.get("scenes"))
+            .and_then(Value::as_array)
+            .and_then(|list| list.iter().find(|p| p["id"].as_str() == Some(id)))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let doc = build_imported_scene_doc(dir, src, n, sc, &packet)?;
+        write_scene_doc(dir, n, &format!("Scene {n}"), &doc)?;
+        written.push(scene_doc_path(dir, n));
+    }
+    for n in plan_scenes.len() + 1.. {
+        let extra = scene_doc_path(dir, n);
+        if !extra.is_file() {
+            break;
+        }
+        std::fs::remove_file(extra)?;
+    }
+    Ok(written)
+}
+
 /// Imports an existing pipeline project's scenes into this storyboard template.
 pub fn cmd_storyboard_import_magicstudio(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
@@ -1123,104 +1352,7 @@ pub fn cmd_storyboard_import_magicstudio(s: &mut Session, params: &Value) -> Res
                 .into(),
         ));
     }
-    let text_of = |v: &Value| -> Option<String> {
-        match v {
-            Value::String(t) => Some(t.clone()),
-            Value::Array(items) => Some(
-                items
-                    .iter()
-                    .map(|i| {
-                        format!(
-                            "- {}",
-                            i.as_str()
-                                .map(str::to_owned)
-                                .unwrap_or_else(|| i.to_string())
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
-            Value::Null => None,
-            other => Some(other.to_string()),
-        }
-    };
-    std::fs::create_dir_all(dir.join(STORYBOARD_DIR))?;
-    let mut written = Vec::new();
-    for (i, sc) in plan_scenes.iter().enumerate() {
-        let n = i + 1;
-        let id = sc.get("id").and_then(Value::as_str).unwrap_or_default();
-        let packet = packets
-            .as_ref()
-            .and_then(|p| p.get("scenes"))
-            .and_then(Value::as_array)
-            .and_then(|list| list.iter().find(|p| p["id"].as_str() == Some(id)))
-            .cloned()
-            .unwrap_or(Value::Null);
-        let mut doc = SceneDoc {
-            status: "draft".into(),
-            ..Default::default()
-        };
-        doc.title = packet["title"].as_str().map(str::to_owned).or_else(|| {
-            sc.get("description")
-                .and_then(Value::as_str)
-                .map(|d| d.chars().take(60).collect())
-        });
-        doc.time = sc
-            .get("start_seconds")
-            .and_then(Value::as_f64)
-            .zip(sc.get("end_seconds").and_then(Value::as_f64));
-        if let Some(reference) = packet["reference"]
-            .as_str()
-            .map(|r| src.join(r))
-            .filter(|p| p.is_file())
-        {
-            let ext = reference
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("png");
-            let rel = format!("{STORYBOARD_DIR}/scene-{n}-reference.{ext}");
-            std::fs::copy(&reference, dir.join(&rel))?;
-            doc.reference = Some(rel);
-        }
-        let skills = packet["skills"].as_array().map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join(", ")
-        });
-        let skills = match (skills, packet["combination"].as_str()) {
-            (Some(k), Some(c)) => Some(format!("{k}\n{c}")),
-            (k, c) => k.or(c.map(str::to_owned)),
-        };
-        for (key, value) in [
-            ("skills", skills),
-            ("reference_prompt", text_of(&packet["reference_prompt"])),
-            ("animation_prompt", text_of(&packet["animation_prompt"])),
-            ("layer_stack", text_of(&packet["layer_stack_proposal"])),
-            ("build_steps", text_of(&packet["build_steps"])),
-            ("acceptance_checks", text_of(&packet["output_checks"])),
-            ("plan_vs_actual", text_of(&packet["plan_vs_actual"])),
-        ] {
-            if let Some(v) = value.filter(|v| !v.trim().is_empty()) {
-                doc.sections.insert(key.into(), v);
-            }
-        }
-        if let Some(desc) = sc.get("description").and_then(Value::as_str) {
-            doc.notes.push(format!("Scene plan: {desc}"));
-        }
-        if let Some(status) = packet["status"].as_str() {
-            doc.notes.push(format!("Imported status: {status}"));
-        }
-        write_scene_doc(&dir, n, &format!("Scene {n}"), &doc)?;
-        written.push(scene_doc_path(&dir, n));
-    }
-    for n in plan_scenes.len() + 1.. {
-        let extra = scene_doc_path(&dir, n);
-        if !extra.is_file() {
-            break;
-        }
-        std::fs::remove_file(extra)?;
-    }
+    let written = write_imported_scene_docs(&dir, &src, &plan_scenes, &packets)?;
     let mut toc = cmd_storyboard_toc(s, &json!({}))?;
     toc["imported"] = json!(written);
     toc["next"] = json!([
