@@ -555,7 +555,7 @@ fn prepare(s: &mut Session, p: &Value, prompt: &str) -> Result<Prepared> {
     Ok(Prepared {
         out: dir.join("asset.png"),
         receipt: dir.join("generation.json"),
-        prompt_file: dir.join("asset.prompt.md"),
+        prompt_file: dir.join("asset.prompt.txt"),
         rig_layout: rig.map(|(_, layout)| layout),
         project,
         references,

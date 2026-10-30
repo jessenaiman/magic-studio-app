@@ -156,11 +156,14 @@ class RegistryGroup(click.Group):
             else:
                 click.echo(current.get_help())
 
-        help_text = (
-            f"{spec['label']}. Parameters: {spec['params']}"
-            if spec
-            else f"{name} commands from the application registry."
-        )
+        help_text = f"{name} commands from the application registry."
+        if spec:
+            help_text = (
+                f"{(spec.get('help') or spec['label']).rstrip('.')}.\n\n"
+                f"Parameters: {spec['params']}"
+            )
+            if spec.get("example"):
+                help_text += f"\n\n\b\nExample:\n  {spec['example']}"
         options = [click.Option(["--params"], help="JSON parameter object")]
         # Groups may also be commands (e.g. motion.path); use --params for the parent.
         if not children:

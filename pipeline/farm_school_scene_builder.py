@@ -29,9 +29,9 @@ from pipeline.step_volume_hull import (
     SCHOOL_BG,
     SIX_CAST_ORDER,
     VIEW_ANGLES,
-    prepare_volume,
     resolve_character_assets,
 )
+from pipeline.volume_reconstruction import prepare_volume
 from pipeline.step_blender_mesh_rig import BLENDER_MESH_RIG_CODE
 from pipeline.step_blender_2d_anim import (
     BLENDER_2D_ANIM_CODE,

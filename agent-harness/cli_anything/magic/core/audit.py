@@ -189,7 +189,7 @@ def run_native(
     stdin = None
     if stdin_files is not None:
         stdin = b"".join(path.read_bytes() + b"\n" for path in stdin_files)
-    code = subprocess.run(
+    code = subprocess.run(  # noqa: S603 -- Fixed native tool argv; no shell.
         command, cwd=root, check=False, input=stdin,
         stdout=sys.stderr if diagnostic else None,
     ).returncode

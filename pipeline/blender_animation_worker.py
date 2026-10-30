@@ -142,6 +142,80 @@ def sha256(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def import_skeleton(request, job):
+    sys.path.insert(0, str(job))
+    from pipeline.blender_cutout_rig import export_blender_python_script
+    import runpy
+
+    source = request["rig_plan"]
+    plan = source["data"]
+    base = Path(source["path"]).parent
+    snapshot = job / "rig-snapshot"
+    snapshot.mkdir()
+    write_json(snapshot / "original-rig.json", plan)
+    artwork = []
+    for index, part in enumerate(plan["parts"]):
+        original = Path(part["full_layer_path"])
+        original = original if original.is_absolute() else base / original
+        target = snapshot / f"part-{index:04}.png"
+        shutil.copyfile(original, target)
+        part["full_layer_path"] = str(target)
+        artwork.append(dict(id=part["id"], source_file=str(original),
+                            packed_crop_sha256=sha256(target)))
+    script = job / "build-skeleton.py"
+    export_blender_python_script(
+        plan, plan["pose_library"], script, mode=request["track"],
+        duration=request["duration"], blend_path=str(job / "source.blend"),
+        glb_path=str(job / "skeleton.glb"),
+    )
+    runpy.run_path(str(script))
+    provenance = dict(backend="blender", representation="skeletal_cutout_2d",
+                      character=request["character"], track=request["track"],
+                      spec=source["path"], rig_sha256=source["sha256"],
+                      canvas=plan["canvas_size"], source_job=request["job"],
+                      artwork=artwork, glb=str(job / "skeleton.glb"))
+    bpy.context.scene["magicstudio_provenance"] = json.dumps(provenance)
+    return provenance
+
+
+def import_volume(request, job):
+    sys.path.insert(0, str(job))
+    from blender_volume import build
+
+    source = request["volume_plan"]
+    plan = source["data"]
+    base = Path(source["path"]).parent
+    snapshot = job / "volume-snapshot"
+    snapshot.mkdir()
+    write_json(snapshot / "original-plan.json", plan)
+    artwork = []
+    for index, view in enumerate(plan["views"]):
+        if "sheet" in view:
+            raise ValueError("Extract and register individual turnaround views before building a volume")
+        original = Path(view["file"])
+        original = original if original.is_absolute() else base / original
+        target = snapshot / f"view-{index:04}.png"
+        shutil.copyfile(original, target)
+        view["file"] = str(target)
+        artwork.append(dict(id=view["label"], source_file=str(original),
+                            packed_crop_sha256=sha256(target)))
+    frozen = snapshot / "plan.json"
+    write_json(frozen, plan)
+    construction = job / "construction"
+    subprocess.run(["python3", str(job / "volume_reconstruction.py"), "--spec", str(frozen),
+                    "--out-dir", str(construction), "--resolution", str(request["voxel_resolution"])], check=True)
+    spec = json.loads((construction / "asset_sources.json").read_text())
+    build(spec, request["duration"], job, request["track"])
+    rigged = request["track"] != "turntable"
+    provenance = dict(backend="blender", representation="skeletal_volume_3d" if rigged else "silhouette_volume_3d", rigged=rigged,
+                      registration_space="render_pixels", character=request["character"],
+                      track=request["track"], spec=source["path"], rig_sha256=source["sha256"],
+                      canvas=[512, 512], source_job=request["job"], artwork=artwork,
+                      reconstruction=spec["reconstruction"], glb=str(job / "volume.glb"))
+    bpy.context.scene["magicstudio_provenance"] = json.dumps(provenance)
+    return provenance
+
+
 def service_metrics(unit):
     properties = [
         "Description",
@@ -285,6 +359,9 @@ def finalize(request_path):
 
 
 def registration(scene):
+    provenance = json.loads(scene.get("magicstudio_provenance", "{}"))
+    if provenance.get("registration_space") == "render_pixels":
+        return [0, 0, *provenance["canvas"]]
     camera = scene.camera
     if camera is None or camera.data.type != "ORTHO":
         raise RuntimeError(
@@ -318,7 +395,15 @@ def main():
     try:
         job_metadata(request_path, request, service_metrics(request["unit"]))
         source_blend_sha256 = None
-        if request.get("blend"):
+        if request.get("volume_plan"):
+            write_json(job / "progress.json", {"state": "reconstructing_volume"})
+            provenance = import_volume(request, job)
+            scene = bpy.context.scene
+        elif request.get("rig_plan"):
+            write_json(job / "progress.json", {"state": "building_skeleton"})
+            provenance = import_skeleton(request, job)
+            scene = bpy.context.scene
+        elif request.get("blend"):
             write_json(job / "progress.json", {"state": "loading"})
             frozen_blend = job / "source.blend"
             shutil.copyfile(request["blend"], frozen_blend)

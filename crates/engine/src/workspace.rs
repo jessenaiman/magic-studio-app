@@ -111,11 +111,6 @@ pub fn build_photocraft_run_args(
     args
 }
 
-/// Build the exact CLI argument vector for `effectcraft-cli script <script.jsx>`.
-pub fn build_effectcraft_script_args(script_path: &str) -> Vec<String> {
-    vec!["script".to_string(), script_path.to_string()]
-}
-
 pub(crate) struct ToolSlotGuard;
 impl Drop for ToolSlotGuard {
     fn drop(&mut self) {

@@ -271,14 +271,14 @@ function animationControls(){
 }
 function motionExportControl(){
  const status=el('div',{id:'motion-export-status',class:'why',role:'status'});let busy=false;
- const button=el('button',{class:'start',id:'motion-export','data-commands':'motion.export_track',title:'Export the current rest/action preview as a transparent track',onclick:async()=>{
+ const button=el('button',{class:'start',id:'motion-export','data-commands':'animation.render',title:'Export the current rest/action preview as a transparent track',onclick:async()=>{
   if(busy)return;const project=state.project,character=motion.character;
   try{
    theatreRequireSaved();
    const duration=motion.sample?.duration/motion.speed;
    if(!character||!motion.track||!Number.isFinite(duration)||duration<=0)throw Error('Choose a sampled action before exporting.');
    const params={character,track:motion.track,rest:motion.rest,amount:motion.amount,duration};busy=true;button.disabled=true;status.textContent='Rendering transparent track…';
-   const result=await motionCommand('motion.export_track',params);
+   const result=await motionCommand('animation.render',params);
    motion.lastExport={project,character,params,result};
    if(state.project!==project||motion.character!==character)return;
    const file=result.outputs?.[0]?.file;
