@@ -904,17 +904,20 @@ function wordsNow(t) {
   wordsAnimateFlow(view, t);
   if (wordsPanel.playing) wordsFollow(t);
 }
+function wordsRollGeometry(view) {
+  const tl = view?.querySelector(".words-tl"), eye = view?.querySelector(".words-preview, .lyric-canvas");
+  if (!tl || !eye || tl.clientHeight <= 0) return null;
+  const seconds = Number(tl.style.getPropertyValue("--len-s")) || wordsSongSpan().end;
+  const box = view.getBoundingClientRect(), eyeY = Math.max(120, eye.getBoundingClientRect().bottom - box.top + 18);
+  view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
+  return { tl, seconds, eyeY, tlTop: tl.getBoundingClientRect().top - box.top + view.scrollTop };
+}
 // The lyrics and the film roll move with the song: the moment t and the white playhead bar sit right
 // below the video preview so the active lyric line and its musical connection curve run below the stage.
 function wordsFollow(t, smooth = false) {
-  const view = $("view-design"), tl = view?.querySelector(".words-tl");
-  const eye = view?.querySelector(".words-preview, .lyric-canvas");
-  if (!tl || !eye) return;
-  const seconds = Number(tl.style.getPropertyValue("--len-s")), box = view.getBoundingClientRect();
-  const eyeY = Math.max(120, eye.getBoundingClientRect().bottom - box.top + 18);
-  view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
-  const tlTop = tl.getBoundingClientRect().top - box.top + view.scrollTop;
-  const target = tlTop + tl.clientHeight * t / seconds - eyeY;
+  const view = $("view-design"), g = wordsRollGeometry(view);
+  if (!g) return;
+  const target = g.tlTop + g.tl.clientHeight * t / g.seconds - g.eyeY;
   wordsPanel.programmaticScrollUntil = performance.now() + (smooth ? 450 : 90);
   view.scrollTo({ top: Math.max(0, target), behavior: smooth ? "smooth" : "instant" });
 }
@@ -926,14 +929,9 @@ function wordsSyncViewScroll(view) {
   wordsArrows(view);
   const now = performance.now();
   if (now < (wordsPanel.programmaticScrollUntil || 0) && now >= (wordsPanel.userWheelUntil || 0)) return;
-  const tl = view?.querySelector(".words-tl"), eye = view?.querySelector(".words-preview, .lyric-canvas");
-  if (!tl || !eye || tl.clientHeight <= 0) return;
-  const seconds = Number(tl.style.getPropertyValue("--len-s")) || wordsSongSpan().end;
-  const box = view.getBoundingClientRect();
-  const eyeY = Math.max(120, eye.getBoundingClientRect().bottom - box.top + 18);
-  view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
-  const tlTop = tl.getBoundingClientRect().top - box.top + view.scrollTop;
-  const t = Math.max(0, Math.min(wordsSongSpan().end, ((view.scrollTop + eyeY - tlTop) / tl.clientHeight) * seconds));
+  const g = wordsRollGeometry(view);
+  if (!g) return;
+  const t = Math.max(0, Math.min(wordsSongSpan().end, ((view.scrollTop + g.eyeY - g.tlTop) / g.tl.clientHeight) * g.seconds));
   if (wordsPanel.playing) { wordsVideo("pause"); wordsPanel.playing = false; }
   wordsPanel.previewRange = null; wordsPanel.autoPlay = false;
   wordsPanel.userScrollingUntil = now + 220;
