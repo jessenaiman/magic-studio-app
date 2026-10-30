@@ -111,6 +111,19 @@ $("new-form").addEventListener("submit", async (e) => {
 });
 
 $("home-new").addEventListener("click", () => beginNewProject().catch(error => toast(String(error))));
+$("home-new-animation").addEventListener("click", event => beginNewAnimation(acFeedback.actions.get(event.currentTarget)).catch(error => toast(String(error))));
+
+// New animation: pick the approved character image; the study is named after it,
+// created in the production folder, and opens straight into Animation.
+async function beginNewAnimation(action) {
+  const image = await dialog.open({ title: "Approved character image", filters: [{ name: "Image", extensions: ["png", "webp", "jpg", "jpeg", "psd"] }] });
+  if (!image) return;
+  const name = image.split("/").pop().replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9]+/g, " ").trim() || "Character";
+  const opened = await invoke("animation_create", {request:action?.request_id, control:action?.control, name, root: await invoke("projects_root")});
+  await applyOpenedProject(opened);
+  await designCommand("project.add_asset", {path: image, character: name.toLowerCase().replace(/ /g, "-"), name});
+  toast(`Animation created · ${name}`);
+}
 $("home-open").addEventListener("click", openDialog);
 $("brand").addEventListener("click", () => showHome().catch(error => toast(String(error))));
 $("brand").addEventListener("keydown", (e) => { if (e.key === "Enter") showHome(); });
