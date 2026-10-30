@@ -3,6 +3,7 @@
 
 import argparse, collections, contextlib, hashlib, json, math, os, re, select, shutil, subprocess, sys, time
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 VERSION = "4.1"
 SIZE = [1080, 1600]
@@ -77,7 +78,8 @@ def validate_words(words, duration, allow_overrun=False):
         raise ValueError("Word occurrence IDs must be nonempty and unique")
 
 
-def validate_groups(groups, words, duration):
+def check_group_ids(groups, words):
+    """Every word occurrence exactly once, in order, under unique scene ids."""
     ids = [i for g in groups for i in g["word_ids"]]
     if ids != [w["id"] for w in words]:
         raise ValueError(
@@ -85,78 +87,120 @@ def validate_groups(groups, words, duration):
         )
     if len({g["id"] for g in groups}) != len(groups):
         raise ValueError("Group targets must be unique")
-    lookup = {w["id"]: w for w in words}
+
+
+def word_outside_span(word, group):
+    if word["start"] < group["span_start"] - 0.001:
+        return True
+    if word["end"] > group["span_end"] + 0.001:
+        return (
+            group.get("word_assignment")
+            != "source-start timestamp; canonical scene cuts preserved"
+        )
+    return False
+
+
+def check_group_spans(groups, lookup, duration):
+    """Spans positive, contiguous, covering their words and the whole recording."""
     previous = 0
-    for g in groups:
-        if abs(g["span_start"] - previous) > 0.001 or g["span_end"] <= g["span_start"]:
-            raise ValueError("Scene spans must be positive and contiguous")
-        if any(
-            lookup[i]["start"] < g["span_start"] - 0.001
-            or (
-                lookup[i]["end"] > g["span_end"] + 0.001
-                and g.get("word_assignment")
-                != "source-start timestamp; canonical scene cuts preserved"
-            )
-            for i in g["word_ids"]
+    for group in groups:
+        if (
+            abs(group["span_start"] - previous) > 0.001
+            or group["span_end"] <= group["span_start"]
         ):
+            raise ValueError("Scene spans must be positive and contiguous")
+        if any(word_outside_span(lookup[i], group) for i in group["word_ids"]):
             raise ValueError("Scene span excludes its source word timing")
-        previous = g["span_end"]
+        previous = group["span_end"]
     if abs(previous - duration) > 0.001:
         raise ValueError("Scene spans do not cover the full recording")
 
 
-def propose_groups(words, duration):
-    validate_words(words, duration)
+def validate_groups(groups, words, duration):
+    check_group_ids(groups, words)
+    check_group_spans(groups, {w["id"]: w for w in words}, duration)
+
+
+def is_boundary(words, i, start):
+    """Does the chunk starting at `start` end after word i?"""
+    word = words[i]
+    count = i - start + 1
+    gap = words[i + 1]["start"] - word["end"] if i + 1 < len(words) else 0
+    terminal = norm(word["text"]) not in STOP
+    return (
+        (str(word["text"]).endswith((".", "?", "!")) and count >= 3)
+        or (gap >= 0.16 and count >= 5 and terminal)
+        or (count >= 16 and terminal)
+    )
+
+
+def word_chunks(words):
+    """Split the words on pauses, punctuation and length, folding a short tail back."""
     chunks = []
     start = 0
-    for i, w in enumerate(words):
-        count = i - start + 1
-        gap = words[i + 1]["start"] - w["end"] if i + 1 < len(words) else 0
-        terminal = norm(w["text"]) not in STOP
-        boundary = (
-            (str(w["text"]).endswith((".", "?", "!")) and count >= 3)
-            or (gap >= 0.16 and count >= 5 and terminal)
-            or (count >= 16 and terminal)
-        )
-        if boundary or i == len(words) - 1:
+    for i in range(len(words)):
+        if is_boundary(words, i, start) or i == len(words) - 1:
             chunks.append(words[start : i + 1])
             start = i + 1
     if len(chunks) > 1 and len(chunks[-1]) < 3:
         chunks[-2] += chunks.pop()
+    return chunks
+
+
+def gap_group(chunk, cursor):
+    return dict(
+        id="gap-" + chunk[0]["id"],
+        word_ids=[],
+        text="",
+        span_start=cursor,
+        span_end=chunk[0]["start"],
+        kind="uncaptioned audio",
+        status="needs review",
+        reason="No source words in this interval; listen before calling it instrumental.",
+    )
+
+
+def phrase_group(chunk, cursor, end):
+    return dict(
+        id="phrase-" + chunk[0]["id"],
+        word_ids=[w["id"] for w in chunk],
+        text=" ".join(w["text"] for w in chunk),
+        span_start=cursor,
+        span_end=end,
+        lyric_start=chunk[0]["start"],
+        lyric_end=chunk[-1]["end"],
+        kind="provisional phrase",
+        status="needs review",
+        reason="Proposed from word pauses/punctuation with a line fallback; no verse/chorus identity asserted.",
+    )
+
+
+def phrase_groups(chunks, duration):
+    """A phrase group per chunk, with an uncaptioned group wherever audio runs on unspoken."""
     groups = []
     cursor = 0
-    for i, ch in enumerate(chunks):
-        if ch[0]["start"] - cursor >= 1:
-            groups.append(
-                dict(
-                    id="gap-" + ch[0]["id"],
-                    word_ids=[],
-                    text="",
-                    span_start=cursor,
-                    span_end=ch[0]["start"],
-                    kind="uncaptioned audio",
-                    status="needs review",
-                    reason="No source words in this interval; listen before calling it instrumental.",
-                )
-            )
-            cursor = ch[0]["start"]
+    for i, chunk in enumerate(chunks):
+        if chunk[0]["start"] - cursor >= 1:
+            groups.append(gap_group(chunk, cursor))
+            cursor = chunk[0]["start"]
         nxt = chunks[i + 1][0]["start"] if i + 1 < len(chunks) else duration
-        end = ch[-1]["end"] if nxt - ch[-1]["end"] >= 1 else nxt
-        groups.append(
-            dict(
-                id="phrase-" + ch[0]["id"],
-                word_ids=[w["id"] for w in ch],
-                text=" ".join(w["text"] for w in ch),
-                span_start=cursor,
-                span_end=end,
-                lyric_start=ch[0]["start"],
-                lyric_end=ch[-1]["end"],
-                kind="provisional phrase",
-                status="needs review",
-                reason="Proposed from word pauses/punctuation with a line fallback; no verse/chorus identity asserted.",
-            )
-        )
+        end = chunk[-1]["end"] if nxt - chunk[-1]["end"] >= 1 else nxt
+        groups.append(phrase_group(chunk, cursor, end))
         cursor = end
+    return groups, cursor
+
+
+def repeat_counts(groups):
+    """How often each phrase text recurs, so a repeated line is visible in the deck."""
+    key = lambda g: " ".join(norm(t) for t in g["text"].split())
+    counts = collections.Counter(key(g) for g in groups if g["word_ids"])
+    for group in groups:
+        group["repeat_occurrences"] = counts.get(key(group), 0)
+
+
+def propose_groups(words, duration):
+    validate_words(words, duration)
+    groups, cursor = phrase_groups(word_chunks(words), duration)
     if duration - cursor > 0.001:
         groups.append(
             dict(
@@ -170,73 +214,75 @@ def propose_groups(words, duration):
                 reason="Recording continues after the last transcribed word.",
             )
         )
-    counts = collections.Counter(
-        " ".join(norm(t) for t in g["text"].split()) for g in groups if g["word_ids"]
-    )
-    for g in groups:
-        key = " ".join(norm(t) for t in g["text"].split())
-        g["repeat_occurrences"] = counts.get(key, 0)
+    repeat_counts(groups)
     validate_groups(groups, words, duration)
     return groups
 
 
-def read_inputs(config, grouping=None):
-    c = json.loads(Path(config).read_text())
-    if c.get("empty_template"):
-        return c, [], [], [], float(c.get("duration_sec") or 0)
+def load_words(c):
     words = json.loads(Path(c["transcript"]).read_text())
     words = words if isinstance(words, list) else words["words"]
-    words = [dict(w, id=w.get("id", f"w{i}")) for i, w in enumerate(words)]
-    duration = (
-        float(c["duration_sec"])
-        if c.get("duration_sec") is not None
-        else float(json.loads(Path(c["audiomap"]).read_text())["audio"]["duration_sec"])
-    )
-    validate_words(words, duration, c.get("allow_timing_overrun", False))
-    cues = []
-    for block in (
-        re.split(r"\n\s*\n", Path(c.get("captions")).read_text().strip())
-        if c.get("captions")
-        else []
+    return [dict(w, id=w.get("id", f"w{i}")) for i, w in enumerate(words)]
+
+
+def recording_duration(c):
+    if c.get("duration_sec") is not None:
+        return float(c["duration_sec"])
+    return float(json.loads(Path(c["audiomap"]).read_text())["audio"]["duration_sec"])
+
+
+def parse_cue(block, cues, duration, allow_overrun):
+    """One caption block: its timing line and the text below it, in order and inside the recording."""
+    lines = block.splitlines()
+    hit = next((i for i, l in enumerate(lines) if "-->" in l), None)
+    if hit is None:
+        raise ValueError("Malformed caption block")
+    times = re.findall(r"(\d+):(\d+):(\d+)[,.](\d+)", lines[hit])
+    if len(times) != 2:
+        raise ValueError("Malformed cue timestamp")
+    a, b = [
+        int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000 for h, m, s, ms in times
+    ]
+    if (
+        a < 0
+        or b < a
+        or (b > duration + 0.001 and not allow_overrun)
+        or (cues and a < cues[-1]["end"])
     ):
-        lines = block.splitlines()
-        hit = next((i for i, l in enumerate(lines) if "-->" in l), None)
-        if hit is None:
-            raise ValueError("Malformed caption block")
-        times = re.findall(r"(\d+):(\d+):(\d+)[,.](\d+)", lines[hit])
-        if len(times) != 2:
-            raise ValueError("Malformed cue timestamp")
-        a, b = [
-            int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
-            for h, m, s, ms in times
-        ]
-        if (
-            a < 0
-            or b < a
-            or (b > duration + 0.001 and not c.get("allow_timing_overrun"))
-            or (cues and a < cues[-1]["end"])
-        ):
-            raise ValueError("Caption timings overlap or exceed recording")
-        cues.append(
-            dict(
-                id=f"cue-{len(cues) + 1:03}",
-                start=a,
-                end=b,
-                text=" ".join(lines[hit + 1 :]),
-                status="needs review",
-            )
-        )
-    if not c.get("captions"):
-        cues = [
-            dict(w, status="native word timing; no supplied phrase captions")
-            for w in words
-        ]
+        raise ValueError("Caption timings overlap or exceed recording")
+    return dict(
+        id=f"cue-{len(cues) + 1:03}",
+        start=a,
+        end=b,
+        text=" ".join(lines[hit + 1 :]),
+        status="needs review",
+    )
+
+
+def parse_cues(text, duration, allow_overrun):
+    cues = []
+    for block in re.split(r"\n\s*\n", text.strip()):
+        cues.append(parse_cue(block, cues, duration, allow_overrun))
+    return cues
+
+
+def native_cues(words):
+    return [
+        dict(w, status="native word timing; no supplied phrase captions") for w in words
+    ]
+
+
+def check_caption_words(cues, words):
     if [norm(t) for x in cues for t in x["text"].split()] != [
         norm(t) for w in words for t in w["text"].split()
     ]:
         raise ValueError(
             "Caption text does not preserve the word transcript occurrence sequence"
         )
+
+
+def load_groups(grouping, words, duration):
+    """The grouping to use, with each scene's lyric text and timing filled from its words."""
     groups = (
         json.loads(Path(grouping).read_text())["groups"]
         if grouping
@@ -253,11 +299,33 @@ def read_inputs(config, grouping=None):
             g["lyric_start"] = lookup[g["word_ids"][0]]["start"]
             g["lyric_end"] = lookup[g["word_ids"][-1]]["end"]
     validate_groups(groups, words, duration)
+    return groups
+
+
+def check_scene_images(c, groups):
     image_map = c.get("scene_images", {})
     if not isinstance(image_map, dict) or set(image_map) - {g["id"] for g in groups}:
         raise ValueError("scene_images keys must identify actual grouping IDs")
     if any(not isinstance(r, dict) or not r.get("file") for r in image_map.values()):
         raise ValueError("Each scene_images record requires an explicit file path")
+
+
+def read_inputs(config, grouping=None):
+    c = json.loads(Path(config).read_text())
+    if c.get("empty_template"):
+        return c, [], [], [], float(c.get("duration_sec") or 0)
+    words = load_words(c)
+    duration = recording_duration(c)
+    validate_words(words, duration, c.get("allow_timing_overrun", False))
+    if c.get("captions"):
+        cues = parse_cues(
+            Path(c["captions"]).read_text(), duration, c.get("allow_timing_overrun", False)
+        )
+    else:
+        cues = native_cues(words)
+    check_caption_words(cues, words)
+    groups = load_groups(grouping, words, duration)
+    check_scene_images(c, groups)
     return c, words, cues, groups, duration
 
 
@@ -410,6 +478,157 @@ class Deck:
             )
 
 
+def template_toc(d):
+    for slot in range(TOC_PAGE_SIZE):
+        y = 220 + slot * 64
+        d.box([60, y, 960, 54], "#1B1D22", "layout.toc.row." + str(slot))
+        d.text(
+            "Document page",
+            [78, y + 14, 780, 30],
+            22,
+            INK,
+            False,
+            "auto.toc.label." + str(slot),
+        )
+        d.text(
+            "00",
+            [930, y + 15, 68, 28],
+            18,
+            TEAL,
+            False,
+            "auto.toc.meta." + str(slot),
+        )
+
+
+def template_overview(d):
+    for title, instruction, x, y, w, h, role in [
+        (
+            "Song story",
+            "Describe the story, characters and progression of this song.",
+            60,
+            220,
+            960,
+            280,
+            "story",
+        ),
+        (
+            "Background A / main location",
+            "Name this location and place its background reference.",
+            60,
+            540,
+            464,
+            330,
+            "background.main",
+        ),
+        (
+            "Background B / alternate location",
+            "Name this location and place its background reference.",
+            556,
+            540,
+            464,
+            330,
+            "background.alternate",
+        ),
+        (
+            "Characters and props",
+            "Name the cast and reusable props for this song.",
+            60,
+            910,
+            960,
+            220,
+            "cast",
+        ),
+        ("Source material", "", 60, 1170, 960, 260, "source"),
+    ]:
+        d.card(title, instruction, [x, y, w, h], role)
+
+
+def template_scene(d):
+    d.text("SCENE IMAGE / 16:9", [60, 195, 960, 23], 17, TEAL, True)
+    d.box(SCENE_ART_REGION, "#08090C", "layout.scene.picturewell")
+    d.text(
+        "Place the scene reference here",
+        [90, 455, 900, 50],
+        28,
+        MUTED,
+        False,
+        "user.scene.reference",
+    )
+    d.text("", [80, 726, 920, 24], 16, TEAL, False, "state.scene.reference")
+    d.box([60, 790, 960, 150], "#F3ECD7", "layout.scene.lyrics")
+    d.text("LYRICS", [80, 803, 920, 22], 16, "#6D5631", True)
+    d.text("", [80, 838, 920, 90], 27, "#211E18", False, "auto.scene.lyrics")
+    for title, role, x, y, w, h, instruction in [
+        (
+            "Action / staging",
+            "action",
+            60,
+            970,
+            464,
+            190,
+            "Describe the visible action, framing and movement.",
+        ),
+        (
+            "Continuity / linked assets",
+            "continuity",
+            556,
+            970,
+            464,
+            190,
+            "Link cast, props and locations. Record continuity.",
+        ),
+        (
+            "Image prompt",
+            "image_prompt",
+            60,
+            1180,
+            464,
+            160,
+            "Describe the reference image to create.",
+        ),
+        (
+            "Animation prompt",
+            "animation_prompt",
+            556,
+            1180,
+            464,
+            160,
+            "Describe movement, timing and camera action.",
+        ),
+        (
+            "Animated text",
+            "animated_text",
+            60,
+            1360,
+            464,
+            170,
+            "Text, word IDs, reveal timing and placement.",
+        ),
+        (
+            "Drawing cues",
+            "drawing",
+            556,
+            1360,
+            464,
+            170,
+            "What is drawn, when it appears and where.",
+        ),
+    ]:
+        d.card(title, instruction, [x, y, w, h], "scene." + role)
+
+
+def build_template_slide(d, kind):
+    """Rebuild one emptied template slide for its kind."""
+    if kind == "toc":
+        template_toc(d)
+    elif kind == "overview":
+        template_overview(d)
+    elif kind in ["assets", "locations"]:
+        d.sheet()
+    elif kind == "scene":
+        template_scene(d)
+
+
 def revise_template(template):
     """Revise existing native template slides through DeckCraft; no alternate renderer."""
     template = Path(template).resolve()
@@ -425,128 +644,7 @@ def revise_template(template):
             d.cmd("slide.go", index=i)
             d.cmd("edit.delete", ids=[sh["id"] for sh in slide["shapes"]])
             d.page(kind, kind.title(), "Imported source timing", new=False)
-            if kind == "toc":
-                for slot in range(TOC_PAGE_SIZE):
-                    y = 220 + slot * 64
-                    d.box([60, y, 960, 54], "#1B1D22", "layout.toc.row." + str(slot))
-                    d.text(
-                        "Document page",
-                        [78, y + 14, 780, 30],
-                        22,
-                        INK,
-                        False,
-                        "auto.toc.label." + str(slot),
-                    )
-                    d.text(
-                        "00",
-                        [930, y + 15, 68, 28],
-                        18,
-                        TEAL,
-                        False,
-                        "auto.toc.meta." + str(slot),
-                    )
-            elif kind == "overview":
-                d.card(
-                    "Song story",
-                    "Describe the story, characters and progression of this song.",
-                    [60, 220, 960, 280],
-                    "story",
-                )
-                d.card(
-                    "Background A / main location",
-                    "Name this location and place its background reference.",
-                    [60, 540, 464, 330],
-                    "background.main",
-                )
-                d.card(
-                    "Background B / alternate location",
-                    "Name this location and place its background reference.",
-                    [556, 540, 464, 330],
-                    "background.alternate",
-                )
-                d.card(
-                    "Characters and props",
-                    "Name the cast and reusable props for this song.",
-                    [60, 910, 960, 220],
-                    "cast",
-                )
-                d.card("Source material", "", [60, 1170, 960, 260], "source")
-            elif kind in ["assets", "locations"]:
-                d.sheet()
-            elif kind == "scene":
-                d.text("SCENE IMAGE / 16:9", [60, 195, 960, 23], 17, TEAL, True)
-                d.box(SCENE_ART_REGION, "#08090C", "layout.scene.picturewell")
-                d.text(
-                    "Place the scene reference here",
-                    [90, 455, 900, 50],
-                    28,
-                    MUTED,
-                    False,
-                    "user.scene.reference",
-                )
-                d.text("", [80, 726, 920, 24], 16, TEAL, False, "state.scene.reference")
-                d.box([60, 790, 960, 150], "#F3ECD7", "layout.scene.lyrics")
-                d.text("LYRICS", [80, 803, 920, 22], 16, "#6D5631", True)
-                d.text(
-                    "", [80, 838, 920, 90], 27, "#211E18", False, "auto.scene.lyrics"
-                )
-                for title, role, x, y, w, h, instruction in [
-                    (
-                        "Action / staging",
-                        "action",
-                        60,
-                        970,
-                        464,
-                        190,
-                        "Describe the visible action, framing and movement.",
-                    ),
-                    (
-                        "Continuity / linked assets",
-                        "continuity",
-                        556,
-                        970,
-                        464,
-                        190,
-                        "Link cast, props and locations. Record continuity.",
-                    ),
-                    (
-                        "Image prompt",
-                        "image_prompt",
-                        60,
-                        1180,
-                        464,
-                        160,
-                        "Describe the reference image to create.",
-                    ),
-                    (
-                        "Animation prompt",
-                        "animation_prompt",
-                        556,
-                        1180,
-                        464,
-                        160,
-                        "Describe movement, timing and camera action.",
-                    ),
-                    (
-                        "Animated text",
-                        "animated_text",
-                        60,
-                        1360,
-                        464,
-                        170,
-                        "Text, word IDs, reveal timing and placement.",
-                    ),
-                    (
-                        "Drawing cues",
-                        "drawing",
-                        556,
-                        1360,
-                        464,
-                        170,
-                        "What is drawn, when it appears and where.",
-                    ),
-                ]:
-                    d.card(title, instruction, [x, y, w, h], "scene." + role)
+            build_template_slide(d, kind)
             d.flush()
         d.cmd("file.saveAs", path=str(template))
     finally:
@@ -734,324 +832,313 @@ def place_scene_picture(d, slide, record, group_id, region=None):
     )
 
 
-def fill_page(
-    d, slide, page, c, words, cues, groups, duration, all_pages, representative
-):
-    kind = page["kind"]
-    fill = lambda r, t, sz=None: fill_text(d, slide, r, t, sz)
-    compact = 140 if kind == "scene" and page["group"].get("panels") else 0
-    if compact:
-        for shape in slide["shapes"]:
-            x, y, w, h = shape["box"]
-            if y >= 790:
-                d.q("shape.setBounds", ids=[shape["id"]], x=x, y=y - compact, w=w, h=h)
-            if shape.get("altText") == "layout.scene.picturewell":
-                d.q("shape.setBounds", ids=[shape["id"]], x=x, y=y, w=w, h=400)
-        d.flush()
-        slide = d.cmd("slide.inspect", index=slide["index"])
+def shrink_panels(d, slide, compact):
+    """Lift everything below the lyric band and give the picture well more room."""
+    for shape in slide["shapes"]:
+        x, y, w, h = shape["box"]
+        if y >= 790:
+            d.q("shape.setBounds", ids=[shape["id"]], x=x, y=y - compact, w=w, h=h)
+        if shape.get("altText") == "layout.scene.picturewell":
+            d.q("shape.setBounds", ids=[shape["id"]], x=x, y=y, w=w, h=400)
+    d.flush()
 
-    duration_label = (
-        "Measured recording"
-        if c.get("recording_duration_verified", False)
-        else "Supplied timing extent; recording duration unknown"
-    )
-    fill("auto.title", c["title"] + " / " + page["title"], 36)
-    fill("auto.subtitle", f"{clock(duration)} / " + page["title"], 18)
+
+def contents_nav(d, slide, representative, kind, all_pages):
+    """The contents link points back at the TOC unless this page is the TOC or a proof."""
     nav = next(x for x in slide["shapes"] if x.get("altText") == "nav.contents")
+    plain = representative or kind == "toc"
     d.q(
         "shape.action",
         ids=[nav["id"]],
-        action="none" if representative or kind == "toc" else "slide",
-        **(
-            {}
-            if representative or kind == "toc"
-            else {
-                "slide": next(i for i, p in enumerate(all_pages) if p["kind"] == "toc")
-            }
-        ),
+        action="none" if plain else "slide",
+        **({} if plain else {"slide": next(i for i, p in enumerate(all_pages) if p["kind"] == "toc")}),
     )
-    if kind == "toc":
-        at = int(page["key"].split(":")[1]) - 1
-        for slot in range(TOC_PAGE_SIZE):
-            entry = at * TOC_PAGE_SIZE + slot
-            entries = toc_entries(all_pages)
-            index, target = entries[entry] if entry < len(entries) else (None, None)
-            if target is None:
-                ids = [
-                    x["id"]
-                    for x in slide["shapes"]
-                    if x.get("altText")
-                    in [
-                        "layout.toc.row." + str(slot),
-                        "auto.toc.label." + str(slot),
-                        "auto.toc.meta." + str(slot),
-                    ]
-                ]
-                d.q("edit.delete", ids=ids)
-                continue
-            fill("auto.toc.label." + str(slot), target["title"] if target else "", 22)
-            fill("auto.toc.meta." + str(slot), f"{index + 1:02}" if target else "", 18)
-            sh = next(
-                x
-                for x in slide["shapes"]
-                if x.get("altText") == "auto.toc.label." + str(slot)
+
+
+def slot_shapes(slide, roles):
+    return [x["id"] for x in slide["shapes"] if x.get("altText") in roles]
+
+
+def fill_toc(d, slide, page, all_pages, fill):
+    """Fill one TOC page from the entries it covers, deleting rows past the end."""
+    at = int(page["key"].split(":")[1]) - 1
+    entries = toc_entries(all_pages)
+    for slot in range(TOC_PAGE_SIZE):
+        entry = at * TOC_PAGE_SIZE + slot
+        index, target = entries[entry] if entry < len(entries) else (None, None)
+        if target is None:
+            ids = slot_shapes(
+                slide,
+                [
+                    "layout.toc.row." + str(slot),
+                    "auto.toc.label." + str(slot),
+                    "auto.toc.meta." + str(slot),
+                ],
             )
-            d.q(
-                "shape.action",
-                ids=[sh["id"]],
-                action="slide" if target else "none",
-                **({"slide": index} if target else {}),
-            )
-    if kind == "overview":
-        for key, role, sz in [
-            ("story", "user.story", 21),
-            ("background_main", "user.background.main", 18),
-            ("background_alternate", "user.background.alternate", 18),
-            ("cast", "user.cast", 18),
-        ]:
-            if c.get(key):
-                fill_text(d, slide, role, c[key], sz, fit=True)
-        warning = (
-            "\nTIMING WARNING: " + c["timing_warning"]
-            if c.get("timing_warning")
-            else ""
+            d.q("edit.delete", ids=ids)
+            continue
+        fill("auto.toc.label." + str(slot), target["title"] if target else "", 22)
+        fill("auto.toc.meta." + str(slot), f"{index + 1:02d}" if target else "", 18)
+        sh = next(
+            x for x in slide["shapes"] if x.get("altText") == "auto.toc.label." + str(slot)
         )
-        source_note = (
-            "Audio linked; lyrics, scene structure and artwork await your choices."
-            if c.get("empty_template")
-            else "Existing transcript words/timing consumed unchanged."
+        d.q(
+            "shape.action",
+            ids=[sh["id"]],
+            action="slide" if target else "none",
+            **({"slide": index} if target else {}),
         )
-        fill_text(
-            d,
-            slide,
-            "user.source",
-            f"{duration_label}: {clock(duration)}\n{len(words)} timed words / {len(groups)} scenes\n"
-            + source_note
-            + warning,
-            20,
-            fit=True,
-        )
-        links = [
+
+
+def fill_overview(d, slide, c, words, groups, duration, duration_label):
+    """The song story page: the four authored blocks, provenance note and source links."""
+    for key, role, sz in [
+        ("story", "user.story", 21),
+        ("background_main", "user.background.main", 18),
+        ("background_alternate", "user.background.alternate", 18),
+        ("cast", "user.cast", 18),
+    ]:
+        if c.get(key):
+            fill_text(d, slide, role, c[key], sz, fit=True)
+    warning = "\nTIMING WARNING: " + c["timing_warning"] if c.get("timing_warning") else ""
+    source_note = (
+        "Audio linked; lyrics, scene structure and artwork await your choices."
+        if c.get("empty_template")
+        else "Existing transcript words/timing consumed unchanged."
+    )
+    fill_text(
+        d,
+        slide,
+        "user.source",
+        f"{duration_label}: {clock(duration)}\n{len(words)} timed words / {len(groups)} scenes\n"
+        + source_note
+        + warning,
+        20,
+        fit=True,
+    )
+    for i, (label, path) in enumerate(
+        [
             ("Audio", c.get("audio")),
             ("Transcript", c["transcript"]),
             ("Captions", c.get("captions")),
             ("Project", c.get("project")),
         ]
-        for i, (label, path) in enumerate(links):
-            if path and Path(path).exists():
-                d.text(
-                    label + " ↗",
-                    [60 + i * 240, 1470, 220, 30],
-                    18,
-                    TEAL,
-                    True,
-                    "source." + str(i),
-                )
-                d.q(
-                    "insert.hyperlink", url=Path(path).resolve().as_uri(), tooltip=label
-                )
-    if kind == "scene":
-        g = page["group"]
-        ids = g["word_ids"]
-        raw = g["text"] or ("[Instrumental]" if not ids else "")
-        fill("auto.scene.lyrics", raw, 27)
-        lyric_shape = next(
-            x for x in slide["shapes"] if x.get("altText") == "auto.scene.lyrics"
+    ):
+        if not path or not Path(path).exists():
+            continue
+        d.text(label + " ↗", [60 + i * 240, 1470, 220, 30], 18, TEAL, True, "source." + str(i))
+        d.q("insert.hyperlink", url=Path(path).resolve().as_uri(), tooltip=label)
+
+
+def fill_lyrics(d, slide, group, compact, fill):
+    """The lyric block, its shrink-to-fit box and the per-line timing markers."""
+    ids = group["word_ids"]
+    raw = group["text"] or ("[Instrumental]" if not ids else "")
+    fill("auto.scene.lyrics", raw, 27)
+    lyric_shape = next(
+        x for x in slide["shapes"] if x.get("altText") == "auto.scene.lyrics"
+    )
+    d.q("edit.select", ids=[lyric_shape["id"]])
+    d.q("format.autofit", mode="shrink")
+    d.q(
+        "shape.setBounds",
+        ids=[lyric_shape["id"]],
+        x=160 if group.get("lyric_lines") else 80,
+        y=838 - compact,
+        w=840 if group.get("lyric_lines") else 920,
+        h=90,
+    )
+    for i, line in enumerate(group.get("lyric_lines", [])):
+        d.text(
+            line["id"],
+            [80, 838 - compact + i * 32.4, 76, 24],
+            13,
+            TEAL,
+            False,
+            "auto.scene.lyric_id." + line["id"],
         )
-        d.q("edit.select", ids=[lyric_shape["id"]])
+
+
+def fill_scene_sections(d, slide, group, c):
+    """The six authored scene roles, when the packet has them."""
+    sections = c.get("scene_content", {}).get(group["id"], {}).get("sections") or {}
+    for source_role, target_role in [
+        ("reference_prompt", "user.scene.image_prompt"),
+        ("animation_prompt", "user.scene.animation_prompt"),
+        ("layer_stack", "user.scene.continuity"),
+        ("action", "user.scene.action"),
+        ("animated_text", "user.scene.animated_text"),
+        ("drawing_cues", "user.scene.drawing"),
+    ]:
+        if sections.get(source_role):
+            fill_text(
+                d,
+                slide,
+                target_role,
+                sections[source_role],
+                21,
+                fit=c.get("fit_imported_text", False),
+            )
+
+
+def fill_scene(d, slide, group, c, compact, all_pages, fill):
+    """Lyrics, their timing line, the authored sections and the assets/locations links."""
+    fill_lyrics(d, slide, group, compact, fill)
+    fill_scene_sections(d, slide, group, c)
+    ids = group["word_ids"]
+    t = f"Scene span {clock(group['span_start'])}–{clock(group['span_end'])}"
+    if ids:
+        t += f" / Words {clock(group['lyric_start'])}–{clock(group['lyric_end'])} / {ids[0]}…{ids[-1]}"
+    fill("auto.subtitle", t, 18)
+    for label, targetkey, x in [("Assets", "asset:", 574), ("Locations", "location:", 780)]:
+        target = next(
+            (i for i, p in enumerate(all_pages) if p["key"].startswith(targetkey)), None
+        )
+        if target is not None:
+            d.text(label, [x, 1130, 140, 24], 16, TEAL, True, "nav." + targetkey)
+            d.q("shape.action", action="slide", slide=target, tooltip=label)
+
+
+def fill_sheet_slot(d, slide, record, slot, fill):
+    """One sheet card: its title, notes and, when registered, the placed picture."""
+    fill(f"auto.sheet.{slot}.title", record.get("name", record["id"]), 20)
+    fill(
+        f"user.sheet.{slot}.notes",
+        record["notes"]
+        if record.get("notes_exact")
+        else record.get("notes", record.get("id", ""))
+        + "\n"
+        + (
+            Path(record["file"]).name
+            if record.get("file")
+            else "Register existing artwork to populate this slot."
+        ),
+        16,
+    )
+    notes_sh = next(
+        (sh for sh in slide["shapes"] if sh.get("altText") == f"user.sheet.{slot}.notes"),
+        None,
+    )
+    card_sh = next(
+        (sh for sh in slide["shapes"] if sh.get("altText") == f"layout.sheet.{slot}.card"),
+        None,
+    )
+    if notes_sh and card_sh:
+        cx, cy, _cw, _ch = card_sh["box"]
+        d.q("edit.select", ids=[notes_sh["id"]])
         d.q("format.autofit", mode="shrink")
-        d.q(
-            "shape.setBounds",
-            ids=[lyric_shape["id"]],
-            x=160 if g.get("lyric_lines") else 80,
-            y=838 - compact,
-            w=840 if g.get("lyric_lines") else 920,
-            h=90,
+        d.q("shape.setBounds", ids=[notes_sh["id"]], x=cx + 18, y=cy + 390, w=428, h=155)
+    if record.get("file"):
+        path = Path(record["file"]).resolve()
+        if not path.is_file():
+            raise ValueError("Configured asset does not exist: " + str(path))
+        region = next(
+            sh["box"]
+            for sh in slide["shapes"]
+            if sh.get("altText") == f"layout.sheet.{slot}.picture"
         )
-        for i, line in enumerate(g.get("lyric_lines", [])):
-            d.text(
-                line["id"],
-                [80, 838 - compact + i * 32.4, 76, 24],
-                13,
-                TEAL,
-                False,
-                "auto.scene.lyric_id." + line["id"],
-            )
-        existing = c.get("scene_content", {}).get(g["id"], {})
-        sections = existing.get("sections") or {}
-        for source_role, target_role in [
-            ("reference_prompt", "user.scene.image_prompt"),
-            ("animation_prompt", "user.scene.animation_prompt"),
-            ("layer_stack", "user.scene.continuity"),
-            ("action", "user.scene.action"),
-            ("animated_text", "user.scene.animated_text"),
-            ("drawing_cues", "user.scene.drawing"),
-        ]:
-            if sections.get(source_role):
-                fill_text(
-                    d,
-                    slide,
-                    target_role,
-                    sections[source_role],
-                    21,
-                    fit=c.get("fit_imported_text", False),
-                )
-        t = f"Scene span {clock(g['span_start'])}–{clock(g['span_end'])}"
-        if ids:
-            t += f" / Words {clock(g['lyric_start'])}–{clock(g['lyric_end'])} / {ids[0]}…{ids[-1]}"
-        fill("auto.subtitle", t, 18)
-        for label, targetkey, x in [
-            ("Assets", "asset:", 574),
-            ("Locations", "location:", 780),
-        ]:
-            target = next(
-                (i for i, p in enumerate(all_pages) if p["key"].startswith(targetkey)),
-                None,
-            )
-            if target is not None:
-                d.text(label, [x, 1130, 140, 24], 16, TEAL, True, "nav." + targetkey)
-                d.q("shape.action", action="slide", slide=target, tooltip=label)
-    if kind in ["assets", "locations"]:
-        for slot in range(4):
-            if slot >= len(page["sheet"]):
-                ids = [
-                    sh["id"]
-                    for sh in slide["shapes"]
-                    if sh.get("altText", "").startswith(
-                        (
-                            f"layout.sheet.{slot}.",
-                            f"auto.sheet.{slot}.",
-                            f"user.sheet.{slot}.",
-                        )
-                    )
-                ]
-                if ids:
-                    d.q("edit.delete", ids=ids)
-                continue
-            record = page["sheet"][slot]
-            fill(f"auto.sheet.{slot}.title", record.get("name", record["id"]), 20)
-            fill(
-                f"user.sheet.{slot}.notes",
-                record["notes"]
-                if record.get("notes_exact")
-                else record.get("notes", record.get("id", ""))
-                + "\n"
-                + (
-                    Path(record["file"]).name
-                    if record.get("file")
-                    else "Register existing artwork to populate this slot."
-                ),
-                16,
-            )
-            notes_sh = next(
-                (
-                    sh
-                    for sh in slide["shapes"]
-                    if sh.get("altText") == f"user.sheet.{slot}.notes"
-                ),
-                None,
-            )
-            card_sh = next(
-                (
-                    sh
-                    for sh in slide["shapes"]
-                    if sh.get("altText") == f"layout.sheet.{slot}.card"
-                ),
-                None,
-            )
-            if notes_sh and card_sh:
-                cx, cy, cw, ch = card_sh["box"]
-                d.q("edit.select", ids=[notes_sh["id"]])
-                d.q("format.autofit", mode="shrink")
-                d.q(
-                    "shape.setBounds",
-                    ids=[notes_sh["id"]],
-                    x=cx + 18,
-                    y=cy + 390,
-                    w=428,
-                    h=155,
-                )
-            if record.get("file"):
-                path = Path(record["file"]).resolve()
-                if not path.is_file():
-                    raise ValueError("Configured asset does not exist: " + str(path))
-                region = next(
-                    sh["box"]
-                    for sh in slide["shapes"]
-                    if sh.get("altText") == f"layout.sheet.{slot}.picture"
-                )
-                d.flush()
-                picture = d.cmd(
-                    "insert.picture", path=str(path), name=record.get("name", path.stem)
-                )
-                native = d.cmd("shape.inspect", id=picture["id"])["box"]
-                rect = fit_rect(native["w"], native["h"], region)
-                d.cmd(
-                    "shape.sizePosition",
-                    ids=[picture["id"]],
-                    x=rect[0],
-                    y=rect[1],
-                    w=rect[2],
-                    h=rect[3],
-                    lockAspect=False,
-                )
-                d.cmd("edit.select", ids=[picture["id"]])
-                d.cmd("shape.altText", text="user.picture." + record["id"])
-                d.cmd(
-                    "insert.hyperlink",
-                    url=path.as_uri(),
-                    tooltip="Existing asset; original pixels and alpha unchanged",
-                )
-    reference = None
-    if kind == "scene" and page["group"]["id"] in c.get("scene_images", {}):
-        record = c["scene_images"][page["group"]["id"]]
-        if page["group"].get("panels"):
-            panels = []
-            background = next(
-                (r for r in c.get("locations", []) if "backdrop" in r["id"].lower()),
-                None,
-            )
-            if not background:
-                raise ValueError(
-                    "Four chorus panels need an existing registered backdrop; no background is generated"
-                )
-            for i, line in enumerate(page["group"]["panels"]):
-                image = record if i in [0, 3] else background
-                placed = place_scene_picture(
-                    d,
-                    slide,
-                    image,
-                    page["group"]["id"] + f".panel.{i + 1}",
-                    panel_region(i),
-                )
-                rect = panel_region(i)
-                label = "START" if i == 0 else "END" if i == 3 else str(i + 1)
-                d.text(
-                    f"{label}  {line.get('line_id') or ''}  {clock(line['start'])}–{clock(line['end'])}  "
-                    + line["text"],
-                    [rect[0], rect[1] + 160, 464, 40],
-                    14,
-                    INK,
-                    False,
-                    "user.scene.panel." + str(i + 1),
-                )
-                panels.append(
-                    dict(
-                        line,
-                        reference=placed,
-                        staging="Original cast reference"
-                        if i in [0, 3]
-                        else "Existing background; animated subjects pending",
+        d.flush()
+        picture = d.cmd(
+            "insert.picture", path=str(path), name=record.get("name", path.stem)
+        )
+        native = d.cmd("shape.inspect", id=picture["id"])["box"]
+        rect = fit_rect(native["w"], native["h"], region)
+        d.cmd(
+            "shape.sizePosition",
+            ids=[picture["id"]],
+            x=rect[0],
+            y=rect[1],
+            w=rect[2],
+            h=rect[3],
+            lockAspect=False,
+        )
+        d.cmd("edit.select", ids=[picture["id"]])
+        d.cmd("shape.altText", text="user.picture." + record["id"])
+        d.cmd(
+            "insert.hyperlink",
+            url=path.as_uri(),
+            tooltip="Existing asset; original pixels and alpha unchanged",
+        )
+
+
+def fill_sheet(d, slide, page, fill):
+    """Assets and locations: four slots, deleting the ones this page does not use."""
+    for slot in range(4):
+        if slot >= len(page["sheet"]):
+            ids = [
+                sh["id"]
+                for sh in slide["shapes"]
+                if sh.get("altText", "").startswith(
+                    (
+                        f"layout.sheet.{slot}.",
+                        f"auto.sheet.{slot}.",
+                        f"user.sheet.{slot}.",
                     )
                 )
-            reference = dict(panels=panels, original=record["file"])
-            fill("state.scene.reference", "")
-        else:
-            reference = place_scene_picture(d, slide, record, page["group"]["id"])
-    for field in c.get("page_content", {}).get(page["key"], []):
-        fill_text(
-            d, slide, field["role"], field["value"], field.get("font_size"), fit=True
+            ]
+            if ids:
+                d.q("edit.delete", ids=ids)
+            continue
+        fill_sheet_slot(d, slide, page["sheet"][slot], slot, fill)
+
+
+def scene_panels(d, slide, page, c, record):
+    """Four chorus panels from one cast reference and an existing backdrop."""
+    panels = []
+    background = next(
+        (r for r in c.get("locations", []) if "backdrop" in r["id"].lower()), None
+    )
+    if not background:
+        raise ValueError(
+            "Four chorus panels need an existing registered backdrop; no background is generated"
         )
+    for i, line in enumerate(page["group"]["panels"]):
+        image = record if i in [0, 3] else background
+        placed = place_scene_picture(
+            d,
+            slide,
+            image,
+            page["group"]["id"] + f".panel.{i + 1}",
+            panel_region(i),
+        )
+        rect = panel_region(i)
+        label = "START" if i == 0 else "END" if i == 3 else str(i + 1)
+        d.text(
+            f"{label}  {line.get('line_id') or ''}  {clock(line['start'])}–{clock(line['end'])}  "
+            + line["text"],
+            [rect[0], rect[1] + 160, 464, 40],
+            14,
+            INK,
+            False,
+            "user.scene.panel." + str(i + 1),
+        )
+        panels.append(
+            dict(
+                line,
+                reference=placed,
+                staging="Original cast reference"
+                if i in [0, 3]
+                else "Existing background; animated subjects pending",
+            )
+        )
+    return dict(panels=panels, original=record["file"])
+
+
+def scene_picture(d, slide, page, c):
+    """Place the scene reference (or its four panels) and report what was placed."""
+    images = c.get("scene_images", {})
+    if "scene" != page["kind"] or page["group"]["id"] not in images:
+        return None
+    record = images[page["group"]["id"]]
+    if page["group"].get("panels"):
+        reference = scene_panels(d, slide, page, c, record)
+        fill_text(d, slide, "state.scene.reference", "", None)
+        return reference
+    return place_scene_picture(d, slide, record, page["group"]["id"])
+
+
+def page_meta(page, kind, c, reference):
+    """The JSON written into the slide notes."""
     meta = dict(
         sb_generator=VERSION,
         page_key=page["key"],
@@ -1068,9 +1155,158 @@ def fill_page(
         meta["official_lyrics_source"] = c.get("official_lyrics_source")
     if reference:
         meta["reference_image"] = reference
-    d.q("slide.notes", text=json.dumps(meta, indent=2))
+    return meta
+
+
+def fill_page(
+    d, slide, page, c, words, cues, groups, duration, all_pages, representative
+):
+    kind = page["kind"]
+    compact = 140 if kind == "scene" and page["group"].get("panels") else 0
+    if compact:
+        shrink_panels(d, slide, compact)
+        slide = d.cmd("slide.inspect", index=slide["index"])
+    fill = lambda r, t, sz=None: fill_text(d, slide, r, t, sz)
+    duration_label = (
+        "Measured recording"
+        if c.get("recording_duration_verified", False)
+        else "Supplied timing extent; recording duration unknown"
+    )
+    fill("auto.title", c["title"] + " / " + page["title"], 36)
+    fill("auto.subtitle", f"{clock(duration)} / " + page["title"], 18)
+    contents_nav(d, slide, representative, kind, all_pages)
+    if kind == "toc":
+        fill_toc(d, slide, page, all_pages, fill)
+    if kind == "overview":
+        fill_overview(d, slide, c, words, groups, duration, duration_label)
+    if kind == "scene":
+        fill_scene(d, slide, page["group"], c, compact, all_pages, fill)
+    if kind in ["assets", "locations"]:
+        fill_sheet(d, slide, page, fill)
+    reference = scene_picture(d, slide, page, c)
+    for field in c.get("page_content", {}).get(page["key"], []):
+        fill_text(
+            d, slide, field["role"], field["value"], field.get("font_size"), fit=True
+        )
+    d.q("slide.notes", text=json.dumps(page_meta(page, kind, c, reference), indent=2))
     d.q("slide.rename", name=page["key"])
     d.flush()
+
+
+def slide_cards(slide):
+    return {
+        x["altText"][12:]: x["box"]
+        for x in slide["shapes"]
+        if x.get("altText", "").startswith("layout.card.")
+    }
+
+
+def shape_overflow(index, shape, cards):
+    """Every reason this shape leaves its allowed area."""
+    x, y, w, h = shape["box"]
+    role = shape.get("altText", "")
+    out = []
+    if x < -0.1 or y < -0.1 or x + w > SIZE[0] + 1 or y + h > SIZE[1] + 1:
+        out.append(dict(page=index + 1, role=role, box=shape["box"]))
+    if role.startswith("user.") and role[5:] in cards:
+        card = cards[role[5:]]
+        if y + h > card[1] + card[3] - 12:
+            out.append(
+                dict(
+                    page=index + 1,
+                    role=role,
+                    reason="Text collides with its card status; shorten or enlarge the editable card",
+                    box=shape["box"],
+                )
+            )
+    if role == "auto.scene.lyrics" and y + h > 940:
+        out.append(
+            dict(
+                page=index + 1,
+                role=role,
+                reason="Lyric block exceeds its allocated area",
+                box=shape["box"],
+            )
+        )
+    if role.startswith("auto.cue.raw."):
+        limit = 220 + int(role.split(".")[-1]) * 194 + 128
+        if y + h > limit:
+            out.append(
+                dict(
+                    page=index + 1,
+                    role=role,
+                    reason="Caption text exceeds its verification row; reflow this template before saving",
+                    box=shape["box"],
+                )
+            )
+    return out
+
+
+def link_target(role, page, pages, representative):
+    """Which page this shape should navigate to, when it is a link at all."""
+    if role == "nav.contents" and not representative and page["kind"] != "toc":
+        return next(j for j, p in enumerate(pages) if p["kind"] == "toc")
+    if role.startswith("auto.toc.label."):
+        at = (int(page["key"].split(":")[1]) - 1) * TOC_PAGE_SIZE + int(
+            role.split(".")[-1]
+        )
+        entries = toc_entries(pages)
+        return entries[at][0] if at < len(entries) else None
+    if role in ["nav.asset:", "nav.location:"]:
+        prefix = role[4:]
+        return next(j for j, p in enumerate(pages) if p["key"].startswith(prefix))
+    return None
+
+
+def check_native_link(d, shape, target, slides):
+    full = d.cmd("shape.inspect", id=shape["id"])
+    assert full["shape"]["click"]["action"] == dict(
+        kind="slide", slide=slides[target]["id"]
+    ), "Native TOC target mismatch"
+
+
+def check_source_link(d, shape):
+    """A source link must resolve to an existing local file."""
+    action = d.cmd("shape.inspect", id=shape["id"])["shape"]["click"]["action"]
+    uri = urlparse(action["url"])
+    assert (
+        action["kind"] == "url" and uri.scheme == "file" and Path(unquote(uri.path)).is_file()
+    ), "Source file link does not resolve"
+
+
+def page_links(d, slide, page, index, pages, slides, representative):
+    """(native links, link regions, resolving source links) counted on one slide."""
+    links = 0
+    regions = []
+    files = 0
+    for shape in slide["shapes"]:
+        role = shape.get("altText", "")
+        target = link_target(role, page, pages, representative)
+        if target is not None:
+            check_native_link(d, shape, target, slides)
+            links += 1
+            x, y, w, h = shape["box"]
+            regions.append(
+                dict(page=index + 1, to_page=target + 1, rect=[x, y, x + w, y + h])
+            )
+        if role.startswith("source."):
+            check_source_link(d, shape)
+            files += 1
+    return links, regions, files
+
+
+def check_structure(pages, words, empty_template, representative, actual_cues):
+    """A proof deck may differ; a real one must keep every word and the expected page kinds."""
+    if representative:
+        return
+    assert actual_cues == [w["id"] for w in words], (
+        "Original word occurrence lost from scenes"
+    )
+    required = {"toc", "overview", "assets", "locations"} | (
+        set() if empty_template else {"scene"}
+    )
+    assert required.issubset({x["kind"] for x in pages})
+    assert not {"lyrics", "qc"}.intersection(x["kind"] for x in pages)
 
 
 def validate_deck(
@@ -1081,101 +1317,25 @@ def validate_deck(
     keys = [note(s).get("page_key") for s in slides]
     assert keys == [p["key"] for p in pages], "Page mapping mismatch"
     overflow = []
-    links = 0
-    file_links = 0
-    actual_cues = []
-    creative_instructions = 0
     link_regions = []
+    links = file_links = creative_instructions = 0
+    actual_cues = []
     for i, (sl, page) in enumerate(zip(slides, pages)):
         d.cmd("slide.go", index=i)
-        cards = {
-            x["altText"][12:]: x["box"]
-            for x in sl["shapes"]
-            if x.get("altText", "").startswith("layout.card.")
-        }
+        cards = slide_cards(sl)
         for sh in sl["shapes"]:
-            x, y, w, h = sh["box"]
-            role = sh.get("altText", "")
-            if x < -0.1 or y < -0.1 or x + w > SIZE[0] + 1 or y + h > SIZE[1] + 1:
-                overflow.append(dict(page=i + 1, role=role, box=sh["box"]))
-            if role.startswith("user."):
+            overflow += shape_overflow(i, sh, cards)
+            if sh.get("altText", "").startswith("user."):
                 creative_instructions += 1
-            if role.startswith("user.") and role[5:] in cards:
-                card = cards[role[5:]]
-                if y + h > card[1] + card[3] - 12:
-                    overflow.append(
-                        dict(
-                            page=i + 1,
-                            role=role,
-                            reason="Text collides with its card status; shorten or enlarge the editable card",
-                            box=sh["box"],
-                        )
-                    )
-            if role == "auto.scene.lyrics" and y + h > 940:
-                overflow.append(
-                    dict(
-                        page=i + 1,
-                        role=role,
-                        reason="Lyric block exceeds its allocated area",
-                        box=sh["box"],
-                    )
-                )
-            if role.startswith("auto.cue.raw."):
-                limit = 220 + int(role.split(".")[-1]) * 194 + 128
-                if y + h > limit:
-                    overflow.append(
-                        dict(
-                            page=i + 1,
-                            role=role,
-                            reason="Caption text exceeds its verification row; reflow this template before saving",
-                            box=sh["box"],
-                        )
-                    )
-            target = None
-            if role == "nav.contents" and not representative and page["kind"] != "toc":
-                target = next(j for j, p in enumerate(pages) if p["kind"] == "toc")
-            if role.startswith("auto.toc.label."):
-                at = (int(page["key"].split(":")[1]) - 1) * TOC_PAGE_SIZE + int(
-                    role.split(".")[-1]
-                )
-                entries = toc_entries(pages)
-                target = entries[at][0] if at < len(entries) else None
-            if role in ["nav.asset:", "nav.location:"]:
-                prefix = role[4:]
-                target = next(
-                    j for j, p in enumerate(pages) if p["key"].startswith(prefix)
-                )
-            if target is not None:
-                full = d.cmd("shape.inspect", id=sh["id"])
-                assert full["shape"]["click"]["action"] == dict(
-                    kind="slide", slide=slides[target]["id"]
-                ), "Native TOC target mismatch"
-                links += 1
-                link_regions.append(
-                    dict(page=i + 1, to_page=target + 1, rect=[x, y, x + w, y + h])
-                )
-            if role.startswith("source."):
-                from urllib.parse import unquote, urlparse
-
-                action = d.cmd("shape.inspect", id=sh["id"])["shape"]["click"]["action"]
-                uri = urlparse(action["url"])
-                assert (
-                    action["kind"] == "url"
-                    and uri.scheme == "file"
-                    and Path(unquote(uri.path)).is_file()
-                ), "Source file link does not resolve"
-                file_links += 1
+        found_links, regions, files = page_links(
+            d, sl, page, i, pages, slides, representative
+        )
+        links += found_links
+        link_regions += regions
+        file_links += files
         if page["kind"] == "scene":
             actual_cues.extend(page["group"]["word_ids"])
-    if not representative:
-        assert actual_cues == [w["id"] for w in words], (
-            "Original word occurrence lost from scenes"
-        )
-        required = {"toc", "overview", "assets", "locations"} | (
-            set() if empty_template else {"scene"}
-        )
-        assert required.issubset({x["kind"] for x in pages})
-        assert not {"lyrics", "qc"}.intersection(x["kind"] for x in pages)
+    check_structure(pages, words, empty_template, representative, actual_cues)
     if not empty_template:
         validate_groups(groups, words, duration)
     return dict(
@@ -1200,6 +1360,115 @@ def validate_deck(
     )
 
 
+def check_existing(output, state, fingerprint):
+    """Refuse to overwrite authored work the generator did not produce or can no longer reproduce."""
+    if output.exists() and not state.exists():
+        raise ValueError(
+            "Existing deck has no generator state; refusing to overwrite authored work"
+        )
+    if state.exists() and json.loads(state.read_text())["fingerprint"] != fingerprint:
+        raise ValueError(
+            "Source/grouping changed. Generate to a new output revision; existing authored work is preserved."
+        )
+
+
+def stage_template(template, c, output):
+    """Return the template to open and the read root it must live under.
+
+    Byte-identical dependency staging keeps native file access within this song project.
+    """
+    read_root = (
+        Path(c["project"]).resolve().parent if c.get("project") else template.parent
+    )
+    if template.is_relative_to(read_root):
+        return template, read_root
+    runtime = output.parent / "source-template.deckcraft"
+    if not runtime.exists():
+        shutil.copy2(template, runtime)
+    if sha(runtime) != sha(template):
+        raise ValueError("Staged template differs from canonical template")
+    return runtime, read_root
+
+
+def open_existing(d, output):
+    if not output.exists():
+        return None
+    d.cmd("file.open", path=str(output))
+    return snapshot(d)
+
+
+def build_pages(d, runtime_template, pages, c, words, cues, groups, duration, representative):
+    """Duplicate the template page for each planned page, drop the originals, then fill."""
+    d.cmd("file.open", path=str(runtime_template))
+    originals = inspect_pages(d)
+    sources = {note(s)["kind"]: s["id"] for s in originals}
+    for page in pages:
+        d.cmd("slide.go", id=sources[page["kind"]])
+        d.cmd("slide.duplicate")
+        info = d.cmd("document.inspect")
+        # Duplicate is current; move it to the end so original template indices stay fixed.
+        active = d.cmd("slide.inspect")
+        d.cmd(
+            "slide.move",
+            **{"from": active["index"], "to": len(info["slides"]) - 1},
+        )
+    for i in reversed(range(len(originals))):
+        d.cmd("slide.delete", index=i)
+    for i, page in enumerate(pages):
+        d.cmd("slide.go", index=i)
+        fill_page(
+            d,
+            d.cmd("slide.inspect", index=i),
+            page,
+            c,
+            words,
+            cues,
+            groups,
+            duration,
+            pages,
+            representative,
+        )
+
+
+def commit(d, output, state, payload, previous_hash):
+    """Keep the previous revision, save beside the target, then swap the new deck in."""
+    if previous_hash is not None:
+        history = output.parent / "history"
+        history.mkdir(exist_ok=True)
+        backup = history / (output.stem + "-" + previous_hash[:12] + output.suffix)
+        if not backup.exists():
+            shutil.copy2(output, backup)
+    pending = output.with_name(output.stem + ".pending.deckcraft")
+    d.cmd("file.saveAs", path=str(pending))
+    os.replace(pending, output)
+    dump(state, payload)
+
+
+def export_pages(d, output, pages, representative, fresh):
+    """Export the PDF and proofs; a fresh deck always replaces a stale sibling PDF."""
+    if fresh or not output.with_suffix(".pdf").is_file():
+        d.cmd("file.export", path=str(output.with_suffix(".pdf")), format="pdf")
+    scene = next((i for i, p in enumerate(pages) if p["kind"] == "scene"), 0)
+    d.cmd(
+        "file.export",
+        path=str(output.with_name(output.stem + "-scene.png")),
+        format="png",
+        slide=scene,
+        scale=1,
+    )
+    if representative:
+        return
+    for kind in ["toc", "overview", "assets", "locations"]:
+        i = next(i for i, p in enumerate(pages) if p["kind"] == kind)
+        d.cmd(
+            "file.export",
+            path=str(output.with_name(output.stem + "-" + kind + ".png")),
+            format="png",
+            slide=i,
+            scale=1,
+        )
+
+
 def generate(template, config, output, grouping=None, representative=False):
     template = Path(template).resolve()
     output = Path(output).resolve()
@@ -1214,63 +1483,22 @@ def generate(template, config, output, grouping=None, representative=False):
         fingerprint = source_fingerprint(c, groups)
         pages = build_plan(c, cues, groups, representative)
         previous_hash = sha(output) if output.exists() else None
-        if output.exists() and not state.exists():
-            raise ValueError(
-                "Existing deck has no generator state; refusing to overwrite authored work"
-            )
-        if (
-            state.exists()
-            and json.loads(state.read_text())["fingerprint"] != fingerprint
-        ):
-            raise ValueError(
-                "Source/grouping changed. Generate to a new output revision; existing authored work is preserved."
-            )
-        read_root = (
-            Path(c["project"]).resolve().parent if c.get("project") else template.parent
-        )
-        runtime_template = template
-        if not template.is_relative_to(read_root):
-            # Byte-identical dependency staging keeps native file access within this song project.
-            runtime_template = output.parent / "source-template.deckcraft"
-            if not runtime_template.exists():
-                shutil.copy2(template, runtime_template)
-            if sha(runtime_template) != sha(template):
-                raise ValueError("Staged template differs from canonical template")
+        check_existing(output, state, fingerprint)
+        runtime_template, read_root = stage_template(template, c, output)
         d = Deck(read_root, output.parent)
-        if output.exists():
-            d.cmd("file.open", path=str(output))
-            before = snapshot(d)
-        else:
-            d.cmd("file.open", path=str(runtime_template))
-            originals = inspect_pages(d)
-            sources = {note(s)["kind"]: s["id"] for s in originals}
-            for page in pages:
-                d.cmd("slide.go", id=sources[page["kind"]])
-                d.cmd("slide.duplicate")
-                info = d.cmd("document.inspect")
-                # Duplicate is current; move it to the end so original template indices stay fixed.
-                active = d.cmd("slide.inspect")
-                d.cmd(
-                    "slide.move",
-                    **{"from": active["index"], "to": len(info["slides"]) - 1},
-                )
-            for i in reversed(range(len(originals))):
-                d.cmd("slide.delete", index=i)
-            for i, page in enumerate(pages):
-                d.cmd("slide.go", index=i)
-                fill_page(
-                    d,
-                    d.cmd("slide.inspect", index=i),
-                    page,
-                    c,
-                    words,
-                    cues,
-                    groups,
-                    duration,
-                    pages,
-                    representative,
-                )
-            before = None
+        before = open_existing(d, output)
+        if before is None:
+            build_pages(
+                d,
+                runtime_template,
+                pages,
+                c,
+                words,
+                cues,
+                groups,
+                duration,
+                representative,
+            )
         validation = validate_deck(
             d,
             pages,
@@ -1285,20 +1513,13 @@ def generate(template, config, output, grouping=None, representative=False):
             raise ValueError("Layout overflow: " + json.dumps(validation["overflow"]))
         if before is not None:
             assert snapshot(d) == before, "Regeneration altered authored objects"
-        if output.exists() and sha(output) != previous_hash:
-            raise ValueError(
-                "Concurrent disk edit detected; refusing to replace current deck"
-            )
-        if output.exists():
-            history = output.parent / "history"
-            history.mkdir(exist_ok=True)
-            backup = history / (output.stem + "-" + previous_hash[:12] + output.suffix)
-            if not backup.exists():
-                shutil.copy2(output, backup)
-        pending = output.with_name(output.stem + ".pending.deckcraft")
-        d.cmd("file.saveAs", path=str(pending))
-        os.replace(pending, output)
-        dump(
+            if sha(output) != previous_hash:
+                raise ValueError(
+                    "Concurrent disk edit detected; refusing to replace current deck"
+                )
+        commit(
+            d,
+            output,
             state,
             dict(
                 version=VERSION,
@@ -1308,32 +1529,14 @@ def generate(template, config, output, grouping=None, representative=False):
                 source_config=str(Path(config).resolve()),
                 representative=representative,
             ),
+            previous_hash,
         )
         dump(
             output.with_suffix(".grouping.json"),
             dict(status="provisional / editable", groups=groups),
         )
         dump(output.with_suffix(".validation.json"), validation)
-        if before is None or not output.with_suffix(".pdf").is_file():
-            d.cmd("file.export", path=str(output.with_suffix(".pdf")), format="pdf")
-        scene = next((i for i, p in enumerate(pages) if p["kind"] == "scene"), 0)
-        d.cmd(
-            "file.export",
-            path=str(output.with_name(output.stem + "-scene.png")),
-            format="png",
-            slide=scene,
-            scale=1,
-        )
-        if not representative:
-            for kind in ["toc", "overview", "assets", "locations"]:
-                i = next(i for i, p in enumerate(pages) if p["kind"] == kind)
-                d.cmd(
-                    "file.export",
-                    path=str(output.with_name(output.stem + "-" + kind + ".png")),
-                    format="png",
-                    slide=i,
-                    scale=1,
-                )
+        export_pages(d, output, pages, representative, before is None)
         validation["authored_edits_preserved"] = before is not None
         dump(output.with_suffix(".validation.json"), validation)
         return dict(
