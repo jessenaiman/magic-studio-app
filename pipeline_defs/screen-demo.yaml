@@ -209,7 +209,7 @@ stages:
       - audio_enhance
     tools_available:
       - video_compose
-      - hyperframes_compose
+      - compose_video
       - audio_mixer
       - video_trimmer
       - audio_enhance

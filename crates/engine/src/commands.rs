@@ -28,7 +28,7 @@ pub use crate::magic_design::decontaminate_sprite_rgba;
 pub use crate::project::write_project_file;
 pub use crate::vision::{analyze_rgba_image, analyze_viewport_region};
 pub use crate::workspace::{
-    asset_id_for_import, build_photocraft_run_args,
+    asset_id_for_import, image_batch_args,
     resolve_craft_cli, resolve_workspace_path, sanitize_asset_id, workspace_root,
 };
 
@@ -39,8 +39,8 @@ use crate::agent::{
 };
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
 use crate::exports::{
-    cmd_export_blender, cmd_export_character_iteration,
-    cmd_export_filmcraft, cmd_export_layered_motion,
+    cmd_render_scene_source, cmd_export_character_iteration,
+    cmd_import_video_sequence, cmd_export_layered_motion,
     cmd_scene_farm_school_lineup, cmd_validate_motion,
 };
 use crate::image_cmds::{
@@ -314,13 +314,13 @@ pub fn build() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"rig id\",\"track\":\"track id\",\"rig_plan\":\"optional JSON with parts, joints.rest_tail and authored pose_library for skeletal cutout construction\",\"volume_plan\":\"registered views JSON; track=turntable or skeleton.tracks key; skeleton requires geometry_sha256, bones and weights\",\"voxel_resolution\":144,\"duration\":3,\"blend\":\"optional saved .blend instead of construction or migration\",\"resolution_percent\":50,\"max_frames\":90,\"memory_mb\":4096,\"timeout_seconds\":300}",
             always,
-            crate::blender::cmd_blender_start
+            crate::animation_jobs::cmd_start_scene_job
         ),
         query!(
             "synfig.discover",
             "Discover Synfig Native Renderer",
             "{}",
-            crate::synfig::discover
+            crate::vector_scene::discover
         ),
         cmd!(
             "synfig.start",
@@ -329,7 +329,7 @@ pub fn build() -> Vec<CommandSpec> {
             None,
             "{\"source\":\"saved .sif/.sifz\",\"bundle\":\"self-contained source directory\",\"first_frame\":0,\"last_frame\":23,\"fps\":24,\"width\":512,\"height\":512,\"memory_mb\":4096,\"timeout_seconds\":300}",
             always,
-            crate::synfig::start
+            crate::vector_scene::start
         ),
         query!(
             "animation.sources",
@@ -372,51 +372,51 @@ pub fn build() -> Vec<CommandSpec> {
             "animation.status",
             "Native Animation Job Progress",
             "{\"job\":\"job id\"}",
-            crate::blender::cmd_blender_status
+            crate::animation_jobs::cmd_animation_status
         ).help("Read a render job's progress, result, transparency evidence and failure details before accepting it.",
                "magic-cli --project /absolute/Project.magic animation status job=JOB_ID"),
         query!(
             "animation.list",
             "Native Animation Jobs and Global Owner",
             "{}",
-            crate::blender::cmd_blender_list
+            crate::animation_jobs::cmd_animation_list
         ),
         query!(
             "animation.cancel",
             "Cancel Native Animation Job",
             "{\"job\":\"job id\"}",
-            crate::blender::cmd_blender_cancel
+            crate::animation_jobs::cmd_animation_cancel
         ).help("Cancel the named render job, then check animation status until cancellation finishes.",
                "magic-cli --project /absolute/Project.magic animation cancel job=JOB_ID"),
         query!(
             "blender.actions",
             "Saved Blender Migration Actions",
             "{\"character\":\"rig id\"}",
-            crate::blender::cmd_blender_actions
+            crate::animation_jobs::cmd_animation_actions
         ),
         query!(
             "blender.prepare",
             "Headless Bounded Migration Preparation",
             "{\"request\":\"worker request.json\"}",
-            crate::blender::cmd_blender_prepare
+            crate::animation_jobs::cmd_prepare_animation_job
         ),
         query!(
             "blender.status",
             "Blender Job Progress",
             "{\"job\":\"job id\"}",
-            crate::blender::cmd_blender_status
+            crate::animation_jobs::cmd_animation_status
         ),
         query!(
             "blender.list",
             "Saved Blender Jobs",
             "{}",
-            crate::blender::cmd_blender_list
+            crate::animation_jobs::cmd_animation_list
         ),
         query!(
             "blender.cancel",
             "Cancel Blender Job",
             "{\"job\":\"job id\"}",
-            crate::blender::cmd_blender_cancel
+            crate::animation_jobs::cmd_animation_cancel
         ),
         query!(
             "mlt.discover",
@@ -440,13 +440,13 @@ pub fn build() -> Vec<CommandSpec> {
             None,
             "{\"scene\":\"saved .tnz\",\"bundle\":\"optional self-contained project root\",\"first\":1,\"last\":24,\"step\":1,\"shrink\":1,\"nthreads\":2,\"memory_mb\":4096,\"timeout_seconds\":300}",
             always,
-            crate::opentoonz::cmd_opentoonz_start
+            crate::drawing_scene::cmd_start_drawing_job
         ),
         query!(
             "opentoonz.discover",
             "OpenToonz Availability and Render Plan",
             "{\"scene\":\"optional .tnz path; plans without rendering\",\"first\":\"optional one-based\",\"last\":\"optional one-based\"}",
-            crate::opentoonz::cmd_opentoonz_discover
+            crate::drawing_scene::cmd_drawing_scene_info
         ),
         cmd!(
             "opentoonz.render",
@@ -455,7 +455,7 @@ pub fn build() -> Vec<CommandSpec> {
             None,
             "{\"request\":\"worker mode: job request.json (scene, range); only inside its bounded worker\",\"scene\":\".tnz path\",\"out\":\"new absolute frames folder\",\"first\":\"optional one-based\",\"last\":\"optional one-based\",\"step\":1,\"shrink\":1,\"nthreads\":2}",
             always,
-            crate::opentoonz::cmd_opentoonz_render
+            crate::drawing_scene::cmd_render_drawing_job
         ),
         query!(
             "project.attach",
@@ -786,7 +786,7 @@ pub fn build() -> Vec<CommandSpec> {
             "New / Resume Project Intake",
             ["File"],
             None,
-            "{\"path\":\"optional explicit .magic override\",\"root\":\"optional per-request root override; defaults to project.root\",\"name\":\"song name\",\"audio\":\"optional existing audio; analyzed only without valid existing timing\",\"transcript\":\"optional existing JSON\",\"captions\":\"optional original SRT\",\"audiomap\":\"optional existing audiomap.json\",\"materials\":[\"optional notes/reference file\"],\"skills\":[{\"id\":\"skill id\",\"name\":\"display name\",\"description\":\"what it does\",\"status\":\"researching|implemented|not_implemented\",\"source\":\"url or reference\",\"implemented_at\":[\"command ids\"],\"implemented_in\":[\"file paths\"],\"integration_notes\":\"where it plugs in\"}],\"resume\":false,\"replace_transcript\":false,\"hyperframes_cli\":\"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
+            "{\"path\":\"optional explicit .magic override\",\"root\":\"optional per-request root override; defaults to project.root\",\"name\":\"song name\",\"audio\":\"optional existing audio; analyzed only without valid existing timing\",\"transcript\":\"optional existing JSON\",\"captions\":\"optional original SRT\",\"audiomap\":\"optional existing audiomap.json\",\"materials\":[\"optional notes/reference file\"],\"skills\":[{\"id\":\"skill id\",\"name\":\"display name\",\"description\":\"what it does\",\"status\":\"researching|implemented|not_implemented\",\"source\":\"url or reference\",\"implemented_at\":[\"command ids\"],\"implemented_in\":[\"file paths\"],\"integration_notes\":\"where it plugs in\"}],\"resume\":false,\"replace_transcript\":false,\"resolve_video_cli\":\"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
             always,
             crate::command_center::intake
         ),
@@ -1605,7 +1605,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Set Song Audio",
             ["Workshop"],
             None,
-            "{\"path\": \"song audio file; creates the HyperFrames project and starts Studio\", \"hyperframes_cli\": \"optional absolute executable\"}",
+            "{\"path\": \"song audio file; creates the HyperFrames project and starts Studio\", \"resolve_video_cli\": \"optional absolute executable\"}",
             always,
             cmd_workshop_set_audio
         ),
@@ -1686,7 +1686,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Initialize Target Video Project",
             ["Workshop"],
             None,
-            "{\"target\": \"optional hyperframes\", \"hyperframes_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH, no npx install\", \"captions\": true, \"assemble\": false, \"audiomap\": \"legacy parameter; retired assembly is rejected without changing the project\"}",
+            "{\"target\": \"optional hyperframes\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH, no npx install\", \"captions\": true, \"assemble\": false, \"audiomap\": \"legacy parameter; retired assembly is rejected without changing the project\"}",
             always,
             cmd_video_init
         ),
@@ -1695,7 +1695,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Start Video Editor Web Server",
             ["Workshop"],
             None,
-            "{\"target\": \"optional hyperframes\", \"port\": \"optional; HyperFrames selects an available port by default\", \"hyperframes_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
+            "{\"target\": \"optional hyperframes\", \"port\": \"optional; HyperFrames selects an available port by default\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
             always,
             cmd_video_server_start
         ),
@@ -1713,7 +1713,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Take one exact frame from HyperFrames",
             ["Video"],
             None,
-            "{\"target\": \"optional hyperframes\", \"at\": \"seconds or array of seconds\", \"out\": \"output PNG path for one time; directory for multiple times\", \"hyperframes_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
+            "{\"target\": \"optional hyperframes\", \"at\": \"seconds or array of seconds\", \"out\": \"output PNG path for one time; directory for multiple times\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
             always,
             crate::video_target::cmd_video_snapshot
         ),
@@ -1722,7 +1722,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Render HyperFrames composition",
             ["Video"],
             None,
-            "{\"target\": \"optional hyperframes\", \"out\": \"output path\", \"fps\": \"frames per second (default 24)\", \"workers\": \"bounded worker count (default 4, max 16)\", \"start/end\": \"unsupported by official HyperFrames CLI; any supplied value is rejected\", \"hyperframes_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
+            "{\"target\": \"optional hyperframes\", \"out\": \"output path\", \"fps\": \"frames per second (default 24)\", \"workers\": \"bounded worker count (default 4, max 16)\", \"start/end\": \"unsupported by official HyperFrames CLI; any supplied value is rejected\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
             always,
             crate::video_target::cmd_video_render
         ),
@@ -1731,7 +1731,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Analyze Song (HyperFrames)",
             ["File"],
             None,
-            "{\"audio\": \"optional, default: the project's song\", \"overwrite\": false, \"analyze_beats\": true, \"model\": \"large-v3\", \"hyperframes_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH; no npx install\"}",
+            "{\"audio\": \"optional, default: the project's song\", \"overwrite\": false, \"analyze_beats\": true, \"model\": \"large-v3\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH; no npx install\"}",
             always,
             cmd_audio_analyze
         ),
@@ -1798,7 +1798,7 @@ pub fn build() -> Vec<CommandSpec> {
             help: "",
             example: "",
             enabled: always,
-            run: crate::part_replacement::cmd_part_open_photocraft,
+            run: crate::part_replacement::cmd_part_open_image_editor,
             journal: false,
             long_running: false,
         },
@@ -1872,7 +1872,7 @@ pub fn build() -> Vec<CommandSpec> {
             None,
             "{\"media\": \"path.mp4\", \"output\": \"path.fcproj\", \"frame_out\": \"path.png\"}",
             always,
-            cmd_export_filmcraft
+            cmd_import_video_sequence
         ),
         cmd!(
             "export.blender",
@@ -1881,7 +1881,7 @@ pub fn build() -> Vec<CommandSpec> {
             None,
             "{\"expected_project\":\"selected .magic\",\"id\":\"registered Blender source id\",\"expected_revision\":1,\"options\":{\"max_frames\":90,\"resolution_percent\":50}}",
             always,
-            cmd_export_blender
+            cmd_render_scene_source
         ),
         cmd!(
             "export.character_iteration",

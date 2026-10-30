@@ -222,7 +222,7 @@ def _reviewed_parts(rig_plan, parts):
     return parts
 
 
-def export_blender_python_script(
+def write_skeleton_script(
     rig_plan: Dict[str, Any],
     pose_library: Dict[str, Any],
     out_py_path: Path,

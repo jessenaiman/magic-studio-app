@@ -28,11 +28,11 @@ _PORTABLE_BLENDER = (
     _REPO_ROOT / ".runtime" / "blender" / "blender-4.5.10-windows-x64" / "blender.exe"
 )
 _RUNTIME_SCRIPT = (
-    Path(__file__).resolve().parent / "templates" / "blender-world-runtime.py"
+    Path(__file__).resolve().parent / "templates" / "world_scene_runtime.py"
 )
 
 
-def find_blender() -> Path | None:
+def find_scene_renderer() -> Path | None:
     configured = os.environ.get("BLENDER_PATH")
     if configured and Path(configured).is_file():
         return Path(configured).resolve()
@@ -54,8 +54,8 @@ def first_missing_frame(
     return None
 
 
-class BlenderWorld(BaseTool):
-    name = "blender_world"
+class SceneBuilder(BaseTool):
+    name = "build_scene"
     version = "0.3.0"
     tier = ToolTier.GENERATE
     capability = "3d_world_rendering"
@@ -169,7 +169,7 @@ class BlenderWorld(BaseTool):
     def get_status(self) -> ToolStatus:
         return (
             ToolStatus.AVAILABLE
-            if find_blender() and _RUNTIME_SCRIPT.is_file()
+            if find_scene_renderer() and _RUNTIME_SCRIPT.is_file()
             else ToolStatus.UNAVAILABLE
         )
 
@@ -183,7 +183,7 @@ class BlenderWorld(BaseTool):
         return 30.0
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
-        blender = find_blender()
+        blender = find_scene_renderer()
         if not blender:
             return ToolResult(
                 success=False, error="Blender not found. " + self.install_instructions

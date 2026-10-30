@@ -25,7 +25,7 @@ pub fn cmd_words_effect_install(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(src) = found() {
         return Ok(json!({"name":name,"src":src,"installed":false,"already":true}));
     }
-    let cli = crate::video_target::hyperframes_cli(p["hyperframes_cli"].as_str(), Some(&hf))?;
+    let cli = crate::video_target::resolve_video_cli(p["resolve_video_cli"].as_str(), Some(&hf))?;
     let out = crate::workspace::run_tool_in(
         &hf,
         &cli.to_string_lossy(),

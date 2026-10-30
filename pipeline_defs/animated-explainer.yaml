@@ -233,7 +233,7 @@ stages:
       - video_stitch
     tools_available:
       - video_compose
-      - hyperframes_compose
+      - compose_video
       - video_stitch
       - audio_mixer
     checkpoint_required: true

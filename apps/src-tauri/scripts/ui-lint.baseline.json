@@ -51,7 +51,7 @@
       "geometry_without_custom_property": 0,
       "lines": 915
     },
-    "blender-placement.js": {
+    "clip-placement.js": {
       "hand_built_dots": 0,
       "retired": 0,
       "ids_without_config_entry": 4,
@@ -61,7 +61,7 @@
       "geometry_without_custom_property": 0,
       "lines": 106
     },
-    "blender.js": {
+    "animation-jobs.js": {
       "hand_built_dots": 0,
       "retired": 0,
       "ids_without_config_entry": 12,

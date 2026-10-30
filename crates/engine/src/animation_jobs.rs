@@ -295,7 +295,7 @@ fn entry(s: &Session, p: &Value) -> Result<crate::ProjectAsset> {
         Some(crate::workspace::resolve_workspace_path(s, &path.to_string_lossy()).canonicalize()?);
     Ok(asset)
 }
-pub fn cmd_blender_actions(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_animation_actions(s: &mut Session, p: &Value) -> Result<Value> {
     let asset = entry(s, p)?;
     let path = asset
         .path
@@ -351,7 +351,7 @@ pub(crate) fn require_worker_invocation(request: &Value) -> Result<()> {
 }
 
 /// Only the headless helper evaluates legacy motion; never attach a Studio project here.
-pub fn cmd_blender_prepare(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
     if s.project_path.is_some() {
         return Err(invalid(
             "Preparation requires a separate headless worker session",
@@ -441,7 +441,7 @@ pub fn cmd_blender_prepare(s: &mut Session, p: &Value) -> Result<Value> {
     )?;
     Ok(json!({"ok":true,"prepared":true}))
 }
-pub fn cmd_blender_start(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_start_scene_job(s: &mut Session, p: &Value) -> Result<Value> {
     let mut request = json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
         "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]});
     if ["blend", "rig_plan", "volume_plan"].iter().filter(|key| p[**key].is_string()).count() > 1 {
@@ -488,7 +488,7 @@ pub fn cmd_blender_start(s: &mut Session, p: &Value) -> Result<Value> {
             character,
             p["track"].as_str().filter(|id| !id.is_empty()),
         )?;
-        let actions = cmd_blender_actions(s, p)?;
+        let actions = cmd_animation_actions(s, p)?;
         if !p["track"].is_string()
             || !actions["tracks"]
                 .as_array()
@@ -567,7 +567,7 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
     let worker = dir.join("worker.py");
     fs::write(
         &worker,
-        include_str!("../../../pipeline/blender_animation_worker.py"),
+        include_str!("../../../pipeline/animation_job_worker.py"),
     )?;
     if request["rig_plan"].is_object() {
         fs::create_dir_all(dir.join("pipeline"))?;
@@ -575,12 +575,12 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
     }
     if request["rig_plan"].is_object() {
         fs::write(dir.join("pipeline/rig_motion.py"), include_str!("../../../pipeline/rig_motion.py"))?;
-        fs::write(dir.join("pipeline/blender_cutout_rig.py"), include_str!("../../../pipeline/blender_cutout_rig.py"))?;
+        fs::write(dir.join("pipeline/build_cutout_skeleton.py"), include_str!("../../../pipeline/build_cutout_skeleton.py"))?;
     }
     if request["volume_plan"].is_object() {
         fs::write(dir.join("volume_reconstruction.py"), include_str!("../../../pipeline/volume_reconstruction.py"))?;
-        fs::write(dir.join("blender_volume.py"), include_str!("../../../pipeline/blender_volume.py"))?;
-        fs::write(dir.join("blender_volume_rig.py"), include_str!("../../../pipeline/blender_volume_rig.py"))?;
+        fs::write(dir.join("build_volume_scene.py"), include_str!("../../../pipeline/build_volume_scene.py"))?;
+        fs::write(dir.join("bind_volume_skeleton.py"), include_str!("../../../pipeline/bind_volume_skeleton.py"))?;
     }
     let command: Vec<String> = if backend == "blender" {
         vec![
@@ -676,7 +676,7 @@ fn systemd_quote(path: &Path) -> String {
             .replace('$', "$$")
     )
 }
-pub fn cmd_blender_list(s: &mut Session, _: &Value) -> Result<Value> {
+pub fn cmd_animation_list(s: &mut Session, _: &Value) -> Result<Value> {
     let observed = service();
     let owner = worker_owner(&observed);
     let mut jobs = Vec::new();
@@ -699,7 +699,7 @@ pub fn cmd_blender_list(s: &mut Session, _: &Value) -> Result<Value> {
     add_owner(&mut result, &owner);
     Ok(result)
 }
-pub fn cmd_blender_status(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_animation_status(s: &mut Session, p: &Value) -> Result<Value> {
     let (id, dir) = job(s, p)?;
     let details = job_details(&dir)?;
     let observed = service();
@@ -762,12 +762,12 @@ pub fn cmd_blender_status(s: &mut Session, p: &Value) -> Result<Value> {
     add_owner(&mut value, &owner);
     Ok(value)
 }
-pub fn cmd_blender_cancel(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_animation_cancel(s: &mut Session, p: &Value) -> Result<Value> {
     let _slot = worker_lock()?;
     let (id, dir) = job(s, p)?;
     let active = service()?;
     if active["Description"] != id || !occupied(&active) {
-        return cmd_blender_status(s, p);
+        return cmd_animation_status(s, p);
     }
     let requested_at = now();
     write_json(
@@ -784,5 +784,5 @@ pub fn cmd_blender_cancel(s: &mut Session, p: &Value) -> Result<Value> {
             String::from_utf8_lossy(&output.stderr).into(),
         ));
     }
-    cmd_blender_status(s, p)
+    cmd_animation_status(s, p)
 }

@@ -40,7 +40,7 @@ from tools.base_tool import (
 )
 
 
-log = logging.getLogger("hyperframes_compose")
+log = logging.getLogger("compose_video")
 
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".gif"}
@@ -48,8 +48,8 @@ _VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".mkv", ".m4v"}
 _AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
 
 
-class HyperFramesCompose(BaseTool):
-    name = "hyperframes_compose"
+class CompositionBuilder(BaseTool):
+    name = "compose_video"
     version = "0.2.0"
     tier = ToolTier.CORE
     capability = "video_post"
@@ -497,7 +497,7 @@ class HyperFramesCompose(BaseTool):
                     success=False, error=f"Unknown operation: {operation}"
                 )
         except Exception as e:
-            log.exception("hyperframes_compose failed")
+            log.exception("compose_video failed")
             return ToolResult(success=False, error=f"{type(e).__name__}: {e}")
 
         result.duration_seconds = round(time.time() - start, 2)
@@ -1148,12 +1148,12 @@ class HyperFramesCompose(BaseTool):
     ) -> tuple[dict[str, str], str]:
         """Bridge MagicStudio playbook → HyperFrames CSS vars + DESIGN.md.
 
-        Delegates to `lib/hyperframes_style_bridge.py` so the logic is
+        Delegates to `lib/playbook_style.py` so the logic is
         shareable and testable. Falls back to a safe built-in default when
         the bridge module isn't available.
         """
         try:
-            from lib.hyperframes_style_bridge import style_bridge  # type: ignore
+            from lib.playbook_style import style_bridge  # type: ignore
 
             return style_bridge(playbook, edit_decisions)
         except Exception as e:
@@ -1463,7 +1463,7 @@ class HyperFramesCompose(BaseTool):
 
     @staticmethod
     def _escape_attr(s: str) -> str:
-        return HyperFramesCompose._escape_text(s).replace('"', "&quot;")
+        return CompositionBuilder._escape_text(s).replace('"', "&quot;")
 
     @staticmethod
     def _rel_from_workspace(path: str) -> str:

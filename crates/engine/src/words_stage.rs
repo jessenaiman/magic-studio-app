@@ -284,7 +284,7 @@ const EFFECT_KINDS: &[(&str, &str)] = &[("text", "word by word text reveal")];
 pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let hf = dir.join("hyperframes");
-    let cli = crate::video_target::hyperframes_cli(p["hyperframes_cli"].as_str(), Some(&hf))?;
+    let cli = crate::video_target::resolve_video_cli(p["resolve_video_cli"].as_str(), Some(&hf))?;
     let wanted = p["kind"].as_str();
     if let Some(kind) = wanted
         && !EFFECT_KINDS.iter().any(|(k, _)| *k == kind)

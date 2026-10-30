@@ -699,8 +699,8 @@ fn collect(plan: &Value) -> Result<Value> {
 }
 
 /// Public submission only: the existing worker owns validation/snapshot/render/encode.
-pub fn cmd_opentoonz_start(s: &mut Session, p: &Value) -> Result<Value> {
-    let readiness = cmd_opentoonz_discover(s, &json!({}))?;
+pub fn cmd_start_drawing_job(s: &mut Session, p: &Value) -> Result<Value> {
+    let readiness = cmd_drawing_scene_info(s, &json!({}))?;
     if readiness["render_capable"] != true {
         return Err(invalid(
             readiness["render_reason"]
@@ -744,11 +744,11 @@ pub fn cmd_opentoonz_start(s: &mut Session, p: &Value) -> Result<Value> {
     request["tcomposer"] = json!(tool);
     request["magic_cli"] = json!(mc);
     request["ffmpeg"] = readiness["prerequisites"]["ffmpeg"]["path"].clone();
-    crate::blender::submit(s, p, request, "opentoonz")
+    crate::animation_jobs::submit(s, p, request, "opentoonz")
 }
 
 /// `opentoonz.discover`: tool availability and, given a scene, what would render. No rendering.
-pub fn cmd_opentoonz_discover(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_drawing_scene_info(s: &mut Session, p: &Value) -> Result<Value> {
     let tool = tcomposer();
     let stuff = stuff_dir();
     let helper = std::env::current_exe().ok().and_then(|p| {
@@ -805,7 +805,7 @@ pub fn cmd_opentoonz_discover(s: &mut Session, p: &Value) -> Result<Value> {
 /// Blocking; the shared bounded worker owns limits, progress, cancellation and receipts.
 /// With `request` (a job's request.json) it runs only inside that job's worker invocation,
 /// renders into `<job>/frames` and writes `<job>/opentoonz-manifest.json`.
-pub fn cmd_opentoonz_render(s: &mut Session, p: &Value) -> Result<Value> {
+pub fn cmd_render_drawing_job(s: &mut Session, p: &Value) -> Result<Value> {
     let path = p["request"]
         .as_str()
         .ok_or_else(|| invalid("Use opentoonz.start; render is a bounded-worker-only helper"))?;
@@ -817,7 +817,7 @@ pub fn cmd_opentoonz_render(s: &mut Session, p: &Value) -> Result<Value> {
     let path = PathBuf::from(path);
     let request: Value =
         serde_json::from_slice(&fs::read(&path)?).map_err(|e| invalid(e.to_string()))?;
-    crate::blender::require_worker_invocation(&request)?;
+    crate::animation_jobs::require_worker_invocation(&request)?;
     let job = path
         .parent()
         .ok_or_else(|| invalid("request has no job folder"))?;

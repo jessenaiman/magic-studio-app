@@ -1243,7 +1243,7 @@ pub fn cmd_storyboard_approve(s: &mut Session, params: &Value) -> Result<Value> 
     )
 }
 
-fn diagnose_hyperframes_setup(s: &Session, dir: &Path) -> (Vec<String>, Vec<String>) {
+fn diagnose_video_setup(s: &Session, dir: &Path) -> (Vec<String>, Vec<String>) {
     let mut warnings = Vec::new();
     let mut next = Vec::new();
     let hf = dir.join("hyperframes");
@@ -1314,7 +1314,7 @@ fn check_scene_reference(
 }
 
 pub(crate) fn diagnose_storyboard_and_workshop(s: &Session, dir: &Path) -> Value {
-    let (mut warnings, mut next_steps) = diagnose_hyperframes_setup(s, dir);
+    let (mut warnings, mut next_steps) = diagnose_video_setup(s, dir);
     let scene_docs: Vec<(usize, SceneDoc)> = (1..)
         .map(|n| (n, scene_doc_path(dir, n)))
         .take_while(|(_, p)| p.is_file())

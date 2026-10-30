@@ -65,7 +65,7 @@ def validate_references(source, bundle):
     return root
 
 
-def snapshot_synfig(request, job):
+def snapshot_vector_scene(request, job):
     source, bundle = (
         Path(request["source"]).resolve(),
         Path(request["bundle"]).resolve(),
@@ -280,10 +280,10 @@ def encode_frames(request, job, paths, fps, width, height):
     )
 
 
-def render_synfig(request, job):
+def render_vector_scene(request, job):
     from worker import write_json
 
-    frozen = snapshot_synfig(request, job)
+    frozen = snapshot_vector_scene(request, job)
     root = xml_source(Path(frozen["path"]))
     fps = float(request.get("fps", root.get("fps", "24")))
     width, height = (int(request.get(k, root.get(k, "0"))) for k in ("width", "height"))
@@ -463,7 +463,7 @@ def validate_native_references(path):
                 )
 
 
-def render_opentoonz(request, request_path):
+def render_drawing_scene(request, request_path):
     from worker import write_json
 
     job = request_path.parent
@@ -571,9 +571,9 @@ def main(request_path):
     try:
         job_metadata(request_path, request, service_metrics(request["unit"]))
         if request["backend"] == "synfig":
-            result = render_synfig(request, job)
+            result = render_vector_scene(request, job)
         elif request["backend"] == "opentoonz":
-            result = render_opentoonz(request, request_path)
+            result = render_drawing_scene(request, request_path)
         elif request["backend"] == "mlt":
             from mlt_worker import render
 

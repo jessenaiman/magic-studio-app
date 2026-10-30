@@ -9,7 +9,7 @@ Routing is driven by `edit_decisions.render_runtime` (locked at proposal):
 - `remotion`   → React-based frame-accurate render via `npx remotion render`.
                  Handles the existing scene-component stack, word-level captions,
                  TalkingHead/CinematicRenderer. Current default.
-- `hyperframes` → HTML/CSS/GSAP render via `hyperframes_compose`.
+- `hyperframes` → HTML/CSS/GSAP render via `compose_video`.
                  Handles kinetic typography, product promos, website-to-video,
                  registry blocks. Added in the parallel-runtime initiative.
 - `ffmpeg`     → FFmpeg concat/trim. Used only for simple video cuts without
@@ -19,7 +19,7 @@ Authoring mode is orthogonal to runtime. Setting
 `edit_decisions.composition_mode = "atelier"` (or `renderer_family="bespoke"`)
 means the composition is hand-authored rather than assembled from stock scene
 components. Runtime still wins first: HyperFrames atelier routes through
-`hyperframes_compose`, FFmpeg stays FFmpeg-only, and only Remotion atelier uses
+`compose_video`, FFmpeg stays FFmpeg-only, and only Remotion atelier uses
 `_render_via_atelier` for a project-local Remotion entry that bypasses the
 cut-schema and stock scene-type registry.
 
@@ -272,16 +272,16 @@ class VideoCompose(BaseTool):
 
         return bool(_shutil.which("ffmpeg"))
 
-    def _hyperframes_available(self) -> bool:
+    def _composition_renderer_available(self) -> bool:
         """Check if HyperFrames rendering is available.
 
         Delegates to the dedicated tool so the availability check stays in
         one place (node 22 floor, ffmpeg + npx on PATH).
         """
         try:
-            from tools.video.hyperframes_compose import HyperFramesCompose
+            from tools.video.compose_video import CompositionBuilder
 
-            return bool(HyperFramesCompose()._runtime_check()["runtime_available"])
+            return bool(CompositionBuilder()._runtime_check()["runtime_available"])
         except Exception:
             return False
 
@@ -295,7 +295,7 @@ class VideoCompose(BaseTool):
         info = super().get_info()
         ffmpeg_ok = self._ffmpeg_available()
         remotion_ok = self._remotion_available()
-        hyperframes_ok = self._hyperframes_available()
+        hyperframes_ok = self._composition_renderer_available()
         info["render_engines"] = {
             "ffmpeg": ffmpeg_ok,
             "remotion": remotion_ok,
@@ -338,7 +338,7 @@ class VideoCompose(BaseTool):
                 "website-to-video, and registry-block-driven scenes. Consumed via "
                 "'npx hyperframes' (npm package: 'hyperframes'). "
                 "Before locking render_runtime='hyperframes' at the proposal stage, "
-                "verify the runtime with `hyperframes_compose` operation='doctor' "
+                "verify the runtime with `compose_video` operation='doctor' "
                 "or `make hyperframes-doctor`. An 'available' flag from the runtime "
                 "check means node + ffmpeg + the npm package all resolve; it does "
                 "not guarantee a render will succeed on the first specific "
@@ -349,7 +349,7 @@ class VideoCompose(BaseTool):
                 "HyperFrames is NOT available. Requires Node.js >= 22, FFmpeg, "
                 "npx on PATH, and the 'hyperframes' npm package to be resolvable. "
                 "Run `make hyperframes-doctor` to see the specific missing piece, "
-                "or call `hyperframes_compose` operation='doctor' directly."
+                "or call `compose_video` operation='doctor' directly."
             )
 
         # Governance note — agents and reviewers consume this.
@@ -1756,7 +1756,7 @@ class VideoCompose(BaseTool):
 
         # HyperFrames is HTML-first and therefore atelier by default for hero
         # work. When a project-local authored workspace already exists, route
-        # before the stock cut/asset requirements so hyperframes_compose can
+        # before the stock cut/asset requirements so compose_video can
         # validate and render it without overwriting index.html.
         hyperframes_atelier_requested = render_runtime == "hyperframes" and (
             edit_decisions.get("composition_mode") == "atelier"
@@ -1767,7 +1767,7 @@ class VideoCompose(BaseTool):
             output_path = Path(inputs.get("output_path", "renders/output.mp4"))
             output_path.parent.mkdir(parents=True, exist_ok=True)
             profile = inputs.get("profile") or inputs.get("output_profile")
-            return self._render_via_hyperframes(
+            return self._render_html_composition(
                 inputs=inputs,
                 edit_decisions=edit_decisions,
                 asset_manifest=asset_manifest or {"version": "1.0", "assets": []},
@@ -1810,7 +1810,7 @@ class VideoCompose(BaseTool):
         profile = inputs.get("profile") or inputs.get("output_profile")
 
         if render_runtime == "hyperframes":
-            return self._render_via_hyperframes(
+            return self._render_html_composition(
                 inputs=inputs,
                 edit_decisions=edit_decisions,
                 asset_manifest=asset_manifest,
@@ -1922,7 +1922,7 @@ class VideoCompose(BaseTool):
 
         return render_result
 
-    def _render_via_hyperframes(
+    def _render_html_composition(
         self,
         *,
         inputs: dict[str, Any],
@@ -1932,13 +1932,13 @@ class VideoCompose(BaseTool):
         output_path: Path,
         profile: Optional[str],
     ) -> ToolResult:
-        """Delegate to hyperframes_compose and run the mandatory final self-review.
+        """Delegate to compose_video and run the mandatory final self-review.
 
         Governance: if HyperFrames is unavailable or fails, return a structured
         blocker — do NOT silently route to Remotion or FFmpeg. The agent must
         surface the blocker and get user approval before any runtime swap.
         """
-        if not self._hyperframes_available():
+        if not self._composition_renderer_available():
             return ToolResult(
                 success=False,
                 error=(
@@ -1948,16 +1948,16 @@ class VideoCompose(BaseTool):
                     "per AGENT_GUIDE.md > 'Escalate Blockers Explicitly' and wait "
                     "for approval before switching runtime. Requirements: "
                     "Node.js >= 22, FFmpeg, and npx on PATH. See "
-                    "tools/video/hyperframes_compose.py for the specific missing piece."
+                    "tools/video/compose_video.py for the specific missing piece."
                 ),
             )
 
         try:
-            from tools.video.hyperframes_compose import HyperFramesCompose
+            from tools.video.compose_video import CompositionBuilder
         except Exception as e:
             return ToolResult(
                 success=False,
-                error=f"Could not import hyperframes_compose: {e}",
+                error=f"Could not import compose_video: {e}",
             )
 
         workspace_path = inputs.get("workspace_path") or str(
@@ -2012,7 +2012,7 @@ class VideoCompose(BaseTool):
         if "snapshots" in inputs:
             hf_inputs["snapshots"] = inputs["snapshots"]
 
-        render_result = HyperFramesCompose().execute(hf_inputs)
+        render_result = CompositionBuilder().execute(hf_inputs)
 
         if not render_result.success:
             return ToolResult(
@@ -2021,7 +2021,7 @@ class VideoCompose(BaseTool):
                     f"HyperFrames render failed: {render_result.error}. "
                     "Per governance: do NOT silently fall back to Remotion or "
                     "FFmpeg. Surface the failure to the user along with the "
-                    "hyperframes_compose step log before proposing a swap."
+                    "compose_video step log before proposing a swap."
                 ),
                 data=render_result.data,
             )

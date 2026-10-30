@@ -53,5 +53,5 @@ pub fn start(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(invalid("timeline must be a JSON file no larger than 1 MiB"));
     }
     let request = json!({"timeline":path,"melt":melt,"ffmpeg":ffmpeg,"ffprobe":ffprobe});
-    crate::blender::submit(s, p, request, "mlt")
+    crate::animation_jobs::submit(s, p, request, "mlt")
 }

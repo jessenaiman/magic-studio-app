@@ -58,11 +58,11 @@ pub fn resolve_craft_cli(name: &str) -> String {
     std::env::var(name.to_uppercase().replace('-', "_"))
         .ok()
         .filter(|p| !p.is_empty())
-        .or_else(|| resolve_artcraft_launcher_cli(name))
+        .or_else(|| resolve_installed_cli(name))
         .unwrap_or_else(|| name.to_string())
 }
 
-fn resolve_artcraft_launcher_cli(name: &str) -> Option<String> {
+fn resolve_installed_cli(name: &str) -> Option<String> {
     let is_cli = name.ends_with("-cli");
     let app = name.strip_suffix("-cli").unwrap_or(name);
     let home = std::env::var("HOME").ok()?;
@@ -90,7 +90,7 @@ fn resolve_artcraft_launcher_cli(name: &str) -> Option<String> {
 }
 
 /// Build the exact CLI argument vector for `photocraft-cli run <input> --cmd <id> [--params <json>] --out <output>`.
-pub fn build_photocraft_run_args(
+pub fn image_batch_args(
     input: &str,
     cmd_id: &str,
     params_json: Option<&str>,

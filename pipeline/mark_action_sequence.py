@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 4E: FilmCraft Multi-Track NLE Sequence & Action Marker Builder (`step_filmcraft_timeline.py`).
+"""Stage 4E: FilmCraft Multi-Track NLE Sequence & Action Marker Builder (`mark_action_sequence.py`).
 
 Builds a FilmCraft `.fcproj` sequence from the character's rendered EffectCraft `.mp4` and cutout layer PNGs,
 places named program timeline markers (`markers.add`) for each action segment (`idle`, `walk`, `run`, `jump`,
@@ -20,12 +20,12 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[1])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from pipeline.filmcraft_bridge import load_animation_into_filmcraft
+from pipeline.import_video_sequence import import_animation_sequence
 
 TICKS_PER_SECOND = 254016000000  # Premiere/FilmCraft standard tick rate
 
 
-def build_filmcraft_marked_sequence(
+def build_marked_sequence(
     slug: str,
     media_path: str | Path,
     project_out: str | Path,
@@ -34,7 +34,7 @@ def build_filmcraft_marked_sequence(
     extra_assets: list[str] | None = None,
 ) -> dict[str, Any]:
     """Import media into FilmCraft, stamp named action markers on the sequence, and export marker CSV."""
-    base_res = load_animation_into_filmcraft(
+    base_res = import_animation_sequence(
         media_path=str(media_path),
         project_out=str(project_out),
         frame_png_out=str(frame_png_out),
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--project-out", required=True)
     ap.add_argument("--frame-out", required=True)
     args = ap.parse_args(argv)
-    res = build_filmcraft_marked_sequence(
+    res = build_marked_sequence(
         slug=args.character,
         media_path=args.media,
         project_out=args.project_out,

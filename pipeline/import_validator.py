@@ -13,7 +13,7 @@ import os
 from typing import Any, Dict
 
 from PIL import Image
-from pipeline.intake_router import inspect_image_with_photocraft
+from pipeline.intake_router import inspect_image
 
 STANDARD_TEMPLATE_SPEC = {
     "templateVersion": "1.0.0",
@@ -65,7 +65,7 @@ def validate_imported_asset(image_path: str) -> Dict[str, Any]:
             "standardTemplateSpec": STANDARD_TEMPLATE_SPEC,
         }
 
-    pc_info = inspect_image_with_photocraft(image_path)
+    pc_info = inspect_image(image_path)
     with Image.open(image_path) as im:
         has_alpha = "A" in im.getbands()
     w, h = pc_info["width"], pc_info["height"]

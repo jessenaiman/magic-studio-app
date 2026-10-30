@@ -186,7 +186,7 @@ stages:
       - threejs_asset_catalog
       - atlas_3d
       - fal_3d
-      - blender_world
+      - build_scene
       - music_gen
       - fal_elevenlabs_music
     tools_available:
@@ -200,7 +200,7 @@ stages:
       - threejs_asset_catalog
       - atlas_3d
       - fal_3d
-      - blender_world
+      - build_scene
       - music_gen
       - fal_elevenlabs_music
     checkpoint_required: true
@@ -259,7 +259,7 @@ stages:
       - video_stitch
     tools_available:
       - video_compose
-      - hyperframes_compose
+      - compose_video
       - audio_mixer
       - video_stitch
     checkpoint_required: true

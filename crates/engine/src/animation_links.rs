@@ -121,7 +121,7 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
         let root = if let Some(raw) = p["bundle"].as_str().filter(|v| !v.is_empty()) {
             crate::workspace::resolve_workspace_path(s, raw)
         } else if backend == "opentoonz" {
-            crate::opentoonz::project_root(&source)
+            crate::drawing_scene::project_root(&source)
                 .unwrap_or_else(|| source.parent().unwrap_or(&source).to_path_buf())
         } else {
             source.parent().unwrap_or(&source).to_path_buf()
@@ -140,7 +140,7 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("character and track must be supplied together"));
     }
     if let Some(character) = character {
-        let actions = crate::blender::cmd_blender_actions(s, &json!({"character":character}))?;
+        let actions = crate::animation_jobs::cmd_animation_actions(s, &json!({"character":character}))?;
         if !actions["tracks"]
             .as_array()
             .is_some_and(|tracks| tracks.iter().any(|t| t["id"].as_str() == track))
@@ -194,9 +194,9 @@ pub fn render(s: &mut Session, p: &Value) -> Result<Value> {
     let source = current(s, p)?;
     let request = render_params(&source, p)?;
     let mut job = match text(&source, "backend")? {
-        "blender" => crate::blender::cmd_blender_start(s, &request)?,
-        "synfig" => crate::synfig::start(s, &request)?,
-        "opentoonz" => crate::opentoonz::cmd_opentoonz_start(s, &request)?,
+        "blender" => crate::animation_jobs::cmd_start_scene_job(s, &request)?,
+        "synfig" => crate::vector_scene::start(s, &request)?,
+        "opentoonz" => crate::drawing_scene::cmd_start_drawing_job(s, &request)?,
         "mlt" => crate::mlt::start(s, &request)?,
         _ => return Err(bad("Unsupported registered backend")),
     };
@@ -278,8 +278,8 @@ fn accepted_result(source: &Value, result: &Value, receipt: &Path) -> Result<Val
 pub fn accept(s: &mut Session, p: &Value) -> Result<Value> {
     let mut source = current(s, p)?;
     let job = json!({"job":text(p,"job")?});
-    let result = crate::blender::cmd_blender_status(s, &job)?;
-    let (_, directory) = crate::blender::job(s, &job)?;
+    let result = crate::animation_jobs::cmd_animation_status(s, &job)?;
+    let (_, directory) = crate::animation_jobs::job(s, &job)?;
     source["accepted"] = accepted_result(&source, &result, &directory.join("result.json"))?;
     source["revision"] = json!(next_revision(expected(p)?)?);
     s.animation_sources

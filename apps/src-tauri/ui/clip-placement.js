@@ -1,5 +1,5 @@
 // Place only a completed full receipt. The backend verifies media and maps the canvas rectangle.
-function blenderPlacementControls({project,getJob,current,jobParameter='blender_job'}){
+function clipPlacementControls({project,getJob,current,jobParameter='blender_job'}){
  let scene=null,placing=false,renderBusy=false,lastJob=null,defaultId='',sceneRevision=0,validationError=false;
  const field=(name,label,value,type='number')=>{
   const input=el('input',{id:`blender-place-${name}`,type,value:String(value),step:'any','aria-label':label});

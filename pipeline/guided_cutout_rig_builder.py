@@ -8,9 +8,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pipeline.step_photocraft_parts import (
+from pipeline.prepare_character_parts import (
     discover_character_joints_and_polygons,
-    mask_and_export_layers_with_photocraft,
+    export_part_layers,
     render_cutout_asset_sheet,
 )
 from pipeline.step_vector_trace import trace_part_layers_with_vectorcraft
@@ -33,7 +33,7 @@ def build_guided_cutout_rig(
     discovery = discover_character_joints_and_polygons(
         src_path, character_id=character_id, selected_parts=selected_parts
     )
-    pc_res = mask_and_export_layers_with_photocraft(
+    pc_res = export_part_layers(
         src_path, discovery, target_dir, character_id
     )
     pose_lib = discovery.get("pose_library", {})

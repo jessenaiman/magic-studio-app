@@ -144,7 +144,7 @@ def sha256(path):
 
 def import_skeleton(request, job):
     sys.path.insert(0, str(job))
-    from pipeline.blender_cutout_rig import export_blender_python_script
+    from pipeline.build_cutout_skeleton import write_skeleton_script
     import runpy
 
     source = request["rig_plan"]
@@ -163,7 +163,7 @@ def import_skeleton(request, job):
         artwork.append(dict(id=part["id"], source_file=str(original),
                             packed_crop_sha256=sha256(target)))
     script = job / "build-skeleton.py"
-    export_blender_python_script(
+    write_skeleton_script(
         plan, plan["pose_library"], script, mode=request["track"],
         duration=request["duration"], blend_path=str(job / "source.blend"),
         glb_path=str(job / "skeleton.glb"),
@@ -180,7 +180,7 @@ def import_skeleton(request, job):
 
 def import_volume(request, job):
     sys.path.insert(0, str(job))
-    from blender_volume import build
+    from build_volume_scene import build
 
     source = request["volume_plan"]
     plan = source["data"]

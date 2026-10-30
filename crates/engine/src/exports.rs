@@ -9,7 +9,7 @@ use crate::{EngineError, Result, Session};
 use crate::workspace::{resolve_workspace_path, run_python_json, run_tool_in, workspace_root};
 
 /// Export a FilmCraft project: locate the rendered overlay/animation, then run `filmcraft-load`.
-pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
+pub fn cmd_import_video_sequence(s: &mut Session, params: &Value) -> Result<Value> {
     let active_id = s
         .active_asset
         .clone()
@@ -104,7 +104,7 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
         "--frame-out".into(),
         frame_path.to_string_lossy().into_owned(),
     ];
-    let pipeline_out = run_python_json(s, "pipeline.filmcraft_bridge", &args)?;
+    let pipeline_out = run_python_json(s, "pipeline.import_video_sequence", &args)?;
     let imported_ok = pipeline_out
         .get("importedToFilmCraft")
         .and_then(Value::as_bool)
@@ -132,7 +132,7 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 /// Render an existing registered Blender source through the native animation job system.
-pub fn cmd_export_blender(s: &mut Session, params: &Value) -> Result<Value> {
+pub fn cmd_render_scene_source(s: &mut Session, params: &Value) -> Result<Value> {
     let source = params["id"]
         .as_str()
         .and_then(|id| s.animation_sources.get(id))

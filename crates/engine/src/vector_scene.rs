@@ -99,5 +99,5 @@ pub fn start(s: &mut Session, p: &Value) -> Result<Value> {
     request["bundle"] = json!(bundle);
     request["executable"] = json!(tool);
     request["ffmpeg"] = json!(ffmpeg);
-    crate::blender::submit(s, p, request, "synfig")
+    crate::animation_jobs::submit(s, p, request, "synfig")
 }

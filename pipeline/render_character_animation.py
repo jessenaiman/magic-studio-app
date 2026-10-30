@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import math
-from pipeline.step_blender_mesh_rig import BLENDER_MESH_RIG_CODE
+from pipeline.build_character_mesh import BLENDER_MESH_RIG_CODE
 
 
 def smooth01(t: float) -> float:
@@ -300,7 +300,7 @@ def render_frames_to_mp4(scene,out_mp4,out_png,frame_start,frame_end,**kwargs):
 BLENDER_HELPERS = BLENDER_MESH_RIG_CODE + "\n" + BLENDER_2D_ANIM_CODE
 
 
-def run_blender_stage(code: str, timeout: float = 3600) -> dict:
+def render_rig_stage(code: str, timeout: float = 3600) -> dict:
     from pathlib import Path
     import os
     import shutil

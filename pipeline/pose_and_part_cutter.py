@@ -83,7 +83,7 @@ def exploded_prompt(character: str, description: str = "") -> str:
     )
 
 
-def _find_photocraft_cli() -> str | None:
+def _find_image_cli() -> str | None:
     cand = os.environ.get("PHOTOCRAFT_CLI") or shutil.which("photocraft-cli")
     if not cand:
         return None
@@ -111,7 +111,7 @@ def _find_photocraft_cli() -> str | None:
     return cand
 
 
-def _find_vectorcraft_cli() -> str | None:
+def _find_vector_cli() -> str | None:
     return os.environ.get("VECTORCRAFT_CLI") or shutil.which("vectorcraft-cli")
 
 
@@ -283,7 +283,7 @@ def _batch_mattes(image, definitions):
 def _flat_mattes(image, boxes):
     """Connected background selection preserves enclosed whites and fine drawn lines."""
     from concurrent.futures import ThreadPoolExecutor
-    executable = _find_photocraft_cli()
+    executable = _find_image_cli()
     if not executable:
         raise RuntimeError("photocraft-cli is required for flat-background panel extraction")
     with tempfile.TemporaryDirectory(prefix="magic-flat-panels-") as temporary:
@@ -473,12 +473,12 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
         raise ValueError("No foreground frames specified")
     if len(definitions) > 64:
         raise ValueError("Over 64 frames detected; supply --layout")
-    pc_bin = _find_photocraft_cli()
+    pc_bin = _find_image_cli()
     if not pc_bin:
         raise RuntimeError(
             "photocraft-cli is required to remove backgrounds; install it or put it on PATH"
         )
-    vc_bin = _find_vectorcraft_cli()
+    vc_bin = _find_vector_cli()
     batched, matting_engine = _batch_mattes(image, definitions) if (layout or {}).get("preserveRegistration") else (None, "photocraft-layer.removeBackground")
     crops, missing_parts = [], []
     for item in definitions:

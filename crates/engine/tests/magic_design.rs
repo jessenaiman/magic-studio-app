@@ -283,23 +283,23 @@ fn unreviewed_sheet_blocks_extraction_and_rig_build_before_outputs() {
 }
 
 #[test]
-fn blender_export_requires_a_registered_blender_source() {
+fn scene_render_requires_a_registered_source() {
     let mut session = Session::default();
     let missing =
-        magicstudio_engine::exports::cmd_export_blender(&mut session, &json!({"id":"missing"}))
+        magicstudio_engine::exports::cmd_render_scene_source(&mut session, &json!({"id":"missing"}))
             .unwrap_err();
     assert!(missing.to_string().contains("registered Blender source"));
     session
         .animation_sources
         .insert("probe".into(), json!({"backend":"synfig"}));
     let wrong_backend =
-        magicstudio_engine::exports::cmd_export_blender(&mut session, &json!({"id":"probe"}))
+        magicstudio_engine::exports::cmd_render_scene_source(&mut session, &json!({"id":"probe"}))
             .unwrap_err();
     assert!(wrong_backend.to_string().contains("not a Blender source"));
 }
 
 #[test]
-fn blender_export_preserves_native_revision_and_option_guards() {
+fn scene_render_preserves_revision_and_option_guards() {
     let fixture = Fixture::new();
     let project = fixture.json("probe.magic", json!({}));
     let mut session = fixture.session();
@@ -309,7 +309,7 @@ fn blender_export_preserves_native_revision_and_option_guards() {
         json!({"id":"probe","backend":"blender","revision":1,"source":"unused.blend"}),
     );
     let before = session.animation_sources.clone();
-    let stale = magicstudio_engine::exports::cmd_export_blender(
+    let stale = magicstudio_engine::exports::cmd_render_scene_source(
         &mut session,
         &json!({
             "expected_project":project,"id":"probe","expected_revision":0
@@ -317,7 +317,7 @@ fn blender_export_preserves_native_revision_and_option_guards() {
     )
     .unwrap_err();
     assert!(stale.to_string().contains("Source revision changed"));
-    let invalid = magicstudio_engine::exports::cmd_export_blender(&mut session, &json!({
+    let invalid = magicstudio_engine::exports::cmd_render_scene_source(&mut session, &json!({
         "expected_project":project,"id":"probe","expected_revision":1,"options":{"unsupported":true}
     })).unwrap_err();
     assert!(invalid.to_string().contains("Unsupported render option"));

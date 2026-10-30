@@ -18,7 +18,7 @@ function animationRestore(){
 }
 function animationReset(){
  theatreRequireSaved();animationRemember();
- blenderDispose();
+ animationJobsDispose();
  animationPause();
  Object.assign(motion,{project:null,character:null,meta:null,sample:null,images:[],assets:[],time:0,track:'',rest:true,selected:null,photoDrafts:{},loading:false,request:motion.request+1,points:[],pathUndo:null,pathLayer:null,previewLoop:null,pen:false,fit:true,zoom:1});
  $('view-animation').replaceChildren();
@@ -244,7 +244,7 @@ function animationControls(){
   }},'Undo');
   undoButton.disabled=!savedUndo;
   compare.append(actionStatus,el('div',{class:'magic-part-actionbar'},
-   photoCraftPartButton(selected,'part-open-photocraft'),
+   partImageEditorButton(selected,'part-open-photocraft'),
    replaceButton,undoButton,
    el('button',{class:'ghost',id:'part-inspect-original',title:selected.file||'','aria-label':`Inspect original ${name}`,onclick:()=>selected.file&&openPath(selected.file)},'Original'),
    el('button',{class:'ghost',id:'part-copy-path',title:'Copy file path to clipboard','aria-label':`Copy asset path for ${name}`,onclick:()=>{if(selected.file&&navigator.clipboard)navigator.clipboard.writeText(selected.file).then(()=>toast('Copied asset path')).catch(()=>{});}},'Copy path')));
@@ -366,7 +366,7 @@ function partsDrawer(compare){
    el('button',{class:'magic-part-card-pick','aria-pressed':String(picked),'aria-label':`Select ${name} (${part.id})`,onclick:select},
     el('span',{class:'magic-part-card-name'},name),part.label&&part.label!==part.id?el('span',{class:'magic-part-card-id'},part.id):null,badge),
    el('div',{class:'magic-part-card-actions'},visible,
-    photoCraftPartButton(part,`part-open-photocraft-${part.id}`)));
+    partImageEditorButton(part,`part-open-photocraft-${part.id}`)));
  });
  const panels={parts:cards.length?el('div',{class:'magic-part-cards'},cards):el('p',{class:'why'},'This object has no rig parts.'),compare};
  if(!Object.hasOwn(panels,motion.partsTab))motion.partsTab='parts';
@@ -376,11 +376,11 @@ function partsDrawer(compare){
   tab('parts',`Parts (${meta.layers.length})`),tab('compare','Compare')),body);
 }
 // PhotoCraft edits a draft copy; the live layer only changes through part.replace_image.
-function photoCraftPartButton(part,id){
+function partImageEditorButton(part,id){
  const capability=part.image_edit;
- const button=el('button',{id,class:'ghost magic-part-card-open','data-commands':'part.open_photocraft','data-value-source':'motion.tracks.layers.image_edit',title:capability?.supported?'Edit a draft copy in PhotoCraft; save it to use as the candidate':capability?.reason||'Image editing capability is unknown','aria-label':`Open ${part.label||part.id} in PhotoCraft`,onclick:()=>openPartInPhotoCraft(part)},'PhotoCraft');button.disabled=capability?.supported!==true;return button;
+ const button=el('button',{id,class:'ghost magic-part-card-open','data-commands':'part.open_photocraft','data-value-source':'motion.tracks.layers.image_edit',title:capability?.supported?'Edit a draft copy in PhotoCraft; save it to use as the candidate':capability?.reason||'Image editing capability is unknown','aria-label':`Open ${part.label||part.id} in PhotoCraft`,onclick:()=>openPartImageEditor(part)},'PhotoCraft');button.disabled=capability?.supported!==true;return button;
 }
-async function openPartInPhotoCraft(part){
+async function openPartImageEditor(part){
  if(part.image_edit?.supported!==true){toast(part.image_edit?.reason||'Image editing capability is unknown');return;}
  try{
   const result=await motionCommand('part.open_photocraft',{asset:motion.character,part:part.id,spawn:true});
@@ -418,7 +418,7 @@ async function animationSample(){
 async function animationRefresh(){
  if(state.view!=='animation')return;
  if(motion.mode==='composite'){seqRenderInspector();seqDraw();return;}
- if(motion.mode==='blender'){await blenderAnimationOpen();return;}
+ if(motion.mode==='blender'){await openAnimationJobs();return;}
  const project=state.project,request=++motion.request;
  animationPause();
  const catalog=await motionCommand('project.list_assets');

@@ -54,7 +54,7 @@ def build(spec, duration, output, track="turntable"):
             obj.rotation_euler.z = math.tau * (frame - 1) / scene.frame_end
             obj.keyframe_insert("rotation_euler", frame=frame)
     else:
-        from blender_volume_rig import bind
+        from bind_volume_skeleton import bind
 
         skeleton = spec["skeleton"]
         if skeleton.get("geometry_sha256") != spec["reconstruction"]["geometry_sha256"]:
