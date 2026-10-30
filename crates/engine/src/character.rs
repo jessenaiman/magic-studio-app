@@ -252,6 +252,52 @@ fn character_folder(s: &Session, id: &str) -> Result<PathBuf> {
     Ok(crate::workshop::project_dir(s)?.join("assets/characters").join(id))
 }
 
+/// A plain folder name from params, or the default; never a path that could climb out.
+fn folder_name(params: &Value, key: &str, default: &str) -> Result<String> {
+    let name = params[key].as_str().map(str::trim).filter(|v| !v.is_empty()).unwrap_or(default);
+    if name.contains(['/', '\\']) || name == "." || name == ".." {
+        return Err(invalid(format!("{key} must be a plain folder name")));
+    }
+    Ok(name.to_string())
+}
+
+/// The animations library beside the production projects root: `<magic-studio>/animations`.
+fn animations_library(params: &Value) -> Result<PathBuf> {
+    if let Some(library) = params["library"].as_str().filter(|v| !v.trim().is_empty()) {
+        return Ok(PathBuf::from(library));
+    }
+    let projects = crate::project_settings::root()?;
+    Ok(projects.parent().unwrap_or(&projects).join("animations"))
+}
+
+/// New standalone character from one static image: `<animations>/<category>/<id>/character.magic`
+/// with the image as its reference, opened as an animation project.
+pub fn cmd_character_new(s: &mut Session, params: &Value) -> Result<Value> {
+    let image = params["image"]
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+        .map(|raw| crate::workspace::resolve_workspace_path(s, raw))
+        .filter(|p| p.is_file())
+        .ok_or_else(|| invalid("Specify image=<an existing static character image>"))?;
+    let stem = image.file_stem().and_then(|n| n.to_str()).unwrap_or("character");
+    let name = params["name"].as_str().filter(|v| !v.trim().is_empty()).unwrap_or(stem).to_string();
+    let id = crate::workspace::sanitize_asset_id(&name);
+    let dir = animations_library(params)?.join(folder_name(params, "category", "characters")?).join(&id);
+    let cfg_path = dir.join("character.magic");
+    if cfg_path.exists() {
+        return Err(invalid(format!("{} already exists; open it with project.open", cfg_path.display())));
+    }
+    std::fs::create_dir_all(&dir)?;
+    let ext = image.extension().and_then(|e| e.to_str()).unwrap_or("png").to_ascii_lowercase();
+    let reference = format!("reference.{ext}");
+    std::fs::copy(&image, dir.join(&reference))?;
+    let doc = json!({"format": "magicstudio.character", "schemaVersion": 1, "id": id, "name": name,
+        "reference": reference, "source_image": image});
+    let encoded = serde_json::to_string_pretty(&doc).map_err(|e| invalid(e.to_string()))?;
+    std::fs::write(&cfg_path, encoded)?;
+    crate::project::cmd_project_open(s, &json!({"path": cfg_path, "claim_owner": params["claim_owner"] != false}))
+}
+
 pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
     let (id, source, role) = parse_import_params(s, params)?;
     let char_dir = character_folder(s, &id)?;

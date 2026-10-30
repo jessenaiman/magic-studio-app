@@ -1171,6 +1171,16 @@ fn stage_preset_asset(
     Ok(())
 }
 
+/// The rig for the character's active angle, else its `rig.json`; `None` before it is rigged.
+fn character_rig_path(raw: &Value, proj_root: &Path, char_dir: &Path) -> Option<PathBuf> {
+    let angle = raw["active_angle"].as_str().unwrap_or("three_quarter_right");
+    [format!("/angles/{angle}/rig"), format!("/rigs/{angle}"), "/rigs/active".into()]
+        .iter()
+        .find_map(|pointer| raw.pointer(pointer).and_then(Value::as_str))
+        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
+        .or_else(|| Some(char_dir.join("rig.json")).filter(|p| p.is_file()))
+}
+
 fn stage_character_magic(
     staged: &mut Session,
     entry: &crate::ProjectAsset,
@@ -1183,20 +1193,15 @@ fn stage_character_magic(
         .as_deref()
         .and_then(Path::parent)
         .unwrap_or(char_dir);
-    let active_angle = raw
-        .get("active_angle")
-        .and_then(Value::as_str)
-        .unwrap_or("three_quarter_right");
-    let rig_path = raw
-        .pointer(&format!("/angles/{active_angle}/rig"))
-        .and_then(Value::as_str)
-        .or_else(|| {
-            raw.pointer(&format!("/rigs/{active_angle}"))
-                .and_then(Value::as_str)
-        })
-        .or_else(|| raw.pointer("/rigs/active").and_then(Value::as_str))
-        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
-        .unwrap_or_else(|| char_dir.join("rig.json"));
+    let Some(rig_path) = character_rig_path(raw, proj_root, char_dir) else {
+        // A character with no rig yet is its reference image, ready to break apart.
+        let reference = raw["reference"]
+            .as_str()
+            .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
+            .filter(|p| p.is_file())
+            .ok_or_else(|| EngineError::InvalidParams("character has neither a rig nor a reference image".into()))?;
+        return stage_plain_image(staged, entry, &reference);
+    };
     let mut plan = crate::session::LoadedCutoutRigPlan::load_from_path(&rig_path)?;
     let rig_base = rig_path.parent().unwrap_or(char_dir);
     if plan.source_image.as_os_str().is_empty() {

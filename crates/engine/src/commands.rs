@@ -958,6 +958,15 @@ fn specs_motion_and_character() -> Vec<CommandSpec> {
             crate::character::cmd_character_assets
         ),
         cmd!(
+            "character.new",
+            "New standalone character from one static image",
+            ["Animation"],
+            None,
+            "{\"image\":\"/path/to/static-character.png\",\"name\":\"optional; defaults to the image name\",\"category\":\"characters (default) | backgrounds | …\",\"library\":\"optional; default <magic-studio>/animations beside the projects root\"}",
+            always,
+            crate::character::cmd_character_new
+        ),
+        cmd!(
             "character.import",
             "Import an image or sheet into a character folder as original draft, reference, or sheet",
             ["Animation"],
