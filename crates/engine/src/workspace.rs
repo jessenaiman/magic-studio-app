@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::{EngineError, Result};
 
@@ -116,44 +116,6 @@ pub fn build_effectcraft_script_args(script_path: &str) -> Vec<String> {
     vec!["script".to_string(), script_path.to_string()]
 }
 
-/// Build the exact CLI argument vector for `studio_pipeline_cli.py filmcraft-load <media> --project <fcproj> --frame-out <png>`.
-pub fn build_filmcraft_load_args(media: &str, project: &str, frame_out: &str) -> Vec<String> {
-    vec![
-        "filmcraft-load".to_string(),
-        media.to_string(),
-        "--project".to_string(),
-        project.to_string(),
-        "--frame-out".to_string(),
-        frame_out.to_string(),
-    ]
-}
-
-/// Build the exact CLI argument vector for `studio_pipeline_cli.py blender-check`.
-pub fn build_blender_check_args(
-    archetype: &str,
-    verb: &str,
-    out_mp4: &str,
-    out_png: &str,
-    glb: Option<&str>,
-) -> Vec<String> {
-    let mut args = vec![
-        "blender-check".to_string(),
-        "--archetype".to_string(),
-        archetype.to_string(),
-        "--verb".to_string(),
-        verb.to_string(),
-        "--out-mp4".to_string(),
-        out_mp4.to_string(),
-        "--out-png".to_string(),
-        out_png.to_string(),
-    ];
-    if let Some(g) = glb {
-        args.push("--glb".to_string());
-        args.push(g.to_string());
-    }
-    args
-}
-
 pub(crate) struct ToolSlotGuard;
 impl Drop for ToolSlotGuard {
     fn drop(&mut self) {
@@ -215,21 +177,13 @@ pub(crate) fn run_tool_in(cwd: &Path, tool: &str, args: &[String]) -> Result<Str
     }
 }
 
-/// Run `python3 <workspace>/studio_pipeline_cli.py <args...>` and parse JSON output when possible.
-pub(crate) fn run_pipeline(s: &crate::Session, args: &[String]) -> Result<Value> {
-    let root = workspace_root(s);
-    let script = root.join("studio_pipeline_cli.py");
-    if !script.is_file() {
-        return Err(EngineError::ExternalTool(
-            "studio_pipeline_cli.py".to_string(),
-            format!("not found at {}", script.display()),
-        ));
-    }
-    let mut full_args = Vec::with_capacity(args.len() + 1);
-    full_args.push(script.to_string_lossy().into_owned());
-    full_args.extend_from_slice(args);
-    let stdout = run_tool_in(&root, "python3", &full_args)?;
-    Ok(serde_json::from_str(&stdout).unwrap_or_else(|_| json!({ "raw": stdout })))
+/// Run an existing pipeline module directly and require its JSON result.
+pub(crate) fn run_python_json(s: &crate::Session, module: &str, args: &[String]) -> Result<Value> {
+    let mut command = vec!["-m".to_owned(), module.to_owned()];
+    command.extend_from_slice(args);
+    let stdout = run_tool_in(&workspace_root(s), "python3", &command)?;
+    serde_json::from_str(&stdout)
+        .map_err(|error| EngineError::ExternalTool(module.into(), format!("invalid JSON: {error}")))
 }
 
 /// Audio file extensions recognized by the workshop.

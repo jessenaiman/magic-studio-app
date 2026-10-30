@@ -184,31 +184,55 @@ def cli(
 
 @cli.command("audit")
 @click.argument(
-    "path", type=click.Path(exists=True, file_okay=False, path_type=Path), default="."
+    "path", type=click.Path(exists=True, path_type=Path), default="."
 )
 @click.option(
     "--tool",
     "tools",
     multiple=True,
     type=click.Choice(tuple(audit_core.TOOLS)),
-    help="Select a native tool; repeat to choose several. Default: all five.",
+    help=(
+        "Select a native tool; repeat to choose several. "
+        "Default: Lizard for a file, all five for a directory."
+    ),
+)
+@click.option(
+    "--format", "output_format", type=click.Choice(("text", "csv")), default="text",
+    show_default=True,
+    help="Lizard output: ranked native text diagnostics or native CSV measurements.",
 )
 @click.pass_context
-def audit(ctx: click.Context, path: Path, tools: tuple[str, ...]) -> None:
+def audit(
+    ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str
+) -> None:
     """Run native repository checks with unmodified tool output.
 
     Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard. Each tool uses
     PATH (or root node_modules/.bin) and requires its repository configuration.
     Missing tools/configuration are errors, not passing or skipped checks.
-    Lizard emits native CSV using code-limits.json's max_function_ccn.
+    Lizard shows function locations, file totals, CCN, length and cognitive
+    complexity, with warnings ranked by CCN. code-limits.json requires
+    max_function_ccn; optional max_function_lines (100),
+    max_function_cognitive_complexity (15) set thresholds.
+    CSV mode also runs native warnings on stderr so violations still fail.
+    Other tools keep their native formats.
 
     Each native exit code is printed; the command returns the first nonzero
     status, or 0 if all selected tools return 0. Setup/invocation errors use 2;
     signals use 128 + signal. Remaining selected tools still run after failure.
     Global --dry-run validates setup and prints commands without running them.
     No install, autofix, Codacy, AgentLinter, or upload feature is invoked.
+
+    A file defaults to Lizard. For a Rust file such as module.rs, Lizard also
+    scans its companion module/ directory when present, so extracted functions
+    stay in the audit. Native output names every analyzed file. Other explicit
+    tools receive the exact file path. A Lizard directory check stays within
+    that directory and inherits the repository limits.
+    Clippy requires a crate directory. File checks use repository configuration.
     """
-    ctx.exit(audit_core.run_audit(path.resolve(), tools, dry_run=ctx.obj["dry_run"]))
+    ctx.exit(audit_core.run_audit(
+        path.resolve(), tools, dry_run=ctx.obj["dry_run"], output_format=output_format
+    ))
 
 
 @cli.command("commands")

@@ -263,7 +263,7 @@ svg { width: var(--size-18); height: var(--size-18); fill: none; stroke: current
 [role="status"][data-signal="2"] { color: var(--amber); }
 [role="status"][data-signal="3"] { color: var(--signal-3); overflow-wrap:anywhere; }
 @keyframes pulse { to { opacity: .35; } }
-.start { margin-top: var(--size-10); justify-self: center; padding: var(--size-8) var(--size-16); border-radius: var(--size-9); background: var(--accent); color: var(--accent-ink); font-weight: 600;
+.start { width:var(--primary-action-width,auto); margin-top: var(--primary-action-top,var(--size-10)); justify-self: center; padding: var(--size-8) var(--size-16); border-radius: var(--size-9); background: var(--accent); color: var(--accent-ink); font-weight: 600;
   transition: transform var(--fast) var(--ease), filter var(--fast) var(--ease); }
 .start:hover { transform: translateY(calc(-1 * var(--size-1))); filter: brightness(1.08); }
 
@@ -754,11 +754,11 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 
 .panel-body[data-look="settings"] .companion-setting { display:flex; align-items:center; gap:var(--size-6); }
 /* Rendering is supplemental: the authoring inspector, canvas and timeline remain mounted. */
-.blender-render-dialog { width:min(var(--size-900),calc(100vw - var(--size-32))); max-height:calc(100vh - var(--size-64)); margin:auto; padding:var(--size-12); color:var(--text); background:var(--surface); border:var(--size-1) solid var(--line); border-radius:var(--size-12); }
-.blender-render-dialog::backdrop { background:var(--alpha-09); backdrop-filter:blur(var(--size-4)); }
+.editor-dialog { width:min(var(--size-900),calc(100vw - var(--size-32))); max-height:calc(100vh - var(--size-64)); margin:auto; padding:var(--size-12); color:var(--text); background:var(--surface); border:var(--size-1) solid var(--line); border-radius:var(--size-12); }
+.editor-dialog::backdrop { background:var(--alpha-09); backdrop-filter:blur(var(--size-4)); }
 .blender-render-header { display:flex; align-items:center; justify-content:space-between; gap:var(--size-12); margin-bottom:var(--size-10); }
 .blender-render-layout { display:grid; grid-template-columns:minmax(var(--size-180),var(--size-230)) minmax(0,1fr); height:min(65vh,var(--size-620)); min-height:var(--size-260); }
-.blender-render-dialog .blender-controls { width:auto; min-width:0; }
+.editor-dialog .blender-controls { width:auto; min-width:0; }
 
 .motion-coordinate-row { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--size-6); }
 .motion-coordinate-row label { min-width:0; }
@@ -772,11 +772,6 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .animation-readback { display:block; user-select:text; white-space:pre-wrap;overflow-wrap:anywhere;max-height:var(--size-220);overflow:auto; }
 .motion-modes { flex-wrap:wrap; }
 
-.animation-authoring-fields { display:grid;gap:var(--size-8);min-width:0; }
-.animation-authoring-fields label { display:grid;gap:var(--size-3);min-width:0; }
-.animation-authoring-fields input:not([type=checkbox]),.animation-authoring-fields select { width:100%;min-width:0;box-sizing:border-box; }
-.animation-authoring-fields p:empty,#authoring-edit-status:empty { display:none; }
-.animation-authoring-fields button { white-space:normal;max-width:100%; }
 
 .animation-pose-preview { width:100%;max-height:var(--size-180);object-fit:contain;background:var(--bg); }
 /* Song: play/pause beside the header; lyrics and transcription as sections inside it. */
@@ -1091,3 +1086,11 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 #view-analytics .analytics-rail-report meter { width: 100%; height: var(--space-3); accent-color: var(--amber); }
 #view-analytics .analytics-scan-state[data-state=partial], #view-analytics .analytics-scan-state[data-state=stale], #view-analytics .analytics-scan-state[data-state=worktree_unverified] { color: var(--amber); }
 #view-analytics .learning-categories button { white-space: normal; overflow-wrap: anywhere; }
+
+/* Source review is shared by artwork and complete asset sheets. */
+.artwork-review { width:calc(100vw - var(--space-5)); }
+.artwork-review-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(var(--size-230),30%); gap:var(--space-3); }
+.artwork-review-layout > .panel-fields { max-height:70vh; overflow:auto; min-width:0; }
+.artwork-review-canvas { height:min(70vh,var(--size-620)); overflow:auto; min-width:0; background:repeating-conic-gradient(var(--surface) 0% 25%,var(--surface-2) 0% 50%) 0 0 / var(--space-4) var(--space-4); }
+.artwork-review-canvas img { display:block; width:calc(var(--review-width,100%) * var(--review-zoom,1)); max-width:none; height:auto; margin:auto; }
+@media(max-width:47.5em) { .artwork-review-layout { grid-template-columns:minmax(0,1fr); } .artwork-review-canvas { height:45vh; } }

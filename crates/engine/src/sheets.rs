@@ -1,68 +1,23 @@
-//! Ask the configured system agent for a character's asset sheets.
-//!
-//! The format comes from `.agents/skills/asset-sheets/SKILL.md`, so every agent draws the same
-//! turnaround, skeleton-and-limbs and pose sheets. The agent is the one the app is configured
-//! with (the Omarchy system agent by default), run headlessly in the project folder.
-//!
-//! Two things this command has to get right, because the agent cannot guess them:
-//!
-//! * **The drawing tool.** The image tool in the agent's environment returns its own canvas,
-//!   not the size it is asked for, so a sheet asked for as "2048x2048" comes back at another
-//!   size. The agent has to draw the artwork and report the size; this command normalises it
-//!   to the contract's canvas with `image.image_size`.
-//! * **The session.** `magic-cli exec` runs one command in a throwaway session, so the
-//!   project's own commands have to run through one `magic-cli run` script, not one
-//!   `exec` call per step.
-//!
-//! After the agent runs, every sheet is checked against the contract, and the command either
-//! reports sheets that pass or says exactly what is wrong with each one that does not.
+//! Reviewable, project-owned asset sheets. A request draws complete sheets only.
+//! Prompts and results stay in source-backed JSON; extraction and rigging are separate actions.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
-use crate::workspace::workspace_root;
 use crate::{EngineError, Result, Session};
 
+pub(crate) mod layout;
+pub(crate) mod playback;
+use layout::SheetLayout;
+
 const KINDS: [&str; 3] = ["turnaround", "skeleton", "poses"];
-/// The canvas every asset sheet must have (see `.agents/skills/asset-sheets/SKILL.md`).
-const SHEET_CANVAS: (u32, u32) = (2048, 2048);
-/// How long the agent may take before it is stopped and the sheets are checked anyway.
-const DEFAULT_TIMEOUT_S: u64 = 1800;
+/// Target canvas; source pixels remain available for review at their returned size.
+
 /// Pixels within this distance of pure white still count as the flat `#ffffff` background.
 const WHITE_TOLERANCE: u8 = 12;
-
-fn which(name: &str) -> bool {
-    std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(name).is_file()))
-        .unwrap_or(false)
-}
-
-/// The agents this command can drive non-interactively, and the ones that are installed.
-fn available_agents() -> Vec<&'static str> {
-    ["codex", "claude", "omp"]
-        .into_iter()
-        .filter(|name| which(name))
-        .collect()
-}
-
-/// The agent the app is configured with (`~/.config/magicstudio/agent.json`), else the
-/// Omarchy system default, else codex.
-fn configured_agent() -> String {
-    let settings = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
-        .map(|base| base.join("magicstudio").join("agent.json"));
-    if let Some(path) = settings
-        && let Ok(text) = std::fs::read_to_string(path)
-        && let Ok(value) = serde_json::from_str::<Value>(&text)
-        && let Some(agent) = value["agent"].as_str().filter(|a| !a.trim().is_empty())
-    {
-        return agent.to_string();
-    }
-    crate::agent::default_agent().unwrap_or_else(|| "codex".to_string())
-}
 
 /// The last `chars` of a stream, with the tail marker that makes a truncation visible.
 fn tail(text: &str, chars: usize) -> String {
@@ -230,15 +185,10 @@ fn sheet_file(character: &str, kind: &str) -> String {
     format!("{character}-{kind}.png")
 }
 
-/// The file the contract delivers: the agent's drawing, normalised to the contract canvas.
-fn normalised_file(character: &str, kind: &str) -> String {
-    format!("{character}-{kind}-2048.png")
-}
-
 /// One sheet against the contract: the agent's drawing, the normalised sheet, and whether the
 /// normalised sheet has the contract's canvas, a flat white background and no drawing on the
 /// edge.
-fn sheet_report(kind: &str, raw: &Path, normalised: &Path) -> Value {
+fn sheet_report(kind: &str, raw: &Path, normalised: &Path, canvas: (u32, u32)) -> Value {
     let mut reasons: Vec<String> = Vec::new();
     let raw_file = raw.to_string_lossy().to_string();
     let raw_dims = image::image_dimensions(raw).ok();
@@ -249,7 +199,7 @@ fn sheet_report(kind: &str, raw: &Path, normalised: &Path) -> Value {
     }
     // The sheet that counts is the normalised one when it exists; a drawing that already came
     // back at the contract size is the sheet itself.
-    let raw_is_contract = raw_dims == Some(SHEET_CANVAS);
+    let raw_is_contract = raw_dims == Some(canvas);
     let effective = if normalised.is_file() || !raw_is_contract {
         normalised
     } else {
@@ -260,8 +210,8 @@ fn sheet_report(kind: &str, raw: &Path, normalised: &Path) -> Value {
         reasons.push(format!(
             "no sheet at the contract size: {file} is missing — normalise the drawing with \
              `image.image_size source={raw_file} out={file} width={w} height={h}`",
-            w = SHEET_CANVAS.0,
-            h = SHEET_CANVAS.1
+            w = canvas.0,
+            h = canvas.1
         ));
         return json!({
             "kind": kind,
@@ -276,10 +226,10 @@ fn sheet_report(kind: &str, raw: &Path, normalised: &Path) -> Value {
     let dims = image::image_dimensions(effective).ok();
     match dims {
         None => reasons.push("the sheet is not a readable image".to_string()),
-        Some((w, h)) if (w, h) != SHEET_CANVAS => reasons.push(format!(
+        Some((w, h)) if (w, h) != canvas => reasons.push(format!(
             "{w}x{h} px, but the contract needs {}x{} px: normalise it with `image.image_size` \
              (the image tool returns its own size)",
-            SHEET_CANVAS.0, SHEET_CANVAS.1
+            canvas.0, canvas.1
         )),
         Some(_) => {}
     }
@@ -341,384 +291,434 @@ fn sheet_report(kind: &str, raw: &Path, normalised: &Path) -> Value {
         "exists": true,
         "width": dims.map(|d| d.0).unwrap_or(0),
         "height": dims.map(|d| d.1).unwrap_or(0),
-        "canvas_ok": dims.map(|d| d == SHEET_CANVAS).unwrap_or(false),
+        "canvas_ok": dims.map(|d| d == canvas).unwrap_or(false),
         "ok": ok,
         "reasons": reasons,
     })
 }
 
-/// The instruction block that tells the agent how to draw in this environment.
-fn draw_instructions(sheet_dir: &Path, character: &str, kinds: &[String]) -> String {
-    let files: Vec<String> = kinds
-        .iter()
-        .map(|kind| sheet_file(character, kind))
-        .collect();
-    format!(
-        "## How to draw in this environment\n\n\
-Draw with the **built-in image tool** (`image_gen`, through the `imagegen` skill). Two servers \
-that look like they could draw cannot be used here:\n\n\
-- `revid` (MCP): no API key is configured, so it cannot authenticate.\n\
-- `blender` (MCP): no Blender instance is running, so it cannot render.\n\n\
-**The image tool returns its own canvas, not the size you ask for.** Asking it for \
-\"2048x2048\" gives a square sheet of another size (observed 1254x1254). So ask for the \
-largest square it can produce (>= 1024), report the size it returned, and let the app \
-normalise it to {w}x{h} with `image.image_size` — never crop or compose it by hand.\n\n\
-One image call per sheet: pass the reference image as a reference (`referenced_image_paths`), \
-and put the contract's cell order, cell sizes and background rules in the prompt.\n\n\
-Check what you saved before you report the sheet as done:\n\n\
-```bash\npython3 -c \"from PIL import Image; print(Image.open('<path>').size)\"\n```\n\n\
-Print the size it returned next to the sheet. The image tool saves under \
-`$CODEX_HOME/generated_images/...`; move or copy the file into the project. A sheet that only \
-exists under `$CODEX_HOME` has not been delivered.\n\n\
-Save exactly these files, each with its exact prompt beside it:\n\n\
-```text\n{sheets}\n```\n\n\
-Keep the exact prompt of every image call in `<sheet>.prompt.md` beside its sheet.\n",
-        w = SHEET_CANVAS.0,
-        h = SHEET_CANVAS.1,
-        sheets = files
-            .iter()
-            .map(|f| format!("{}/{f}", sheet_dir.display()))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
-}
-
-/// The instruction block that runs the project's own commands after the sheets exist.
-fn chain_instructions(project_path: &Path, sheet_dir: &Path, character: &str) -> String {
-    let sheet = sheet_dir.join(sheet_file(character, "turnaround"));
-    format!(
-        "## Then prepare the layers with Magic Studio's CLI\n\n\
-Select the intended project once; subsequent commands retain its binding. \
-The following JSONL runs the steps in order and stops on error:\n\n\
-```bash\n\
-cat > /tmp/asset-sheets-chain.jsonl <<'JSON'\n\
-{{\"id\":\"project.open\",\"params\":{{\"path\":\"{project}\"}}}}\n\
-{{\"id\":\"project.list_assets\",\"params\":{{}}}}\n\
-{{\"id\":\"image.image_size\",\"params\":{{\"source\":\"{sheet}\",\"out\":\"{normal}\",\"width\":2048,\"height\":2048}}}}\n\
-{{\"id\":\"intake.validate\",\"params\":{{\"image\":\"{normal}\",\"slot\":\"turnaround_sheet\",\"attach_to_active\":true}}}}\n\
-{{\"id\":\"assets.assess\",\"params\":{{\"path\":\"{normal}\"}}}}\n\
-{{\"id\":\"asset.cut_sheet\",\"params\":{{\"asset\":\"{character}\"}}}}\n\
-{{\"id\":\"asset.build_cutout_rig\",\"params\":{{}}}}\n\
-JSON\n\
-magic-cli run /tmp/asset-sheets-chain.jsonl\n\
-```\n\n\
-Read every line of the reply. `assets.assess` decides clean-or-recreate: if it reports \
-`recreate`, record the finding with `assets.fixlist_add` instead of forcing the cut. Keep the project context explicit; \
-use installed tools directly; do not change app ownership: use each installed app's documented CLI directly when needed.\n\n\
-Two things this chain can hit, so you do not have to rediscover them:\n\n\
-- `asset.build_cutout_rig` writes to the repo's own `exports/pose_and_parts/<character>` \
-folder. On a read-only checkout that step fails with `OSError: Read-only file system` — report \
-it and stop; the sheets themselves are fine.\n\
-- The cut expects five turnaround views and the contract draws four. When it asks for a \
-`layout`, pass one and say which view is missing.\n",
-        project = project_path.display(),
-        sheet = sheet.display(),
-        normal = sheet_dir
-            .join(format!("{}-turnaround-2048.png", character))
-            .display(),
-        character = character,
-    )
-}
-
-/// The chain the caller can run itself, as `magic-cli run` lines.
-fn chain_script(project_path: &Path, sheet_dir: &Path, character: &str) -> Vec<Value> {
-    let sheet = sheet_dir.join(sheet_file(character, "turnaround"));
-    let normal = sheet_dir.join(format!("{}-turnaround-2048.png", character));
-    vec![
-        json!({"id": "project.open", "params": {"path": project_path.to_string_lossy()}}),
-        json!({"id": "project.list_assets", "params": {}}),
-        json!({"id": "image.image_size", "params": {"source": sheet.to_string_lossy(), "out": normal.to_string_lossy(), "width": 2048, "height": 2048}}),
-        json!({"id": "intake.validate", "params": {"image": normal.to_string_lossy(), "slot": "turnaround_sheet", "attach_to_active": true}}),
-        json!({"id": "assets.assess", "params": {"path": normal.to_string_lossy()}}),
-        json!({"id": "asset.cut_sheet", "params": {"asset": character}}),
-        json!({"id": "asset.build_cutout_rig", "params": {}}),
-    ]
-}
-
-/// `assets.agent_sheets`: brief the configured agent, run it in the project, and check the
-/// sheets it wrote against the contract. `run=false` only writes the brief; `check=true`
-/// checks the sheets already on disk without running the agent.
-pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value> {
-    // `magic-cli exec` runs one command in a throwaway session, so this command is
-    // usually reached with no project open. Say exactly how to reach it with one.
-    let dir = crate::workshop::project_dir(s).map_err(|_| {
-        EngineError::InvalidParams(
-            "no project is open, so there is nowhere to write the sheets. Run it in one session: \
-             `magic-cli run` with a script of two lines — \
-             {\"id\":\"project.open\",\"params\":{\"path\":\"<project>.magic\"}} then \
-             {\"id\":\"assets.agent_sheets\",\"params\":{\"character\":\"<id>\"}} — or open the \
-             project in the app first."
-                .into(),
-        )
-    })?;
-    let character = params
-        .get("character")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .or_else(|| s.current_asset().map(|a| a.id.clone()))
-        .or_else(|| s.project_assets.first().map(|a| a.id.clone()))
-        .ok_or_else(|| EngineError::InvalidParams("open a project with an asset first".into()))?;
-    let reference = s
-        .project_assets
-        .iter()
-        .find(|a| a.id == character)
-        .and_then(|a| a.path.clone())
-        .or_else(|| s.assets.get(&character).map(|a| a.path.clone()))
-        .ok_or_else(|| EngineError::InvalidParams(format!("no artwork path for `{character}`")))?;
-
-    let kinds: Vec<String> = match params.get("kinds") {
-        Some(Value::Array(items)) => items
-            .iter()
-            .filter_map(Value::as_str)
-            .filter(|k| KINDS.contains(k))
-            .map(str::to_owned)
-            .collect(),
-        Some(Value::String(one)) if KINDS.contains(&one.as_str()) => vec![one.clone()],
-        _ => KINDS.iter().map(|k| (*k).to_string()).collect(),
-    };
-    if kinds.is_empty() {
-        return Err(EngineError::InvalidParams(format!(
-            "kinds must be drawn from {KINDS:?}"
-        )));
-    }
-
-    let spec_path = workspace_root(s).join(".agents/skills/asset-sheets/SKILL.md");
-    let spec = std::fs::read_to_string(&spec_path).map_err(|e| {
-        EngineError::InvalidParams(format!(
-            "asset-sheet contract missing at {}: {e}",
-            spec_path.display()
-        ))
-    })?;
-
-    let sheet_dir = dir.join("assets/sheets");
-    let project_path = s
+// Review metadata and generated drafts belong to the selected project even when its
+// source assets are referenced through a symlink or an external library.
+fn ensure_project_output(s: &Session, destination: &Path) -> Result<()> {
+    let project = s
         .project_path
-        .clone()
-        .unwrap_or_else(|| dir.join(format!("{character}.magic")));
-
-    let mut brief = format!(
-        "# Asset sheets for `{character}`\n\nReference artwork: `{}`\n\nDraw these sheets, exactly as this contract says:\n\n{}",
-        reference.display(),
-        spec
-    );
-    brief.push_str(&format!(
-        "\n\n## This request\n\nCharacter: `{character}`\nSheets: {}\nSave them under `{}` with the names the contract gives, plus each `.prompt.md` beside its sheet. Draw only these sheets; do not restyle the character.\n",
-        kinds.join(", "),
-        sheet_dir.display()
-    ));
-    brief.push_str(&draw_instructions(&sheet_dir, &character, &kinds));
-    brief.push_str(&chain_instructions(&project_path, &sheet_dir, &character));
-    if let Some(extra) = params
-        .get("note")
-        .and_then(Value::as_str)
-        .filter(|n| !n.trim().is_empty())
-    {
-        brief.push_str(&format!("\n## Note from the user\n\n{extra}\n"));
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Open a project first".into()))?
+        .canonicalize()?;
+    let root = project
+        .parent()
+        .ok_or_else(|| EngineError::InvalidParams("Project has no folder".into()))?;
+    let ancestor = destination
+        .ancestors()
+        .find(|p| p.exists())
+        .ok_or_else(|| EngineError::InvalidParams("Output has no existing parent folder".into()))?
+        .canonicalize()?;
+    if !ancestor.starts_with(root) {
+        return Err(EngineError::InvalidParams(
+            "Sheet output must be inside the selected project, not a linked source library".into(),
+        ));
     }
+    Ok(())
+}
 
-    let briefs = dir.join("briefs");
-    std::fs::create_dir_all(&briefs)?;
-    let brief_path = briefs.join("AGENT-SHEETS.md");
-    std::fs::write(&brief_path, &brief)?;
-
-    let agent = params
-        .get("agent")
-        .and_then(Value::as_str)
-        .filter(|a| !a.trim().is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(configured_agent);
-    let run = params.get("run").and_then(Value::as_bool).unwrap_or(true);
-    let check = params
-        .get("check")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let timeout_s = params
-        .get("timeout_s")
-        .and_then(Value::as_u64)
-        .filter(|s| *s > 0)
-        .unwrap_or(DEFAULT_TIMEOUT_S);
-
-    if !run && !check {
-        return Ok(
-            json!({"ok": true, "brief": brief_path, "agent": agent, "ran": false, "sheets": []}),
-        );
-    }
-
-    let mut error: Option<String> = None;
-    let mut agent_run: Option<AgentRun> = None;
-    if run {
-        if !which(&agent) {
-            let available = available_agents();
-            return Err(EngineError::InvalidParams(format!(
-                "agent `{agent}` is not installed; installed agents: {available:?}. Pass agent=<name> to choose another, or run=false to only write the brief."
-            )));
+/// One source asset, three independently reviewable sheet types. No generated sheet is
+/// interpreted as rig parts until the user has reviewed its complete source image.
+struct SheetPlan {
+    asset: String,
+    source: PathBuf,
+    reference: PathBuf,
+    source_prompt: Option<String>,
+    suggested_kind: String,
+    directory: PathBuf,
+    sheets: Vec<Value>,
+    motions: Value,
+}
+impl SheetPlan {
+    fn new(s: &Session, params: &Value) -> Result<Self> {
+        let dir = crate::workshop::project_dir(s)?;
+        let asset = params["character"]
+            .as_str()
+            .or(params["asset"].as_str())
+            .or(s.active_asset.as_deref())
+            .ok_or_else(|| EngineError::InvalidParams("Choose a project asset first".into()))?;
+        let registered = s
+            .project_assets
+            .iter()
+            .find(|a| a.id == asset)
+            .ok_or_else(|| {
+                EngineError::InvalidParams("Asset is not registered in this project".into())
+            })?;
+        let reference = s
+            .assets
+            .get(asset)
+            .map(|a| a.path.clone())
+            .or_else(|| registered.path.clone())
+            .ok_or_else(|| EngineError::InvalidParams("Asset has no source artwork".into()))?;
+        let source = reference;
+        let receipt: Value = std::fs::read(source.with_file_name("generation.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or(Value::Null);
+        let source_prompt = receipt["effective_prompt"]
+            .as_str()
+            .or(receipt["prompt"].as_str())
+            .map(str::to_owned);
+        let suggested_kind = if receipt["rig_sheet"].is_object() {
+            "skeleton"
+        } else {
+            "poses"
         }
-        let prompt =
-            format!("Follow this brief exactly and draw the sheets it asks for:\n\n{brief}");
-        let args: Vec<String> = match agent.as_str() {
-            "codex" => vec![
-                "exec".into(),
-                prompt,
-                "--skip-git-repo-check".into(),
-                // The agent must write the sheets, then the prepared layers, inside the project.
-                "-s".into(),
-                "workspace-write".into(),
-                // Nothing can answer an approval prompt in a non-interactive run: say no up
-                // front, so a blocked command fails fast instead of hanging the command.
-                "-c".into(),
-                "approval_policy=\"never\"".into(),
-                "-C".into(),
-                dir.to_string_lossy().into_owned(),
-            ],
-            "claude" => vec![
-                "-p".into(),
-                prompt,
-                "--permission-mode".into(),
-                "auto".into(),
-            ],
-            "omp" => vec![
-                "-p".into(),
-                prompt,
-                "--cwd".into(),
-                dir.to_string_lossy().into_owned(),
-            ],
-            other => {
-                return Err(EngineError::InvalidParams(format!(
-                    "the app can only run omp, claude or codex non-interactively (asked for `{other}`)"
-                )));
+        .to_string();
+        // Resolve the declared original reference through the same project catalog; old
+        // absolute paths in historical generation receipts are not a second asset registry.
+        let mut reference = receipt["references"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|r| r["asset_id"].as_str())
+            .find_map(|id| {
+                s.project_assets
+                    .iter()
+                    .find(|a| a.id == id)
+                    .and_then(|a| a.path.clone())
+            })
+            .unwrap_or_else(|| source.clone());
+        if let Some(path) = params["reference"].as_str() {
+            reference = crate::image_cmds::medium::project_reference(s, path)?;
+        }
+        let mut kinds: Vec<&str> = match &params["kinds"] {
+            Value::Array(items) => items.iter().filter_map(Value::as_str).collect(),
+            Value::String(kind) => vec![kind],
+            Value::Null => vec!["poses"],
+            _ => {
+                return Err(EngineError::InvalidParams(
+                    "kinds must be an array of sheet types".into(),
+                ));
             }
         };
-        let run_result = run_agent(&agent, &args, &dir, timeout_s)?;
-        if run_result.timed_out {
-            error = Some(format!(
-                "the agent `{agent}` did not finish within {timeout_s}s and was stopped; the sheets \
-                 it wrote before that are checked below"
-            ));
-        } else if !run_result.succeeded() {
-            error = Some(format!(
-                "the agent `{agent}` exited with code {:?}: {}",
-                run_result.code,
-                run_result.failure_detail()
+        if kinds.is_empty() || kinds.iter().any(|k| !KINDS.contains(k)) {
+            return Err(EngineError::InvalidParams(
+                "Choose turnaround, skeleton, or poses".into(),
             ));
         }
-        agent_run = Some(run_result);
-    }
-
-    // Normalise every sheet the agent drew to the contract's canvas, with the app's own
-    // command — the image tool returns its own size and the contract forbids cropping by hand.
-    let mut normalise_errors: Vec<String> = Vec::new();
-    if run {
-        for kind in &kinds {
-            let raw = sheet_dir.join(sheet_file(&character, kind));
-            let normalised = sheet_dir.join(normalised_file(&character, kind));
-            if !raw.is_file() {
-                continue;
-            }
-            if normalised.is_file() && image::image_dimensions(&raw).ok() == Some(SHEET_CANVAS) {
-                // The drawing already came back at the contract size and the normalised copy
-                // is there: leave both files alone.
-                continue;
-            }
-            let params = json!({
-                "source": raw.to_string_lossy(),
-                "out": normalised.to_string_lossy(),
-                "width": SHEET_CANVAS.0,
-                "height": SHEET_CANVAS.1,
-                "anchor": "center",
-                "extensionColor": "#ffffff",
-            });
-            if let Err(e) = crate::image_cmds::cmd_image_image_size(s, &params) {
-                normalise_errors.push(format!("{}: {e}", sheet_file(&character, kind)));
-            }
-        }
-    }
-
-    // Check every requested sheet against the contract, whatever the agent did.
-    let mut sheets = Vec::new();
-    let mut problems: Vec<String> = Vec::new();
-    let mut missing: Vec<String> = Vec::new();
-    let mut wrong_size: Vec<String> = Vec::new();
-    for kind in &kinds {
-        let raw = sheet_dir.join(sheet_file(&character, kind));
-        let normalised = sheet_dir.join(normalised_file(&character, kind));
-        let report = sheet_report(kind, &raw, &normalised);
-        if !report["ok"].as_bool().unwrap_or(false) {
-            let reasons: Vec<String> = report["reasons"]
-                .as_array()
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|r| r.as_str().map(str::to_owned))
-                        .collect()
+        kinds.dedup();
+        let directory = dir.join("assets/sheets");
+        let style_id = params["art_style"].as_str().unwrap_or("original");
+        let styles = layout::styles();
+        let style = styles
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["id"] == style_id))
+            .ok_or_else(|| {
+                EngineError::InvalidParams(
+                    "Choose an art_style from assets.sheet_plan styles".into(),
+                )
+            })?;
+        let previous: Value = std::fs::read(directory.join(format!("{asset}-request.json")))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null);
+        let motions: Vec<&str> = match params.get("motions") {
+            Some(Value::Array(items)) if !items.is_empty() => items
+                .iter()
+                .map(|v| {
+                    v.as_str().ok_or_else(|| {
+                        EngineError::InvalidParams(
+                            "motions must be an ordered array of action IDs".into(),
+                        )
+                    })
                 })
-                .unwrap_or_default();
-            problems.push(format!(
-                "{}: {}",
-                sheet_file(&character, kind),
-                reasons.join("; ")
+                .collect::<Result<_>>()?,
+            None => vec![params["motion"].as_str().unwrap_or("sway")],
+            _ => {
+                return Err(EngineError::InvalidParams(
+                    "motions must contain action IDs in the requested order".into(),
+                ));
+            }
+        };
+        let requests: Vec<(&str, &str)> = kinds
+            .iter()
+            .flat_map(|kind| {
+                if *kind == "poses" {
+                    motions.iter().map(|action| (*kind, *action)).collect()
+                } else {
+                    vec![(*kind, "sway")]
+                }
+            })
+            .collect();
+        let sheets = requests.iter().enumerate().map(|(index,(kind,action))| -> Result<Value> {
+            let label = match *kind { "turnaround" => "Turnaround", "skeleton" => "Parts and joints", _ => "Animation frames" };
+            // Panels belong to the selected sheet type, never every sheet in a multi-sheet request.
+            let mut options = if kinds.len() == 1 || *kind == "poses" { params.clone() } else { json!({}) };
+            options["motion"] = json!(action);
+            let layout = SheetLayout::new(kind, &options)?;
+            let key = if *kind == "poses" {format!("poses-{}",layout.motion)} else {kind.to_string()};
+            let direction = params["prompts"][&key].as_str().or(params["prompts"][*kind].as_str()).filter(|p| !p.trim().is_empty())
+                .unwrap_or("Preserve the character's identity, silhouette, proportions, distinctive features and palette.");
+            let template_prompt=format!("{}\n\n{}",style["prompt"].as_str().unwrap_or_default(),layout.prompt());
+            let prompt = format!("{direction}\n\n{template_prompt}");
+            let key = if requests.len() > 1 {format!("{key}-{:02}",index+1)} else {key};
+            let existing = previous["sheets"].as_array().and_then(|v|v.iter().find(|v|v["kind"] == *kind && v["layout"]["motion"] == layout.motion));
+            let file = existing.and_then(|v|v["file"].as_str()).map(PathBuf::from)
+                .unwrap_or_else(||directory.join(sheet_file(asset,&key)));
+            let dimensions = image::image_dimensions(&file).ok();
+            Ok(json!({"key":key,"kind":kind,"label":label,"prompt":prompt,"direction":direction,"art_style":style_id,"template_prompt":template_prompt,"layout":layout,"template_svg":layout.svg(),"file":file,"exists":dimensions.is_some(),
+                "width":dimensions.map(|d|d.0),"height":dimensions.map(|d|d.1),"review":"pending"}))
+        }).collect::<Result<_>>()?;
+        Ok(Self {
+            asset: asset.into(),
+            source,
+            reference,
+            source_prompt,
+            suggested_kind,
+            directory,
+            sheets,
+            motions: layout::motions()?,
+        })
+    }
+    fn value(&self) -> Value {
+        json!({"ok":true,"asset":self.asset,"source":self.source,"reference":self.reference,"source_prompt":self.source_prompt,"suggested_kind":self.suggested_kind,"sheets":self.sheets,
+            "motions":self.motions,"styles":layout::styles(),"sheet_types":[{"id":"poses","label":"Action frames"},{"id":"turnaround","label":"Turnaround · 3D views"},{"id":"skeleton","label":"Body and limb parts"}],
+            "default_motion":"sway","default_action_rows":["walk","jump","lie_down","sway"],"review_required":true,"generation_only":true,"extraction_started":false})
+    }
+}
+
+/// Inspect editable prompts and existing complete sheets without starting a job or writing files.
+/// Example: `magic-cli exec assets.sheet_plan asset=ship`.
+pub fn cmd_assets_sheet_plan(s: &mut Session, params: &Value) -> Result<Value> {
+    Ok(SheetPlan::new(s, params)?.value())
+}
+
+/// Generate complete sheet drafts only when `run=true`. With `run=false`, return the
+/// editable plan without writes. Returned technical checks never approve artwork or start extraction.
+pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value> {
+    let mut plan = SheetPlan::new(s, params)?;
+    let run = params.get("run").and_then(Value::as_bool).unwrap_or(false);
+    if !run {
+        return Ok(plan.value());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?
+        .as_nanos();
+    let output = plan.directory.join(format!("{}-{stamp}", plan.asset));
+    ensure_project_output(s, &output)?;
+    std::fs::create_dir_all(&output)?;
+    for sheet in &mut plan.sheets {
+        sheet["file"] = json!(output.join(sheet_file(
+            &plan.asset,
+            sheet["key"].as_str().unwrap_or_default()
+        )));
+        let layout: SheetLayout = serde_json::from_value(sheet["layout"].clone())
+            .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+        if layout.kind == "skeleton" && layout.panels.len() < 2 {
+            return Err(EngineError::InvalidParams(
+                "Name the existing body and limb parts before generating a parts sheet".into(),
             ));
-            if !raw.is_file() {
-                missing.push(sheet_file(&character, kind));
-            } else {
-                wrong_size.push(sheet_file(&character, kind));
+        }
+        let file = PathBuf::from(sheet["file"].as_str().unwrap_or_default());
+        let guide = file.with_extension("guide.png");
+        layout.write_guide(&crate::workspace::workspace_root(s), &guide)?;
+        std::fs::write(
+            file.with_extension("layout.json"),
+            serde_json::to_vec_pretty(&layout)
+                .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+        )?;
+        sheet["template_reference"] = json!(guide);
+    }
+    let mut brief = format!(
+        "Draw only the complete sheets in this JSON request. Attach BOTH the artwork `reference` and each sheet's `template_reference` PNG to the native image generation tool. The artwork controls identity; the numbered guide controls layout, frame order and drawing bounds. Keep dividers and captions outside drawing bounds. Follow every panel description. Report actual returned dimensions. Copy each whole result to its exact file path and leave its .layout.json intact. Save the exact image prompt beside it as .prompt.txt. Stop after drawing. Human review is required before resizing, cutting, registration, or rigging. Do not run preparation commands and do not create Markdown documents.\n{}",
+        plan.value()
+    );
+    if let Some(note) = params["note"].as_str().filter(|v| !v.trim().is_empty()) {
+        brief.push_str(&format!("\nUser direction: {note}"));
+    }
+    let brief_path = output.join("request.txt");
+    std::fs::write(&brief_path, &brief)?;
+    let manifest = plan.directory.join(format!("{}-request.json", plan.asset));
+    std::fs::write(&manifest, plan.value().to_string())?;
+    std::fs::write(output.join("request.json"), plan.value().to_string())?;
+
+    // Gaffer uses the shared, receipt-verified image command, with both references attached.
+    for sheet in &mut plan.sheets {
+        let mut request = json!({"prompt":sheet["prompt"],"references":[plan.reference,sheet["template_reference"]],
+            "name":format!("{} {}",plan.asset,sheet["key"].as_str().unwrap_or("sheet")),
+            "transparent_background":false});
+        for key in ["model", "provider", "quality", "timeout_s"] {
+            if let Some(value) = params.get(key) {
+                request[key] = value.clone();
             }
         }
-        sheets.push(report);
+        let generated = crate::image_generation::generate(s, &request)?;
+        let source = generated["image"]
+            .as_str()
+            .ok_or_else(|| EngineError::InvalidParams("Gaffer returned no image".into()))?;
+        let destination = PathBuf::from(sheet["file"].as_str().unwrap_or_default());
+        std::fs::copy(source, &destination)?;
+        std::fs::write(
+            destination.with_extension("prompt.txt"),
+            sheet["prompt"].as_str().unwrap_or_default(),
+        )?;
+        sheet["generation"] = generated;
     }
-    for detail in &normalise_errors {
-        problems.push(format!("normalising the sheet failed: {detail}"));
-    }
-    let sheets_ok = problems.is_empty();
 
-    let mut next: Vec<String> = Vec::new();
-    if let Some(detail) = &error {
-        next.push(detail.clone());
+    // Never resize or cut a generated result before its full-sheet review.
+    let mut reports = Vec::new();
+    for sheet in &plan.sheets {
+        let file = Path::new(sheet["file"].as_str().unwrap_or_default());
+        let canvas = (
+            sheet["layout"]["canvas"][0].as_u64().unwrap_or(2048) as u32,
+            sheet["layout"]["canvas"][1].as_u64().unwrap_or(2048) as u32,
+        );
+        let mut report = sheet_report(
+            sheet["kind"].as_str().unwrap_or_default(),
+            file,
+            file,
+            canvas,
+        );
+        report["prompt"] = sheet["prompt"].clone();
+        report["layout"] = sheet["layout"].clone();
+        report["key"] = sheet["key"].clone();
+        report["template_reference"] = sheet["template_reference"].clone();
+        report["generation"] = sheet["generation"].clone();
+        report["review"] = json!("pending");
+        reports.push(report);
     }
-    if !sheets_ok {
-        next.push(format!(
-            "Fix the sheet(s) and re-run: {}",
-            problems.join(" | ")
+    let mut result = plan.value();
+    result["ok"] = json!(reports.iter().all(|r| r["raw"]["exists"] == true));
+    result["sheets"] = json!(reports);
+    result["agent"] = json!("image.generate");
+    result["request"] = json!(manifest);
+    std::fs::write(output.join("result.json"), result.to_string())?;
+    result["next"] = json!([
+        "Review each complete source sheet in the app before preparing any individual assets."
+    ]);
+    Ok(result)
+}
+
+/// Full-sheet review is tied to source bytes, asset identity, and the selected project.
+/// It approves no inferred anatomy and never starts extraction or generation.
+fn sheet_identity(s: &Session, asset: &str, sheet: &Path) -> Result<(PathBuf, String)> {
+    let project = s
+        .project_path
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Open a project first".into()))?
+        .canonicalize()?;
+    let source = sheet.canonicalize()?;
+    let registered = s
+        .project_assets
+        .iter()
+        .find(|a| a.id == asset)
+        .ok_or_else(|| EngineError::InvalidParams("Choose a registered project asset".into()))?;
+    let same_source = s
+        .project_assets
+        .iter()
+        .filter_map(|a| a.path.as_ref())
+        .filter_map(|p| p.canonicalize().ok())
+        .any(|p| p == source)
+        || s.assets
+            .get(asset)
+            .and_then(|a| a.path.canonicalize().ok())
+            .is_some_and(|p| p == source)
+        || registered
+            .path
+            .as_ref()
+            .and_then(|p| p.canonicalize().ok())
+            .is_some_and(|p| p == source);
+    if !same_source
+        && !project
+            .parent()
+            .is_some_and(|root| source.starts_with(root))
+    {
+        return Err(EngineError::InvalidParams(
+            "The sheet must belong to the selected project asset or project folder".into(),
         ));
-        if !missing.is_empty() {
-            next.push(format!(
-                "The agent drew no sheet for {}. Re-run the command to draw them again, with a \
-                 note that says what to correct.",
-                missing.join(", ")
-            ));
-        }
-        if !wrong_size.is_empty() {
-            next.push(format!(
-                "{} {} at the wrong size. Re-run the command — it normalises what the agent drew \
-                 with `image.image_size` — or run that command by hand.",
-                wrong_size.join(", "),
-                if wrong_size.len() == 1 { "is" } else { "are" }
-            ));
-        }
-    } else {
-        next.push(
-            "Write `chain` to a .jsonl file and run `magic-cli run <file>`: `exec` starts \
-             a throwaway session, so the project's own commands need one session to share."
-                .to_string(),
-        );
-        next.push(
-            "assets.assess path=<sheet> decides clean-or-recreate; on `recreate` use \
-             assets.fixlist_add instead of forcing the cut."
-                .to_string(),
-        );
     }
-
-    Ok(json!({
-        "ok": sheets_ok,
-        "command": "assets.agent_sheets",
-        "agent": agent,
-        "character": character,
-        "brief": brief_path,
-        "sheets": sheets,
-        "problems": problems,
-        "chain": chain_script(&project_path, &sheet_dir, &character),
-        "agent_error": error,
-        "output_tail": agent_run.as_ref().map(|r| tail(&r.stdout, 600)).unwrap_or_default(),
-        "agent_log_tail": agent_run.as_ref().map(|r| tail(&r.stderr, 1200)).unwrap_or_default(),
-        "next": next,
-    }))
+    image::image_dimensions(&source)?;
+    let mut hash = Sha256::new();
+    std::io::copy(&mut std::fs::File::open(&source)?, &mut hash)?;
+    Ok((project, format!("{:x}", hash.finalize())))
+}
+fn review_file(project: &Path, asset: &str, hash: &str) -> Result<PathBuf> {
+    Ok(project
+        .parent()
+        .ok_or_else(|| EngineError::InvalidParams("Project has no folder".into()))?
+        .join("assets/sheets/reviews")
+        .join(format!(
+            "{:x}.json",
+            Sha256::digest(format!("{asset}\0{hash}").as_bytes())
+        )))
+}
+fn review(s: &Session, asset: &str, sheet: &Path) -> Result<Value> {
+    let (project, hash) = sheet_identity(s, asset, sheet)?;
+    let stored: Value = std::fs::read(review_file(&project, asset, &hash)?)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
+    let approved = stored["approved"] == true
+        && stored["asset"] == asset
+        && stored["project"] == json!(project);
+    let (width, height) = image::image_dimensions(sheet)?;
+    Ok(
+        json!({"asset":asset,"file":sheet,"sha256":hash,"width":width,"height":height,
+        "approved":approved,"review":if approved{"approved"}else{"pending"}}),
+    )
+}
+/// Inspect the complete sheet and its exact review state without modifying source pixels.
+pub fn cmd_assets_sheet_info(s: &mut Session, p: &Value) -> Result<Value> {
+    let asset = p["asset"]
+        .as_str()
+        .ok_or_else(|| EngineError::InvalidParams("asset is required".into()))?;
+    let sheet = crate::workspace::resolve_workspace_path(
+        s,
+        p["sheet"]
+            .as_str()
+            .ok_or_else(|| EngineError::InvalidParams("sheet is required".into()))?,
+    );
+    review(s, asset, &sheet)
+}
+/// Record an explicit full-sheet approval or request changes. The exact bytes must match
+/// the source displayed by the caller. Example: `assets.sheet_review asset=ship sheet=... sha256=... approved=true expected_project=...`.
+pub fn cmd_assets_sheet_review(s: &mut Session, p: &Value) -> Result<Value> {
+    crate::motion_authoring::project_guard(s, p)?;
+    let mut result = cmd_assets_sheet_info(s, p)?;
+    if result["sha256"] != p["sha256"] {
+        return Err(EngineError::InvalidParams(
+            "Sheet changed since review; open its full image again".into(),
+        ));
+    }
+    let approved = p["approved"]
+        .as_bool()
+        .ok_or_else(|| EngineError::InvalidParams("approved must be true or false".into()))?;
+    let project = s
+        .project_path
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Open a project first".into()))?
+        .canonicalize()?;
+    result["project"] = json!(project);
+    result["approved"] = json!(approved);
+    result["review"] = json!(if approved {
+        "approved"
+    } else {
+        "changes_requested"
+    });
+    result["note"] = p["note"].clone();
+    let file = review_file(
+        &project,
+        result["asset"].as_str().unwrap_or_default(),
+        result["sha256"].as_str().unwrap_or_default(),
+    )?;
+    ensure_project_output(s, &file)?;
+    std::fs::create_dir_all(
+        file.parent()
+            .ok_or_else(|| EngineError::InvalidParams("Review folder missing".into()))?,
+    )?;
+    std::fs::write(&file, result.to_string())?;
+    Ok(result)
+}
+/// Preparation consumes only a reviewed source revision; changed bytes need another review.
+pub(crate) fn require_sheet_review(s: &Session, asset: &str, sheet: &Path) -> Result<()> {
+    if review(s, asset, sheet)?["approved"] != true {
+        return Err(EngineError::InvalidParams("Review the complete source sheet in Asset sheets and approve it before extracting individual assets".into()));
+    }
+    Ok(())
 }

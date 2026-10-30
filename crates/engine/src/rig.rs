@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::photocraft::{cmd_asset_load_manifest, decontaminate_sprite_rgba};
+use crate::magic_design::{cmd_asset_load_manifest, decontaminate_sprite_rgba};
 use crate::workspace::workspace_root;
 
 /// Run `mesh.build_4dir`: decontaminate turnaround/pose frames, build a visual-hull mesh, and write GLB/OBJ/ingest JSON.

@@ -1372,26 +1372,26 @@
     },
     "btn-generate-all-sheets": {
       "component": "icon",
-      "label": "Generate missing character sheets",
-      "command": "assets.agent_sheets",
+      "label": "Asset sheets",
+      "command": "assets.sheet_plan",
       "indicator": "hidden"
     },
     "btn-generate-missing-poses": {
       "component": "ghost",
-      "label": "+ Missing Poses",
-      "command": "assets.agent_sheets",
+      "label": "Pose sheets",
+      "command": "assets.sheet_plan",
       "indicator": "hidden"
     },
     "btn-generate-limb-sheet": {
       "component": "ghost",
-      "label": "+ Exploded Limb Sheet",
-      "command": "assets.agent_sheets",
+      "label": "Part sheets",
+      "command": "assets.sheet_plan",
       "indicator": "hidden"
     },
     "btn-generate-turnaround-sheet": {
       "component": "ghost",
-      "label": "+ Turnaround / Direction",
-      "command": "assets.agent_sheets",
+      "label": "Turnaround sheets",
+      "command": "assets.sheet_plan",
       "indicator": "hidden"
     },
     "project-settings-status": {
@@ -1613,6 +1613,104 @@
     "application-settings-save": {
       "component": "start",
       "label": "Save Settings"
+    },
+    "asset-sheet-review": {
+      "component": "workspace",
+      "label": "Asset sheets",
+      "indicator": "hidden"
+    },
+    "asset-sheet-head": {
+      "component": "panel-head",
+      "label": "Asset sheets",
+      "indicator": "hidden",
+      "look": "bar",
+      "density": "compact"
+    },
+    "asset-sheet-canvas": {
+      "component": "workspace",
+      "label": "Full source sheet",
+      "indicator": "hidden"
+    },
+    "asset-sheet-image": {
+      "component": "workspace",
+      "label": "Complete artwork",
+      "indicator": "hidden"
+    },
+    "asset-sheet-prompt": {
+      "component": "field",
+      "label": "Drawing direction",
+      "indicator": "hidden"
+    },
+    "asset-sheet-kind": {
+      "component": "field",
+      "label": "Sheet prompt type",
+      "indicator": "hidden"
+    },
+    "asset-sheet-source": {
+      "component": "field",
+      "label": "Complete sheet",
+      "indicator": "hidden"
+    },
+    "asset-sheet-status": {
+      "component": "panel-status",
+      "label": "Sheet review status",
+      "indicator": "hidden"
+    },
+    "asset-sheet-actions": {
+      "component": "transport",
+      "label": "Sheet actions",
+      "indicator": "hidden"
+    },
+    "asset-sheet-close": {
+      "component": "icon",
+      "label": "Close sheet review",
+      "indicator": "hidden"
+    },
+    "asset-sheet-fit": {
+      "component": "icon",
+      "label": "Fit complete sheet",
+      "indicator": "hidden"
+    },
+    "asset-sheet-actual": {
+      "component": "ghost",
+      "label": "Original pixels",
+      "indicator": "hidden"
+    },
+    "asset-sheet-generate": {
+      "component": "ghost",
+      "label": "Generate draft",
+      "indicator": "hidden"
+    },
+    "asset-sheet-approve": {
+      "component": "start",
+      "label": "Approve full sheet",
+      "indicator": "hidden"
+    },
+    "asset-sheet-extract": {
+      "component": "start",
+      "label": "Extract draft pieces",
+      "indicator": "hidden"
+    },
+    "asset-sheet-original-prompt": {
+      "component": "field",
+      "label": "Original generation prompt",
+      "indicator": "hidden"
+    },
+    "motion-stage-status": {
+      "component": "panel-empty",
+      "label": "Artwork availability",
+      "indicator": "hidden"
+    },
+    "motion-rebuild-rig": {
+      "component": "ghost",
+      "label": "Prepare artwork",
+      "command": "assets.sheet_plan",
+      "indicator": "hidden"
+    },
+    "native-render-dialog": {
+      "component": "editor-dialog",
+      "label": "Native animation source tools",
+      "indicator": "hidden"
     }
   },
   "rails": {

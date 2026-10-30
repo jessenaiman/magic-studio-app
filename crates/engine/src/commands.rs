@@ -5,7 +5,7 @@
 //!   - `workspace` — path/CLI resolution
 //!   - `parts` — part visibility/solo/review
 //!   - `turnaround` — turnaround accuracy + 2D preview
-//!   - `photocraft` — intake, matting, sheet cutting, manifest loading, agent prompt
+//!   - `magic_design` — asset intake, sheet preparation, manifest loading, agent prompt
 //!   - `rig` — 4-dir mesh build + GLB/OBJ writers
 //!   - `exports` — EffectCraft/Three.js/React/Blender/FilmCraft/cutout MP4/layered motion/validate
 //!   - `image_cmds` — break apart / puppet warp / color to alpha / content-aware fill
@@ -24,13 +24,12 @@ use serde_json::Value;
 use crate::{EngineError, Result, Session};
 
 // Re-export the public engine surface that other crates address via `crate::commands::*`.
-pub use crate::photocraft::{decontaminate_sprite_rgba, run_photocraft_transparent_step1};
+pub use crate::magic_design::decontaminate_sprite_rgba;
 pub use crate::project::write_project_file;
 pub use crate::vision::{analyze_rgba_image, analyze_viewport_region};
 pub use crate::workspace::{
-    asset_id_for_import, build_blender_check_args, build_effectcraft_script_args,
-    build_filmcraft_load_args, build_photocraft_run_args, resolve_craft_cli,
-    resolve_workspace_path, sanitize_asset_id, workspace_root,
+    asset_id_for_import, build_effectcraft_script_args, build_photocraft_run_args,
+    resolve_craft_cli, resolve_workspace_path, sanitize_asset_id, workspace_root,
 };
 
 // Import command handlers into this module so the `build()` array can reference them.
@@ -48,12 +47,12 @@ use crate::image_cmds::{
     cmd_image_break_apart, cmd_image_color_to_alpha, cmd_image_content_aware_fill,
     cmd_image_image_size, cmd_image_puppet_warp, cmd_image_register_frame,
 };
-use crate::parts::{cmd_part_set_state, cmd_part_show_all};
-use crate::photocraft::{
+use crate::magic_design::{
     cmd_asset_build_cutout_rig, cmd_asset_cut_sheet, cmd_asset_extract_background,
     cmd_asset_load_manifest, cmd_asset_make_transparent, cmd_export_agent_prompt,
     cmd_intake_compare_reference, cmd_intake_three_question, cmd_intake_validate,
 };
+use crate::parts::{cmd_part_set_state, cmd_part_show_all};
 use crate::project::{
     cmd_project_add_asset, cmd_project_close, cmd_project_list_assets, cmd_project_load_asset,
     cmd_project_new, cmd_project_open, cmd_project_remove_asset, cmd_project_save,
@@ -122,6 +121,8 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "storyboard.template"
         | "storyboard.doctor"
         | "character.assets"
+        | "assets.sheet_plan"
+        | "assets.sheet_info"
         | "assets.assess"
         | "assets.fixlist"
         | "motion.tracks"
@@ -185,6 +186,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"motion.pose.export"
             | b"motion.export_track"
             | b"motion.place_section"
+            | b"assets.agent_sheets"
             | b"rig.from_sheet"
             | b"words.design"
             | b"sequence.render"
@@ -211,6 +213,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.snapshot"
             | b"video.render"
             | b"image.generate"
+            | b"image.apply_medium"
             | b"image.register_frame"
     )
 }
@@ -1064,7 +1067,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Connect Project Asset",
             ["Project Assets"],
             None,
-            "{\"path\":\"image_or_manifest\",\"preset\":\"alternative_to_path\",\"name\":\"optional\",\"id\":\"optional\",\"kind\":\"auto|image|poses|turnaround|cutout_rig\",\"character\":\"name (outside image -> assets/characters/<name>/parts/)\",\"background\":\"name (outside image -> assets/backgrounds/<name>/)\",\"image\":\"name (outside image -> assets/images/<name>/)\"}",
+            "{\"path\":\"image_or_manifest\",\"preset\":\"alternative_to_path\",\"name\":\"optional\",\"id\":\"optional\",\"kind\":\"auto|image|poses|turnaround|cutout_rig\",\"character\":\"name (outside image -> assets/characters/<name>/parts/)\",\"background\":\"name (outside image -> assets/backgrounds/<name>/)\",\"image\":\"name (outside image -> assets/images/<name>/)\",\"remove_background\":true,\"backend\":\"auto|rembg|photocraft\",\"model\":\"optional matting model\"}",
             always,
             cmd_project_add_asset
         ),
@@ -1100,7 +1103,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Make Transparent",
             ["Rig & Matting"],
             None,
-            "{\"tolerance\":25}",
+            "{\"asset\":\"optional id\",\"source\":\"optional reference image\",\"attach\":true,\"reuse_alpha\":false,\"backend\":\"auto|rembg|photocraft\",\"model\":\"optional\",\"rect\":\"optional [x,y,w,h]\",\"keep_polygons\":[\"optional polygons restoring thin details\"]}",
             has_asset,
             cmd_asset_make_transparent
         ),
@@ -1406,13 +1409,58 @@ pub fn build() -> Vec<CommandSpec> {
             crate::image_generation::generate
         ),
         cmd!(
+            "assets.sheet_plan",
+            "Inspect Asset Sheet Prompts",
+            ["Project Assets"],
+            None,
+            "{\"asset\":\"project asset id\",\"kinds\":[\"poses (default)|turnaround|skeleton\"],\"motion\":\"sway (default)|walk|jump|run|lie_down|sit_down|stand_up|wave|clap|custom\",\"motions\":[\"optional ordered actions for a batch\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"panels\":[\"optional label | drawing direction\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"fps\":12,\"hold_frames\":1,\"loop\":true}",
+            always,
+            crate::sheets::cmd_assets_sheet_plan
+        ),
+        cmd!(
+            "assets.sheet_info",
+            "Inspect Full Asset Sheet",
+            ["Project Assets"],
+            None,
+            "{\"asset\":\"project asset id\",\"sheet\":\"source PNG path\"}",
+            always,
+            crate::sheets::cmd_assets_sheet_info
+        ),
+        cmd!(
+            "assets.sheet_playback",
+            "Prepare Action Frame Playback",
+            ["Animation"],
+            None,
+            "{\"manifest\":\"extracted frame manifest.json\",\"id\":\"derived motion asset ID\",\"name\":\"optional display name\"}",
+            always,
+            crate::sheets::playback::prepare
+        ),
+        cmd!(
+            "assets.sheet_review",
+            "Review Full Asset Sheet",
+            ["Project Assets"],
+            None,
+            "{\"expected_project\":\"selected .magic\",\"asset\":\"project asset id\",\"sheet\":\"source PNG\",\"sha256\":\"displayed source hash\",\"approved\":true,\"note\":\"optional\"}",
+            always,
+            crate::sheets::cmd_assets_sheet_review
+        ),
+        cmd!(
             "assets.agent_sheets",
-            "Draw Asset Sheets (agent)",
+            "Generate Reviewable Asset Sheet Drafts",
             ["Rig & Matting"],
             None,
-            "{\"character\":\"optional id\",\"kinds\":[\"turnaround\",\"skeleton\",\"poses\"],\"agent\":\"codex|omp|claude\",\"run\":true,\"check\":false,\"timeout_s\":1800,\"note\":\"optional\"}",
+            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Gaffer model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
             always,
             cmd_assets_agent_sheets
+        ),
+        cmd!(
+            "image.apply_medium",
+            "Preview Reference Medium (PhotoCraft)",
+            ["Project Assets"],
+            None,
+            "{\"source\":\"image path\",\"medium\":\"cutout|poster|watercolor|pencil|dry_brush|oil\",\"settings\":{\"numberOfLevels\":5,\"edgeSimplicity\":6,\"edgeFidelity\":3}}",
+            always,
+            crate::image_cmds::cmd_image_apply_medium
         ),
         cmd!(
             "storyboard.create",
@@ -1835,10 +1883,10 @@ pub fn build() -> Vec<CommandSpec> {
         ),
         cmd!(
             "export.blender",
-            "Export Blender 5.3",
+            "Render Blender Source",
             ["File", "Export"],
             None,
-            "{\"archetype\": \"humanoid_biped\", \"verb\": \"move_traverse\", \"out_mp4\": \"path.mp4\", \"out_png\": \"path.png\"}",
+            "{\"expected_project\":\"selected .magic\",\"id\":\"registered Blender source id\",\"expected_revision\":1,\"options\":{\"max_frames\":90,\"resolution_percent\":50}}",
             always,
             cmd_export_blender
         ),
@@ -1853,7 +1901,7 @@ pub fn build() -> Vec<CommandSpec> {
         ),
         cmd!(
             "scene.farm_school_lineup",
-            "Export Farm School 6-Character Lineup Scene (Blender 5.3)",
+            "Export Farm School Character Lineup Scene (Blender)",
             ["File", "Export"],
             None,
             "{\"out_dir\": \"exports/farm_school_milestone\", \"character\": \"optional_single_char\"}",
