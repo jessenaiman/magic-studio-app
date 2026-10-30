@@ -344,6 +344,38 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
     steps
 }
 
+fn check_overwrite(path: &Path, overwrite: bool) -> Result<()> {
+    if path.exists() && !overwrite {
+        return Err(EngineError::InvalidParams(format!(
+            "project already exists: {} (pass \"overwrite\": true to replace it)",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn project_audio_source(s: &Session, params: &Value) -> Result<Option<PathBuf>> {
+    match params.get("audio").and_then(Value::as_str) {
+        Some(raw) => Ok(Some(super::workspace::song_audio_path(s, raw)?)),
+        None => Ok(None),
+    }
+}
+
+fn claim_new_project(s: &Session, path: &Path) -> Result<std::sync::Arc<std::fs::File>> {
+    if path.exists() {
+        claim(s, path)
+    } else {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        file.try_lock()
+            .map_err(|e| EngineError::InvalidParams(format!("Cannot own new project: {e}")))?;
+        Ok(std::sync::Arc::new(file))
+    }
+}
+
 /// Create a new `.magic` session.
 pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
@@ -352,31 +384,12 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
         .get("overwrite")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if path.exists() && !overwrite {
-        return Err(EngineError::InvalidParams(format!(
-            "project already exists: {} (pass \"overwrite\": true to replace it)",
-            path.display()
-        )));
-    }
-    let audio = match params.get("audio").and_then(Value::as_str) {
-        Some(raw) => Some(super::workspace::song_audio_path(s, raw)?),
-        None => None,
-    };
+    check_overwrite(&path, overwrite)?;
+    let audio = project_audio_source(s, params)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let owner = if path.exists() {
-        claim(s, &path)?
-    } else {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&path)?;
-        file.try_lock()
-            .map_err(|e| EngineError::InvalidParams(format!("Cannot own new project: {e}")))?;
-        std::sync::Arc::new(file)
-    };
+    let owner = claim_new_project(s, &path)?;
     reset_for_project(s, path.clone(), Vec::new());
     s.project_owner = Some(owner);
     s.song_audio = audio;
@@ -414,52 +427,58 @@ fn project_mode(value: &Value) -> Result<Option<String>> {
     }
 }
 
-/// Open an existing `.magic` session.
-pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
-    let path = project_file_path(s, params)?;
-    let owner = if params["claim_owner"] == true {
-        Some(claim(s, &path)?)
-    } else {
-        None
-    };
-    let text = std::fs::read_to_string(&path)?;
-    let doc: Value = serde_json::from_str(&text)
-        .map_err(|e| EngineError::InvalidParams(format!("invalid project file: {e}")))?;
-    if doc.get("format").and_then(Value::as_str) == Some("magicstudio.character") {
-        let char_id = doc
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("character")
-            .to_string();
-        for anc in path.ancestors().skip(1).take(5) {
-            if let Ok(entries) = std::fs::read_dir(anc) {
-                for entry in entries.flatten() {
-                    let ep = entry.path();
-                    if ep != path
-                        && ep
-                            .extension()
-                            .is_some_and(|e| e.eq_ignore_ascii_case("magic"))
-                        && let Ok(txt) = std::fs::read_to_string(&ep)
-                        && let Ok(pdoc) = serde_json::from_str::<Value>(&txt)
-                        && pdoc.get("format").and_then(Value::as_str) == Some(PROJECT_FORMAT)
-                    {
-                        let mut p2 = params.clone();
-                        p2["path"] = json!(ep);
-                        let mut res = cmd_project_open(s, &p2)?;
-                        let _ = cmd_project_load_asset(s, &json!({"id": char_id}));
-                        res["active_asset"] = json!(s.active_asset);
-                        return Ok(res);
-                    }
+fn read_project_document(path: &Path) -> Result<Value> {
+    let text = std::fs::read_to_string(path)?;
+    serde_json::from_str(&text)
+        .map_err(|e| EngineError::InvalidParams(format!("invalid project file: {e}")))
+}
+
+fn sibling_magic_project(entry_path: &Path, project_path: &Path) -> Option<Value> {
+    if entry_path == project_path
+        || !entry_path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("magic"))
+    {
+        return None;
+    }
+    let text = std::fs::read_to_string(entry_path).ok()?;
+    let doc = serde_json::from_str::<Value>(&text).ok()?;
+    (doc.get("format").and_then(Value::as_str) == Some(PROJECT_FORMAT)).then_some(doc)
+}
+
+fn open_containing_character_project(
+    s: &mut Session,
+    path: &Path,
+    doc: &Value,
+    params: &Value,
+) -> Result<Option<Value>> {
+    if doc.get("format").and_then(Value::as_str) != Some("magicstudio.character") {
+        return Ok(None);
+    }
+    let char_id = doc
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("character")
+        .to_string();
+    for anc in path.ancestors().skip(1).take(5) {
+        if let Ok(entries) = std::fs::read_dir(anc) {
+            for entry in entries.flatten() {
+                let ep = entry.path();
+                if sibling_magic_project(&ep, path).is_some() {
+                    let mut p2 = params.clone();
+                    p2["path"] = json!(ep);
+                    let mut res = cmd_project_open(s, &p2)?;
+                    let _ = cmd_project_load_asset(s, &json!({"id": char_id}));
+                    res["active_asset"] = json!(s.active_asset);
+                    return Ok(Some(res));
                 }
             }
         }
     }
-    if doc.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
-        return Err(EngineError::InvalidParams(format!(
-            "{} is not a Magic Studio project",
-            path.display()
-        )));
-    }
+    Ok(None)
+}
+
+fn project_assets_from_doc(path: &Path, doc: &Value) -> Result<Vec<crate::ProjectAsset>> {
     let mut assets: Vec<crate::ProjectAsset> =
         serde_json::from_value(doc.get("assets").cloned().unwrap_or_else(|| json!([])))
             .map_err(|e| EngineError::InvalidParams(format!("invalid project assets: {e}")))?;
@@ -473,6 +492,16 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
             asset.path = Some(parent.join(source));
         }
     }
+    Ok(assets)
+}
+
+fn apply_opened_state(
+    s: &mut Session,
+    path: &Path,
+    doc: &Value,
+    assets: Vec<crate::ProjectAsset>,
+    owner: Option<std::sync::Arc<std::fs::File>>,
+) -> Result<()> {
     let animation_sources = serde_json::from_value(
         doc.get("animation_sources")
             .filter(|v| !v.is_null())
@@ -480,24 +509,17 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
             .unwrap_or_else(|| json!({})),
     )
     .map_err(|e| EngineError::InvalidParams(format!("invalid animation sources: {e}")))?;
-    // Report connections whose source files have moved instead of dropping them.
-    let missing: Vec<&str> = assets
-        .iter()
-        .filter(|a| a.path.as_ref().is_some_and(|p| !p.exists()))
-        .map(|a| a.id.as_str())
-        .collect::<Vec<_>>();
-    let missing = json!(missing);
-    reset_for_project(s, path.clone(), assets);
+    reset_for_project(s, path.to_path_buf(), assets);
     if let Some(owner) = owner {
         s.project_owner = Some(owner);
     }
     s.theatre_state = doc.get("theatre").filter(|state| !state.is_null()).cloned();
     s.animation_sources = animation_sources;
-    s.project_mode = project_mode(&doc)?;
+    s.project_mode = project_mode(doc)?;
     s.song_audio = doc
         .pointer("/workshop/audio")
         .and_then(Value::as_str)
-        .map(|source| opened_path(source, &path));
+        .map(|source| opened_path(source, path));
     s.draft_approved = doc
         .pointer("/workshop/draft_approved")
         .and_then(Value::as_bool)
@@ -512,7 +534,37 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     s.video_project_path = doc
         .pointer("/workshop/video_project")
         .and_then(Value::as_str)
-        .map(|source| opened_path(source, &path));
+        .map(|source| opened_path(source, path));
+    Ok(())
+}
+
+/// Open an existing `.magic` session.
+pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
+    let path = project_file_path(s, params)?;
+    let owner = if params["claim_owner"] == true {
+        Some(claim(s, &path)?)
+    } else {
+        None
+    };
+    let doc = read_project_document(&path)?;
+    if let Some(res) = open_containing_character_project(s, &path, &doc, params)? {
+        return Ok(res);
+    }
+    if doc.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
+        return Err(EngineError::InvalidParams(format!(
+            "{} is not a Magic Studio project",
+            path.display()
+        )));
+    }
+    let assets = project_assets_from_doc(&path, &doc)?;
+    // Report connections whose source files have moved instead of dropping them.
+    let missing: Vec<&str> = assets
+        .iter()
+        .filter(|a| a.path.as_ref().is_some_and(|p| !p.exists()))
+        .map(|a| a.id.as_str())
+        .collect::<Vec<_>>();
+    let missing = json!(missing);
+    apply_opened_state(s, &path, &doc, assets, owner)?;
     repair_opened_workshop_links(s, &path);
     let warnings = recent_warning(s, &path, params["record_recent"] != false);
     let workshop = super::workshop::workshop_status(s)?;
@@ -557,6 +609,28 @@ fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
     }
 }
 
+fn claim_save_target(target: &Path) -> Result<std::sync::Arc<std::fs::File>> {
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Acquire the destination without truncating it, before changing session identity.
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(target)?;
+    if !file.metadata()?.is_file() {
+        return Err(EngineError::InvalidParams(
+            "Project destination must be a regular file; no write performed".into(),
+        ));
+    }
+    file.try_lock().map_err(|_| EngineError::InvalidParams(format!(
+        "Project is owned by another live writer: {}. No Save As write performed; the original project remains selected.", target.display()
+    )))?;
+    Ok(std::sync::Arc::new(file))
+}
+
 /// Save the open project (or save-as when `path` is given).
 pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     if params.get("expected_project").is_some() {
@@ -570,27 +644,10 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     if params.get("path").is_some() {
         let target = project_file_path(s, params)?;
         if s.project_path.as_ref() != Some(&target) {
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            // Acquire the destination without truncating it, before changing session identity.
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(&target)?;
-            if !file.metadata()?.is_file() {
-                return Err(EngineError::InvalidParams(
-                    "Project destination must be a regular file; no write performed".into(),
-                ));
-            }
-            file.try_lock().map_err(|_| EngineError::InvalidParams(format!(
-                "Project is owned by another live writer: {}. No Save As write performed; the original project remains selected.", target.display()
-            )))?;
+            let file = claim_save_target(&target)?;
             let target = std::fs::canonicalize(target)?;
             let previous_path = s.project_path.replace(target);
-            let previous_owner = s.project_owner.replace(std::sync::Arc::new(file));
+            let previous_owner = s.project_owner.replace(file);
             if let Err(error) = write_project_file(s) {
                 s.project_path = previous_path;
                 s.project_owner = previous_owner;
