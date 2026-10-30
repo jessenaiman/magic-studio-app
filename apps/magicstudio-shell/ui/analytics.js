@@ -1,6 +1,6 @@
 // Analytics reads saved measurements on entry. Scanning is an explicit action, never a timer.
 const analyticsState = { data: null, section: 'backstage', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
-const ANALYTICS_SECTIONS = [['backstage','Backstage'],['text','Text matches'],['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
+const ANALYTICS_SECTIONS = [['backstage','Backstage'],['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
 // Existing Archify references, not live system models. Upstream evidence links stay pinned.
 const ANALYTICS_DIAGRAMS = [
   {id:'magic-cli',file:'magic-cli-architecture.html',title:'Magic CLI & Studio architecture',source:'CLI-Anything magic harness · unified live Studio & headless engine routing',revision:null},
@@ -67,18 +67,6 @@ function analyticsRenderSurface() {
     `Read ${analyticsTime(d.sampled_at_unix_secs)} · no background scans or polling`;
   $('analytics-rail-summary').replaceChildren(analyticsRailReport(comp));
   surface.replaceChildren();
-  if(section==='text') {
-    const result=el('pre',{id:'analytics-text-results'},'Not measured. Refresh runs native git grep only.');
-    surface.append(el('h2',{},'Text matches'),el('button',{id:'analytics-text-refresh',class:'ghost',onclick:async event=>{
-      event.target.disabled=true;
-      try {
-        const data=await invoke('text_matches');
-        const counts=data.report.split('\n').filter(line=>line.includes(' occurrences in ')).join('\n');
-        result.textContent=`${counts}\n\nRoot: ${data.root}\nRevision: ${data.revision} (tracked working files, including local edits)\nRefreshed: ${new Date(data.refreshed_unix_seconds*1000).toISOString()}\n${data.source}\nEdit terms: ${data.terms_file}\nScope / exclusions (Git pathspecs):\n${data.scope}\n${data.report}`;
-      } catch(error) { result.textContent=`Unavailable: ${error}`; }
-      finally { event.target.disabled=false; }
-    }},'Refresh text matches'),result);
-  }
   if(section==='overview')analyticsDiagram(surface);
   if(section==='overview'||section==='complexity')analyticsComplexity(surface,comp,section);
   if(section==='overview'||section==='tokens') {

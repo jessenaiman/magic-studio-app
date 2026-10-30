@@ -1,3 +1,0 @@
-# Native git grep PCRE patterns, one per line; edit here. No automatic refresh.
-\bmc\b
-(?i:legacy)
