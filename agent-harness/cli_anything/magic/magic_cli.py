@@ -193,7 +193,7 @@ def cli(
     type=click.Choice(tuple(audit_core.TOOLS)),
     help=(
         "Select a native tool; repeat to choose several. "
-        "Default: Lizard for a file, all six for a directory."
+        "Default: Lizard for a file, all nine for a directory."
     ),
 )
 @click.option(
@@ -201,13 +201,23 @@ def cli(
     show_default=True,
     help="Lizard output: ranked native text diagnostics or native CSV measurements.",
 )
+@click.option(
+    "--base", default="HEAD", show_default=True,
+    help="Scope and --compare: git revision the change is measured from.",
+)
+@click.option(
+    "--compare", is_flag=True,
+    help="One before/now table of design and code metrics; nonzero if any got worse.",
+)
 @click.pass_context
 def audit(
-    ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str
+    ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str,
+    base: str, compare: bool,
 ) -> None:
     """Run native repository checks with unmodified tool output.
 
-    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace. Each
+    Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace,
+    jscpd, PurgeCSS, scope. Each
     tool uses PATH (or root node_modules/.bin) and the nearest repository
     configuration at or above PATH, up to the repository top.
     Missing tools/configuration are errors, not passing or skipped checks.
@@ -217,7 +227,19 @@ def audit(
     max_function_cognitive_complexity (15) set thresholds.
     Wallace measures our stylesheets (not vendor/node_modules/target) as one
     design: unique colours, font sizes and declarations, ID selectors and
-    specificity. Compare its table before and after a UI change.
+    specificity. Compare its table before and after a UI change. jscpd lists
+    repeated blocks (.jscpd.json): missed chances to share one class, helper
+    or component. PurgeCSS (purgecss.config.cjs) lists selectors no component
+    or page produces: dead styles; its JSON omits only the purged CSS text.
+    CSS is component code: read Stylelint, Wallace, jscpd and PurgeCSS
+    together after every UI change. scope prints git's diff stat since --base
+    for the whole repository, and untracked files, so changes outside PATH
+    show as creep.
+
+    --compare measures PATH at --base and now with the same configuration and
+    prints one table (before, now, change, better/worse; lower is better), the
+    scope since --base, and each stylesheet's concerns with suggested files.
+    It exits 1 when any metric got worse.
     CSV mode also runs native warnings on stderr so violations still fail.
     Other tools keep their native formats.
 
@@ -234,8 +256,13 @@ def audit(
     that directory and inherits the repository limits.
     Clippy requires a crate directory. File checks use repository configuration.
     """
+    if compare:
+        from cli_anything.magic.core.audit_compare import compare as compare_metrics
+
+        ctx.exit(compare_metrics(path.resolve(), base))
     ctx.exit(audit_core.run_audit(
-        path.resolve(), tools, dry_run=ctx.obj["dry_run"], output_format=output_format
+        path.resolve(), tools, dry_run=ctx.obj["dry_run"], output_format=output_format,
+        base=base,
     ))
 
 

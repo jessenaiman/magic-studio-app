@@ -3,6 +3,9 @@
   "description": "Repository audit tools run by magic-cli audit.",
   "devDependencies": {
     "stylelint": "17.16.0",
-    "wallace-cli": "4.0.4"
+    "wallace-cli": "4.0.4",
+    "jscpd": "5.4.2",
+    "purgecss": "8.0.0",
+    "postcss": "8.5.6"
   }
 }
