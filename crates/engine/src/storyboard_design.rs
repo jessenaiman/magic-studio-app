@@ -1,7 +1,7 @@
 //! Scene composition drafts and non-destructive DeckCraft versions.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 fn invalid(s: &str) -> EngineError {
     EngineError::InvalidParams(s.into())
 }
@@ -163,59 +163,142 @@ fn native_fields_cache()
     > = std::sync::OnceLock::new();
     CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
+fn cached_native_fields(key: &Option<(String, u128, u64, String)>) -> Option<Value> {
+    let k = key.as_ref()?;
+    let guard = native_fields_cache().lock().ok()?;
+    guard.get(k).cloned()
+}
+
+fn store_native_fields_cache(key: Option<(String, u128, u64, String)>, val: &Value) {
+    if let Some(k) = key
+        && let Ok(mut guard) = native_fields_cache().lock()
+    {
+        if guard.len() > 32 {
+            guard.clear();
+        }
+        guard.insert(k, val.clone());
+    }
+}
+
+fn pdf_native_fields(s: &Session, board: &Value, fields: &[Value]) -> Result<Value> {
+    let pdf = board["pdf"]
+        .as_str()
+        .ok_or_else(|| invalid("Editable PDF is missing"))?;
+    let key = file_cache_key(pdf, &board["pdf_fields"].to_string());
+    if let Some(cached) = cached_native_fields(&key) {
+        return Ok(cached);
+    }
+    let report = pdf_run(
+        s,
+        json!([{"tool":"doc_open","args":{"path":pdf}},{"tool":"form_fields","args":{"doc":1}}]),
+    )?;
+    let actual = report["steps"][1]["result"][0]["fields"]
+        .as_array()
+        .ok_or_else(|| invalid("PDFCraft returned no form fields"))?;
+    let mut source = board.clone();
+    source["pdf_fields"] = Value::Null;
+    let layout = native_fields(s, &source)?;
+    let mut result = Vec::new();
+    for metadata in fields {
+        let field = actual
+            .iter()
+            .find(|f| f["name"] == metadata["name"])
+            .ok_or_else(|| invalid("Saved PDF field missing; refusing stale metadata"))?;
+        let mut item = metadata.clone();
+        item["value"] = field["value"].clone();
+        if let Some(area) = layout
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|f| f["id"] == item["id"] && f["page"] == item["page"])
+        {
+            item["rect"] = area["rect"].clone();
+        }
+        result.push(item);
+    }
+    let val = json!(result);
+    store_native_fields_cache(key, &val);
+    Ok(val)
+}
+
+fn slide_note_fields(notes: &str) -> std::collections::BTreeMap<String, String> {
+    let mut source_fields = std::collections::BTreeMap::<String, String>::new();
+    let mut section = None;
+    let headings = [
+        ("ACTION", "action"),
+        ("REFERENCE PROMPT", "reference_prompt"),
+        ("ANIMATION PROMPT", "animation_prompt"),
+        ("CONTINUITY", "continuity"),
+        ("SOURCE", "source"),
+    ];
+    for line in notes.lines() {
+        if let Some((_, field)) = headings.iter().find(|(h, _)| *h == line.trim()) {
+            section = Some((*field).to_owned());
+        } else if let Some(field) = &section {
+            let body = source_fields.entry(field.clone()).or_default();
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str(line);
+        }
+    }
+    source_fields
+}
+
+fn shape_field_name(
+    shape: &Value,
+    source_fields: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    let role = shape["altText"].as_str().unwrap_or_default();
+    let source_field = {
+        let matches = source_fields
+            .iter()
+            .filter(|(_, value)| {
+                !value.trim().is_empty()
+                    && Some(value.trim()) == shape["text"].as_str().map(str::trim)
+            })
+            .collect::<Vec<_>>();
+        (matches.len() == 1).then(|| matches[0].0.clone())
+    };
+    role.strip_prefix("user.scene.")
+        .or_else(|| role.strip_prefix("user."))
+        .or_else(|| (role == "auto.scene.lyrics").then_some("lyrics"))
+        .map(str::to_owned)
+        .or(source_field)
+        .or_else(|| {
+            shape["text"]
+                .as_str()
+                .filter(|v| !v.is_empty())
+                .map(|_| format!("object.{}", shape["id"]))
+        })
+}
+
+fn slide_text_fields(slide: &Value, first_scene: u64) -> Result<Vec<Value>> {
+    let page = slide["index"]
+        .as_u64()
+        .ok_or_else(|| invalid("Native slide has no index"))?
+        + 1;
+    let source_fields = slide_note_fields(slide["notes"].as_str().unwrap_or_default());
+    let mut fields = Vec::new();
+    for shape in slide["shapes"].as_array().into_iter().flatten() {
+        let role = shape["altText"].as_str().unwrap_or_default();
+        if let Some(field) = shape_field_name(shape, &source_fields) {
+            let scene = page.checked_sub(first_scene).map(|n| n + 1);
+            fields.push(json!({
+                "page":page,"scene":scene,"field":field,"role":role,"id":shape["id"],
+                "rect":writing_area(shape, &slide["shapes"]),
+                "value":shape["text"].as_str().unwrap_or_default()
+            }));
+        }
+    }
+    Ok(fields)
+}
+
 /// Inspect the existing native document; role names and boxes come from its objects.
 pub(crate) fn native_fields(s: &Session, board: &Value) -> Result<Value> {
     if let Some(fields) = board["pdf_fields"].as_array() {
-        let pdf = board["pdf"]
-            .as_str()
-            .ok_or_else(|| invalid("Editable PDF is missing"))?;
-        let key = file_cache_key(pdf, &board["pdf_fields"].to_string());
-        if let Some(ref k) = key
-            && let Ok(guard) = native_fields_cache().lock()
-            && let Some(cached) = guard.get(k)
-        {
-            return Ok(cached.clone());
-        }
-        let report = pdf_run(
-            s,
-            json!([{"tool":"doc_open","args":{"path":pdf}},{"tool":"form_fields","args":{"doc":1}}]),
-        )?;
-        let actual = report["steps"][1]["result"][0]["fields"]
-            .as_array()
-            .ok_or_else(|| invalid("PDFCraft returned no form fields"))?;
-        let mut source = board.clone();
-        source["pdf_fields"] = Value::Null;
-        let layout = native_fields(s, &source)?;
-        let mut result = Vec::new();
-        for metadata in fields {
-            let field = actual
-                .iter()
-                .find(|f| f["name"] == metadata["name"])
-                .ok_or_else(|| invalid("Saved PDF field missing; refusing stale metadata"))?;
-            let mut item = metadata.clone();
-            item["value"] = field["value"].clone();
-            if let Some(area) = layout
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|f| f["id"] == item["id"] && f["page"] == item["page"])
-            {
-                item["rect"] = area["rect"].clone();
-            }
-            result.push(item);
-        }
-        let val = json!(result);
-        if let Some(k) = key
-            && let Ok(mut guard) = native_fields_cache().lock()
-        {
-            if guard.len() > 32 {
-                guard.clear();
-            }
-            guard.insert(k, val.clone());
-        }
-        return Ok(val);
+        return pdf_native_fields(s, board, fields);
     }
-
     let Some(deck) = board["deck"].as_str() else {
         return Ok(json!([]));
     };
@@ -227,11 +310,8 @@ pub(crate) fn native_fields(s: &Session, board: &Value) -> Result<Value> {
     let count = board["previews"].as_array().map_or(0, Vec::len);
     let first_scene = board["first_scene_page"].as_u64().unwrap_or(u64::MAX);
     let key = file_cache_key(deck, &format!("{count}:{first_scene}"));
-    if let Some(ref k) = key
-        && let Ok(guard) = native_fields_cache().lock()
-        && let Some(cached) = guard.get(k)
-    {
-        return Ok(cached.clone());
+    if let Some(cached) = cached_native_fields(&key) {
+        return Ok(cached);
     }
     let dir = crate::workshop::project_dir(s)?;
     let mut args = vec!["run".into(), "--in".into(), deck.into()];
@@ -245,65 +325,10 @@ pub(crate) fn native_fields(s: &Session, board: &Value) -> Result<Value> {
     let output = crate::workspace::run_tool_in(&dir, "deckcraft-cli", &args)?;
     let mut fields = Vec::new();
     for line in output.lines() {
-        let Some(raw) = line.strip_prefix("slide.inspect → ") else {
-            continue;
-        };
-        let slide: Value = serde_json::from_str(raw)
-            .map_err(|e| invalid(&format!("Invalid native slide inspection: {e}")))?;
-        let page = slide["index"]
-            .as_u64()
-            .ok_or_else(|| invalid("Native slide has no index"))?
-            + 1;
-        let mut source_fields = std::collections::BTreeMap::<String, String>::new();
-        let mut section = None;
-        for line in slide["notes"].as_str().unwrap_or_default().lines() {
-            if let Some((_, field)) = [
-                ("ACTION", "action"),
-                ("REFERENCE PROMPT", "reference_prompt"),
-                ("ANIMATION PROMPT", "animation_prompt"),
-                ("CONTINUITY", "continuity"),
-                ("SOURCE", "source"),
-            ]
-            .iter()
-            .find(|(heading, _)| *heading == line.trim())
-            {
-                section = Some((*field).to_owned());
-            } else if let Some(field) = &section {
-                let body = source_fields.entry(field.clone()).or_default();
-                if !body.is_empty() {
-                    body.push('\n');
-                }
-                body.push_str(line);
-            }
-        }
-        for shape in slide["shapes"].as_array().into_iter().flatten() {
-            let role = shape["altText"].as_str().unwrap_or_default();
-            let source_field = {
-                let matches = source_fields
-                    .iter()
-                    .filter(|(_, value)| {
-                        !value.trim().is_empty()
-                            && Some(value.trim()) == shape["text"].as_str().map(str::trim)
-                    })
-                    .collect::<Vec<_>>();
-                (matches.len() == 1).then(|| matches[0].0.clone())
-            };
-            let field = role
-                .strip_prefix("user.scene.")
-                .or_else(|| role.strip_prefix("user."))
-                .or_else(|| (role == "auto.scene.lyrics").then_some("lyrics"))
-                .map(str::to_owned)
-                .or(source_field)
-                .or_else(|| {
-                    shape["text"]
-                        .as_str()
-                        .filter(|v| !v.is_empty())
-                        .map(|_| format!("object.{}", shape["id"]))
-                });
-            if let Some(field) = field {
-                let scene = page.checked_sub(first_scene).map(|n| n + 1);
-                fields.push(json!({"page":page,"scene":scene,"field":field,"role":role,"id":shape["id"],"rect":writing_area(shape, &slide["shapes"]),"value":shape["text"].as_str().unwrap_or_default()}));
-            }
+        if let Some(raw) = line.strip_prefix("slide.inspect → ") {
+            let slide: Value = serde_json::from_str(raw)
+                .map_err(|e| invalid(&format!("Invalid native slide inspection: {e}")))?;
+            fields.extend(slide_text_fields(&slide, first_scene)?);
         }
     }
     if count > 0 && fields.is_empty() {
@@ -312,14 +337,7 @@ pub(crate) fn native_fields(s: &Session, board: &Value) -> Result<Value> {
         ));
     }
     let val = json!(fields);
-    if let Some(k) = key
-        && let Ok(mut guard) = native_fields_cache().lock()
-    {
-        if guard.len() > 32 {
-            guard.clear();
-        }
-        guard.insert(k, val.clone());
-    }
+    store_native_fields_cache(key, &val);
     Ok(val)
 }
 
@@ -344,11 +362,8 @@ fn writing_area(shape: &Value, shapes: &Value) -> Value {
     rect
 }
 
-/// Stage a native text replacement in the existing design draft, then use its Save path.
-pub(crate) fn edit_text(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
-    let board = crate::storyboard_document::load(&dir)?;
-    let page = p["page"]
+fn resolve_edit_text_page(p: &Value, board: &Value) -> Result<u64> {
+    p["page"]
         .as_u64()
         .or_else(|| {
             p["scene"]
@@ -356,21 +371,10 @@ pub(crate) fn edit_text(s: &mut Session, p: &Value) -> Result<Value> {
                 .and_then(|n| n.checked_sub(1))
                 .map(|n| n + board["first_scene_page"].as_u64().unwrap_or(1))
         })
-        .ok_or_else(|| invalid("scene or page is required"))?;
-    let field = p["field"].as_str().unwrap_or("action");
-    let value = p["value"]
-        .as_str()
-        .ok_or_else(|| invalid("value must be text"))?;
-    let fields = native_fields(s, &board)?;
-    let target = fields
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|f| f["page"] == page && f["field"] == field)
-        .ok_or_else(|| {
-            invalid("No such native text field on this page; inspect storyboard.read text_fields")
-        })?;
-    let mut doc = inspect(s, &json!({}))?;
+        .ok_or_else(|| invalid("scene or page is required"))
+}
+
+fn upsert_text_edit(doc: &mut Value, page: u64, target: &Value, value: &str) -> Result<()> {
     if !doc["text_edits"].is_array() {
         doc["text_edits"] = json!([]);
     }
@@ -387,6 +391,34 @@ pub(crate) fn edit_text(s: &mut Session, p: &Value) -> Result<Value> {
     } else {
         edits.push(edit);
     }
+    Ok(())
+}
+
+fn find_native_text_target(s: &Session, board: &Value, page: u64, field: &str) -> Result<Value> {
+    let fields = native_fields(s, board)?;
+    fields
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|f| f["page"] == page && f["field"] == field)
+        .cloned()
+        .ok_or_else(|| {
+            invalid("No such native text field on this page; inspect storyboard.read text_fields")
+        })
+}
+
+/// Stage a native text replacement in the existing design draft, then use its Save path.
+pub(crate) fn edit_text(s: &mut Session, p: &Value) -> Result<Value> {
+    let dir = crate::workshop::project_dir(s)?;
+    let board = crate::storyboard_document::load(&dir)?;
+    let page = resolve_edit_text_page(p, &board)?;
+    let field = p["field"].as_str().unwrap_or("action");
+    let value = p["value"]
+        .as_str()
+        .ok_or_else(|| invalid("value must be text"))?;
+    let target = find_native_text_target(s, &board, page, field)?;
+    let mut doc = inspect(s, &json!({}))?;
+    upsert_text_edit(&mut doc, page, &target, value)?;
     doc["dirty"] = json!(true);
     write(&draft(s)?, &doc)?;
     // save=false keeps the edit in the draft so a batch ends with one storyboard.save_version: each saved
@@ -418,29 +450,18 @@ pub(crate) fn base(board: &Value) -> Value {
     board.clone()
 }
 
-pub fn place(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
-    let board = crate::storyboard_document::load(&dir)?;
+fn resolve_placement_page(p: &Value, board: &Value) -> Result<u64> {
     let requested = p["scene"]
         .as_u64()
         .map(|scene| board["first_scene_page"].as_u64().unwrap_or(1) + scene.saturating_sub(1))
         .or_else(|| p["page"].as_u64());
-    let page = requested
+    requested
         .filter(|n| *n > 0 && *n <= board["previews"].as_array().map_or(0, Vec::len) as u64)
-        .ok_or_else(|| invalid("page must identify an existing storyboard page"))?;
-    let id = p["asset"]
-        .as_str()
-        .ok_or_else(|| invalid("asset id required"))?;
-    let asset = s
-        .project_assets
-        .iter()
-        .find(|a| a.id == id)
-        .ok_or_else(|| invalid("asset is not connected to this project"))?;
-    let path = asset
-        .path
-        .clone()
-        .ok_or_else(|| invalid("asset has no artwork path"))?;
-    let (iw, ih) = image::image_dimensions(&path)?;
+        .ok_or_else(|| invalid("page must identify an existing storyboard page"))
+}
+
+fn compute_placement_rect(p: &Value, board: &Value, path: &Path) -> Result<[f64; 4]> {
+    let (iw, ih) = image::image_dimensions(path)?;
     let pw = board["page_size"][0].as_f64().unwrap_or(960.0);
     let ph = board["page_size"][1].as_f64().unwrap_or(540.0);
     let width = p["width"].as_f64().unwrap_or(160.0).clamp(20.0, pw);
@@ -456,19 +477,13 @@ pub fn place(s: &mut Session, p: &Value) -> Result<Value> {
         .filter(|v| v.is_finite())
         .ok_or_else(|| invalid("y must be a page coordinate"))?
         .clamp(0.0, ph - height);
-    let mut doc = inspect(s, &json!({}))?;
+    Ok([x, y, width, height])
+}
+
+fn upsert_placement_entry(doc: &mut Value, p: &Value, item: &Value, key: &str) -> Result<()> {
     let entries = doc["placements"]
         .as_array_mut()
         .ok_or_else(|| invalid("invalid design draft"))?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let key = p["placement"]
-        .as_str()
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("placement-{stamp}"));
-    let item = json!({"id":key,"asset":id,"path":path,"page":page,"scene":page.checked_sub(board["first_scene_page"].as_u64().unwrap_or(1)).map(|n|n+1),"rect":[x,y,width,height]});
     if p["placement"].is_string() {
         let entry = entries
             .iter_mut()
@@ -478,6 +493,30 @@ pub fn place(s: &mut Session, p: &Value) -> Result<Value> {
     } else {
         entries.push(item.clone());
     }
+    Ok(())
+}
+
+fn resolve_placement_asset_path<'a>(s: &'a Session, p: &'a Value) -> Result<(&'a str, PathBuf)> {
+    let id = p["asset"]
+        .as_str()
+        .ok_or_else(|| invalid("asset id required"))?;
+    let path = s
+        .project_assets
+        .iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| invalid("asset is not connected to this project"))?
+        .path
+        .clone()
+        .ok_or_else(|| invalid("asset has no artwork path"))?;
+    Ok((id, path))
+}
+
+fn persist_placement_draft(
+    s: &mut Session,
+    dir: &Path,
+    stamp: u128,
+    doc: &mut Value,
+) -> Result<PathBuf> {
     let history = dir.join("storyboard/design-history");
     std::fs::create_dir_all(&history)?;
     write(
@@ -485,49 +524,81 @@ pub fn place(s: &mut Session, p: &Value) -> Result<Value> {
         &inspect(s, &json!({}))?,
     )?;
     doc["dirty"] = json!(true);
-    write(&draft(s)?, &doc)?;
-    Ok(json!({"ok":true,"placement":item,"draft":draft(s)?}))
+    let draft_path = draft(s)?;
+    write(&draft_path, doc)?;
+    Ok(draft_path)
 }
+
+pub fn place(s: &mut Session, p: &Value) -> Result<Value> {
+    let dir = crate::workshop::project_dir(s)?;
+    let board = crate::storyboard_document::load(&dir)?;
+    let page = resolve_placement_page(p, &board)?;
+    let (id, path) = resolve_placement_asset_path(s, p)?;
+    let id = id.to_owned();
+    let [x, y, width, height] = compute_placement_rect(p, &board, &path)?;
+    let mut doc = inspect(s, &json!({}))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let key = p["placement"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("placement-{stamp}"));
+    let scene = page
+        .checked_sub(board["first_scene_page"].as_u64().unwrap_or(1))
+        .map(|n| n + 1);
+    let item = json!({"id":key,"asset":id,"path":path,"page":page,"scene":scene,"rect":[x,y,width,height]});
+    upsert_placement_entry(&mut doc, p, &item, &key)?;
+    let draft_path = persist_placement_draft(s, &dir, stamp, &mut doc)?;
+    Ok(json!({"ok":true,"placement":item,"draft":draft_path}))
+}
+
+fn validate_generated_draft(s: &mut Session, dir: &Path, path: &Path, board: &Value) -> Result<()> {
+    if !path.starts_with(dir.join("storyboard").canonicalize()?)
+        || path.file_name().and_then(|n| n.to_str()) != Some("manifest.json")
+    {
+        return Err(invalid(
+            "Draft must be this project's generated storyboard manifest",
+        ));
+    }
+    if board["project"] != json!(s.project_path) || board["draft"] != true {
+        return Err(invalid("Not a draft for this open project"));
+    }
+    if board["mapping"]["needs_correction"] == true {
+        return Err(invalid(&format!(
+            "Draft mapping needs correction; expected template and unmapped source: {}. Resume: {}",
+            board["mapping"], board["resume_command"]
+        )));
+    }
+    let has_deck = board["deck"]
+        .as_str()
+        .is_some_and(|p| Path::new(p).is_file());
+    let has_previews = board["previews"].as_array().is_some_and(|xs| {
+        !xs.is_empty()
+            && xs
+                .iter()
+                .all(|p| p.as_str().is_some_and(|v| Path::new(v).is_file()))
+    });
+    if !has_deck || !has_previews {
+        return Err(invalid(
+            "Draft native deck or rendered previews are missing",
+        ));
+    }
+    if inspect(s, &json!({}))?["dirty"] == true {
+        return Err(invalid(
+            "Save pending design edits before adopting a generated draft",
+        ));
+    }
+    Ok(())
+}
+
 pub fn save(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(path) = p["draft"].as_str() {
         let dir = crate::workshop::project_dir(s)?;
         let path = crate::workspace::resolve_workspace_path(s, path).canonicalize()?;
-        if !path.starts_with(dir.join("storyboard").canonicalize()?)
-            || path.file_name().and_then(|n| n.to_str()) != Some("manifest.json")
-        {
-            return Err(invalid(
-                "Draft must be this project's generated storyboard manifest",
-            ));
-        }
         let mut board = crate::storyboard_document::related(&dir, &path)?;
-        if board["project"] != json!(s.project_path) || board["draft"] != true {
-            return Err(invalid("Not a draft for this open project"));
-        }
-        if board["mapping"]["needs_correction"] == true {
-            return Err(invalid(&format!(
-                "Draft mapping needs correction; expected template and unmapped source: {}. Resume: {}",
-                board["mapping"], board["resume_command"]
-            )));
-        }
-        if !board["deck"]
-            .as_str()
-            .is_some_and(|p| Path::new(p).is_file())
-            || board["previews"].as_array().is_none_or(|xs| {
-                xs.is_empty()
-                    || xs
-                        .iter()
-                        .any(|p| !p.as_str().is_some_and(|v| Path::new(v).is_file()))
-            })
-        {
-            return Err(invalid(
-                "Draft native deck or rendered previews are missing",
-            ));
-        }
-        if inspect(s, &json!({}))?["dirty"] == true {
-            return Err(invalid(
-                "Save pending design edits before adopting a generated draft",
-            ));
-        }
+        validate_generated_draft(s, &dir, &path, &board)?;
         board["draft"] = json!(false);
         board["status"] = json!("saved after draft review");
         write(&dir.join("storyboard/movie-board.json"), &board)?;
@@ -539,6 +610,133 @@ pub fn save(s: &mut Session, p: &Value) -> Result<Value> {
     let board = crate::storyboard_document::load(&dir)?;
     let design = inspect(s, &json!({}))?;
     save_deck(s, board, &design)
+}
+
+fn collect_deck_text_edits(design: &Value, imported_pdf: bool) -> Vec<Value> {
+    let mut edits = if imported_pdf {
+        design["text_fields"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    for edit in design["text_edits"].as_array().into_iter().flatten() {
+        if let Some(value) = edits
+            .iter_mut()
+            .find(|v| v["page"] == edit["page"] && v["id"] == edit["id"])
+        {
+            *value = edit.clone();
+        } else {
+            edits.push(edit.clone());
+        }
+    }
+    edits
+}
+
+fn append_text_edit_commands(args: &mut Vec<String>, edits: &[Value], imported_pdf: bool) {
+    for edit in edits {
+        args.extend([
+            "--cmd".into(),
+            format!(
+                "slide.go={}",
+                json!({"index":edit["page"].as_u64().unwrap_or(1)-1})
+            ),
+            "--cmd".into(),
+            format!("text.set={}", json!({"id":edit["id"],"text":edit["value"]})),
+        ]);
+        if imported_pdf && edit["rect"].is_array() {
+            let r = &edit["rect"];
+            args.extend([
+                "--cmd".into(),
+                format!(
+                    "shape.setBounds={}",
+                    json!({"ids":[edit["id"]],"x":r[0],"y":r[1],"w":r[2],"h":r[3]})
+                ),
+            ]);
+        }
+        if let Some(field) = edit["field"].as_str().filter(|f| !f.starts_with("object.")) {
+            let role = edit["role"]
+                .as_str()
+                .filter(|r| !r.is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("user.scene.{field}"));
+            args.extend([
+                "--cmd".into(),
+                format!("edit.select={}", json!({"ids":[edit["id"]]})),
+                "--cmd".into(),
+                format!("shape.altText={}", json!({"text":role})),
+            ]);
+        }
+    }
+}
+
+fn render_deck_previews(dir: &Path, deck: &Path, pages: &Path) -> Result<Vec<PathBuf>> {
+    crate::workspace::run_tool_in(
+        dir,
+        "deckcraft-cli",
+        &[
+            "render".into(),
+            deck.to_string_lossy().into_owned(),
+            "--all".into(),
+            "--scale".into(),
+            "1.5".into(),
+            pages.to_string_lossy().into_owned(),
+        ],
+    )?;
+    let mut previews = std::fs::read_dir(pages)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|e| e == "png"))
+        .collect::<Vec<_>>();
+    previews.sort();
+    Ok(previews)
+}
+
+fn append_picture_placement_commands(args: &mut Vec<String>, entries: &[Value], deck: &Path, pdf: &Path) {
+    for item in entries {
+        args.extend([
+            "--cmd".into(),
+            format!(
+                "slide.go={}",
+                json!({"index":item["page"].as_u64().unwrap_or(1)-1})
+            ),
+            "--cmd".into(),
+            format!(
+                "insert.picture={}",
+                json!({"path":item["path"],"rect":item["rect"],"name":format!("Design · {}",item["asset"])})
+            ),
+        ]);
+    }
+    args.extend([
+        "--save".into(),
+        deck.to_string_lossy().into_owned(),
+        "--export".into(),
+        pdf.to_string_lossy().into_owned(),
+    ]);
+}
+
+fn render_text_base_if_edited(
+    dir: &Path,
+    out: &Path,
+    mut args: Vec<String>,
+    edits: &[Value],
+    baseline: &mut Value,
+) -> Result<Vec<String>> {
+    if edits.is_empty() {
+        return Ok(args);
+    }
+    // Render the same document with text edits, before draft picture overlays are inserted.
+    // This keeps existing image drag/drop behaviour and avoids duplicating saved pictures.
+    let text_base = out.join("text-base.deckcraft");
+    args.extend(["--save".into(), text_base.to_string_lossy().into_owned()]);
+    crate::workspace::run_tool_in(dir, "deckcraft-cli", &args)?;
+    let previews = render_deck_previews(dir, &text_base, &out.join("text-pages"))?;
+    baseline["previews"] = json!(previews);
+    Ok(vec![
+        "run".into(),
+        "--in".into(),
+        text_base.to_string_lossy().into_owned(),
+    ])
 }
 
 pub(crate) fn save_deck(s: &mut Session, mut board: Value, design: &Value) -> Result<Value> {
@@ -561,110 +759,15 @@ pub(crate) fn save_deck(s: &mut Session, mut board: Value, design: &Value) -> Re
     let deck = out.join("movie-board.deckcraft");
     let pdf = out.join("movie-board.pdf");
     let imported_pdf = board["pdf_fields"].is_array();
-    let mut edits = if imported_pdf {
-        design["text_fields"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    for edit in design["text_edits"].as_array().into_iter().flatten() {
-        if let Some(value) = edits
-            .iter_mut()
-            .find(|v| v["page"] == edit["page"] && v["id"] == edit["id"])
-        {
-            *value = edit.clone();
-        } else {
-            edits.push(edit.clone());
-        }
-    }
+    let edits = collect_deck_text_edits(design, imported_pdf);
     board.as_object_mut().map(|v| v.remove("pdf_fields"));
     baseline.as_object_mut().map(|v| v.remove("pdf_fields"));
-    let mut args = vec!["run".into(), "--in".into(), original.clone()];
-    for edit in &edits {
-        args.extend([
-            "--cmd".into(),
-            format!(
-                "slide.go={}",
-                json!({"index":edit["page"].as_u64().unwrap_or(1)-1})
-            ),
-            "--cmd".into(),
-            format!("text.set={}", json!({"id":edit["id"],"text":edit["value"]})),
-        ]);
-        if imported_pdf && edit["rect"].is_array() {
-            let r = &edit["rect"];
-            args.extend([
-                "--cmd".into(),
-                format!(
-                    "shape.setBounds={}",
-                    json!({"ids":[edit["id"]],"x":r[0],"y":r[1],"w":r[2],"h":r[3]})
-                ),
-            ]);
-        }
-        if let Some(field) = edit["field"].as_str().filter(|f| !f.starts_with("object.")) {
-            args.extend(["--cmd".into(),format!("edit.select={}",json!({"ids":[edit["id"]]})),"--cmd".into(),format!("shape.altText={}",json!({"text":edit["role"].as_str().filter(|r|!r.is_empty()).map(str::to_owned).unwrap_or_else(||format!("user.scene.{field}"))}))]);
-        }
-    }
-    if !edits.is_empty() {
-        // Render the same document with text edits, before draft picture overlays are inserted.
-        // This keeps existing image drag/drop behaviour and avoids duplicating saved pictures.
-        let text_base = out.join("text-base.deckcraft");
-        args.extend(["--save".into(), text_base.to_string_lossy().into_owned()]);
-        crate::workspace::run_tool_in(&dir, "deckcraft-cli", &args)?;
-        let pages = out.join("text-pages");
-        crate::workspace::run_tool_in(
-            &dir,
-            "deckcraft-cli",
-            &[
-                "render".into(),
-                text_base.to_string_lossy().into_owned(),
-                "--all".into(),
-                "--scale".into(),
-                "1.5".into(),
-                pages.to_string_lossy().into_owned(),
-            ],
-        )?;
-        let mut previews = std::fs::read_dir(&pages)?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.extension().is_some_and(|e| e == "png"))
-            .collect::<Vec<_>>();
-        previews.sort();
-        baseline["previews"] = json!(previews);
-        args = vec![
-            "run".into(),
-            "--in".into(),
-            text_base.to_string_lossy().into_owned(),
-        ];
-    }
-    for item in entries {
-        args.extend(["--cmd".into(),format!("slide.go={}",json!({"index":item["page"].as_u64().unwrap_or(1)-1})),"--cmd".into(),format!("insert.picture={}",json!({"path":item["path"],"rect":item["rect"],"name":format!("Design · {}",item["asset"])}))]);
-    }
-    args.extend([
-        "--save".into(),
-        deck.to_string_lossy().into_owned(),
-        "--export".into(),
-        pdf.to_string_lossy().into_owned(),
-    ]);
+    let mut args = vec!["run".into(), "--in".into(), original];
+    append_text_edit_commands(&mut args, &edits, imported_pdf);
+    let mut args = render_text_base_if_edited(&dir, &out, args, &edits, &mut baseline)?;
+    append_picture_placement_commands(&mut args, entries, &deck, &pdf);
     crate::workspace::run_tool_in(&dir, "deckcraft-cli", &args)?;
-    let pages = out.join("pages");
-    crate::workspace::run_tool_in(
-        &dir,
-        "deckcraft-cli",
-        &[
-            "render".into(),
-            deck.to_string_lossy().into_owned(),
-            "--all".into(),
-            "--scale".into(),
-            "1.5".into(),
-            pages.to_string_lossy().into_owned(),
-        ],
-    )?;
-    let mut previews = std::fs::read_dir(&pages)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|e| e == "png"))
-        .collect::<Vec<_>>();
-    previews.sort();
+    let previews = render_deck_previews(&dir, &deck, &out.join("pages"))?;
     board["editor"] = json!("DeckCraft");
     board["project"] = json!(s.project_path);
     board["manifest"] = json!(out.join("manifest.json"));
