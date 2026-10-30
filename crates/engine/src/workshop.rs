@@ -726,6 +726,53 @@ pub fn cmd_workshop_status(s: &mut Session, _: &Value) -> Result<Value> {
     workshop_status(s)
 }
 
+/// The audio already connected to this project: the session path, else the copy beside the video.
+fn connected_audio(s: &Session, dir: &Path, audio: &Path) -> Option<PathBuf> {
+    s.song_audio.clone().filter(|path| path.is_file()).or_else(|| {
+        audio
+            .file_name()
+            .map(|name| dir.join("hyperframes").join(name))
+            .filter(|path| path.is_file())
+    })
+}
+
+/// Same path, or the same bytes: relinking an identical recording is not a change.
+fn same_audio(old: &Path, audio: &Path) -> bool {
+    old == audio
+        || std::fs::read(old)
+            .ok()
+            .zip(std::fs::read(audio).ok())
+            .is_some_and(|(old, new)| old == new)
+}
+
+type AudioState = (Option<PathBuf>, String, Option<PathBuf>);
+
+fn audio_state(s: &Session) -> AudioState {
+    (
+        s.song_audio.clone(),
+        s.video_target.clone(),
+        s.video_project_path.clone(),
+    )
+}
+
+fn restore_audio_state(s: &mut Session, previous: AudioState) {
+    (s.song_audio, s.video_target, s.video_project_path) = previous;
+}
+
+/// The HyperFrames project and its preview server, then the project file that records both.
+fn hyperframes_setup(s: &mut Session, params: &Value) -> Result<Value> {
+    let video = crate::video_target::cmd_video_init(
+        s,
+        &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}),
+    )?;
+    let preview = crate::video_target::cmd_video_server_start(
+        s,
+        &json!({"resolve_video_cli":params["resolve_video_cli"]}),
+    )?;
+    crate::project::write_project_file(s)?;
+    Ok(json!({"ok":true,"video":video,"preview":preview}))
+}
+
 pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let raw = params
@@ -734,31 +781,12 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
         .ok_or_else(|| EngineError::InvalidParams("missing audio 'path'".into()))?;
     let audio = song_audio_path(s, raw)?;
     let exists = ensure_video_target_project(s, &dir, "hyperframes").is_ok();
-    let connected = s
-        .song_audio
-        .clone()
-        .filter(|path| path.is_file())
-        .or_else(|| {
-            audio
-                .file_name()
-                .map(|name| dir.join("hyperframes").join(name))
-                .filter(|path| path.is_file())
-        });
-    let unchanged = connected.as_ref().is_some_and(|old| {
-        old == &audio
-            || std::fs::read(old)
-                .ok()
-                .zip(std::fs::read(&audio).ok())
-                .is_some_and(|(old, new)| old == new)
-    });
+    let connected = connected_audio(s, &dir, &audio);
+    let unchanged = connected.as_ref().is_some_and(|old| same_audio(old, &audio));
     if exists && !unchanged {
         return Err(EngineError::InvalidParams("This HyperFrames project already has a timeline. Update its audio in HyperFrames before relinking the recording; the existing project was preserved".into()));
     }
-    let previous = (
-        s.song_audio.clone(),
-        s.video_target.clone(),
-        s.video_project_path.clone(),
-    );
+    let previous = audio_state(s);
     s.song_audio = Some(if exists && unchanged {
         connected.ok_or_else(|| {
             EngineError::InvalidParams("Existing audio connection is unavailable".into())
@@ -767,20 +795,9 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
         audio
     });
     s.video_target = "hyperframes".into();
-    let setup = (|| {
-        let video = crate::video_target::cmd_video_init(
-            s,
-            &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}),
-        )?;
-        let preview = crate::video_target::cmd_video_server_start(
-            s,
-            &json!({"resolve_video_cli":params["resolve_video_cli"]}),
-        )?;
-        crate::project::write_project_file(s)?;
-        Ok(json!({"ok":true,"video":video,"preview":preview}))
-    })();
+    let setup = hyperframes_setup(s, params);
     if setup.is_err() {
-        (s.song_audio, s.video_target, s.video_project_path) = previous;
+        restore_audio_state(s, previous);
         crate::project::write_project_file(s)?;
     }
     setup
@@ -906,13 +923,8 @@ pub fn cmd_workshop_add(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 /// Cuts a storyboard grid into storyboard/panel-NN.png with PhotoCraft.
-pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
-    let image = params
-        .get("image")
-        .and_then(Value::as_str)
-        .map(|p| resolve_workspace_path(s, p))
-        .ok_or_else(|| EngineError::InvalidParams("missing storyboard grid 'image'".into()))?;
+/// Grid shape and inset, defaulting to 3x2 panels with an 8px inset.
+fn grid_dims(params: &Value) -> (u32, u32, u32) {
     let columns = params
         .get("columns")
         .and_then(Value::as_u64)
@@ -924,15 +936,19 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
         .unwrap_or(2)
         .max(1) as u32;
     let inset = params.get("inset").and_then(Value::as_u64).unwrap_or(8) as u32;
-    let (w, h) = image::image_dimensions(&image)?;
-    let (cw, ch) = (w / columns, h / rows);
-    if cw <= 2 * inset || ch <= 2 * inset {
-        return Err(EngineError::InvalidParams(
-            "panels too small for that grid and inset".into(),
-        ));
-    }
-    let out_dir = dir.join(STORYBOARD_DIR);
-    std::fs::create_dir_all(&out_dir)?;
+    (columns, rows, inset)
+}
+
+/// One PhotoCraft crop per panel, written as storyboard/panel-NN.png.
+fn crop_panels(
+    dir: &Path,
+    image: &Path,
+    out_dir: &Path,
+    columns: u32,
+    rows: u32,
+    inset: u32,
+    (cw, ch): (u32, u32),
+) -> Result<Vec<PathBuf>> {
     let mut panels = Vec::new();
     for r in 0..rows {
         for c in 0..columns {
@@ -940,7 +956,7 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
             let out = out_dir.join(format!("panel-{n:02}.png"));
             let rect = json!({"x": c * cw + inset, "y": r * ch + inset, "width": cw - 2 * inset, "height": ch - 2 * inset});
             run_tool_in(
-                &dir,
+                dir,
                 "photocraft-cli",
                 &[
                     "run".into(),
@@ -956,77 +972,112 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
             panels.push(out);
         }
     }
-    let mut prompts_written = Vec::new();
-    if let Some(prompt_file) = params
+    Ok(panels)
+}
+
+/// A numbered prompt beside each panel whose prompt file has that panel number.
+fn write_prompts(
+    s: &Session,
+    params: &Value,
+    panels: &[PathBuf],
+    image: &Path,
+) -> Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
+    let Some(prompt_file) = params
         .get("prompts")
         .and_then(Value::as_str)
         .map(|p| resolve_workspace_path(s, p))
-    {
-        let numbered = numbered_prompts(&std::fs::read_to_string(&prompt_file)?);
-        let source = prompt_file
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default()
-            .to_string();
-        for (i, panel) in panels.iter().enumerate() {
-            if let Some(text) = numbered.get(&(i + 1)) {
-                let out = panel.with_extension("prompt.md");
-                std::fs::write(
-                    &out,
-                    format!(
-                        "{text}\n\nSource: {source} (panel {} of {})\n",
-                        i + 1,
-                        image
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or_default()
-                    ),
-                )?;
-                prompts_written.push(out);
-            }
-        }
+    else {
+        return Ok(written);
+    };
+    let numbered = numbered_prompts(&std::fs::read_to_string(&prompt_file)?);
+    let source = prompt_file
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_string();
+    for (i, panel) in panels.iter().enumerate() {
+        let Some(text) = numbered.get(&(i + 1)) else {
+            continue;
+        };
+        let out = panel.with_extension("prompt.md");
+        std::fs::write(
+            &out,
+            format!(
+                "{text}\n\nSource: {source} (panel {} of {})\n",
+                i + 1,
+                image
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default()
+            ),
+        )?;
+        written.push(out);
     }
+    Ok(written)
+}
+
+/// Cuts a storyboard grid into storyboard/panel-NN.png with PhotoCraft.
+pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    let image = params
+        .get("image")
+        .and_then(Value::as_str)
+        .map(|p| resolve_workspace_path(s, p))
+        .ok_or_else(|| EngineError::InvalidParams("missing storyboard grid 'image'".into()))?;
+    let (columns, rows, inset) = grid_dims(params);
+    let (w, h) = image::image_dimensions(&image)?;
+    let (cw, ch) = (w / columns, h / rows);
+    if cw <= 2 * inset || ch <= 2 * inset {
+        return Err(EngineError::InvalidParams(
+            "panels too small for that grid and inset".into(),
+        ));
+    }
+    let out_dir = dir.join(STORYBOARD_DIR);
+    std::fs::create_dir_all(&out_dir)?;
+    let panels = crop_panels(&dir, &image, &out_dir, columns, rows, inset, (cw, ch))?;
+    let prompts_written = write_prompts(s, params, &panels, &image)?;
     let mut status = workshop_status(s)?;
     status["panels"] = json!(panels);
     status["prompts"] = json!(prompts_written);
     Ok(status)
 }
 
+/// `HH:MM:SS,mmm` (or `SS`-less variants) to seconds; anything malformed or out of range is None.
+fn parse_srt_time(raw: &str) -> Option<f64> {
+    let value = raw.trim().replace(',', ".");
+    let parts = value
+        .split(':')
+        .map(str::parse::<f64>)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .ok()?;
+    if parts.len() != 3
+        || parts.iter().any(|n| !n.is_finite() || *n < 0.0)
+        || parts[1] >= 60.0
+        || parts[2] >= 60.0
+    {
+        return None;
+    }
+    Some(parts[0] * 3600.0 + parts[1] * 60.0 + parts[2])
+}
+
+/// One subtitle block: its timing line and the text that follows it.
+fn parse_cue(block: &str) -> Result<(f64, f64, String)> {
+    let lines = block.lines().collect::<Vec<_>>();
+    let timing = lines.iter().position(|l| l.contains("-->")).and_then(|i| {
+        let (a, b) = lines[i].split_once("-->")?;
+        Some((parse_srt_time(a)?, parse_srt_time(b)?, lines[i + 1..].join(" ")))
+    });
+    timing.ok_or_else(|| EngineError::InvalidParams("invalid SRT cue timing".into()))
+}
+
 /// Preserve externally authored cue boundaries; never invent word timing from subtitle lines.
 fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
-    let time = |raw: &str| -> Option<f64> {
-        let value = raw.trim().replace(',', ".");
-        let p = value
-            .split(':')
-            .map(str::parse::<f64>)
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .ok()?;
-        if p.len() != 3
-            || p.iter().any(|n| !n.is_finite() || *n < 0.0)
-            || p[1] >= 60.0
-            || p[2] >= 60.0
-        {
-            return None;
-        }
-        Some(p[0] * 3600.0 + p[1] * 60.0 + p[2])
-    };
     let mut cues = Vec::new();
     let mut previous = 0.0;
-    for block in text
-        .trim_start_matches('\u{feff}')
-        .replace("\r\n", "\n")
-        .split("\n\n")
-        .filter(|b| !b.trim().is_empty())
-    {
-        let lines = block.lines().collect::<Vec<_>>();
-        let cue = lines.iter().position(|l| l.contains("-->"));
-        let parsed = cue.and_then(|i| {
-            let (a, b) = lines[i].split_once("-->")?;
-            Some((time(a)?, time(b)?, lines[i + 1..].join(" ")))
-        });
-        let Some((start, end, text)) = parsed else {
-            return Err(EngineError::InvalidParams("invalid SRT cue timing".into()));
-        };
+    let normalized = text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+    for block in normalized.split("\n\n").filter(|b| !b.trim().is_empty()) {
+        let (start, end, text) = parse_cue(block)?;
         if start < previous || end < start || text.trim().is_empty() {
             return Err(EngineError::InvalidParams(
                 "SRT cues must be ordered, timed and nonempty".into(),
@@ -1305,8 +1356,8 @@ pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Val
 }
 
 /// Every file the workshop knows about, grouped by stage.
-pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
+/// Every stage's files, then any other file in the project folder that none of them named.
+fn collected_files(s: &Session, dir: &Path) -> Vec<Value> {
     let mut files = Vec::new();
     if let Some(audio) = &s.song_audio {
         files.push(file_entry("audio", audio, true));
@@ -1314,58 +1365,69 @@ pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
     for f in files_in(&dir.join("liner-notes"), None) {
         files.push(file_entry("liner_notes", &f, true));
     }
-    for t in &transcript_files(&dir) {
+    for t in &transcript_files(dir) {
         files.push(file_entry("transcript", t, true));
     }
-    if let Some(fcproj) = video_project_path(&dir) {
+    if let Some(fcproj) = video_project_path(dir) {
         files.push(file_entry("transcript", &fcproj, true));
     }
     for f in files_in(&dir.join(STORYBOARD_DIR), None) {
         files.push(file_entry("storyboard", &f, true));
     }
-    for f in workshop_asset_files(&dir) {
+    for f in workshop_asset_files(dir) {
         files.push(file_entry("assets", &f, true));
     }
     let listed: Vec<PathBuf> = files
         .iter()
         .filter_map(|f| f["path"].as_str().map(PathBuf::from))
         .collect();
-    for f in files_in(&dir, None) {
+    for f in files_in(dir, None) {
         if !listed.contains(&f) && Some(&f) != s.project_path.as_ref() {
             files.push(file_entry("other", &f, true));
         }
     }
-    if let Some(group_filter) = params
+    files
+}
+
+fn retain_group(files: &mut Vec<Value>, params: &Value) {
+    let Some(group) = params
         .get("group")
         .and_then(Value::as_str)
         .map(str::to_ascii_lowercase)
-        && !group_filter.is_empty()
-    {
-        files.retain(|f| {
-            f["group"]
-                .as_str()
-                .is_some_and(|g| g.to_ascii_lowercase() == group_filter)
-        });
-    }
-    if let Some(q) = params
+        .filter(|g| !g.is_empty())
+    else {
+        return;
+    };
+    files.retain(|f| {
+        f["group"]
+            .as_str()
+            .is_some_and(|g| g.to_ascii_lowercase() == group)
+    });
+}
+
+fn retain_query(files: &mut Vec<Value>, params: &Value) {
+    let Some(q) = params
         .get("filter")
         .or_else(|| params.get("query"))
         .and_then(Value::as_str)
         .map(str::to_ascii_lowercase)
-        && !q.is_empty()
-    {
-        files.retain(|f| {
-            f["name"]
-                .as_str()
-                .is_some_and(|n| n.to_ascii_lowercase().contains(&q))
-                || f["path"]
-                    .as_str()
-                    .is_some_and(|p| p.to_ascii_lowercase().contains(&q))
-                || f["group"]
-                    .as_str()
-                    .is_some_and(|g| g.to_ascii_lowercase().contains(&q))
-        });
-    }
+        .filter(|q| !q.is_empty())
+    else {
+        return;
+    };
+    files.retain(|f| {
+        ["name", "path", "group"]
+            .iter()
+            .any(|key| f[key].as_str().is_some_and(|v| v.to_ascii_lowercase().contains(&q)))
+    });
+}
+
+/// Every file the workshop knows about, grouped by stage.
+pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
+    let dir = project_dir(s)?;
+    let mut files = collected_files(s, &dir);
+    retain_group(&mut files, params);
+    retain_query(&mut files, params);
     Ok(json!({"ok": true, "project_dir": dir, "count": files.len(), "files": files}))
 }
 
@@ -1670,68 +1732,103 @@ fn straight_cuts(img: &image::RgbaImage) -> ([u32; 4], bool) {
     (runs, full_bleed)
 }
 
-/// Largest flat dark band: (share of visible pixels, long/short side of its box).
-/// A painted hidden-overlap strip is dark, blurred (5x5 brightness spread < 4) and elongated;
-/// dark stripes keep the material's texture and pupils are round, so neither counts.
-fn smear_band(img: &image::RgbaImage, median: f64) -> (f64, f64) {
-    let (w, h) = img.dimensions();
-    let (wu, hu) = (w as usize, h as usize);
-    let lum: Vec<f64> = img
-        .pixels()
+fn band_luminance(img: &image::RgbaImage) -> Vec<f64> {
+    img.pixels()
         .map(|p| 0.299 * f64::from(p[0]) + 0.587 * f64::from(p[1]) + 0.114 * f64::from(p[2]))
-        .collect();
-    let visible: Vec<bool> = img.pixels().map(|p| p[3] > 16).collect();
-    let spread = |x: usize, y: usize| {
-        let (mut n, mut sum, mut sq) = (0.0, 0.0, 0.0);
-        for yy in y.saturating_sub(2)..(y + 3).min(hu) {
-            for xx in x.saturating_sub(2)..(x + 3).min(wu) {
-                let l = lum[yy * wu + xx];
-                n += 1.0;
-                sum += l;
-                sq += l * l;
-            }
+        .collect()
+}
+
+fn visible_pixels(img: &image::RgbaImage) -> Vec<bool> {
+    img.pixels().map(|p| p[3] > 16).collect()
+}
+
+/// Standard deviation of brightness in a 5x5 window: blurred paint is flat, texture is not.
+fn local_spread(lum: &[f64], wu: usize, hu: usize, x: usize, y: usize) -> f64 {
+    let (mut n, mut sum, mut sq) = (0.0, 0.0, 0.0);
+    for yy in y.saturating_sub(2)..(y + 3).min(hu) {
+        for xx in x.saturating_sub(2)..(x + 3).min(wu) {
+            let l = lum[yy * wu + xx];
+            n += 1.0;
+            sum += l;
+            sq += l * l;
         }
-        (sq / n - (sum / n) * (sum / n)).max(0.0).sqrt()
+    }
+    (sq / n - (sum / n) * (sum / n)).max(0.0).sqrt()
+}
+
+/// Dark, blurred and flat pixels: candidates for a painted strip rather than material texture.
+fn flat_mask(lum: &[f64], visible: &[bool], wu: usize, hu: usize, median: f64) -> Vec<bool> {
+    (0..lum.len())
+        .map(|i| {
+            visible[i] && lum[i] < median * 0.45 && local_spread(lum, wu, hu, i % wu, i / wu) < 4.0
+        })
+        .collect()
+}
+
+/// Queue a pixel's unvisited up/down/left/right neighbours.
+fn push_neighbors(flat: &mut [bool], stack: &mut Vec<usize>, i: usize, wu: usize, hu: usize) {
+    let (x, y) = (i % wu, i / wu);
+    let mut push = |j: usize| {
+        if flat[j] {
+            flat[j] = false;
+            stack.push(j);
+        }
     };
-    let mut flat: Vec<bool> = (0..wu * hu)
-        .map(|i| visible[i] && lum[i] < median * 0.45 && spread(i % wu, i / wu) < 4.0)
-        .collect();
+    if x > 0 {
+        push(i - 1);
+    }
+    if x + 1 < wu {
+        push(i + 1);
+    }
+    if y > 0 {
+        push(i - wu);
+    }
+    if y + 1 < hu {
+        push(i + wu);
+    }
+}
+
+/// Flood one connected region: its size and the bounding box [x0, y0, x1, y1].
+fn flood_region(flat: &mut [bool], start: usize, wu: usize, hu: usize) -> (usize, [usize; 4]) {
+    let mut stack = vec![start];
+    let mut size = 0usize;
+    let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % wu, i / wu);
+        size += 1;
+        (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+        push_neighbors(flat, &mut stack, i, wu, hu);
+    }
+    (size, [x0, y0, x1, y1])
+}
+
+/// Four-way flood fill over the mask; returns the largest region's size and box aspect.
+fn largest_region(mut flat: Vec<bool>, wu: usize, hu: usize) -> (usize, f64) {
     let (mut best, mut best_aspect) = (0usize, 0.0);
     for start in 0..flat.len() {
         if !flat[start] {
             continue;
         }
         flat[start] = false;
-        let (mut stack, mut size) = (vec![start], 0usize);
-        let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
-        while let Some(i) = stack.pop() {
-            let (x, y) = (i % wu, i / wu);
-            size += 1;
-            (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
-            let mut push = |j: usize| {
-                if flat[j] {
-                    flat[j] = false;
-                    stack.push(j);
-                }
-            };
-            if x > 0 {
-                push(i - 1);
-            }
-            if x + 1 < wu {
-                push(i + 1);
-            }
-            if y > 0 {
-                push(i - wu);
-            }
-            if y + 1 < hu {
-                push(i + wu);
-            }
-        }
+        let (size, [x0, y0, x1, y1]) = flood_region(&mut flat, start, wu, hu);
         if size > best {
             let (bw, bh) = ((x1 - x0 + 1) as f64, (y1 - y0 + 1) as f64);
             (best, best_aspect) = (size, bw.max(bh) / bw.min(bh));
         }
     }
+    (best, best_aspect)
+}
+
+/// Largest flat dark band: (share of visible pixels, long/short side of its box).
+/// A painted hidden-overlap strip is dark, blurred (5x5 brightness spread < 4) and elongated;
+/// dark stripes keep the material's texture and pupils are round, so neither counts.
+fn smear_band(img: &image::RgbaImage, median: f64) -> (f64, f64) {
+    let (w, h) = img.dimensions();
+    let (wu, hu) = (w as usize, h as usize);
+    let lum = band_luminance(img);
+    let visible = visible_pixels(img);
+    let flat = flat_mask(&lum, &visible, wu, hu, median);
+    let (best, best_aspect) = largest_region(flat, wu, hu);
     let total = visible.iter().filter(|v| **v).count().max(1);
     (best as f64 / total as f64, best_aspect)
 }
@@ -1741,31 +1838,38 @@ pub fn cmd_assets_fixlist(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "file": fixlist_path(s)?, "assets": items, "next": fixlist_next(&items)}))
 }
 
-/// Adds or updates one asset on the fix list (keyed by `asset`).
-pub fn cmd_assets_fixlist_add(s: &mut Session, params: &Value) -> Result<Value> {
-    let asset = params
+fn required_asset(params: &Value) -> Result<&str> {
+    params
         .get("asset")
         .and_then(Value::as_str)
         .filter(|a| !a.trim().is_empty())
-        .ok_or_else(|| EngineError::InvalidParams("missing 'asset' (a short id)".into()))?;
-    let mut items = read_fixlist(s)?;
-    let idx = items.iter().position(|i| i["asset"] == json!(asset));
-    let mut item = idx
-        .map(|i| items[i].clone())
-        .unwrap_or_else(|| json!({"asset": asset, "status": "open"}));
+        .ok_or_else(|| EngineError::InvalidParams("missing 'asset' (a short id)".into()))
+}
+
+/// Only the listed fields are copied from the request; anything else stays as stored.
+fn merge_item_fields(item: &mut Value, params: &Value) {
     for key in ["path", "problem", "tool", "evidence", "reference", "status"] {
         if let Some(v) = params.get(key) {
             item[key] = v.clone();
         }
     }
-    if let Some(d) = params.get("decision").and_then(Value::as_str) {
-        if !["clean", "recreate"].contains(&d) {
-            return Err(EngineError::InvalidParams(
-                "decision must be clean or recreate".into(),
-            ));
-        }
-        item["decision"] = json!(d);
+}
+
+fn apply_decision(item: &mut Value, params: &Value) -> Result<()> {
+    let Some(d) = params.get("decision").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    if !["clean", "recreate"].contains(&d) {
+        return Err(EngineError::InvalidParams(
+            "decision must be clean or recreate".into(),
+        ));
     }
+    item["decision"] = json!(d);
+    Ok(())
+}
+
+/// An entry is only actionable with a decision, and "clean" needs the command that does it.
+fn validate_item(item: &Value) -> Result<()> {
     if item.get("decision").is_none() {
         return Err(EngineError::InvalidParams(
             "new entries need decision=clean|recreate".into(),
@@ -1776,13 +1880,32 @@ pub fn cmd_assets_fixlist_add(s: &mut Session, params: &Value) -> Result<Value> 
             "decision=clean needs tool=<the exact command that fixes it>".into(),
         ));
     }
+    Ok(())
+}
+
+fn write_fixlist(s: &Session, items: &[Value]) -> Result<()> {
+    let text = serde_json::to_string_pretty(&json!({"assets": items}))
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    std::fs::write(fixlist_path(s)?, text)?;
+    Ok(())
+}
+
+/// Adds or updates one asset on the fix list (keyed by `asset`).
+pub fn cmd_assets_fixlist_add(s: &mut Session, params: &Value) -> Result<Value> {
+    let asset = required_asset(params)?;
+    let mut items = read_fixlist(s)?;
+    let idx = items.iter().position(|i| i["asset"] == json!(asset));
+    let mut item = idx
+        .map(|i| items[i].clone())
+        .unwrap_or_else(|| json!({"asset": asset, "status": "open"}));
+    merge_item_fields(&mut item, params);
+    apply_decision(&mut item, params)?;
+    validate_item(&item)?;
     match idx {
         Some(i) => items[i] = item,
         None => items.push(item),
     }
-    let text = serde_json::to_string_pretty(&json!({"assets": items}))
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    std::fs::write(fixlist_path(s)?, text)?;
+    write_fixlist(s, &items)?;
     cmd_assets_fixlist(s, &json!({}))
 }
 
