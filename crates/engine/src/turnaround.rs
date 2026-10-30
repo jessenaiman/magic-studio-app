@@ -1,90 +1,100 @@
 //! Turnaround registration accuracy and 2D preview mode.
 
 use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
 
 use crate::session::{LoadedManifest, MeasuredMotionRange, MeasuredTurnaroundRegistration};
 use crate::{EngineError, Result, Session};
 
-/// Run `optimize-accuracy` on the turnaround + pose dirs and store measured telemetry on the active asset.
-pub fn cmd_turnaround_optimize_accuracy(s: &mut Session, params: &Value) -> Result<Value> {
-    let root = super::workspace::workspace_root(s);
-    let asset_id = params
+/// Telemetry the command reports back after it has been stored on the asset.
+struct AccuracySummary {
+    foot_lift_max_px: f32,
+    width_max_delta_px: f32,
+    max_vertical_drift_px: f32,
+    registration_passed: bool,
+}
+
+/// The asset being measured: an explicit param, else the active asset, else the default.
+fn requested_asset(s: &Session, params: &Value) -> String {
+    params
         .get("asset")
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| s.active_asset.clone())
-        .unwrap_or_else(|| "hopper".to_string());
+        .unwrap_or_else(|| "hopper".to_string())
+}
 
-    let default_turnaround = s
-        .assets
-        .get(&asset_id)
-        .and_then(|a| a.turnaround_manifest.as_ref())
-        .map(|m| m.manifest_dir.clone())
-        .unwrap_or_else(|| root.join("exports/pose_and_parts/hopper_turnaround"));
-
-    let default_poses = s
-        .assets
-        .get(&asset_id)
-        .and_then(|a| a.pose_manifest.as_ref())
-        .map(|m| m.manifest_dir.clone())
-        .unwrap_or_else(|| root.join("exports/pose_and_parts/hopper_poses"));
-
-    let turnaround_dir = params
-        .get("turnaround_dir")
+/// A directory param resolved against the workspace, else the manifest's own directory.
+fn dir_param(s: &Session, params: &Value, key: &str, fallback: PathBuf) -> PathBuf {
+    params
+        .get(key)
         .and_then(Value::as_str)
         .map(|p| super::workspace::resolve_workspace_path(s, p))
-        .unwrap_or(default_turnaround);
+        .unwrap_or(fallback)
+}
 
-    let poses_dir = params
-        .get("poses_dir")
-        .and_then(Value::as_str)
-        .map(|p| super::workspace::resolve_workspace_path(s, p))
-        .unwrap_or(default_poses);
-
-    let mut out_dir = params
-        .get("out_dir")
-        .and_then(Value::as_str)
-        .map(|p| super::workspace::resolve_workspace_path(s, p))
-        .unwrap_or_else(|| root.join("exports/pose_and_parts").join(&asset_id));
-
-    if out_dir == turnaround_dir || out_dir == poses_dir {
-        out_dir = root
+/// Where the optimizer writes: the param, else the asset dir, never one of its inputs.
+fn accuracy_out_dir(
+    s: &Session,
+    root: &Path,
+    params: &Value,
+    asset_id: &str,
+    inputs: (&Path, &Path),
+) -> PathBuf {
+    let out = dir_param(
+        s,
+        params,
+        "out_dir",
+        root.join("exports/pose_and_parts").join(asset_id),
+    );
+    if out == inputs.0 || out == inputs.1 {
+        return root
             .join("exports/pose_and_parts")
             .join(format!("{asset_id}_accuracy"));
     }
+    out
+}
 
-    let args = vec![
+fn optimizer_args(turnaround_dir: &Path, poses_dir: &Path, out_dir: &Path) -> Vec<String> {
+    vec![
         "--turnaround-dir".to_string(),
         turnaround_dir.to_string_lossy().into_owned(),
         "--poses-dir".to_string(),
         poses_dir.to_string_lossy().into_owned(),
         "--out-dir".to_string(),
         out_dir.to_string_lossy().into_owned(),
-    ];
-    let report = super::workspace::run_python_json(s, "pipeline.codex_accuracy_optimizer", &args)?;
+    ]
+}
 
-    let motion_file = report
-        .get("motionRangeFile")
+/// A file the optimizer reported, else the name it writes inside the out dir.
+fn reported_file(report: &Value, key: &str, fallback: PathBuf) -> PathBuf {
+    report
+        .get(key)
         .and_then(Value::as_str)
         .map(PathBuf::from)
-        .unwrap_or_else(|| out_dir.join("motion_range.json"));
-    let reg_file = report
-        .get("registrationFile")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| out_dir.join("turnaround_registration.json"));
+        .unwrap_or(fallback)
+}
 
-    let measured_motion = MeasuredMotionRange::load_from_path(&motion_file)?;
-    let measured_reg = MeasuredTurnaroundRegistration::load_from_path(&reg_file)?;
-    let reg_manifest_path = out_dir.join("registered_turnaround/manifest.json");
-    let reg_manifest = LoadedManifest::load_from_path(&reg_manifest_path).ok();
-    let pose_manifest = LoadedManifest::load_from_path(&poses_dir).ok();
-
+/// Record the measurement on the asset, filling manifests it does not have yet.
+fn store_measurements(
+    s: &mut Session,
+    asset_id: &str,
+    motion: MeasuredMotionRange,
+    registration: MeasuredTurnaroundRegistration,
+    reg_manifest: Option<LoadedManifest>,
+    pose_manifest: Option<LoadedManifest>,
+) -> AccuracySummary {
+    let summary = AccuracySummary {
+        foot_lift_max_px: motion.foot_lift_max_px,
+        width_max_delta_px: motion.width_max_delta_px,
+        max_vertical_drift_px: registration.max_vertical_drift_px,
+        registration_passed: registration.registration_passed,
+    };
     let asset = s
         .assets
-        .entry(asset_id.clone())
+        .entry(asset_id.to_string())
         .or_insert_with(|| crate::session::Asset {
-            id: asset_id.clone(),
+            id: asset_id.to_string(),
             ..Default::default()
         });
     if asset.pose_manifest.is_none() {
@@ -93,24 +103,65 @@ pub fn cmd_turnaround_optimize_accuracy(s: &mut Session, params: &Value) -> Resu
     if let Some(rm) = reg_manifest {
         asset.turnaround_manifest = Some(rm);
     }
-    let foot_lift_max_px = measured_motion.foot_lift_max_px;
-    let width_max_delta_px = measured_motion.width_max_delta_px;
-    let max_vertical_drift_px = measured_reg.max_vertical_drift_px;
-    let registration_passed = measured_reg.registration_passed;
-
-    asset.motion_range = Some(measured_motion);
-    asset.turnaround_registration = Some(measured_reg);
+    asset.motion_range = Some(motion);
+    asset.turnaround_registration = Some(registration);
     asset.sync_parts_from_manifests();
-    s.active_asset = Some(asset_id.clone());
+    s.active_asset = Some(asset_id.to_string());
+    summary
+}
+
+/// Run `optimize-accuracy` on the turnaround + pose dirs and store measured telemetry on the active asset.
+pub fn cmd_turnaround_optimize_accuracy(s: &mut Session, params: &Value) -> Result<Value> {
+    let root = super::workspace::workspace_root(s);
+    let asset_id = requested_asset(s, params);
+    let (turnaround_default, poses_default) = (
+        s.assets
+            .get(&asset_id)
+            .and_then(|a| a.turnaround_manifest.as_ref())
+            .map(|m| m.manifest_dir.clone())
+            .unwrap_or_else(|| root.join("exports/pose_and_parts/hopper_turnaround")),
+        s.assets
+            .get(&asset_id)
+            .and_then(|a| a.pose_manifest.as_ref())
+            .map(|m| m.manifest_dir.clone())
+            .unwrap_or_else(|| root.join("exports/pose_and_parts/hopper_poses")),
+    );
+    let turnaround_dir = dir_param(s, params, "turnaround_dir", turnaround_default);
+    let poses_dir = dir_param(s, params, "poses_dir", poses_default);
+    let out_dir = accuracy_out_dir(s, &root, params, &asset_id, (&turnaround_dir, &poses_dir));
+    let args = optimizer_args(&turnaround_dir, &poses_dir, &out_dir);
+    let report = super::workspace::run_python_json(s, "pipeline.codex_accuracy_optimizer", &args)?;
+
+    let motion = MeasuredMotionRange::load_from_path(&reported_file(
+        &report,
+        "motionRangeFile",
+        out_dir.join("motion_range.json"),
+    ))?;
+    let registration = MeasuredTurnaroundRegistration::load_from_path(&reported_file(
+        &report,
+        "registrationFile",
+        out_dir.join("turnaround_registration.json"),
+    ))?;
+    let reg_manifest =
+        LoadedManifest::load_from_path(&out_dir.join("registered_turnaround/manifest.json")).ok();
+    let pose_manifest = LoadedManifest::load_from_path(&poses_dir).ok();
+    let summary = store_measurements(
+        s,
+        &asset_id,
+        motion,
+        registration,
+        reg_manifest,
+        pose_manifest,
+    );
 
     Ok(json!({
         "ok": true,
         "command": "turnaround.optimize_accuracy",
         "asset_id": asset_id,
-        "registration_passed": registration_passed,
-        "max_vertical_drift_px": max_vertical_drift_px,
-        "foot_lift_max_px": foot_lift_max_px,
-        "width_max_delta_px": width_max_delta_px,
+        "registration_passed": summary.registration_passed,
+        "max_vertical_drift_px": summary.max_vertical_drift_px,
+        "foot_lift_max_px": summary.foot_lift_max_px,
+        "width_max_delta_px": summary.width_max_delta_px,
         "report": report,
     }))
 }
@@ -194,4 +245,3 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
     Ok(out)
 }
 
-use std::path::PathBuf;
