@@ -10,10 +10,32 @@ function animationRemember(){
  const serialized=JSON.stringify(value);if(motion.remembered===serialized)return;motion.remembered=serialized;
  try{const prior=JSON.parse(localStorage.getItem('animation.sessions')||'[]');localStorage.setItem('animation.sessions',JSON.stringify([value,...(Array.isArray(prior)?prior:[]).filter(v=>v.project!==state.project)].slice(0,20)));}catch{}
 }
+function clampSessionNumber(v: any, key: string, fallback: number, min: number, max: number): number {
+ return Number.isFinite(v[key])&&v[key]>=min&&v[key]<=max?v[key]:fallback;
+}
+function parseSessionPoints(points: any): number[][] {
+ if(!Array.isArray(points)||points.length>512)return [];
+ if(!points.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)))return [];
+ return points.map(p=>[...p]);
+}
+function optionalSessionString(val: any): string | null {
+ return typeof val==='string'?val:null;
+}
+function buildRestoredSession(v: any) {
+ return {
+  character:v.character,track:v.track,selected:optionalSessionString(v.selected),rest:v.rest===true,
+  time:clampSessionNumber(v,'time',0,0,600),speed:clampSessionNumber(v,'speed',1,0.25,2.25),amount:clampSessionNumber(v,'amount',100,0,100),
+  previewLoop:typeof v.previewLoop==='boolean'?v.previewLoop:null,points:parseSessionPoints(v.points),
+  pathUndo:optionalSessionString(v.pathUndo),pathLayer:optionalSessionString(v.pathLayer),
+  pathDuration:clampSessionNumber(v,'pathDuration',5,0.1,600),startSize:clampSessionNumber(v,'startSize',100,1,1000),endSize:clampSessionNumber(v,'endSize',100,1,1000)
+ };
+}
 function animationRestore(){
- try{const entries=JSON.parse(localStorage.getItem('animation.sessions')||'[]'),v=Array.isArray(entries)?entries.find(v=>v.project===state.project):null;if(!v||typeof v.character!=='string'||typeof v.track!=='string')return null;
- const number=(key,fallback,min,max)=>Number.isFinite(v[key])&&v[key]>=min&&v[key]<=max?v[key]:fallback;
- return {character:v.character,track:v.track,selected:typeof v.selected==='string'?v.selected:null,rest:v.rest===true,time:number('time',0,0,600),speed:number('speed',1,0.25,2.25),amount:number('amount',100,0,100),previewLoop:typeof v.previewLoop==='boolean'?v.previewLoop:null,points:Array.isArray(v.points)&&v.points.length<=512&&v.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite))?v.points.map(p=>[...p]):[],pathUndo:typeof v.pathUndo==='string'?v.pathUndo:null,pathLayer:typeof v.pathLayer==='string'?v.pathLayer:null,pathDuration:number('pathDuration',5,0.1,600),startSize:number('startSize',100,1,1000),endSize:number('endSize',100,1,1000)};
+ try{
+  const entries=JSON.parse(localStorage.getItem('animation.sessions')||'[]');
+  const v=Array.isArray(entries)?entries.find(item=>item.project===state.project):null;
+  if(!v||typeof v.character!=='string'||typeof v.track!=='string')return null;
+  return buildRestoredSession(v);
  }catch{return null;}
 }
 function animationReset(){
@@ -125,7 +147,27 @@ async function animationApplyMetadata(meta){
  const images=await animationLoadImages(meta);
  Object.assign(motion,{meta,images,sample:null});
 }
-async function animationLoad({refresh=false}={}){
+function applyLoadedTrackSelection(meta: any, resume: any, refresh: boolean) {
+ if(!meta.layers?.some(part=>part.id===motion.selected))motion.selected=null;
+ if(refresh&&meta.configured_action){
+  motion.track=meta.configured_action.track;
+  motion.rest=meta.configured_action.rest;
+  return;
+ }
+ const tracks=meta.tracks||[];
+ if(resume&&tracks.some(t=>t.id===resume.track))motion.track=resume.track;
+ else if(!tracks.some(t=>t.id===motion.track))motion.track=tracks[0]?.id||'';
+ if(!refresh){motion.time=resume?.time||0;motion.rest=resume?.rest??true;}
+}
+function handleAnimationLoadError(character: any, error: any) {
+ Object.assign(motion,{loading:false,loadError:String(error),meta:null,sample:null,images:[]});
+ renderAnimationAssets();updateMagicSelection();
+ $('motion-inspector')?.replaceChildren(el('p',{class:'muted'},'Choose another asset or review the complete source artwork.'));
+ motion.stageHeader?.rename(character,'Source artwork is unavailable');
+ animationEmpty('Source artwork is unavailable','Check its source in Project or choose another asset.');
+}
+async function animationLoad(opts: any = {}){
+ const refresh=Boolean(opts.refresh);
  animationPause();
  const request=++motion.request,project=state.project,character=motion.character,resume=motion.resume;motion.resume=null;
  Object.assign(motion,{loading:true,loadError:null,meta:null,sample:null,images:[],photoDrafts:{}});
@@ -136,18 +178,11 @@ async function animationLoad({refresh=false}={}){
   const meta=await motionCommand('motion.tracks',{character});if(request!==motion.request||project!==state.project)return;
   const images=await animationLoadImages(meta);if(request!==motion.request||project!==state.project)return;
   Object.assign(motion,{meta,images,loading:false});
-  if(!meta.layers?.some(part=>part.id===motion.selected))motion.selected=null;
-  if(refresh&&meta.configured_action){motion.track=meta.configured_action.track;motion.rest=meta.configured_action.rest;}
-  else {motion.track=resume&&meta.tracks?.some(t=>t.id===resume.track)?resume.track:meta.tracks?.some(t=>t.id===motion.track)?motion.track:meta.tracks?.[0]?.id||'';if(!refresh){motion.time=resume?.time||0;motion.rest=resume?.rest??true;}}
+  applyLoadedTrackSelection(meta,resume,refresh);
   $('motion-stage-status')?.remove();const canvas=$('motion-canvas');if(canvas)canvas.hidden=false;
   animationControls();await animationSample();refreshPartDrafts();
  }catch(error){
-  if(request!==motion.request||project!==state.project)return;
-  Object.assign(motion,{loading:false,loadError:String(error),meta:null,sample:null,images:[]});
-  renderAnimationAssets();updateMagicSelection();
-  $('motion-inspector')?.replaceChildren(el('p',{class:'muted'},'Choose another asset or review the complete source artwork.'));
-  motion.stageHeader?.rename(character,'Source artwork is unavailable');
-  animationEmpty('Source artwork is unavailable','Check its source in Project or choose another asset.');
+  if(request===motion.request&&project===state.project)handleAnimationLoadError(character,error);
  }finally{if(request===motion.request)motion.loading=false;}
 }
 // The part card badge: the one indicator, at the small size.
@@ -415,6 +450,17 @@ async function animationSample(){
  motion.stageHeader.rename('Sampling motion…');
  try{const sample=await motionCommand('motion.sample',{character:motion.character,track:motion.track||motion.meta.tracks[0].id,rest:motion.rest,amount:motion.amount});if(request!==motion.request)return;if(sample.layer_ids&&(sample.layer_ids.length!==motion.meta.layers.length||sample.layer_ids.some((id,i)=>id!==motion.meta.layers[i].id)))throw Error('Layer order changed during sampling; refresh the object before playback.');motion.sample=sample;if(typeof timelineRender==='function')timelineRender();motion.time=Math.min(motion.time,sample.duration);$('motion-scrub').max=sample.duration;animationDraw();}catch(e){toast(String(e));}
 }
+function selectRefreshedCharacter(catalog: any, assets: any[]) {
+ if(catalog.active_asset&&assets.some(a=>a.id===catalog.active_asset))return catalog.active_asset;
+ if(assets.some(a=>a.id===motion.character))return motion.character;
+ return assets[0]?.id||null;
+}
+function handleEmptyAnimationCatalog() {
+ Object.assign(motion,{character:null,selected:null,track:'',meta:null,sample:null,images:[]});
+ $('motion-inspector')?.replaceChildren();
+ animationEmpty('Bring in your artwork','Choose an object from the Storyboard view.');
+ if(typeof timelineRender==='function')timelineRender();
+}
 async function animationRefresh(){
  if(state.view!=='animation')return;
  if(motion.mode==='composite'){seqRenderInspector();seqDraw();return;}
@@ -424,10 +470,9 @@ async function animationRefresh(){
  const catalog=await motionCommand('project.list_assets');
  if(state.project!==project||request!==motion.request)return;
  motion.assets=catalog.assets||catalog.project_assets||[];
- const character=catalog.active_asset&&motion.assets.some(a=>a.id===catalog.active_asset)?catalog.active_asset:motion.assets.some(a=>a.id===motion.character)?motion.character:motion.assets[0]?.id||null;
- if(!character){Object.assign(motion,{character:null,selected:null,track:'',meta:null,sample:null,images:[]});$('motion-inspector')?.replaceChildren();animationEmpty('Bring in your artwork','Choose an object from the Storyboard view.');if(typeof timelineRender==='function')timelineRender();return;}
- const changed=character!==motion.character;
- if(changed){theatreRequireSaved();motion.selected=null;motion.time=0;motion.rest=true;}
+ const character=selectRefreshedCharacter(catalog,motion.assets);
+ if(!character)return handleEmptyAnimationCatalog();
+ if(character!==motion.character){theatreRequireSaved();motion.selected=null;motion.time=0;motion.rest=true;}
  motion.character=character;
  await animationLoad({refresh:true});
 }
