@@ -28,27 +28,9 @@ for _sub in ("stage1_intake", "stage4_review", "stage3_build", "_shared"):
         sys.path.insert(0, _p)
 
 
-def compare_reference_and_import_with_jev(
-    reference_path: str,
-    app_imported_path: str,
-    manifest_path: str | None = None,
-    yaw_deg: float = 0.0,
+def _read_ocr_and_manifest_summary(
+    ref_p: Path, manifest_path: str | None
 ) -> Dict[str, Any]:
-    """
-    Chain OCR read + expected CIE Lab color values (`extract_part_color_recipe` -> `per_part_color_delta`)
-    + aspect-ratio / Divine Eye comparison (or exact pixel/interior parity when sizes match).
-    """
-    ref_p = Path(reference_path).resolve()
-    ren_p = Path(app_imported_path).resolve()
-    with Image.open(ref_p) as ref_im:
-        rw, rh = ref_im.size
-    with Image.open(ren_p) as app_im:
-        aw, ah = app_im.size
-        has_alpha = "A" in app_im.getbands()
-
-    dims_match = (rw == aw) and (rh == ah)
-
-    # 1. OCR read on reference/sheet + manifest labels
     ocr_labels = []
     try:
         ocr_labels = [hit["label"] for hit in _ocr_labels(ref_p)]
@@ -74,23 +56,13 @@ def compare_reference_and_import_with_jev(
             }
         except Exception as exc:
             manifest_summary["error"] = str(exc)
+    return manifest_summary
 
-    # 2. Expected color recipe (CIE Lab) from reference -> rendered CIE Lab ΔE via img2threejs
-    import diagnose_render  # type: ignore
-    import divine_eye  # type: ignore
-    import extract_part_color_recipe  # type: ignore
-    import interior_difference  # type: ignore
 
-    expected_recipe = extract_part_color_recipe.build_recipe(
-        "subject", ref_p, target_threshold=0.3
-    )
-    color_delta = diagnose_render.per_part_color_delta([expected_recipe], ren_p)
-    tier1 = diagnose_render.run_tier1(ref_p, ren_p)
-    de_eval = divine_eye.evaluate(ref_p, ren_p)
-
-    # 3. Aspect-ratio mode when sizes differ; direct pixel + interior difference when sizes match
+def _compute_pixel_and_interior_diff(
+    ref_p: Path, ren_p: Path, dims_match: bool, interior_difference: Any
+) -> tuple[float | None, float | None]:
     pixel_rms_diff: float | None = None
-    interior_diff_score: float | None = None
     if dims_match:
         with Image.open(ref_p) as r_rgba, Image.open(ren_p) as a_rgba:
             r_bytes = r_rgba.convert("RGBA").tobytes()
@@ -101,83 +73,111 @@ def compare_reference_and_import_with_jev(
                 4,
             )
     idiff = interior_difference.compare(ref_p, ren_p)
-    if idiff.get("interiorDifference") is not None:
-        interior_diff_score = float(idiff["interiorDifference"])
+    interior_diff_score = (
+        float(idiff["interiorDifference"])
+        if idiff.get("interiorDifference") is not None
+        else None
+    )
+    return pixel_rms_diff, interior_diff_score
 
+
+def _determine_visual_defect(
+    has_alpha: bool,
+    color_ok: bool,
+    aspect_ok: bool,
+    max_delta_e: float,
+    aspect_delta: float,
+) -> tuple[str, str]:
+    if not has_alpha:
+        return "transparency_likely_off", "run_photocraft_bg_removal"
+    if not color_ok:
+        return (
+            f"color_delta_e_exceeded ({max_delta_e:.2f})",
+            "reproject_delit_reference_albedo",
+        )
+    if not aspect_ok:
+        return (
+            f"aspect_or_pixel_mismatch (aspect_delta={aspect_delta:.3f})",
+            "normalize_cell_aspect_ratio",
+        )
+    return "none_import_matches_reference", "ready_for_user_review"
+
+
+def compare_reference_and_import_with_jev(
+    reference_path: str,
+    app_imported_path: str,
+    manifest_path: str | None = None,
+    yaw_deg: float = 0.0,
+) -> Dict[str, Any]:
+    ref_p, ren_p = Path(reference_path).resolve(), Path(app_imported_path).resolve()
+    with Image.open(ref_p) as ref_im:
+        rw, rh = ref_im.size
+    with Image.open(ren_p) as app_im:
+        aw, ah = app_im.size
+        has_alpha = "A" in app_im.getbands()
+    dims_match = (rw == aw) and (rh == ah)
+    manifest_summary = _read_ocr_and_manifest_summary(ref_p, manifest_path)
+
+    import diagnose_render, divine_eye, extract_part_color_recipe, interior_difference  # type: ignore
+
+    expected_recipe = extract_part_color_recipe.build_recipe("subject", ref_p, target_threshold=0.3)
+    color_delta = diagnose_render.per_part_color_delta([expected_recipe], ren_p)
+    tier1 = diagnose_render.run_tier1(ref_p, ren_p)
+    de_eval = divine_eye.evaluate(ref_p, ren_p)
+    pixel_rms_diff, interior_diff_score = _compute_pixel_and_interior_diff(
+        ref_p, ren_p, dims_match, interior_difference
+    )
     aspect_delta = float(de_eval["signals"]["aspectRatioDelta"])
     max_delta_e = float(color_delta.get("maxDeltaE", 0.0))
     color_ok = max_delta_e <= diagnose_render.COLOR_DELTA_E_THRESHOLD
     aspect_ok = (
-        aspect_delta <= 0.12
-        if not dims_match
-        else (pixel_rms_diff is not None and pixel_rms_diff <= 0.15)
+        aspect_delta <= 0.12 if not dims_match else (pixel_rms_diff is not None and pixel_rms_diff <= 0.15)
     )
-
-    pc_info = inspect_image(str(ren_p))
-
-    comparison_state = {
-        "reference_image": {
-            "path": str(ref_p),
-            "dimensions": [rw, rh],
-            "expectedDominantAlbedo": expected_recipe.get("dominantAlbedo"),
-            "expectedSecondaryAlbedo": expected_recipe.get("secondaryAlbedo"),
-        },
-        "app_imported_image": {
-            "path": str(ren_p),
-            "dimensions": [aw, ah],
-            "dimensions_match_reference": dims_match,
-            "comparison_mode": "identical_size_pixel_and_interior"
-            if dims_match
-            else "aspect_ratio_and_cie_lab_color",
-            "has_alpha": has_alpha,
-            "photocraft_info": pc_info,
-        },
-        "img2threejs_metrics": {
-            "aspectRatioDelta": aspect_delta,
-            "scaleDelta": de_eval["signals"]["scaleDelta"],
-            "silhouetteIoU": de_eval["signals"]["silhouetteIoU"],
-            "hueZoneParity": de_eval["signals"]["hueZoneParity"],
-            "maxColorDeltaE": max_delta_e,
-            "pixelMeanAbsDiff": pixel_rms_diff,
-            "interiorDifference": interior_diff_score,
-            "divineEyeFidelity": de_eval["fidelity"],
-            "divineEyeVerdict": de_eval["verdict"],
-            "divineEyeAction": de_eval["action"],
-            "tier1Passed": tier1["passed"],
-        },
-        "rotation_profile_check": {
-            "yaw_deg": yaw_deg,
-            "shape_distortion_detected": not aspect_ok,
-        },
-        "ocr_and_manifest": manifest_summary,
-    }
-
-    visual_defect = "none_import_matches_reference"
-    next_task = "ready_for_user_review"
-    if not has_alpha:
-        visual_defect = "transparency_likely_off"
-        next_task = "run_photocraft_bg_removal"
-    elif not color_ok:
-        visual_defect = f"color_delta_e_exceeded ({max_delta_e:.2f})"
-        next_task = "reproject_delit_reference_albedo"
-    elif not aspect_ok:
-        visual_defect = f"aspect_or_pixel_mismatch (aspect_delta={aspect_delta:.3f})"
-        next_task = "normalize_cell_aspect_ratio"
-
-    jev_judgment = {
-        "model": "img2threejs-divine-eye",
-        "background_cleanly_transparent": None,
-        "character_interior_intact": round(1.0 - interior_diff_score, 4) if interior_diff_score is not None else None,
-        "expected_color_matches_rendered": 1.0 if color_ok else 0.0,
-        "rotation_profile_matches": None,
-        "visual_defect": visual_defect,
-        "next_task": next_task,
-        "import_fidelity_score": round(de_eval["fidelity"] * 3.0, 3),
-    }
-
+    visual_defect, next_task = _determine_visual_defect(
+        has_alpha, color_ok, aspect_ok, max_delta_e, aspect_delta
+    )
     return {
-        "comparison": comparison_state,
-        "jev": jev_judgment,
+        "comparison": {
+            "reference_image": {
+                "path": str(ref_p),
+                "dimensions": [rw, rh],
+                "expectedDominantAlbedo": expected_recipe.get("dominantAlbedo"),
+                "expectedSecondaryAlbedo": expected_recipe.get("secondaryAlbedo"),
+            },
+            "app_imported_image": {
+                "path": str(ren_p),
+                "dimensions": [aw, ah],
+                "dimensions_match_reference": dims_match,
+                "comparison_mode": "identical_size_pixel_and_interior" if dims_match else "aspect_ratio_and_cie_lab_color",
+                "has_alpha": has_alpha,
+                "photocraft_info": inspect_image(str(ren_p)),
+            },
+            "img2threejs_metrics": {
+                "aspectRatioDelta": aspect_delta,
+                "scaleDelta": de_eval["signals"]["scaleDelta"],
+                "silhouetteIoU": de_eval["signals"]["silhouetteIoU"],
+                "hueZoneParity": de_eval["signals"]["hueZoneParity"],
+                "maxColorDeltaE": max_delta_e,
+                "pixelMeanAbsDiff": pixel_rms_diff,
+                "interiorDifference": interior_diff_score,
+                "divineEyeFidelity": de_eval["fidelity"],
+                "divineEyeVerdict": de_eval["verdict"],
+                "divineEyeAction": de_eval["action"],
+                "tier1Passed": tier1["passed"],
+            },
+            "rotation_profile_check": {"yaw_deg": yaw_deg, "shape_distortion_detected": not aspect_ok},
+            "ocr_and_manifest": manifest_summary,
+        },
+        "jev": {
+            "model": "img2threejs-divine-eye",
+            "background_cleanly_transparent": None,
+            "character_interior_intact": round(1.0 - interior_diff_score, 4) if interior_diff_score is not None else None,
+            "expected_color_matches_rendered": 1.0 if color_ok else 0.0,
+            "rotation_profile_matches": None,
+            "visual_defect": visual_defect,
+            "next_task": next_task,
+            "import_fidelity_score": round(de_eval["fidelity"] * 3.0, 3),
+        },
     }
 
 

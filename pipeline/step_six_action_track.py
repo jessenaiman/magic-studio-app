@@ -72,27 +72,9 @@ def render_contact_strip(
     strip.save(strip_path)
 
 
-def render_action_track(
-    slug: str,
-    standing_file: str,
-    exported_layers: list[dict],
-    timed_trajectories: dict,
-    dest_dir: Path,
-    mp4_path: Path,
-    jsx_path: Path,
-) -> dict:
-    """Build an animated EffectCraft composition, `.ectemplate` + `values.json`, and H.264 `.mp4`."""
-    ec_bin = shutil.which("effectcraft-cli") or "effectcraft-cli"
-    ecproj = mp4_path.with_suffix(".ecproj")
-    ectemplate = dest_dir / f"{slug}_6actions.ectemplate"
-    values_json_path = dest_dir / f"{slug}_values.json"
-
-    tracks = timed_trajectories.get("tracks", {})
-    action_order = ["idle", "walk", "run", "jump", "wave", "talk_express"]
-    seg_dur = 0.8
-    total_dur = round(seg_dur * len(action_order), 2)  # 4.8s across 6 actions
-
-    # Compile continuous 6-action timeline keyframes for root position + rotation
+def _compile_six_action_keyframes(
+    tracks: dict, action_order: list[str], seg_dur: float
+) -> tuple[list[tuple[float, float, float, str]], list[tuple[float, float, str]]]:
     pos_kfs: list[tuple[float, float, float, str]] = []
     rot_kfs: list[tuple[float, float, str]] = []
     cx, cy = 640.0, 380.0
@@ -112,182 +94,98 @@ def render_action_track(
             phase = str(kf.get("phase", "rest"))
             pos_kfs.append((t, round(cx + dx, 2), round(cy + dy, 2), phase))
             rot_kfs.append((t, round(rot, 2), phase))
+    return pos_kfs, rot_kfs
 
+
+def _build_effectcraft_batch_args(
+    ec_bin: str,
+    slug: str,
+    comp_name: str,
+    total_dur: float,
+    standing_file: str,
+    pos_kfs: list[tuple[float, float, float, str]],
+    rot_kfs: list[tuple[float, float, str]],
+    ectemplate: Path,
+    ecproj: Path,
+) -> list[str]:
+    cx, cy = 640.0, 380.0
+    hero = f"{slug}_hero"
+    batch_args: list[str] = [
+        ec_bin, "--empty", "run",
+        "comp.new", json.dumps({"name": comp_name, "width": 1280, "height": 720, "duration": total_dur, "frameRate": 24}),
+        "essential.setPrimary", json.dumps({"comp": comp_name}),
+        "essential.setName", json.dumps({"comp": comp_name, "name": f"{slug}_6actions_template"}),
+        "file.import", json.dumps({"paths": [standing_file], "sequence": False, "addToComp": True}),
+        "layer.rename", json.dumps({"name": hero}),
+    ]
+    for t, px, py, _ in pos_kfs:
+        batch_args.extend(["prop.addKey", json.dumps({"layer": hero, "path": "transform/position", "time": t, "value": [px, py, 0.0]})])
+    for t, rot, _ in rot_kfs:
+        batch_args.extend(["prop.addKey", json.dumps({"layer": hero, "path": "transform/rotation", "time": t, "value": rot})])
+    batch_args.extend([
+        "puppet.addPin", json.dumps({"layer": hero, "kind": "position", "position": [cx, cy + 80.0]}),
+        "puppet.addPin", json.dumps({"layer": hero, "kind": "position", "position": [cx, cy - 90.0]}),
+        "puppet.follow", json.dumps({"layer": hero, "leader": "Puppet Pin 1", "pins": ["Puppet Pin 2"], "delay": 0.08, "amount": 65, "cascade": True}),
+        "essential.addProperty", json.dumps({"layer": hero, "path": "transform/rotation", "name": f"{hero}_rotation"}),
+        "essential.exportTemplate", json.dumps({"comp": comp_name, "path": str(ectemplate), "name": f"{slug}_6actions_template"}),
+        "--save-as", str(ecproj), "--json",
+    ])
+    return batch_args
+
+
+def render_action_track(
+    slug: str,
+    standing_file: str,
+    exported_layers: list[dict],
+    timed_trajectories: dict,
+    dest_dir: Path,
+    mp4_path: Path,
+    jsx_path: Path,
+) -> dict:
+    """Build an animated EffectCraft composition, `.ectemplate` + `values.json`, and H.264 `.mp4`."""
+    ec_bin = shutil.which("effectcraft-cli") or "effectcraft-cli"
+    ecproj = mp4_path.with_suffix(".ecproj")
+    ectemplate = dest_dir / f"{slug}_6actions.ectemplate"
+    values_json_path = dest_dir / f"{slug}_values.json"
+
+    action_order = ["idle", "walk", "run", "jump", "wave", "talk_express"]
+    seg_dur = 0.8
+    total_dur = round(seg_dur * len(action_order), 2)
+    pos_kfs, rot_kfs = _compile_six_action_keyframes(
+        timed_trajectories.get("tracks", {}), action_order, seg_dur
+    )
     jsx_lines = [
         f"// EffectCraft 6-Action Timed Track + Essential Graphics for {slug}",
         f"var comp = app.project.items.addComp('{slug}_6actions', 1280, 720, 1.0, {total_dur}, 24);",
         f"// Timed segments: {', '.join(action_order)} ({seg_dur}s each)",
-    ]
-    for t, px, py, phase in pos_kfs:
-        jsx_lines.append(f"// t={t:.2f}s [{phase}] pos=({px}, {py})")
+    ] + [f"// t={t:.2f}s [{phase}] pos=({px}, {py})" for t, px, py, phase in pos_kfs]
     jsx_path.write_text("\n".join(jsx_lines) + "\n", encoding="utf-8")
 
     comp_name = f"{slug}_6actions"
-    batch_args: list[str] = [
-        ec_bin,
-        "--empty",
-        "run",
-        "comp.new",
-        json.dumps(
-            {
-                "name": comp_name,
-                "width": 1280,
-                "height": 720,
-                "duration": total_dur,
-                "frameRate": 24,
-            }
-        ),
-        "essential.setPrimary",
-        json.dumps({"comp": comp_name}),
-        "essential.setName",
-        json.dumps({"comp": comp_name, "name": f"{slug}_6actions_template"}),
-        "file.import",
-        json.dumps({"paths": [standing_file], "sequence": False, "addToComp": True}),
-        "layer.rename",
-        json.dumps({"name": f"{slug}_hero"}),
-    ]
-
-    for t, px, py, _ in pos_kfs:
-        batch_args.extend(
-            [
-                "prop.addKey",
-                json.dumps(
-                    {
-                        "layer": f"{slug}_hero",
-                        "path": "transform/position",
-                        "time": t,
-                        "value": [px, py, 0.0],
-                    }
-                ),
-            ]
-        )
-    for t, rot, _ in rot_kfs:
-        batch_args.extend(
-            [
-                "prop.addKey",
-                json.dumps(
-                    {
-                        "layer": f"{slug}_hero",
-                        "path": "transform/rotation",
-                        "time": t,
-                        "value": rot,
-                    }
-                ),
-            ]
-        )
-
-    # Attach root anchor pin and follow-through tip pin (`puppet.addPin` + `puppet.follow`)
-    batch_args.extend(
-        [
-            "puppet.addPin",
-            json.dumps(
-                {
-                    "layer": f"{slug}_hero",
-                    "kind": "position",
-                    "position": [cx, cy + 80.0],
-                }
-            ),
-            "puppet.addPin",
-            json.dumps(
-                {
-                    "layer": f"{slug}_hero",
-                    "kind": "position",
-                    "position": [cx, cy - 90.0],
-                }
-            ),
-            "puppet.follow",
-            json.dumps(
-                {
-                    "layer": f"{slug}_hero",
-                    "leader": "Puppet Pin 1",
-                    "pins": ["Puppet Pin 2"],
-                    "delay": 0.08,
-                    "amount": 65,
-                    "cascade": True,
-                }
-            ),
-            "essential.addProperty",
-            json.dumps(
-                {
-                    "layer": f"{slug}_hero",
-                    "path": "transform/rotation",
-                    "name": f"{slug}_hero_rotation",
-                }
-            ),
-            "essential.exportTemplate",
-            json.dumps(
-                {
-                    "comp": comp_name,
-                    "path": str(ectemplate),
-                    "name": f"{slug}_6actions_template",
-                }
-            ),
-            "--save-as",
-            str(ecproj),
-            "--json",
-        ]
+    batch_args = _build_effectcraft_batch_args(
+        ec_bin, slug, comp_name, total_dur, standing_file, pos_kfs, rot_kfs, ectemplate, ecproj
     )
-
     proc = subprocess.run(batch_args, capture_output=True, text=True, timeout=45)
     if proc.returncode != 0:
-        # Fallback if a specific puppet/essential command differs on an older EffectCraft build
-        subprocess.run(
-            [
-                ec_bin,
-                "--empty",
-                "run",
-                "comp.new",
-                json.dumps(
-                    {
-                        "name": f"{slug}_6actions",
-                        "width": 1280,
-                        "height": 720,
-                        "duration": total_dur,
-                        "frameRate": 24,
-                    }
-                ),
-                "file.import",
-                json.dumps(
-                    {"paths": [standing_file], "sequence": False, "addToComp": True}
-                ),
-                "--save-as",
-                str(ecproj),
-                "--json",
-            ],
-            check=True,
-            capture_output=True,
-            timeout=30,
-        )
+        fallback_args = [
+            ec_bin, "--empty", "run",
+            "comp.new", json.dumps({"name": comp_name, "width": 1280, "height": 720, "duration": total_dur, "frameRate": 24}),
+            "file.import", json.dumps({"paths": [standing_file], "sequence": False, "addToComp": True}),
+            "--save-as", str(ecproj), "--json",
+        ]
+        subprocess.run(fallback_args, check=True, capture_output=True, timeout=30)
 
     values_payload = {
         "template": str(ectemplate),
         "character": slug,
-        "values": {
-            f"{slug}_hero_media": standing_file,
-            f"{slug}_hero_rotation": 0.0,
-        },
+        "values": {f"{slug}_hero_media": standing_file, f"{slug}_hero_rotation": 0.0},
         "layerCount": len(exported_layers),
     }
-    values_json_path.write_text(
-        json.dumps(values_payload, indent=2) + "\n", encoding="utf-8"
-    )
-
+    values_json_path.write_text(json.dumps(values_payload, indent=2) + "\n", encoding="utf-8")
     subprocess.run(
-        [
-            ec_bin,
-            "--project",
-            str(ecproj),
-            "render",
-            "--out",
-            str(mp4_path),
-            "--format",
-            "h264",
-        ],
-        check=True,
-        capture_output=True,
-        timeout=60,
+        [ec_bin, "--project", str(ecproj), "render", "--out", str(mp4_path), "--format", "h264"],
+        check=True, capture_output=True, timeout=60,
     )
-
     return {
         "ecproj": str(ecproj),
         "ectemplate": str(ectemplate) if ectemplate.is_file() else None,
@@ -297,22 +195,9 @@ def render_action_track(
     }
 
 
-def build_six_action_package(
-    slug: str,
-    title: str,
-    p_dir: Path,
-    dest: Path,
-    motion: dict,
-    registration: dict | None = None,
-) -> dict:
-    layers_out = dest / "layers"
-    layers_out.mkdir(parents=True, exist_ok=True)
-    manifest = json.loads((p_dir / "manifest.json").read_text())
-    frames = manifest.get("frames", [])
-    standing_frame = next(
-        (f for f in frames if f.get("label") == "standing"), frames[0]
-    )
-
+def _collect_exported_layers(
+    standing_frame: dict, p_dir: Path, dest: Path, layers_out: Path, slug: str
+) -> list[dict]:
     exported_layers: list[dict] = []
     for part_name, pinfo in standing_frame.get("parts", {}).items():
         src_part = p_dir / pinfo.get("file", "")
@@ -329,42 +214,41 @@ def build_six_action_package(
                     "parent": pinfo.get("parent"),
                 }
             )
+    if exported_layers:
+        return exported_layers
 
-    # If the standing frame manifest did not define part polygons, derive whole-shape PhotoCraft layers
-    if not exported_layers:
-        from pipeline.prepare_character_parts import (
-            discover_character_joints_and_polygons,
-            export_part_layers,
+    from pipeline.prepare_character_parts import (
+        discover_character_joints_and_polygons,
+        export_part_layers,
+    )
+
+    standing_img_path = (p_dir / standing_frame["file"]).resolve()
+    disc = discover_character_joints_and_polygons(standing_img_path, character_id=slug)
+    pc_out = export_part_layers(standing_img_path, disc, dest, slug)
+    for p in pc_out["parts"]:
+        src_full = Path(p["full_layer_path"])
+        dst_part = layers_out / f"{p['id']}.png"
+        shutil.copy2(src_full, dst_part)
+        exported_layers.append(
+            {
+                "name": p["id"],
+                "file": str(dst_part.relative_to(dest)),
+                "size": disc["canvas_size"],
+                "pivot": p["pivot"],
+                "bindPosition": p["pivot"],
+                "parent": p["parent"],
+            }
         )
+    return exported_layers
 
-        standing_img_path = (p_dir / standing_frame["file"]).resolve()
-        disc = discover_character_joints_and_polygons(
-            standing_img_path, character_id=slug
-        )
-        pc_out = export_part_layers(
-            standing_img_path, disc, dest, slug
-        )
-        for p in pc_out["parts"]:
-            src_full = Path(p["full_layer_path"])
-            dst_part = layers_out / f"{p['id']}.png"
-            shutil.copy2(src_full, dst_part)
-            exported_layers.append(
-                {
-                    "name": p["id"],
-                    "file": str(dst_part.relative_to(dest)),
-                    "size": disc["canvas_size"],
-                    "pivot": p["pivot"],
-                    "bindPosition": p["pivot"],
-                    "parent": p["parent"],
-                }
-            )
 
-    layers_sheet_path = dest / f"{slug}_layers_sheet.png"
-    shutil.copy2(p_dir / standing_frame["file"], layers_sheet_path)
-
+def _build_action_tracks_list(
+    frames: list[dict], standing_frame: dict, p_dir: Path, motion: dict
+) -> list[dict]:
     frames_by_label = {f.get("label", "pose"): f for f in frames}
-    action_tracks = []
     timed_tracks = motion.get("timedTrajectories", {}).get("tracks", {})
+    poses_meta = motion.get("poses", {})
+    action_tracks = []
     for action_id, action_title, candidates in SIX_ACTIONS:
         seq = resolve_action_frames(frames_by_label, standing_frame, candidates)
         action_tracks.append(
@@ -377,96 +261,66 @@ def build_six_action_package(
                         "label": f.get("label", "standing"),
                         "file": str((p_dir / f["file"]).resolve()),
                         "size": f.get("size", [0, 0]),
-                        "footLiftPx": motion.get("poses", {})
-                            .get(f.get("label", "standing"), {})
-                            .get("metrics", {}).get("footLiftPx"),
+                        "footLiftPx": poses_meta.get(f.get("label", "standing"), {})
+                        .get("metrics", {})
+                        .get("footLiftPx"),
                     }
                     for f in seq
                 ],
             }
         )
+    return action_tracks
 
-    strip_path = dest / f"{slug}_6actions_strip.png"
-    mp4_path = dest / f"{slug}_6actions_track.mp4"
-    jsx_path = dest / f"{slug}_layers_6actions.jsx"
-    fcproj_path = dest / f"{slug}_6actions.fcproj"
-    fc_frame_path = dest / f"{slug}_filmcraft_verified.png"
-    timeline_path = dest / f"{slug}_6actions_timeline.json"
-    rig_json_path = dest / "rig.json"
+
+def build_six_action_package(
+    slug: str,
+    title: str,
+    p_dir: Path,
+    dest: Path,
+    motion: dict,
+    registration: dict | None = None,
+) -> dict:
+    layers_out = dest / "layers"
+    layers_out.mkdir(parents=True, exist_ok=True)
+    manifest = json.loads((p_dir / "manifest.json").read_text())
+    frames = manifest.get("frames", [])
+    standing_frame = next((f for f in frames if f.get("label") == "standing"), frames[0])
+    exported_layers = _collect_exported_layers(standing_frame, p_dir, dest, layers_out, slug)
+    layers_sheet_path = dest / f"{slug}_layers_sheet.png"
+    shutil.copy2(p_dir / standing_frame["file"], layers_sheet_path)
+    action_tracks = _build_action_tracks_list(frames, standing_frame, p_dir, motion)
+
+    strip_path, mp4_path = dest / f"{slug}_6actions_strip.png", dest / f"{slug}_6actions_track.mp4"
+    jsx_path, fcproj_path = dest / f"{slug}_layers_6actions.jsx", dest / f"{slug}_6actions.fcproj"
+    fc_frame_path, timeline_path, rig_json_path = dest / f"{slug}_filmcraft_verified.png", dest / f"{slug}_6actions_timeline.json", dest / "rig.json"
 
     render_contact_strip(title, action_tracks, strip_path)
-    ec_res = render_action_track(
-        slug=slug,
-        standing_file=str((p_dir / standing_frame["file"]).resolve()),
-        exported_layers=exported_layers,
-        timed_trajectories=motion.get("timedTrajectories", {}),
-        dest_dir=dest,
-        mp4_path=mp4_path,
-        jsx_path=jsx_path,
-    )
-    fc_res = build_marked_sequence(
-        slug=slug,
-        media_path=str(mp4_path),
-        project_out=str(fcproj_path),
-        frame_png_out=str(fc_frame_path),
-        extra_assets=[
-            str(layers_out / Path(l["file"]).name)
-            for l in exported_layers
-            if (layers_out / Path(l["file"]).name).is_file()
-        ],
-    )
-    compile_studio_rig_json(
-        character_id=slug,
-        canvas_size=standing_frame.get("size", [560, 720]),
-        layers_meta=exported_layers,
-        timed_trajectories=motion.get("timedTrajectories", {}),
-        out_path=rig_json_path,
-    )
+    ec_res = render_action_track(slug=slug, standing_file=str((p_dir / standing_frame["file"]).resolve()), exported_layers=exported_layers, timed_trajectories=motion.get("timedTrajectories", {}), dest_dir=dest, mp4_path=mp4_path, jsx_path=jsx_path)
+    fc_res = build_marked_sequence(slug=slug, media_path=str(mp4_path), project_out=str(fcproj_path), frame_png_out=str(fc_frame_path), extra_assets=[str(layers_out / Path(l["file"]).name) for l in exported_layers if (layers_out / Path(l["file"]).name).is_file()])
+    compile_studio_rig_json(character_id=slug, canvas_size=standing_frame.get("size", [560, 720]), layers_meta=exported_layers, timed_trajectories=motion.get("timedTrajectories", {}), out_path=rig_json_path)
 
+    outputs = {
+        "layersSheet": str(layers_sheet_path), "sixActionsStrip": str(strip_path),
+        "sixActionsMp4": str(mp4_path), "studioRigJson": str(rig_json_path),
+        "effectcraftJsx": str(jsx_path), "effectcraftProject": ec_res["ecproj"],
+        "effectcraftTemplate": ec_res["ectemplate"], "effectcraftValuesJson": ec_res["valuesJson"],
+        "filmcraftProject": str(fcproj_path),
+    }
     timeline_doc = {
-        "character": slug,
-        "title": title,
-        "fps": 24,
+        "character": slug, "title": title, "fps": 24,
         "totalFrames": int(round(ec_res["duration"] * 24)),
-        "layers": exported_layers,
-        "actions": action_tracks,
-        "effectcraft": ec_res,
-        "outputs": {
-            "layersSheet": str(layers_sheet_path),
-            "sixActionsStrip": str(strip_path),
-            "sixActionsMp4": str(mp4_path),
-            "studioRigJson": str(rig_json_path),
-            "effectcraftJsx": str(jsx_path),
-            "effectcraftProject": ec_res["ecproj"],
-            "effectcraftTemplate": ec_res["ectemplate"],
-            "effectcraftValuesJson": ec_res["valuesJson"],
-            "filmcraftProject": str(fcproj_path),
-        },
+        "layers": exported_layers, "actions": action_tracks,
+        "effectcraft": ec_res, "outputs": outputs,
     }
     timeline_path.write_text(json.dumps(timeline_doc, indent=2) + "\n")
     return {
-        "ok": True,
-        "character": slug,
-        "title": title,
-        "layerCount": len(exported_layers),
-        "actionCount": len(action_tracks),
-        "actions": [a["id"] for a in action_tracks],
-        "keyframeCount": ec_res["keyframeCount"],
+        "ok": True, "character": slug, "title": title,
+        "layerCount": len(exported_layers), "actionCount": len(action_tracks),
+        "actions": [a["id"] for a in action_tracks], "keyframeCount": ec_res["keyframeCount"],
         "footLiftMaxPx": (motion["limits"].get("footLiftPx") or {}).get("max"),
-        "maxVerticalDriftPx": registration["maxVerticalDriftPx"]
-        if registration
-        else None,
-        "layersSheet": str(layers_sheet_path),
-        "sixActionsStrip": str(strip_path),
-        "sixActionsMp4": str(mp4_path),
-        "studioRigJson": str(rig_json_path),
-        "timelineJson": str(timeline_path),
-        "effectcraftJsx": str(jsx_path),
-        "effectcraftProject": ec_res["ecproj"],
-        "effectcraftTemplate": ec_res["ectemplate"],
-        "effectcraftValuesJson": ec_res["valuesJson"],
-        "filmcraftProject": str(fcproj_path),
-        "filmcraftVerifiedFrame": fc_res.get("verifiedFrame"),
+        "maxVerticalDriftPx": registration["maxVerticalDriftPx"] if registration else None,
+        "timelineJson": str(timeline_path), "filmcraftVerifiedFrame": fc_res.get("verifiedFrame"),
+        **outputs,
     }
 
 

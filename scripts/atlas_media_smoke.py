@@ -162,6 +162,35 @@ def _result_record(case: dict[str, Any], result: Any) -> dict[str, Any]:
     }
 
 
+def _run_cases(
+    cases: tuple[dict[str, Any], ...],
+    selector: Any,
+    out_subdir: Path,
+    ext: str,
+    completed_ids: set[str],
+    records: list[dict[str, Any]],
+    checkpoint: Any,
+    extra_inputs: dict[str, Any] | None = None,
+) -> None:
+    for case in cases:
+        if case["id"] in completed_ids:
+            continue
+        inputs = {
+            **case,
+            "preferred_provider": "atlascloud",
+            "allowed_providers": ["atlascloud"],
+            "output_path": str(out_subdir / f"{case['id']}.{ext}"),
+            **(extra_inputs or {}),
+        }
+        inputs.pop("id")
+        inputs.pop("skill")
+        result = selector.execute(inputs)
+        records.append(_result_record(case, result))
+        checkpoint()
+        if not result.success:
+            break
+
+
 def run(project_dir: Path, *, images: bool, videos: bool, allow_paid: bool) -> int:
     if not allow_paid:
         raise SystemExit("Refusing paid Atlas calls without --allow-paid")
@@ -185,43 +214,15 @@ def run(project_dir: Path, *, images: bool, videos: bool, allow_paid: bool) -> i
 
     completed_ids = {record["id"] for record in records}
     if images:
-        selector = ImageSelector()
-        for case in IMAGE_CASES:
-            if case["id"] in completed_ids:
-                continue
-            inputs = {
-                **case,
-                "preferred_provider": "atlascloud",
-                "allowed_providers": ["atlascloud"],
-                "generation_mode": "generate",
-                "output_path": str(project_dir / "images" / f"{case['id']}.png"),
-            }
-            inputs.pop("id")
-            inputs.pop("skill")
-            result = selector.execute(inputs)
-            records.append(_result_record(case, result))
-            checkpoint()
-            if not result.success:
-                break
-
+        _run_cases(
+            IMAGE_CASES, ImageSelector(), project_dir / "images", "png",
+            completed_ids, records, checkpoint, {"generation_mode": "generate"},
+        )
     if videos and all(record["success"] for record in records):
-        selector = VideoSelector()
-        for case in VIDEO_CASES:
-            if case["id"] in completed_ids:
-                continue
-            inputs = {
-                **case,
-                "preferred_provider": "atlascloud",
-                "allowed_providers": ["atlascloud"],
-                "output_path": str(project_dir / "videos" / f"{case['id']}.mp4"),
-            }
-            inputs.pop("id")
-            inputs.pop("skill")
-            result = selector.execute(inputs)
-            records.append(_result_record(case, result))
-            checkpoint()
-            if not result.success:
-                break
+        _run_cases(
+            VIDEO_CASES, VideoSelector(), project_dir / "videos", "mp4",
+            completed_ids, records, checkpoint,
+        )
 
     checkpoint()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

@@ -36,6 +36,62 @@ def size(path):
     return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
 
 
+def _build_recut_commands(a, x, y, w, h):
+    cmds = [
+        ("image.imageSize", {"percent": a.scale * 100}),
+        (
+            "file.placeEmbedded",
+            {
+                "path": a.part,
+                "scale": 100,
+                "fit": False,
+                "smartObject": False,
+                "center": [x + w / 2, y + h / 2],
+            },
+        ),
+        ("select.loadSelection", {"channel": "transparency"}),
+        ("select.refineEdge", {"smooth": a.smooth, "output": "selection"}),
+        ("select.modify.expand", {"radius": max(1, a.expand)}),
+        ("layer.delete", {}),
+        ("select.subject", {"mode": "intersect", "sampleAllLayers": True}),
+        ("layer.new.layerViaCopy", {}),
+    ]
+    for spec in a.behind:
+        path, pos = spec.rsplit(":", 1)
+        bx, by = xy(pos)
+        bw, bh = size(path)
+        cmds += [
+            ("select.loadSelection", {"channel": "transparency"}),
+            (
+                "file.placeEmbedded",
+                {
+                    "path": path,
+                    "scale": 100,
+                    "fit": False,
+                    "smartObject": False,
+                    "center": [bx + bw / 2, by + bh / 2],
+                },
+            ),
+            (
+                "select.loadSelection",
+                {"channel": "transparency", "operation": "intersect"},
+            ),
+            ("layer.delete", {}),
+            ("layer.select", {"name": "Layer 1"}),
+            (
+                "edit.contentAwareFill",
+                {"sampling": "custom", "area": [x, y, w, h], "output": "current"},
+            ),
+            ("select.deselect", {}),
+        ]
+    cmds += [
+        ("layer.select", {"name": "Background"}),
+        ("layer.delete", {}),
+        ("image.crop", {"x": x, "y": y, "width": w, "height": h}),
+    ]
+    return cmds
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -65,60 +121,7 @@ def main():
 
     w, h = size(a.part)
     x, y = a.at
-    cmds = [
-        ("image.imageSize", {"percent": a.scale * 100}),
-        (
-            "file.placeEmbedded",
-            {
-                "path": a.part,
-                "scale": 100,
-                "fit": False,
-                "smartObject": False,
-                "center": [x + w / 2, y + h / 2],
-            },
-        ),
-        ("select.loadSelection", {"channel": "transparency"}),
-        ("select.refineEdge", {"smooth": a.smooth, "output": "selection"}),
-        ("select.modify.expand", {"radius": max(1, a.expand)}),
-        ("layer.delete", {}),
-        ("select.subject", {"mode": "intersect", "sampleAllLayers": True}),
-        ("layer.new.layerViaCopy", {}),
-    ]
-    for spec in a.behind:
-        path, pos = spec.rsplit(":", 1)
-        bx, by = xy(pos)
-        bw, bh = size(path)
-        cmds += [
-            # the hidden strip = this part ∩ the part in front of it
-            ("select.loadSelection", {"channel": "transparency"}),
-            (
-                "file.placeEmbedded",
-                {
-                    "path": path,
-                    "scale": 100,
-                    "fit": False,
-                    "smartObject": False,
-                    "center": [bx + bw / 2, by + bh / 2],
-                },
-            ),
-            (
-                "select.loadSelection",
-                {"channel": "transparency", "operation": "intersect"},
-            ),
-            ("layer.delete", {}),
-            ("layer.select", {"name": "Layer 1"}),
-            # sample only the part's own pixels (its box), not the transparent surroundings
-            (
-                "edit.contentAwareFill",
-                {"sampling": "custom", "area": [x, y, w, h], "output": "current"},
-            ),
-            ("select.deselect", {}),
-        ]
-    cmds += [
-        ("layer.select", {"name": "Background"}),
-        ("layer.delete", {}),
-        ("image.crop", {"x": x, "y": y, "width": w, "height": h}),
-    ]
+    cmds = _build_recut_commands(a, x, y, w, h)
     argv = [shutil.which("photocraft-cli") or "photocraft-cli", "run", a.source]
     for cid, params in cmds:
         argv += ["--cmd", cid, "--params", json.dumps(params)]

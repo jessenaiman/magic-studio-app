@@ -159,12 +159,7 @@ VAULT_CHARACTER_CATALOG: Dict[str, Dict[str, Any]] = {
 }
 
 
-def resolve_real_vault_image(image_or_name: str, prefer: str = "turnaround") -> str:
-    if not image_or_name or not str(image_or_name).strip():
-        raise FileNotFoundError("No character ID or source image path provided")
-    if os.path.exists(image_or_name):
-        return os.path.abspath(image_or_name)
-    low = str(image_or_name).lower().strip()
+def _match_catalog_entry(low: str, prefer: str) -> str | None:
     for key, entry in VAULT_CHARACTER_CATALOG.items():
         if key == low or key in low or low in key:
             candidate = (
@@ -172,10 +167,28 @@ def resolve_real_vault_image(image_or_name: str, prefer: str = "turnaround") -> 
             )
             if candidate and os.path.exists(candidate):
                 return candidate
+    return None
+
+
+def _search_vault_root(low: str) -> str | None:
+    spaced = low.replace("_", " ")
     for root, _, files in os.walk(VAULT_ROOT):
         for f in files:
-            if low.replace("_", " ") in f.lower() or low in f.lower():
+            fl = f.lower()
+            if spaced in fl or low in fl:
                 return os.path.join(root, f)
+    return None
+
+
+def resolve_real_vault_image(image_or_name: str, prefer: str = "turnaround") -> str:
+    if not image_or_name or not str(image_or_name).strip():
+        raise FileNotFoundError("No character ID or source image path provided")
+    if os.path.exists(image_or_name):
+        return os.path.abspath(image_or_name)
+    low = str(image_or_name).lower().strip()
+    found = _match_catalog_entry(low, prefer) or _search_vault_root(low)
+    if found:
+        return found
     raise FileNotFoundError(
         f"Could not resolve source image or character: {image_or_name!r}"
     )
@@ -206,6 +219,52 @@ def remove_image_background(src_path: str, out_path: str) -> str:
     return out_path
 
 
+def _slice_turnaround_columns(
+    pc_bin: str, clean_sheet_path: str, real_path: str, out_dir: str, w: int, h: int
+) -> tuple[str, List[str]]:
+    sheet_type = (
+        "pose_sheet"
+        if "pose_sheet" in os.path.basename(real_path).lower()
+        else "turnaround_5view"
+    )
+    cols = 5
+    col_w = w // cols
+    top_y = int(h * 0.08)
+    crop_h = int(h * (0.41 if sheet_type == "pose_sheet" else 0.83))
+    views_paths: List[str] = []
+    for i in range(cols):
+        p = os.path.join(out_dir, f"view_{i}.png")
+        subprocess.run(
+            [
+                pc_bin,
+                "run",
+                clean_sheet_path,
+                "--cmd",
+                "image.crop",
+                "--params",
+                json.dumps(
+                    {"x": i * col_w, "y": top_y, "width": col_w, "height": crop_h}
+                ),
+                "--cmd",
+                "image.trim",
+                "--params",
+                "{}",
+                "--out",
+                p,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if not os.path.isfile(p):
+            with Image.open(clean_sheet_path) as sheet_im:
+                sheet_im.crop(
+                    (i * col_w, top_y, (i + 1) * col_w, top_y + crop_h)
+                ).save(p)
+        views_paths.append(p)
+    return sheet_type, views_paths
+
+
 def slice_real_character_image(
     image_path: str,
     out_dir: str,
@@ -221,50 +280,12 @@ def slice_real_character_image(
 
     with Image.open(clean_sheet_path) as im:
         w, h = im.size
-    aspect = w / max(1, h)
     pc_bin = shutil.which("photocraft-cli") or "photocraft-cli"
-    views_paths: List[str] = []
 
-    if aspect >= 1.45:
-        sheet_type = (
-            "pose_sheet"
-            if "pose_sheet" in os.path.basename(real_path).lower()
-            else "turnaround_5view"
+    if (w / max(1, h)) >= 1.45:
+        sheet_type, views_paths = _slice_turnaround_columns(
+            pc_bin, clean_sheet_path, real_path, out_dir, w, h
         )
-        cols = 5
-        col_w = w // cols
-        top_y = int(h * 0.08)
-        crop_h = int(h * (0.41 if sheet_type == "pose_sheet" else 0.83))
-        for i in range(cols):
-            p = os.path.join(out_dir, f"view_{i}.png")
-            subprocess.run(
-                [
-                    pc_bin,
-                    "run",
-                    clean_sheet_path,
-                    "--cmd",
-                    "image.crop",
-                    "--params",
-                    json.dumps(
-                        {"x": i * col_w, "y": top_y, "width": col_w, "height": crop_h}
-                    ),
-                    "--cmd",
-                    "image.trim",
-                    "--params",
-                    "{}",
-                    "--out",
-                    p,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if not os.path.isfile(p):
-                with Image.open(clean_sheet_path) as sheet_im:
-                    sheet_im.crop(
-                        (i * col_w, top_y, (i + 1) * col_w, top_y + crop_h)
-                    ).save(p)
-            views_paths.append(p)
     else:
         sheet_type = "single_cutout"
         p = os.path.join(out_dir, "view_0.png")
@@ -286,7 +307,7 @@ def slice_real_character_image(
         )
         if not os.path.isfile(p):
             Image.open(clean_sheet_path).save(p)
-        views_paths.append(p)
+        views_paths = [p]
 
     hero_path = os.path.join(out_dir, "hero_full.png")
     with Image.open(views_paths[0]) as hero_im:
