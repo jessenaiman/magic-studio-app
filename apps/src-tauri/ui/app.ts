@@ -1,12 +1,8 @@
 // Magic Studio shell: the project view. Data comes from magicstudio-engine through the
 // shell's commands; files open with one click; the studio tab hosts the video target's studio.
 const { invoke: nativeInvoke, convertFileSrc } = window.__TAURI__.core;
-/**
- * @param {string} command
- * @param {any} [params]
- * @param {any} [options] transport options, e.g. request headers for raw byte payloads
- */
-async function invoke(command,params,options){
+// `options` carries transport options, e.g. request headers for raw byte payloads.
+async function invoke(command: string,params?: any,options?: any){
  const action=acFeedback.action;
  const companion=command==='engine_command'?window.uiRegistry?.capture(params.id,{...params.params,_request_id:action?.request_id||params.params?._request_id}):null;
  if(companion)window.uiRegistry?.event({...companion,phase:"start"});
@@ -22,8 +18,7 @@ async function invoke(command,params,options){
  }catch(error){if(companion)window.uiRegistry?.event({...companion,phase:'error',error:String(error)});acFeedback.last={transport:command,id:params?.id||null,status:'error',error:String(error).slice(0,300)};acFeedback.report(null,null,{stage:'handler_error',command:params?.id||command,control:action?.control||null,request_id:action?.request_id||null,error:String(error).slice(0,300)});throw error;}
  finally{acFeedback.pending--;await acFeedback.report();}
 }
-/** @type {(id: string) => any} */
-const $ = (id) => document.getElementById(id);
+const $ = (id: string): any => document.getElementById(id);
 
 const ICONS = {
   song: '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
@@ -35,7 +30,18 @@ const ICONS = {
   pause: '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>',
 };
 
-let state = { project: null, data: null, page: 0, open: "song", view: "project", blocksCollapsed: false };
+// The app's one mutable state bag. Fields below are the ones set at startup; views add the rest
+// (storyboardScene, lyrics, creating, ...) as they run, hence the open index signature.
+interface AppState {
+  project: string | null;
+  data: any;
+  page: number;
+  open: string | null;
+  view: string;
+  blocksCollapsed: boolean;
+  [key: string]: any;
+}
+let state: AppState = { project: null, data: null, page: 0, open: "song", view: "project", blocksCollapsed: false };
 
 function updateMagicSelection() {
   const layer = motion?.meta?.layers?.find((part) => part.id === motion.selected);
@@ -117,10 +123,11 @@ function footerContext() {
 }
 
 // Coalesces the many callers (renders, selection, Theatre messages) into one footer render.
-function updateAppFooter() {
-  if (updateAppFooter.queued) return;
-  updateAppFooter.queued = true;
-  queueMicrotask(() => { updateAppFooter.queued = false; renderAppFooter(); });
+let footerQueued = false;
+function updateAppFooter(): void {
+  if (footerQueued) return;
+  footerQueued = true;
+  queueMicrotask(() => { footerQueued = false; renderAppFooter(); });
 }
 
 function renderAppFooter() {
@@ -145,13 +152,13 @@ function renderAppFooter() {
 // Theatre's own listener (theatre.js) updates its revisions first; render after it.
 window.addEventListener('message', (event) => { if (event.data?.magicTheatre && event.data.type !== 'values') setTimeout(updateAppFooter); });
 
-/** @param {string} text */
-function toast(text) {
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+function toast(text: string) {
   const t = $("toast");
   t.textContent = text;
   t.classList.add("show");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove("show"), 2400);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
 }
 
 // Every control in this app is built here.
@@ -179,8 +186,7 @@ function toast(text) {
 // THE CONFIG. One entry per element id says which component it is, which look
 // it takes and how dense it is. el() reads it by id, so a look is chosen in
 // the config, never at the call site.
-/** @type {UiConfig} */
-const uiConfig = { version: 0, looks: {}, densities: [], elements: {} };
+const uiConfig: UiConfig = { version: 0, looks: {}, densities: [], elements: {} };
 window.uiConfig = uiConfig;
 
 async function loadComponents() {
@@ -215,14 +221,8 @@ function applyEntry(node, entry, id = node.id) {
   return node;
 }
 
-/**
- * Create an element from a tag, attributes and children.
- * @param {string} tag
- * @param {Record<string, any>} [attrs]
- * @param {...any} children
- * @returns {any}
- */
-function el(tag, attrs = {}, ...children) {
+// Create an element from a tag, attributes and children.
+function el(tag: string, attrs: Record<string, any> = {}, ...children: any[]): any {
   const node = document.createElement(tag);
   let box = null;
   for (const [k, v] of Object.entries(attrs)) {
@@ -281,7 +281,7 @@ async function showStudio() {
   catch (e) { toast(String(e)); throw e; }
 }
 
-async function setView(view, action) {
+async function setView(view: string, action?: any) {
   const errors = acFeedback.errors.length;
   if (view === "split") view = "studio";
   if (state.view === "animation" && view !== "animation" && typeof theatreCanLeave === "function" && !theatreCanLeave()) return false;
@@ -364,7 +364,7 @@ async function toggleServer() {
 
 async function load() {
   await loadComponents();
-  const start = await invoke("startup");
+  const start: any = await invoke("startup");
   state.identity=start.identity;
   window.applicationFileMenu?.configure(start.menus.file);
   window.textContextMenu?.configure(start.menus.text);
@@ -391,7 +391,7 @@ async function openProject(path, start = {}) {
 }
 
 // Apply an already executed desktop command transition; never dispatch Open while refreshing it.
-async function applyOpenedProject(opened, start = {}) {
+async function applyOpenedProject(opened: any, start: any = {}) {
   if(opened.reused_session){toast(opened.opened_new_instance?"Opened project in a separate window":"Focused the existing project session");return;}
   const path=opened.project;
   if(!path)throw new Error('Project command did not return its canonical location');
