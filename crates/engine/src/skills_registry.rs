@@ -105,17 +105,34 @@ const TASKS: &[(&str, &str)] = &[
     ("matte-window", include_str!("../manual/matte-window.md")),
     ("polar-tunnel", include_str!("../manual/polar-tunnel.md")),
 ];
-fn records(s: &Session) -> Result<Value> {
-    let mut all = seeds();
-    if let Some(p) = legacy_file() {
-        for (k, v) in object(&read_json(&p)?, "Legacy Learning registry")? {
-            all[k] = v.clone();
-        }
-    }
-    for (k, v) in object(&read_json(&root(s).join("index.json"))?, "Learning index")? {
+/// Merge one registry file into the seeded records.
+fn merge_registry(all: &mut Value, file: &std::path::Path, what: &str) -> Result<()> {
+    for (k, v) in object(&read_json(file)?, what)? {
         all[k] = v.clone();
     }
-    match fs::read_dir(root(s)) {
+    Ok(())
+}
+
+/// A markdown entry's frontmatter and title become its record.
+fn apply_markdown(raw: &str, ident: &str, all: &mut Value) -> Result<()> {
+    let (_, meta) = frontmatter(raw);
+    let Some(meta) = meta else {
+        return Ok(());
+    };
+    let mut record = all.get(ident).cloned().unwrap_or_else(|| json!({}));
+    object(&record, "Learning record")?;
+    for (k, v) in object(&meta, "Learning frontmatter")? {
+        record[k] = v.clone();
+    }
+    record["name"] = json!(title(raw).unwrap_or(ident));
+    all[ident] = record;
+    Ok(())
+}
+
+/// Every markdown file in the learning directory whose stem is a valid id.
+fn learning_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut files = Vec::new();
+    match fs::read_dir(dir) {
         Ok(entries) => {
             for entry in entries {
                 let path = entry?.path();
@@ -125,27 +142,35 @@ fn records(s: &Session) -> Result<Value> {
                 let Some(ident) = path.file_stem().and_then(|v| v.to_str()) else {
                     continue;
                 };
-                if id(&json!({"id":ident})).is_err() {
-                    continue;
-                }
-                let md = fs::read_to_string(&path)?;
-                let (_, meta) = frontmatter(&md);
-                if let Some(meta) = meta {
-                    let mut record = all.get(ident).cloned().unwrap_or_else(|| json!({}));
-                    object(&record, "Learning record")?;
-                    for (k, v) in object(&meta, "Learning frontmatter")? {
-                        record[k] = v.clone();
-                    }
-                    record["name"] = json!(title(&md).unwrap_or(ident));
-                    all[ident] = record;
+                if id(&json!({"id":ident})).is_ok() {
+                    files.push(path);
                 }
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
     }
+    Ok(files)
+}
+
+fn records(s: &Session) -> Result<Value> {
+    let mut all = seeds();
+    if let Some(p) = legacy_file() {
+        merge_registry(&mut all, &p, "Legacy Learning registry")?;
+    }
+    merge_registry(&mut all, &root(s).join("index.json"), "Learning index")?;
+    for path in learning_files(&root(s))? {
+        let ident = path
+            .file_stem()
+            .and_then(|v| v.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let md = fs::read_to_string(&path)?;
+        apply_markdown(&md, &ident, &mut all)?;
+    }
     Ok(all)
 }
+
 fn builtin(id: &str) -> Option<&'static str> {
     TASKS.iter().find(|(k, _)| *k == id).map(|(_, v)| *v)
 }
@@ -681,11 +706,10 @@ pub fn cmd_skills_limits(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok":true,"limits":limits(s)?}))
 }
 
-/// Both Archify views are projections of the same task IDs, titles and `next` relations.
-pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
-    let kind = p["kind"].as_str().unwrap_or("production");
-    let ids: Vec<&str> = match kind {
-        "production" => vec![
+/// The task IDs each diagram kind projects, in drawing order.
+fn diagram_ids(kind: &str) -> Result<Vec<&'static str>> {
+    match kind {
+        "production" => Ok(vec![
             "resolve-project",
             "choose-audio",
             "timing-skill",
@@ -694,60 +718,144 @@ pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
             "prepare-art",
             "author-motion",
             "review-release",
-        ],
-        "correction" => vec![
+        ]),
+        "correction" => Ok(vec![
             "report-note",
             "approve-alternative",
             "fix-source",
             "recheck-fix",
             "full-review",
-        ],
-        _ => return Err(invalid("Diagram kind is production or correction")),
-    };
-    let _lock = read_lock(s)?;
-    let all = records(s)?;
-    let mut nodes = vec![];
-    let mut edges = vec![];
-    let mut present = vec![];
+        ]),
+        _ => Err(invalid("Diagram kind is production or correction")),
+    }
+}
+
+/// One node per present task record, stacked around the diagram centre.
+fn diagram_nodes(s: &Session, all: &Value, ids: &[&str]) -> Result<(Vec<Value>, Vec<String>)> {
+    let mut nodes = Vec::new();
+    let mut present = Vec::new();
     for (i, ident) in ids.iter().enumerate() {
         let Some(record) = all.get(*ident).filter(|v| v["removed"] != true) else {
             continue;
         };
         let md = markdown(s, record, ident)?;
         let block = parse_task(&md);
-        let col = 0usize;
-        let lane = "tasks";
         let y_offset = (i as f64 - (ids.len() - 1) as f64 / 2.0) * 80.0;
-        nodes.push(json!({"id":ident,"lane":lane,"col":col,"yOffset":y_offset,"type":if record["blocked"].is_string(){"security"}else{"backend"},"label":block["title"],"sublabel":block["action"]["kind"],"width":180usize.max(block["title"].as_str().unwrap_or("").chars().count()*8+32)}));
-        present.push(*ident);
+        nodes.push(json!({"id":ident,"lane":"tasks","col":0usize,"yOffset":y_offset,"type":if record["blocked"].is_string(){"security"}else{"backend"},"label":block["title"],"sublabel":block["action"]["kind"],"width":180usize.max(block["title"].as_str().unwrap_or("").chars().count()*8+32)}));
+        present.push((*ident).to_string());
     }
-    for ident in &present {
-        if let Some(next) = all[*ident]["next"].as_array() {
-            for target in next
-                .iter()
-                .filter_map(Value::as_str)
-                .filter(|n| present.contains(n))
-            {
-                let mut edge = json!({"id":format!("{ident}-to-{target}"),"from":ident,"to":target,"variant":"default"});
-                if target == "report-note" {
-                    edge["variant"] = json!("dashed");
-                    edge["role"] = json!("branch");
-                    edge["route"] = json!("outside-right");
-                    edge["fromSide"] = json!("right");
-                    edge["toSide"] = json!("right");
-                } else {
-                    edge["fromSide"] = json!("bottom");
-                    edge["toSide"] = json!("top");
-                }
-                edges.push(edge);
+    Ok((nodes, present))
+}
+
+/// One edge per `next` target that is also present; corrections branch out to report-note.
+fn diagram_edges(all: &Value, present: &[String]) -> Vec<Value> {
+    let mut edges = Vec::new();
+    for ident in present {
+        let Some(next) = all[ident]["next"].as_array() else {
+            continue;
+        };
+        for target in next
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|n| present.iter().any(|p| p == n))
+        {
+            let mut edge = json!({"id":format!("{ident}-to-{target}"),"from":ident,"to":target,"variant":"default"});
+            if target == "report-note" {
+                edge["variant"] = json!("dashed");
+                edge["role"] = json!("branch");
+                edge["route"] = json!("outside-right");
+                edge["fromSide"] = json!("right");
+                edge["toSide"] = json!("right");
+            } else {
+                edge["fromSide"] = json!("bottom");
+                edge["toSide"] = json!("top");
             }
+            edges.push(edge);
         }
     }
-    let lanes = vec![
-        json!({"id":"tasks","label":if kind=="production"{"Production path — manual steps"}else{"Approved correction loop"}}),
-    ];
-    let output = format!("{kind}.html");
-    let spec = json!({"schema_version":2,"diagram_type":"workflow","meta":{"title":if kind=="production"{"Music-video production tasks"}else{"Approved correction loop"},"subtitle":"Editable task records drive this manual view; no automatic execution or approval is implied.","quality_profile":"showcase","animation":"none","output":output},"lanes":lanes,"mainPath":present,"nodes":nodes,"edges":edges});
+    edges
+}
+
+fn diagram_spec(kind: &str, nodes: Vec<Value>, edges: Vec<Value>, present: Vec<String>) -> Value {
+    let lane_label = if kind == "production" {
+        "Production path — manual steps"
+    } else {
+        "Approved correction loop"
+    };
+    let title = if kind == "production" {
+        "Music-video production tasks"
+    } else {
+        "Approved correction loop"
+    };
+    json!({"schema_version":2,"diagram_type":"workflow","meta":{"title":title,"subtitle":"Editable task records drive this manual view; no automatic execution or approval is implied.","quality_profile":"showcase","animation":"none","output":format!("{kind}.html")},"lanes":[json!({"id":"tasks","label":lane_label}),],"mainPath":present,"nodes":nodes,"edges":edges})
+}
+
+/// The installed Archify script, from its environment override or the skills folder.
+fn archify_script() -> Result<PathBuf> {
+    std::env::var_os("ARCHIFY_SCRIPT")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(|h| PathBuf::from(h).join(".codex/skills/archify/bin/archify.mjs"))
+        })
+        .ok_or_else(|| invalid("Installed Archify script not configured"))
+}
+
+fn script_exists(script: &std::path::Path) -> Result<()> {
+    if script.is_file() {
+        return Ok(());
+    }
+    Err(invalid(
+        "Archify is unavailable. Set ARCHIFY_SCRIPT to the existing installed bin/archify.mjs; nothing was installed",
+    ))
+}
+
+/// Run the installed finalizer on the written candidate; its log is the failure evidence.
+fn finalize(
+    dir: &std::path::Path,
+    script: &std::path::Path,
+    candidate: &std::path::Path,
+    output: &str,
+    evidence: &std::path::Path,
+) -> Result<()> {
+    let candidate_name = candidate
+        .file_name()
+        .ok_or_else(|| invalid("Archify candidate has no file name"))?;
+    let result = Command::new("node")
+        .arg(script)
+        .args(["finalize", "workflow"])
+        .arg(candidate_name)
+        .arg(output)
+        .args(["--quality", "showcase", "--json", "--out-dir"])
+        .arg(evidence)
+        .current_dir(dir)
+        .output()?;
+    if result.status.success() {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "Archify finalize failed; candidate retained at {}. {} {}",
+        candidate.display(),
+        String::from_utf8_lossy(&result.stdout)
+            .chars()
+            .take(1600)
+            .collect::<String>(),
+        String::from_utf8_lossy(&result.stderr)
+            .chars()
+            .take(400)
+            .collect::<String>()
+    )))
+}
+
+/// Both Archify views are projections of the same task IDs, titles and `next` relations.
+pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
+    let kind = p["kind"].as_str().unwrap_or("production");
+    let ids = diagram_ids(kind)?;
+    let _lock = read_lock(s)?;
+    let all = records(s)?;
+    let (nodes, present) = diagram_nodes(s, &all, &ids)?;
+    let edges = diagram_edges(&all, &present);
+    let spec = diagram_spec(kind, nodes, edges, present);
     if p["render"] != true {
         return Ok(
             json!({"ok":true,"spec":spec,"editable_format":"Archify workflow schema v2 JSON; task Markdown is the instruction source"}),
@@ -761,18 +869,8 @@ pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(invalid("Learning project changed; diagram request refused"));
     }
     fs::create_dir_all(&dir)?;
-    let script = std::env::var_os("ARCHIFY_SCRIPT")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|h| PathBuf::from(h).join(".codex/skills/archify/bin/archify.mjs"))
-        })
-        .ok_or_else(|| invalid("Installed Archify script not configured"))?;
-    if !script.is_file() {
-        return Err(invalid(
-            "Archify is unavailable. Set ARCHIFY_SCRIPT to the existing installed bin/archify.mjs; nothing was installed",
-        ));
-    }
+    let script = archify_script()?;
+    script_exists(&script)?;
     let candidate = dir.join(format!("{kind}.workflow.json"));
     let bytes = serde_json::to_vec_pretty(&spec).map_err(|e| invalid(e.to_string()))?;
     atomic_write(&candidate, &bytes)?;
@@ -780,32 +878,8 @@ pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
         .join(".archify-evidence")
         .join(kind)
         .join(format!("{:x}", Sha256::digest(&bytes)));
-    let candidate_name = candidate
-        .file_name()
-        .ok_or_else(|| invalid("Archify candidate has no file name"))?;
-    let result = Command::new("node")
-        .arg(&script)
-        .args(["finalize", "workflow"])
-        .arg(candidate_name)
-        .arg(&output)
-        .args(["--quality", "showcase", "--json", "--out-dir"])
-        .arg(&evidence)
-        .current_dir(&dir)
-        .output()?;
-    if !result.status.success() {
-        return Err(invalid(format!(
-            "Archify finalize failed; candidate retained at {}. {} {}",
-            candidate.display(),
-            String::from_utf8_lossy(&result.stdout)
-                .chars()
-                .take(1600)
-                .collect::<String>(),
-            String::from_utf8_lossy(&result.stderr)
-                .chars()
-                .take(400)
-                .collect::<String>()
-        )));
-    }
+    let output = format!("{kind}.html");
+    finalize(&dir, &script, &candidate, &output, &evidence)?;
     let html = fs::read_to_string(dir.join(&output))?;
     Ok(
         json!({"ok":true,"spec":spec,"source":candidate,"output":dir.join(output),"html":html,"verified":"Archify finalize exit 0; visual review remains separate"}),
