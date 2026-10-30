@@ -82,32 +82,9 @@ pub(crate) fn run_image_agent(
     run_agent_inner(program, args, cwd, timeout_s, true)
 }
 
-fn run_agent_inner(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    timeout_s: u64,
-    stop_on_image: bool,
-) -> Result<AgentRun> {
-    let mut command = std::process::Command::new(program);
-    // `codex exec` defaults to error-only stderr. The native image importer needs
-    // its INFO tool receipt to correlate staged bytes; never rely on the parent's log level.
-    if stop_on_image {
-        command.env("RUST_LOG", "error,codex_otel=info");
-    }
-    let mut child = command
-        .current_dir(cwd)
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| EngineError::ExternalTool(program.to_string(), e.to_string()))?;
-    let (tx_out, rx_out) = std::sync::mpsc::channel::<Vec<u8>>();
-    let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
-    let (image_tx, image_rx) = std::sync::mpsc::channel::<()>();
-    if let Some(mut pipe) = child.stdout.take() {
-        let tx = tx_out.clone();
+fn spawn_stdout_reader(pipe: Option<std::process::ChildStdout>) -> std::sync::mpsc::Receiver<Vec<u8>> {
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    if let Some(mut pipe) = pipe {
         std::thread::spawn(move || {
             use std::io::Read;
             let mut buf = Vec::new();
@@ -115,8 +92,16 @@ fn run_agent_inner(
             let _ = tx.send(buf);
         });
     }
-    if let Some(mut pipe) = child.stderr.take() {
-        let tx = tx_err.clone();
+    rx
+}
+
+fn spawn_stderr_reader(
+    pipe: Option<std::process::ChildStderr>,
+    stop_on_image: bool,
+) -> (std::sync::mpsc::Receiver<Vec<u8>>, std::sync::mpsc::Receiver<()>) {
+    let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
+    let (image_tx, image_rx) = std::sync::mpsc::channel::<()>();
+    if let Some(mut pipe) = pipe {
         std::thread::spawn(move || {
             use std::io::{BufRead, BufReader};
             let mut reader = BufReader::new(&mut pipe);
@@ -140,10 +125,18 @@ fn run_agent_inner(
                     let _ = image_tx.send(());
                 }
             }
-            let _ = tx.send(buf);
+            let _ = tx_err.send(buf);
         });
     }
-    let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
+    (rx_err, image_rx)
+}
+
+fn wait_for_agent_child(
+    child: &mut std::process::Child,
+    deadline: Instant,
+    stop_on_image: bool,
+    image_rx: &std::sync::mpsc::Receiver<()>,
+) -> (Option<i32>, bool, bool) {
     let mut timed_out = false;
     let mut stopped_after_image = false;
     let code = loop {
@@ -164,6 +157,35 @@ fn run_agent_inner(
         }
         std::thread::sleep(Duration::from_millis(150));
     };
+    (code, timed_out, stopped_after_image)
+}
+
+fn run_agent_inner(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    timeout_s: u64,
+    stop_on_image: bool,
+) -> Result<AgentRun> {
+    let mut command = std::process::Command::new(program);
+    // `codex exec` defaults to error-only stderr. The native image importer needs
+    // its INFO tool receipt to correlate staged bytes; never rely on the parent's log level.
+    if stop_on_image {
+        command.env("RUST_LOG", "error,codex_otel=info");
+    }
+    let mut child = command
+        .current_dir(cwd)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| EngineError::ExternalTool(program.to_string(), e.to_string()))?;
+    let rx_out = spawn_stdout_reader(child.stdout.take());
+    let (rx_err, image_rx) = spawn_stderr_reader(child.stderr.take(), stop_on_image);
+    let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
+    let (code, timed_out, stopped_after_image) =
+        wait_for_agent_child(&mut child, deadline, stop_on_image, &image_rx);
     let stdout = rx_out
         .recv_timeout(Duration::from_secs(15))
         .unwrap_or_default();
@@ -182,6 +204,51 @@ fn run_agent_inner(
 /// The file name the contract gives a sheet.
 fn sheet_file(character: &str, kind: &str) -> String {
     format!("{character}-{kind}.png")
+}
+
+fn inspect_sheet_pixels(effective: &Path, reasons: &mut Vec<String>) {
+    let Some(img) = image::open(effective).ok().map(|im| im.to_rgba8()) else {
+        return;
+    };
+    let (w, h) = (img.width(), img.height());
+    let low = WHITE_TOLERANCE;
+    let transparent = img.pixels().filter(|px| px.0[3] < 250).count();
+    if transparent > 0 {
+        reasons.push(format!(
+            "{transparent} pixels are not opaque: the contract wants a flat #ffffff background"
+        ));
+    }
+    let mut edge = Vec::new();
+    for x in 0..w {
+        edge.extend([
+            (x, 0),
+            (x, 1.min(h.saturating_sub(1))),
+            (x, h.saturating_sub(1)),
+            (x, h.saturating_sub(2)),
+        ]);
+    }
+    for y in 0..h {
+        edge.extend([
+            (0, y),
+            (1.min(w.saturating_sub(1)), y),
+            (w.saturating_sub(1), y),
+            (w.saturating_sub(2), y),
+        ]);
+    }
+    let edge_not_white = edge
+        .into_iter()
+        .filter(|&(x, y)| x < w && y < h)
+        .filter(|&(x, y)| {
+            let px = img.get_pixel(x, y);
+            px.0[0] < 255 - low || px.0[1] < 255 - low || px.0[2] < 255 - low
+        })
+        .count();
+    if edge_not_white > 0 {
+        reasons.push(format!(
+            "{edge_not_white} pixels on the canvas edge are not flat white: the background must \
+             be #ffffff and no drawing may touch the edge"
+        ));
+    }
 }
 
 /// One sheet against the contract: the agent's drawing, the normalised sheet, and whether the
@@ -232,50 +299,7 @@ fn sheet_report(kind: &str, raw: &Path, normalised: &Path, canvas: (u32, u32)) -
         )),
         Some(_) => {}
     }
-    if let Some(img) = image::open(effective).ok().map(|im| im.to_rgba8()) {
-        let (w, h) = (img.width(), img.height());
-        let low = WHITE_TOLERANCE;
-        let mut transparent = 0usize;
-        for px in img.pixels() {
-            if px.0[3] < 250 {
-                transparent += 1;
-            }
-        }
-        if transparent > 0 {
-            reasons.push(format!(
-                "{transparent} pixels are not opaque: the contract wants a flat #ffffff background"
-            ));
-        }
-        let mut edge_not_white = 0usize;
-        let mut edge = Vec::new();
-        for x in 0..w {
-            edge.push((x, 0));
-            edge.push((x, 1.min(h.saturating_sub(1))));
-            edge.push((x, h.saturating_sub(1)));
-            edge.push((x, h.saturating_sub(2)));
-        }
-        for y in 0..h {
-            edge.push((0, y));
-            edge.push((1.min(w.saturating_sub(1)), y));
-            edge.push((w.saturating_sub(1), y));
-            edge.push((w.saturating_sub(2), y));
-        }
-        for (x, y) in edge {
-            if x >= w || y >= h {
-                continue;
-            }
-            let px = img.get_pixel(x, y);
-            if px.0[0] < 255 - low || px.0[1] < 255 - low || px.0[2] < 255 - low {
-                edge_not_white += 1;
-            }
-        }
-        if edge_not_white > 0 {
-            reasons.push(format!(
-                "{edge_not_white} pixels on the canvas edge are not flat white: the background must \
-                 be #ffffff and no drawing may touch the edge"
-            ));
-        }
-    }
+    inspect_sheet_pixels(effective, &mut reasons);
     let ok = reasons.is_empty();
     json!({
         "kind": kind,
@@ -332,28 +356,160 @@ struct SheetPlan {
     sheets: Vec<Value>,
     motions: Value,
 }
+fn parse_sheet_kinds(params: &Value) -> Result<Vec<&str>> {
+    let mut kinds: Vec<&str> = match &params["kinds"] {
+        Value::Array(items) => items.iter().filter_map(Value::as_str).collect(),
+        Value::String(kind) => vec![kind],
+        Value::Null => vec!["poses"],
+        _ => {
+            return Err(EngineError::InvalidParams(
+                "kinds must be an array of sheet types".into(),
+            ));
+        }
+    };
+    if kinds.is_empty() || kinds.iter().any(|k| !KINDS.contains(k)) {
+        return Err(EngineError::InvalidParams(
+            "Choose turnaround, skeleton, or poses".into(),
+        ));
+    }
+    kinds.dedup();
+    Ok(kinds)
+}
+
+fn parse_sheet_motions(params: &Value) -> Result<Vec<&str>> {
+    match params.get("motions") {
+        Some(Value::Array(items)) if !items.is_empty() => items
+            .iter()
+            .map(|v| {
+                v.as_str().ok_or_else(|| {
+                    EngineError::InvalidParams(
+                        "motions must be an ordered array of action IDs".into(),
+                    )
+                })
+            })
+            .collect(),
+        None => Ok(vec![params["motion"].as_str().unwrap_or("sway")]),
+        _ => Err(EngineError::InvalidParams(
+            "motions must contain action IDs in the requested order".into(),
+        )),
+    }
+}
+
+fn build_sheet_entry(
+    asset: &str,
+    directory: &Path,
+    params: &Value,
+    previous: &Value,
+    style_id: &str,
+    style: &Value,
+    kinds_len: usize,
+    requests_len: usize,
+    index: usize,
+    kind: &str,
+    action: &str,
+) -> Result<Value> {
+    let label = match kind {
+        "turnaround" => "Turnaround",
+        "skeleton" => "Parts and joints",
+        _ => "Animation frames",
+    };
+    // Panels belong to the selected sheet type, never every sheet in a multi-sheet request.
+    let mut options = if kinds_len == 1 || kind == "poses" {
+        params.clone()
+    } else {
+        json!({})
+    };
+    options["motion"] = json!(action);
+    let layout = SheetLayout::new(kind, &options)?;
+    let key = if kind == "poses" {
+        format!("poses-{}", layout.motion)
+    } else {
+        kind.to_string()
+    };
+    let direction = params["prompts"][&key]
+        .as_str()
+        .or(params["prompts"][kind].as_str())
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or("Preserve the character's identity, silhouette, proportions, distinctive features and palette.");
+    let template_prompt = format!(
+        "{}\n\n{}",
+        style["prompt"].as_str().unwrap_or_default(),
+        layout.prompt()
+    );
+    let mut prompt = format!("{direction}\n\n{template_prompt}");
+    if let Some(note) = params["note"].as_str().filter(|note| !note.trim().is_empty()) {
+        prompt.push_str(&format!("\nUser direction: {note}"));
+    }
+    let key = if requests_len > 1 {
+        format!("{key}-{:02}", index + 1)
+    } else {
+        key
+    };
+    let existing = previous["sheets"].as_array().and_then(|v| {
+        v.iter()
+            .find(|v| v["kind"] == kind && v["layout"]["motion"] == layout.motion)
+    });
+    let file = existing
+        .and_then(|v| v["file"].as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| directory.join(sheet_file(asset, &key)));
+    let dimensions = image::image_dimensions(&file).ok();
+    Ok(json!({
+        "key":key,"kind":kind,"label":label,"prompt":prompt,"direction":direction,
+        "art_style":style_id,"template_prompt":template_prompt,"layout":layout,
+        "template_svg":layout.svg(),"file":file,"exists":dimensions.is_some(),
+        "width":dimensions.map(|d|d.0),"height":dimensions.map(|d|d.1),"review":"pending"
+    }))
+}
+
+fn resolve_sheet_reference(s: &Session, params: &Value, source: &Path, receipt: &Value) -> Result<PathBuf> {
+    let mut reference = receipt["references"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r["asset_id"].as_str())
+        .find_map(|id| {
+            s.project_assets
+                .iter()
+                .find(|a| a.id == id)
+                .and_then(|a| a.path.clone())
+        })
+        .unwrap_or_else(|| source.to_path_buf());
+    if let Some(path) = params["reference"].as_str() {
+        reference = crate::image_cmds::medium::project_reference(s, path)?;
+    }
+    Ok(reference)
+}
+
+fn resolve_sheet_asset_source<'a>(
+    s: &'a Session,
+    params: &'a Value,
+) -> Result<(&'a str, PathBuf)> {
+    let asset = params["character"]
+        .as_str()
+        .or(params["asset"].as_str())
+        .or(s.active_asset.as_deref())
+        .ok_or_else(|| EngineError::InvalidParams("Choose a project asset first".into()))?;
+    let registered = s
+        .project_assets
+        .iter()
+        .find(|a| a.id == asset)
+        .ok_or_else(|| {
+            EngineError::InvalidParams("Asset is not registered in this project".into())
+        })?;
+    let source = s
+        .assets
+        .get(asset)
+        .map(|a| a.path.clone())
+        .or_else(|| registered.path.clone())
+        .ok_or_else(|| EngineError::InvalidParams("Asset has no source artwork".into()))?;
+    Ok((asset, source))
+}
+
 impl SheetPlan {
     fn new(s: &Session, params: &Value) -> Result<Self> {
         let dir = crate::workshop::project_dir(s)?;
-        let asset = params["character"]
-            .as_str()
-            .or(params["asset"].as_str())
-            .or(s.active_asset.as_deref())
-            .ok_or_else(|| EngineError::InvalidParams("Choose a project asset first".into()))?;
-        let registered = s
-            .project_assets
-            .iter()
-            .find(|a| a.id == asset)
-            .ok_or_else(|| {
-                EngineError::InvalidParams("Asset is not registered in this project".into())
-            })?;
-        let reference = s
-            .assets
-            .get(asset)
-            .map(|a| a.path.clone())
-            .or_else(|| registered.path.clone())
-            .ok_or_else(|| EngineError::InvalidParams("Asset has no source artwork".into()))?;
-        let source = reference;
+        let (asset, source) = resolve_sheet_asset_source(s, params)?;
         let receipt: Value = std::fs::read(source.with_file_name("generation.json"))
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
@@ -368,39 +524,8 @@ impl SheetPlan {
             "poses"
         }
         .to_string();
-        // Resolve the declared original reference through the same project catalog; old
-        // absolute paths in historical generation receipts are not a second asset registry.
-        let mut reference = receipt["references"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|r| r["asset_id"].as_str())
-            .find_map(|id| {
-                s.project_assets
-                    .iter()
-                    .find(|a| a.id == id)
-                    .and_then(|a| a.path.clone())
-            })
-            .unwrap_or_else(|| source.clone());
-        if let Some(path) = params["reference"].as_str() {
-            reference = crate::image_cmds::medium::project_reference(s, path)?;
-        }
-        let mut kinds: Vec<&str> = match &params["kinds"] {
-            Value::Array(items) => items.iter().filter_map(Value::as_str).collect(),
-            Value::String(kind) => vec![kind],
-            Value::Null => vec!["poses"],
-            _ => {
-                return Err(EngineError::InvalidParams(
-                    "kinds must be an array of sheet types".into(),
-                ));
-            }
-        };
-        if kinds.is_empty() || kinds.iter().any(|k| !KINDS.contains(k)) {
-            return Err(EngineError::InvalidParams(
-                "Choose turnaround, skeleton, or poses".into(),
-            ));
-        }
-        kinds.dedup();
+        let reference = resolve_sheet_reference(s, params, &source, &receipt)?;
+        let kinds = parse_sheet_kinds(params)?;
         let directory = dir.join("assets/sheets");
         let style_id = params["art_style"].as_str().unwrap_or("original");
         let styles = layout::styles();
@@ -416,24 +541,7 @@ impl SheetPlan {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or(Value::Null);
-        let motions: Vec<&str> = match params.get("motions") {
-            Some(Value::Array(items)) if !items.is_empty() => items
-                .iter()
-                .map(|v| {
-                    v.as_str().ok_or_else(|| {
-                        EngineError::InvalidParams(
-                            "motions must be an ordered array of action IDs".into(),
-                        )
-                    })
-                })
-                .collect::<Result<_>>()?,
-            None => vec![params["motion"].as_str().unwrap_or("sway")],
-            _ => {
-                return Err(EngineError::InvalidParams(
-                    "motions must contain action IDs in the requested order".into(),
-                ));
-            }
-        };
+        let motions = parse_sheet_motions(params)?;
         let requests: Vec<(&str, &str)> = kinds
             .iter()
             .flat_map(|kind| {
@@ -444,28 +552,25 @@ impl SheetPlan {
                 }
             })
             .collect();
-        let sheets = requests.iter().enumerate().map(|(index,(kind,action))| -> Result<Value> {
-            let label = match *kind { "turnaround" => "Turnaround", "skeleton" => "Parts and joints", _ => "Animation frames" };
-            // Panels belong to the selected sheet type, never every sheet in a multi-sheet request.
-            let mut options = if kinds.len() == 1 || *kind == "poses" { params.clone() } else { json!({}) };
-            options["motion"] = json!(action);
-            let layout = SheetLayout::new(kind, &options)?;
-            let key = if *kind == "poses" {format!("poses-{}",layout.motion)} else {kind.to_string()};
-            let direction = params["prompts"][&key].as_str().or(params["prompts"][*kind].as_str()).filter(|p| !p.trim().is_empty())
-                .unwrap_or("Preserve the character's identity, silhouette, proportions, distinctive features and palette.");
-            let template_prompt=format!("{}\n\n{}",style["prompt"].as_str().unwrap_or_default(),layout.prompt());
-            let mut prompt = format!("{direction}\n\n{template_prompt}");
-            if let Some(note) = params["note"].as_str().filter(|note| !note.trim().is_empty()) {
-                prompt.push_str(&format!("\nUser direction: {note}"));
-            }
-            let key = if requests.len() > 1 {format!("{key}-{:02}",index+1)} else {key};
-            let existing = previous["sheets"].as_array().and_then(|v|v.iter().find(|v|v["kind"] == *kind && v["layout"]["motion"] == layout.motion));
-            let file = existing.and_then(|v|v["file"].as_str()).map(PathBuf::from)
-                .unwrap_or_else(||directory.join(sheet_file(asset,&key)));
-            let dimensions = image::image_dimensions(&file).ok();
-            Ok(json!({"key":key,"kind":kind,"label":label,"prompt":prompt,"direction":direction,"art_style":style_id,"template_prompt":template_prompt,"layout":layout,"template_svg":layout.svg(),"file":file,"exists":dimensions.is_some(),
-                "width":dimensions.map(|d|d.0),"height":dimensions.map(|d|d.1),"review":"pending"}))
-        }).collect::<Result<_>>()?;
+        let sheets = requests
+            .iter()
+            .enumerate()
+            .map(|(index, (kind, action))| {
+                build_sheet_entry(
+                    asset,
+                    &directory,
+                    params,
+                    &previous,
+                    style_id,
+                    style,
+                    kinds.len(),
+                    requests.len(),
+                    index,
+                    kind,
+                    action,
+                )
+            })
+            .collect::<Result<_>>()?;
         Ok(Self {
             asset: asset.into(),
             source,
@@ -490,21 +595,8 @@ pub fn cmd_assets_sheet_plan(s: &mut Session, params: &Value) -> Result<Value> {
     Ok(SheetPlan::new(s, params)?.value())
 }
 
-/// Generate complete sheet drafts only when `run=true`. With `run=false`, return the
-/// editable plan without writes. Returned technical checks never approve artwork or start extraction.
-pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value> {
-    let mut plan = SheetPlan::new(s, params)?;
-    let run = params.get("run").and_then(Value::as_bool).unwrap_or(false);
-    if !run {
-        return Ok(plan.value());
-    }
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?
-        .as_nanos();
-    let output = plan.directory.join(format!("{}-{stamp}", plan.asset));
-    ensure_project_output(s, &output)?;
-    std::fs::create_dir_all(&output)?;
+fn write_sheet_guides(s: &Session, plan: &mut SheetPlan, output: &Path) -> Result<()> {
+    let root = crate::workspace::workspace_root(s);
     for sheet in &mut plan.sheets {
         sheet["file"] = json!(output.join(sheet_file(
             &plan.asset,
@@ -519,7 +611,7 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         }
         let file = PathBuf::from(sheet["file"].as_str().unwrap_or_default());
         let guide = file.with_extension("guide.png");
-        layout.write_guide(&crate::workspace::workspace_root(s), &guide)?;
+        layout.write_guide(&root, &guide)?;
         std::fs::write(
             file.with_extension("layout.json"),
             serde_json::to_vec_pretty(&layout)
@@ -527,21 +619,17 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         )?;
         sheet["template_reference"] = json!(guide);
     }
-    let brief = format!(
-        "Draw only the complete sheets in this JSON request. Attach BOTH the artwork `reference` and each sheet's `template_reference` PNG to the native image generation tool. The artwork controls identity; the numbered guide controls layout, frame order and drawing bounds. Keep dividers and captions outside drawing bounds. Follow every panel description. Report actual returned dimensions. Copy each whole result to its exact file path and leave its .layout.json intact. Save the exact image prompt beside it as .prompt.txt. Stop after drawing. Human review is required before resizing, cutting, registration, or rigging. Do not run preparation commands and do not create Markdown documents.\n{}",
-        plan.value()
-    );
-    let brief_path = output.join("request.txt");
-    std::fs::write(&brief_path, &brief)?;
-    let manifest = plan.directory.join(format!("{}-request.json", plan.asset));
-    std::fs::write(&manifest, plan.value().to_string())?;
-    std::fs::write(output.join("request.json"), plan.value().to_string())?;
+    Ok(())
+}
 
-    // Gaffer uses the shared, receipt-verified image command, with both references attached.
+fn generate_planned_sheets(s: &mut Session, plan: &mut SheetPlan, params: &Value) -> Result<()> {
     for sheet in &mut plan.sheets {
-        let mut request = json!({"prompt":sheet["prompt"],"references":[plan.reference,sheet["template_reference"]],
+        let mut request = json!({
+            "prompt":sheet["prompt"],
+            "references":[plan.reference,sheet["template_reference"]],
             "name":format!("{} {}",plan.asset,sheet["key"].as_str().unwrap_or("sheet")),
-            "transparent_background":false});
+            "transparent_background":false
+        });
         for key in ["model", "provider", "quality", "timeout_s"] {
             if let Some(value) = params.get(key) {
                 request[key] = value.clone();
@@ -559,8 +647,10 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         )?;
         sheet["generation"] = generated;
     }
+    Ok(())
+}
 
-    // Never resize or cut a generated result before its full-sheet review.
+fn collect_sheet_reports(plan: &SheetPlan) -> Vec<Value> {
     let mut reports = Vec::new();
     for sheet in &plan.sheets {
         let file = Path::new(sheet["file"].as_str().unwrap_or_default());
@@ -582,6 +672,39 @@ pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value>
         report["review"] = json!("pending");
         reports.push(report);
     }
+    reports
+}
+
+/// Generate complete sheet drafts only when `run=true`. With `run=false`, return the
+/// editable plan without writes. Returned technical checks never approve artwork or start extraction.
+pub fn cmd_assets_agent_sheets(s: &mut Session, params: &Value) -> Result<Value> {
+    let mut plan = SheetPlan::new(s, params)?;
+    let run = params.get("run").and_then(Value::as_bool).unwrap_or(false);
+    if !run {
+        return Ok(plan.value());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?
+        .as_nanos();
+    let output = plan.directory.join(format!("{}-{stamp}", plan.asset));
+    ensure_project_output(s, &output)?;
+    std::fs::create_dir_all(&output)?;
+    write_sheet_guides(s, &mut plan, &output)?;
+    let brief = format!(
+        "Draw only the complete sheets in this JSON request. Attach BOTH the artwork `reference` and each sheet's `template_reference` PNG to the native image generation tool. The artwork controls identity; the numbered guide controls layout, frame order and drawing bounds. Keep dividers and captions outside drawing bounds. Follow every panel description. Report actual returned dimensions. Copy each whole result to its exact file path and leave its .layout.json intact. Save the exact image prompt beside it as .prompt.txt. Stop after drawing. Human review is required before resizing, cutting, registration, or rigging. Do not run preparation commands and do not create Markdown documents.\n{}",
+        plan.value()
+    );
+    let brief_path = output.join("request.txt");
+    std::fs::write(&brief_path, &brief)?;
+    let manifest = plan.directory.join(format!("{}-request.json", plan.asset));
+    std::fs::write(&manifest, plan.value().to_string())?;
+    std::fs::write(output.join("request.json"), plan.value().to_string())?;
+
+    generate_planned_sheets(s, &mut plan, params)?;
+
+    // Never resize or cut a generated result before its full-sheet review.
+    let reports = collect_sheet_reports(&plan);
     let mut result = plan.value();
     result["ok"] = json!(reports.iter().all(|r| r["raw"]["exists"] == true));
     result["sheets"] = json!(reports);
@@ -675,6 +798,21 @@ pub fn cmd_assets_sheet_info(s: &mut Session, p: &Value) -> Result<Value> {
     );
     review(s, asset, &sheet)
 }
+fn write_sheet_review_record(s: &Session, project: &Path, result: &Value) -> Result<()> {
+    let file = review_file(
+        project,
+        result["asset"].as_str().unwrap_or_default(),
+        result["sha256"].as_str().unwrap_or_default(),
+    )?;
+    ensure_project_output(s, &file)?;
+    std::fs::create_dir_all(
+        file.parent()
+            .ok_or_else(|| EngineError::InvalidParams("Review folder missing".into()))?,
+    )?;
+    std::fs::write(&file, result.to_string())?;
+    Ok(())
+}
+
 /// Record an explicit full-sheet approval or request changes. The exact bytes must match
 /// the source displayed by the caller. Example: `assets.sheet_review asset=ship sheet=... sha256=... approved=true expected_project=...`.
 pub fn cmd_assets_sheet_review(s: &mut Session, p: &Value) -> Result<Value> {
@@ -701,17 +839,7 @@ pub fn cmd_assets_sheet_review(s: &mut Session, p: &Value) -> Result<Value> {
         "changes_requested"
     });
     result["note"] = p["note"].clone();
-    let file = review_file(
-        &project,
-        result["asset"].as_str().unwrap_or_default(),
-        result["sha256"].as_str().unwrap_or_default(),
-    )?;
-    ensure_project_output(s, &file)?;
-    std::fs::create_dir_all(
-        file.parent()
-            .ok_or_else(|| EngineError::InvalidParams("Review folder missing".into()))?,
-    )?;
-    std::fs::write(&file, result.to_string())?;
+    write_sheet_review_record(s, &project, &result)?;
     Ok(result)
 }
 /// Preparation consumes only a reviewed source revision; changed bytes need another review.
