@@ -767,7 +767,7 @@ pub fn cmd_storyboard_template(s: &mut Session, p: &Value) -> Result<Value> {
     let path = resolve_storyboard_template(s, requested)?;
     Ok(
         json!({"ok":true,"path":path,"editor":"DeckCraft","selected":DEFAULT_STORYBOARD_TEMPLATE,
-        "generator":"pipeline/movie_board.py","template_population":"pipeline/deckcraft_template.py"}),
+        "generator":"pipeline/movie_board.py","template_population":"pipeline/storyboard_layout.py"}),
     )
 }
 

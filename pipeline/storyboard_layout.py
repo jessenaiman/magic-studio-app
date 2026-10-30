@@ -1352,7 +1352,7 @@ def generate(template, config, output, grouping=None, representative=False):
 
 
 def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dict:
-    from pipeline.step_deckcraft_qa import build_character_qa_deck as _build
+    from pipeline.character_review import build_character_qa_deck as _build
 
     return _build(slug, out_dir)
 
