@@ -40,5 +40,29 @@
   ],
   "native_files": [
     "hyperframes.json"
-  ]
+  ],
+  "imitations": {
+    "about": "Libraries that do an ArtCraft app's job inside our code. Each listed file is a candidate to chain the named CLI instead; reading pixels only to verify a result is QA and may stay.",
+    "photocraft-cli": [
+      "PIL",
+      "cv2",
+      "skimage",
+      "rembg",
+      "imageio"
+    ],
+    "effectcraft-cli": [
+      "moviepy"
+    ],
+    "vectorcraft-cli": [
+      "svgwrite",
+      "cairo",
+      "potrace",
+      "svgpathtools"
+    ],
+    "soundcraft-cli": [
+      "pydub",
+      "librosa",
+      "soundfile"
+    ]
+  }
 }

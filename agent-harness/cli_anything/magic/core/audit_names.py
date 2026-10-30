@@ -1,4 +1,4 @@
-"""Reserved application names used as our own file, declaration or command names.
+"""Reserved application names, and in-process copies of what those apps do.
 
 reserved-names.json lists installed applications. Magic code calls those apps;
 naming our files, functions, classes, modules or command IDs after them hides
@@ -73,9 +73,23 @@ def matches(
     return rg(repo, [*args, *paths])
 
 
+def imitations(repo: Path, cfg: dict, paths: list[str]) -> dict[str, list[str]]:
+    """Files importing a library that does an ArtCraft app's job, per app to call."""
+    found = {}
+    for app, libraries in cfg.get("imitations", {}).items():
+        if app == "about":
+            continue
+        pattern = rf"^\s*(import|from)\s+({'|'.join(libraries)})\b"
+        found[f"Files doing {app} work in-process"] = sorted(
+            rg(repo, ["-l", "-e", pattern, *paths])
+        )
+    return found
+
+
 def findings(repo: Path, cfg: dict, within: Path | None = None) -> dict[str, list[str]]:
     paths = scope(repo, cfg, within)
     return {
+        **imitations(repo, cfg, paths),
         "Files named after apps": files(repo, cfg, paths),
         "Declarations named after apps": matches(repo, cfg, paths, list(DECLARATIONS)),
         "Command IDs named after apps": sorted(
