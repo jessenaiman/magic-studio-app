@@ -167,3 +167,10 @@ apps/src-tauri/acceptance/artifacts/
 
 # TypeScript UI: ui/<name>.js is generated from ui/<name>.ts by build.rs (bun build)
 /apps/src-tauri/ui/resources.js
+/apps/src-tauri/ui/panel-header.js
+/apps/src-tauri/ui/studio-caption-compat.js
+/apps/src-tauri/ui/drawers.js
+/apps/src-tauri/ui/project-card.js
+/apps/src-tauri/ui/feedback.js
+/apps/src-tauri/ui/report.js
+/apps/src-tauri/ui/app-bar.js

@@ -1,5 +1,7 @@
 // Stable view IDs are routing contracts. Rename a workspace here, independently of its ID.
-const WORKSPACE_VIEWS = [
+interface WorkspaceView { id: string; label: string; description: string; health?: boolean }
+
+const WORKSPACE_VIEWS: WorkspaceView[] = [
   {id:'project', label:'Storyboard', description:'Plan your song and storyboard'},
   {id:'animation', label:'Animation', description:'Animate objects and polish their motion'},
   {id:'design', label:'Lyrics', description:'Design lettering and motion timed to the lyrics'},
@@ -9,7 +11,12 @@ const WORKSPACE_VIEWS = [
 ];
 
 class WorkspaceNavigation {
-  constructor(root, views, navigate) {
+  readonly root: HTMLElement;
+  readonly views: WorkspaceView[];
+  readonly buttons: HTMLElement[];
+  readonly picker: HTMLSelectElement;
+
+  constructor(root: HTMLElement, views: WorkspaceView[], navigate: (id: string, action?: unknown) => void) {
     this.root = root;
     this.views = views;
     this.buttons = views.map(view => {

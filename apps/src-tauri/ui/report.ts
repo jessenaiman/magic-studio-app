@@ -10,6 +10,7 @@ function reportValue(value, { compact = false } = {}) {
 
 // One headline number: label, value, what it means, and an optional signal or share.
 class ReportStat {
+  readonly element: HTMLElement;
   constructor({ label, value, detail = '', signal = null, share = null, title = null }) {
     this.element = el('div', { class: 'report', 'data-look': 'stat', title },
       el('span', { class: 'report-label' }, signal === null ? null : window.companionBoxes.dot(signal), label),
@@ -22,7 +23,8 @@ class ReportStat {
 // A thin proportional bar; share is 0..1. A native <progress>, so global.css styles
 // it and assistive technology reads the value without any inline style.
 class ReportBar {
-  constructor(share) {
+  readonly element: HTMLElement;
+  constructor(share: number) {
     this.element = el('progress', { class: 'report', 'data-look': 'bar', max: '1',
       value: String(Math.max(0, Math.min(1, Number(share) || 0))) });
   }
@@ -31,6 +33,8 @@ class ReportBar {
 // A data table. A column is {label, value(row), numeric, bar, text(row)}; bar columns
 // draw each value against the column's largest one.
 class ReportTable {
+  readonly columns: any[];
+  readonly element: HTMLElement;
   constructor({ columns, rows, empty = 'Nothing recorded.', caption = null }) {
     this.columns = columns;
     this.element = rows.length
@@ -53,6 +57,7 @@ class ReportTable {
 
 // A titled report block on the shared panel surface, with an optional footnote.
 class ReportSection {
+  readonly element: HTMLElement;
   constructor({ title, note = null, actions = null }, ...content) {
     const header = new PanelHeader({ id: null, title, actions });
     header.element.dataset.look = 'heading';

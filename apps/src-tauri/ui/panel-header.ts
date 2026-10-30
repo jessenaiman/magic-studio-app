@@ -1,7 +1,20 @@
 // Shared panel chrome. Creative lettering belongs to each view's content.
+interface PanelHeaderOptions {
+  id?: string | null;
+  title: string;
+  description?: string;
+  titleId?: string;
+  icon?: string | null;
+  collapsible?: boolean;
+  actions?: any[] | null;
+}
+
 class PanelHeader {
-  /** @param {{id?: string|null, title: string, description?: string, titleId?: string, icon?: string|null, collapsible?: boolean, actions?: any[]|null}} options */
-  constructor({id, title, description, titleId, icon = null, collapsible = false, actions = null}) {
+  readonly label: HTMLElement;
+  readonly actions: HTMLElement | null;
+  readonly element: HTMLElement;
+
+  constructor({id, title, description, titleId, icon = null, collapsible = false, actions = null}: PanelHeaderOptions) {
     const entry = uiConfig.elements[id] || {};
     this.label = el('span', {id:titleId, class:'panel-title'});
     this.actions = actions ? el('div', {class:'panel-actions'}, ...actions) : null;
@@ -12,7 +25,7 @@ class PanelHeader {
       collapsible ? el('span', {class:'chev', html:ICONS.chev, 'aria-hidden':'true'}) : null);
     this.rename(entry.label || title, description || entry.description);
   }
-  rename(title, description = title) {
+  rename(title: string, description: string = title): void {
     this.label.textContent = title;
     this.element.title = description;
     this.element.setAttribute('aria-label', title);
@@ -21,7 +34,9 @@ class PanelHeader {
 
 // One label/control shape for inspector forms; hosts choose the control's behavior.
 class InspectorField {
-  constructor(label, input) {
+  readonly input: any;
+  readonly node: HTMLElement;
+  constructor(label: string, input: any) {
     this.input=input;
     this.node=el('label',{},el('span',{},label),input);
   }
