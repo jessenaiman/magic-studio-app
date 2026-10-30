@@ -35,18 +35,28 @@ pub fn find_character_magic_path(
     cand.is_file().then_some(cand)
 }
 
-fn resolve_rel(base_root: &Path, char_dir: &Path, rel: &str) -> String {
-    let p = PathBuf::from(rel);
-    if p.is_absolute() {
-        return p.to_string_lossy().into_owned();
+/// A relative path in a character manifest or rig. The character's own folder comes first so the
+/// folder can move anywhere. Paths written inside a song project start with
+/// `assets/characters/<id>/`; that prefix is dropped to find the file beside the manifest.
+pub(crate) fn resolve_character_path(rel: &str, project_root: &Path, char_dir: &Path) -> PathBuf {
+    let path = Path::new(rel);
+    if path.is_absolute() {
+        return path.to_path_buf();
     }
-    let from_root = base_root.join(&p);
-    let resolved = if from_root.exists() {
-        from_root
-    } else {
-        char_dir.join(p)
-    };
-    resolved.to_string_lossy().into_owned()
+    let beside_manifest = path
+        .strip_prefix("assets/characters")
+        .ok()
+        .map(|rest| char_dir.join(rest.components().skip(1).collect::<PathBuf>()))
+        .filter(|within| within != char_dir);
+    [Some(char_dir.join(path)), beside_manifest, Some(project_root.join(path))]
+        .into_iter()
+        .flatten()
+        .find(|candidate| candidate.exists())
+        .unwrap_or_else(|| char_dir.join(path))
+}
+
+fn resolve_rel(base_root: &Path, char_dir: &Path, rel: &str) -> String {
+    resolve_character_path(rel, base_root, char_dir).to_string_lossy().into_owned()
 }
 
 fn resolve_sheet_paths(base_root: &Path, char_dir: &Path, doc: &mut Value) {
@@ -152,7 +162,6 @@ fn target_dest(char_dir: &Path, role: &str, fname: &str) -> PathBuf {
 
 fn update_character_manifest(
     cfg_path: &Path,
-    proj_dir: &Path,
     id: &str,
     role: &str,
     dest: &Path,
@@ -167,16 +176,17 @@ fn update_character_manifest(
             "schemaVersion": 1,
             "id": id,
             "name": id,
-            "folder": format!("assets/characters/{id}"),
         })
     };
+    // Paths are relative to the character's folder so the folder can move.
+    let char_dir = cfg_path.parent().unwrap_or(Path::new("."));
     let rel_dest = dest
-        .strip_prefix(proj_dir)
+        .strip_prefix(char_dir)
         .unwrap_or(dest)
         .to_string_lossy()
         .into_owned();
     let rel_draft = draft_copy
-        .strip_prefix(proj_dir)
+        .strip_prefix(char_dir)
         .unwrap_or(draft_copy)
         .to_string_lossy()
         .into_owned();
@@ -212,11 +222,7 @@ fn parse_import_params(s: &Session, params: &Value) -> Result<(String, PathBuf, 
         .filter(|v| !v.trim().is_empty())
         .map(str::to_owned)
         .or_else(|| {
-            let proj_dir = crate::workshop::project_dir(s).ok()?;
-            let cand = proj_dir
-                .join("assets/characters")
-                .join(&id)
-                .join("reference.png");
+            let cand = character_folder(s, &id).ok()?.join("reference.png");
             cand.is_file().then(|| cand.to_string_lossy().into_owned())
         })
         .ok_or_else(|| invalid("Specify path=<image_or_sheet>"))?;
@@ -236,10 +242,19 @@ fn parse_import_params(s: &Session, params: &Value) -> Result<(String, PathBuf, 
     Ok((id, source, role))
 }
 
+/// Where character `id` lives: the open character file's folder, else `assets/characters/<id>` in the song project.
+fn character_folder(s: &Session, id: &str) -> Result<PathBuf> {
+    if s.character_file
+        && let Some(dir) = s.project_path.as_deref().and_then(Path::parent)
+    {
+        return Ok(dir.to_path_buf());
+    }
+    Ok(crate::workshop::project_dir(s)?.join("assets/characters").join(id))
+}
+
 pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
     let (id, source, role) = parse_import_params(s, params)?;
-    let proj_dir = crate::workshop::project_dir(s)?;
-    let char_dir = proj_dir.join("assets/characters").join(&id);
+    let char_dir = character_folder(s, &id)?;
     std::fs::create_dir_all(char_dir.join("drafts"))?;
     std::fs::create_dir_all(char_dir.join("sheets"))?;
 
@@ -258,7 +273,6 @@ pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
     let cfg_path = char_dir.join("character.magic");
     update_character_manifest(
         &cfg_path,
-        &proj_dir,
         &id,
         &role,
         &dest,

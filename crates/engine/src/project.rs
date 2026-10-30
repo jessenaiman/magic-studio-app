@@ -692,27 +692,35 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
             "no project is open; use project.new".into(),
         ));
     }
-    if params.get("path").is_some() {
-        let target = project_file_path(s, params)?;
-        if s.character_file && s.project_path.as_ref() != Some(&target) {
-            return Err(EngineError::InvalidParams(
-                "Save As does not copy a character: its images and rigs live in its folder. Copy the character folder instead.".into(),
-            ));
-        }
-        if s.project_path.as_ref() != Some(&target) {
-            let file = claim_save_target(&target)?;
-            let target = std::fs::canonicalize(target)?;
-            let previous_path = s.project_path.replace(target);
-            let previous_owner = s.project_owner.replace(file);
-            if let Err(error) = write_project_file(s) {
-                s.project_path = previous_path;
-                s.project_owner = previous_owner;
-                return Err(error);
-            }
-            return Ok(json!({"ok": true, "project": s.project_path}));
+    let target = match params.get("path") {
+        Some(_) => Some(project_file_path(s, params)?),
+        None => None,
+    };
+    match target {
+        Some(target) if s.project_path.as_ref() != Some(&target) => save_as(s, target),
+        _ => {
+            write_project_file(s)?;
+            Ok(json!({"ok": true, "project": s.project_path}))
         }
     }
-    write_project_file(s)?;
+}
+
+/// Save to a new file and select it; a failed write keeps the original project selected.
+fn save_as(s: &mut Session, target: PathBuf) -> Result<Value> {
+    if s.character_file {
+        return Err(EngineError::InvalidParams(
+            "Save As does not copy a character: its images and rigs live in its folder. Copy the character folder instead.".into(),
+        ));
+    }
+    let file = claim_save_target(&target)?;
+    let target = std::fs::canonicalize(target)?;
+    let previous_path = s.project_path.replace(target);
+    let previous_owner = s.project_owner.replace(file);
+    if let Err(error) = write_project_file(s) {
+        s.project_path = previous_path;
+        s.project_owner = previous_owner;
+        return Err(error);
+    }
     Ok(json!({"ok": true, "project": s.project_path}))
 }
 
@@ -1132,20 +1140,6 @@ fn is_rig_manifest(raw: &Value, kind: &str) -> bool {
         || (raw.get("layers").is_some() && raw.get("canvas").is_some())
 }
 
-fn resolve_character_path(rel_str: &str, proj_root: &Path, char_dir: &Path) -> PathBuf {
-    let p = PathBuf::from(rel_str);
-    if p.is_absolute() {
-        p
-    } else {
-        let from_proj = proj_root.join(&p);
-        if from_proj.exists() {
-            from_proj
-        } else {
-            char_dir.join(p)
-        }
-    }
-}
-
 fn stage_preset_asset(
     staged: &mut Session,
     s: &Session,
@@ -1201,16 +1195,17 @@ fn stage_character_magic(
                 .and_then(Value::as_str)
         })
         .or_else(|| raw.pointer("/rigs/active").and_then(Value::as_str))
-        .map(|rel| resolve_character_path(rel, proj_root, char_dir))
+        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
         .unwrap_or_else(|| char_dir.join("rig.json"));
     let mut plan = crate::session::LoadedCutoutRigPlan::load_from_path(&rig_path)?;
     let rig_base = rig_path.parent().unwrap_or(char_dir);
     if plan.source_image.as_os_str().is_empty() {
         plan.source_image = rig_base.to_path_buf();
     } else if !plan.source_image.is_absolute() {
-        let from_proj = proj_root.join(&plan.source_image);
-        if from_proj.is_file() {
-            plan.source_image = from_proj;
+        let source = plan.source_image.to_string_lossy().into_owned();
+        let found = crate::character::resolve_character_path(&source, proj_root, char_dir);
+        if found.is_file() {
+            plan.source_image = found;
         }
     }
     plan.resolve_paths(rig_base);
@@ -1224,13 +1219,13 @@ fn stage_character_magic(
     asset.attached_asset_sheet = raw
         .pointer("/sheets/poses")
         .and_then(Value::as_str)
-        .map(|rel| resolve_character_path(rel, proj_root, char_dir))
+        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
         .filter(|p| p.is_file())
         .or_else(|| plan.cutout_asset_sheet.clone());
     asset.attached_turnaround_sheet = raw
         .pointer("/sheets/turnaround")
         .and_then(Value::as_str)
-        .map(|rel| resolve_character_path(rel, proj_root, char_dir))
+        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
         .filter(|p| p.is_file());
     asset.cutout_rig = Some(plan);
     staged.assets.insert(entry.id.clone(), asset);
