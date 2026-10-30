@@ -30,9 +30,11 @@ pub(crate) fn resolve_storyboard_template(s: &Session, raw: &str) -> Result<Path
 /// A scene's packet sections, in the order they print.
 pub(crate) const SCENE_SECTIONS: &[(&str, &str)] = &[
     ("skills", "Skills"),
+    ("action", "Action"),
     ("reference_prompt", "Reference prompt"),
     ("animation_prompt", "Animation prompt"),
     ("layer_stack", "Layer stack"),
+    ("animated_text", "Animated text"),
     ("teaching_cues", "Teaching cues"),
     ("visual_review", "Visual review expectations"),
     ("build_steps", "Build steps"),

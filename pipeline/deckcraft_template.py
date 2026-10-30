@@ -646,37 +646,50 @@ def build_plan(c, cues, groups, representative=False):
     return pages[:1] + contents + pages[1:]
 
 
+def role_text_color(role):
+    if role == "auto.scene.lyrics":
+        return "#211E18"
+    if role.startswith(("auto.sheet.", "auto.toc.meta.")) or role == "state.scene.reference":
+        return TEAL
+    return MUTED if role == "auto.subtitle" else INK
+
+
+def fit_text_to_card(d, slide, sh, role):
+    card = next(
+        (x for x in slide["shapes"] if x.get("altText") == "layout.card." + role[5:]),
+        None,
+    )
+    if not card:
+        return
+    x, y, w, h = card["box"]
+    height = h - 76
+    if role == "user.scene.continuity":
+        height = min(height, 1130 - (y + 56) - 12)
+    d.q("edit.select", ids=[sh["id"]])
+    d.q("format.autofit", mode="shrink")
+    d.q(
+        "shape.setBounds",
+        ids=[sh["id"]],
+        x=x + 18,
+        y=y + 56,
+        w=w - 36,
+        h=height,
+    )
+
+
 def fill_text(d, slide, role, value, size=None, fit=False):
     sh = next((x for x in slide["shapes"] if x.get("altText") == role), None)
-    if sh:
-        d.q("text.set", id=sh["id"], text=value)
-        if size:
-            d.q("edit.select", ids=[sh["id"]])
-            d.q("format.size", size=size)
-        if fit:
-            card = next(
-                (
-                    x
-                    for x in slide["shapes"]
-                    if x.get("altText") == "layout.card." + role[5:]
-                ),
-                None,
-            )
-            if card:
-                x, y, w, h = card["box"]
-                height = h - 76
-                if role == "user.scene.continuity":
-                    height = min(height, 1130 - (y + 56) - 12)
-                d.q("edit.select", ids=[sh["id"]])
-                d.q("format.autofit", mode="shrink")
-                d.q(
-                    "shape.setBounds",
-                    ids=[sh["id"]],
-                    x=x + 18,
-                    y=y + 56,
-                    w=w - 36,
-                    h=height,
-                )
+    if not sh:
+        return
+    d.q("text.set", id=sh["id"], text=value)
+    if value:
+        d.q("edit.select", ids=[sh["id"]])
+        d.q("format.color", color=role_text_color(role))
+    if size:
+        d.q("edit.select", ids=[sh["id"]])
+        d.q("format.size", size=size)
+    if fit:
+        fit_text_to_card(d, slide, sh, role)
 
 
 def place_scene_picture(d, slide, record, group_id, region=None):
@@ -710,12 +723,7 @@ def place_scene_picture(d, slide, record, group_id, region=None):
         tooltip="Reference source; not an approved production asset",
     )
     fill_text(d, slide, "user.scene.reference", "")
-    fill_text(d, slide, "state.scene.reference", "REFERENCE ONLY · NEEDS REVIEW")
-    state = next(
-        x for x in slide["shapes"] if x.get("altText") == "state.scene.reference"
-    )
-    d.q("edit.select", ids=[state["id"]])
-    d.q("format.color", color=STATES["needs review"][1])
+    fill_text(d, slide, "state.scene.reference", "")
     d.flush()
     return dict(
         file=str(path),
@@ -795,8 +803,14 @@ def fill_page(
                 **({"slide": index} if target else {}),
             )
     if kind == "overview":
-        if c.get("story"):
-            fill("user.story", c["story"], 24)
+        for key, role, sz in [
+            ("story", "user.story", 21),
+            ("background_main", "user.background.main", 18),
+            ("background_alternate", "user.background.alternate", 18),
+            ("cast", "user.cast", 18),
+        ]:
+            if c.get(key):
+                fill_text(d, slide, role, c[key], sz, fit=True)
         warning = (
             "\nTIMING WARNING: " + c["timing_warning"]
             if c.get("timing_warning")
@@ -807,12 +821,15 @@ def fill_page(
             if c.get("empty_template")
             else "Existing transcript words/timing consumed unchanged."
         )
-        fill(
+        fill_text(
+            d,
+            slide,
             "user.source",
             f"{duration_label}: {clock(duration)}\n{len(words)} timed words / {len(groups)} scenes\n"
             + source_note
             + warning,
-            22,
+            20,
+            fit=True,
         )
         links = [
             ("Audio", c.get("audio")),
@@ -924,8 +941,36 @@ def fill_page(
                     if record.get("file")
                     else "Register existing artwork to populate this slot."
                 ),
-                18,
+                16,
             )
+            notes_sh = next(
+                (
+                    sh
+                    for sh in slide["shapes"]
+                    if sh.get("altText") == f"user.sheet.{slot}.notes"
+                ),
+                None,
+            )
+            card_sh = next(
+                (
+                    sh
+                    for sh in slide["shapes"]
+                    if sh.get("altText") == f"layout.sheet.{slot}.card"
+                ),
+                None,
+            )
+            if notes_sh and card_sh:
+                cx, cy, cw, ch = card_sh["box"]
+                d.q("edit.select", ids=[notes_sh["id"]])
+                d.q("format.autofit", mode="shrink")
+                d.q(
+                    "shape.setBounds",
+                    ids=[notes_sh["id"]],
+                    x=cx + 18,
+                    y=cy + 390,
+                    w=428,
+                    h=155,
+                )
             if record.get("file"):
                 path = Path(record["file"]).resolve()
                 if not path.is_file():

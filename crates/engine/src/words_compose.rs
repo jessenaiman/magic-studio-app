@@ -878,20 +878,33 @@ fn soften_webgpu_shader_guard(hf: &Path) {
             "function Ws(e,t){if(e)return;",
         )
         .replace(
+            "let e=Ji.getFailureReason();if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
+            "let e=Ji.getFailureReason();if(e)return;",
+        )
+        .replace(
+            "if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
+            "if(e)return;",
+        )
+        .replace(
+            "Du=WE[o1.dataset.shader]",
+            "Du=o1&&WE[o1.dataset.shader]",
+        )
+        .replace(
+            "if(!Du)throw new Error(`shaders: no shader named \"${o1.dataset.shader}\" in this bundle`);",
+            "if(!o1||!Du)return;",
+        )
+        .replace(
             "function OE(e){return T0=T0.then(()=>Ji.renderSyntheticFrame(e-Ji.__testing.getFrameDiagnostics().globalElapsedTime)),T0}",
             "function OE(e){return Ji.getFailureReason()?T0:(T0=T0.then(()=>Ji.renderSyntheticFrame(e-Ji.__testing.getFrameDiagnostics().globalElapsedTime)),T0)}",
         )
         .replace(
             "if(e)throw new Error(`shaders: WebGPU unavailable (${e})`);",
-            "if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
-        )
-        .replace(
-            "let e=Ji.getFailureReason();if(e)return;",
-            "let e=Ji.getFailureReason();if(e){o1.style.background=\"transparent\";if(o1.parentElement)o1.parentElement.style.background=\"transparent\";return;}",
+            "if(e)return;",
         );
     if next != js {
         let _ = fs::write(&path, next);
     }
+    let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
 }
 
 fn mount_overlay(
@@ -919,11 +932,13 @@ fn mount_overlay(
         .with_file_name(format!("{own}.html"))
         .to_string_lossy()
         .into_owned();
-    let source = fs::read_to_string(dir.join("hyperframes").join(src))?;
+    let source = fs::read_to_string(dir.join("hyperframes").join(src))?
+        .replace(" data-requires-webgpu", "")
+        .replace("background: #000", "background: transparent");
+    let _ = fs::write(dir.join("hyperframes").join(src), &source);
     fs::write(
         dir.join("hyperframes").join(&own_src),
         source
-            .replace(" data-requires-webgpu", "")
             .replace(&format!("\"{block}\""), &format!("\"{own}\""))
             .replace(&format!("'{block}'"), &format!("'{own}'")),
     )?;
@@ -1101,7 +1116,8 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
         receipt["start"] = composed["song_anchor"].clone();
         receipt["hidden_clips"] = json!(clips.len());
     }
-    if html != original {
+    let _ = fs::remove_dir_all(dir.join("hyperframes/.hyperframes/preview"));
+    if html != original || use_it {
         let temporary = index.with_extension("html.tmp");
         fs::write(&temporary, &html)?;
         fs::rename(&temporary, &index)?;
