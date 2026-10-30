@@ -634,6 +634,24 @@ pub fn build() -> Vec<CommandSpec> {
             crate::command_center::requires_ui
         ),
         cmd!(
+            "ui.text_edit",
+            "Edit the focused text field using native WebKit (Linux)",
+            [],
+            None,
+            "{\"action\":\"edit.undo, edit.redo, edit.cut, edit.copy, edit.paste or edit.select_all\"}",
+            always,
+            crate::command_center::requires_ui
+        ),
+        cmd!(
+            "ui.menu",
+            "Open a shared File or text context menu",
+            [],
+            None,
+            "{\"menu\":\"file or text\",\"x\":0,\"y\":48}",
+            always,
+            crate::command_center::requires_ui
+        ),
+        cmd!(
             "ui.key",
             "Press a key",
             [],

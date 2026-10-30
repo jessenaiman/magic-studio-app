@@ -255,12 +255,7 @@ const SONG_SECTIONS = ['lyrics', 'transcript'];
 
 // ---- Tabs and the studio webview ----------------------------------------------------------
 
-function placeInk() {
-  const active = document.querySelector(".tab.active");
-  const ink = document.querySelector(".tab-ink");
-  ink.style.setProperty('--ink-w', `${active.offsetWidth - 16}px`);
-  ink.style.setProperty('--ink-x', `${active.offsetLeft + 8}px`);
-}
+function placeInk() { window.workspaceNavigation?.select(state.view); }
 
 async function showStudio() {
   const url = serverUrl();
@@ -272,26 +267,18 @@ async function showStudio() {
 
 async function setView(view, action) {
   const errors = acFeedback.errors.length;
-  if (['design','animation'].includes(view) && !state.data?.design?.progression?.allowed && !state.animateOnly) {
-    toast(state.data?.design?.progression?.reason || 'Complete the storyboard details or choose Proceed with this draft.');
-    return false;
-  }
   if (view === "split") view = "studio";
   if (state.view === "animation" && view !== "animation" && typeof theatreCanLeave === "function" && !theatreCanLeave()) return false;
   if (typeof animationPause === "function") animationPause();
   if (view !== 'animation' && typeof blenderDispose === 'function') blenderDispose();
   state.view = view;
-  document.querySelectorAll(".tab").forEach((t) => {
-    const on = t.dataset.view === view;
-    t.classList.toggle("active", on);
-    t.setAttribute("aria-selected", String(on));
-  });
+  window.workspaceNavigation?.select(view);
   const page = view === "studio" ? "project" : view;
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${page}`));
   placeInk();
   if (view === "animation") { await invoke("studio_hide"); await animationOpen(); }
   else if (view === "design") { await invoke("studio_hide"); await wordsOpen(); }
-  else if (view === "skills") { await invoke("studio_hide"); if (typeof renderSkills === "function") renderSkills(); }
+  else if (view === "skills") { await invoke("studio_hide"); if (typeof renderResources === "function") renderResources(); }
   else if (view === "analytics") { await invoke("studio_hide"); if (typeof renderAnalytics === "function") renderAnalytics(); }
   else if (view !== "project" && serverUrl()) { await new Promise(requestAnimationFrame); await showStudio(); }
   else {
@@ -309,12 +296,8 @@ async function setView(view, action) {
 }
 
 function updateStoryboardAccess() {
-  const allowed=state.data?.design?.progression?.allowed===true||state.animateOnly===true;
-  for(const button of document.querySelectorAll('.tab[data-view="animation"],.tab[data-view="design"]')) {
-    const canOpen=allowed;
-    button.disabled=!canOpen;
-    button.title=canOpen ? (state.data?.design?.progression?.draft_override?'Draft access enabled; storyboard details still need work':button.textContent.trim()) : 'Complete storyboard details, or choose Proceed with this draft in Storyboard.';
-  }
+  window.workspaceNavigation?.readiness(state.data?.design?.progression?.allowed === true || state.animateOnly === true,
+    state.data?.design?.progression?.reason);
 }
 
 // ---- Studio server: red = off (no memory used), green = running --------------------------
@@ -365,9 +348,10 @@ async function toggleServer() {
 
 async function load() {
   await loadComponents();
-  if (typeof setupSkillsAdd === "function") setupSkillsAdd();
   const start = await invoke("startup");
   state.identity=start.identity;
+  window.applicationFileMenu?.configure(start.menus.file);
+  window.textContextMenu?.configure(start.menus.text);
   if (start.animate_only) {
     state.animateOnly = true;
     document.body.classList.add("animate-only");
@@ -407,6 +391,7 @@ async function applyOpenedProject(opened, start = {}) {
   state.open = SONG_SECTIONS.includes(startOpen) ? "song" : startOpen;
   document.body.classList.remove("at-home");
   $("project-name").textContent = path.split("/").pop().replace(/\.magic$/, "");
+  $("project-name").parentElement.title = $("project-name").textContent;
   document.title = `${$("project-name").textContent} · Magic Studio`;
   renderTarget();
   renderBlocks();
@@ -416,7 +401,6 @@ async function applyOpenedProject(opened, start = {}) {
   await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
 }
 
-document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setView(t.dataset.view, acFeedback.actions.get(t))));
 
 $("target").addEventListener("click", toggleServer);
 $("footer-server").addEventListener("click", toggleServer);

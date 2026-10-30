@@ -6,30 +6,23 @@
   <title>Magic Studio</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="global.css" />
-  <link rel="stylesheet" href="cast.css" />
   <link rel="stylesheet" href="drawers.css" />
   <link rel="stylesheet" href="menu.css" />
+  <link rel="stylesheet" href="app-bar.css" />
   <link rel="stylesheet" href="mayhem.css" />
   <link rel="stylesheet" href="vendor/backstage/backstage-terminal.css" />
 </head>
 <body>
   <header id="app-bar" class="bar">
     <div class="brand" id="brand" role="button" tabindex="0" title="Home · all projects" aria-label="Magic Studio · Home">
-      <span class="brand-word" aria-hidden="true"><span class="brand-magic">Magic</span> <span class="brand-studio">Studio</span></span><span class="brand-spark" aria-hidden="true">✧</span>
+      <span class="brand-word" aria-hidden="true"><span class="brand-magic">Magic</span> <span class="brand-studio">Studio</span></span><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>
     </div>
+    <button class="app-menu-button" id="app-file" aria-label="File menu" aria-haspopup="menu" data-commands="ui.menu">File<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
     <span class="project-chip" title="Open project">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
       <span id="project-name">No project</span>
     </span>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-view="project" role="tab" aria-selected="true">Storyboard</button>
-      <button class="tab" data-view="animation" role="tab" aria-selected="false" title="Animate objects and polish their motion">Animation</button>
-      <button class="tab" data-view="design" role="tab" aria-selected="false" title="Lyrics and motion graphics timed to the lyrics">Lyrics</button>
-      <button class="tab" data-view="studio" role="tab" aria-selected="false">Studio</button>
-      <button class="tab" id="tab-skills" data-view="skills" role="tab" aria-selected="false" title="Knowledge skills and tech tools discovered for this project">Learning</button>
-      <button class="tab" id="tab-analytics" data-view="analytics" role="tab" aria-selected="false" title="Mayhem · health unknown. Check observations here first." data-health="unknown"><svg class="mayhem-siren" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 19h14M7 19v-7a5 5 0 0 1 10 0v7M12 2v2M3 6l2 2M21 6l-2 2M1 13h3M20 13h3"/></svg><span>Mayhem</span><small id="mayhem-health">Unknown</small></button>
-      <span class="tab-ink" aria-hidden="true"></span>
-    </nav>
+    <nav class="tabs" id="workspace-tabs" role="tablist" aria-label="Workspaces"></nav>
     <div class="drawer-toggles" aria-label="Studio assistants">
       <button class="ghost" id="agent-toggle" data-drawer-toggle="sproket" aria-controls="magic-chat-pane" aria-expanded="false" aria-pressed="false" title="Sproket chat (Ctrl+\)" aria-label="Sproket chat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg><span class="drawer-label">Sproket</span></button>
       <button class="ghost" id="gaffer-toggle" data-drawer-toggle="gaffer" aria-controls="magic-image-pane" aria-expanded="false" aria-pressed="false" title="Gaffer artwork" aria-label="Gaffer artwork"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 6-6 12 10"/><circle cx="16" cy="8" r="2"/></svg><span class="drawer-label">Gaffer</span></button>
@@ -111,7 +104,7 @@
       </div>
     </section>
 
-    <section class="view" id="view-skills" aria-label="Learning production manual"></section>
+    <section class="view" id="view-skills" aria-label="Resources"></section>
     <section class="view" id="view-analytics" aria-label="Mayhem observations and Backstage terminal"></section>
 
   </main>
@@ -179,6 +172,7 @@
   <script src="companion-rails.js"></script>
   <script src="companion-sprites.js"></script>
   <script src="app.js"></script>
+  <script src="app-bar.js"></script>
   <script src="song.js"></script>
   <script src="project.js"></script>
   <script src="storyboard.js"></script>
@@ -196,10 +190,7 @@
   <script src="agent.js"></script>
   <script src="home.js"></script>
   <script src="menu.js"></script>
-  <link rel="stylesheet" href="vendor/learning/learning-editor.css">
-  <script src="vendor/learning/learning-editor.js"></script>
-  <script src="cast.js"></script>
-  <script src="skills.js"></script>
+  <script src="resources.js"></script>
   <script src="vendor/backstage/backstage-terminal.js"></script>
   <script src="backstage-terminal.js"></script>
   <script src="analytics.js"></script>

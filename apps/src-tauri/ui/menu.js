@@ -1,3 +1,116 @@
+// Reusable presentation for button menus and text context menus in every workspace.
+// Labels, shortcuts and action IDs come from the native catalog; no per-view copies.
+class StudioMenu {
+  static active = null;
+  constructor(kind, trigger = null) {
+    this.kind = kind;
+    this.trigger = trigger;
+    this.items = [];
+    this.root = el('div', {id:`${kind}-menu`, class:'popup-menu', role:'menu', hidden:true});
+    document.body.append(this.root);
+    trigger?.addEventListener('click', () => {
+      if (StudioMenu.active === this) return this.close();
+      const rect = trigger.getBoundingClientRect();
+      this.open(rect.left, rect.bottom + 4, trigger);
+    });
+    trigger?.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      trigger.click();
+    });
+    this.root.addEventListener('keydown', event => this.onKey(event));
+    this.root.addEventListener('pointerdown', event => event.preventDefault());
+    this.root.addEventListener('click', event => event.stopPropagation());
+    document.addEventListener('pointerdown', event => {
+      if (StudioMenu.active === this && !this.root.contains(event.target) && !trigger?.contains(event.target)) this.close(false);
+    });
+    window.addEventListener('resize', () => this.close(false));
+  }
+  configure({label, items, supported = true}) {
+    this.items = items;
+    this.supported = supported;
+    this.root.setAttribute('aria-label', label);
+    if (this.trigger) {
+      this.trigger.firstChild.textContent = label;
+      this.trigger.setAttribute('aria-label', `${label} menu`);
+      this.trigger.setAttribute('aria-controls', this.root.id);
+      this.trigger.setAttribute('aria-expanded', 'false');
+    }
+  }
+  open(x, y, target = this.trigger) {
+    if (this.supported === false) throw new Error("Use the platform’s native text context menu");
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Menu position must be a number");
+    StudioMenu.active?.close(false);
+    this.target = target;
+    this.selection = target && typeof target.selectionStart === 'number'
+      ? [target.selectionStart, target.selectionEnd, target.selectionDirection] : null;
+    const selection = window.getSelection();
+    this.range = target?.isContentEditable && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    this.root.replaceChildren(...this.items.flatMap(item => [
+      item.separator ? el('div', {role:'separator'}) : null,
+      el('button', {id:`menu-${item.id.replaceAll('.', '-')}`, role:'menuitem', tabindex:-1,
+        disabled:item.project && !state.project, 'data-menu-action':item.id,
+        onclick:()=>this.activate(item.id)},
+        el('span', {}, item.label), item.shortcut ? el('kbd', {}, item.shortcut.replace('CmdOrCtrl+', navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+')) : null)
+    ]).filter(Boolean));
+    this.root.hidden = false;
+    const rect = this.root.getBoundingClientRect();
+    this.root.style.setProperty('--menu-x', `${Math.max(8, Math.min(x, innerWidth - rect.width - 8))}px`);
+    this.root.style.setProperty('--menu-y', `${Math.max(8, Math.min(y, innerHeight - rect.height - 8))}px`);
+    this.trigger?.setAttribute('aria-expanded', 'true');
+    StudioMenu.active = this;
+    this.root.querySelector('button:not(:disabled)')?.focus({preventScroll:true});
+  }
+  close(restore = true) {
+    if (StudioMenu.active !== this) return;
+    this.root.hidden = true;
+    this.trigger?.setAttribute('aria-expanded', 'false');
+    StudioMenu.active = null;
+    if (restore) this.restoreTarget();
+  }
+  restoreTarget() {
+    if (!this.target?.isConnected) return;
+    this.target.focus({preventScroll:true});
+    if (this.selection) this.target.setSelectionRange(...this.selection);
+    if (this.range) { const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(this.range); }
+  }
+  async activate(action) {
+    this.close();
+    if (action.startsWith('file.') || action === 'app.settings') return window.studioMenu(action);
+    // Closing must not count its own IPC as pending editing work. The native
+    // CloseRequested handler still checks every real pending operation and draft.
+    try { await (action === 'app.quit' ? nativeInvoke : invoke)('menu_action', {action}); }
+    catch (error) { toast(String(error)); }
+  }
+  onKey(event) {
+    if (!['ArrowDown','ArrowUp','Home','End','Escape','Tab'].includes(event.key)) return;
+    event.preventDefault();event.stopPropagation();
+    if (['Escape','Tab'].includes(event.key)) return this.close();
+    const buttons = [...this.root.querySelectorAll('button:not(:disabled)')];
+    const index = buttons.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  }
+  attach(root, selector) {
+    const open = (event, keyboard = false) => {
+      const target = event.target.closest(selector);
+      if (!target || target.disabled || this.supported === false) return;
+      event.preventDefault();
+      target.focus({preventScroll:true});
+      const rect = target.getBoundingClientRect();
+      this.open(keyboard ? rect.left : event.clientX, keyboard ? rect.bottom : event.clientY, target);
+    };
+    root.addEventListener('contextmenu', event => open(event));
+    root.addEventListener('keydown', event => {
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) open(event, true);
+    });
+  }
+}
+window.applicationFileMenu = new StudioMenu('file', $('app-file'));
+window.textContextMenu = new StudioMenu('text');
+window.textContextMenu.attach(document, 'input:not([type=range]):not([type=checkbox]), textarea, [contenteditable=true]');
+
 // Native menu actions reuse the same project operations as the visible controls.
 const applicationSettings = el('dialog', {id:'application-settings', 'aria-labelledby':'application-settings-title'},
   el('div', {class:'panel-head'}, el('h2', {id:'application-settings-title'}, 'Application Settings'),
