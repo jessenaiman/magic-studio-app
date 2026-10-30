@@ -36,85 +36,69 @@ def detect_face_landmarks(rgba_path: Path) -> Optional[Dict[str, Any]]:
     return None
 
 
-def discover_character_joints_and_polygons(
-    rgba_path: Path,
-    character_id: str = "hopper",
-    selected_parts: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Derive 10-part cutout polygons and joint pivots proportional to character bbox."""
-    with Image.open(rgba_path) as im:
-        rgba = im.convert("RGBA")
-        w, h = rgba.size
-        bbox = rgba.getchannel("A").getbbox() or (0, 0, w, h)
-    x0, y0, x1, y1 = bbox
-    bw, bh = max(1, x1 - x0), max(1, y1 - y0)
-
-    def sx(u: float) -> int:
-        return max(0, min(w - 1, int(round(x0 + u * bw))))
-
-    def sy(v: float) -> int:
-        return max(0, min(h - 1, int(round(y0 + v * bh))))
-
+def _detect_neck_v(
+    rgba_path: Path, y0: int, bh: int
+) -> float:
     face = detect_face_landmarks(rgba_path)
-    neck_v = 0.42
     if face and isinstance(face.get("rect"), list) and len(face["rect"]) == 4:
         chin_y = float(face["rect"][1]) + float(face["rect"][3])
         if y0 + 0.15 * bh <= chin_y <= y0 + 0.55 * bh:
-            neck_v = (chin_y - y0) / float(bh)
+            return (chin_y - y0) / float(bh)
+    return 0.42
 
-    # Detect actual crotch split row (`hip_v`) from the foreground silhouette inside the central column
-    # (`0.35 <= u <= 0.65`) so wing/arm gaps never get mistaken for the crotch and short-legged characters
-    # never slice their belly into `leg_left`/`leg_right`.
-    alpha_arr = np.array(rgba)[:, :, 3] > 20
-    hip_v = 0.72
-    split_u = 0.50
-    leg_l_u = 0.40
-    leg_r_u = 0.60
+
+def _best_central_row_gap(
+    xs_row: np.ndarray, x0: int, bw: int
+) -> Tuple[int, float]:
+    best_gap = 0
+    best_u = 0.50
+    min_gap = max(3, int(bw * 0.02))
+    for g_idx, gap_w in enumerate(np.diff(xs_row)):
+        if gap_w < min_gap:
+            continue
+        cand_x = 0.5 * (xs_row[g_idx] + xs_row[g_idx + 1])
+        cand_u = (cand_x - x0) / float(bw)
+        if 0.35 <= cand_u <= 0.65 and int(gap_w) > best_gap:
+            best_gap = int(gap_w)
+            best_u = cand_u
+    return best_gap, best_u
+
+
+def _detect_crotch_and_legs(
+    alpha_arr: np.ndarray, x0: int, y0: int, bw: int, bh: int, h: int, sy: Any
+) -> Tuple[float, float, float, float]:
+    hip_v, split_u, leg_l_u, leg_r_u = 0.72, 0.50, 0.40, 0.60
     for y_scan in range(sy(0.60), sy(0.90)):
         xs_row = np.where(alpha_arr[y_scan, :])[0]
-        if len(xs_row) > 4:
-            diffs = np.diff(xs_row)
-            best_gap = 0
-            best_u = 0.50
-            best_g_idx = -1
-            for g_idx, gap_w in enumerate(diffs):
-                if gap_w >= max(3, int(bw * 0.02)):
-                    cand_x = 0.5 * (xs_row[g_idx] + xs_row[g_idx + 1])
-                    cand_u = (cand_x - x0) / float(bw)
-                    if 0.35 <= cand_u <= 0.65 and int(gap_w) > best_gap:
-                        best_gap = int(gap_w)
-                        best_u = cand_u
-                        best_g_idx = g_idx
-            if best_gap > 0:
-                hip_v = (y_scan - y0) / float(bh)
-                split_u = best_u
-                y_mid = min(h - 1, y_scan + max(4, int(0.05 * bh)))
-                xs_mid = np.where(alpha_arr[y_mid, :])[0]
-                split_px = x0 + split_u * bw
-                l_xs = xs_mid[xs_mid < split_px]
-                r_xs = xs_mid[xs_mid > split_px]
-                if len(l_xs) > 0:
-                    leg_l_u = (float(np.mean(l_xs)) - x0) / float(bw)
-                else:
-                    leg_l_u = split_u - 0.10
-                if len(r_xs) > 0:
-                    leg_r_u = (float(np.mean(r_xs)) - x0) / float(bw)
-                else:
-                    leg_r_u = split_u + 0.10
-                break
-    ankle_v = min(0.93, hip_v + 0.55 * (1.0 - hip_v))
+        if len(xs_row) <= 4:
+            continue
+        best_gap, best_u = _best_central_row_gap(xs_row, x0, bw)
+        if best_gap <= 0:
+            continue
+        hip_v = (y_scan - y0) / float(bh)
+        split_u = best_u
+        y_mid = min(h - 1, y_scan + max(4, int(0.05 * bh)))
+        xs_mid = np.where(alpha_arr[y_mid, :])[0]
+        split_px = x0 + split_u * bw
+        l_xs = xs_mid[xs_mid < split_px]
+        r_xs = xs_mid[xs_mid > split_px]
+        leg_l_u = (
+            (float(np.mean(l_xs)) - x0) / float(bw)
+            if len(l_xs) > 0
+            else split_u - 0.10
+        )
+        leg_r_u = (
+            (float(np.mean(r_xs)) - x0) / float(bw)
+            if len(r_xs) > 0
+            else split_u + 0.10
+        )
+        break
+    return hip_v, split_u, leg_l_u, leg_r_u
 
-    # Detect whether the crown has two distinct ears (`ear_left`, `ear_right`) or a single center crest/hair/hat,
-    # and detect whether the arms/wings hang alongside the torso or separate cleanly with a gap.
-    y_crown = sy(0.10)
-    xs_crown = np.where(alpha_arr[y_crown, :])[0]
-    has_split_ears = False
-    if len(xs_crown) > 4:
-        crown_gaps = np.diff(xs_crown)
-        if int(np.max(crown_gaps)) >= max(6, int(bw * 0.06)):
-            has_split_ears = True
 
-    r_joint = max(12, int(round(min(bw, bh) * 0.03)))
+def _build_ear_specs(
+    has_split_ears: bool, r_joint: int, sx: Any, sy: Any
+) -> Tuple[Dict[str, Any], Dict[str, Any], float]:
     if has_split_ears:
         ear_l_spec = {
             "id": "ear_left",
@@ -148,46 +132,54 @@ def discover_character_joints_and_polygons(
                 [sx(0.49), sy(0.15)],
             ],
         }
-        head_top_v = 0.14
-    else:
-        # Single crown tuft + bow: keep the entire crown tuft and bow together inside `head` (`head_top_v = 0.06`),
-        # and only slice the very top feather tip (`0.0 <= v <= 0.06`) with symmetric co-rotating secondary sway.
-        ear_l_spec = {
-            "id": "ear_left",
-            "label": "Left Ear",
-            "kind": "appendage",
-            "layer": 8,
-            "parent": "head",
-            "pivot": [sx(0.49), sy(0.06)],
-            "joint_radius": r_joint,
-            "rotation": [-8, 8],
-            "polygon": [
-                [sx(0.32), sy(0.0)],
-                [sx(0.50), sy(0.0)],
-                [sx(0.50), sy(0.06)],
-                [sx(0.32), sy(0.06)],
-            ],
-        }
-        ear_r_spec = {
-            "id": "ear_right",
-            "label": "Right Ear",
-            "kind": "appendage",
-            "layer": 9,
-            "parent": "head",
-            "pivot": [sx(0.51), sy(0.06)],
-            "joint_radius": r_joint,
-            "rotation": [-8, 8],
-            "polygon": [
-                [sx(0.50), sy(0.0)],
-                [sx(0.68), sy(0.0)],
-                [sx(0.68), sy(0.06)],
-                [sx(0.50), sy(0.06)],
-            ],
-        }
-        head_top_v = 0.06
-    specs = [
-        ear_l_spec,
-        ear_r_spec,
+        return ear_l_spec, ear_r_spec, 0.14
+
+    ear_l_spec = {
+        "id": "ear_left",
+        "label": "Left Ear",
+        "kind": "appendage",
+        "layer": 8,
+        "parent": "head",
+        "pivot": [sx(0.49), sy(0.06)],
+        "joint_radius": r_joint,
+        "rotation": [-8, 8],
+        "polygon": [
+            [sx(0.32), sy(0.0)],
+            [sx(0.50), sy(0.0)],
+            [sx(0.50), sy(0.06)],
+            [sx(0.32), sy(0.06)],
+        ],
+    }
+    ear_r_spec = {
+        "id": "ear_right",
+        "label": "Right Ear",
+        "kind": "appendage",
+        "layer": 9,
+        "parent": "head",
+        "pivot": [sx(0.51), sy(0.06)],
+        "joint_radius": r_joint,
+        "rotation": [-8, 8],
+        "polygon": [
+            [sx(0.50), sy(0.0)],
+            [sx(0.68), sy(0.0)],
+            [sx(0.68), sy(0.06)],
+            [sx(0.50), sy(0.06)],
+        ],
+    }
+    return ear_l_spec, ear_r_spec, 0.06
+
+
+def _build_lower_body_specs(
+    hip_v: float,
+    ankle_v: float,
+    split_u: float,
+    leg_l_u: float,
+    leg_r_u: float,
+    r_joint: int,
+    sx: Any,
+    sy: Any,
+) -> List[Dict[str, Any]]:
+    return [
         {
             "id": "leg_left",
             "label": "Left Leg",
@@ -252,6 +244,18 @@ def discover_character_joints_and_polygons(
                 [sx(split_u), sy(1.0)],
             ],
         },
+    ]
+
+
+def _build_upper_body_specs(
+    head_top_v: float,
+    neck_v: float,
+    hip_v: float,
+    r_joint: int,
+    sx: Any,
+    sy: Any,
+) -> List[Dict[str, Any]]:
+    return [
         {
             "id": "torso",
             "label": "Torso",
@@ -317,6 +321,81 @@ def discover_character_joints_and_polygons(
             ],
         },
     ]
+
+
+def _build_body_part_specs(
+    ear_l_spec: Dict[str, Any],
+    ear_r_spec: Dict[str, Any],
+    head_top_v: float,
+    neck_v: float,
+    hip_v: float,
+    ankle_v: float,
+    split_u: float,
+    leg_l_u: float,
+    leg_r_u: float,
+    r_joint: int,
+    sx: Any,
+    sy: Any,
+) -> List[Dict[str, Any]]:
+    return (
+        [ear_l_spec, ear_r_spec]
+        + _build_lower_body_specs(
+            hip_v, ankle_v, split_u, leg_l_u, leg_r_u, r_joint, sx, sy
+        )
+        + _build_upper_body_specs(head_top_v, neck_v, hip_v, r_joint, sx, sy)
+    )
+
+
+def discover_character_joints_and_polygons(
+    rgba_path: Path,
+    character_id: str = "hopper",
+    selected_parts: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Derive 10-part cutout polygons and joint pivots proportional to character bbox."""
+    with Image.open(rgba_path) as im:
+        rgba = im.convert("RGBA")
+        w, h = rgba.size
+        bbox = rgba.getchannel("A").getbbox() or (0, 0, w, h)
+    x0, y0, x1, y1 = bbox
+    bw, bh = max(1, x1 - x0), max(1, y1 - y0)
+
+    def sx(u: float) -> int:
+        return max(0, min(w - 1, int(round(x0 + u * bw))))
+
+    def sy(v: float) -> int:
+        return max(0, min(h - 1, int(round(y0 + v * bh))))
+
+    neck_v = _detect_neck_v(rgba_path, y0, bh)
+    alpha_arr = np.array(rgba)[:, :, 3] > 20
+    hip_v, split_u, leg_l_u, leg_r_u = _detect_crotch_and_legs(
+        alpha_arr, x0, y0, bw, bh, h, sy
+    )
+    ankle_v = min(0.93, hip_v + 0.55 * (1.0 - hip_v))
+
+    xs_crown = np.where(alpha_arr[sy(0.10), :])[0]
+    has_split_ears = bool(
+        len(xs_crown) > 4
+        and int(np.max(np.diff(xs_crown))) >= max(6, int(bw * 0.06))
+    )
+
+    r_joint = max(12, int(round(min(bw, bh) * 0.03)))
+    ear_l_spec, ear_r_spec, head_top_v = _build_ear_specs(
+        has_split_ears, r_joint, sx, sy
+    )
+    specs = _build_body_part_specs(
+        ear_l_spec,
+        ear_r_spec,
+        head_top_v,
+        neck_v,
+        hip_v,
+        ankle_v,
+        split_u,
+        leg_l_u,
+        leg_r_u,
+        r_joint,
+        sx,
+        sy,
+    )
     if selected_parts:
         keep = set(selected_parts) | {"torso", "head"}
         specs = [p for p in specs if p["id"] in keep]
@@ -402,58 +481,70 @@ def _extend_back_layer_under_front_layer(
     return back_rgba, completed_count
 
 
+def _collect_stray_part_islands(
+    part_arrays: Dict[str, np.ndarray],
+    full_shape: Tuple[int, int],
+    parts_spec: List[Dict[str, Any]],
+) -> np.ndarray:
+    stray_mask_total = np.zeros(full_shape, dtype=bool)
+    for part in parts_spec:
+        arr = part_arrays[part["id"]]
+        lbl, n = ndi.label(arr[:, :, 3] > 20)
+        if n <= 1:
+            continue
+        counts = np.bincount(lbl.ravel())[1:]
+        main_cid = int(np.argmax(counts)) + 1
+        min_keep = max(350, int(int(counts[main_cid - 1]) * 0.15))
+        for cid in range(1, n + 1):
+            if cid != main_cid and int(counts[cid - 1]) < min_keep:
+                comp_mask = lbl == cid
+                arr[comp_mask] = [0, 0, 0, 0]
+                stray_mask_total |= comp_mask
+    return stray_mask_total
+
+
+def _best_touching_part_id(
+    dil: np.ndarray,
+    part_arrays: Dict[str, np.ndarray],
+    parts_spec: List[Dict[str, Any]],
+) -> str:
+    best_pid = "torso" if "torso" in part_arrays else parts_spec[0]["id"]
+    best_touch = -1
+    for part in parts_spec:
+        pid = part["id"]
+        touch = int(np.count_nonzero(dil & (part_arrays[pid][:, :, 3] > 80)))
+        if touch > best_touch:
+            best_touch = touch
+            best_pid = pid
+    return best_pid
+
+
 def _clean_disconnected_islands(
     part_arrays: Dict[str, np.ndarray],
     full_rgba: np.ndarray,
     parts_spec: List[Dict[str, Any]],
 ) -> None:
     """Remove stray disconnected crumbs and reassign them to the touching neighbour part."""
-    stray_mask_total = np.zeros(full_rgba.shape[:2], dtype=bool)
-    for part in parts_spec:
-        pid = part["id"]
-        arr = part_arrays[pid]
-        fg = arr[:, :, 3] > 20
-        lbl, n = ndi.label(fg)
-        if n <= 1:
-            continue
-        counts = np.bincount(lbl.ravel())[1:]
-        main_cid = int(np.argmax(counts)) + 1
-        main_area = int(counts[main_cid - 1])
-        for cid in range(1, n + 1):
-            if cid == main_cid:
-                continue
-            comp_mask = lbl == cid
-            if int(counts[cid - 1]) < max(350, int(main_area * 0.15)):
-                arr[comp_mask] = [0, 0, 0, 0]
-                stray_mask_total |= comp_mask
-
-    if np.any(stray_mask_total):
-        lbl_s, n_s = ndi.label(stray_mask_total)
-        for cid in range(1, n_s + 1):
-            comp = lbl_s == cid
-            dil = ndi.binary_dilation(comp, iterations=3) & (~comp)
-            best_pid = "torso" if "torso" in part_arrays else parts_spec[0]["id"]
-            best_touch = -1
-            for part in parts_spec:
-                pid = part["id"]
-                touch = int(np.count_nonzero(dil & (part_arrays[pid][:, :, 3] > 80)))
-                if touch > best_touch:
-                    best_touch = touch
-                    best_pid = pid
-            part_arrays[best_pid][comp] = full_rgba[comp]
+    stray_mask_total = _collect_stray_part_islands(
+        part_arrays, full_rgba.shape[:2], parts_spec
+    )
+    if not np.any(stray_mask_total):
+        return
+    lbl_s, n_s = ndi.label(stray_mask_total)
+    for cid in range(1, n_s + 1):
+        comp = lbl_s == cid
+        dil = ndi.binary_dilation(comp, iterations=3) & (~comp)
+        best_pid = _best_touching_part_id(dil, part_arrays, parts_spec)
+        part_arrays[best_pid][comp] = full_rgba[comp]
 
 
-def export_part_layers(
+def _run_photocraft_layer_export(
     rgba_path: Path,
-    discovery: Dict[str, Any],
-    out_dir: Path,
+    parts_spec: List[Dict[str, Any]],
+    raw_export_dir: Path,
+    psd_out: Path,
     asset_id: str,
-) -> Dict[str, Any]:
-    """Slice parts into layers and export PSD + PNGs via photocraft-cli, completing joint overlap cuffs."""
-    layers_dir = out_dir / "cutout_layers"
-    layers_dir.mkdir(parents=True, exist_ok=True)
-    raw_export_dir = Path(tempfile.mkdtemp(prefix=f"pc_{asset_id}_layers_"))
-    parts_spec = discovery["parts_spec"]
+) -> Path:
     pc_bin = shutil.which("photocraft-cli") or "photocraft-cli"
     cleaned_input = raw_export_dir / f"{asset_id}_cleaned_input.png"
     clean_cmd: List[str] = [
@@ -486,7 +577,6 @@ def export_part_layers(
         else rgba_path
     )
     cmd: List[str] = [pc_bin, "run", str(source_for_layers)]
-
     for part in parts_spec:
         cmd.extend(
             [
@@ -515,8 +605,6 @@ def export_part_layers(
                 json.dumps({"name": part["id"]}),
             ]
         )
-
-    psd_out = out_dir / f"{asset_id}_cutout_layers.psd"
     cmd.extend(
         [
             "--cmd",
@@ -540,13 +628,17 @@ def export_part_layers(
         raise RuntimeError(
             f"photocraft-cli layer masking failed: {proc.stderr or proc.stdout}"
         )
+    return source_for_layers
 
-    full_rgba = np.array(Image.open(source_for_layers).convert("RGBA"))
+
+def _load_and_deduplicate_part_arrays(
+    raw_export_dir: Path,
+    full_rgba: np.ndarray,
+    parts_spec: List[Dict[str, Any]],
+) -> Dict[str, np.ndarray]:
     h, w = full_rgba.shape[:2]
     exported_files = sorted(raw_export_dir.glob("*.png"))
     part_arrays: Dict[str, np.ndarray] = {}
-    spec_by_id = {p["id"]: p for p in parts_spec}
-
     for part in parts_spec:
         pid = part["id"]
         matched = next(
@@ -555,8 +647,6 @@ def export_part_layers(
         if matched is None:
             raise FileNotFoundError(f"photocraft-cli did not export layer for {pid}")
         arr = np.array(Image.open(matched).convert("RGBA"))
-        # Strictly copy exact RGB+Alpha from `full_rgba` inside the lasso mask (`arr[:,:,3] >= 128`)
-        # so PhotoCraft's polygon boundary anti-aliasing never leaves a 1px dark seam inside the character!
         mask = arr[:, :, 3] >= 128
         clean_arr = np.zeros_like(full_rgba)
         clean_arr[mask] = full_rgba[mask]
@@ -579,8 +669,7 @@ def export_part_layers(
         if pid not in part_arrays:
             continue
         arr = part_arrays[pid]
-        fg = arr[:, :, 3] > 20
-        overlap = fg & claimed
+        overlap = (arr[:, :, 3] > 20) & claimed
         if np.any(overlap):
             if pid == "torso" and "arm_right" in part_arrays:
                 ar_mask = part_arrays["arm_right"][:, :, 3] > 20
@@ -589,50 +678,61 @@ def export_part_layers(
                 arr[overlap] = [0, 0, 0, 0]
         claimed |= arr[:, :, 3] > 20
 
-    orig_fg = full_rgba[:, :, 3] > 20
-    unclaimed = orig_fg & (~claimed)
+    unclaimed = (full_rgba[:, :, 3] > 20) & (~claimed)
     if np.any(unclaimed) and "torso" in part_arrays:
         part_arrays["torso"][unclaimed] = full_rgba[unclaimed]
+    return part_arrays
 
-    _clean_disconnected_islands(part_arrays, full_rgba, parts_spec)
 
+def _extend_parent_child_cuff(
+    part: Dict[str, Any],
+    part_arrays: Dict[str, np.ndarray],
+    spec_by_id: Dict[str, Dict[str, Any]],
+    full_rgba: np.ndarray,
+    completed_counts: Dict[str, int],
+) -> None:
+    child_id = part["id"]
+    parent_id = part.get("parent")
+    if not parent_id or parent_id not in part_arrays:
+        return
+    pivot, r = part["pivot"], part["joint_radius"]
+    if part["layer"] < spec_by_id[parent_id]["layer"]:
+        ext_iters = 8 if child_id in ("ear_left", "ear_right") else 14
+        part_arrays[child_id], c_px = _extend_back_layer_under_front_layer(
+            part_arrays[child_id],
+            part_arrays[parent_id],
+            full_rgba,
+            pivot,
+            r,
+            dilate_iters=ext_iters,
+        )
+        completed_counts[child_id] += c_px
+    else:
+        win_m = 6.5 if child_id in ("arm_left", "arm_right", "head") else 2.6
+        part_arrays[parent_id], c_px = _extend_back_layer_under_front_layer(
+            part_arrays[parent_id],
+            part_arrays[child_id],
+            full_rgba,
+            pivot,
+            r,
+            dilate_iters=22,
+            window_mult=win_m,
+        )
+        completed_counts[parent_id] += c_px
+
+
+def _complete_joint_overlap_cuffs(
+    part_arrays: Dict[str, np.ndarray],
+    full_rgba: np.ndarray,
+    parts_spec: List[Dict[str, Any]],
+) -> Dict[str, int]:
+    spec_by_id = {p["id"]: p for p in parts_spec}
     completed_counts: Dict[str, int] = {p["id"]: 0 for p in parts_spec}
     for part in parts_spec:
-        child_id = part["id"]
-        parent_id = part.get("parent")
-        if not parent_id or parent_id not in part_arrays:
-            continue
-        child_z = part["layer"]
-        parent_z = spec_by_id[parent_id]["layer"]
-        pivot = part["pivot"]
-        r = part["joint_radius"]
-        if child_z < parent_z:
-            # For top-crown appendages (`ear_left`, `ear_right`), extend the ear downwards underneath `head`
-            # by a tight 8px cuff (instead of 32px) so rotating the tuft/ear never opens a slit and never peeks past the cheek.
-            ext_iters = 8 if child_id in ("ear_left", "ear_right") else 14
-            part_arrays[child_id], c_px = _extend_back_layer_under_front_layer(
-                part_arrays[child_id],
-                part_arrays[parent_id],
-                full_rgba,
-                pivot,
-                r,
-                dilate_iters=ext_iters,
-            )
-            completed_counts[child_id] += c_px
-        else:
-            win_m = 6.5 if child_id in ("arm_left", "arm_right", "head") else 2.6
-            part_arrays[parent_id], c_px = _extend_back_layer_under_front_layer(
-                part_arrays[parent_id],
-                part_arrays[child_id],
-                full_rgba,
-                pivot,
-                r,
-                dilate_iters=22,
-                window_mult=win_m,
-            )
-            completed_counts[parent_id] += c_px
+        _extend_parent_child_cuff(
+            part, part_arrays, spec_by_id, full_rgba, completed_counts
+        )
 
-    # Also extend `leg_left` and `leg_right` underneath `foot_left` and `foot_right` at the ankle pivots
     for leg_id, foot_id in [("leg_left", "foot_left"), ("leg_right", "foot_right")]:
         if leg_id in part_arrays and foot_id in part_arrays and foot_id in spec_by_id:
             f_spec = spec_by_id[foot_id]
@@ -645,12 +745,22 @@ def export_part_layers(
                 dilate_iters=10,
             )
             completed_counts[leg_id] += c_px
+    return completed_counts
 
+
+def _save_part_layer_records(
+    part_arrays: Dict[str, np.ndarray],
+    completed_counts: Dict[str, int],
+    parts_spec: List[Dict[str, Any]],
+    layers_dir: Path,
+    asset_id: str,
+    w: int,
+    h: int,
+) -> List[Dict[str, Any]]:
     part_records: List[Dict[str, Any]] = []
     for part in parts_spec:
         pid = part["id"]
         part_arr = part_arrays[pid]
-        completed_px = completed_counts[pid]
         full_layer_path = layers_dir / f"{asset_id}_{pid}_full.png"
         Image.fromarray(part_arr).save(full_layer_path)
 
@@ -679,7 +789,7 @@ def export_part_layers(
                     round((py - by0) / float(ch), 4),
                 ],
                 "joint_radius_px": part["joint_radius"],
-                "completed_overlap_pixels": completed_px,
+                "completed_overlap_pixels": completed_counts[pid],
                 "rotation": part["rotation"],
                 "crop_box": [bx0, by0, bx1, by1],
                 "crop_size": [cw, ch],
@@ -687,6 +797,38 @@ def export_part_layers(
                 "full_layer_path": str(full_layer_path),
             }
         )
+    return part_records
+
+
+def export_part_layers(
+    rgba_path: Path,
+    discovery: Dict[str, Any],
+    out_dir: Path,
+    asset_id: str,
+) -> Dict[str, Any]:
+    """Slice parts into layers and export PSD + PNGs via photocraft-cli, completing joint overlap cuffs."""
+    layers_dir = out_dir / "cutout_layers"
+    layers_dir.mkdir(parents=True, exist_ok=True)
+    raw_export_dir = Path(tempfile.mkdtemp(prefix=f"pc_{asset_id}_layers_"))
+    parts_spec = discovery["parts_spec"]
+    psd_out = out_dir / f"{asset_id}_cutout_layers.psd"
+
+    source_for_layers = _run_photocraft_layer_export(
+        rgba_path, parts_spec, raw_export_dir, psd_out, asset_id
+    )
+    full_rgba = np.array(Image.open(source_for_layers).convert("RGBA"))
+    h, w = full_rgba.shape[:2]
+
+    part_arrays = _load_and_deduplicate_part_arrays(
+        raw_export_dir, full_rgba, parts_spec
+    )
+    _clean_disconnected_islands(part_arrays, full_rgba, parts_spec)
+    completed_counts = _complete_joint_overlap_cuffs(
+        part_arrays, full_rgba, parts_spec
+    )
+    part_records = _save_part_layer_records(
+        part_arrays, completed_counts, parts_spec, layers_dir, asset_id, w, h
+    )
 
     shutil.rmtree(raw_export_dir, ignore_errors=True)
     return {

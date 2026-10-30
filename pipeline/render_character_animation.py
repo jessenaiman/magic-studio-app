@@ -31,21 +31,81 @@ def root_at(spec: dict, frame: float, solo: bool = False) -> tuple:
     return sx + (ex - sx) * t, sy + (ey - sy) * t, 0.0, heading * (1.0 - turn)
 
 
-def gait_frames(spec: dict, count: int, solo: bool = False) -> list:
-    """Swing between fixed world-space sole targets; stance feet never track the moving root."""
+def _rest_target(spec: dict, side: str, f: float, solo: bool) -> list[float]:
     a = spec["anatomy"]
     h = spec["height_m"]
+    x, y, _, yaw = root_at(spec, f, solo)
+    lx = (1 if side == "L" else -1) * a["leg_x"] * h
+    return [x + math.cos(yaw) * lx, y + math.sin(yaw) * lx, 0.0]
+
+
+def _init_swing_state(spec: dict, side: str, f: int, phase: int, cycle: int, moving: bool, turn: bool, solo: bool, targets: dict) -> tuple:
+    h = spec["height_m"]
+    half = spec["performance"]["period"] // 2
+    end = (
+        min(48 if turn else 35, f + half - phase - 1)
+        if not solo
+        else f + half - phase - 1
+    )
+    goal_f = min(35, end + half * 0.5) if moving and not solo else end
+    goal = _rest_target(spec, side, goal_f, solo)
+    if solo:
+        goal[1] = (-1 if cycle % 4 < 2 else 1) * h * 0.055
+    return (targets[side][:], goal, f, max(1, end - f))
+
+
+def _step_foot_side(spec: dict, side: str, f: int, phase: int, cycle: int, active: str, moving: bool, turn: bool, solo: bool, targets: dict, swing: dict, row: dict) -> None:
+    perf = spec["performance"]
+    half = perf["period"] // 2
+    if not ((moving or turn) and side == active):
+        if side in swing:
+            targets[side] = swing.pop(side)[1][:]
+        row["feet"][side] = targets[side][:]
+        row["planted"][side] = True
+        return
+    if side not in swing:
+        swing[side] = _init_swing_state(spec, side, f, phase, cycle, moving, turn, solo, targets)
+    start, goal, start_f, length = swing[side]
+    u = min(1.0, (f - start_f + 1) / (length + 1))
+    eased = smooth01(u)
+    foot = [start[i] + (goal[i] - start[i]) * eased for i in range(3)]
+    foot[2] = math.sin(math.pi * u) ** 2 * spec["foot_lift_max_m"] * perf["lift"]
+    if phase == half - 1 or f in [35, 47]:
+        foot = goal[:]
+        targets[side] = goal[:]
+        swing.pop(side, None)
+    row["feet"][side] = foot
+    row["planted"][side] = False
+
+
+def _compute_pelvis_z(spec: dict, f: int, root: tuple, row: dict) -> float:
+    a = spec["anatomy"]
+    h = spec["height_m"]
+    l1 = math.hypot(0.04, a["hip"] - a["knee"]) * h
+    l2 = math.hypot(0.04, a["knee"] - a["ankle"]) * h
+    reach = (l1 + l2) * 0.998
+    pelvis_z = 0.0
+    for side, sign in [("L", 1), ("R", -1)]:
+        hip_x = root[0] + math.cos(root[3]) * sign * a["leg_x"] * h
+        hip_y = root[1] + math.sin(root[3]) * sign * a["leg_x"] * h
+        foot = row["feet"][side]
+        horizontal = math.hypot(foot[0] - hip_x, foot[1] - hip_y)
+        if horizontal >= reach:
+            raise ValueError(f"{spec['slug']} frame {f}: stride exceeds anatomical reach")
+        pelvis_z = min(
+            pelvis_z,
+            foot[2] + a["ankle"] * h + math.sqrt(reach * reach - horizontal * horizontal) - a["hip"] * h,
+        )
+    return pelvis_z
+
+
+def gait_frames(spec: dict, count: int, solo: bool = False) -> list:
+    """Swing between fixed world-space sole targets; stance feet never track the moving root."""
     perf = spec["performance"]
     period = perf["period"]
     half = period // 2
     roots = [root_at(spec, f, solo) for f in range(1, count + period + 2)]
-
-    def rest_target(side: str, f: float) -> list[float]:
-        x, y, _, yaw = root_at(spec, f, solo)
-        lx = (1 if side == "L" else -1) * a["leg_x"] * h
-        return [x + math.cos(yaw) * lx, y + math.sin(yaw) * lx, 0.0]
-
-    targets = {side: rest_target(side, 1) for side in ["L", "R"]}
+    targets = {side: _rest_target(spec, side, 1, solo) for side in ["L", "R"]}
     swing: dict[str, tuple] = {}
     result = []
     for f in range(1, count + 1):
@@ -57,59 +117,11 @@ def gait_frames(spec: dict, count: int, solo: bool = False) -> list:
         phase = (f - 1 + perf["offset"]) % half
         row = dict(frame=f, root=list(root), feet={}, planted={})
         for side in ["L", "R"]:
-            if (moving or turn) and side == active:
-                if side not in swing:
-                    end = (
-                        min(48 if turn else 35, f + half - phase - 1)
-                        if not solo
-                        else f + half - phase - 1
-                    )
-                    goal = rest_target(
-                        side, min(35, end + half * 0.5) if moving and not solo else end
-                    )
-                    if solo:
-                        goal[1] = (-1 if cycle % 4 < 2 else 1) * h * 0.055
-                    swing[side] = (targets[side][:], goal, f, max(1, end - f))
-                start, goal, start_f, length = swing[side]
-                u = min(1.0, (f - start_f + 1) / (length + 1))
-                eased = smooth01(u)
-                foot = [start[i] + (goal[i] - start[i]) * eased for i in range(3)]
-                foot[2] = (
-                    math.sin(math.pi * u) ** 2 * spec["foot_lift_max_m"] * perf["lift"]
-                )
-                if phase == half - 1 or f in [35, 47]:
-                    foot = goal[:]
-                    targets[side] = goal[:]
-                    swing.pop(side, None)
-                row["feet"][side] = foot
-                row["planted"][side] = False
-            else:
-                if side in swing:
-                    targets[side] = swing.pop(side)[1][:]
-                row["feet"][side] = targets[side][:]
-                row["planted"][side] = True
+            _step_foot_side(
+                spec, side, f, phase, cycle, active, moving, turn, solo, targets, swing, row
+            )
         if moving or turn:
-            l1 = math.hypot(0.04, a["hip"] - a["knee"]) * h
-            l2 = math.hypot(0.04, a["knee"] - a["ankle"]) * h
-            reach = (l1 + l2) * 0.998
-            pelvis_z = 0.0
-            for side, sign in [("L", 1), ("R", -1)]:
-                hip_x = root[0] + math.cos(root[3]) * sign * a["leg_x"] * h
-                hip_y = root[1] + math.sin(root[3]) * sign * a["leg_x"] * h
-                foot = row["feet"][side]
-                horizontal = math.hypot(foot[0] - hip_x, foot[1] - hip_y)
-                if horizontal >= reach:
-                    raise ValueError(
-                        f"{spec['slug']} frame {f}: stride exceeds anatomical reach"
-                    )
-                pelvis_z = min(
-                    pelvis_z,
-                    foot[2]
-                    + a["ankle"] * h
-                    + math.sqrt(reach * reach - horizontal * horizontal)
-                    - a["hip"] * h,
-                )
-            row["root"][2] = pelvis_z
+            row["root"][2] = _compute_pelvis_z(spec, f, root, row)
         result.append(row)
     return result
 
