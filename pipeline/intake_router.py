@@ -32,33 +32,26 @@ def classify_archetype_from_hint(hint_name: str = "", aspect: float = 1.0) -> di
     }
 
 
-def inspect_image_with_photocraft(image_path: str) -> dict:
+def inspect_image(image_path: str) -> dict:
     if not image_path or not os.path.exists(image_path):
-        return {"width": 512, "height": 512, "aspect": 1.0, "exists": False}
-    photocraft = shutil.which("photocraft-cli") or "photocraft-cli"
-    try:
-        out = subprocess.check_output(
-            [photocraft, "info", image_path, "--json"],
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        ).decode("utf-8")
-        info = json.loads(out)
-        w = int(info.get("width", 512))
-        h = int(info.get("height", 512))
-        return {
-            "width": w,
-            "height": h,
-            "aspect": round(w / max(1, h), 3),
-            "exists": True,
-        }
-    except Exception:
-        return {"width": 512, "height": 512, "aspect": 1.0, "exists": True}
+        raise FileNotFoundError(image_path)
+    photocraft = os.environ.get("PHOTOCRAFT_CLI") or shutil.which("photocraft-cli")
+    if not photocraft:
+        raise RuntimeError("photocraft-cli not found; set PHOTOCRAFT_CLI or put it on PATH")
+    out = subprocess.check_output(
+        [photocraft, "info", image_path, "--compact"], text=True, timeout=15,
+    )
+    info = json.loads(out)
+    w, h = int(info["width"]), int(info["height"])
+    if w < 1 or h < 1:
+        raise ValueError("PhotoCraft returned invalid image dimensions")
+    return dict(info, width=w, height=h, aspect=round(w / h, 3), exists=True)
 
 
 def run_three_question_intake(
     image_path: str, answers_override: dict | None = None
 ) -> dict:
-    img_meta = inspect_image_with_photocraft(image_path)
+    img_meta = inspect_image(image_path)
     rec = classify_archetype_from_hint(image_path, img_meta["aspect"])
 
     api_key = os.environ.get("TYPESAFE_API_KEY", "")
@@ -143,23 +136,23 @@ def run_three_question_intake(
         },
         {
             "id": "q3_verb_output",
-            "question": "3. Which Universal Action & Track B Output do you want to verify in Blender 5.3 & FilmCraft?",
+            "question": "3. Which Universal Action & Track B Output do you want to verify in Blender & FilmCraft?",
             "options": [
                 {
                     "value": "move_traverse",
-                    "label": "Move / Traverse (Walk / Swim / Glide) -> Blender 5.3 -> FilmCraft",
+                    "label": "Move / Traverse (Walk / Swim / Glide) -> Blender -> FilmCraft",
                 },
                 {
                     "value": "jump_rise_fall",
-                    "label": "Jump / Rise & Fall (Leap / Sunrise-Sunset / Crest) -> Blender 5.3 -> FilmCraft",
+                    "label": "Jump / Rise & Fall (Leap / Sunrise-Sunset / Crest) -> Blender -> FilmCraft",
                 },
                 {
                     "value": "turn_bank",
-                    "label": "Turn / Bank (Set Angles 0°, 40°, 90°, 180°) -> Blender 5.3 -> FilmCraft",
+                    "label": "Turn / Bank (Set Angles 0°, 40°, 90°, 180°) -> Blender -> FilmCraft",
                 },
                 {
                     "value": "express_talk",
-                    "label": "Express / Talk (Blink, Gaze & Mouth Visemes) -> Blender 5.3 -> FilmCraft",
+                    "label": "Express / Talk (Blink, Gaze & Mouth Visemes) -> Blender -> FilmCraft",
                 },
             ],
         },
@@ -182,3 +175,18 @@ def run_three_question_intake(
         "questions": questions,
         "recommended": recommended,
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Inspect an asset and collect intake choices")
+    parser.add_argument("image")
+    for flag in ("q1", "q2", "q3", "archetype", "verb"):
+        parser.add_argument(f"--{flag}")
+    args = parser.parse_args()
+    answers = {key: value for key, value in {
+        "primaryVerb": args.verb or args.q1, "target": args.q3,
+        "archetype": args.archetype,
+        "selectedParts": [part.strip() for part in args.q2.split(",") if part.strip()] if args.q2 is not None else None,
+    }.items() if value is not None}
+    print(json.dumps(run_three_question_intake(args.image, answers)))

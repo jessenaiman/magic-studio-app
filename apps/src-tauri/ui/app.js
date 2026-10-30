@@ -103,7 +103,7 @@ function footerContext() {
     return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
   }
   if (state.view === 'studio') { const project = videoProject(); return project ? `Video project: ${project}` : 'No video project yet'; }
-  if (state.view === 'analytics') return 'Mayhem · Backstage, code complexity & app observations';
+  if (state.view === 'analytics') return 'Mayhem · code, usage and tool reports';
   const pages = state.data?.storyboard?.previews?.length || 0;
   const objects = (state.data?.assets?.assets || []).length;
   return [pages ? `Storyboard · Page ${state.page + 1} / ${pages}` : 'Storyboard · not built yet', pages ? state.pageTitles?.[state.page] : null,
@@ -271,7 +271,7 @@ async function setView(view, action) {
   if (view === "split") view = "studio";
   if (state.view === "animation" && view !== "animation" && typeof theatreCanLeave === "function" && !theatreCanLeave()) return false;
   if (typeof animationPause === "function") animationPause();
-  if (view !== 'animation' && typeof blenderDispose === 'function') blenderDispose();
+  if (view !== 'animation' && typeof animationJobsDispose === 'function') animationJobsDispose();
   state.view = view;
   window.workspaceNavigation?.select(view);
   const page = view === "studio" ? "project" : view;
@@ -382,6 +382,9 @@ async function applyOpenedProject(opened, start = {}) {
   if(!path)throw new Error('Project command did not return its canonical location');
   state.data=opened;
   state.projectReceipt=opened;
+  // A character study opens in Animation only; a song project uses every workspace.
+  state.animateOnly = opened.mode === "animation" || document.body.classList.contains("animate-only");
+  document.body.classList.toggle("animation-mode", opened.mode === "animation");
   if (state.project !== path) { animationReset(); songStop(); transcriptReaderClose(); projectView.textDrafts.clear(); projectView.error=null; state.storyboardScene=null; state.storyboardUndo=null; }
   state.project = path;
   state.lyrics = null;
@@ -397,7 +400,7 @@ async function applyOpenedProject(opened, start = {}) {
   renderTarget();
   renderBlocks();
   renderStoryboard();
-  await setView(start.view || "project");
+  await setView(start.view || (opened.mode === "animation" ? "animation" : "project"));
   window.workshopDrawers?.close(false);
   await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
 }

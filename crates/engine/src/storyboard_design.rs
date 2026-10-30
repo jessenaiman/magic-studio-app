@@ -60,27 +60,44 @@ pub fn inspect(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(doc)
 }
 
+fn is_placeholder_instruction(value: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "Describe the story, characters",
+        "Name this location and place",
+        "Name the cast and reusable props",
+        "Register existing artwork",
+        "Place the scene reference",
+        "See the four panels",
+        "Describe the visible action",
+        "Link cast, props and locations",
+        "Describe the reference image",
+        "Describe movement, timing",
+        "Text, word IDs, reveal timing",
+        "What is drawn, when it appears",
+    ];
+    PREFIXES.iter().any(|p| value.starts_with(p))
+        || value.contains("\nRegister existing artwork")
+        || value.contains("Artwork and acting still need review")
+}
+
+fn is_missing_field_shape(field: &Value) -> bool {
+    let name = field["field"].as_str().unwrap_or("");
+    if name == "source" || name == "lyrics" || name.starts_with("picture.") {
+        return false;
+    }
+    let value = field["value"].as_str().unwrap_or("").trim();
+    (name != "reference" && value.is_empty()) || is_placeholder_instruction(value)
+}
+
 /// A document existing is different from its authoring fields being complete.
 fn content_readiness(design: &Value) -> Value {
     let fields = design["text_fields"].as_array();
-    let mut missing = Vec::new();
-    for field in fields.into_iter().flatten() {
-        if field["field"] == "source" || field["field"] == "lyrics" {
-            continue;
-        }
-        let value = field["value"].as_str().unwrap_or("").trim();
-        let instruction = value.starts_with("Describe the story, characters")
-            || value.starts_with("Name this location and place")
-            || value.starts_with("Name the cast and reusable props")
-            || value.starts_with("Register existing artwork")
-            || value.contains("\nRegister existing artwork")
-            || value.starts_with("Place the scene reference")
-            || value.starts_with("See the four panels")
-            || value.contains("Artwork and acting still need review");
-        if value.is_empty() || instruction {
-            missing.push(json!({"page":field["page"],"field":field["field"]}));
-        }
-    }
+    let missing: Vec<Value> = fields
+        .into_iter()
+        .flatten()
+        .filter(|f| is_missing_field_shape(f))
+        .map(|f| json!({"page": f["page"], "field": f["field"]}))
+        .collect();
     let known = fields.is_some_and(|fs| {
         fs.iter()
             .any(|f| f["role"].as_str().is_some_and(|r| r.starts_with("user.")))

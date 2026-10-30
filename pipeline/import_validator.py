@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 from typing import Any, Dict
 
 from PIL import Image
+from pipeline.intake_router import inspect_image
 
 STANDARD_TEMPLATE_SPEC = {
     "templateVersion": "1.0.0",
@@ -66,55 +65,26 @@ def validate_imported_asset(image_path: str) -> Dict[str, Any]:
             "standardTemplateSpec": STANDARD_TEMPLATE_SPEC,
         }
 
-    pc_bin = shutil.which("photocraft-cli")
-    pc_info: Dict[str, Any] = {}
-    if pc_bin:
-        proc = subprocess.run(
-            [pc_bin, "info", image_path, "--compact"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if proc.returncode == 0 and proc.stdout.strip().startswith("{"):
-            try:
-                pc_info = json.loads(proc.stdout.strip().splitlines()[-1])
-            except Exception:
-                pc_info = {}
-
+    pc_info = inspect_image(image_path)
     with Image.open(image_path) as im:
-        w, h = im.size
         has_alpha = "A" in im.getbands()
-
-    aspect = w / max(1, h)
-    lower = os.path.basename(image_path).lower()
-    if (
-        aspect >= 1.45
-        and ("pose" in lower or "sheet" in lower)
-        and "turnaround" not in lower
-    ):
-        rows_detected = 2
-        views_in_row = 5
-        valid = True
-        status = "ready"
-    elif aspect >= 1.45:
-        rows_detected = 1
-        views_in_row = 5
-        valid = True
-        status = "ready"
-    else:
-        rows_detected = 1
-        views_in_row = 1
-        valid = False
-        status = "single_or_partial_sheet"
+    w, h = pc_info["width"], pc_info["height"]
 
     return {
-        "valid": valid,
-        "status": status,
+        "valid": False,
+        "status": "layout_unmeasured",
         "imagePath": os.path.abspath(image_path),
         "dimensions": [w, h],
         "hasAlpha": has_alpha,
-        "rowsDetected": rows_detected,
-        "viewsInPrimaryRow": views_in_row,
+        "rowsDetected": None,
+        "viewsInPrimaryRow": None,
         "photocraftInfo": pc_info,
         "standardTemplateSpec": STANDARD_TEMPLATE_SPEC,
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("image")
+    print(json.dumps(validate_imported_asset(parser.parse_args().image)))

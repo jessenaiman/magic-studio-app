@@ -555,7 +555,7 @@ fn prepare(s: &mut Session, p: &Value, prompt: &str) -> Result<Prepared> {
     Ok(Prepared {
         out: dir.join("asset.png"),
         receipt: dir.join("generation.json"),
-        prompt_file: dir.join("asset.prompt.md"),
+        prompt_file: dir.join("asset.prompt.txt"),
         rig_layout: rig.map(|(_, layout)| layout),
         project,
         references,
@@ -579,7 +579,7 @@ fn attached_result(
     let (width, height, sha256) = validated_png(&prepared.out)?;
     let attached = s.execute(
         "project.add_asset",
-        json!({"path":prepared.out,"kind":"image",
+        json!({"path":prepared.out,"kind":"image","remove_background":false,
         "name":p["name"].as_str().unwrap_or("Generated image"), "load":false}),
     )?;
     let mut result = json!({"ok":true, "project":prepared.project,"image":prepared.out,"width":width,"height":height,
@@ -1053,7 +1053,7 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         let (width, height, sha256) = validated_png(&out)?;
         let attached = s.execute(
             "project.add_asset",
-            json!({"path":out,"kind":"image",
+            json!({"path":out,"kind":"image","remove_background":false,
             "name":p["name"].as_str().unwrap_or("Generated image"), "load":false}),
         )?;
         Ok(

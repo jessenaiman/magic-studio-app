@@ -1,4 +1,7 @@
-use crate::{App, View, data::clean};
+use crate::{
+    App, View,
+    data::{INSPECT, Status, clean, inspect_row},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -15,6 +18,16 @@ const CYAN: Color = Color::Rgb(133, 210, 222);
 const GREEN: Color = Color::Rgb(80, 205, 139);
 const MUTED: Color = Color::Rgb(160, 149, 169);
 const SELECT: Color = Color::Rgb(65, 44, 34);
+const RED: Color = Color::Rgb(232, 92, 84);
+fn status(f: &mut Frame, area: Rect, state: Status) {
+    let (word, color) = match state {
+        Status::Found => ("Found", GREEN),
+        Status::Present => ("Present", GOLD),
+        Status::None => ("None", MUTED),
+        Status::Unavailable => ("Unavailable", RED),
+    };
+    text(f, area, format!("● {word}"), color);
+}
 fn text(f: &mut Frame, area: Rect, value: impl Into<String>, color: Color) {
     let mut value = clean(&value.into());
     let width = area.width.saturating_sub(1) as usize;
@@ -55,6 +68,8 @@ fn button(f: &mut Frame, app: &mut App, area: Rect, title: &str, file: Option<us
     let enabled = file.is_some_and(|i| {
         if i == usize::MAX {
             app.data.projects_found
+        } else if let Some(k) = inspect_row(i) {
+            matches!(&app.data.library, Some(Ok(l)) if !l.rows()[k].3.is_empty())
         } else {
             app.data.files.get(i).is_some_and(|r| r.found)
         }
@@ -172,11 +187,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let now = OffsetDateTime::now_utc();
     text(
         f,
-        Rect::new(area.width.saturating_sub(35), 0, 35, 1),
+        Rect::new(area.width.saturating_sub(48), 0, 48, 1),
         format!(
-            "v{}  {} {:02}:{:02} UTC ▪▪▪",
+            "v{}  |  {} {} {} {}  {:02}:{:02} UTC  ▪▪▪▪",
             env!("CARGO_PKG_VERSION"),
-            now.date(),
+            &now.weekday().to_string()[..3],
+            now.day(),
+            &now.month().to_string()[..3],
+            now.year(),
             now.hour(),
             now.minute()
         ),
@@ -267,9 +285,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         "Notice available • d details"
     };
     if app.view != View::Mops {
+        let width = (Span::raw(help).width() as u16 + 2).min(area.width.saturating_sub(42));
         text(
             f,
-            Rect::new(40, foot.y + 1, area.width.saturating_sub(41), 1),
+            Rect::new(area.width.saturating_sub(width + 1), foot.y + 1, width, 1),
             help,
             MUTED,
         );
@@ -321,11 +340,11 @@ fn mops_source_summary(f: &mut Frame, app: &App, foot: Rect, tab_area: Rect, wid
 fn navigation_tabs(f: &mut Frame, app: &mut App, tab_area: Rect) {
     let tabs = Layout::horizontal([Constraint::Percentage(20); 5]).split(tab_area);
     for (i, label) in [
-        "◉  WORKSHOP  F1",
-        "▰▣  BOOTH  F2",
-        "▥▥  MOPS  F3",
-        "✂  MAYHEM  F4",
-        "⚙  SETTINGS  F5",
+        ("◉   WORKSHOP", "F1"),
+        ("▰▣  BOOTH", "F2"),
+        ("▥▥  MOPS", "F3"),
+        ("✂   MAYHEM", "F4"),
+        ("⚙   SETTINGS", "F5"),
     ]
     .iter()
     .enumerate()
@@ -337,36 +356,38 @@ fn navigation_tabs(f: &mut Frame, app: &mut App, tab_area: Rect) {
             4 => Some(View::Settings),
             _ => None,
         };
-        navigation_tab(f, app, tabs[i], label, view);
+        navigation_tab(f, app, tabs[i], *label, view);
     }
 }
-fn navigation_tab(f: &mut Frame, app: &mut App, area: Rect, label: &str, view: Option<View>) {
+fn navigation_tab(
+    f: &mut Frame,
+    app: &mut App,
+    area: Rect,
+    (label, key): (&str, &str),
+    view: Option<View>,
+) {
     if let Some(view) = view {
         app.tabs.push((area, view));
     }
     let active = view == Some(app.view);
+    let (fg, bg) = match (active, view.is_some()) {
+        (true, _) => (BG, GOLD),
+        (false, true) => (IVORY, BG),
+        (false, false) => (MUTED, BG),
+    };
     f.render_widget(
         Block::bordered()
-            .border_style(Style::default().fg(CORAL))
-            .style(Style::default().bg(BG)),
+            .border_style(Style::default().fg(if active { GOLD } else { CORAL }))
+            .style(Style::default().bg(bg)),
         area,
     );
-    let inside = Rect::new(area.x + 1, area.y + 1, area.width.saturating_sub(2), 1);
+    let style = Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD);
+    let inside = Rect::new(area.x + 3, area.y + 1, area.width.saturating_sub(6), 1);
+    f.render_widget(Paragraph::new(label).style(style), inside);
     f.render_widget(
-        Paragraph::new(label)
-            .alignment(ratatui::layout::Alignment::Center)
-            .style(
-                Style::default()
-                    .fg(if active {
-                        BG
-                    } else if view.is_none() {
-                        MUTED
-                    } else {
-                        IVORY
-                    })
-                    .bg(if active { GOLD } else { BG })
-                    .add_modifier(Modifier::BOLD),
-            ),
+        Paragraph::new(key)
+            .alignment(ratatui::layout::Alignment::Right)
+            .style(style),
         inside,
     );
 }
@@ -426,56 +447,49 @@ fn audit(f: &mut Frame, app: &mut App, area: Rect) {
         let c = cells(a, &[29, 36, 18, 17]);
         dividers(f, &c);
         text(f, c[0], format!(" {label}"), IVORY);
-        text(
-            f,
-            c[1],
-            if i == 0 {
-                app.data.files[0].location()
-            } else if i == 1 {
-                app.data
-                    .projects_root
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "Unavailable".into())
-            } else {
-                "Unavailable".into()
-            },
-            CYAN,
-        );
-        let found = if i == 0 {
-            app.data.files[0].found
-        } else {
-            i == 1 && app.data.projects_found
+        let (detail, state) = audit_value(app, i);
+        text(f, c[1], detail, CYAN);
+        status(f, c[2], state);
+        let (title, target) = match i {
+            0 => ("Open", 0),
+            1 => ("Open folder", usize::MAX),
+            _ => ("Inspect", INSPECT - (i - 2)),
         };
-        text(
-            f,
-            c[2],
-            if found {
-                "● Found"
-            } else {
-                "● Unavailable"
-            },
-            if found { GREEN } else { GOLD },
-        );
-        button(
-            f,
-            app,
-            c[3],
-            if i == 1 {
-                "Open folder"
-            } else if i > 1 {
-                "Inspect"
-            } else {
-                "Open"
-            },
-            if i == 0 {
-                Some(0)
-            } else if i == 1 {
-                Some(usize::MAX)
-            } else {
-                None
-            },
-        );
+        button(f, app, c[3], title, Some(target));
+    }
+}
+/// Location text and status for one Configuration Audit row.
+fn audit_value(app: &App, row: usize) -> (String, Status) {
+    let found = |yes: bool| {
+        if yes {
+            Status::Found
+        } else {
+            Status::Unavailable
+        }
+    };
+    match row {
+        0 => (app.data.files[0].location(), found(app.data.files[0].found)),
+        1 => (
+            app.data
+                .projects_root
+                .as_ref()
+                .map(|p| clean(&p.display().to_string()))
+                .unwrap_or_else(|| "Unavailable".into()),
+            found(app.data.projects_found),
+        ),
+        _ => match &app.data.library {
+            Some(Ok(library)) => {
+                let (_, count, state, items) = &library.rows()[row - 2];
+                let first = items
+                    .first()
+                    .and_then(|p| p.file_name())
+                    .map(|n| format!(" · {}", clean(&n.to_string_lossy())))
+                    .unwrap_or_default();
+                (format!("{count}{first}"), *state)
+            }
+            Some(Err(e)) => (format!("Unreadable: {e}"), Status::Unavailable),
+            None => ("Unavailable".into(), Status::Unavailable),
+        },
     }
 }
 fn inspector(f: &mut Frame, app: &mut App, area: Rect) {
@@ -560,19 +574,30 @@ fn files(f: &mut Frame, app: &mut App, area: Rect) {
             app.outlined_controls,
         );
         let file = &app.data.files[i];
-        let found = file.found;
-        text(f, c[0], format!(" ▤ {}", file.name), IVORY);
+        // A rule separates configuration from agent-role documents, as on the board.
+        if visible > 0
+            && app.outlined_controls
+            && app.data.files[i - 1].group != file.group
+            && file.group == "MagicStudio agent roles"
+            && i != app.selected
+        {
+            let width = c[5].x.saturating_sub(a.x + 2);
+            f.render_widget(
+                Paragraph::new("─".repeat(width as usize)).style(Style::default().fg(CORAL)),
+                Rect::new(a.x, a.y - 1, width, 1),
+            );
+        }
+        text(f, c[0], format!(" ▤   {}", file.name), IVORY);
         text(f, c[1], file.group, IVORY);
         text(f, c[2], file.kind, IVORY);
-        text(
+        status(
             f,
             c[3],
-            if found {
-                "● Found"
+            if file.found {
+                Status::Found
             } else {
-                "● Unavailable"
+                Status::Unavailable
             },
-            if found { GREEN } else { GOLD },
         );
         text(f, c[4], file.location(), CYAN);
         app.rows.push((
@@ -598,11 +623,11 @@ fn details(f: &mut Frame, app: &App, area: Rect) {
         area.width.saturating_sub(6),
         area.height.saturating_sub(6),
     );
-    f.render_widget(Clear, modal);
+    clear_overlay(f, modal);
     let inner = panel(f, modal, "DETAILS • PgUp/PgDn scroll • d / Esc close");
     let file = &app.data.files[app.selected];
     let content = format!(
-        "{}\n\nPath: {}\n\nModified: {}\nType: {}\nAssociation: Unavailable\n\n{}\n\n{}\n\n{}\n\nProject root: {}\nProject count: unavailable — no authoritative complete-library source.\nUnknown files/folders: unavailable — no authoritative classification source.\nCast: unavailable — no runtime agents observed or contacted.\n\n{}",
+        "{}\n\nPath: {}\n\nModified: {}\nType: {}\nAssociation: Unavailable\n\n{}\n\n{}\n\n{}\n\nProject root: {}\n{}\nCast: unavailable — no runtime agents observed or contacted.\n\n{}",
         file.name,
         file.location(),
         file.modified,
@@ -615,6 +640,7 @@ fn details(f: &mut Frame, app: &App, area: Rect) {
             .as_ref()
             .map(|p| clean(&p.display().to_string()))
             .unwrap_or_else(|| "Unavailable".into()),
+        library_listing(app),
         app.message
     );
     f.render_widget(
@@ -624,6 +650,32 @@ fn details(f: &mut Frame, app: &App, area: Rect) {
             .wrap(Wrap { trim: false }),
         inner,
     );
+}
+
+/// The classified projects root for the details overlay: every item behind each count.
+fn library_listing(app: &App) -> String {
+    let library = match &app.data.library {
+        Some(Ok(library)) => library,
+        Some(Err(e)) => return format!("Library: unreadable — {e}"),
+        None => return "Library: unavailable — project root not observed.".into(),
+    };
+    let mut out = String::from(
+        "Library rule: a project is a .magic file at the root or one folder down. \
+         Other top-level items are unknown — listed for inspection, not disposable.\n",
+    );
+    for (label, count, _, items) in library.rows() {
+        out.push_str(&format!("\n{label}: {count}\n"));
+        for item in items {
+            out.push_str(&format!("  {}\n", clean(&item.display().to_string())));
+        }
+    }
+    out
+}
+
+/// Overlays clear to the workshop background, not the terminal's own colour.
+fn clear_overlay(f: &mut Frame, area: Rect) {
+    f.render_widget(Clear, area);
+    f.render_widget(Block::default().style(Style::default().bg(BG)), area);
 }
 
 fn dividers(f: &mut Frame, columns: &[Rect]) {
@@ -754,7 +806,7 @@ fn project_details(f: &mut Frame, app: &App, area: Rect) {
         area.width.saturating_sub(6),
         area.height.saturating_sub(6),
     );
-    f.render_widget(Clear, modal);
+    clear_overlay(f, modal);
     let inner = panel(
         f,
         modal,
@@ -826,7 +878,7 @@ fn audit_details(f: &mut Frame, app: &App, area: Rect) {
         area.width.saturating_sub(6),
         area.height.saturating_sub(6),
     );
-    f.render_widget(Clear, modal);
+    clear_overlay(f, modal);
     let inner = panel(
         f,
         modal,
@@ -882,7 +934,7 @@ fn mops_details(f: &mut Frame, app: &App, area: Rect) {
         area.width.saturating_sub(6),
         area.height.saturating_sub(6),
     );
-    f.render_widget(Clear, modal);
+    clear_overlay(f, modal);
     let inner = panel(
         f,
         modal,

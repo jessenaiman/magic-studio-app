@@ -31,7 +31,7 @@ if _REPO_ROOT not in sys.path:
 from pipeline.pose_and_part_cutter import (
     VIEWS,
     _clean_crop,
-    _find_photocraft_cli,
+    _find_image_cli,
     _ocr_labels,
 )
 from pipeline.step_cutter_review import background_candidates, detect_components
@@ -123,7 +123,7 @@ def _classify_unlabelled_panel_with_vision_fallback(
     return f"pose_{index:02d}", "jev_vision_extra"
 
 
-def _normalize_cell_with_photocraft(
+def _normalize_cell(
     pc_bin: str,
     crop_img: Image.Image,
     out_path: Path,
@@ -171,7 +171,7 @@ def _normalize_cell_with_photocraft(
         tmp_in.unlink(missing_ok=True)
 
 
-def _flip_horizontal_with_photocraft(pc_bin: str, src_png: Path, dst_png: Path) -> bool:
+def _flip_horizontal(pc_bin: str, src_png: Path, dst_png: Path) -> bool:
     """Create a mirrored directional frame using native `photocraft-cli` (`image.imageRotation.flipCanvasHorizontal`)."""
     proc = subprocess.run(
         [
@@ -208,7 +208,7 @@ def normalize_and_reorder_sheet(
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     pc_bin = (
-        _find_photocraft_cli() or shutil.which("photocraft-cli") or "photocraft-cli"
+        _find_image_cli() or shutil.which("photocraft-cli") or "photocraft-cli"
     )
     with Image.open(src_path) as im:
         rgba = im.convert("RGBA")
@@ -301,7 +301,7 @@ def normalize_and_reorder_sheet(
         lbl = panel["label"]
         rel_file = f"frames/{new_idx:02d}_{lbl}.png"
         out_file = out_root / rel_file
-        _normalize_cell_with_photocraft(pc_bin, panel["crop"], out_file, cell_w, cell_h)
+        _normalize_cell(pc_bin, panel["crop"], out_file, cell_w, cell_h)
         entry = {
             "index": new_idx,
             "label": lbl,
@@ -341,7 +341,7 @@ def normalize_and_reorder_sheet(
             if "walk_left" not in by_label:
                 wl_rel = f"frames/{len(normalized_frames):02d}_walk_left.png"
                 wl_path = out_root / wl_rel
-                if _flip_horizontal_with_photocraft(pc_bin, base_path, wl_path):
+                if _flip_horizontal(pc_bin, base_path, wl_path):
                     wl_entry = {
                         **base_walk,
                         "index": len(normalized_frames),

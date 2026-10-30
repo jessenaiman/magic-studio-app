@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "description": "Repository audit tools run by magic-cli audit.",
+  "devDependencies": {
+    "eslint": "10.14.0",
+    "jscpd": "5.4.2",
+    "postcss": "8.5.6",
+    "purgecss": "8.0.0",
+    "stylelint": "17.16.0",
+    "wallace-cli": "4.0.4"
+  }
+}

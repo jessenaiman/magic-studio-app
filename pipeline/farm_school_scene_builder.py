@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Blender 5.3 Multi-Character & Farm School Lineup Scene Orchestrator.
+Blender Multi-Character & Farm School Lineup Scene Orchestrator.
 
 Sequentially loads the three refactored 3D+2D pipeline stages:
   1. `pipeline/step_volume_hull.py`     — 2D turnaround + `motion_range.json` (`footLiftPx`) -> `visual_hull.npz`
-  2. `pipeline/step_blender_mesh_rig.py` — 3D remesh, arm-torso partition, UV projection bake & `ARM_<slug>` armature
-  3. `pipeline/step_blender_2d_anim.py`  — 2D gait/pose cycle import -> 3D IK animation, manifold QA & `.blend`/`.glb`/`.mp4`
+  2. `pipeline/build_character_mesh.py` — 3D remesh, arm-torso partition, UV projection bake & `ARM_<slug>` armature
+  3. `pipeline/render_character_animation.py`  — 2D gait/pose cycle import -> 3D IK animation, manifold QA & `.blend`/`.glb`/`.mp4`
 """
 
 from __future__ import annotations
@@ -29,25 +29,25 @@ from pipeline.step_volume_hull import (
     SCHOOL_BG,
     SIX_CAST_ORDER,
     VIEW_ANGLES,
-    prepare_volume,
     resolve_character_assets,
 )
-from pipeline.step_blender_mesh_rig import BLENDER_MESH_RIG_CODE
-from pipeline.step_blender_2d_anim import (
+from pipeline.volume_reconstruction import prepare_volume
+from pipeline.build_character_mesh import BLENDER_MESH_RIG_CODE
+from pipeline.render_character_animation import (
     BLENDER_2D_ANIM_CODE,
     BLENDER_HELPERS,
     gait_frames,
     root_at,
-    run_blender_stage as _run_blender,
+    render_rig_stage as _run_blender,
     smooth01,
 )
 
 
-def _blender_rig_helper_code() -> str:
+def _rig_helper_code() -> str:
     return BLENDER_HELPERS
 
 
-def render_single_character_blender53(
+def render_single_character(
     slug: str,
     out_mp4: str,
     out_png: str,
@@ -98,10 +98,10 @@ def build_farm_school_milestone(
     if only_character and only_character != "all":
         slug = only_character.lower().strip()
         folder = out / "characters" / slug
-        return render_single_character_blender53(
+        return render_single_character(
             slug,
-            str(folder / f"{slug}_blender53.mp4"),
-            str(folder / f"{slug}_blender53_preview.png"),
+            str(folder / f"{slug}_blender.mp4"),
+            str(folder / f"{slug}_blender_preview.png"),
             str(folder / f"{slug}_rig.glb"),
             str(folder / f"{slug}_rig.blend"),
         )
@@ -112,10 +112,10 @@ def build_farm_school_milestone(
         slug = source["slug"]
         folder = out / "characters" / slug
         reports.append(
-            render_single_character_blender53(
+            render_single_character(
                 slug,
-                str(folder / f"{slug}_blender53.mp4"),
-                str(folder / f"{slug}_blender53_preview.png"),
+                str(folder / f"{slug}_blender.mp4"),
+                str(folder / f"{slug}_blender_preview.png"),
                 str(folder / f"{slug}_rig.glb"),
                 str(folder / f"{slug}_rig.blend"),
             )

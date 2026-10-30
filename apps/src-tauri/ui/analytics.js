@@ -1,154 +1,226 @@
-// Analytics reads saved measurements on entry. Scanning is an explicit action, never a timer.
-const analyticsState = { data: null, section: 'backstage', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
-const ANALYTICS_SECTIONS = [['backstage','Backstage'],['overview','Overview'],['complexity','Code Complexity'],['tokens','Recorded Usage'],['health','App & Tool Health'],['commands','Command Reference']];
+// Mayhem: code, usage and tool reports. Saved measurements are read on entry;
+// scanning is an explicit action, never a timer. Report pieces come from report.js.
+const mayhem = { data: null, section: 'overview', loading: false, error: null, diagram: 'magic-cli', commandFilter: '' };
+const MAYHEM_SECTIONS = [['overview', 'Overview'], ['code', 'Code'], ['usage', 'Usage'], ['tools', 'Tools'],
+  ['commands', 'Commands'], ['backstage', 'Backstage'], ['architecture', 'Architecture']];
 // Existing Archify references, not live system models. Upstream evidence links stay pinned.
-const ANALYTICS_DIAGRAMS = [
+const MAYHEM_DIAGRAMS = [
   {id:'magic-cli',file:'magic-cli-architecture.html',title:'Magic CLI & Studio architecture',source:'CLI-Anything magic harness · unified live Studio & headless engine routing',revision:null},
   {id:'creator',file:'creator-view.html',title:'Creator’s loop',source:'Existing Magic Studio creator workflow · saved 27 Oct 2026',revision:null},
   {id:'pipeline',file:'pipeline-evidence.html',title:'Pipeline architecture · upstream evidence',source:'calesthio/OpenMontage · evidence-linked reference',revision:'3cd5700b977bcd63644a3118cc1783df1cb002c8'},
 ];
-function fmtCount(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
-  return Number(value).toLocaleString(undefined,{maximumFractionDigits:1});
-}
-function analyticsTime(seconds) {return seconds == null ? 'time unavailable' : new Date(seconds*1000).toLocaleString();}
-function analyticsCard(title,value,description) {return el('div',{class:'reference-summary'},el('h3',{},title),el('strong',{},value),el('p',{},description));}
-function analyticsGrid(...cards) {return el('div',{class:'reference-grid analytics-grid'},...cards);}
-function analyticsCode(comp,key) {return comp.available === true ? fmtCount(comp[key]) : '—';}
-function analyticsMemory(kb) {return kb == null ? '—' : `${fmtCount(Number(kb)/1024)} MB`;}
+const MAYHEM_SCAN_STATES = {measured:'Explicit scan',partial:'Partial scan',saved:'Saved scan',stale:'Saved scan · revision changed',worktree_unverified:'Saved scan · worktree changes not verified'};
+
+function mayhemTime(seconds) { return seconds == null ? 'time unavailable' : new Date(seconds * 1000).toLocaleString(); }
+function mayhemMemory(kb) { return kb == null ? '—' : `${reportValue(Number(kb) / 1048576)} GB`; }
+function mayhemMeasure(comp, key) { return comp.available === true ? comp[key] : null; }
+function mayhemScanLabel(comp) { return comp.available ? MAYHEM_SCAN_STATES[comp.state] || 'Saved measurement' : 'Not measured'; }
+
 async function renderAnalytics(scan = false) {
-  if (!$('view-analytics') || analyticsState.loading) return;
-  analyticsMount();analyticsState.loading=true;analyticsState.error=null;
-  $('analytics-refresh').disabled=true;$('analytics-scan').disabled=true;
-  $('analytics-message').textContent=scan?'Running Lizard on local source…':'Reading saved scan and recorded telemetry…';
-  try {analyticsState.data=await invoke('engine_command',{id:'app.analytics',params:{scan}});}
-  catch(error){analyticsState.error=String(error);}
+  if (!$('view-analytics') || mayhem.loading) return;
+  mayhemMount(); mayhem.loading = true; mayhem.error = null;
+  $('analytics-refresh').disabled = true; $('analytics-scan').disabled = true;
+  $('analytics-message').textContent = scan ? 'Running Lizard on local source…' : 'Reading saved scan and recorded usage…';
+  try { mayhem.data = await invoke('engine_command', { id: 'app.analytics', params: { scan } }); }
+  catch (error) { mayhem.error = String(error); }
   finally {
-    analyticsState.loading=false;$('analytics-refresh').disabled=false;$('analytics-scan').disabled=false;
-    mayhemHealthIndicator();analyticsRenderSurface();
+    mayhem.loading = false; $('analytics-refresh').disabled = false; $('analytics-scan').disabled = false;
+    mayhemHealthIndicator(); analyticsRenderSurface();
   }
 }
-function analyticsMount() {
+
+function mayhemMount() {
   if ($('analytics-layout')) return;
-  const nav=el('nav',{class:'reference-categories','aria-label':'Mayhem sections'},...ANALYTICS_SECTIONS.map(([id,label])=>el('button',{
-    id:`analytics-nav-${id}`,class:'ghost',onclick:()=>{analyticsState.section=id;analyticsRenderSurface();},
-  },label)));
-  const rail=el('aside',{class:'reference-rail','aria-label':'Mayhem navigation'},el('h2',{},'Mayhem'),nav,el('div',{id:'analytics-rail-summary',class:'reference-task-list'}));
-  const actions=el('div',{class:'reference-actions'},
-    el('button',{id:'analytics-refresh',class:'ghost',title:'Read saved scan and current telemetry without running Lizard','data-commands':'app.analytics',onclick:()=>renderAnalytics(false)},'Refresh data'),
-    el('button',{id:'analytics-scan',class:'start',title:'Explicitly measure local Rust, Python and shell JavaScript with Lizard','data-commands':'app.analytics',onclick:()=>renderAnalytics(true)},'Refresh scan'));
-  const main=el('main',{class:'reference-main',id:'analytics-main'},
-    el('header',{class:'reference-bar'},el('h2',{id:'analytics-breadcrumb',class:'reference-breadcrumb'},'Mayhem'),actions),
-    window.magicBackstageTerminal.mount(),
-    el('p',{id:'analytics-message',class:'reference-message',role:'status'}),el('div',{id:'analytics-surface',class:'reference-surface'}));
-  $('view-analytics').replaceChildren(el('div',{class:'reference-layout',id:'analytics-layout'},rail,main));
+  const tabs = el('nav', { class: 'segmented', id: 'mayhem-sections', role: 'tablist', 'aria-label': 'Mayhem sections' },
+    ...MAYHEM_SECTIONS.map(([id, label]) => el('button', { id: `analytics-nav-${id}`, role: 'tab',
+      onclick: () => { mayhem.section = id; analyticsRenderSurface(); } }, label)));
+  const actions = el('div', { class: 'report-actions' },
+    el('button', { id: 'analytics-refresh', class: 'ghost', title: 'Read the saved scan and recorded usage without running Lizard', 'data-commands': 'app.analytics', onclick: () => renderAnalytics(false) }, 'Refresh'),
+    el('button', { id: 'analytics-scan', class: 'start', title: 'Measure local Rust, Python and shell JavaScript with Lizard now', 'data-commands': 'app.analytics', onclick: () => renderAnalytics(true) }, 'Scan code'));
+  const head = el('header', { class: 'report-head' },
+    el('div', { class: 'report-title' }, el('h1', {}, 'Mayhem'),
+      el('p', { id: 'analytics-message', class: 'panel-status', role: 'status' }), actions), tabs);
+  const surface = el('div', { id: 'analytics-surface', class: 'report-surface' });
+  const backstage = el('div', { class: 'report-surface', id: 'analytics-backstage' }, window.magicBackstageTerminal.mount());
+  $('view-analytics').replaceChildren(el('div', { class: 'report-page', id: 'analytics-layout' },
+    head, el('div', { class: 'report-scroll' }, surface, backstage)));
 }
-function analyticsDiagram(surface) {
-  const selected=ANALYTICS_DIAGRAMS.find(item=>item.id===analyticsState.diagram)||ANALYTICS_DIAGRAMS[0];
-  const picker=el('select',{id:'analytics-diagram-select','aria-label':'Architecture reference',onchange:event=>{analyticsState.diagram=event.target.value;analyticsRenderSurface();}},
-    ...ANALYTICS_DIAGRAMS.map(item=>el('option',{value:item.id},item.title)));
-  picker.value=selected.id;
-  surface.append(el('section',{class:'analytics-architecture','aria-label':'Architecture reference'},
-    el('div',{class:'reference-bar'},el('h2',{},'How the work fits together'),picker),
-    el('p',{class:'muted'},selected.source+(selected.revision?` · revision ${selected.revision}`:'')),
-    el('iframe',{id:'analytics-diagram-frame',class:'analytics-diagram',title:selected.title,
-      src:`analytics-diagrams/${selected.file}?theme=dark&embed=1`,sandbox:'allow-scripts',
-      onerror:()=>{$('analytics-diagram-status').textContent='Diagram could not load. The source reference is shown above.';}}),
-    el('p',{id:'analytics-diagram-status',class:'muted'},'Saved Archify reference. Measurements below describe this Magic Studio source; they are not measurements of the diagram’s boxes.')));
-}
+
 function analyticsRenderSurface() {
-  const surface=$('analytics-surface');if(!surface)return;
-  const d=analyticsState.data||{},comp=d.complexity||{},usage=d.usage||{},totals=usage.available?usage.totals||{}:{},host=d.host||{},project=d.project||{};
-  const section=analyticsState.section;
-  document.getElementById('backstage-panel').hidden=section!=='backstage';
-  if(section==='backstage')window.dispatchEvent(new Event('backstage-visible'));
-  for(const [id,label] of ANALYTICS_SECTIONS){const button=$(`analytics-nav-${id}`);button.classList.toggle('active',id===section);button.setAttribute('aria-pressed',String(id===section));if(id===section)$('analytics-breadcrumb').textContent=`Mayhem · ${label}`;}
-  $('analytics-message').textContent=analyticsState.error?`Could not refresh: ${analyticsState.error}. Previous results, if any, remain below.`:
-    `Read ${analyticsTime(d.sampled_at_unix_secs)} · no background scans or polling`;
-  $('analytics-rail-summary').replaceChildren(analyticsRailReport(comp));
-  surface.replaceChildren();
-  if(section==='overview')analyticsDiagram(surface);
-  if(section==='overview'||section==='complexity')analyticsComplexity(surface,comp,section);
-  if(section==='overview'||section==='tokens') {
-    surface.append(el('h2',{},'Recorded usage · not billing'),analyticsGrid(
-      analyticsCard('Today’s recorded tokens',fmtCount(totals.today_tokens),usage.available?`${fmtCount(totals.today_prompts)} prompts · Omarchy local records`:'Omarchy usage records unavailable.'),
-      analyticsCard('Cumulative recorded tokens',fmtCount(totals.total_tokens),`Input ${fmtCount(totals.input_tokens)} · output ${fmtCount(totals.output_tokens)} · cache ${fmtCount(totals.cache_read_tokens)}`),
-      analyticsCard('Project chat estimate',project.project?fmtCount(project.estimated_tokens):'—',project.project?`${fmtCount(project.total_turns)} turns · ${fmtCount(project.assets_count)} assets · characters ÷ 4; not provider usage`:'No project selected.')));
-    if(section==='tokens')for(const agent of usage.agents||[])surface.append(analyticsCard(agent.name||agent.id,`${fmtCount(agent.today_tokens)} tokens today`,
-      `${fmtCount(agent.total_prompts)} total prompts · ${fmtCount(agent.total_sessions)} sessions · ${(agent.models||[]).map(model=>`${model.model}: ${fmtCount(model.total_tokens)}`).join(' · ')}`));
+  const surface = $('analytics-surface'); if (!surface) return;
+  const d = mayhem.data || {};
+  const backstage = mayhem.section === 'backstage';
+  $('analytics-backstage').hidden = !backstage; surface.hidden = backstage;
+  if (backstage) window.dispatchEvent(new Event('backstage-visible'));
+  for (const [id] of MAYHEM_SECTIONS) $(`analytics-nav-${id}`).setAttribute('aria-selected', String(id === mayhem.section));
+  $('analytics-message').textContent = mayhem.error
+    ? `Could not refresh: ${mayhem.error}. Previous results, if any, remain below.`
+    : `Read ${mayhemTime(d.sampled_at_unix_secs)} · no background scans or polling`;
+  surface.replaceChildren(...MAYHEM_RENDER[mayhem.section](d));
+}
+
+function mayhemStats(...stats) { return el('div', { class: 'report-stats' }, ...stats.map((stat) => new ReportStat(stat).element)); }
+
+function mayhemCodeStats(comp) {
+  const total = Number(mayhemMeasure(comp, 'functions_analyzed')) || 0, over = Number(mayhemMeasure(comp, 'functions_over_ccn_15')) || 0;
+  const top = comp.hotspots?.[0];
+  return [
+    { label: 'Functions over CCN 15', value: reportValue(mayhemMeasure(comp, 'functions_over_ccn_15')), signal: over ? 'needs-attention' : comp.available ? 'ready' : null,
+      share: total ? over / total : null, detail: total ? `${reportValue(100 * over / total)}% of ${reportValue(total)} functions` : comp.reason || 'Scan code to measure.' },
+    { label: 'Highest CCN', value: reportValue(mayhemMeasure(comp, 'max_ccn')), detail: top ? `${top.name} · ${top.file}:${top.start_line}` : '—' },
+    { label: 'Source lines', value: reportValue(mayhemMeasure(comp, 'total_source_lines'), { compact: true }),
+      detail: comp.available ? `${reportValue(comp.files_analyzed)} files with functions` : '—' },
+  ];
+}
+
+function mayhemUsageStats(usage) {
+  const totals = usage.available ? usage.totals || {} : {};
+  const active = (usage.agents || []).filter((agent) => agent.today_tokens > 0).length;
+  return [
+    { label: 'Tokens today', value: reportValue(totals.today_tokens, { compact: true }),
+      detail: usage.available ? `${reportValue(totals.today_prompts)} prompts · ${active} agents active` : 'Usage records unavailable.' },
+    { label: 'Tokens recorded', value: reportValue(totals.total_tokens, { compact: true }),
+      detail: totals.total_tokens ? `${reportValue(100 * totals.cache_read_tokens / totals.total_tokens)}% cache reads` : '—' },
+  ];
+}
+
+function mayhemToolStat(tools = []) {
+  const found = tools.filter((tool) => tool.available).length;
+  return { label: 'Tools found', value: tools.length ? `${found} / ${tools.length}` : '—',
+    signal: tools.length ? (found === tools.length ? 'ready' : 'needs-attention') : 'idle', detail: 'Executable on PATH · not a run' };
+}
+
+function mayhemHotspots(comp, limit) {
+  return new ReportTable({ rows: (comp.hotspots || []).slice(0, limit), empty: comp.reason || 'No saved scan. Scan code to measure.', columns: [
+    { label: 'Function', value: (fn) => fn.name },
+    { label: 'Where', value: (fn) => el('code', {}, `${fn.file.split('/').pop()}:${fn.start_line}`), title: (fn) => `${fn.file}:${fn.start_line}–${fn.end_line}` },
+    { label: 'CCN', value: (fn) => fn.ccn, numeric: true, bar: true },
+    { label: 'NLOC', value: (fn) => fn.nloc, numeric: true },
+  ] }).element;
+}
+
+function mayhemAgents(usage, todayOnly) {
+  const rows = (usage.agents || []).filter((agent) => (todayOnly ? agent.today_tokens : agent.total_tokens) > 0);
+  const limit = (agent) => agent.limits?.[0];
+  return new ReportTable({ rows, empty: usage.available ? 'No recorded usage.' : 'Usage records unavailable.', columns: [
+    { label: 'Agent', value: (agent) => agent.name || agent.id },
+    { label: 'Today', value: (agent) => agent.today_tokens, numeric: true, compact: true, bar: true },
+    ...(todayOnly ? [] : [
+      { label: 'Recorded', value: (agent) => agent.total_tokens, numeric: true, compact: true },
+      { label: 'Prompts', value: (agent) => agent.total_prompts, numeric: true },
+      { label: 'Top model', value: (agent) => agent.models?.[0]?.model || '—' }]),
+    { label: 'Limit used', value: (agent) => limit(agent)?.percent ?? null, numeric: true,
+      text: (agent) => limit(agent) ? `${reportValue(100 * limit(agent).percent)}%` : '—', title: (agent) => limit(agent)?.label ?? null },
+  ] }).element;
+}
+
+function mayhemCoverage(comp) {
+  if (!comp.available) return null;
+  const failed = comp.scan_failures || [];
+  const dirty = comp.source_dirty === true ? 'worktree had changes' : comp.source_dirty === false ? 'clean worktree' : 'worktree unknown';
+  return `${mayhemScanLabel(comp)} · ${mayhemTime(comp.measured_at_unix_secs)} · ${dirty}${failed.length ? ` · not measured: ${failed.join(', ')}` : ''} · Lizard ${comp.tool_version || ''}`;
+}
+
+function mayhemOverview(d) {
+  const comp = d.complexity || {}, usage = d.usage || {};
+  return [
+    mayhemStats(...mayhemCodeStats(comp).slice(0, 2), mayhemUsageStats(usage)[0], mayhemToolStat(d.tools)),
+    el('div', { class: 'report-columns' },
+      new ReportSection({ title: 'Complexity hotspots', note: mayhemCoverage(comp) }, mayhemHotspots(comp, 6)).element,
+      new ReportSection({ title: 'Usage today', note: 'Recorded by local agent tools · not billing' }, mayhemAgents(usage, true)).element),
+  ];
+}
+
+function mayhemCode(d) {
+  const comp = d.complexity || {};
+  const files = new ReportTable({ rows: comp.largest_ccn_files || [], empty: 'No saved scan.', columns: [
+    { label: 'File', value: (file) => el('code', {}, file.file.split('/').pop()), title: (file) => file.file },
+    { label: 'Total CCN', value: (file) => file.ccn, numeric: true, bar: true },
+    { label: 'Max', value: (file) => file.max_ccn, numeric: true },
+    { label: 'Functions', value: (file) => file.functions, numeric: true },
+    { label: 'Lines', value: (file) => file.lines, numeric: true },
+  ] }).element;
+  const provenance = el('details', { class: 'report-provenance' }, el('summary', {}, 'Measurement source and coverage'),
+    el('code', {}, `${comp.source_root || 'Source root unavailable'}\nrevision ${comp.source_revision || 'unavailable'}\n${comp.tool_path || 'Tool path unavailable'}\nTargets: ${(comp.targets || []).join(', ')}`));
+  return [
+    mayhemStats(...mayhemCodeStats(comp)),
+    new ReportSection({ title: 'Function hotspots', note: 'CCN and NLOC are Lizard measurements; CCN 15 is this repository’s limit.' }, mayhemHotspots(comp, 25)).element,
+    new ReportSection({ title: 'Most complex files', note: mayhemCoverage(comp) }, files, provenance).element,
+  ];
+}
+
+function mayhemUsage(d) {
+  const usage = d.usage || {}, project = d.project || {};
+  return [
+    mayhemStats(...mayhemUsageStats(usage),
+      { label: 'This project’s chat', value: project.project ? reportValue(project.estimated_tokens, { compact: true }) : '—',
+        detail: project.project ? `${reportValue(project.total_turns)} turns · estimate: characters ÷ 4` : 'No project selected.' }),
+    new ReportSection({ title: 'Agents', note: 'Omarchy local usage records · not provider billing' }, mayhemAgents(usage, false)).element,
+  ];
+}
+
+function mayhemTools(d) {
+  const host = d.host || {};
+  const tools = new ReportTable({ rows: d.tools || [], empty: 'Refresh to check tools.', columns: [
+    { label: 'Tool', value: (tool) => el('span', { class: 'report-name' }, window.companionBoxes.dot(tool.available ? 'ready' : 'needs-attention'), tool.tool) },
+    { label: 'Resolved', value: (tool) => el('code', {}, tool.available ? tool.resolved : 'not found') },
+  ] }).element;
+  const used = host.mem_total_kb ? host.mem_used_kb / host.mem_total_kb : null;
+  return [
+    mayhemStats(mayhemToolStat(d.tools),
+      { label: 'Studio process', value: mayhemMemory(host.self_rss_kb), detail: `PID ${host.pid ?? '—'} · resident memory` },
+      { label: 'System memory', value: mayhemMemory(host.mem_used_kb), share: used, detail: `of ${mayhemMemory(host.mem_total_kb)} · load ${host.load || '—'}` }),
+    new ReportSection({ title: 'Production tools', note: 'Found on PATH is not a successful run. Read from /proc and PATH.' }, tools).element,
+  ];
+}
+
+function mayhemCommands(d) {
+  const catalog = d.commands;
+  if (!catalog?.commands) return [el('p', { class: 'panel-empty', 'data-look': 'inline' }, 'Command metadata unavailable. Refresh to read it.')];
+  const input = el('input', { id: 'analytics-command-search', class: 'field report-search', type: 'search', placeholder: 'Find a command or feature',
+    'aria-label': 'Find current command', value: mayhem.commandFilter,
+    oninput: (event) => { mayhem.commandFilter = event.target.value; mayhemCommandRows(catalog.commands); } });
+  const section = new ReportSection({ title: `Commands · ${catalog.commands.length}`, note: 'From the shared engine command.list. Run with magic-cli exec ID key=value.' },
+    input, el('div', { id: 'analytics-command-list', class: 'report-body' }));
+  queueMicrotask(() => mayhemCommandRows(catalog.commands));
+  return [section.element];
+}
+
+function mayhemCommandRows(commands) {
+  const root = $('analytics-command-list'); if (!root) return;
+  const filter = mayhem.commandFilter.toLowerCase();
+  const groups = new Map();
+  for (const command of commands.filter((c) => `${c.id} ${c.label} ${c.params}`.toLowerCase().includes(filter))) {
+    const key = command.menu?.[0] || command.id.split('.')[0];
+    groups.set(key, [...(groups.get(key) || []), command]);
   }
-  if(section==='overview'||section==='health') {
-    surface.append(el('h2',{},'Host and tool observations'),analyticsGrid(
-      analyticsCard('This process',analyticsMemory(host.self_rss_kb),`PID ${host.pid??'—'} · source /proc`),
-      analyticsCard('System RAM',analyticsMemory(host.mem_used_kb),`Total ${analyticsMemory(host.mem_total_kb)} · load ${host.load||'unavailable'}`)));
-    if(section==='health')surface.append(analyticsGrid(...(d.tools||[]).map(tool=>analyticsCard(tool.tool,tool.available?'Executable found':'Not found',tool.resolved+' · path check only'))),
-      el('p',{class:'muted'},'Executable presence is not a successful run. Codacy findings and CodeGraph measurements are not connected to this view.'));
-  }
-  if(section==='commands')analyticsCommands(surface,d.commands);
+  root.replaceChildren(...[...groups].map(([name, items]) => el('details', { class: 'report-group', open: Boolean(filter) },
+    el('summary', {}, `${name} · ${items.length}`),
+    new ReportTable({ rows: items, columns: [
+      { label: 'Command', value: (c) => c.label },
+      { label: 'ID', value: (c) => el('code', { title: c.params }, c.id) },
+      { label: 'Shortcut', value: (c) => c.shortcut || '—' },
+    ] }).element)));
 }
-function analyticsScanLabel(comp) {
-  if (!comp.available) return 'Not measured';
-  return {measured:'Explicit scan',partial:'Partial scan',saved:'Saved scan',stale:'Saved scan · revision changed',worktree_unverified:'Saved scan · worktree changes not verified'}[comp.state]||'Saved measurement';
+
+function mayhemArchitecture() {
+  const selected = MAYHEM_DIAGRAMS.find((item) => item.id === mayhem.diagram) || MAYHEM_DIAGRAMS[0];
+  const picker = el('select', { id: 'analytics-diagram-select', class: 'field', 'aria-label': 'Architecture reference',
+    onchange: (event) => { mayhem.diagram = event.target.value; analyticsRenderSurface(); } },
+    ...MAYHEM_DIAGRAMS.map((item) => el('option', { value: item.id }, item.title)));
+  picker.value = selected.id;
+  return [new ReportSection({ title: 'How the work fits together', actions: [picker],
+    note: `Saved Archify reference, not a live model · ${selected.source}${selected.revision ? ` · revision ${selected.revision}` : ''}` },
+  el('iframe', { id: 'analytics-diagram-frame', class: 'report-frame', title: selected.title,
+    src: `analytics-diagrams/${selected.file}?theme=dark&embed=1`, sandbox: 'allow-scripts' })).element];
 }
-function analyticsRailReport(comp) {
-  const metrics=[['Files with functions','files_analyzed'],['Functions','functions_analyzed'],['CCN > 15','functions_over_ccn_15'],['Max CCN','max_ccn'],['Long files with functions','long_files'],['Lines in files with functions','total_source_lines']];
-  const failed=comp.scan_failures?.length||0;
-  const total=comp.available?Number(comp.functions_analyzed):0;
-  const hotspots=comp.available?Number(comp.functions_over_ccn_15):0;
-  const ratio=total>0&&Number.isFinite(hotspots)?`${fmtCount(hotspots)} / ${fmtCount(total)} functions exceed CCN 15`:null;
-  return el('section',{class:'analytics-rail-report','aria-label':'Last code scan report'},
-    el('h3',{},'Last code scan'),
-    el('p',{class:'analytics-scan-state',role:'status','data-state':failed?'partial':comp.state||'not_measured'},analyticsScanLabel(comp)+(failed?` · ${failed} failed target${failed===1?'':'s'}`:'')),
-    el('small',{},comp.available?analyticsTime(comp.measured_at_unix_secs):(comp.reason||'Use Refresh scan to measure code.')),
-    ratio?el('meter',{min:0,max:total,value:hotspots,'aria-label':ratio,title:ratio}):null,
-    ratio?el('small',{},ratio):null,
-    el('dl',{class:'analytics-numbers'},...metrics.flatMap(([label,key])=>[el('dt',{},label),el('dd',{},analyticsCode(comp,key))])),
-    comp.available?el('small',{title:comp.source_revision||'Source revision unavailable'},`Lizard ${comp.tool_version||'version unknown'} · ${(comp.source_revision||'revision unavailable').slice(0,12)}`):null,
-    comp.last_error||comp.cache_error?el('small',{role:'status'},comp.last_error||comp.cache_error):null,
-    el('small',{},'Current CLI: magic (CLI-Anything harness)'));
-}
-function analyticsComplexity(surface,comp,section) {
-  surface.append(el('h2',{},'Code measurements · Lizard'));
-  surface.append(el('p',{class:'muted'},'CCN, NLOC, tokens and parameters are Lizard measurements; the CCN > 15 count is an application threshold. ',el('a',{href:'https://github.com/terryyin/lizard'},'Lizard documentation')));
-  if(!comp.available){surface.append(el('p',{class:'panel-empty'},comp.reason||'No saved scan. Use Refresh scan to measure local source.'));return;}
-  const stateLabel=analyticsScanLabel(comp);
-  surface.append(el('p',{class:'muted'},`${stateLabel} · ${analyticsTime(comp.measured_at_unix_secs)} · ${comp.tool||'lizard'}${comp.tool_version?' '+comp.tool_version:''}`),
-    el('details',{class:'analytics-provenance'},el('summary',{},'Measurement source and coverage'),
-      el('code',{},`${comp.source_root||'Source root unavailable'}\nrevision ${comp.source_revision||'unavailable'}\nWorktree at scan: ${comp.source_dirty===true?'changed':comp.source_dirty===false?'clean':'unknown'}\n${comp.tool_path||'Tool path unavailable'}\nTargets: ${(comp.targets||[]).join(', ')}`)),
-    analyticsGrid(analyticsCard('Functions over CCN 15',analyticsCode(comp,'functions_over_ccn_15'),`Max CCN ${analyticsCode(comp,'max_ccn')} · ${analyticsCode(comp,'functions_analyzed')} functions`),
-      analyticsCard('Source size',analyticsCode(comp,'total_source_lines'),`${analyticsCode(comp,'files_analyzed')} files with functions · ${analyticsCode(comp,'total_nloc')} function NLOC`),
-      analyticsCard('Long files with functions',analyticsCode(comp,'long_files'),`Threshold ${fmtCount(comp.long_file_threshold_lines)} lines · ${analyticsCode(comp,'ui_files_analyzed')} UI modules with functions`)));
-  if(comp.last_error||comp.cache_error)surface.append(el('p',{role:'status'},comp.last_error||`Measured, but could not save scan: ${comp.cache_error}`));
-  if(comp.scan_failures?.length)surface.append(el('p',{role:'status'},`Partial coverage / failed targets: ${comp.scan_failures.join(', ')}`));
-  if(comp.last_scan_failures?.length)surface.append(el('p',{role:'status'},`Latest scan failed for: ${comp.last_scan_failures.join(', ')}`));
-  if(section!=='complexity')return;
-  for(const [key,title] of [['longest_files','Longest measured files'],['largest_ccn_files','Highest complexity files']]) {
-    surface.append(el('h3',{},title),analyticsGrid(...(comp[key]||[]).map((file,index)=>el('div',{class:'reference-summary',id:`analytics-${key}-${index}`},
-      el('h3',{},file.file),el('code',{},`${fmtCount(file.lines)} lines · CCN ${fmtCount(file.ccn)} · max ${fmtCount(file.max_ccn)} · ${fmtCount(file.functions)} functions`)))));
-  }
-  surface.append(el('h3',{},'Function hotspots'),analyticsGrid(...(comp.hotspots||[]).slice(0,24).map((fn,index)=>el('div',{class:'reference-summary',id:`analytics-hotspot-${index}`},
-    el('h3',{},`${fn.name} · CCN ${fmtCount(fn.ccn)}`),el('code',{},`${fn.file}:${fn.start_line}–${fn.end_line}`),el('p',{},`${fmtCount(fn.nloc)} NLOC · ${fmtCount(fn.tokens)} code tokens · ${fmtCount(fn.params)} parameters`)))));
-}
-function analyticsCommands(surface,catalog) {
-  surface.append(el('h2',{},'Current command reference'),el('p',{class:'muted'},'Read directly from the shared engine command.list metadata. Executed through the magic CLI and magic mcp over the bound live Studio session or headless engine.'));
-  if(!catalog?.commands){surface.append(el('p',{class:'panel-empty'},'Command metadata unavailable. Refresh data to read it.'));return;}
-  const input=el('input',{id:'analytics-command-search',type:'search',placeholder:'Find a command or feature','aria-label':'Find current command',value:analyticsState.commandFilter,
-    oninput:event=>{analyticsState.commandFilter=event.target.value;analyticsCommandRows(catalog.commands);}});
-  surface.append(input,el('div',{id:'analytics-command-list'}));analyticsCommandRows(catalog.commands);
-}
-function analyticsCommandRows(commands) {
-  const root=$('analytics-command-list');if(!root)return;
-  const filter=analyticsState.commandFilter.toLowerCase();const selected=commands.filter(command=>`${command.id} ${command.label} ${command.params}`.toLowerCase().includes(filter));
-  const groups=new Map();for(const command of selected){const key=command.menu?.[0]||command.id.split('.')[0];if(!groups.has(key))groups.set(key,[]);groups.get(key).push(command);}
-  root.replaceChildren(el('p',{class:'muted'},`${selected.length} of ${commands.length} commands · parameter descriptions are examples, not required/optional schemas`));
-  for(const [name,items]of groups)root.append(el('details',{class:'analytics-command-group'},el('summary',{},`${name} · ${items.length}`),
-    ...items.map(command=>el('article',{class:'reference-summary'},el('h3',{},command.label),el('code',{},`magic exec ${command.id} [key=value ...]`),
-      el('p',{},`Menu: ${(command.menu||[]).join(' / ')||'no menu placement'} · Shortcut: ${command.shortcut||'none'}`),el('pre',{},command.params)))));
-}
+
+const MAYHEM_RENDER = { overview: mayhemOverview, code: mayhemCode, usage: mayhemUsage, tools: mayhemTools,
+  commands: mayhemCommands, backstage: () => [], architecture: mayhemArchitecture };
 
 // Saved measurements and observed executable presence are evidence, not a health score.
 function mayhemHealthIndicator() {
-  const d=analyticsState.data, comp=d?.complexity, tools=d?.tools;
+  const d=mayhem.data, comp=d?.complexity, tools=d?.tools;
   const missing=Array.isArray(tools)?tools.filter(tool=>tool.available===false).length:0;
   const failed=comp?.scan_failures?.length||0;
   const hotspots=comp?.available===true&&Number.isFinite(comp.functions_over_ccn_15)?comp.functions_over_ccn_15:0;
@@ -158,7 +230,7 @@ function mayhemHealthIndicator() {
   if(hotspots)warnings.push(`${hotspots} functions over CCN 15 in saved scan`);
   if(comp?.last_error||comp?.cache_error)warnings.push('scan error recorded');
   const button=document.getElementById('tab-analytics');
-  const stale=Boolean(analyticsState.error);
+  const stale=Boolean(mayhem.error);
   button.dataset.health=warnings.length?'warning':'unknown';
   document.getElementById('mayhem-health').textContent=warnings.length?`${stale?'Previous · ':''}${warnings.length} signal${warnings.length===1?'':'s'}`:'Unknown';
   button.title=`Mayhem · check here first. ${warnings.length?warnings.join('; '):'Overall health unknown; no connected audit result.'}${stale?' Refresh failed; previous observations retained.':''} Executable presence is not runtime health.`;

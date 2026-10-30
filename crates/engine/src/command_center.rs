@@ -199,7 +199,7 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(audio) = p["audio"].as_str().filter(|v| !v.is_empty()) {
         match s.execute(
             "workshop.set_audio",
-            json!({"path":audio,"hyperframes_cli":p["hyperframes_cli"]}),
+            json!({"path":audio,"resolve_video_cli":p["resolve_video_cli"]}),
         ) {
             Ok(value) => {
                 audio_setup = value;
@@ -345,7 +345,8 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     let mut next_commands = Vec::<Value>::new();
     // Supplied/previously imported timing is authoritative. Never fall back to ASR after an import error.
     if !valid && problems.is_empty() && s.song_audio.is_some() {
-        let params = json!({"_request_id":p["_request_id"],"_client":p["_client"],"analyze_beats":false,"hyperframes_cli":p["hyperframes_cli"]});
+        let analyze_beats = p.get("analyze_beats").and_then(Value::as_bool).unwrap_or(true);
+        let params = json!({"_request_id":p["_request_id"],"_client":p["_client"],"analyze_beats":analyze_beats,"resolve_video_cli":p["resolve_video_cli"]});
         match s.execute("audio.analyze", params.clone()) {
             Ok(_) => steps.push(json!({"command":"audio.analyze","params":params,"status":"complete; native pipeline output imported"})),
             Err(e) => {
@@ -401,7 +402,7 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     if valid && storyboard_ready && problems.is_empty() && !video_ready {
         match s.execute(
             "video.init",
-            json!({"target":"hyperframes","hyperframes_cli":p["hyperframes_cli"]}),
+            json!({"target":"hyperframes","resolve_video_cli":p["resolve_video_cli"]}),
         ) {
             Ok(value) => {
                 video_ready = value["captions"]["ready"] == true;
@@ -415,7 +416,7 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
             }
         }
         if !video_ready {
-            next_commands.push(json!({"command":"video.init","params":{"target":"hyperframes","hyperframes_cli":p["hyperframes_cli"]},"reason":"Correct the reported native video/caption handoff failure; existing timing and deck are preserved"}));
+            next_commands.push(json!({"command":"video.init","params":{"target":"hyperframes","resolve_video_cli":p["resolve_video_cli"]},"reason":"Correct the reported native video/caption handoff failure; existing timing and deck are preserved"}));
         }
     }
     let result = json!({"ok":true,"warnings":warnings,"location":location,"intake_ready":problems.is_empty()&&valid&&storyboard_ready&&video_ready,"video_ready":video_ready,"video":video,"storyboard_ready":storyboard_ready,"storyboard":storyboard,"studio_verified":false,"project":path,"steps":steps,"problems":problems,"received":received,"visual_review":"pending","transcript_valid":valid && !steps.iter().any(|v|v["command"]=="workshop.import_transcript"&&v["status"]=="failed"),"manual":"magic-cli commands project.intake","next_commands":next_commands,"next_command":format!("{} --project {} commands",shell_quote(&cli_program()),shell_quote(&path.to_string_lossy()))});

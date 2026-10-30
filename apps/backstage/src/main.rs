@@ -652,6 +652,11 @@ impl App {
         }
     }
     fn open(&mut self, index: usize) {
+        if data::inspect_row(index).is_some() {
+            self.details = true;
+            self.detail_scroll = 0;
+            return;
+        }
         if index == usize::MAX {
             let path = self.data.projects_root.as_deref().filter(|p| p.is_dir());
             self.message = match path {

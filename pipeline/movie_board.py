@@ -38,7 +38,8 @@ def canonical_scenes(scene_map):
                 start_seconds=start,
                 end_seconds=end,
                 lyric_text=" ".join(
-                    str(line["lyric"]) for line in packet.get("lines", [])
+                    str(line.get("lyric") if "lyric" in line else line.get("text", ""))
+                    for line in packet.get("lines", [])
                 ),
             )
         )
@@ -145,7 +146,7 @@ def normalize_scene_content(packets, expected_fields):
 
 
 def template_schema(template, out):
-    from deckcraft_template import Deck, inspect_pages, note
+    from storyboard_layout import Deck, inspect_pages, note
 
     d = Deck(template.parent, out)
     try:
@@ -430,6 +431,310 @@ def doctor(manifest, source):
     return result
 
 
+_TEMPLATE_PLACEHOLDERS = (
+    "Describe the story, characters",
+    "Name this location and place",
+    "Name the cast and reusable props",
+    "Register existing artwork",
+    "Place the scene reference",
+    "See the four panels",
+    "Describe the visible action",
+    "Link cast, props and locations",
+    "Describe the reference image",
+    "Describe movement, timing",
+    "Text, word IDs, reveal timing",
+    "What is drawn, when it appears",
+)
+
+
+def _is_authored_text(val):
+    if not isinstance(val, str):
+        return False
+    s = val.strip()
+    if not s:
+        return False
+    return (
+        not any(s.startswith(p) for p in _TEMPLATE_PLACEHOLDERS)
+        and "\nRegister existing artwork" not in s
+    )
+
+
+_BG_NOTES = {
+    "barn-open": "Main Lyric Backdrop (words-verse-1-1, 0.00–8.80s) & Scene 2–3 plate: Open red-brown cut-paper barn with warm interior glow.",
+    "meadow-day": "Alternate Lyric Backdrop (words-verse-2-1, 8.40–20.64s) & Scene 5–6 plate: Sunlit painted meadow with felt flower stage.",
+    "barn-closed": "Scene 1 Intro Plate (0.00–1.80s): Dawn at the closed red-brown cut-paper barn doors with a warm crack of light.",
+    "meadow-golden": "Scene 4 Sky & Scene 8 Golden-Hour Rest Plate (15.48–20.64s): Warm evening meadow & far-barn sky plates.",
+    "far-barn-sky": "Scene 4 Mid-Air Zoom Plate (6.50–8.80s): Open sky with distant barn for the BZZZZZZ close-up.",
+    "bunnies-on-ground": "Main Lyric Backdrop (words-verse-1-1, 0.39–12.1s) & Scene 1–3 plate: Stitched wool-felt bunnies on burlap/kraft ground by twig fence.",
+    "rabbit-hole-underground": "Scene 4–6 Cutaway Burrow Plate (12.1–24.6s): Torn-paper grass above & corrugated-cardboard UNDERGROUND burrow below.",
+    "garden-lettuce-carrots": "Alternate Lyric Backdrop (words-verse-2-1, 24.6–33.9s) & Scene 7–9 plate: Crinkled tissue-paper lettuce & painted carrot tops in soil.",
+    "farmer-looking-burrow": "Scene 10–12 Finale Plate (33.9–47.5s): Collage straw-hat/denim farmer looking around while cotton tails dive underground.",
+}
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _read_words_inventory(source_root):
+    words_path = source_root / "design/words.json"
+    words_doc = json.loads(words_path.read_text()) if words_path.is_file() else {}
+    lyric_bgs, draw_names = {}, []
+    for anim in words_doc.get("animations") or []:
+        bg = anim.get("background_asset")
+        sec = anim.get("scope", {}).get("section", anim.get("animation_id", ""))
+        if bg:
+            lyric_bgs[bg] = f"{anim.get('animation_id')} ({sec})"
+        for d in anim.get("kinetic", {}).get("draws", []):
+            name = d.get("drawing", {}).get("name")
+            if name and name not in draw_names:
+                draw_names.append(name)
+    return lyric_bgs, draw_names
+
+
+def _scan_background_files(bg_root):
+    found = {}
+    if not bg_root.is_dir():
+        return found
+    for entry in sorted(bg_root.iterdir()):
+        if entry.is_dir():
+            img = next(
+                (p for p in sorted(entry.iterdir()) if p.suffix.lower() in _IMAGE_EXTS),
+                None,
+            )
+            if img:
+                found[entry.name] = img
+        elif entry.suffix.lower() in _IMAGE_EXTS:
+            found[entry.stem] = entry
+    return found
+
+
+def _discover_locations(source_root, lyric_bgs):
+    found_bgs = _scan_background_files(source_root / "assets/backgrounds")
+    ordered = [k for k in lyric_bgs if k in found_bgs] + [
+        k for k in found_bgs if k not in lyric_bgs
+    ]
+    preferred = [
+        k
+        for k in (
+            "barn-open",
+            "meadow-day",
+            "barn-closed",
+            "meadow-golden",
+            "bunnies-on-ground",
+            "garden-lettuce-carrots",
+            "farmer-looking-burrow",
+            "rabbit-hole-underground",
+        )
+        if k in found_bgs
+    ]
+    chosen = preferred[:4] if len(preferred) >= 4 else ordered[:4]
+    locations = []
+    for bg_id in chosen:
+        img = found_bgs[bg_id]
+        fallback = (
+            f"Mapped lyric backdrop for {lyric_bgs[bg_id]}"
+            if bg_id in lyric_bgs
+            else f"Storyboard background plate ({bg_id})"
+        )
+        note = _BG_NOTES.get(bg_id, fallback)
+        locations.append(
+            dict(
+                id=bg_id,
+                name=bg_id.replace("-", " ").title(),
+                file=str(img.resolve()),
+                notes=f"{note}\n{img.name}",
+                notes_exact=True,
+            )
+        )
+    return locations
+
+
+def _first_existing_file(source_root, rel_paths):
+    for rel in rel_paths:
+        candidate = source_root / rel
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _discover_assets(source_root, draw_names):
+    short_draws = ", ".join(n.replace("Ink Action: ", "") for n in draw_names[:4])
+    is_bunnies = (source_root / "assets/characters/bunny/bunny-assembled.png").is_file()
+    specs = (
+        [
+            (
+                "bunny",
+                "Little Felt Bunnies (Cutout Rig)",
+                ("assets/characters/bunny/bunny-assembled.png",),
+                "Blanket-stitched oatmeal wool-felt bunny puppet with gingham inner ears, button eyes & 3D cotton-pom tail.",
+            ),
+            (
+                "garden-kit",
+                "Garden Vocabulary Prop Kit",
+                ("assets/characters/garden/garden-assembled.png",),
+                "Mixed-media props: crinkled tissue CRISPY LETTUCE, painted CRUNCHY CARROT TOPS, cardboard RABBIT HOLE & denim FARMER.",
+            ),
+            (
+                "storyboard-grid",
+                "Story Progression Grid",
+                ("assets/references/storyboard-grid-v1.png",),
+                "6 handmade mixed-media story beats (story-1..6.jpg): Sitting on Ground, Heard Farmer, Hop & Scurry, Underground, Garden, Burrow.",
+            ),
+            (
+                "teaching-cues",
+                "Ink & Chalk Learning Cues",
+                ("assets/references/teaching-cues-v1.png",),
+                f"10 animated ink/chalk vocabulary drawings (z-index 77: {short_draws}) + hide-and-seek play cues (teach-1..6.jpg).",
+            ),
+        ]
+        if is_bunnies
+        else [
+            (
+                "bee",
+                "Bumble Bee (Cutout Rig)",
+                (
+                    "assets/characters/bee/bee-assembled.png",
+                    "assets/bee-rest-pose.png",
+                    "assets/characters/bee/parts/body-clean.png",
+                ),
+                "Ochre felt bee rig (wing-l/r, sack-l/r, body, antenna-l/r, eyes-open/closed) · 5 Studio WebM tracks (z-index 10).",
+            ),
+            (
+                "flower",
+                "Meadow Flower (Cutout Rig)",
+                (
+                    "assets/characters/flower/flower-assembled.png",
+                    "assets/characters/flower/parts/head.png",
+                ),
+                "Felt meadow flower rig (stem, head, petal-1..5, pollen centre) · Petals sway on independent phases in Verse 2.",
+            ),
+            (
+                "storyboard-grid",
+                "Story Progression Grid",
+                ("assets/references/storyboard-grid-v1.png",),
+                "6 painted gouache & cut-paper story beats (story-1..6.jpg): Dawn Barn, Exit with Sacks, BZZZ Zoom, Flower Loop, Pollen/Honey Dips, Golden Rest.",
+            ),
+            (
+                "teaching-cues",
+                "Ink-Art & Teaching Cues",
+                ("assets/references/teaching-cues-v1.png",),
+                f"7 lyric ink-art action drawings (z-index 77: {short_draws}) + parent-baby tickle cues (teach-1..6.jpg).",
+            ),
+        ]
+    )
+    assets = []
+    for item_id, name, rel_paths, note in specs:
+        img = _first_existing_file(source_root, rel_paths)
+        if img:
+            assets.append(
+                dict(
+                    id=item_id,
+                    name=name,
+                    file=str(img.resolve()),
+                    notes=f"{note}\n{img.name}",
+                    notes_exact=True,
+                )
+            )
+    return assets[:4]
+
+
+def _upgrade_assembled_character_cards(source_root, assets):
+    mapping = {
+        "bee": "assets/characters/bee/bee-assembled.png",
+        "flower": "assets/characters/flower/flower-assembled.png",
+        "bunny": "assets/characters/bunny/bunny-assembled.png",
+        "garden-kit": "assets/characters/garden/garden-assembled.png",
+    }
+    for item in assets:
+        rel = mapping.get(item.get("id"))
+        if rel and (source_root / rel).is_file():
+            item["file"] = str((source_root / rel).resolve())
+
+
+def _fill_bunnies_overview(config, locs, draws_label):
+    if not config.get("story"):
+        config["story"] = (
+            "Three blanket-stitched wool-felt bunnies sit still on burlap ground as the denim-and-plaid farmer walks by, "
+            "hop and scurry to hide right underground in a corrugated-cardboard burrow, hop back one by one to eat "
+            "crinkled tissue-paper crispy lettuce and painted crunchy carrot tops, and dive back underground. "
+            "Paired with action-animating kinetic lyrics and 10 ink/chalk visual-learning drawings."
+        )
+    if not config.get("background_main") and locs:
+        loc0 = locs[0]
+        config["background_main"] = (
+            f"{loc0['name']} ({Path(loc0['file']).name}) & Cutaway Burrow (rabbit-hole-underground.png): "
+            "Mapped to Verse 1 lyrics (words-verse-1-1, 0.39–21.40s) & Scenes 1–6. Burlap/kraft ground, twig fence, "
+            "and corrugated-cardboard UNDERGROUND burrow cross-section."
+        )
+    if not config.get("background_alternate") and len(locs) > 1:
+        loc1 = locs[1]
+        config["background_alternate"] = (
+            f"{loc1['name']} ({Path(loc1['file']).name}) & Farmer Looking (farmer-looking-burrow.png): "
+            "Mapped to Verse 2 lyrics (words-verse-2-1, 21.40–41.48s) & Scenes 7–12. Mixed-media vegetable garden "
+            "with crinkled tissue-paper crispy lettuce, painted carrot tops, and golden-hour burrow finale."
+        )
+    if not config.get("cast"):
+        config["cast"] = (
+            "Cast & Mixed-Media Learning Props: (1) Oatmeal Wool-Felt Bunnies with gingham ears & 3D cotton-pom tails; "
+            "(2) Garden Vocabulary Kit (crinkled tissue Crispy Lettuce, painted Crunchy Carrot Tops, corrugated-cardboard "
+            f"Rabbit Hole & Underground burrow, straw-hat/denim Farmer); (3) 10 Ink/Chalk Learning Drawings ({draws_label})."
+        )
+
+
+def _fill_overview_defaults(source_root, config, draw_names):
+    locs = config.get("locations") or []
+    draws_label = (
+        ", ".join(n.replace("Ink Action: ", "") for n in draw_names)
+        if draw_names
+        else "Bee Out of Barn, Honey Sacks, Buzz Zigzag, Circle Palm, Tap Pollen, Honey Drop, Rub Tummy"
+    )
+    if (source_root / "assets/characters/bunny/bunny-assembled.png").is_file():
+        _fill_bunnies_overview(config, locs, draws_label)
+        return
+    if not config.get("story"):
+        config["story"] = (
+            "A felt bumble bee wakes at the red-brown barn, tumbles out with a honey sack under each arm, "
+            "zooms BZZZZZZ toward camera, circles a big meadow flower, dips twice for pollen and honey, "
+            "and rests in golden light. Paired with big visual-learning kinetic lyrics (cascade layout, "
+            "paper-grain overlay) and 7 ink-art action drawings for parent-and-baby play."
+        )
+    if not config.get("background_main") and locs:
+        loc0 = locs[0]
+        config["background_main"] = (
+            f"{loc0['name']} ({Path(loc0['file']).name}): Mapped to Verse 1 lyrics "
+            "(words-verse-1-1, 0.00–8.80s) & Scenes 1–4. Red-brown cut-paper barn with open double doors, "
+            "warm interior light, painted hills, and foreground grass."
+        )
+    if not config.get("background_alternate") and len(locs) > 1:
+        loc1 = locs[1]
+        config["background_alternate"] = (
+            f"{loc1['name']} ({Path(loc1['file']).name}) & Golden Meadow (meadow-golden.png): "
+            "Mapped to Verse 2 lyrics (words-verse-2-1, 8.40–20.64s) & Scenes 5–8. Sunlit meadow with "
+            "the central felt flower rig and golden-hour rest finale."
+        )
+    if not config.get("cast"):
+        config["cast"] = (
+            "Cast & Visual-Learning Props: (1) Ochre Felt Bumble Bee rig with burlap honey sacks under each arm "
+            "(5 transparent WebM studio tracks in #view-studio only); (2) Felt Meadow Flower rig (stem, head, "
+            f"5 swaying petals, pollen centre); (3) 7 SVG Ink-Art Action Drawings ({draws_label})."
+        )
+
+
+def _discover_project_inventory(source_root, packets, config):
+    if not source_root or not source_root.is_dir():
+        return
+    lyric_bgs, draw_names = _read_words_inventory(source_root)
+    if not config.get("locations"):
+        locations = _discover_locations(source_root, lyric_bgs)
+        if locations:
+            config["locations"] = locations
+    if not config.get("assets"):
+        assets = _discover_assets(source_root, draw_names)
+        if assets:
+            config["assets"] = assets
+    else:
+        _upgrade_assembled_character_cards(source_root, config["assets"])
+    _fill_overview_defaults(source_root, config, draw_names)
+
+
 def build(
     transcript,
     source,
@@ -441,7 +746,7 @@ def build(
     template=None,
 ):
     # The transcript is already the CLI schema. No lyric reformatting or second editable document.
-    from deckcraft_template import generate, SIZE, SCENE_ART_REGION
+    from storyboard_layout import generate, SIZE, SCENE_ART_REGION
 
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -545,8 +850,17 @@ def build(
                     "image_prompt": "reference_prompt",
                     "drawing": "drawing_cues",
                 }.get(f["field"], f["field"])
-                config["scene_content"][packet["id"]]["sections"][key] = f["value"]
-    config["fit_imported_text"] = bool(source_root)
+                if not config["scene_content"][packet["id"]]["sections"].get(
+                    key
+                ) and _is_authored_text(f.get("value")):
+                    config["scene_content"][packet["id"]]["sections"][key] = f["value"]
+                    role = "user.scene." + f["field"]
+                    mapping["missing"] = [
+                        m
+                        for m in mapping["missing"]
+                        if not (m["scene"] == packet["id"] and m["field"] == role)
+                    ]
+    config["fit_imported_text"] = True
     config["scene_images"] = {
         p["id"]: dict(file=p["reference"], name=Path(p["reference"]).name)
         for p in packets
@@ -576,7 +890,9 @@ def build(
         page["key"]: [
             f
             for f in content
-            if f.get("page") == i + 1 and f.get("role", "").startswith("user.")
+            if f.get("page") == i + 1
+            and f.get("role", "").startswith("user.")
+            and _is_authored_text(f.get("value"))
         ]
         for i, page in enumerate(previous.get("page_plan", []))
         if page["kind"] != "scene"
@@ -591,6 +907,7 @@ def build(
             for page in previous.get("page_plan", [])
             if page["kind"] == kind
             for record in page.get("sheet", [])
+            if record.get("id") != "inventory" and record.get("file")
         ]
         if retained:
             config[key] = retained
@@ -612,8 +929,9 @@ def build(
                         ),
                         None,
                     )
-                    if field:
+                    if field and _is_authored_text(field.get("value")):
                         record.update(notes=field["value"], notes_exact=True)
+    _discover_project_inventory(source_root, packets, config)
     overrun = max(w["end"] for w in words) - float(metadata["duration_sec"])
     if overrun > 0.001:
         config["timing_warning"] = (
@@ -724,7 +1042,7 @@ def build(
         ],
     )
     # Keep saved placements linked; remap only a full-frame overlay on a newly panelled scene.
-    from deckcraft_template import fit_rect, panel_region, SCENE_ART_REGION
+    from storyboard_layout import fit_rect, panel_region, SCENE_ART_REGION
 
     placements = []
     for packet in packets:

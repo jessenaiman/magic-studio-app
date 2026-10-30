@@ -181,7 +181,7 @@ def resolve_real_vault_image(image_or_name: str, prefer: str = "turnaround") -> 
     )
 
 
-def matte_with_photocraft(src_path: str, out_path: str) -> str:
+def remove_image_background(src_path: str, out_path: str) -> str:
     """Use `photocraft-cli run` with `layer.removeBackground` to strip studio background."""
     pc_bin = shutil.which("photocraft-cli") or "photocraft-cli"
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
@@ -217,7 +217,7 @@ def slice_real_character_image(
     os.makedirs(out_dir, exist_ok=True)
     real_path = resolve_real_vault_image(image_path)
     clean_sheet_path = os.path.join(out_dir, "clean_turnaround_sheet.png")
-    matte_with_photocraft(real_path, clean_sheet_path)
+    remove_image_background(real_path, clean_sheet_path)
 
     with Image.open(clean_sheet_path) as im:
         w, h = im.size

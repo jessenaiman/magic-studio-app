@@ -54,7 +54,6 @@ pub fn cmd_turnaround_optimize_accuracy(s: &mut Session, params: &Value) -> Resu
     }
 
     let args = vec![
-        "optimize-accuracy".to_string(),
         "--turnaround-dir".to_string(),
         turnaround_dir.to_string_lossy().into_owned(),
         "--poses-dir".to_string(),
@@ -62,7 +61,7 @@ pub fn cmd_turnaround_optimize_accuracy(s: &mut Session, params: &Value) -> Resu
         "--out-dir".to_string(),
         out_dir.to_string_lossy().into_owned(),
     ];
-    let report = super::workspace::run_pipeline(s, &args)?;
+    let report = super::workspace::run_python_json(s, "pipeline.codex_accuracy_optimizer", &args)?;
 
     let motion_file = report
         .get("motionRangeFile")
@@ -189,7 +188,7 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
     });
     if !ok {
         out["next"] = json!([
-            "Build a rig for it: asset.build_cutout_rig, or connect a rig spec with project.add_asset kind=cutout_rig."
+            "Build a rig for it: animation.prepare, or connect a rig spec with project.add_asset kind=cutout_rig."
         ]);
     }
     Ok(out)

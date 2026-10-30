@@ -1,4 +1,4 @@
-//! 4-direction visual-hull mesh build and GLB/OBJ serialization.
+//! Inflated silhouette mesh approximation and GLB/OBJ serialization.
 
 use std::path::PathBuf;
 
@@ -7,10 +7,9 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::photocraft::{cmd_asset_load_manifest, decontaminate_sprite_rgba};
-use crate::workspace::workspace_root;
+use crate::magic_design::{cmd_asset_load_manifest, decontaminate_sprite_rgba};
 
-/// Run `mesh.build_4dir`: decontaminate turnaround/pose frames, build a visual-hull mesh, and write GLB/OBJ/ingest JSON.
+/// Run `mesh.build_4dir`: prepare silhouette views and export an unrigged row-span approximation.
 pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
     let preset_arg = params
         .get("preset")
@@ -39,10 +38,7 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
         .cloned()
         .ok_or_else(|| EngineError::InvalidParams(format!("asset `{asset_id}` not loaded")))?;
 
-    let recon_mode = params
-        .get("recon_mode")
-        .and_then(Value::as_str)
-        .unwrap_or("volumetric");
+    let recon_mode = "inflated_row_spans";
     let inflation_depth_pct = params
         .get("inflation_depth_pct")
         .and_then(Value::as_u64)
@@ -69,7 +65,7 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
         .map(|v| v.clamp(0, 100) as u32)
         .unwrap_or(35);
 
-    let root = workspace_root(s);
+    let root = crate::workshop::project_dir(s)?;
     let ingest_dir = root.join("exports/blender_ingest").join(&asset_id);
     let turnaround_out_dir = ingest_dir.join("turnaround");
     let poses_out_dir = ingest_dir.join("poses");
@@ -77,7 +73,7 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
     std::fs::create_dir_all(&poses_out_dir)?;
 
     let mut clean_turnaround_imgs: Vec<(String, PathBuf, RgbaImage)> = Vec::new();
-    let mut target_ref_height: Option<u32> = asset
+    let target_ref_height: Option<u32> = asset
         .turnaround_registration
         .as_ref()
         .map(|r| r.target_height_px)
@@ -87,9 +83,6 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
         for frame in &tm.frames {
             if let Ok(dyn_img) = image::open(&frame.resolved_path) {
                 let rgba = dyn_img.into_rgba8();
-                if target_ref_height.is_none() {
-                    target_ref_height = Some(rgba.height());
-                }
                 let (clean_img, _bbox) = decontaminate_sprite_rgba(&rgba, None);
                 let out_file = turnaround_out_dir.join(format!(
                     "{:02}_{}.png",
@@ -206,18 +199,25 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
     let foot_lift_max_px = asset
         .motion_range
         .as_ref()
-        .map(|m| m.foot_lift_max_px)
-        .unwrap_or(20.0);
+        .and_then(|m| m.raw["limits"]["footLiftPx"]["max"].as_f64());
     let max_vertical_drift_px = asset
         .turnaround_registration
         .as_ref()
-        .map(|r| r.max_vertical_drift_px)
-        .unwrap_or(0.0);
+        .and_then(|r| r.raw["maxVerticalDriftPx"].as_f64());
 
     let ingest_payload = json!({
         "ok": true,
         "character": asset_id,
+        "sources": {
+            "reference": asset.path,
+            "turnaround_manifest": asset.turnaround_manifest.as_ref().map(|m| &m.manifest_path),
+            "pose_manifest": asset.pose_manifest.as_ref().map(|m| &m.manifest_path),
+            "registration": asset.turnaround_registration.as_ref().map(|r| &r.source_file),
+            "motion_range": asset.motion_range.as_ref().map(|r| &r.source_file),
+        },
         "recon_mode": recon_mode,
+        "reconstruction_method": "inflated_row_spans",
+        "rigged": false,
         "reconstruction_params": {
             "inflation_depth_pct": inflation_depth_pct,
             "relief_detail_pct": relief_detail_pct,
@@ -234,24 +234,16 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
             "triangle_count": indices.len() / 3,
             "ground_plane_min_y": 0.0,
         },
-        "joint_landmarks_ratio": {
-            "ankle_z": 0.07,
-            "knee_z": 0.24,
-            "hip_z": 0.44,
-            "waist_z": 0.54,
-            "shoulder_z": 0.69,
-            "elbow_z": 0.56,
-            "neck_z": 0.74,
-            "head_top_z": 1.0,
-        },
+        "joint_landmarks_ratio": null,
+        "rigging_status": "requires_authored_joints_and_binding",
         "measured_telemetry": {
             "foot_lift_max_px": foot_lift_max_px,
             "max_vertical_drift_px": max_vertical_drift_px,
-            "target_reference_height_px": target_ref_height.unwrap_or(520),
+            "target_reference_height_px": target_ref_height,
         },
         "decontaminated_turnaround_views": turnaround_entries,
         "decontaminated_pose_frames": clean_pose_files,
-        "verified_parts": asset.parts,
+        "parts": asset.parts,
     });
     std::fs::write(
         &out_ingest_json,
@@ -263,6 +255,8 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
         "command": "mesh.build_4dir",
         "asset_id": asset_id,
         "recon_mode": recon_mode,
+        "reconstruction_method": "inflated_row_spans",
+        "rigged": false,
         "glb": out_glb.to_string_lossy(),
         "gltf": out_gltf.to_string_lossy(),
         "obj": out_obj.to_string_lossy(),

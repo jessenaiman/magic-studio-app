@@ -44,6 +44,8 @@
           <div class="home-actions">
             <button class="start" id="home-new" title="New song project (Ctrl+N)">
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>New song</span><kbd>Ctrl+N</kbd></button>
+            <button class="ghost" id="home-new-animation" data-commands="project.new" title="New animation: a character study you can reuse in any project">
+              <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><span>New animation</span></button>
             <button class="ghost" id="home-open" data-commands="project.open" title="Open a project (Ctrl+O)">
               <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Open…</span><kbd>Ctrl+O</kbd></button>
           </div>
@@ -74,7 +76,7 @@
 
         <!-- Main: storyboard title cards -->
         <section class="storyboard" aria-label="Storyboard">
-          <div class="panel-head divided">
+          <div class="panel-head" data-look="bar">
             <div class="chips" id="sb-chips" role="tablist"></div>
             <button id="sb-save-version" class="save-icon" title="Save new version" aria-label="Save new version"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg></button>
             <div class="sb-nav">
@@ -174,6 +176,7 @@
   <script src="app.js"></script>
   <script src="app-bar.js"></script>
   <script src="panel-header.js"></script>
+  <script src="asset-sheet-review.js"></script>
   <script src="song.js"></script>
   <script src="project.js"></script>
   <script src="storyboard.js"></script>
@@ -183,9 +186,8 @@
   <script src="timeline.js"></script>
   <script src="motion-authoring.js"></script>
 <script src="animation.js"></script>
-  <script src="blender-placement.js"></script>
-<script src="animation-native.js"></script>
-<script src="blender.js"></script>
+  <script src="clip-placement.js"></script>
+<script src="animation-jobs.js"></script>
   <script src="sequence.js"></script>
   <script src="drawers.js"></script>
   <script src="agent.js"></script>
@@ -195,6 +197,7 @@
   <script src="resources.js"></script>
   <script src="vendor/backstage/backstage-terminal.js"></script>
   <script src="backstage-terminal.js"></script>
+  <script src="report.js"></script>
   <script src="analytics.js"></script>
   <script src="ui-commands.js"></script>
   <script src="companions.js"></script>

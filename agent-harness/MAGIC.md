@@ -8,7 +8,8 @@ Both adapters use `core/session.py` for project/window binding. A selected live 
 
 UI project actions enter `apps/magicstudio-shell/src/project_dispatch.rs` directly. It retains the correlation token, pending-operation guard, project-state checks, native ownership, draft flushing, revision acknowledgements and initiating frontend refresh. The former subprocess round trip through the CLI and a TCP port is removed. The socket adapter uses that same guarded application dispatch. Window-specific `ui.*` operations are declared in the application registry and implemented by the shell; they fail honestly without a window.
 
-Other installed apps are independent. Use their documented CLIs directly when their work is needed. Existing Magic domain operations that coordinate project assets remain Magic operations; do not duplicate app capabilities or add generic Craft wrappers.
+Agents use `magic-cli` only; it calls the installed `*craft` CLIs internally.
+`magic-cli studio open /absolute/Project.magic` opens it on the emptiest of workspaces 1–4 without taking focus; `magic-cli studio list` finds open windows.
 
 The former `motion.recipe` engine command only spawned two scripts and required users to pick a port. Run the existing compiler and recipe renderer directly instead:
 

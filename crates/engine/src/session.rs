@@ -28,6 +28,9 @@ pub struct Session {
     pub theatre_state: Option<Value>,
     /// Editable native sources and explicitly accepted immutable render receipts.
     pub animation_sources: BTreeMap<String, Value>,
+    /// `Some("animation")` for a character study (Animation only, no song or
+    /// storyboard); `None` for a song project.
+    pub project_mode: Option<String>,
     /// User-facing sessions publish Home history and recent receipts; passive library/tests do not.
     pub record_user_state: bool,
     /// Active chat selection belongs to this engine/window, never to project serialization.
@@ -69,6 +72,7 @@ impl Default for Session {
             video_project_path: None,
             theatre_state: None,
             animation_sources: BTreeMap::new(),
+            project_mode: None,
             record_user_state: false,
             agent_selection: None,
             project_owner: None,
@@ -97,6 +101,7 @@ impl Clone for Session {
             video_project_path: self.video_project_path.clone(),
             theatre_state: self.theatre_state.clone(),
             animation_sources: self.animation_sources.clone(),
+            project_mode: self.project_mode.clone(),
             record_user_state: self.record_user_state,
             agent_selection: self.agent_selection.clone(),
             project_owner: self.project_owner.clone(),
@@ -787,6 +792,11 @@ impl LoadedCutoutRigPlan {
             }
         }
 
+        if raw["frame_sequence"].is_object() {
+            if let Some(part) = parts.first() {
+                source_image = part.full_layer_path.clone();
+            }
+        }
         let control_bindings = load_control_bindings(raw, path, &parts)?;
         Ok(Self {
             control_bindings,

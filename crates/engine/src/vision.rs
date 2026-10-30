@@ -211,7 +211,7 @@ pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
         .unwrap_or_else(|| "hopper".to_string());
 
     if !s.assets.contains_key(&character) {
-        let _ = crate::photocraft::cmd_asset_load_manifest(s, &json!({ "preset": character }));
+        let _ = crate::magic_design::cmd_asset_load_manifest(s, &json!({ "preset": character }));
     }
 
     let asset = s.assets.get(&character).cloned().ok_or_else(|| {

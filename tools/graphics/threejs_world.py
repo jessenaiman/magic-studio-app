@@ -3,7 +3,7 @@
 The agent owns creative planning. This tool validates and normalizes a structured
 world specification, materializes an editable Three.js workspace, and emits a
 diagnostic report. Rendering remains the responsibility of video_compose /
-hyperframes_compose so pipeline governance and review stay intact.
+compose_video so pipeline governance and review stay intact.
 """
 
 from __future__ import annotations

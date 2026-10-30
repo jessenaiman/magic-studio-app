@@ -31,6 +31,10 @@ This is production onboarding, not installation or a second studio setup.
 4. Save intentional edits and inspect actual saved/visible results. A lost reply
    has an unknown outcome; inspect before retrying. A disconnected pinned window
    requires explicit reselection. For MCP entry instructions: `magic-cli mcp --help`.
+5. Work only through `magic-cli`; its commands call the installed tools. When a
+   command fails, request a fix rather than working around it: **quick** (small
+   and in scope, fix the command now), **issue** (the `gh issue create` line the
+   failure prints), or **brainstorm** (unclear designer step or tool; ask Jesse).
 
 ## Success Criteria
 

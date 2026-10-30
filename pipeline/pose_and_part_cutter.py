@@ -83,27 +83,35 @@ def exploded_prompt(character: str, description: str = "") -> str:
     )
 
 
-def _find_photocraft_cli() -> str | None:
+def _find_image_cli() -> str | None:
     cand = os.environ.get("PHOTOCRAFT_CLI") or shutil.which("photocraft-cli")
     if not cand:
         return None
     try:
         proc = subprocess.run(
-            [cand, "--version"], capture_output=True, text=True, timeout=5
+            [cand, "commands", "--json", "--filter", "layer.removeBackground"],
+            capture_output=True, text=True, timeout=5,
         )
     except OSError:
         return None
-    version = re.match(r"^photocraft-cli\s+(\d+)\.(\d+)\.(\d+)\b", proc.stdout.strip())
-    if proc.returncode or not version or tuple(map(int, version.groups())) < (0, 10, 0):
+    try:
+        commands = json.loads(proc.stdout)
+    except ValueError:
+        commands = None
+    supported = isinstance(commands, list) and any(
+        isinstance(command, dict) and command.get("id") == "layer.removeBackground"
+        for command in commands
+    )
+    if proc.returncode or not supported:
         detail = (proc.stdout or proc.stderr).strip() or f"exit {proc.returncode}"
         raise RuntimeError(
-            f"Unsupported PhotoCraft CLI {cand}: {detail}. Requires >= 0.10.0; "
-            "set PHOTOCRAFT_CLI to the matching installed CLI executable."
+            f"PhotoCraft CLI {cand} does not expose layer.removeBackground: {detail}. "
+            "Set PHOTOCRAFT_CLI to an installed CLI that provides that command."
         )
     return cand
 
 
-def _find_vectorcraft_cli() -> str | None:
+def _find_vector_cli() -> str | None:
     return os.environ.get("VECTORCRAFT_CLI") or shutil.which("vectorcraft-cli")
 
 
@@ -206,6 +214,100 @@ def _clean_crop(source: Image.Image, box, pc_bin: str) -> Image.Image:
     return cut
 
 
+def _panel_grid(image, layout):
+    """Measure the guide's blue dividers and captions, excluding them from artwork cuts."""
+    grid = layout.get("grid")
+    if not grid:
+        return layout
+    pixels = np.asarray(image).astype(np.int16)
+    ink = (pixels[:, :, 2] > pixels[:, :, 0] + 12) & (pixels[:, :, 1] > pixels[:, :, 0] + 5) & (pixels[:, :, 2] < 200)
+    def bands(values):
+        indices = np.flatnonzero(values)
+        groups = np.split(indices, np.flatnonzero(np.diff(indices) > 1) + 1)
+        return [(int(g[0]), int(g[-1])) for g in groups if len(g)]
+    horizontal = bands(ink.mean(axis=1) > .7)
+    vertical = bands(ink.mean(axis=0) > .65)
+    rows, columns = int(grid["rows"]), int(grid["columns"])
+    if len(horizontal) != rows + 1 or len(vertical) != columns + 1:
+        raise ValueError(f"Expected {columns+1} vertical and {rows+1} horizontal panel dividers; found {len(vertical)}, {len(horizontal)}. Correct the layout before cutting.")
+    frames = []
+    for index, frame in enumerate(layout["frames"]):
+        row, col = int(frame.get("gridRow",index//columns)),int(frame.get("gridColumn",index%columns))
+        top, bottom = horizontal[row][1] + 2, horizontal[row+1][0] - 2
+        left, right = vertical[col][1] + 2, vertical[col+1][0] - 2
+        # A common caption cutoff across the row keeps registration consistent.
+        heading_bottom = top
+        for c in range(columns):
+            start, end = vertical[c][1] + 4, vertical[c+1][0] - 4
+            caption = ink[top:top + max(1, int((bottom-top)*.18)), start:end]
+            occupied = np.flatnonzero(caption.any(axis=1))
+            if len(occupied):
+                heading_bottom = max(heading_bottom, top + int(occupied[-1]) + 3)
+        frames.append({**frame, "box": [left, heading_bottom, right, bottom]})
+    return {**layout, "frames": frames, "measuredGrid": {"horizontal": horizontal, "vertical": vertical}}
+
+
+def _batch_mattes(image, definitions):
+    """Reuse one real neural matting session for an explicit set of panel crops."""
+    boxes = [_validate_box(item["box"], image.size) for item in definitions]
+    def white_corners(box):
+        pixels = np.asarray(image.crop(box))[:, :, :3]
+        return all(corner.min() >= 235 and corner.mean() >= 245 for corner in (pixels[:3,:3],pixels[:3,-3:],pixels[-3:,:3],pixels[-3:,-3:]))
+    if all(white_corners(box) for box in boxes):
+        return _flat_mattes(image, boxes), "photocraft-magicWand-refineEdge"
+    backend = os.getenv("MAGIC_MATTING_BACKEND", "auto")
+    executable = shutil.which("rembg") if backend in ("auto", "rembg") else None
+    if not executable:
+        if backend == "rembg":
+            raise RuntimeError("rembg is selected but is not installed")
+        return None, "photocraft-layer.removeBackground"
+    model = os.getenv("MAGIC_MATTING_MODEL", "birefnet-general-lite")
+    with tempfile.TemporaryDirectory(prefix="magic-sheet-mattes-") as temporary:
+        inputs, outputs = Path(temporary)/"inputs", Path(temporary)/"outputs"
+        inputs.mkdir(); outputs.mkdir()
+        for i, box in enumerate(boxes):
+            image.crop(box).save(inputs / f"{i:03}.png")
+        process = subprocess.run([executable, "p", "-m", model, "-dc", str(inputs), str(outputs)], capture_output=True, text=True, timeout=900)
+        if process.returncode:
+            raise RuntimeError(f"Neural panel matting failed: {(process.stderr or process.stdout)[-1200:]}")
+        result = {}
+        for i, box in enumerate(boxes):
+            with Image.open(outputs / f"{i:03}.png") as output:
+                pixels = output.convert("RGBA")
+                if not pixels.getchannel("A").getbbox():
+                    raise ValueError(f"No subject found in panel {i+1}")
+                result[box] = pixels
+        return result, f"rembg/{model}"
+
+
+def _flat_mattes(image, boxes):
+    """Connected background selection preserves enclosed whites and fine drawn lines."""
+    from concurrent.futures import ThreadPoolExecutor
+    executable = _find_image_cli()
+    if not executable:
+        raise RuntimeError("photocraft-cli is required for flat-background panel extraction")
+    with tempfile.TemporaryDirectory(prefix="magic-flat-panels-") as temporary:
+        directory = Path(temporary)
+        def matte(item):
+            index, box = item
+            source, output = directory/f"{index}-source.png", directory/f"{index}.png"
+            image.crop(box).save(source)
+            args = [executable,"run",str(source),"--cmd","layer.new.layerFromBackground","--params",'{"ifPresent":true}',
+                "--cmd","select.magicWand","--params",'{"x":0,"y":0,"tolerance":18,"contiguous":true,"antiAlias":true}',
+                "--cmd","select.inverse","--cmd","select.refineEdge","--params",
+                '{"radius":1,"feather":0.2,"contrast":20,"shiftEdge":0,"decontaminate":false,"output":"layerMask"}',"--out",str(output)]
+            process = subprocess.run(args,capture_output=True,text=True,timeout=120)
+            if process.returncode:
+                raise RuntimeError(f"PhotoCraft panel {index+1} failed: {(process.stderr or process.stdout)[-800:]}")
+            with Image.open(output) as result:
+                rgba=result.convert("RGBA")
+                if not rgba.getchannel("A").getbbox():
+                    raise ValueError(f"No visible artwork in panel {index+1}")
+                return box,rgba
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            return dict(executor.map(matte,enumerate(boxes)))
+
+
 def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance=25):
     source, output = Path(source).resolve(), Path(out_dir).resolve()
     if not source.is_file():
@@ -236,6 +338,8 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
         ):
             layout = preset
     w, h = image.size
+    if layout:
+        layout = _panel_grid(image, layout)
     warnings = list((layout or {}).get("warnings", []))
     caption_count = None
     definitions = (layout or {}).get("frames")
@@ -369,18 +473,19 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
         raise ValueError("No foreground frames specified")
     if len(definitions) > 64:
         raise ValueError("Over 64 frames detected; supply --layout")
-    pc_bin = _find_photocraft_cli()
+    pc_bin = _find_image_cli()
     if not pc_bin:
         raise RuntimeError(
-            "photocraft-cli >= 0.10.0 is required to remove backgrounds; install it or put it on PATH"
+            "photocraft-cli is required to remove backgrounds; install it or put it on PATH"
         )
-    vc_bin = _find_vectorcraft_cli()
+    vc_bin = _find_vector_cli()
+    batched, matting_engine = _batch_mattes(image, definitions) if (layout or {}).get("preserveRegistration") else (None, "photocraft-layer.removeBackground")
     crops, missing_parts = [], []
     for item in definitions:
         box = _validate_box(item["box"], image.size)
         try:
-            crop = _clean_crop(image, box, pc_bin)
-            if not item.get("parts"):
+            crop = batched[box] if batched is not None else _clean_crop(image, box, pc_bin)
+            if not item.get("parts") and not (layout or {}).get("preserveRegistration"):
                 for _ in range(3):
                     ca = np.array(crop)[:, :, 3] > 20
                     bx0, by0, bx1, by1 = box
@@ -477,6 +582,7 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
                 "index": i,
                 "label": item.get("label", name),
                 "file": file,
+                "holdFrames": item.get("holdFrames", 1),
                 "size": [cw, ch],
                 "qa": {
                     "touchesCropBoundary": touches,
@@ -517,7 +623,7 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
     present = {f["label"] for f in frames}
     review = {
         "found": len(frames),
-        "expected": 5 if kind == "turnaround" else None,
+        "expected": len(definitions) if layout else 5 if kind == "turnaround" else None,
         "expectedAtLeast": caption_count,
         "flaggedFrames": [f["index"] for f in frames if f["qa"]["issues"]],
     }
@@ -525,7 +631,7 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
         warnings.append(
             f"Frames {review['flaggedFrames']} have cut issues; see frames[].qa.issues."
         )
-    missing = [a for a in ACTIONS if a not in present] if kind == "action" else []
+    missing = [a for a in ACTIONS if a not in present] if kind == "action" and not (layout or {}).get("animation") else []
     result = {
         "schemaVersion": 1,
         "sourceImage": str(source),
@@ -533,7 +639,8 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
         "sheetType": kind,
         "status": "needs_review",
         "spriteStatus": "exported",
-        "mattingEngine": "photocraft-layer.removeBackground",
+        "mattingEngine": matting_engine,
+        "measuredGrid": (layout or {}).get("measuredGrid"),
         "vectorCraftAvailable": bool(vc_bin),
         "frames": frames,
         "atlas": {
@@ -549,7 +656,7 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
         "missingActions": missing,
         "missingParts": missing_parts,
         "review": review,
-        "animation": {
+        "animation": (layout or {}).get("animation") or {
             "continuousCycle": False,
             "actions": {
                 name: [f["index"] for f in frames if f["label"] == name]
@@ -609,6 +716,15 @@ def cut_sheet(source, out_dir, kind="auto", layout=None, use_ocr=True, tolerance
                 "inferred": not bool(override.get("complete")),
             }
         result["puppet"] = puppet
+    action_sets = []
+    for row in result.get("animation", {}).get("rows", []):
+        selected = [frames[index] for index in row["frames"]]
+        subset = {**result, "frames": selected, "animation": {**row, "template": row["id"], "rows": [],
+            "frameOrder": list(range(len(selected))), "continuousCycle": row.get("loop", False)}}
+        filename = re.sub(r"[^a-zA-Z0-9_-]", "_", row["id"]) + ".manifest.json"
+        (output / filename).write_text(json.dumps(subset, indent=2))
+        action_sets.append({"action":row["id"],"manifest":filename,"frames":len(selected)})
+    result["actionSets"] = action_sets
     (output / "manifest.json").write_text(json.dumps(result, indent=2))
     return result
 

@@ -115,6 +115,16 @@ pub(crate) fn packets(s: &mut Session) -> Result<(Value, Value, Vec<Value>)> {
         }
         return Ok((board, design, packets));
     }
+    let dir = crate::workshop::project_dir(s)?;
+    packets = packets_from_page_plan(&dir, &board, &design, &words);
+    if packets.is_empty() && board["empty_template"] != true {
+        return Err(invalid("Create the native storyboard first"));
+    }
+    Ok((board, design, packets))
+}
+
+fn packets_from_page_plan(dir: &Path, board: &Value, design: &Value, words: &[Value]) -> Vec<Value> {
+    let mut packets = Vec::new();
     for (page, plan) in board["page_plan"]
         .as_array()
         .into_iter()
@@ -125,6 +135,8 @@ pub(crate) fn packets(s: &mut Session) -> Result<(Value, Value, Vec<Value>)> {
         if !group.is_object() {
             continue;
         }
+        let scene_num = packets.len() + 1;
+        let sd = crate::storyboard::read_scene_doc(dir, scene_num);
         let fields: Vec<Value> = design["text_fields"]
             .as_array()
             .into_iter()
@@ -154,15 +166,24 @@ pub(crate) fn packets(s: &mut Session) -> Result<(Value, Value, Vec<Value>)> {
             .filter_map(|w| w["text"].as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        packets.push(json!({"target":group["id"],"scene":packets.len()+1,"page":page+1,"title":plan["title"],"kind":group["kind"],
-            "start":group["span_start"],"end":group["span_end"],"status":group["status"],"section_label":group["section_label"],
-            "panels":group["panels"],"words":selected,"lines":[{"line":1,"start":group["span_start"],"lyric":lyric}],
-            "text_fields":fields,"saved_placements":placements,"notes":group["notes"].as_array().cloned().unwrap_or_default(),"sections":{},"preview":board["previews"][page]}));
+        let status = if sd.status != "draft" { json!(sd.status) } else { group["status"].clone() };
+        let notes = if !sd.notes.is_empty() {
+            json!(sd.notes)
+        } else {
+            json!(group["notes"].as_array().cloned().unwrap_or_default())
+        };
+        packets.push(json!({
+            "target": group["id"], "scene": scene_num, "page": page + 1, "title": plan["title"],
+            "kind": group["kind"], "start": group["span_start"], "end": group["span_end"],
+            "status": status, "section_label": group["section_label"], "panels": group["panels"],
+            "words": selected, "lines": [{"line": 1, "start": group["span_start"], "lyric": lyric}],
+            "reference": sd.reference.as_ref().map(|r| dir.join(r)),
+            "teaching_reference": sd.teaching_reference.as_ref().map(|r| dir.join(r)),
+            "text_fields": fields, "saved_placements": placements, "notes": notes,
+            "sections": sd.sections, "preview": board["previews"][page]
+        }));
     }
-    if packets.is_empty() && board["empty_template"] != true {
-        return Err(invalid("Create the native storyboard first"));
-    }
-    Ok((board, design, packets))
+    packets
 }
 fn scene_index(packets: &[Value], p: &Value) -> Result<usize> {
     if let Some(id) = p["scene"].as_str() {
@@ -212,6 +233,16 @@ pub fn backgrounds(s: &mut Session, _: &Value) -> Result<Value> {
             }) && seen.insert(asset.id.clone())
             {
                 images.push(json!({"asset_id":asset.id,"name":asset.name,"path":asset.path}));
+            } else if let (Some(id), Some(path)) = (id, path)
+                && id != "inventory"
+                && Path::new(path).is_file()
+                && seen.insert(id.to_owned())
+            {
+                let name = Path::new(path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(id);
+                images.push(json!({"asset_id": id, "name": name, "path": path}));
             }
         }
     }
