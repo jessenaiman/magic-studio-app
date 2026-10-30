@@ -914,9 +914,9 @@ function wordsRender() {
 
   const designer = wordsPanel.view === "design" && wordsPanel.line && !anim.kinetic;
   const main = el("section", { id: "words-main", "aria-label": `${wordsLabel(anim)} lyrics` },
-    el("div", { id: "words-main-head" },
-      el("span", { class: "words-crumb", title:`${wordsLabel(anim)} · line ${lineNo}${it ? ` · ${itemText}` : ""}` }, el("strong", {}, wordsLabel(anim)), ` · ${lineNo}`),
-      wordsModeTabs(),save),
+    new PanelHeader({id:"words-main-head",title:`${wordsLabel(anim)} · ${lineNo}`,
+      description:`${wordsLabel(anim)} · line ${lineNo}${it ? ` · ${itemText}` : ""}`,
+      actions:[wordsModeTabs(),save]}).element,
     wordsPanel.read.reference_changed ? el("p", { class: "not-linked" }, "The timing reference changed since this was saved; check the words before saving.") : null,
     designer ? wordsCanvas(anim) : wordsStage(anim),
     // The stage's controls sit in one row under it, so the stage stays high in the column.
@@ -932,9 +932,9 @@ function wordsRender() {
     el("div",{id:"words-workspace-controls"},...wordsInnerControls(anim)));
 
   view.replaceChildren(
-    el("aside", { id: "words-lyrics" }, el("div", { id: "words-lyrics-head" }, el("strong", { class: "panel-title" }, "Lyrics · on the song timeline")), wordsTimeline(animations, end)),
+    el("aside", { id: "words-lyrics" }, new PanelHeader({id:"words-lyrics-head", title:"Lyrics"}).element, wordsTimeline(animations, end)),
     main,
-    el("aside", { id: "words-film" }, el("div", { id: "words-film-head" }, el("strong", { class: "panel-title" }, "Visual cues · motion graphics")), wordsRoll(animations, end)));
+    el("aside", { id: "words-film" }, new PanelHeader({id:"words-film-head", title:"Visual cues"}).element, wordsRoll(animations, end)));
   view.dataset.wordsMode=wordsPanel.mode;
   wordsViewFitter.observe(view); if($("magic-workstation"))wordsViewFitter.observe($("magic-workstation")); wordsWidth(view);
   requestAnimationFrame(() => {

@@ -72,7 +72,7 @@ function sequenceAttach(view) {
   const stage = $("motion-stage");
   $("motion-canvas").hidden = true;
   stage.append(el("div", { class: "seq-canvas", id: "seq-canvas" }));
-  document.querySelector(".motion-tools")?.prepend(motionButton("seq-add", "Add images to the sequence", "layers", seqAdd));
+  $("motion-stagebar")?.querySelector(".panel-actions")?.prepend(motionButton("seq-add", "Add images to the sequence", "layers", seqAdd));
   const scrub = $("motion-scrub");
   scrub.max = String(seq.duration);
   scrub.oninput = (e) => { seqPause(); seq.time = Number(e.target.value); seqDraw(); };
@@ -83,8 +83,7 @@ function sequenceAttach(view) {
 }
 
 function seqCaption() {
-  const caption = $("motion-caption");
-  if (caption) caption.textContent = `Composite · ${seq.layers.length} image${seq.layers.length === 1 ? "" : "s"}`;
+  motion.stageHeader?.rename(`Composite · ${seq.layers.length} image${seq.layers.length === 1 ? "" : "s"}`);
 }
 
 function seqField(label, control) {
