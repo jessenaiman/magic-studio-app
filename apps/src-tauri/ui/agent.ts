@@ -13,41 +13,60 @@ const agentStatus = (text) => { $("agent-status").textContent = text; $("agent-s
 
 // ---- Settings ------------------------------------------------------------------------------
 
-function renderConfig() {
-  const c = agent.config;
-  const runtime = $("agent-runtime");
-  const chosen = c?.agent || "";
-  const isDefault = c?.default && c.default === chosen;
-  runtime.textContent = c
-    ? `${chosen || "no agent"}${isDefault ? " · system default" : ""}${c.provider ? ` · ${c.provider}` : ""}${c.model ? ` · ${c.model}` : " · CLI default (unverified)"}`
-    : "agent not configured";
-  const ready = !!c && (c.agents || []).some((a) => a.installed && a.name === chosen);
-  $("agent-connection").textContent = ready ? "· connected" : "· not configured";
-  $("agent-connection").title = ready ? `${chosen} is installed and selected` : "Open Settings to choose an installed agent";
-  runtime.title = c
-    ? `Installed agents: ${(c.agents || []).filter((a) => a.installed).map((a) => a.name).join(", ")}\n` +
-      `System default: ${c.default || "none"}\nInstructions: ${c.instructions}\nExtra arguments: ${(c.extra_args || []).join(" ") || "none"}`
-    : "Open settings to choose an installed agent.";
-  // The list comes from the system: every installed agent, with the Omarchy default marked.
-  const select = $("agent-command");
-  const installed = (c?.agents || []).filter((a) => a.installed);
-  const options = installed.map((a) =>
+const installedAgents = (c) => (c?.agents || []).filter((a) => a.installed);
+
+function runtimeLabel(c, chosen, isDefault) {
+  if (!c) return "agent not configured";
+  return `${chosen || "no agent"}${isDefault ? " · system default" : ""}${c.provider ? ` · ${c.provider}` : ""}${c.model ? ` · ${c.model}` : " · CLI default (unverified)"}`;
+}
+
+function runtimeTooltip(c) {
+  if (!c) return "Open settings to choose an installed agent.";
+  return `Installed agents: ${(c.agents || []).filter((a) => a.installed).map((a) => a.name).join(", ")}\n` +
+    `System default: ${c.default || "none"}\nInstructions: ${c.instructions}\nExtra arguments: ${(c.extra_args || []).join(" ") || "none"}`;
+}
+
+// The list comes from the system: every installed agent, with the Omarchy default marked.
+function commandChoices(installed) {
+  return installed.map((a) =>
     el("option", { value: a.name }, `${a.name}${a.default ? " (system default)" : ""}${a.headless ? "" : " · no headless mode"}`));
+}
+
+function replaceChoices(select, options) {
   const signature = options.map((o) => o.value).join(",");
   if (select.dataset.signature !== signature) {
     select.replaceChildren(...options);
     select.dataset.signature = signature;
   }
-  select.value = chosen;
-  $("agent-command").title = installed.filter((a) => !a.headless).length
-    ? "Agents without a headless mode cannot answer from this window yet"
-    : "The system agent this app runs";
+}
+
+function fillAgentDraft(c) {
   $("agent-provider").value = c?.provider || "";
   $("agent-model").value = c?.model || "";
   $("agent-thinking").value = c?.thinking || "";
   $("agent-extra").value = (c?.extra_args || []).join(" ");
   // These values came from saved settings, not a user draft. Later edits still differ from this baseline.
   for (const id of ["agent-provider", "agent-model", "agent-extra"]) $(id).defaultValue = $(id).value;
+}
+
+function renderConfig() {
+  const c = agent.config;
+  const runtime = $("agent-runtime");
+  const chosen = c?.agent || "";
+  const isDefault = c?.default && c.default === chosen;
+  const installed = installedAgents(c);
+  const ready = !!c && installed.some((a) => a.name === chosen);
+  runtime.textContent = runtimeLabel(c, chosen, isDefault);
+  runtime.title = runtimeTooltip(c);
+  $("agent-connection").textContent = ready ? "· connected" : "· not configured";
+  $("agent-connection").title = ready ? `${chosen} is installed and selected` : "Open Settings to choose an installed agent";
+  const select = $("agent-command");
+  replaceChoices(select, commandChoices(installed));
+  select.value = chosen;
+  select.title = installed.some((a) => !a.headless)
+    ? "Agents without a headless mode cannot answer from this window yet"
+    : "The system agent this app runs";
+  fillAgentDraft(c);
 }
 
 async function configSave() {
