@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -181,6 +183,63 @@ def cli(
         session.select_project(project)
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
+
+
+@cli.command("audit")
+@click.argument(
+    "path", type=click.Path(exists=True, file_okay=False, path_type=Path), default="."
+)
+@click.option(
+    "--output-format",
+    type=click.Choice(["json", "text", "sarif", "container"]),
+    default="json",
+    show_default=True,
+    help="Native Codacy report format.",
+)
+@click.option(
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the complete native report to this file instead of stdout.",
+)
+@click.pass_context
+def audit(
+    ctx: click.Context, path: Path, output_format: str, output: Path | None
+) -> None:
+    """Audit PATH (default: current directory) with installed native Codacy tools.
+
+    Uses PATH/.codacy/codacy.config.json. Missing tools and analysis failures
+    remain in the native output and exit status. No tools are installed or
+    reports uploaded. No Studio window or project selection is required.
+    """
+    path = path.resolve()
+    if not (path / ".codacy/codacy.config.json").is_file():
+        raise click.ClickException(
+            f"Codacy configuration missing: {path}/.codacy/codacy.config.json"
+        )
+    program = shutil.which("codacy-analysis")
+    if program is None:
+        raise click.ClickException(
+            "codacy-analysis is not installed or not on PATH; no audit ran"
+        )
+    command = [
+        program,
+        "analyze",
+        "--output-format",
+        output_format,
+        "--no-log",
+        "--no-update-notifier",
+    ]
+    if output is not None:
+        command.extend(["--output", str(output.resolve())])
+    command.append(str(path))
+    if ctx.obj["dry_run"]:
+        emit({"command": command, "dry_run": True})
+        return
+    try:
+        result = subprocess.run(command, check=False)
+    except OSError as error:
+        raise click.ClickException(f"Cannot run codacy-analysis: {error}") from error
+    ctx.exit(result.returncode if result.returncode >= 0 else 128 - result.returncode)
 
 
 @cli.command("commands")
