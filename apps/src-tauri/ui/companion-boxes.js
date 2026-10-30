@@ -156,6 +156,7 @@ function createCompanionBoxes() {
 
   // The authoritative path: an event happened and says what the box is doing.
   // `fact` is what the engine or a correlated job reported.
+  /** @param {{id?: string, project?: any, context?: any, state?: any, reason?: any, priority?: any, request?: any, job?: any, resolution?: any, source?: string, observed_at?: any}} [event] */
   function fact({ id, project = null, context = null, state = null, reason = null, priority = null, request = null, job = null, resolution = null, source = "engine", observed_at = null } = {}) {
     const box = register(id, { project, context });
     if (!box) return null;

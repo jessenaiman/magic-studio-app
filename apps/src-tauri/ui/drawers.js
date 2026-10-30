@@ -1,4 +1,7 @@
 // One shell for chat, artwork and the read-only lyrics reader. Contents never remount on toggle.
+/**
+ * @param {{root?: Document, canOpen?: () => boolean, onChange?: (name: string|null, previous?: string|null) => void, onLayout?: (height: number) => void, onSettings?: (id: string) => void}} [options]
+ */
 function createTopDrawers({root=document,canOpen=()=>true,onChange=()=>{},onLayout=()=>{},onSettings=()=>{}}={}) {
   const host=root.getElementById('magic-workstation');let active=null,lastHeight=-1;
   const panels=()=>[...root.querySelectorAll('[data-drawer]')];
@@ -28,7 +31,7 @@ function createTopDrawers({root=document,canOpen=()=>true,onChange=()=>{},onLayo
     const settings=event.target.closest('[data-drawer-settings]');
     if(settings){const node=root.getElementById(settings.dataset.drawerSettings);if(node){node.hidden=!node.hidden;settings.setAttribute('aria-expanded',String(!node.hidden));if(!node.hidden)onSettings(node.id);}return;}
     if(event.target.closest('[data-drawer-close]')){api.close();return;}
-    if(active&&!host.contains(event.target))api.close(false);
+    if(active&&!host.contains(/** @type {Node} */(event.target)))api.close(false);
   });
   root.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&active&&!root.getElementById('point-overlay')?.classList.contains('on')){event.preventDefault();api.close();}

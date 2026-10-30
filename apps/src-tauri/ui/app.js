@@ -1,7 +1,12 @@
 // Magic Studio shell: the project view. Data comes from magicstudio-engine through the
 // shell's commands; files open with one click; the studio tab hosts the video target's studio.
 const { invoke: nativeInvoke, convertFileSrc } = window.__TAURI__.core;
-async function invoke(command,params){
+/**
+ * @param {string} command
+ * @param {any} [params]
+ * @param {any} [options] transport options, e.g. request headers for raw byte payloads
+ */
+async function invoke(command,params,options){
  const action=acFeedback.action;
  const companion=command==='engine_command'?window.uiRegistry?.capture(params.id,{...params.params,_request_id:action?.request_id||params.params?._request_id}):null;
  if(companion)window.uiRegistry?.event({...companion,phase:"start"});
@@ -10,13 +15,14 @@ async function invoke(command,params){
  if(command==='project_create'||command==='project_open'){params={...params,request:params?.request??action?.request_id??null,control:params?.control??action?.control??null};}
  acFeedback.report(null,null,{stage:'handler_dispatch',control:action?.control||null,request_id:action?.request_id||null,command:params?.id||command});
  try{
-  const result=await nativeInvoke(command,params);acFeedback.last={transport:command,id:params?.id||null,status:'success'};
+  const result=await nativeInvoke(command,params,options);acFeedback.last={transport:command,id:params?.id||null,status:'success'};
   if(companion)window.uiRegistry?.event({...companion,phase:'success',result});
   if(result?._ui_engine_revision) acFeedback.pendingRevision=result._ui_engine_revision;
   return result;
  }catch(error){if(companion)window.uiRegistry?.event({...companion,phase:'error',error:String(error)});acFeedback.last={transport:command,id:params?.id||null,status:'error',error:String(error).slice(0,300)};acFeedback.report(null,null,{stage:'handler_error',command:params?.id||command,control:action?.control||null,request_id:action?.request_id||null,error:String(error).slice(0,300)});throw error;}
  finally{acFeedback.pending--;await acFeedback.report();}
 }
+/** @type {(id: string) => any} */
 const $ = (id) => document.getElementById(id);
 
 const ICONS = {
@@ -139,6 +145,7 @@ function renderAppFooter() {
 // Theatre's own listener (theatre.js) updates its revisions first; render after it.
 window.addEventListener('message', (event) => { if (event.data?.magicTheatre && event.data.type !== 'values') setTimeout(updateAppFooter); });
 
+/** @param {string} text */
 function toast(text) {
   const t = $("toast");
   t.textContent = text;
@@ -172,6 +179,7 @@ function toast(text) {
 // THE CONFIG. One entry per element id says which component it is, which look
 // it takes and how dense it is. el() reads it by id, so a look is chosen in
 // the config, never at the call site.
+/** @type {UiConfig} */
 const uiConfig = { version: 0, looks: {}, densities: [], elements: {} };
 window.uiConfig = uiConfig;
 
@@ -207,6 +215,13 @@ function applyEntry(node, entry, id = node.id) {
   return node;
 }
 
+/**
+ * Create an element from a tag, attributes and children.
+ * @param {string} tag
+ * @param {Record<string, any>} [attrs]
+ * @param {...any} children
+ * @returns {any}
+ */
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   let box = null;

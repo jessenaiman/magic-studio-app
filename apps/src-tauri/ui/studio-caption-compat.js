@@ -5,8 +5,8 @@
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.href);
     if (url.origin !== location.origin || !/^\/api\/projects\/[^/]+\/files\/caption-overrides\.json$/.test(url.pathname)) return fetch(input, init);
-    const method = (init?.method || (typeof input === "object" ? input.method : "GET") || "GET").toUpperCase();
-    const headers = new Headers(init?.headers || (typeof input === "object" ? input.headers : undefined));
+    const method = (init?.method || (typeof input === "object" ? /** @type {Request} */(input).method : "GET") || "GET").toUpperCase();
+    const headers = new Headers(init?.headers || (typeof input === "object" ? /** @type {Request} */(input).headers : undefined));
     const known = versions.get(url.href);
     if (method === "PUT" && known && !headers.has("If-Match") && !headers.has("If-None-Match")) {
       headers.set(known.missing ? "If-None-Match" : "If-Match", known.missing ? "*" : known.version);

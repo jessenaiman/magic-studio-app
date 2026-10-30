@@ -9,7 +9,7 @@ const agent = {
   newChat: true, models: [], timer: null, renderedReply: null,
 };
 
-const status = (text) => { $("agent-status").textContent = text; $("agent-status").title = text; };
+const agentStatus = (text) => { $("agent-status").textContent = text; $("agent-status").title = text; };
 
 // ---- Settings ------------------------------------------------------------------------------
 
@@ -64,9 +64,9 @@ async function configSave() {
     $("anim-agent-settings").hidden = true;
     $("agent-config-toggle").setAttribute("aria-expanded", "false");
     agent.newChat = true;
-    status("Chat selection saved · next message starts fresh");
+    agentStatus("Chat selection saved · next message starts fresh");
     await refreshModels();
-  } catch (error) { status(String(error)); }
+  } catch (error) { agentStatus(String(error)); }
 }
 
 // Catalog values come from the installed OpenCode API, never a hard-coded model list.
@@ -106,7 +106,7 @@ async function agentLoad() {
     state.project ? motionCommand("agent.log") : Promise.resolve([]),
   ]);
   if (config.status === "fulfilled") agent.config = config.value;
-  else status(String(config.reason));
+  else agentStatus(String(config.reason));
   agent.turns = turns.status === "fulfilled" && Array.isArray(turns.value) ? turns.value : [];
   renderConfig();
   renderLog();
@@ -217,12 +217,12 @@ async function agentNewChat() {
     agent.turns = Array.isArray(reply.turns) ? reply.turns : [];
     agent.newChat = !reply.session;
     renderLog();
-    status(`New chat ready${reply.session ? ` · ${reply.session}` : ""} · previous conversation saved`);
+    agentStatus(`New chat ready${reply.session ? ` · ${reply.session}` : ""} · previous conversation saved`);
     $("agent-input").focus();
     if (reply._ui_engine_revision) await acFeedback.acknowledge(reply._ui_engine_revision, project);
   } finally { button.disabled = false; }
 }
-$("agent-new").addEventListener("click", () => agentNewChat().catch((e) => status(String(e))));
+$("agent-new").addEventListener("click", () => agentNewChat().catch((e) => agentStatus(String(e))));
 
 async function agentSend() {
   const input = $("agent-input");
@@ -233,7 +233,7 @@ async function agentSend() {
   const attachments = agent.attachments.slice();
   agent.sending = true;
   $("agent-send").disabled = true;
-  status("Sending…");
+  agentStatus("Sending…");
   try {
     const context = {
       project: state.project, view: state.view, storyboard_page: state.page + 1,
@@ -251,9 +251,9 @@ async function agentSend() {
     renderLog();
     await acknowledgeAgentReply(reply._ui_engine_revision);
     clearSent(input, raw, attachments);
-    status(reply.ok ? `Answered${reply.provider ? ` · ${reply.provider}` : ""}${reply.model ? ` / ${reply.model}` : " · CLI default unverified"} · ${reply.session || "fresh process"}` : String(reply.error || "Agent needs attention in its existing session; do not resend blindly."));
+    agentStatus(reply.ok ? `Answered${reply.provider ? ` · ${reply.provider}` : ""}${reply.model ? ` / ${reply.model}` : " · CLI default unverified"} · ${reply.session || "fresh process"}` : String(reply.error || "Agent needs attention in its existing session; do not resend blindly."));
   } catch (error) {
-    status(String(error));
+    agentStatus(String(error));
     input.focus();
   } finally {
     agent.sending = false;
@@ -304,16 +304,16 @@ function pointStart() {
     const r = node.getBoundingClientRect(), pad = 12;
     const rect = [Math.max(0, r.left - pad), Math.max(0, r.top - pad),
       Math.min(innerWidth, r.right + pad) - Math.max(0, r.left - pad), Math.min(innerHeight, r.bottom + pad) - Math.max(0, r.top - pad)];
-    status("Capturing…");
+    agentStatus("Capturing…");
     // Let the overlay and drawer leave the picture before WebKit takes it.
     await new Promise((ok) => setTimeout(ok, 380));
     try {
       const path = await invoke("snapshot", { project: state.project, rect });
       agent.attachments.push({ path, what: describe(node) });
       renderAttachments();
-      status("Picture attached.");
+      agentStatus("Picture attached.");
       $("agent-input").focus();
-    } catch (err) { status(String(err)); }
+    } catch (err) { agentStatus(String(err)); }
     finally{if(previousDrawer)workshopDrawers.open(previousDrawer);}
   };
   const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); stop(); } };
@@ -324,7 +324,7 @@ function pointStart() {
 
 const workshopDrawers=createTopDrawers({
   canOpen:()=>{if(state.project)return true;toast("Open a project first");return false;},
-  onLayout:height=>invoke("drawer_layout",{height}).catch(e=>status(String(e))),
+  onLayout:height=>invoke("drawer_layout",{height}).catch(e=>agentStatus(String(e))),
   onSettings:id=>{if(id==='anim-agent-settings')refreshModels();},
   onChange:name=>{
     agent.open=name==='sproket';
@@ -345,15 +345,15 @@ function agentToggle(open=!agent.open){
 
 async function attachFiles(files) {
   for (const file of files) {
-    if (!file.type.startsWith("image/")) { status(`Only pictures attach (${file.name || file.type} skipped).`); continue; }
+    if (!file.type.startsWith("image/")) { agentStatus(`Only pictures attach (${file.name || file.type} skipped).`); continue; }
     try {
       const name = file.name && file.name !== "image.png" ? file.name : `image.${file.type.split("/")[1] || "png"}`;
       const path = await invoke("save_attachment", new Uint8Array(await file.arrayBuffer()),
         { headers: { "x-project": state.project, "x-name": encodeURIComponent(name) } });
       agent.attachments.push({ path, what: file.name && file.name !== "image.png" ? file.name : "a pasted picture" });
       renderAttachments();
-      status("Picture attached.");
-    } catch (err) { status(String(err)); }
+      agentStatus("Picture attached.");
+    } catch (err) { agentStatus(String(err)); }
   }
 }
 

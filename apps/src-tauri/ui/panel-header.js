@@ -1,5 +1,6 @@
 // Shared panel chrome. Creative lettering belongs to each view's content.
 class PanelHeader {
+  /** @param {{id?: string|null, title: string, description?: string, titleId?: string, icon?: string|null, collapsible?: boolean, actions?: any[]|null}} options */
   constructor({id, title, description, titleId, icon = null, collapsible = false, actions = null}) {
     const entry = uiConfig.elements[id] || {};
     this.label = el('span', {id:titleId, class:'panel-title'});
