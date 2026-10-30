@@ -411,28 +411,38 @@ function interpolateVector(left, right, amount) {
   );
 }
 
+function snapshotKeyframe(key) {
+  return {
+    label: key.label,
+    fov: key.fov,
+    positionV: new THREE.Vector3(key.position[0], key.position[1], key.position[2]),
+    targetV: new THREE.Vector3(key.target[0], key.target[1], key.target[2]),
+  };
+}
+
+function interpolateKeyframes(left, right, time) {
+  const span = Math.max(0.0001, right.time - left.time);
+  const amount = smoothstep((time - left.time) / span);
+  let activeLabel = right.label;
+  if (amount < 0.5) activeLabel = left.label;
+  return {
+    label: activeLabel,
+    positionV: interpolateVector(left.position, right.position, amount),
+    targetV: interpolateVector(left.target, right.target, amount),
+    fov: THREE.MathUtils.lerp(left.fov, right.fov, amount),
+  };
+}
+
 function cameraAt(time) {
   const keys = WORLD_SPEC.camera_path;
-  if (time <= keys[0].time) return { ...keys[0], positionV: new THREE.Vector3(...keys[0].position), targetV: new THREE.Vector3(...keys[0].target) };
-  if (time >= keys[keys.length - 1].time) {
-    const key = keys[keys.length - 1];
-    return { ...key, positionV: new THREE.Vector3(...key.position), targetV: new THREE.Vector3(...key.target) };
-  }
+  if (time <= keys[0].time) return snapshotKeyframe(keys[0]);
+  if (time >= keys[keys.length - 1].time) return snapshotKeyframe(keys[keys.length - 1]);
   for (let index = 0; index < keys.length - 1; index += 1) {
-    const left = keys[index];
-    const right = keys[index + 1];
-    if (time >= left.time && time <= right.time) {
-      const amount = smoothstep((time - left.time) / Math.max(0.0001, right.time - left.time));
-      return {
-        label: amount < 0.5 ? left.label : right.label,
-        positionV: interpolateVector(left.position, right.position, amount),
-        targetV: interpolateVector(left.target, right.target, amount),
-        fov: THREE.MathUtils.lerp(left.fov, right.fov, amount),
-      };
+    if (time >= keys[index].time && time <= keys[index + 1].time) {
+      return interpolateKeyframes(keys[index], keys[index + 1], time);
     }
   }
-  const fallback = keys[keys.length - 1];
-  return { ...fallback, positionV: new THREE.Vector3(...fallback.position), targetV: new THREE.Vector3(...fallback.target) };
+  return snapshotKeyframe(keys[keys.length - 1]);
 }
 
 function formatTime(value) {
