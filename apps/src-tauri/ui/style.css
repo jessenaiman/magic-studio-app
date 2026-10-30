@@ -935,7 +935,7 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .words-gap > .meta { text-transform: none; letter-spacing: 0; font-size: var(--text-xs); }
 .words-roll > .words-gap { left: var(--space-4); right: var(--space-4); }
 /* The film roll: sprocket holes down both edges, a time mark every ten seconds. */
-.words-roll { margin-top: var(--words-playhead-y, 380px); margin-bottom: calc(var(--words-available, 700px) * .45); padding-inline: var(--space-4); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 thin color-mix(in srgb, black 60%, var(--line));
+.words-roll { margin-top: var(--words-playhead-y, 380px); margin-bottom: calc(var(--words-available, 700px) * .65); padding-inline: var(--space-4); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 thin color-mix(in srgb, black 60%, var(--line));
   background: radial-gradient(ellipse 34% 26%, color-mix(in srgb, var(--surface-2) 70%, black) 92%, transparent 100%) left top / var(--space-4) var(--text-xl) repeat-y,
     radial-gradient(ellipse 34% 26%, color-mix(in srgb, var(--surface-2) 70%, black) 92%, transparent 100%) right top / var(--space-4) var(--text-xl) repeat-y,
     color-mix(in srgb, var(--bg) 70%, black); }
@@ -1036,7 +1036,7 @@ body:has(#view-design.active) #magic-parts-pane { display: none; }
 #words-workspace-controls { min-height: 0; overflow: auto; padding-bottom: var(--space-3); overscroll-behavior: contain; }
 #words-workspace-controls .words-effects { max-height: none; overflow: visible; }
 #words-main .words-preview > #words-preview { max-height: calc(var(--words-available) * .46); }
-#words-video-frame { left: var(--frame-x, 0); top: var(--frame-y, 0); }
+#words-video-frame { left: var(--frame-x, 0); top: var(--frame-y, 0); pointer-events: none; }
 #words-view-modes > button { display: flex; align-items: center; justify-content: center; gap: var(--space-1); }
 .words-view-icon { display: inline-flex; }
 .words-view-icon svg { width: var(--text-lg); height: var(--text-lg); fill: none; stroke: currentColor; stroke-width: 1.8; }

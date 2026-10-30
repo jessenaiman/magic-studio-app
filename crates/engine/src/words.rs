@@ -42,6 +42,14 @@ pub(crate) fn document_path(dir: &Path) -> PathBuf {
     dir.join("design/words.json")
 }
 
+fn heard_text(w: &Value) -> &str {
+    w["text"]
+        .as_str()
+        .or_else(|| w["word"].as_str())
+        .unwrap_or_default()
+        .trim()
+}
+
 pub(crate) fn reference(dir: &Path) -> Result<(PathBuf, String, Vec<Value>)> {
     let path = crate::workshop::transcript_files(dir)
         .into_iter()
@@ -53,7 +61,14 @@ pub(crate) fn reference(dir: &Path) -> Result<(PathBuf, String, Vec<Value>)> {
         .as_array()
         .or_else(|| doc["words"].as_array())
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            doc["segments"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .flat_map(|seg| seg["words"].as_array().cloned().unwrap_or_default())
+                .collect()
+        });
     Ok((path, format!("{:x}", Sha256::digest(&bytes)), words))
 }
 
@@ -142,7 +157,7 @@ fn attach_reference_timing(words: &mut [Value], heard: &[Value], heard_norm: &[S
             },
         };
         word["ref_index"] = json!(found);
-        word["heard"] = found.map_or(Value::Null, |j| heard[j]["text"].clone());
+        word["heard"] = found.map_or(Value::Null, |j| json!(heard_text(&heard[j])));
         word["status"] = json!(status);
         word["start"] = start;
         word["end"] = end;
@@ -166,7 +181,7 @@ pub(crate) fn aligned(s: &mut Session) -> Result<Value> {
         .collect();
     let heard_norm: Vec<String> = heard
         .iter()
-        .map(|w| norm(w["text"].as_str().unwrap_or_default()))
+        .map(|w| norm(heard_text(w)))
         .collect();
     let map = align(&canonical, &heard_norm);
     attach_reference_timing(&mut words, &heard, &heard_norm, &map);
@@ -192,7 +207,7 @@ pub(crate) fn aligned(s: &mut Session) -> Result<Value> {
     let heard_used: Vec<usize> = map.iter().flatten().copied().collect();
     let unmatched_heard: Vec<Value> = (0..heard.len())
         .filter(|j| !heard_used.contains(j))
-        .map(|j| json!({"ref_index":j,"heard":heard[j]["text"]}))
+        .map(|j| json!({"ref_index":j,"heard":heard_text(&heard[j])}))
         .collect();
     Ok(json!({
         "reference": {"kind":"transcript","path":ref_path,"sha256":ref_sha,"word_count":heard.len()},

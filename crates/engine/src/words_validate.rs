@@ -120,7 +120,7 @@ fn apply_bounded_fields(
     fields: &[(&str, f64, f64)],
 ) -> Result<()> {
     for (key, lo, hi) in fields {
-        if let Some(v) = src.get(*key) {
+        if let Some(v) = src.get(*key).filter(|v| !v.is_null()) {
             let label = if prefix.is_empty() {
                 (*key).to_string()
             } else {
@@ -171,11 +171,11 @@ fn validate_kinetic_draw(d: &Value, ids: &[&Value], lib: &Value) -> Result<Value
             ("width", 1.0, 6000.0),
         ],
     )?;
-    if let Some(color) = d.get("color") {
+    if let Some(color) = d.get("color").filter(|v| !v.is_null()) {
         draw["color"] =
             hex_color(color).ok_or_else(|| invalid("drawing.color must be a hex colour"))?;
     }
-    if let Some(track) = d.get("track") {
+    if let Some(track) = d.get("track").filter(|v| !v.is_null()) {
         draw["track"] = one_of(track, &["lettering", "graphics"], "drawing.track")?;
     }
     Ok(draw)

@@ -589,6 +589,9 @@ fn mount_section_backdrop(
     h: u64,
 ) -> Option<Value> {
     let anim = &read["document"]["animations"][0];
+    if html.contains("id=\"scene-") && anim["background_custom"].as_bool() != Some(true) {
+        return None;
+    }
     let asset_id = anim["background_asset"].as_str()?;
     let name = crate::words_stage::stage_backdrop_file(s, dir, asset_id).ok()?;
     let (start, duration) = section_backdrop_span(track, &anim["scope"], composed, html);
@@ -602,9 +605,6 @@ fn mount_section_backdrop(
 }
 
 fn insert_section_hide_style(html: &mut String, id: &str, clips: &[String], has_backdrop: bool) -> Result<()> {
-    if clips.is_empty() && !has_backdrop {
-        return Ok(());
-    }
     let head = html
         .find("</head>")
         .ok_or_else(|| invalid("The video's index.html has no </head>; nothing written"))?;
@@ -612,7 +612,11 @@ fn insert_section_hide_style(html: &mut String, id: &str, clips: &[String], has_
     if has_backdrop {
         selectors.push("#animation".to_owned());
     }
+    selectors.push("#stage-fill".to_owned());
+    selectors.push("#title".to_owned());
     selectors.push(".caption".to_owned());
+    selectors.push(".lyric-word-clip".to_owned());
+    selectors.push("[data-composition-src*=\"captions.html\"]".to_owned());
     html.insert_str(
         head,
         &format!(
@@ -666,10 +670,11 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
             composed["height"].as_u64().unwrap_or(1080),
         );
         let composition_id = composed["composition_id"].as_str().unwrap_or(id);
+        let composed_sha = composed["sha256"].as_str().unwrap_or_default();
         html.insert_str(
             root,
             &format!(
-                "<div id=\"{composition_id}\" class=\"clip lyric-design-clip\" data-magicstudio-words=\"{id}\" data-composition-id=\"{composition_id}\" data-composition-src=\"{}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{track_index}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;left:0;top:0;width:{w}px;height:{h}px;z-index:76\"></div>\n",
+                "<div id=\"{composition_id}\" class=\"clip lyric-design-clip\" data-magicstudio-words=\"{id}\" data-magicstudio-sha=\"{composed_sha}\" data-composition-id=\"{composition_id}\" data-composition-src=\"{}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{track_index}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;left:0;top:0;width:{w}px;height:{h}px;z-index:76\"></div>\n",
                 composed["src"].as_str().unwrap_or_default(),
                 composed["song_anchor"].as_f64().unwrap_or(0.0),
                 composed["authored_duration"].as_f64().unwrap_or(0.0)

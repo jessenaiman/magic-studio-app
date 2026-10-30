@@ -73,26 +73,28 @@
         Object.assign(e.el.style, { left: `${Math.round((W - e.el.offsetWidth) / 2)}px`, top: `${Math.round((H - e.el.offsetHeight) / 2)}px` });
       }
       // The line shows from its first sung word to the next line; push-in grows it meanwhile.
-      at(box, { opacity: 0 }, { opacity: 1, duration: 0.05 }, start - 0.05);
-      at(box, { opacity: 1 }, { opacity: 0, duration: 0.25 }, end - 0.25);
-      if (K.layout === "push") at(box, { scale: 1 }, { scale: 1.12, duration: Math.max(0.1, end - start), ease: "none" }, start);
-      for (const e of els) {
-        const defaultMove = LIB.entrances?.[K.entrance] || LIB.entrances?.["fade-up"] || { from: { opacity: 0, y: 18 }, to: { opacity: 1, y: 0, duration: 0.3 } };
-        const move = (e.hero && (LIB.acts?.[e.act] || LIB.entrances?.[e.act])) || defaultMove;
-        const from = { ...(move.from || { opacity: 0 }) }, to = { ...(move.to || { opacity: 1, duration: 0.3 }) };
-        if (move.glow) { from.textShadow = `0 0 0px ${S.hero_color}`; to.textShadow = `0 0 28px ${S.hero_color}`; }
-        if (move.letters) {
-          e.el.textContent = ""; e.el.style.opacity = 1;
-          const spans = [...e.w.text].map((ch) => { const s = document.createElement("span"); s.textContent = ch; e.el.appendChild(s); return s; });
-          spans.forEach((s, k) => at(s, from, to, e.w.start + k * (move.stagger || 0.04)));
-        } else {
-          at(e.el, from, to, e.w.start);
-        }
-        // A giant word gives the frame back after its beat, or to the next giant word.
-        if (giant(e)) {
-          const next = els.find((x) => giant(x) && x.w.start > e.w.start);
-          const out = Math.max(e.w.start + 0.4, Math.min(end - 0.3, e.w.end + 0.6, next ? next.w.start - 0.15 : Infinity));
-          at(e.el, { opacity: 1 }, { opacity: 0, duration: 0.15 }, out);
+      if (DATA.layer !== "drawings") {
+        at(box, { opacity: 0 }, { opacity: 1, duration: 0.05 }, start - 0.05);
+        at(box, { opacity: 1 }, { opacity: 0, duration: 0.25 }, end - 0.25);
+        if (K.layout === "push") at(box, { scale: 1 }, { scale: 1.12, duration: Math.max(0.1, end - start), ease: "none" }, start);
+        for (const e of els) {
+          const defaultMove = LIB.entrances?.[K.entrance] || LIB.entrances?.["fade-up"] || { from: { opacity: 0, y: 18 }, to: { opacity: 1, y: 0, duration: 0.3 } };
+          const move = (e.hero && (LIB.acts?.[e.act] || LIB.entrances?.[e.act])) || defaultMove;
+          const from = { ...(move.from || { opacity: 0 }) }, to = { ...(move.to || { opacity: 1, duration: 0.3 }) };
+          if (move.glow) { from.textShadow = `0 0 0px ${S.hero_color}`; to.textShadow = `0 0 28px ${S.hero_color}`; }
+          if (move.letters) {
+            e.el.textContent = ""; e.el.style.opacity = 1;
+            const spans = [...e.w.text].map((ch) => { const s = document.createElement("span"); s.textContent = ch; e.el.appendChild(s); return s; });
+            spans.forEach((s, k) => at(s, from, to, e.w.start + k * (move.stagger || 0.04)));
+          } else {
+            at(e.el, from, to, e.w.start);
+          }
+          // A giant word gives the frame back after its beat, or to the next giant word.
+          if (giant(e)) {
+            const next = els.find((x) => giant(x) && x.w.start > e.w.start);
+            const out = Math.max(e.w.start + 0.4, Math.min(end - 0.3, e.w.end + 0.6, next ? next.w.start - 0.15 : Infinity));
+            at(e.el, { opacity: 1 }, { opacity: 0, duration: 0.15 }, out);
+          }
         }
       }
     });
@@ -123,6 +125,7 @@
       at(path, { strokeDashoffset: len }, { strokeDashoffset: 0, duration, ease: "power1.inOut" }, start);
       at(svg, { opacity: 1 }, { opacity: 0, duration: Math.min(.2, hold || .05) }, start + duration + hold - Math.min(.2, hold || .05));
     }
+    if (DATA.layer === "drawings") root.querySelectorAll(".kline").forEach((n) => n.remove());
     window.__timelines = window.__timelines || {};
     window.__timelines["__COMPOSITION_ID__"] = tl;
   })();

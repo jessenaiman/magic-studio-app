@@ -14,7 +14,8 @@ use std::path::Path;
 
 const LYRICS_ONLY_STYLE: &str = r#"<style data-magicstudio="lyrics-only">
 [data-composition-id] * { visibility: hidden !important; }
-.lyric-word-clip, .lyric-word-clip *, .lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip * { visibility: visible !important; }
+.lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip * { visibility: visible !important; }
+#title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*="captions.html"] { visibility: hidden !important; }
 html, body, [data-composition-id] { background: #1b2430 !important; }
 </style>"#;
 
@@ -51,12 +52,12 @@ fn stage_only_style(html: &str) -> String {
         format!("{} {{ visibility: hidden !important; }}\n", cast.join(", "))
     };
     format!(
-        "<style data-magicstudio=\"stage\">\n{hide}.lyric-word-clip, .lyric-word-clip *, .caption {{ visibility: hidden !important; }}\n</style>"
+        "<style data-magicstudio=\"stage\">\n{hide}#stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .caption, [data-composition-src*=\"captions.html\"] {{ visibility: hidden !important; }}\n</style>"
     )
 }
 
 const SCENE_ONLY_STYLE: &str = r#"<style data-magicstudio="scene-only">
-.lyric-word-clip, .lyric-word-clip *, .lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip *, .caption { visibility: hidden !important; }
+#stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip *, .caption, [data-composition-src*="captions.html"] { visibility: hidden !important; }
 </style>"#;
 
 fn without_video_media(html: &str) -> String {
@@ -69,12 +70,19 @@ fn without_video_media(html: &str) -> String {
             .unwrap_or(out.len());
         out.replace_range(start..end, "");
     }
-    while let Some(start) = out.find("<img") {
+    let mut from = 0;
+    while let Some(rel) = out[from..].find("<img") {
+        let start = from + rel;
         let end = out[start..]
             .find('>')
             .map(|i| start + i + 1)
             .unwrap_or(out.len());
-        out.replace_range(start..end, "");
+        let tag = &out[start..end];
+        if tag_attr(tag, "id").is_some_and(|id| id.starts_with("scene-")) {
+            from = end;
+        } else {
+            out.replace_range(start..end, "");
+        }
     }
     out
 }
@@ -184,19 +192,26 @@ fn resolve_requested_backdrop<'a>(animations: &'a [Value], full: &'a Value, id: 
         .or_else(|| full["images"].as_array()?.first()?.get("id")?.as_str())
 }
 
-fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
-    let dir = crate::workshop::project_dir(s)?;
-    let full = cmd_words_read(s, &json!({}))?;
-    let animations = full["document"]["animations"].as_array().cloned().unwrap_or_default();
-    let requested = resolve_requested_backdrop(&animations, &full, id)
-        .ok_or_else(|| invalid("Choose this verse's scene image"))?;
-    let base_name = stage_backdrop_file(s, &dir, requested)?;
-    let mut tags = format!(
-        "<img data-lyrics-backdrop src=\"compositions/words/backdrops/{base_name}\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0\">"
-    );
+fn build_backdrop_tags(
+    s: &Session,
+    dir: &Path,
+    animations: &[Value],
+    base_name: &str,
+    has_scene_plates: bool,
+) -> String {
+    let mut tags = if has_scene_plates {
+        String::new()
+    } else {
+        format!(
+            "<img data-lyrics-backdrop src=\"compositions/words/backdrops/{base_name}\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0\">"
+        )
+    };
     for (idx, anim) in animations.iter().enumerate() {
+        if has_scene_plates && anim["background_custom"].as_bool() != Some(true) {
+            continue;
+        }
         let Some(asset_id) = anim["background_asset"].as_str() else { continue };
-        let Ok(name) = stage_backdrop_file(s, &dir, asset_id) else { continue };
+        let Ok(name) = stage_backdrop_file(s, dir, asset_id) else { continue };
         let anchor = anim["song_anchor"].as_f64().unwrap_or(0.0);
         let start = if idx == 0 { 0.0 } else { anchor };
         let raw_dur = anim["authored_duration"].as_f64().unwrap_or(10.0);
@@ -209,6 +224,17 @@ fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
             "<img id=\"backdrop-{idx}\" class=\"clip\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.3}\" data-duration=\"{duration:.3}\" data-track-index=\"0\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1\">"
         ));
     }
+    tags
+}
+
+fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
+    let dir = crate::workshop::project_dir(s)?;
+    let full = cmd_words_read(s, &json!({}))?;
+    let animations = full["document"]["animations"].as_array().cloned().unwrap_or_default();
+    let requested = resolve_requested_backdrop(&animations, &full, id)
+        .ok_or_else(|| invalid("Choose this verse's scene image"))?;
+    let base_name = stage_backdrop_file(s, &dir, requested)?;
+    let tags = build_backdrop_tags(s, &dir, &animations, &base_name, html.contains("id=\"scene-"));
     let mut out = without_video_media(html);
     let root = out
         .find("data-composition-id=\"main\"")
@@ -223,7 +249,7 @@ fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
 fn lyrics_view_style_and_name(show: &str, html: &str) -> Result<(String, &'static str)> {
     match show {
         "still" => Ok((
-            "<style data-magicstudio=\"still\">#stage-fill, .caption { visibility: hidden !important; }</style>".to_owned(),
+            "<style data-magicstudio=\"still\">#stage-fill, #title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*=\"captions.html\"] { visibility: hidden !important; }</style>".to_owned(),
             "still-stage",
         )),
         "lyrics" => Ok((LYRICS_ONLY_STYLE.to_owned(), "lyrics-only")),
@@ -271,6 +297,9 @@ pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
     let src = format!("compositions/words/{name}.html");
     let file = hf.join(&src);
     let written = write_if_changed(&file, &derived)?;
+    if written {
+        let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
+    }
     Ok(json!({
         "src": src,
         "file": file,
@@ -410,6 +439,21 @@ fn append_static_design_cues(anim: &Value, words: &[Value], section_end: f64, cu
     }
 }
 
+fn hydrate_animation_times(
+    anim: &mut Value,
+    times: &std::collections::HashMap<String, (f64, f64)>,
+) {
+    let scope = anim["scope"].clone();
+    for w in anim["words"].as_array_mut().into_iter().flatten() {
+        if let Some((a, b)) = w["word_id"].as_str().and_then(|id| times.get(&word_time_key(&scope, id))) {
+            w["start"] = json!(a);
+            w["end"] = json!(b);
+        }
+    }
+    fill_untimed(anim);
+    timing(anim);
+}
+
 fn graphic_cues(
     doc: &Value,
     lib: &Value,
@@ -418,15 +462,7 @@ fn graphic_cues(
     let mut cues = Vec::new();
     for source in doc["animations"].as_array().into_iter().flatten() {
         let mut anim = source.clone();
-        let scope = anim["scope"].clone();
-        for w in anim["words"].as_array_mut().into_iter().flatten() {
-            if let Some((a, b)) = w["word_id"].as_str().and_then(|id| times.get(&word_time_key(&scope, id))) {
-                w["start"] = json!(a);
-                w["end"] = json!(b);
-            }
-        }
-        fill_untimed(&mut anim);
-        timing(&mut anim);
+        hydrate_animation_times(&mut anim, times);
         let words = anim["words"].as_array().cloned().unwrap_or_default();
         let anchor = anim["song_anchor"].as_f64().unwrap_or(0.0);
         let section_end = anchor + anim["authored_duration"].as_f64().unwrap_or(0.0);
@@ -450,6 +486,10 @@ fn load_or_default_doc(s: &mut Session, dir: &Path) -> Result<(Value, bool)> {
         Some(doc) => (with_sung_sections(doc, &aligned(s)?)?, true),
         None => (default_document(&aligned(s)?)?, false),
     };
+    let times = studio_times(s);
+    for anim in doc["animations"].as_array_mut().into_iter().flatten() {
+        hydrate_animation_times(anim, &times);
+    }
     assign_default_backgrounds(&mut doc, &project_backdrop_images(s, dir));
     Ok((doc, saved))
 }
@@ -655,6 +695,7 @@ fn apply_design_and_effects(dir: &Path, anim: &mut Value, id: &str, p: &Value) -
 fn apply_background_edit(s: &Session, dir: &Path, anim: &mut Value, background: &Value) -> Result<()> {
     if background.is_null() {
         anim["background_asset"] = Value::Null;
+        anim["background_custom"] = Value::Null;
         return Ok(());
     }
     let asset_id = background
@@ -667,6 +708,7 @@ fn apply_background_edit(s: &Session, dir: &Path, anim: &mut Value, background: 
         return Err(invalid("Choose an existing project image for this verse"));
     }
     anim["background_asset"] = json!(asset_id);
+    anim["background_custom"] = json!(true);
     Ok(())
 }
 

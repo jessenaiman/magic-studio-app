@@ -55,7 +55,7 @@ async function wordsBootstrapStudio(studio) {
 async function wordsOpen() {
   const view = $("view-design");
   if (!view) return;
-  view.replaceChildren(el("p", { class: "panel-empty inline" }, "Loading the words…"));
+  if (!wordsPanel.read) view.replaceChildren(el("p", { class: "panel-empty inline" }, "Loading the words…"));
   try {
     const [read, align, rawStudio, backgrounds] = await Promise.all([
       wordsCommand("words.read"),
@@ -863,12 +863,13 @@ function wordsUpdateGraphicFrame(frame, t) {
   const active = !!cue && t >= cue.start - 0.05 && t <= cue.end + 0.1;
   const past = !!cue && t > cue.end + 0.25;
   frame.classList.toggle("playing", active);
-  frame.classList.toggle("past", wordsPanel.playing && past && !active);
-  if (active && cue.kind === "drawing") {
+  frame.classList.toggle("past", past && !active);
+  if (cue?.kind === "drawing") {
     const drawSpan = Math.max(0.15, (cue.draw_end ?? cue.end) - cue.start);
-    const u = wordsClamp((t - cue.start) / drawSpan);
+    const u = active ? wordsClamp((t - cue.start) / drawSpan) : (past ? 1 : 0);
     frame.querySelectorAll(".words-cue-preview path").forEach((path, i) => {
-      path.setAttribute("stroke-dashoffset", String((1 - wordsClamp(u * 0.75 + (i + 1) * 0.25)).toFixed(3)));
+      const reset = active ? (1 - wordsClamp(u * 0.75 + (i + 1) * 0.25)).toFixed(3) : String(+(1 - [0.35, 0.7, 1][i] * (past ? 1 : 1)).toFixed(3));
+      path.setAttribute("stroke-dashoffset", reset);
     });
   }
 }
@@ -879,7 +880,7 @@ function wordsAnimateFlow(view, t) {
     const s = Number(line.style.getPropertyValue("--at-s")), e = s + Number(line.style.getPropertyValue("--len-s"));
     const singing = t >= s - 0.1 && t <= e + 0.15;
     line.classList.toggle("singing-line", singing);
-    line.classList.toggle("past", wordsPanel.playing && t > e + 0.2 && !singing);
+    line.classList.toggle("past", t > e + 0.2 && !singing);
   }
   for (const chip of view.querySelectorAll(".words-line > .word.lettered")) {
     const s = Number(chip.dataset.start), e = Number(chip.dataset.end);
@@ -914,10 +915,32 @@ function wordsFollow(t, smooth = false) {
   view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
   const tlTop = tl.getBoundingClientRect().top - box.top + view.scrollTop;
   const target = tlTop + tl.clientHeight * t / seconds - eyeY;
+  wordsPanel.programmaticScrollUntil = performance.now() + (smooth ? 450 : 90);
   view.scrollTo({ top: Math.max(0, target), behavior: smooth ? "smooth" : "instant" });
 }
 function wordsEnsureBelowVideo(t) {
   wordsFollow(t, true);
+}
+
+function wordsSyncViewScroll(view) {
+  wordsArrows(view);
+  const now = performance.now();
+  if (now < (wordsPanel.programmaticScrollUntil || 0) && now >= (wordsPanel.userWheelUntil || 0)) return;
+  const tl = view?.querySelector(".words-tl"), eye = view?.querySelector(".words-preview, .lyric-canvas");
+  if (!tl || !eye || tl.clientHeight <= 0) return;
+  const seconds = Number(tl.style.getPropertyValue("--len-s")) || wordsSongSpan().end;
+  const box = view.getBoundingClientRect();
+  const eyeY = Math.max(120, eye.getBoundingClientRect().bottom - box.top + 18);
+  view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
+  const tlTop = tl.getBoundingClientRect().top - box.top + view.scrollTop;
+  const t = Math.max(0, Math.min(wordsSongSpan().end, ((view.scrollTop + eyeY - tlTop) / tl.clientHeight) * seconds));
+  if (wordsPanel.playing) { wordsVideo("pause"); wordsPanel.playing = false; }
+  wordsPanel.previewRange = null; wordsPanel.autoPlay = false;
+  wordsPanel.userScrollingUntil = now + 220;
+  wordsSeekSong(t);
+  wordsFollowLivePlayback(t);
+  wordsNow(t);
+  wordsCanvasDraw(t);
 }
 
 const wordsCard = (on, title, does, onclick) => el("button", { class: "effect", role: "radio", "aria-checked": String(!!on), title: `${title} · ${does}`, "aria-label": title, onclick },
@@ -1149,6 +1172,28 @@ function wordsHeaderMeta(anim) {
   return { lineNo, description: `${wordsLabel(anim)} · line ${lineNo}${it ? ` · ${itemText}` : ""}` };
 }
 
+function wordsMountMain(view, anim, animations, end, parts) {
+  const main = wordsPanel.mainEl ||= el("section", { id: "words-main" });
+  main.setAttribute("aria-label", `${wordsLabel(anim)} lyrics`);
+  const [head, notice, upper, stageNode, toolbar, controls] = parts;
+  const before = [head, ...(notice ? [notice] : []), upper];
+  const after = [...(toolbar ? [toolbar] : []), controls];
+  if (stageNode.parentElement === main) {
+    for (const child of [...main.children]) { if (child !== stageNode) child.remove(); }
+    stageNode.before(...before);
+    stageNode.after(...after);
+  } else {
+    main.replaceChildren(...before, stageNode, ...after);
+  }
+  const left = wordsPanel.leftEl ||= el("aside", { id: "words-lyrics" });
+  const right = wordsPanel.rightEl ||= el("aside", { id: "words-film" });
+  left.replaceChildren(new PanelHeader({ id: "words-lyrics-head", title: "Lyrics" }).element, wordsTimeline(animations, end));
+  right.replaceChildren(new PanelHeader({ id: "words-film-head", title: "Visual cues" }).element, wordsRoll(animations, end));
+  if (main.parentElement !== view || left.parentElement !== view || right.parentElement !== view) {
+    view.replaceChildren(left, main, right);
+  }
+}
+
 function wordsRender() {
   const view = $("view-design"), anim = wordsCurrent(), animations = wordsPanel.read?.document?.animations || [];
   if (!anim) { view.replaceChildren(el("p", { class: "panel-empty inline" }, "No lyric sections yet.")); return; }
@@ -1159,21 +1204,22 @@ function wordsRender() {
   const save = el("button", { id: "words-save", class: "icon", title: saveLabel, "aria-label": saveLabel, onclick: () => wordsSave(!changes),
     html: '<svg viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3h2zM7 3v6h9V3M7 21v-8h10v8"/></svg>' });
   const designer = wordsPanel.view === "design" && wordsPanel.line && !anim.kinetic;
-  const main = el("section", { id: "words-main", "aria-label": `${wordsLabel(anim)} lyrics` },
+  wordsMountMain(view, anim, animations, end, [
     new PanelHeader({ id: "words-main-head", title: `${wordsLabel(anim)} · ${lineNo}`, description,
       actions: [wordsModeTabs(), wordsLinksToggleButton(), save] }).element,
     wordsPanel.read.reference_changed ? el("p", { class: "not-linked" }, "The timing reference changed since this was saved; check the words before saving.") : null,
     wordsUpperTracks(anim),
     designer ? wordsCanvas(anim) : wordsStage(anim),
     designer ? wordsDesignerToolbar(anim) : null,
-    el("div", { id: "words-workspace-controls" }, ...wordsInnerControls(anim)));
-
-  view.replaceChildren(
-    el("aside", { id: "words-lyrics" }, new PanelHeader({ id: "words-lyrics-head", title: "Lyrics" }).element, wordsTimeline(animations, end)),
-    main,
-    el("aside", { id: "words-film" }, new PanelHeader({ id: "words-film-head", title: "Visual cues" }).element, wordsRoll(animations, end)));
+    el("div", { id: "words-workspace-controls" }, ...wordsInnerControls(anim))]);
   view.dataset.wordsMode = wordsPanel.mode;
-  view.onscroll = () => wordsArrows(view);
+  view.onwheel = (event) => {
+    if (event.target.closest?.("#words-workspace-controls, .words-backgrounds")) return;
+    wordsPanel.userWheelUntil = performance.now() + 260;
+    wordsPanel.programmaticScrollUntil = 0;
+    if (wordsPanel.playing) { wordsVideo("pause"); wordsPanel.playing = false; }
+  };
+  view.onscroll = () => wordsSyncViewScroll(view);
   wordsViewFitter.observe(view); if ($("magic-workstation")) wordsViewFitter.observe($("magic-workstation")); wordsWidth(view);
   requestAnimationFrame(() => {
     wordsCanvasDraw(); wordsFitClock(view);
@@ -1268,8 +1314,13 @@ async function wordsPickBackdrop(anim, assetId) {
     });
     if (result.conflict) { toast("This verse changed elsewhere; reloaded"); return wordsOpen(); }
     anim.source_revision = result.animation.source_revision;
-    anim.background_asset = assetId;
+    anim.background_asset = result.animation.background_asset;
+    anim.background_custom = result.animation.background_custom;
+    if (wordsPanel.read?.in_video?.includes(anim.animation_id)) {
+      await wordsCommand("words.apply", { animation_id: anim.animation_id, use: true });
+    }
     wordsPanel.show = assetId ? "still" : "stage";
+    wordsPanel.stageDirty = true;
     document.querySelector("#words-main .words-backdrop")?.replaceWith(wordsBackdropPicker(anim));
     await wordsShow(wordsPanel.show);
     wordsPanel.time = heldTime;
@@ -1280,13 +1331,13 @@ async function wordsPickBackdrop(anim, assetId) {
 
 function wordsBackdropPicker(anim) {
   const images = wordsAvailableBackdrops();
-  const isFullVideo = wordsPanel.show === "stage" || !anim.background_asset;
+  const isFullVideo = wordsPanel.show === "stage" || (!anim.background_custom && !anim.background_asset);
   const videoBtn = el("button", {
     class: "words-background words-background-mode",
     title: "Play full animated video scene",
     "aria-label": "Use full video scene",
     "aria-pressed": String(isFullVideo),
-    onclick: () => { wordsPanel.show = "stage"; document.querySelector("#words-main .words-backdrop")?.replaceWith(wordsBackdropPicker(anim)); wordsShow("stage"); }
+    onclick: () => wordsPickBackdrop(anim, null)
   }, el("span", { class: "words-background-label" }, "Video"));
   return el("div", { class: "words-backdrop", role: "group", "aria-label": "Scene backgrounds" },
     el("span", { class: "meta" }, "Scene"),
@@ -1339,7 +1390,17 @@ function wordsStage(anim) {
     return wordsPanel.stage;
   }
   const scrub = el("input", { type: "range", id: "words-scrub", min: "0", max: String(songSpan.end), step: "0.01", "aria-label": "Video time",
-    oninput: (e) => { e.target.defaultValue = e.target.value; wordsPanel.previewRange = null; wordsSeekSong(Number(e.target.value)); } });
+    oninput: (e) => {
+      e.target.defaultValue = e.target.value;
+      const t = Number(e.target.value);
+      if (wordsPanel.playing) { wordsVideo("pause"); wordsPanel.playing = false; }
+      wordsPanel.previewRange = null; wordsPanel.autoPlay = false;
+      wordsPanel.userScrollingUntil = performance.now() + 220;
+      wordsSeekSong(t);
+      wordsFollowLivePlayback(t);
+      wordsNow(t);
+      wordsFollow(t, false);
+    } });
   scrub.value = scrub.defaultValue = String(wordsPanel.time || section.start);
   const server = new URL(url), project = server.hash.split("/")[1] || "hyperframes";
   wordsPanel.player = `${server.origin}/api/projects/${project}/preview`;
@@ -1370,7 +1431,7 @@ async function wordsResolveShowUrl(show, anim) {
 
 // The stage shows the scene's backdrop with the music and the lyrics (words.lyrics_view show=stage), the whole video,
 // or the section as edited (its composition from words.compose).
-async function wordsShow(show, frame = $("words-video-frame")) {
+async function wordsShow(show, frame = wordsPanel.stage?.querySelector("#words-video-frame") || $("words-video-frame")) {
   const anim = wordsCurrent();
   wordsPanel.show = show;
   wordsPanel.stage?.querySelectorAll('[role="tab"]').forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.show === show)));
@@ -1485,24 +1546,28 @@ function wordsSyncPendingSeek(song, isPlaying) {
   return true;
 }
 
+function wordsHandleStateMessage(data) {
+  const song = data.currentTime + wordsPanel.offset;
+  if (!data.isPlaying && performance.now() < (wordsPanel.userScrollingUntil || 0)) return;
+  if (wordsSyncPendingSeek(song, data.isPlaying)) return;
+  wordsPanel.time = song; wordsPanel.playing = !!data.isPlaying;
+  if (wordsHandlePreviewBoundary(song, data.isPlaying)) return;
+  if (data.isPlaying) wordsPanel.autoPlay = false;
+  if (data.isPlaying || !wordsPanel.previewRange) wordsFollowLivePlayback(song);
+  const scrub = $("words-scrub");
+  if (scrub) { scrub.value = String(song); scrub.defaultValue = scrub.value; }
+  if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(song)} / ${wordsClock(wordsSongSpan().end)}`;
+  wordsNow(song);
+  wordsPanel.playButton?.setAttribute("aria-label", data.isPlaying ? "Pause song" : "Play song");
+}
+
 // The player reports its time, play state and stage size; the transport follows it.
 addEventListener("message", (event) => {
   const frame = $("words-video-frame");
   if (!frame || event.source !== frame.contentWindow || event.data?.source !== "hf-preview") return;
   const data = event.data;
   if (data.type === "stage-size") { wordsFit({ width: data.width, height: data.height }); wordsVideoRange(); }
-  if (data.type === "state") {
-    const song = data.currentTime + wordsPanel.offset;
-    if (wordsSyncPendingSeek(song, data.isPlaying)) return;
-    wordsPanel.time = song; wordsPanel.playing = !!data.isPlaying;
-    if (wordsHandlePreviewBoundary(song, data.isPlaying)) return;
-    if (data.isPlaying) { wordsPanel.autoPlay = false; wordsFollowLivePlayback(song); }
-    const scrub = $("words-scrub");
-    if (scrub) { scrub.value = String(song); scrub.defaultValue = scrub.value; }
-    if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(song)} / ${wordsClock(wordsSongSpan().end)}`;
-    wordsNow(song);
-    wordsPanel.playButton?.setAttribute("aria-label", data.isPlaying ? "Pause song" : "Play song");
-  }
+  if (data.type === "state") wordsHandleStateMessage(data);
 });
 // The view's own width (not the window's) picks its layout; see #view-design.narrow / .tight.
 function wordsWidth(view = $("view-design")) {
@@ -1644,6 +1709,14 @@ function wordsMeaningShelf(anim, lib, k, picked, text) {
   ];
 }
 
+function wordsToggleStroke(k, lib, picked, key, trackKind) {
+  const existing = k.draws || [];
+  const allHave = picked.every((id) => existing.some((d) => d.word_id === id && d.stroke === key));
+  if (allHave) return existing.filter((d) => !(picked.includes(d.word_id) && d.stroke === key));
+  const kept = existing.filter((d) => !(picked.includes(d.word_id) && !d.drawing && (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === trackKind));
+  return [...kept, ...picked.map((word_id) => ({ word_id, stroke: key, track: trackKind, place: key === "down" ? "beside" : "under" }))];
+}
+
 function wordsStrokesShelf(anim, lib, k, picked, text, trackKind) {
   return [
     el("div", { class: "words-meaning" }, ...(k.draws || []).map((d, i) => ({ ...d, index: i })).filter((d) => (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === trackKind).map((d) => el("button", {
@@ -1654,7 +1727,7 @@ function wordsStrokesShelf(anim, lib, k, picked, text, trackKind) {
     }, `${text(d.word_id)} · ${d.drawing?.name || lib.strokes?.[d.stroke]?.name || d.stroke}`))),
     picked.length ? el("div", { class: "words-effects" }, ...Object.entries(lib.strokes || {}).filter(([, item]) => (item.track || "graphics") === trackKind).map(([key, item]) => {
       const card = wordsCard(picked.every((id) => k.draws?.some((d) => d.word_id === id && d.stroke === key)), item.name, item.does,
-        () => wordsKinetic({ draws: [...(k.draws || []).filter((d) => !(picked.includes(d.word_id) && d.stroke === key)), ...picked.map((word_id) => ({ word_id, stroke: key, place: key === "down" ? "beside" : "under" }))] }));
+        () => wordsKinetic({ draws: wordsToggleStroke(k, lib, picked, key, trackKind) }));
       const svg = wordsStroke(item); svg.setAttribute("class", "words-stroke-sample"); card.prepend(svg); return card;
     })) : null
   ];
