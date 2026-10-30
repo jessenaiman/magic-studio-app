@@ -162,24 +162,32 @@
 
   // ---- FABRIK 2D inverse kinematics -----------------------------------------
   // lengths: array of segment lengths (n segments -> n+1 joints). Returns joint pts.
+  function stretchChain(lengths, origin, target, dist) {
+    var ux = (target[0] - origin[0]) / dist, uy = (target[1] - origin[1]) / dist, acc = origin.slice();
+    var pts = [origin.slice()];
+    for (var i = 0; i < lengths.length; i++) {
+      acc = [acc[0] + ux * lengths[i], acc[1] + uy * lengths[i]];
+      pts.push(acc.slice());
+    }
+    return pts;
+  }
+  function stepFabrik(pts, lengths, origin, target) {
+    var n = lengths.length, i;
+    pts[n] = target.slice();
+    for (i = n - 1; i >= 0; i--) pts[i] = lerpTo(pts[i + 1], pts[i], lengths[i]);
+    pts[0] = origin.slice();
+    for (i = 0; i < n; i++) pts[i + 1] = lerpTo(pts[i], pts[i + 1], lengths[i]);
+  }
   function fabrik(lengths, origin, target, opt) {
     opt = opt || {};
     var iters = opt.iterations || 12, tol = opt.tol || 0.4;
     var n = lengths.length, total = lengths.reduce(function (a, b) { return a + b; }, 0);
-    var pts = [origin.slice()], i;
-    for (i = 0; i < n; i++) pts.push([origin[0] + lengths[i] * (i + 1), origin[1]]); // seed straight
     var dist = Math.hypot(target[0] - origin[0], target[1] - origin[1]);
-    if (dist > total) {                                // unreachable: stretch straight
-      var ux = (target[0] - origin[0]) / dist, uy = (target[1] - origin[1]) / dist, acc = origin.slice();
-      pts[0] = origin.slice();
-      for (i = 0; i < n; i++) { acc = [acc[0] + ux * lengths[i], acc[1] + uy * lengths[i]]; pts[i + 1] = acc.slice(); }
-      return pts;
-    }
+    if (dist > total) return stretchChain(lengths, origin, target, dist);
+    var pts = [origin.slice()];
+    for (var i = 0; i < n; i++) pts.push([origin[0] + lengths[i] * (i + 1), origin[1]]);
     for (var it = 0; it < iters; it++) {
-      pts[n] = target.slice();                         // backward
-      for (i = n - 1; i >= 0; i--) pts[i] = lerpTo(pts[i + 1], pts[i], lengths[i]);
-      pts[0] = origin.slice();                          // forward
-      for (i = 0; i < n; i++) pts[i + 1] = lerpTo(pts[i], pts[i + 1], lengths[i]);
+      stepFabrik(pts, lengths, origin, target);
       if (Math.hypot(pts[n][0] - target[0], pts[n][1] - target[1]) < tol) break;
     }
     return pts;
@@ -265,27 +273,32 @@
   // and animates it on the timeline. Text is HTML so the webfont applies.
   //   balloon(tl, { into:<g>, overlay:<div>, at, dur, text, mouth:[x,y],
   //                 center:[x,y], w, size, font, boil })
+  function resolveBalloonBox(o) {
+    var center = o.center || [1030, 320];
+    var bx = center[0] || 1030, by = center[1] || 320;
+    var w = o.w || Math.max(200, String(o.text || "").length * 26), h = o.h || 116;
+    return { bx: bx, by: by, w: w, h: h, mouth: o.mouth || [bx - 260, by + 130] };
+  }
+  function animateBalloon(tl, g, grp, d, mouth, at, dur) {
+    if (!tl || !g) return;
+    g.set(grp, { svgOrigin: mouth[0] + " " + mouth[1], scale: 0 });
+    tl.to(grp, { scale: 1, duration: 0.4, ease: ease.overshoot }, at);
+    tl.to(d, { opacity: 1, duration: 0.25 }, at + 0.18);
+    tl.to([grp, d], { opacity: 0, duration: 0.3 }, at + dur - 0.3);
+  }
   function balloon(tl, o) {
     o = o || {};
-    var g = root.gsap;
-    var bx = (o.center && o.center[0]) || 1030, by = (o.center && o.center[1]) || 320;
-    var w = o.w || Math.max(200, String(o.text || "").length * 26), h = o.h || 116;
-    var mouth = o.mouth || [bx - 260, by + 130];
+    var box = resolveBalloonBox(o);
     var grp = el("g", o.boil ? { filter: "url(#" + o.boil + ")" } : {});
-    grp.appendChild(el("rect", { x: bx - w / 2, y: by - h / 2, width: w, height: h, rx: h / 2, fill: "#fff", stroke: INK, "stroke-width": 3.4 }));
-    grp.appendChild(el("path", { d: "M " + (bx - 40) + " " + (by + h / 2 - 6) + " L " + mouth[0] + " " + mouth[1] + " L " + (bx - 4) + " " + (by + h / 2 - 2) + " Z", fill: "#fff", stroke: INK, "stroke-width": 3.4, "stroke-linejoin": "round" }));
+    grp.appendChild(el("rect", { x: box.bx - box.w / 2, y: box.by - box.h / 2, width: box.w, height: box.h, rx: box.h / 2, fill: "#fff", stroke: INK, "stroke-width": 3.4 }));
+    grp.appendChild(el("path", { d: "M " + (box.bx - 40) + " " + (box.by + box.h / 2 - 6) + " L " + box.mouth[0] + " " + box.mouth[1] + " L " + (box.bx - 4) + " " + (box.by + box.h / 2 - 2) + " Z", fill: "#fff", stroke: INK, "stroke-width": 3.4, "stroke-linejoin": "round" }));
     (o.into || document.body).appendChild(grp);
     var d = document.createElement("div");
     d.textContent = o.text;
     d.style.cssText = "position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;opacity:0;color:" + INK +
-      ";font-family:'" + (o.font || "InkHand") + "',cursive;left:" + (bx - w / 2) + "px;top:" + (by - h / 2) + "px;width:" + w + "px;height:" + h + "px;font-size:" + (o.size || 50) + "px";
+      ";font-family:'" + (o.font || "InkHand") + "',cursive;left:" + (box.bx - box.w / 2) + "px;top:" + (box.by - box.h / 2) + "px;width:" + box.w + "px;height:" + box.h + "px;font-size:" + (o.size || 50) + "px";
     (o.overlay || document.body).appendChild(d);
-    if (tl && g) {
-      g.set(grp, { svgOrigin: mouth[0] + " " + mouth[1], scale: 0 });
-      tl.to(grp, { scale: 1, duration: 0.4, ease: ease.overshoot }, o.at || 0);
-      tl.to(d, { opacity: 1, duration: 0.25 }, (o.at || 0) + 0.18);
-      tl.to([grp, d], { opacity: 0, duration: 0.3 }, (o.at || 0) + (o.dur || 2) - 0.3);
-    }
+    animateBalloon(tl, root.gsap, grp, d, box.mouth, o.at || 0, o.dur || 2);
     return { group: grp, text: d };
   }
 

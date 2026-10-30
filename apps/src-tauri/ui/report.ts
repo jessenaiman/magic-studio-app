@@ -24,8 +24,8 @@ class ReportStat {
 // it and assistive technology reads the value without any inline style.
 class ReportBar {
   readonly element: HTMLElement;
-  constructor(share: number) {
-    this.element = el('progress', { class: 'report', 'data-look': 'bar', max: '1',
+  constructor(share: number, lang: string | null = null) {
+    this.element = el('progress', { class: 'report', 'data-look': 'bar', 'data-lang': lang, max: '1',
       value: String(Math.max(0, Math.min(1, Number(share) || 0))) });
   }
 }
@@ -49,8 +49,9 @@ class ReportTable {
       const value = column.value(row);
       const text = column.text ? column.text(row) : column.numeric ? reportValue(value, column) : value;
       const max = column.bar ? Math.max(...rows.map((other) => Number(column.value(other)) || 0)) : 0;
+      const lang = column.lang ? column.lang(row) : row?.lang || null;
       return el('td', { 'data-numeric': String(!!column.numeric), title: column.title?.(row) ?? null },
-        column.bar ? new ReportBar(max ? Number(value) / max : 0).element : null, text);
+        column.bar ? new ReportBar(max ? Number(value) / max : 0, lang).element : null, text);
     }));
   }
 }

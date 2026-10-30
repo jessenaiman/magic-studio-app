@@ -78,30 +78,39 @@ function mv(m, v) {
 }
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 
+function axisIndex(channelName) {
+  if (channelName[0] === "X") return 0;
+  return channelName[0] === "Y" ? 1 : 2;
+}
+
+function localJointTransform(j, chanVals) {
+  const idx = chanJoints.indexOf(j);
+  let localR = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  let rootT = null;
+  if (idx < 0) return { localR, rootT };
+  const ch = j.channels, v = chanVals[idx];
+  for (let k = 0; k < ch.length; k++) {
+    if (ch[k].endsWith("position")) {
+      if (!rootT) rootT = [0, 0, 0];
+      rootT[axisIndex(ch[k])] = v[k];
+    } else {
+      localR = mm(localR, rotAxis(ch[k][0], v[k]));
+    }
+  }
+  return { localR, rootT };
+}
+
 function fk(frame) {
   const pos = {};
   let ci = 0;
   const chanVals = chanJoints.map((j) => { const n = j.channels.length; const v = frame.slice(ci, ci + n); ci += n; return v; });
   function recur(j, pR, pT) {
     const worldPos = add(mv(pR, j.offset), pT);
-    pos[j.name] = worldPos;
-    const idx = chanJoints.indexOf(j);
-    let localR = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-    let rootT = null;
-    if (idx >= 0) {
-      const ch = j.channels, v = chanVals[idx];
-      const rotPart = [];
-      for (let k = 0; k < ch.length; k++) {
-        if (ch[k].endsWith("position")) { if (!rootT) rootT = [0, 0, 0]; rootT[ch[k][0] === "X" ? 0 : ch[k][0] === "Y" ? 1 : 2] = v[k]; }
-        else rotPart.push([ch[k][0], v[k]]);
-      }
-      for (const [ax, deg] of rotPart) localR = mm(localR, rotAxis(ax, deg));
-    }
-    const myT = rootT ? add(rootT, j.offset) : worldPos; // root uses its position channels
+    const { localR, rootT } = localJointTransform(j, chanVals);
     const myPos = rootT ? add(rootT, j.offset) : worldPos;
-    if (rootT) pos[j.name] = myPos;
+    pos[j.name] = myPos;
     const gR = mm(pR, localR);
-    for (const c of j.children) recur(c, gR, rootT ? myPos : worldPos);
+    for (const c of j.children) recur(c, gR, myPos);
   }
   recur(root, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [0, 0, 0]);
   return pos;
