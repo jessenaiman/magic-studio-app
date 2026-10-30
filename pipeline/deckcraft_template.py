@@ -853,7 +853,7 @@ def fill_page(
     if kind == "scene":
         g = page["group"]
         ids = g["word_ids"]
-        raw = g["text"] or ""
+        raw = g["text"] or ("[Instrumental]" if not ids else "")
         fill("auto.scene.lyrics", raw, 27)
         lyric_shape = next(
             x for x in slide["shapes"] if x.get("altText") == "auto.scene.lyrics"
