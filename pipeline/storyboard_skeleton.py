@@ -66,16 +66,7 @@ def spans(cues, dur):
     return frames
 
 
-def describe(f, m):
-    a, b = f["a"], f["b"]
-    phases = [p for p in m["energy_phases"] if p["start"] < b and p["end"] > a]
-    rolls = [r for r in m.get("rolls", []) if r["start"] < b and r["end"] > a]
-    dense = any(p.get("density") == "dense" for p in phases)
-    chars = [p.get("feel", {}).get("character") for p in phases]
-    f["pacing"] = "beat_cut" if rolls or dense else "phrase_flow"
-    f["mood"] = list(dict.fromkeys(MOOD[c] for c in chars if c in MOOD))[:3] or [
-        "dreamy"
-    ]
+def _format_feel_bits(phases, rolls, moments):
     loud = max(phases, key=lambda p: p["energy"]) if phases else None
     bits = []
     if loud and loud["level"] != "VOID":
@@ -83,17 +74,33 @@ def describe(f, m):
     elif loud:
         bits.append("silent (VOID)")
     if rolls:
-        bits.append(
-            "rolls: "
-            + ", ".join(
-                f"{r['drum']} {r['kind']} {r['start']:.1f}–{r['end']:.1f}"
-                for r in rolls
-            )
+        roll_txt = ", ".join(
+            f"{r['drum']} {r['kind']} {r['start']:.1f}–{r['end']:.1f}" for r in rolls
         )
-    moments = sorted((k["t"], k["kind"]) for k in m["key_moments"] if a <= k["t"] < b)
+        bits.append("rolls: " + roll_txt)
     if moments:
         bits.append(", ".join(f"{kind} at {t:g}" for t, kind in moments))
-    f["feel"] = "; ".join(bits) or "steady"
+    return "; ".join(bits) or "steady"
+
+
+def _overlaps(item, a, b):
+    return item["start"] < b and item["end"] > a
+
+
+def _resolve_moods(phases):
+    chars = [p.get("feel", {}).get("character") for p in phases]
+    return list(dict.fromkeys(MOOD[c] for c in chars if c in MOOD))[:3] or ["dreamy"]
+
+
+def describe(f, m):
+    a, b = f["a"], f["b"]
+    phases = [p for p in m["energy_phases"] if _overlaps(p, a, b)]
+    rolls = [r for r in m.get("rolls", []) if _overlaps(r, a, b)]
+    dense = any(p.get("density") == "dense" for p in phases)
+    f["pacing"] = "beat_cut" if rolls or dense else "phrase_flow"
+    f["mood"] = _resolve_moods(phases)
+    moments = sorted((k["t"], k["kind"]) for k in m["key_moments"] if a <= k["t"] < b)
+    f["feel"] = _format_feel_bits(phases, rolls, moments)
 
 
 def render(frames, dur, canvas):
