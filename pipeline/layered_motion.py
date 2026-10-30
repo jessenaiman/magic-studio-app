@@ -696,6 +696,270 @@ def layer_checks(spec):
     }
 
 
+def check_options(resolution, quality):
+    """Reject an option value before any work directory is touched."""
+    if resolution not in RESOLUTIONS:
+        raise ValueError(
+            f"resolution must be one of {sorted(RESOLUTIONS)}, got {resolution!r}"
+        )
+    if quality not in QUALITIES:
+        raise ValueError(f"quality must be one of {sorted(QUALITIES)}, got {quality!r}")
+
+
+def restrict_tracks(spec, layers_report, only):
+    """Keep the named tracks, and drop layer issues that belong to tracks left out."""
+    unknown = sorted(set(only) - {t["id"] for t in spec["tracks"]})
+    if unknown:
+        raise ValueError(f"unknown track(s): {unknown}")
+    spec["tracks"] = [t for t in spec["tracks"] if t["id"] in only]
+    layers_report["issues"] = [
+        i for i in layers_report["issues"] if i["track"] is None or i["track"] in only
+    ]
+
+
+def blur_settings(spec):
+    """The motion-blur shutter and sample count, or None when the spec asks for none."""
+    blur_spec = spec.get("motionBlur")
+    if not blur_spec:
+        return None
+    return {
+        "shutterAngle": number(blur_spec.get("shutterAngle", 360), "shutterAngle"),
+        "samples": int(number(blur_spec.get("samples", 16), "samples")),
+    }
+
+
+def render_context(spec_path, out_dir, spec, *, gpu, resolution, quality, crf, stills, work):
+    """Everything one render needs, resolved once."""
+    return {
+        "spec_path": spec_path,
+        "out_dir": out_dir,
+        "work": work,
+        "spec": spec,
+        "gpu": gpu,
+        "resolution": resolution,
+        "quality": quality,
+        "crf": crf,
+        "stills": stills,
+        "project": work / "layered_motion.ecproj",
+        "binary": shutil.which("effectcraft-cli") or "effectcraft-cli",
+        "ffmpeg": shutil.which("ffmpeg") or "ffmpeg",
+        "gpu_flag": ["--gpu"] if gpu else [],
+        "env": gpu_env(gpu),
+    }
+
+
+def last_line(*streams):
+    """The tool's most informative last line, for an error message."""
+    for text in streams:
+        lines = (text or "").strip().splitlines()
+        if lines:
+            return lines[-1]
+    return "no output"
+
+
+def run_script(ctx, script):
+    """Build the layers into the EffectCraft project, or report why that failed."""
+    done = subprocess.run(
+        [ctx["binary"], "script", str(script)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        env=ctx["env"],
+    )
+    if done.returncode:
+        raise RuntimeError(last_line(done.stderr, done.stdout))
+
+
+def render_still(ctx, track, index, still):
+    """One representative frame of a track, written transparent."""
+    at = track["duration"] * (index + 0.5) / max(1, ctx["stills"])
+    done = subprocess.run(
+        [
+            ctx["binary"],
+            "--project",
+            str(ctx["project"]),
+            *ctx["gpu_flag"],
+            "render-frame",
+            "--comp",
+            track["id"],
+            "--time",
+            f"{at:.4f}",
+            "--transparent",
+            "--out",
+            str(still),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        env=ctx["env"],
+    )
+    if done.returncode or not still.is_file():
+        raise RuntimeError(
+            f"Still {index} of track {track['id']} failed: "
+            + last_line(done.stderr, done.stdout)
+        )
+
+
+def track_entry(ctx, track):
+    """The reported shape of one track, rendering any requested stills first."""
+    entry = {
+        "track": track["id"],
+        "fps": ctx["spec"]["fps"],
+        "frames": int(round(track["duration"] * ctx["spec"]["fps"])),
+    }
+    if not ctx["stills"]:
+        return entry
+    folder = ctx["out_dir"] / "stills" / track["id"]
+    folder.mkdir(parents=True, exist_ok=True)
+    entry["stills"] = []
+    for i in range(ctx["stills"]):
+        still = folder / f"{i:02d}.png"
+        render_still(ctx, track, i, still)
+        entry["stills"].append(str(still))
+    return entry
+
+
+def render_frames(ctx, track, entry):
+    """Render the track as numbered PNGs, refusing a partial frame set."""
+    frames_dir = ctx["work"] / "frames" / track["id"]
+    if frames_dir.exists():
+        shutil.rmtree(frames_dir)
+    frames_dir.mkdir(parents=True)
+    done = subprocess.run(
+        [
+            ctx["binary"],
+            "--project",
+            str(ctx["project"]),
+            *ctx["gpu_flag"],
+            "render",
+            "--comp",
+            track["id"],
+            "--out",
+            str(frames_dir / "f.png"),
+            "--format",
+            "png",
+            "--channels",
+            "rgba",
+            "--resolution",
+            ctx["resolution"],
+            "--quality",
+            ctx["quality"],
+        ],
+        capture_output=True,
+        text=True,
+        timeout=3600,
+        env=ctx["env"],
+    )
+    rendered = sorted(frames_dir.glob("f_*.png"))
+    if done.returncode or len(rendered) != entry["frames"]:
+        raise RuntimeError(
+            f"Render of track {track['id']} failed "
+            f"({len(rendered)}/{entry['frames']} frames): "
+            + last_line(done.stderr, done.stdout)
+        )
+    return frames_dir
+
+
+def encode_video(ctx, track, frames_dir, target):
+    """Encode the rendered frames to VP9 with alpha, then drop the intermediate frames."""
+    encoded = subprocess.run(
+        [
+            ctx["ffmpeg"],
+            "-nostdin",
+            "-v",
+            "error",
+            "-y",
+            "-framerate",
+            f"{ctx['spec']['fps']:g}",
+            "-i",
+            str(frames_dir / "f_%05d.png"),
+            "-c:v",
+            "libvpx-vp9",
+            "-pix_fmt",
+            "yuva420p",
+            "-auto-alt-ref",
+            "0",
+            "-b:v",
+            "0",
+            "-crf",
+            str(ctx["crf"]),
+            "-row-mt",
+            "1",
+            "-threads",
+            "4",
+            "-deadline",
+            "good",
+            "-cpu-used",
+            "2",
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=3600,
+    )
+    if encoded.returncode or not target.is_file() or target.stat().st_size == 0:
+        raise RuntimeError(
+            f"Encode of track {track['id']} failed: {last_line(encoded.stderr)}"
+        )
+    shutil.rmtree(frames_dir)
+
+
+def review_reference(ctx, track):
+    """The reference image this track is checked against, when the spec names one."""
+    reference = ctx["spec"].get("reference")
+    if not reference:
+        return None
+    return Path(ctx["spec_path"]).resolve().parent / reference
+
+
+def analyze_track(ctx, track, entry, target, margin):
+    """Validate the encoded clip and attach its measurements and review sheets."""
+    ref_path = review_reference(ctx, track)
+    report = analyze(
+        target,
+        expected_frames=entry["frames"],
+        expected_fps=ctx["spec"]["fps"],
+        loop=bool(track.get("loop")),
+        reference=ref_path,
+    )
+    entry["size"] = [
+        int(ctx["spec"]["canvas"][0] + margin[0] + margin[2]),
+        int(ctx["spec"]["canvas"][1] + margin[1] + margin[3]),
+    ]
+    entry["review_sheets"] = [
+        contact_sheet(
+            target,
+            ctx["out_dir"] / "review" / f"{track['id']}{suffix}.png",
+            reference=ref_path,
+            mode=mode,
+        )["sheet"]
+        for mode, suffix in (("path", ""), ("detail", "_detail"))
+    ]
+    return {
+        **entry,
+        "file": str(target),
+        "validation": {
+            "ok": report["ok"],
+            "metrics": report["metrics"],
+            "checks": report["checks"],
+            "not_measured": report["not_measured"],
+            "failed": [c for c in report["checks"] if not c["ok"]],
+        },
+    }
+
+
+def validation_failures(outputs, layers_report, lint):
+    """Tracks whose clip or layer checks failed, in report order."""
+    problems = [
+        o["track"] for o in outputs if "validation" in o and not o["validation"]["ok"]
+    ]
+    problems += sorted(
+        {i["track"] for i in layers_report["issues"] if i["level"] == "error"}
+        - set(problems)
+    )
+    return problems
+
+
 def run(
     spec_path,
     out_dir,
@@ -707,230 +971,51 @@ def run(
     resolution="full",
     quality="best",
 ):
-    if resolution not in RESOLUTIONS:
-        raise ValueError(
-            f"resolution must be one of {sorted(RESOLUTIONS)}, got {resolution!r}"
-        )
-    if quality not in QUALITIES:
-        raise ValueError(f"quality must be one of {sorted(QUALITIES)}, got {quality!r}")
+    check_options(resolution, quality)
     out_dir = Path(out_dir).resolve()
     work = out_dir / "work"
     work.mkdir(parents=True, exist_ok=True)
     spec = load_spec(spec_path, work)
-    layers_report = layer_checks(
-        spec
-    )  # on the whole spec, so "unused layer" is not judged from a subset
+    # Layer checks run on the whole spec, so "unused layer" is not judged from a subset.
+    layers_report = layer_checks(spec)
     if only:
-        unknown = sorted(set(only) - {t["id"] for t in spec["tracks"]})
-        if unknown:
-            raise ValueError(f"unknown track(s): {unknown}")
-        spec["tracks"] = [t for t in spec["tracks"] if t["id"] in only]
-        layers_report["issues"] = [
-            i
-            for i in layers_report["issues"]
-            if i["track"] is None or i["track"] in only
-        ]
-    blur_spec = spec.get("motionBlur")
-    blur = None
-    if blur_spec:
-        blur = {
-            "shutterAngle": number(blur_spec.get("shutterAngle", 360), "shutterAngle"),
-            "samples": int(number(blur_spec.get("samples", 16), "samples")),
-        }
-    project = work / "layered_motion.ecproj"
-    script = work / "layered_motion.jsx"
-    script.write_text(build_jsx(spec, project, work, blur))
-    binary = shutil.which("effectcraft-cli") or "effectcraft-cli"
-    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-    gpu_flag = ["--gpu"] if gpu else []
-    ec_env = gpu_env(gpu)
-    run_script = subprocess.run(
-        [binary, "script", str(script)],
-        capture_output=True,
-        text=True,
-        timeout=600,
-        env=ec_env,
+        restrict_tracks(spec, layers_report, only)
+    blur = blur_settings(spec)
+    ctx = render_context(
+        spec_path,
+        out_dir,
+        spec,
+        gpu=gpu,
+        resolution=resolution,
+        quality=quality,
+        crf=crf,
+        stills=stills,
+        work=work,
     )
-    if run_script.returncode:
-        raise RuntimeError(
-            (run_script.stderr.strip() or run_script.stdout.strip()).splitlines()[-1]
-        )
+    script = work / "layered_motion.jsx"
+    script.write_text(build_jsx(spec, ctx["project"], work, blur))
+    run_script(ctx, script)
     outputs = []
     margin = vector(spec.get("margin", [0, 0, 0, 0]), 4, "margin")
     for track in spec["tracks"]:
-        entry = {
-            "track": track["id"],
-            "fps": spec["fps"],
-            "frames": int(round(track["duration"] * spec["fps"])),
-        }
-        if stills:
-            folder = out_dir / "stills" / track["id"]
-            folder.mkdir(parents=True, exist_ok=True)
-            entry["stills"] = []
-            for i in range(stills):
-                at = track["duration"] * (i + 0.5) / stills
-                still = folder / f"{i:02d}.png"
-                done = subprocess.run(
-                    [
-                        binary,
-                        "--project",
-                        str(project),
-                        *gpu_flag,
-                        "render-frame",
-                        "--comp",
-                        track["id"],
-                        "--time",
-                        f"{at:.4f}",
-                        "--transparent",
-                        "--out",
-                        str(still),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=600,
-                    env=ec_env,
-                )
-                if done.returncode or not still.is_file():
-                    raise RuntimeError(
-                        f"Still {i} of track {track['id']} failed: "
-                        + (
-                            (done.stderr or done.stdout).strip().splitlines()
-                            or ["no output"]
-                        )[-1]
-                    )
-                entry["stills"].append(str(still))
+        entry = track_entry(ctx, track)
         if not video:
             outputs.append(entry)
             continue
         target = out_dir / f"{track['id']}.webm"
-        # Frames are rendered as PNGs (on the discrete GPU when asked) and encoded to VP9 with alpha by ffmpeg,
-        # which is several times faster than EffectCraft's own WebM encode and keeps the CPU cool.
-        frames_dir = work / "frames" / track["id"]
-        if frames_dir.exists():
-            shutil.rmtree(frames_dir)
-        frames_dir.mkdir(parents=True)
-        done = subprocess.run(
-            [
-                binary,
-                "--project",
-                str(project),
-                *gpu_flag,
-                "render",
-                "--comp",
-                track["id"],
-                "--out",
-                str(frames_dir / "f.png"),
-                "--format",
-                "png",
-                "--channels",
-                "rgba",
-                "--resolution",
-                resolution,
-                "--quality",
-                quality,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=3600,
-            env=ec_env,
-        )
-        rendered = sorted(frames_dir.glob("f_*.png"))
-        if done.returncode or len(rendered) != entry["frames"]:
-            raise RuntimeError(
-                f"Render of track {track['id']} failed ({len(rendered)}/{entry['frames']} frames): "
-                + ((done.stderr or done.stdout).strip().splitlines() or ["no output"])[
-                    -1
-                ]
-            )
-        encoded = subprocess.run(
-            [
-                ffmpeg,
-                "-nostdin",
-                "-v",
-                "error",
-                "-y",
-                "-framerate",
-                f"{spec['fps']:g}",
-                "-i",
-                str(frames_dir / "f_%05d.png"),
-                "-c:v",
-                "libvpx-vp9",
-                "-pix_fmt",
-                "yuva420p",
-                "-auto-alt-ref",
-                "0",
-                "-b:v",
-                "0",
-                "-crf",
-                str(crf),
-                "-row-mt",
-                "1",
-                "-threads",
-                "4",
-                "-deadline",
-                "good",
-                "-cpu-used",
-                "2",
-                str(target),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=3600,
-        )
-        if encoded.returncode or not target.is_file() or target.stat().st_size == 0:
-            raise RuntimeError(
-                f"Encode of track {track['id']} failed: "
-                + ((encoded.stderr or "").strip().splitlines() or ["no output"])[-1]
-            )
-        shutil.rmtree(frames_dir)
+        # Frames are rendered as PNGs (on the discrete GPU when asked) and encoded to VP9 with
+        # alpha by ffmpeg, which is several times faster than EffectCraft's own WebM encode and
+        # keeps the CPU cool.
+        frames_dir = render_frames(ctx, track, entry)
+        encode_video(ctx, track, frames_dir, target)
         entry["renderer"] = "gpu" if gpu else "cpu"
-        reference = spec.get("reference")
-        ref_path = (Path(spec_path).resolve().parent / reference) if reference else None
-        report = analyze(
-            target,
-            expected_frames=entry["frames"],
-            expected_fps=spec["fps"],
-            loop=bool(track.get("loop")),
-            reference=ref_path,
-        )
-        entry["size"] = [
-            int(spec["canvas"][0] + margin[0] + margin[2]),
-            int(spec["canvas"][1] + margin[1] + margin[3]),
-        ]
-        entry["review_sheets"] = [
-            contact_sheet(
-                target,
-                out_dir / "review" / f"{track['id']}{suffix}.png",
-                reference=ref_path,
-                mode=mode,
-            )["sheet"]
-            for mode, suffix in (("path", ""), ("detail", "_detail"))
-        ]
-        outputs.append(
-            {
-                **entry,
-                "file": str(target),
-                "validation": {
-                    "ok": report["ok"],
-                    "metrics": report["metrics"],
-                    "checks": report["checks"],
-                    "not_measured": report["not_measured"],
-                    "failed": [c for c in report["checks"] if not c["ok"]],
-                },
-            }
-        )
+        outputs.append(analyze_track(ctx, track, entry, target, margin))
     lint = lint_spec(json.loads(Path(spec_path).read_text()))
-    problems = [
-        o["track"] for o in outputs if "validation" in o and not o["validation"]["ok"]
-    ]
-    problems += sorted(
-        {i["track"] for i in layers_report["issues"] if i["level"] == "error"}
-        - set(problems)
-    )
+    problems = validation_failures(outputs, layers_report, lint)
     return {
         "ok": True,
         "spec": str(Path(spec_path).resolve()),
-        "project": str(project),
+        "project": str(ctx["project"]),
         "outputs": outputs,
         "spec_lint": lint,
         "layer_checks": layers_report,
