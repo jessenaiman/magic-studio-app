@@ -50,11 +50,11 @@ window.magicUI = {
     menu.open(params.x ?? rect?.left ?? 0, params.y ?? rect?.bottom ?? 48, target);
     return {opened:params.menu};
   },
-  controls(params = {}) {
+  controls(params: any = {}) {
     const report = window.uiRegistry.inspect({ ...params, root: regionNode(params.region) });
     return { ...report, component_instance: report.instance };
   },
-  attention(params = {}) {
+  attention(params: any = {}) {
     if (params.project !== state.project) throw new Error("Attention project does not match this Studio");
     window.companionBoxes.attention(params.id, params.clear ? null : params.reason);
     return { ok: true, project: state.project, panels: window.companionBoxes.panels() };
@@ -69,7 +69,7 @@ window.magicUI = {
       studio: serverUrl?.() || null, toast: $("toast").classList.contains("show") ? $("toast").textContent : null,
     };
   },
-  components(params = {}) {
+  components(params: any = {}) {
     const report = this.controls(params);
     return { ...report, components: report.items, viewport: [innerWidth, innerHeight], phase: acFeedback.phase };
   },
@@ -165,7 +165,7 @@ window.magicUI = {
     return [x, y, Math.min(innerWidth, r.right + pad) - x, Math.min(innerHeight, r.bottom + pad) - y];
   },
   // After an engine command from the CLI/MCP: follow a newly opened project, else reload its state.
-  async refresh(id, project, revision, result = {}, request_id = null, params = {}) {
+  async refresh(id, project, revision, result: any = {}, request_id = null, params: any = {}) {
     if(project===state.project)window.uiRegistry?.event({command:id,project,view:state.view,request:request_id||result._request_id||`cli-revision-${revision}`,phase:'success',params,result});
     try {
     if (id === "agent.new_chat") {

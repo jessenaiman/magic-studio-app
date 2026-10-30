@@ -27,7 +27,7 @@ function backstageResize(cols,rows){
     if(backstageTerminal.running&&backstageTerminal.session===session)backstageStatus(`Terminal resize failed: ${error}`);
   }).finally(()=>{if(backstageTerminal.resize===request)backstageTerminal.resize=null;});
 }
-function backstageSend(data,binary=false){
+function backstageSend(data: string,binary=false){
   const queue=backstageTerminal.input,session=backstageTerminal.session;
   if(!backstageTerminal.running||session===null||!queue||queue.cancelled)return;
   if(data.length>65536){backstageStatus('Terminal input is too large; send at most 64 KiB at a time.');return;}

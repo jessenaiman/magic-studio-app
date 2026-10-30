@@ -1,5 +1,10 @@
 // One owner for Project commands, readiness and page selection.
 class ProjectView {
+  error: any;
+  pending: any;
+  queue: any;
+  state: any;
+  textDrafts: any;
   constructor(state) {
     this.state = state;
     this.pending = 0;
@@ -49,7 +54,7 @@ function designCommand(id,params={}) { return projectView.command(id,params); }
 //
 // The body is wrapped, never rewritten: the same DOM arrives, and a block
 // that does not care about companions inherits the contract for free.
-function block(id, icon, title, meta, done, body, blockState, action) {
+function block(id: string, icon: string, title: string, meta: string, done: boolean, body: any, blockState?: any, action?: any) {
   const open = state.open === id;
   const dot = window.companionBoxes.dot(done ? "ready" : "needs-attention", "", id);
   dot.title = done ? "Ready" : "Needs work";

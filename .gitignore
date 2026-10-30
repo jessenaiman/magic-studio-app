@@ -181,3 +181,11 @@ apps/src-tauri/acceptance/artifacts/
 /apps/src-tauri/ui/animation-jobs.js
 /apps/src-tauri/ui/home.js
 /apps/src-tauri/ui/companion-rails.js
+/apps/src-tauri/ui/song.js
+/apps/src-tauri/ui/theatre.js
+/apps/src-tauri/ui/backstage-terminal.js
+/apps/src-tauri/ui/storyboard.js
+/apps/src-tauri/ui/menu.js
+/apps/src-tauri/ui/asset-sheet-review.js
+/apps/src-tauri/ui/project.js
+/apps/src-tauri/ui/ui-commands.js

@@ -158,7 +158,7 @@ function renderDesignPlacements(){
   const page=$(`sb-sheet-${item.page-1}`);if(!page)continue;
   const [x,y,w,h]=item.rect;
   const node=el('div',{id:item.id,class:'design-placement',title:'Drag to move · grab an edge to scale'});
-  const place=(px,py,pw,ph)=>{node.style.setProperty('--x',`${100*px/size[0]}%`);node.style.setProperty('--y',`${100*py/size[1]}%`);if(pw!=null){node.style.setProperty('--w',`${100*pw/size[0]}%`);node.style.setProperty('--h',`${100*ph/size[1]}%`);}};
+  const place=(px: number,py: number,pw?: number,ph?: number)=>{node.style.setProperty('--x',`${100*px/size[0]}%`);node.style.setProperty('--y',`${100*py/size[1]}%`);if(pw!=null){node.style.setProperty('--w',`${100*pw/size[0]}%`);node.style.setProperty('--h',`${100*ph/size[1]}%`);}};
   place(x,y,w,h);
   node.append(el('img',{src:convertFileSrc(item.path),alt:'Placed design asset',draggable:'false'}));
   for(const [hx,hy] of [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]]){

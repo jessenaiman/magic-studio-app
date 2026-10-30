@@ -1,6 +1,14 @@
 // Reusable presentation for button menus and text context menus in every workspace.
 // Labels, shortcuts and action IDs come from the native catalog; no per-view copies.
 class StudioMenu {
+  items: any;
+  kind: any;
+  range: any;
+  root: any;
+  selection: any;
+  supported: any;
+  target: any;
+  trigger: any;
   static active = null;
   constructor(kind, trigger = null) {
     this.kind = kind;
