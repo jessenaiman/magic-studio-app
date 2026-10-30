@@ -45,19 +45,25 @@ pub fn default_agent() -> Option<String> {
     })
 }
 
-pub fn settings() -> Result<Value> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
+fn settings_base() -> Option<std::path::PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")));
-    let stored = if let Some(base) = base {
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+}
+
+fn read_stored_settings(base: Option<std::path::PathBuf>) -> Result<Value> {
+    if let Some(base) = base {
         match fs::read_to_string(base.join("magicstudio/agent.json")) {
-            Ok(text)=>serde_json::from_str::<Value>(&text).map_err(|_|invalid("Invalid Magic Studio agent.json; repair existing settings without changing credentials"))?,
-            Err(e) if e.kind()==std::io::ErrorKind::NotFound=>json!({}),
-            Err(_)=>return Err(invalid("Cannot read Magic Studio chat settings; no fallback agent selected")),
+            Ok(text)=>serde_json::from_str::<Value>(&text).map_err(|_|invalid("Invalid Magic Studio agent.json; repair existing settings without changing credentials")),
+            Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(json!({})),
+            Err(_)=>Err(invalid("Cannot read Magic Studio chat settings; no fallback agent selected")),
         }
     } else {
-        json!({})
-    };
+        Ok(json!({}))
+    }
+}
+
+fn validate_stored_settings(stored: &Value) -> Result<()> {
     if stored.get("agent").is_some_and(|v| !v.is_string()) {
         return Err(invalid(
             "Invalid saved agent; choose an installed chat agent in the app. No fallback selected",
@@ -68,25 +74,39 @@ pub fn settings() -> Result<Value> {
             "Invalid saved extra_args; expected an array. No arguments ignored",
         ));
     }
-    let agent = stored["agent"]
+    Ok(())
+}
+
+fn default_selected_agent(stored: &Value) -> String {
+    stored["agent"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
         .map(str::to_owned)
-        .unwrap_or_else(|| default_agent().unwrap_or_else(|| "codex".into()));
+        .unwrap_or_else(|| default_agent().unwrap_or_else(|| "codex".into()))
+}
+
+fn selection_string(stored: &Value, key: &str) -> Result<String> {
+    if stored.get(key).is_some_and(|v| !v.is_string()) {
+        return Err(invalid(format!(
+            "Invalid saved {key}; expected a string. No selection fallback attempted"
+        )));
+    }
+    let value = stored[key].as_str().unwrap_or_default().trim();
+    if value.len() > 256 || value.chars().any(char::is_control) {
+        return Err(invalid(
+            "Invalid chat selection; use a catalog provider/model ID",
+        ));
+    }
+    Ok(value.to_owned())
+}
+
+pub fn settings() -> Result<Value> {
+    let stored = read_stored_settings(settings_base())?;
+    validate_stored_settings(&stored)?;
+    let agent = default_selected_agent(&stored);
     let mut selected = json!({"agent":agent});
     for key in ["provider", "model", "thinking"] {
-        if stored.get(key).is_some_and(|v| !v.is_string()) {
-            return Err(invalid(format!(
-                "Invalid saved {key}; expected a string. No selection fallback attempted"
-            )));
-        }
-        let value = stored[key].as_str().unwrap_or_default().trim();
-        if value.len() > 256 || value.chars().any(char::is_control) {
-            return Err(invalid(
-                "Invalid chat selection; use a catalog provider/model ID",
-            ));
-        }
-        selected[key] = json!(value);
+        selected[key] = json!(selection_string(&stored, key)?);
     }
     selected["extra_args"] = stored["extra_args"]
         .as_array()
@@ -353,6 +373,68 @@ pub fn cmd_sprocket_use(s: &mut Session, p: &Value) -> Result<Value> {
         json!({"ok":true,"selection":selection,"local":found["local"],"free":model_is_free(found),"persisted":true,"previous":{"provider":previous["provider"],"model":previous["model"]}}),
     )
 }
+fn validate_selection_field(key: &str, v: &Value) -> Result<()> {
+    if (key == "extra_args" && !v.is_array())
+        || (key != "extra_args"
+            && (!v.is_string()
+                || v.as_str()
+                    .is_some_and(|x| x.len() > 256 || x.chars().any(char::is_control))))
+    {
+        return Err(invalid("Invalid active chat selection"));
+    }
+    Ok(())
+}
+
+fn validate_selection_agent(fields: &serde_json::Map<String, Value>) -> Result<()> {
+    if let Some(agent) = fields.get("agent").and_then(Value::as_str) {
+        if !AGENT_NAMES.contains(&agent) {
+            return Err(invalid(format!("unknown agent `{agent}`")));
+        }
+        if which_program(agent).is_none() {
+            return Err(invalid(format!(
+                "`{agent}` is not installed on this machine"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn apply_selection_patch(value: &mut Value, patch: &Value) -> Result<()> {
+    let fields = patch
+        .as_object()
+        .ok_or_else(|| invalid("Active selection must be an object"))?;
+    if fields.keys().any(|k| {
+        !matches!(
+            k.as_str(),
+            "agent" | "provider" | "model" | "thinking" | "extra_args"
+        )
+    }) {
+        return Err(invalid(
+            "Only active chat selection can be changed; credentials remain untouched",
+        ));
+    }
+    for (key, v) in fields {
+        validate_selection_field(key, v)?;
+        value[key] = v.clone();
+    }
+    validate_selection_agent(fields)?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("selection_error");
+    }
+    Ok(())
+}
+
+fn decorate_config(s: &Session, value: &mut Value) {
+    let root = crate::workspace::workspace_root(s);
+    value["instructions"] = json!(root.join("apps/src-tauri/agent.md").to_string_lossy());
+    if let (Some(base), Value::Object(catalog)) = (value.as_object_mut(), agent_catalog()) {
+        for (key, val) in catalog {
+            base.insert(key, val);
+        }
+    }
+    value["scope"] = json!("active engine/window; shared defaults read only at initialization");
+}
+
 pub fn cmd_agent_config(s: &mut Session, p: &Value) -> Result<Value> {
     let mut value = match &s.agent_selection {
         Some(v) => v.clone(),
@@ -364,56 +446,13 @@ pub fn cmd_agent_config(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(invalid(error));
     }
     if let Some(patch) = p.get("selection") {
-        let fields = patch
-            .as_object()
-            .ok_or_else(|| invalid("Active selection must be an object"))?;
-        if fields.keys().any(|k| {
-            !matches!(
-                k.as_str(),
-                "agent" | "provider" | "model" | "thinking" | "extra_args"
-            )
-        }) {
-            return Err(invalid(
-                "Only active chat selection can be changed; credentials remain untouched",
-            ));
-        }
-        for (key, v) in fields {
-            if (key == "extra_args" && !v.is_array())
-                || (key != "extra_args"
-                    && (!v.is_string()
-                        || v.as_str()
-                            .is_some_and(|x| x.len() > 256 || x.chars().any(char::is_control))))
-            {
-                return Err(invalid("Invalid active chat selection"));
-            }
-            value[key] = v.clone();
-        }
-        if let Some(agent) = fields.get("agent").and_then(Value::as_str) {
-            if !AGENT_NAMES.contains(&agent) {
-                return Err(invalid(format!("unknown agent `{agent}`")));
-            }
-            if which_program(agent).is_none() {
-                return Err(invalid(format!(
-                    "`{agent}` is not installed on this machine"
-                )));
-            }
-        }
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove("selection_error");
-        }
+        apply_selection_patch(&mut value, patch)?;
     }
     s.agent_selection = Some(value.clone());
     if p["persist"] == true {
         persist_selection(&value)?;
     }
-    let root = crate::workspace::workspace_root(s);
-    value["instructions"] = json!(root.join("apps/src-tauri/agent.md").to_string_lossy());
-    if let (Some(base), Value::Object(catalog)) = (value.as_object_mut(), agent_catalog()) {
-        for (key, val) in catalog {
-            base.insert(key, val);
-        }
-    }
-    value["scope"] = json!("active engine/window; shared defaults read only at initialization");
+    decorate_config(s, &mut value);
     Ok(value)
 }
 
@@ -714,12 +753,7 @@ fn chat_args(agent: &str, dir: &Path) -> Result<Vec<String>> {
     }
 }
 
-pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
-    let selection = selected(s, params)?;
-    let agent = selection["agent"]
-        .as_str()
-        .ok_or_else(|| invalid("No chat agent selected"))?;
+fn chat_message(params: &Value) -> Result<String> {
     let mut said = params["message"]
         .as_str()
         .unwrap_or_default()
@@ -736,28 +770,35 @@ pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
     if said.is_empty() {
         return Err(invalid("message is empty"));
     }
-    let instructions=fs::read_to_string(crate::workspace::workspace_root(s).join("apps/src-tauri/agent.md"))
-        .map_err(|_|invalid("Cannot read apps/src-tauri/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))?;
-    let fresh = params["new_chat"].as_bool().unwrap_or(false);
-    let task = if params["image_task"] == true {
-        format!(
+    Ok(said)
+}
+
+fn chat_instructions(s: &Session) -> Result<String> {
+    fs::read_to_string(crate::workspace::workspace_root(s).join("apps/src-tauri/agent.md"))
+        .map_err(|_|invalid("Cannot read apps/src-tauri/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))
+}
+
+fn chat_task(params: &Value) -> Result<String> {
+    if params["image_task"] == true {
+        Ok(format!(
             "You are Sproket, the bounded tasks, tools, and error-sniffing assistant (never image generation; Gaffer handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
             bounded_task_cli()?.display()
-        )
+        ))
     } else {
-        String::new()
-    };
-    let prompt = chat_prompt(
-        s.project_path.as_deref().unwrap_or(&dir),
-        &instructions,
-        &task,
-        &said,
-    );
-    let provider = selection["provider"].as_str().unwrap_or_default();
-    let chosen_model = selection["model"].as_str().unwrap_or_default();
-    let local_omp = agent == "omp" && provider == "ollama";
+        Ok(String::new())
+    }
+}
+
+fn chat_model_guard(
+    dir: &Path,
+    agent: &str,
+    provider: &str,
+    chosen_model: &str,
+    params: &Value,
+    local_omp: bool,
+) -> Result<()> {
     if local_omp
-        && !omp_local_models(&dir)?
+        && !omp_local_models(dir)?
             .iter()
             .any(|m| m["id"] == chosen_model)
     {
@@ -770,7 +811,11 @@ pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
             "Free-only cost verification is unavailable for this agent; no inference attempted",
         ));
     }
-    let model = if (agent == "opencode" || local_omp)
+    Ok(())
+}
+
+fn chat_model_name(agent: &str, local_omp: bool, provider: &str, chosen_model: &str) -> String {
+    if (agent == "opencode" || local_omp)
         && !provider.is_empty()
         && !chosen_model.is_empty()
         && !chosen_model.contains('/')
@@ -778,12 +823,10 @@ pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
         format!("{provider}/{chosen_model}")
     } else {
         chosen_model.to_owned()
-    };
-    let thinking = selection["thinking"].as_str().unwrap_or_default();
-    let mut args = chat_args(agent, &dir)?;
-    if !model.is_empty() {
-        args.extend(["--model".into(), model.clone()]);
     }
+}
+
+fn chat_thinking_args(agent: &str, thinking: &str, args: &mut Vec<String>) -> Result<()> {
     if !thinking.is_empty() && thinking != "off" {
         match agent {
             "codex" => args.extend([
@@ -798,17 +841,89 @@ pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
             }
         }
     }
+    Ok(())
+}
+
+fn chat_cli_args(agent: &str, dir: &Path, model: &str, thinking: &str) -> Result<Vec<String>> {
+    let mut args = chat_args(agent, dir)?;
+    if !model.is_empty() {
+        args.extend(["--model".into(), model.to_owned()]);
+    }
+    chat_thinking_args(agent, thinking, &mut args)?;
+    Ok(args)
+}
+
+struct ChatRequest {
+    dir: std::path::PathBuf,
+    agent: String,
+    provider: String,
+    chosen_model: String,
+    model: String,
+    fresh: bool,
+    said: String,
+    prompt: String,
+    args: Vec<String>,
+}
+
+fn chat_request(s: &mut Session, params: &Value) -> Result<ChatRequest> {
+    let dir = crate::workshop::project_dir(s)?;
+    let selection = selected(s, params)?;
+    let agent = selection["agent"]
+        .as_str()
+        .ok_or_else(|| invalid("No chat agent selected"))?;
+    let said = chat_message(params)?;
+    let instructions = chat_instructions(s)?;
+    let fresh = params["new_chat"].as_bool().unwrap_or(false);
+    let task = chat_task(params)?;
+    let prompt = chat_prompt(
+        s.project_path.as_deref().unwrap_or(&dir),
+        &instructions,
+        &task,
+        &said,
+    );
+    let provider = selection["provider"].as_str().unwrap_or_default();
+    let chosen_model = selection["model"].as_str().unwrap_or_default();
+    let local_omp = agent == "omp" && provider == "ollama";
+    chat_model_guard(&dir, agent, provider, chosen_model, params, local_omp)?;
+    let model = chat_model_name(agent, local_omp, provider, chosen_model);
+    let thinking = selection["thinking"].as_str().unwrap_or_default();
+    let args = chat_cli_args(agent, &dir, &model, thinking)?;
+    Ok(ChatRequest {
+        dir,
+        agent: agent.to_owned(),
+        provider: provider.to_owned(),
+        chosen_model: chosen_model.to_owned(),
+        model,
+        fresh,
+        said,
+        prompt,
+        args,
+    })
+}
+
+pub fn cmd_agent_send(s: &mut Session, params: &Value) -> Result<Value> {
+    let ChatRequest {
+        dir,
+        agent,
+        provider,
+        chosen_model,
+        model,
+        fresh,
+        said,
+        prompt,
+        mut args,
+    } = chat_request(s, params)?;
     if fresh {
         let _ = archive(s);
     }
     args.push(prompt);
-    let text = run(&dir, agent, &args)?;
+    let text = run(&dir, &agent, &args)?;
     log_push(s, json!({"role":"user","text":said}))?;
     log_push(
         s,
         json!({"role":"assistant","text":text,"agent":agent,"provider":provider,"model":chosen_model}),
     )?;
     Ok(
-        json!({"ok":true,"agent":agent,"provider":if provider.is_empty(){Value::Null}else{json!(provider)},"model":if model.is_empty(){Value::Null}else{json!(model)},"local":is_local_provider(provider),"fresh":fresh,"text":text,"turns":log_read(s)}),
+        json!({"ok":true,"agent":agent,"provider":if provider.is_empty(){Value::Null}else{json!(provider)},"model":if model.is_empty(){Value::Null}else{json!(model)},"local":is_local_provider(&provider),"fresh":fresh,"text":text,"turns":log_read(s)}),
     )
 }
