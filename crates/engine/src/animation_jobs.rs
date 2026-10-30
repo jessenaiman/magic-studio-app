@@ -663,22 +663,37 @@ fn systemd_quote(path: &Path) -> String {
             .replace('$', "$$")
     )
 }
+/// Job directories this session may report: none without a project, and only real job folders.
+fn project_job_dirs(s: &Session) -> Result<Vec<PathBuf>> {
+    if s.project_path.is_none() {
+        return Ok(Vec::new());
+    }
+    let dir = root(s)?;
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.join("job.json").is_file() {
+            dirs.push(path);
+        }
+    }
+    Ok(dirs)
+}
+
+/// A job without a project field belongs to whoever asks; one with a project must match.
+fn same_project(s: &Session, value: &Value) -> bool {
+    !value["project"].is_string() || value["project"] == json!(s.project_path)
+}
+
 pub fn cmd_animation_list(s: &mut Session, _: &Value) -> Result<Value> {
-    let observed = service();
-    let owner = worker_owner(&observed);
+    let owner = worker_owner(&service());
     let mut jobs = Vec::new();
-    if s.project_path.is_some() {
-        let root = root(s)?;
-        if root.is_dir() {
-            for entry in fs::read_dir(root)? {
-                let dir = entry?.path();
-                if dir.join("job.json").is_file() {
-                    let value = job_details(&dir)?;
-                    if !value["project"].is_string() || value["project"] == json!(s.project_path) {
-                        jobs.push(value);
-                    }
-                }
-            }
+    for dir in project_job_dirs(s)? {
+        let value = job_details(&dir)?;
+        if same_project(s, &value) {
+            jobs.push(value);
         }
     }
     jobs.sort_by(|a, b| b["created_ns"].as_str().cmp(&a["created_ns"].as_str()));
@@ -686,6 +701,91 @@ pub fn cmd_animation_list(s: &mut Session, _: &Value) -> Result<Value> {
     add_owner(&mut result, &owner);
     Ok(result)
 }
+
+/// The unit is gone but left a terminal receipt: report that receipt, flagged as one.
+fn terminal_receipt(
+    dir: &Path,
+    id: &str,
+    details: &Value,
+    owner: &Value,
+    error: crate::EngineError,
+) -> Result<Value> {
+    let result = dir.join("result.json");
+    if result.is_file() {
+        let mut receipt = read_json(&result)?;
+        if matches!(
+            receipt["state"].as_str(),
+            Some("completed" | "cancelled" | "failed")
+        ) {
+            receipt["job"] = json!(id);
+            receipt["state_source"] = json!("terminal_receipt");
+            receipt["telemetry_source"] = json!("terminal_receipt");
+            receipt["telemetry_stale"] = json!(true);
+            receipt["service_state"] = Value::Null;
+            receipt["service_error"] = json!(error.to_string());
+            add_job_details(&mut receipt, details);
+            add_owner(&mut receipt, owner);
+            return Ok(receipt);
+        }
+    }
+    Err(error)
+}
+
+/// The unit belongs to this job when its description is the job id and the invocation agrees.
+fn service_matches(service: &Value, id: &str, invocation: Option<&Value>) -> bool {
+    service["Description"] == id
+        && invocation.is_none_or(|i| i["invocation_id"] == service["InvocationID"])
+}
+
+/// The live report for a running unit, including its progress telemetry.
+fn running_value(
+    s: &Session,
+    id: &str,
+    dir: &Path,
+    service: &Value,
+    details: &Value,
+    owner: &Value,
+) -> Value {
+    let progress = read_json(&dir.join("progress.json")).ok();
+    let mut value = json!({"job":id,"job_id":id,"project":s.project_path,"unit":UNIT,"invocation_id":service["InvocationID"],"updated_at":now(),
+        "state":if dir.join("cancel-requested").exists() || service["ActiveState"]=="deactivating"{"cancelling"}else{"running"},
+        "phase":progress.as_ref().map(|v|&v["state"]),"frames_completed":progress.as_ref().map(|v|&v["completed"]),"frames_total":progress.as_ref().map(|v|&v["total"]),
+        "progress":progress,"service_state":service["ActiveState"],"main_pid":number(service,"MainPID"),"telemetry":telemetry(service),
+        "service_result":service["Result"],"exec_main_status":number(service,"ExecMainStatus"),"termination_reason":Value::Null,"log":dir.join("worker.log")});
+    add_job_details(&mut value, details);
+    let started = started_at(service);
+    if !started.is_null() {
+        value["started_at"] = started;
+    }
+    add_owner(&mut value, owner);
+    value
+}
+
+fn receipt_value(id: &str, dir: &Path, details: &Value, owner: &Value) -> Result<Value> {
+    let mut value = read_json(&dir.join("result.json"))?;
+    value["job"] = json!(id);
+    add_job_details(&mut value, details);
+    add_owner(&mut value, owner);
+    Ok(value)
+}
+
+/// Neither running nor receipted: say so instead of guessing success or usage.
+fn missing_receipt(
+    s: &Session,
+    id: &str,
+    dir: &Path,
+    invocation: Option<Value>,
+    details: &Value,
+    owner: &Value,
+) -> Value {
+    let mut value = json!({"job":id,"job_id":id,"project":s.project_path,"unit":UNIT,"invocation_id":invocation.map(|v|v["invocation_id"].clone()),
+        "updated_at":now(),"state":"failed","termination_reason":"missing_receipt","telemetry":telemetry(&json!({})),
+        "detail":"Worker is no longer active and left no terminal receipt; success and resource usage are unknown","log":dir.join("worker.log")});
+    add_job_details(&mut value, details);
+    add_owner(&mut value, owner);
+    value
+}
+
 pub fn cmd_animation_status(s: &mut Session, p: &Value) -> Result<Value> {
     let (id, dir) = job(s, p)?;
     let details = job_details(&dir)?;
@@ -693,62 +793,18 @@ pub fn cmd_animation_status(s: &mut Session, p: &Value) -> Result<Value> {
     let owner = worker_owner(&observed);
     let service = match observed {
         Ok(service) => service,
-        Err(error) => {
-            let result = dir.join("result.json");
-            if result.is_file() {
-                let mut receipt = read_json(&result)?;
-                if matches!(
-                    receipt["state"].as_str(),
-                    Some("completed" | "cancelled" | "failed")
-                ) {
-                    receipt["job"] = json!(id);
-                    receipt["state_source"] = json!("terminal_receipt");
-                    receipt["telemetry_source"] = json!("terminal_receipt");
-                    receipt["telemetry_stale"] = json!(true);
-                    receipt["service_state"] = Value::Null;
-                    receipt["service_error"] = json!(error.to_string());
-                    add_job_details(&mut receipt, &details);
-                    add_owner(&mut receipt, &owner);
-                    return Ok(receipt);
-                }
-            }
-            return Err(error);
-        }
+        Err(error) => return terminal_receipt(&dir, &id, &details, &owner, error),
     };
     let invocation = read_json(&dir.join("invocation.json")).ok();
-    let matches = service["Description"] == id
-        && invocation
-            .as_ref()
-            .is_none_or(|i| i["invocation_id"] == service["InvocationID"]);
-    if matches && occupied(&service) {
-        let progress = read_json(&dir.join("progress.json")).ok();
-        let mut value = json!({"job":id,"job_id":id,"project":s.project_path,"unit":UNIT,"invocation_id":service["InvocationID"],"updated_at":now(),
-            "state":if dir.join("cancel-requested").exists() || service["ActiveState"]=="deactivating"{"cancelling"}else{"running"},
-            "phase":progress.as_ref().map(|v|&v["state"]),"frames_completed":progress.as_ref().map(|v|&v["completed"]),"frames_total":progress.as_ref().map(|v|&v["total"]),
-            "progress":progress,"service_state":service["ActiveState"],"main_pid":number(&service,"MainPID"),"telemetry":telemetry(&service),
-            "service_result":service["Result"],"exec_main_status":number(&service,"ExecMainStatus"),"termination_reason":Value::Null,"log":dir.join("worker.log")});
-        add_job_details(&mut value, &details);
-        let started = started_at(&service);
-        if !started.is_null() {
-            value["started_at"] = started;
-        }
-        add_owner(&mut value, &owner);
-        return Ok(value);
+    if service_matches(&service, &id, invocation.as_ref()) && occupied(&service) {
+        return Ok(running_value(s, &id, &dir, &service, &details, &owner));
     }
     if dir.join("result.json").is_file() {
-        let mut value = read_json(&dir.join("result.json"))?;
-        value["job"] = json!(id);
-        add_job_details(&mut value, &details);
-        add_owner(&mut value, &owner);
-        return Ok(value);
+        return receipt_value(&id, &dir, &details, &owner);
     }
-    let mut value = json!({"job":id,"job_id":id,"project":s.project_path,"unit":UNIT,"invocation_id":invocation.map(|v|v["invocation_id"].clone()),
-        "updated_at":now(),"state":"failed","termination_reason":"missing_receipt","telemetry":telemetry(&json!({})),
-        "detail":"Worker is no longer active and left no terminal receipt; success and resource usage are unknown","log":dir.join("worker.log")});
-    add_job_details(&mut value, &details);
-    add_owner(&mut value, &owner);
-    Ok(value)
+    Ok(missing_receipt(s, &id, &dir, invocation, &details, &owner))
 }
+
 pub fn cmd_animation_cancel(s: &mut Session, p: &Value) -> Result<Value> {
     let _slot = worker_lock()?;
     let (id, dir) = job(s, p)?;
