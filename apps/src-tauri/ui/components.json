@@ -220,9 +220,11 @@
       "indicator": "hidden"
     },
     "motion-stagebar": {
-      "component": "workspace",
-      "label": "Stage",
-      "indicator": "hidden"
+      "component": "panel-head",
+      "indicator": "hidden",
+      "look": "bar",
+      "density": "compact",
+      "description": "Stage"
     },
     "motion-canvas": {
       "component": "workspace",
@@ -484,9 +486,10 @@
     "motion-timing-head": {
       "component": "panel-head",
       "look": "heading",
-      "label": "Motion & timing",
+      "label": "Timing",
       "indicator": "hidden",
-      "target": "motion-timing"
+      "target": "motion-timing",
+      "description": "Motion & timing"
     },
     "motion-layers": {
       "component": "panel",
@@ -514,9 +517,10 @@
     "motion-pose-head": {
       "component": "panel-head",
       "look": "heading",
-      "label": "Expression & pose",
+      "label": "Pose",
       "indicator": "hidden",
-      "target": "motion-pose"
+      "target": "motion-pose",
+      "description": "Expression & pose"
     },
     "motion-quality": {
       "component": "panel",
@@ -544,9 +548,10 @@
     "motion-export-section-head": {
       "component": "panel-head",
       "look": "heading",
-      "label": "Export & integrations",
+      "label": "Export",
       "indicator": "hidden",
-      "target": "motion-export-section"
+      "target": "motion-export-section",
+      "description": "Export & integrations"
     },
     "blender-placement": {
       "component": "panel",
@@ -879,9 +884,11 @@
       "indicator": "hidden"
     },
     "words-main-head": {
-      "component": "transport",
-      "label": "Lyrics selection, view and save",
-      "indicator": "hidden"
+      "component": "panel-head",
+      "indicator": "hidden",
+      "look": "bar",
+      "density": "compact",
+      "description": "Lyrics selection, view and save"
     },
     "words-lyrics": {
       "component": "panel",
@@ -894,7 +901,9 @@
       "component": "panel-head",
       "look": "heading",
       "target": "words-lyrics",
-      "indicator": "hidden"
+      "indicator": "hidden",
+      "label": "Lyrics",
+      "description": "Lyrics on the song timeline"
     },
     "words-film": {
       "component": "panel",
@@ -907,7 +916,9 @@
       "component": "panel-head",
       "look": "heading",
       "target": "words-film",
-      "indicator": "hidden"
+      "indicator": "hidden",
+      "label": "Visual cues",
+      "description": "Motion graphics on the song timeline"
     },
     "song-open-original": {
       "component": "ghost",
@@ -1360,8 +1371,8 @@
       "indicator": "hidden"
     },
     "btn-generate-all-sheets": {
-      "component": "ghost",
-      "label": "+ All Sheets",
+      "component": "icon",
+      "label": "Generate missing character sheets",
       "command": "assets.agent_sheets",
       "indicator": "hidden"
     },

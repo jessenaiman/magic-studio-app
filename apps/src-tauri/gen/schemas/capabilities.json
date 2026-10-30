@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"The project view's access to the shell's commands.","local":true,"windows":["main"],"webviews":["project"],"permissions":["core:default","dialog:default"]}}
+{"default":{"identifier":"default","description":"The project view's access to the shell's commands.","local":true,"windows":["main"],"webviews":["project"],"permissions":["core:default","dialog:default","core:window:allow-start-dragging"]}}

@@ -485,7 +485,15 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
         json!({})
     };
     let design = if dir.is_some() {
-        crate::storyboard_design::inspect(s, &json!({}))?
+        match crate::storyboard_design::inspect(s, &json!({})) {
+            Ok(design) => design,
+            Err(error) => {
+                let reason = format!("Storyboard needs attention: {error}");
+                problems.push(json!(reason));
+                json!({"error":reason,"readiness":{"state":"failed","reason":reason},
+                    "progression":{"allowed":false,"reason":reason}})
+            }
+        }
     } else {
         json!({})
     };

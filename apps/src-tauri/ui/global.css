@@ -62,6 +62,37 @@
   display: none;
 }
 
+/* A catalog entry owns its content layout. Hosts supply data and actions. */
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  color: var(--text);
+  background: var(--surface);
+  border: thin solid var(--line);
+  border-radius: var(--radius);
+  transition: border-color var(--fast) var(--ease);
+}
+.project-card:hover, .project-card:focus-within { border-color: var(--accent); }
+.project-card-header { display: grid; grid-template-columns: var(--size-48) minmax(0, 1fr) var(--size-26); gap: var(--space-2); align-items: start; }
+.project-card-thumbnail { display: grid; place-items: center; width: var(--size-48); height: var(--size-48); background: var(--thumb-bg); color: var(--muted); border-radius: var(--radius); overflow: hidden; }
+.project-card-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+.project-card-thumbnail svg { width: var(--size-26); height: var(--size-26); }
+.project-card-heading { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding: 0; text-align: left; }
+.project-card-heading strong { font-size: var(--text-md); font-weight: 600; overflow-wrap: anywhere; }
+.project-card-heading:disabled { cursor: default; opacity: 1; }
+.project-card-path { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--text-sm); }
+.project-card-availability { color: var(--muted); font-size: var(--text-sm); }
+.project-card[data-availability="missing"] .project-card-availability,
+.project-card[data-availability="unreadable"] .project-card-availability { color: var(--amber); }
+.project-card-forget { width: var(--size-26); height: var(--size-26); }
+.project-card-status { margin: 0; color: var(--muted); font-size: var(--text-md); overflow-wrap: anywhere; }
+.project-card-status[data-error="true"] { color: var(--amber); }
+.project-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.project-card-actions > button { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+
 /* Reusable reference-browser surfaces; content views supply their own data. */
 .reference-layout { display:grid; grid-template-columns:var(--size-240) minmax(0,1fr); height:100%; min-height:0; background:var(--bg); }
 .reference-rail { min-height:0; overflow:auto; padding:var(--space-4); border-right:thin solid var(--line); }

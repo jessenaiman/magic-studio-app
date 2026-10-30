@@ -10,7 +10,8 @@ function createCompanions(frames, options = {}) {
   const rails = options.rails || null;
   const boxes = options.boxes || window.companionBoxes || null;
   const media = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)") || { matches: false, addEventListener() {} };
-  let enabled = localStorage.getItem("magic.companions") !== "false";
+  let enabled = localStorage.getItem("magic.companions") === "true";
+  document.body.dataset.companionsEnabled = String(enabled);
   let project = null;
   let stage = null;
   let settleTimer = null;
@@ -181,6 +182,7 @@ function createCompanions(frames, options = {}) {
     sync,
     setEnabled(value) {
       enabled = !!value;
+      document.body.dataset.companionsEnabled = String(enabled);
       localStorage.setItem("magic.companions", String(enabled));
       sync();
     },

@@ -6,11 +6,8 @@ use std::path::Path;
 fn invalid(message: &str) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
-fn load(path: &Path) -> Result<Value> {
-    serde_json::from_slice(&std::fs::read(path)?).map_err(|e| invalid(&e.to_string()))
-}
 fn board(s: &Session) -> Result<Value> {
-    load(&crate::workshop::project_dir(s)?.join("storyboard/movie-board.json"))
+    crate::storyboard_document::load(&crate::workshop::project_dir(s)?)
 }
 pub(crate) fn words(board: &Value) -> Result<Vec<Value>> {
     if board["empty_template"] == true {
@@ -429,7 +426,7 @@ pub fn update(s: &mut Session, p: &Value) -> Result<Value> {
         {
             return Err(invalid("Restore a saved version from this storyboard"));
         }
-        let old = load(&path)?;
+        let old = crate::storyboard_document::related(&crate::workshop::project_dir(s)?, &path)?;
         if old["project"] != json!(s.project_path) {
             return Err(invalid("That version belongs to another project"));
         }

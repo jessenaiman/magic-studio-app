@@ -4,5 +4,9 @@
   "description": "The project view's access to the shell's commands.",
   "windows": ["main"],
   "webviews": ["project"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "core:window:allow-start-dragging"
+  ]
 }

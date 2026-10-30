@@ -97,6 +97,7 @@ pub mod skills_registry;
 pub mod storyboard;
 pub mod storyboard_crud;
 pub mod storyboard_design;
+mod storyboard_document;
 pub mod studio_cues;
 pub mod synfig;
 pub mod theatre;

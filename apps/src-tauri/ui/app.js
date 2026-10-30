@@ -92,6 +92,7 @@ async function footerGo(id) {
 }
 
 function footerContext() {
+  if (state.view === 'home') return 'Choose a project or start a new song';
   if (state.view === 'animation') {
     const meta = motion.meta;
     if (motion.mode === 'composite') return 'Composite · images arranged in time';

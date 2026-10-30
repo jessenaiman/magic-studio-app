@@ -5,15 +5,16 @@ const dialog = window.__TAURI__.dialog;
 const FILM = '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>';
 const CROSS = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
-async function showHome() {
+async function showHome({closeProject = true} = {}) {
   if (typeof theatreCanLeave === "function" && !theatreCanLeave()) return;
-  if(state.project){try{await invoke("engine_command",{id:"project.close",params:{}});}catch(e){toast(String(e));throw e;}}
+  if(closeProject && state.project){try{await invoke("engine_command",{id:"project.close",params:{}});}catch(e){toast(String(e));throw e;}}
   state.creating = false;
   newProjectForm.hidden = true;
   animationReset();
   window.workshopDrawers?.close(false);
   Object.assign(agent, { loaded: false, session: null, messages: [], permissions: [], forms: [], attachments: [] });
   state.project = null;
+  state.view = 'home';
   window.magicCompanions?.sync();
   state.data = null;
   document.body.classList.add("at-home");
@@ -23,6 +24,7 @@ async function showHome() {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-home"));
   await invoke("studio_hide").catch(() => {});
   await renderRecent();
+  updateAppFooter();
   requestAnimationFrame(()=>acFeedback.report('ready'));
 }
 
@@ -33,30 +35,21 @@ async function renderRecent() {
     $("recent").replaceChildren(el("div", { class: "panel-empty boxed" }, "No projects yet. Start with New song."));
     return;
   }
-  $("recent").replaceChildren(...list.map((p) => {
-    const thumb = el("div", { class: "thumb", html: p.thumb ? "" : FILM });
-    if (p.thumb) thumb.style.setProperty("--thumbnail-image", `url("${convertFileSrc(p.thumb)}")`);
-    const forget = el("span", { class: "forget", role: "button", tabindex: "0", "aria-label": `Remove ${p.name} from Recent`,
-      title: "Remove from Recent (the files stay)", html: CROSS });
-    forget.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await invoke("recent_forget", { path: p.path });
-      renderRecent();
-    });
-    const status=p.open_state||'unknown';
-    const main=el('button',{class:'project-main',title:p.path,onclick:()=>p.exists?openProject(p.path):toast('That project was moved or deleted')},
-      el('span',{class:'name'},p.name),el('span',{class:'folder'},p.exists?p.folder:'Moved or deleted'),
-      el('span',{class:'project-state '+(status==='open'?'is-open':'needs-check')},status==='open'?'● Open in Studio':status==='not_observed_open'?'○ Not observed open':`△ ${status}`));
-    const links=el('div',{class:'project-quick'});
-    for(const action of p.readiness?.quick_actions||[]){links.append(el('button',{class:'ghost',...(action.enabled?{}:{disabled:''}),title:action.enabled?action.label:(p.readiness?.next_step||'Requirements not met'),onclick:()=>openProject(p.path,{view:action.view,open:action.open_block})},action.label));}
-    return el('div',{class:`proj${p.exists?'':' missing'}`,title:p.path},thumb,forget,
-      el('div',{class:'project-summary'},main,el('p',{class:'why'},p.readiness?.next_step||'Inspect project state'),links));
-  }));
+  $("recent").replaceChildren(...list.map(project => projectCard(project, {
+    open: (item, action = {}) => openProject(item.path, {view: action.view, open: action.open_block}),
+    locate: async item => {
+      const path = await dialog.open({title: `Locate ${item.name}`, filters: [{name: 'Magic Studio project', extensions: ['magic']}]});
+      if (!path) return;
+      await openProject(path);
+      if (path !== item.path) await invoke('recent_forget', {path: item.path});
+    },
+    forget: async item => { await invoke('recent_forget', {path: item.path}); await renderRecent(); }
+  })));
 }
 
 async function openDialog() {
   const path = await dialog.open({ title: "Open project", filters: [{ name: "Magic Studio project", extensions: ["magic"] }] });
-  if (path) openProject(path);
+  if (path) await openProject(path);
 }
 
 // New projects use the existing workflow blocks.
