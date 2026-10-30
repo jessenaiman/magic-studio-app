@@ -114,104 +114,136 @@ function magicAssetTile(asset, { active = false, candidate = false, prefix='magi
 
 // ---- Unified footer: workflow stages · what the active tab shows · save and studio state ----
 const FOOTER_STAGES = [['song', 'Song'], ['lyrics', 'Lyrics'], ['transcript', 'Transcript'], ['storyboard', 'Storyboard'], ['animate', 'Animate'], ['studio', 'Studio']];
+const STAGE_DOT: Record<string, string> = { ok: 'ready', warn: 'needs-attention', idle: 'idle' };
+const STAGE_NOTE: Record<string, string> = { ok: 'ready', warn: 'needs work', idle: 'not started' };
 
-function footerStageState(id) {
-  if (id === 'studio') return serverUrl() ? 'ok' : videoProject() ? 'warn' : 'idle';
-  const seen = projectView.prerequisite(id).state;
-  return seen === 'ready' ? 'ok' : seen ? 'warn' : 'idle';
+class AppFooterController {
+  queued = false;
+
+  stageState(id: string) {
+    if (id === 'studio') return serverUrl() ? 'ok' : videoProject() ? 'warn' : 'idle';
+    const seen = projectView.prerequisite(id).state;
+    return seen === 'ready' ? 'ok' : seen ? 'warn' : 'idle';
+  }
+
+  async go(id: string) {
+    if (id === 'studio') return setView('studio');
+    if (state.view !== 'project' && await setView('project') === false) return;
+    state.open = SONG_SECTIONS.includes(id) ? 'song' : id;
+    state.blocksCollapsed = false;
+    $('blocks').classList.remove('collapsed');
+    renderBlocks();
+  }
+
+  animationText(): string {
+    const meta = motion.meta;
+    if (motion.mode === 'composite') return 'Composite · images arranged in time';
+    if (!meta) return motion.character ? `${motion.character} · loading…` : 'No object chosen';
+    const clips = (meta.tracks || []).filter((t: any) => !t.standard).length;
+    const track = motion.rest ? 'Rest pose' : (meta.tracks.find((t: any) => t.id === motion.track)?.label || motion.track.replaceAll('-', ' '));
+    const part = meta.layers.find((l: any) => l.id === motion.selected);
+    return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
+  }
+
+  storyboardText(): string {
+    const pages = state.data?.storyboard?.previews?.length || 0;
+    const objects = (state.data?.assets?.assets || []).length;
+    return [
+      pages ? `Storyboard · Page ${state.page + 1} / ${pages}` : 'Storyboard · not built yet',
+      pages ? state.pageTitles?.[state.page] : null,
+      `${objects} object${objects === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(' · ');
+  }
+
+  studioText(): string {
+    const project = videoProject();
+    return project ? `Video project: ${project}` : 'No video project yet';
+  }
+
+  contextText(): string {
+    if (state.view === 'home') return 'Choose a project or start a new song';
+    if (state.view === 'animation') return this.animationText();
+    if (state.view === 'studio') return this.studioText();
+    if (state.view === 'analytics') return 'Mayhem · code, usage and tool reports';
+    return this.storyboardText();
+  }
+
+  scheduleUpdate(): void {
+    if (this.queued) return;
+    this.queued = true;
+    queueMicrotask(() => { this.queued = false; this.render(); });
+  }
+
+  renderStages(): void {
+    $('footer-stages').replaceChildren(...FOOTER_STAGES.map(([id, label]) => {
+      const tone = this.stageState(id);
+      return el('button', {
+        class: 'footer-stage', id: `footer-stage-${id}`, title: `${label} · ${STAGE_NOTE[tone]}`,
+        onclick: () => this.go(id).catch((e) => toast(String(e))),
+      }, window.companionBoxes.dot(STAGE_DOT[tone], '', `footer-stage-${id}`), label);
+    }));
+  }
+
+  saveStatus(unsaved: boolean): { tone: string; label: string } {
+    if (projectView.pending > 0) return { tone: 'working', label: 'Saving…' };
+    if (unsaved) return { tone: 'needs-attention', label: 'Unsaved edits' };
+    return state.project ? { tone: 'ready', label: 'Project saved' } : { tone: 'idle', label: 'Not saved' };
+  }
+
+  isMotionUnsaved(): boolean {
+    return state.view === 'animation'
+      && typeof magicTheatre !== 'undefined'
+      && (magicTheatre.interactionRevision > magicTheatre.savedRevision || Boolean(magicTheatre.gestureActive));
+  }
+
+  saveStateTitle(motionUnsaved: boolean, unsaved: boolean): string {
+    if (motionUnsaved) return 'Theatre motion has unsaved keyframes · use Save motion';
+    if (unsaved) return 'Storyboard changes need saving';
+    return 'Magic Studio project state; HyperFrames saves composition edits in its own editor';
+  }
+
+  renderSaveState(): void {
+    const motionUnsaved = this.isMotionUnsaved();
+    const unsaved = motionUnsaved || state.data?.design?.dirty === true || projectView.textDrafts.size > 0;
+    const { tone, label } = this.saveStatus(unsaved);
+    $('footer-save-state').replaceChildren(window.companionBoxes.dot(tone, '', 'footer-save-state'), label);
+    $('footer-save-state').title = this.saveStateTitle(motionUnsaved, unsaved);
+  }
+
+  renderServer(): void {
+    const url = serverUrl();
+    $('footer-server').replaceChildren(
+      window.companionBoxes.dot(url ? 'ready' : 'idle', '', 'target'),
+      url ? `Studio · ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : 'Studio off',
+    );
+  }
+
+  render(): void {
+    if (!$('app-footer')) return;
+    this.renderStages();
+    updateStoryboardSaveControls();
+    const context = this.contextText();
+    $('footer-context').textContent = context;
+    $('footer-context').title = context;
+    this.renderSaveState();
+    this.renderServer();
+  }
 }
 
-async function footerGo(id) {
-  if (id === 'studio') return setView('studio');
-  if (state.view !== 'project' && await setView('project') === false) return;
-  state.open = SONG_SECTIONS.includes(id) ? 'song' : id; state.blocksCollapsed = false; $('blocks').classList.remove('collapsed'); renderBlocks();
-}
+const appFooter = new AppFooterController();
 
-// The footer line for the Animation view: the chosen object, its layers, clips, track and selection.
-function animationFooter(): string {
-  const meta = motion.meta;
-  if (motion.mode === 'composite') return 'Composite · images arranged in time';
-  if (!meta) return motion.character ? `${motion.character} · loading…` : 'No object chosen';
-  const clips = (meta.tracks || []).filter((t) => !t.standard).length;
-  const track = motion.rest ? 'Rest pose' : (meta.tracks.find((t) => t.id === motion.track)?.label || motion.track.replaceAll('-', ' '));
-  const part = meta.layers.find((l) => l.id === motion.selected);
-  return `${motion.character} · ${meta.layers.length} layers / ${clips} clips · ${track} · Selected: ${part ? part.label || part.id : 'none'}`;
-}
-
-// The footer line for Storyboard: the page, its title and the object count.
-function storyboardFooter(): string {
-  const pages = state.data?.storyboard?.previews?.length || 0;
-  const objects = (state.data?.assets?.assets || []).length;
-  return [pages ? `Storyboard · Page ${state.page + 1} / ${pages}` : 'Storyboard · not built yet', pages ? state.pageTitles?.[state.page] : null,
-    `${objects} object${objects === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
-}
-
-function studioFooter(): string {
-  const project = videoProject();
-  return project ? `Video project: ${project}` : 'No video project yet';
-}
-
-// What the footer says about the active tab; each view owns its own line.
-const FOOTER_CONTEXT: Record<string, () => string> = {
-  home: () => 'Choose a project or start a new song',
-  animation: animationFooter,
-  studio: studioFooter,
-  analytics: () => 'Mayhem · code, usage and tool reports',
-};
-
-function footerContext(): string {
-  return (FOOTER_CONTEXT[state.view] || storyboardFooter)();
-}
-
-// Coalesces the many callers (renders, selection, Theatre messages) into one footer render.
-let footerQueued = false;
-function updateAppFooter(): void {
-  if (footerQueued) return;
-  footerQueued = true;
-  queueMicrotask(() => { footerQueued = false; renderAppFooter(); });
-}
-
-const STAGE_DOT = {ok: 'ready', warn: 'needs-attention', idle: 'idle'};
-const STAGE_NOTE = {ok: 'ready', warn: 'needs work', idle: 'not started'};
-
-function renderFooterStages(): void {
-  $('footer-stages').replaceChildren(...FOOTER_STAGES.map(([id, label]) => {
-    const tone = footerStageState(id);
-    return el('button', { class: 'footer-stage', id: `footer-stage-${id}`, title: `${label} · ${STAGE_NOTE[tone]}`,
-      onclick: () => footerGo(id).catch((e) => toast(String(e))) }, window.companionBoxes.dot(STAGE_DOT[tone], '', `footer-stage-${id}`), label);
-  }));
-}
-
-// What the footer says about saving: a dot tone and a label, from pending saves and unsaved edits.
-function saveStatus(unsaved: boolean): {tone: string, label: string} {
-  if (projectView.pending > 0) return {tone: 'working', label: 'Saving…'};
-  if (unsaved) return {tone: 'needs-attention', label: 'Unsaved edits'};
-  return state.project ? {tone: 'ready', label: 'Project saved'} : {tone: 'idle', label: 'Not saved'};
-}
-
-function renderFooterSaveState(): void {
-  const motionUnsaved = state.view === 'animation' && typeof magicTheatre !== 'undefined' && (magicTheatre.interactionRevision > magicTheatre.savedRevision || !!magicTheatre.gestureActive);
-  const unsaved = motionUnsaved || state.data?.design?.dirty === true || projectView.textDrafts.size > 0;
-  const {tone, label} = saveStatus(unsaved);
-  $('footer-save-state').replaceChildren(window.companionBoxes.dot(tone, '', 'footer-save-state'), label);
-  $('footer-save-state').title = motionUnsaved ? 'Theatre motion has unsaved keyframes · use Save motion' : unsaved ? 'Storyboard changes need saving' : 'Magic Studio project state; HyperFrames saves composition edits in its own editor';
-}
-
-function renderFooterServer(): void {
-  const url = serverUrl();
-  // A Studio that is off is simply idle: grey, never a red problem.
-  $('footer-server').replaceChildren(window.companionBoxes.dot(url ? 'ready' : 'idle', '', 'target'), url ? `Studio · ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : 'Studio off');
-}
-
-function renderAppFooter(): void {
-  if (!$('app-footer')) return;
-  renderFooterStages();
-  updateStoryboardSaveControls();
-  const context = footerContext();
-  $('footer-context').textContent = context; $('footer-context').title = context;
-  renderFooterSaveState();
-  renderFooterServer();
-}
+function footerStageState(id: string) { return appFooter.stageState(id); }
+async function footerGo(id: string) { return appFooter.go(id); }
+function animationFooter(): string { return appFooter.animationText(); }
+function storyboardFooter(): string { return appFooter.storyboardText(); }
+function studioFooter(): string { return appFooter.studioText(); }
+function footerContext(): string { return appFooter.contextText(); }
+function updateAppFooter(): void { appFooter.scheduleUpdate(); }
+function renderFooterStages(): void { appFooter.renderStages(); }
+function saveStatus(unsaved: boolean): { tone: string; label: string } { return appFooter.saveStatus(unsaved); }
+function renderFooterSaveState(): void { appFooter.renderSaveState(); }
+function renderFooterServer(): void { appFooter.renderServer(); }
+function renderAppFooter(): void { appFooter.render(); }
 // Theatre's own listener (theatre.js) updates its revisions first; render after it.
 window.addEventListener('message', (event) => { if (event.data?.magicTheatre && event.data.type !== 'values') setTimeout(updateAppFooter); });
 
@@ -348,18 +380,6 @@ async function openPath(path) {
 
 const SONG_SECTIONS = ['lyrics', 'transcript'];
 
-// ---- Tabs and the studio webview ----------------------------------------------------------
-
-function placeInk() { window.workspaceNavigation?.select(state.view); }
-
-async function showStudio() {
-  const url = serverUrl();
-  $("studio-empty").classList.toggle("show", !url);
-  if (!url) return;
-  try { await invoke("studio_show", { url, mode: state.view }); }
-  catch (e) { toast(String(e)); throw e; }
-}
-
 // What each workspace does when it opens. Wrapped in arrows: the views load after this file.
 const WORKSPACE_OPENERS: Record<string, () => unknown> = {
   animation: () => animationOpen(),
@@ -368,150 +388,217 @@ const WORKSPACE_OPENERS: Record<string, () => unknown> = {
   analytics: () => { if (typeof renderAnalytics === "function") renderAnalytics(); },
 };
 
-// Show the workspace: its own opener, the live Studio, or the Studio's empty state.
-async function openWorkspace(view: string): Promise<void> {
-  const open = WORKSPACE_OPENERS[view];
-  if (open) { await invoke("studio_hide"); await open(); return; }
-  if (view !== "project" && serverUrl()) { await new Promise(requestAnimationFrame); await showStudio(); return; }
-  await invoke("studio_hide");
-  if (view === "project") return;
-  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-studio"));
-  $("studio-empty").classList.add("show");
-}
-
-async function setView(view: string, action?: any) {
-  const errors = acFeedback.errors.length;
-  if (view === "split") view = "studio";
-  if (state.view === "animation" && view !== "animation" && typeof theatreCanLeave === "function" && !theatreCanLeave()) return false;
-  if (typeof animationPause === "function") animationPause();
-  if (view !== 'animation' && typeof animationJobsDispose === 'function') animationJobsDispose();
-  state.view = view;
-  window.workspaceNavigation?.select(view);
-  const page = view === "studio" ? "project" : view;
-  document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${page}`));
-  placeInk();
-  await openWorkspace(view);
-  updateAppFooter();
-  window.magicCompanions?.sync();
-  if (action && feedbackSnapshot().rendered && acFeedback.errors.length === errors) {
-    await acFeedback.report(null, null, {stage:"ui_navigation_applied",...action,view:state.view});
+class AppShellController {
+  placeInk() {
+    window.workspaceNavigation?.select(state.view);
   }
-}
 
-function updateStoryboardAccess() {
-  window.workspaceNavigation?.readiness(state.data?.design?.progression?.allowed === true || state.animateOnly === true,
-    state.data?.design?.progression?.reason);
-}
+  async showStudio() {
+    const url = this.serverUrl();
+    $("studio-empty").classList.toggle("show", !url);
+    if (!url) return;
+    try { await invoke("studio_show", { url, mode: state.view }); }
+    catch (e) { toast(String(e)); throw e; }
+  }
 
-// ---- Studio server: red = off (no memory used), green = running --------------------------
-
-function serverUrl() {
-  const server = state.data?.status?.video_server || {};
-  return server.running === true ? server.url : null;
-}
-
-// The video project lives in the engine session (workshop.status / video.init); the UI keeps no copy.
-function videoProject() {
-  const s = state.data?.status;
-  return s?.video_project_path || s?.video_project || null;
-}
-
-function renderTarget() {
-  const s = state.data?.status;
-  if (!s) return;
-  const url = serverUrl();
-  const project = videoProject();
-  $("target-name").textContent = `${s.video_target}${url ? " · " + url.replace(/^https?:\/\//, "").replace(/\/$/, "") : " · off"}`;
-  const serverDot = window.companionBoxes.dot(url ? "ready" : "idle", "", "target");
-  serverDot.id = "server-dot";
-  $("server-dot").replaceWith(serverDot);
-  updateAppFooter();
-  $("target").title = `${url ? `Studio running at ${url} · click to stop` : "Studio off · click to start"}\n${project ? `Video project: ${project}` : "No video project yet · starting the studio creates it"}`;
-}
-
-async function toggleServer() {
-  if (!state.project) return;
-  const on = !serverUrl();
-  const startingDot = window.companionBoxes.dot("working", "pulse", "target");
-  startingDot.id = "server-dot";
-  $("server-dot").replaceWith(startingDot);
-  try {
-    // A target without its project gets one from the engine first (video.init reuses an existing one).
-    if (on && state.data?.status?.video_target && !state.data.status.video_project_path) {
-      await designCommand("video.init", {});
+  async openWorkspace(view: string): Promise<void> {
+    const open = WORKSPACE_OPENERS[view];
+    if (open) { await invoke("studio_hide"); await open(); return; }
+    if (view !== "project" && this.serverUrl()) {
+      await new Promise(requestAnimationFrame);
+      await this.showStudio();
+      return;
     }
-    await designCommand(on ? "video.server_start" : "video.server_stop");
-    toast(on ? "Studio started" : "Studio stopped");
-  } catch (e) { toast(String(e)); }
-  renderTarget();
-  if (["studio", "split"].includes(state.view)) (serverUrl() ? showStudio() : setView(state.view));
-}
-
-// ---- Startup ------------------------------------------------------------------------------
-
-async function load() {
-  await loadComponents();
-  const start: any = await invoke("startup");
-  state.identity=start.identity;
-  window.applicationFileMenu?.configure(start.menus.file);
-  window.textContextMenu?.configure(start.menus.text);
-  if (start.animate_only) {
-    state.animateOnly = true;
-    document.body.classList.add("animate-only");
+    await invoke("studio_hide");
+    if (view === "project") return;
+    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-studio"));
+    $("studio-empty").classList.add("show");
   }
-  if (start.character && typeof motion !== "undefined") {
-    motion.character = start.character;
-    motion.explicitCharacter = true;
+
+  canLeaveCurrentView(nextView: string): boolean {
+    if (state.view === "animation" && nextView !== "animation" && typeof theatreCanLeave === "function") {
+      return Boolean(theatreCanLeave());
+    }
+    return true;
   }
-  const identity=start.identity||{};
-  $('footer-instance').textContent=`Studio ${identity.pid??'unknown'} · ${identity.branch||'unknown build'}`;
-  $('footer-instance').title=`${identity.build_id||'Unknown build'} · PID ${identity.pid??'?'} · ${identity.executable||''} · Click to copy the CLI command`;
-  if (start.new_project) return beginNewProject();
-  if (!start.project) return showHome();
-  await openProject(start.project, start);
+
+  cleanupPreviousView(nextView: string) {
+    if (typeof animationPause === "function") animationPause();
+    if (nextView !== 'animation' && typeof animationJobsDispose === 'function') animationJobsDispose();
+  }
+
+  async setView(view: string, action?: any) {
+    const errors = acFeedback.errors.length;
+    if (view === "split") view = "studio";
+    if (!this.canLeaveCurrentView(view)) return false;
+    this.cleanupPreviousView(view);
+    state.view = view;
+    window.workspaceNavigation?.select(view);
+    const page = view === "studio" ? "project" : view;
+    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${page}`));
+    this.placeInk();
+    await this.openWorkspace(view);
+    updateAppFooter();
+    window.magicCompanions?.sync();
+    if (action && feedbackSnapshot().rendered && acFeedback.errors.length === errors) {
+      await acFeedback.report(null, null, { stage: "ui_navigation_applied", ...action, view: state.view });
+    }
+  }
+
+  updateStoryboardAccess() {
+    window.workspaceNavigation?.readiness(
+      state.data?.design?.progression?.allowed === true || state.animateOnly === true,
+      state.data?.design?.progression?.reason,
+    );
+  }
+
+  serverUrl() {
+    const server = state.data?.status?.video_server || {};
+    return server.running === true ? server.url : null;
+  }
+
+  videoProject() {
+    const s = state.data?.status;
+    return s?.video_project_path || s?.video_project || null;
+  }
+
+  renderTarget() {
+    const s = state.data?.status;
+    if (!s) return;
+    const url = this.serverUrl();
+    const project = this.videoProject();
+    $("target-name").textContent = `${s.video_target}${url ? " · " + url.replace(/^https?:\/\//, "").replace(/\/$/, "") : " · off"}`;
+    const serverDot = window.companionBoxes.dot(url ? "ready" : "idle", "", "target");
+    serverDot.id = "server-dot";
+    $("server-dot").replaceWith(serverDot);
+    updateAppFooter();
+    const statusLine = url ? `Studio running at ${url} · click to stop` : "Studio off · click to start";
+    const projectLine = project ? `Video project: ${project}` : "No video project yet · starting the studio creates it";
+    $("target").title = `${statusLine}\n${projectLine}`;
+  }
+
+  async toggleServer() {
+    if (!state.project) return;
+    const on = !this.serverUrl();
+    const startingDot = window.companionBoxes.dot("working", "pulse", "target");
+    startingDot.id = "server-dot";
+    $("server-dot").replaceWith(startingDot);
+    try {
+      if (on && state.data?.status?.video_target && !state.data.status.video_project_path) {
+        await designCommand("video.init", {});
+      }
+      await designCommand(on ? "video.server_start" : "video.server_stop");
+      toast(on ? "Studio started" : "Studio stopped");
+    } catch (e) { toast(String(e)); }
+    this.renderTarget();
+    if (["studio", "split"].includes(state.view)) (this.serverUrl() ? this.showStudio() : this.setView(state.view));
+  }
+
+  renderInstanceIdentity(identity: any = {}) {
+    $('footer-instance').textContent = `Studio ${identity.pid ?? 'unknown'} · ${identity.branch || 'unknown build'}`;
+    $('footer-instance').title = `${identity.build_id || 'Unknown build'} · PID ${identity.pid ?? '?'} · ${identity.executable || ''} · Click to copy the CLI command`;
+  }
+
+  async load() {
+    await loadComponents();
+    const start: any = await invoke("startup");
+    state.identity = start.identity;
+    window.applicationFileMenu?.configure(start.menus.file);
+    window.textContextMenu?.configure(start.menus.text);
+    if (start.animate_only) {
+      state.animateOnly = true;
+      document.body.classList.add("animate-only");
+    }
+    if (start.character && typeof motion !== "undefined") {
+      motion.character = start.character;
+      motion.explicitCharacter = true;
+    }
+    this.renderInstanceIdentity(start.identity);
+    if (start.new_project) return beginNewProject();
+    if (!start.project) return showHome();
+    await this.openProject(start.project, start);
+  }
+
+  async openProject(path: string, start: any = {}) {
+    try { return await this.applyOpenedProject(await invoke("project_open", { path }), start); }
+    catch (e) { toast(String(e)); throw e; }
+  }
+
+  resetProjectTransientState(path: string) {
+    if (state.project === path) return;
+    animationReset();
+    songStop();
+    transcriptReaderClose();
+    projectView.textDrafts.clear();
+    projectView.error = null;
+    state.storyboardScene = null;
+    state.storyboardUndo = null;
+  }
+
+  updateWindowProjectTitle(path: string) {
+    const title = path.split("/").pop()?.replace(/\.magic$/, "") || "";
+    $("project-name").textContent = title;
+    $("project-name").parentElement.title = title;
+    document.title = `${title} · Magic Studio`;
+  }
+
+  async applyOpenedProject(opened: any, start: any = {}) {
+    if (opened.reused_session) {
+      toast(opened.opened_new_instance ? "Opened project in a separate window" : "Focused the existing project session");
+      return;
+    }
+    const path = opened.project;
+    if (!path) throw new Error('Project command did not return its canonical location');
+    state.data = opened;
+    state.projectReceipt = opened;
+    state.animateOnly = opened.mode === "animation" || document.body.classList.contains("animate-only");
+    document.body.classList.toggle("animation-mode", opened.mode === "animation");
+    this.resetProjectTransientState(path);
+    state.project = path;
+    state.lyrics = null;
+    loadSongLyrics();
+    window.magicCompanions?.sync();
+    state.page = 0;
+    const startOpen = start.open && start.open !== "agent" ? start.open : "song";
+    state.open = SONG_SECTIONS.includes(startOpen) ? "song" : startOpen;
+    document.body.classList.remove("at-home");
+    this.updateWindowProjectTitle(path);
+    this.renderTarget();
+    renderBlocks();
+    renderStoryboard();
+    await this.setView(start.view || (opened.mode === "animation" ? "animation" : "project"));
+    window.workshopDrawers?.close(false);
+    await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
+  }
 }
 
-// Opens a project (engine `project.open`, recorded in Recent) and shows the Project view.
-async function openProject(path, start = {}) {
-  try { return await applyOpenedProject(await invoke("project_open", { path }), start); }
-  catch (e) { toast(String(e)); throw e; }
-}
+const appShell = new AppShellController();
 
-// Apply an already executed desktop command transition; never dispatch Open while refreshing it.
-async function applyOpenedProject(opened: any, start: any = {}) {
-  if(opened.reused_session){toast(opened.opened_new_instance?"Opened project in a separate window":"Focused the existing project session");return;}
-  const path=opened.project;
-  if(!path)throw new Error('Project command did not return its canonical location');
-  state.data=opened;
-  state.projectReceipt=opened;
-  // A character study opens in Animation only; a song project uses every workspace.
-  state.animateOnly = opened.mode === "animation" || document.body.classList.contains("animate-only");
-  document.body.classList.toggle("animation-mode", opened.mode === "animation");
-  if (state.project !== path) { animationReset(); songStop(); transcriptReaderClose(); projectView.textDrafts.clear(); projectView.error=null; state.storyboardScene=null; state.storyboardUndo=null; }
-  state.project = path;
-  state.lyrics = null;
-  loadSongLyrics();
-  window.magicCompanions?.sync();
-  state.page = 0;
-  const startOpen = start.open && start.open !== "agent" ? start.open : "song";
-  state.open = SONG_SECTIONS.includes(startOpen) ? "song" : startOpen;
-  document.body.classList.remove("at-home");
-  $("project-name").textContent = path.split("/").pop().replace(/\.magic$/, "");
-  $("project-name").parentElement.title = $("project-name").textContent;
-  document.title = `${$("project-name").textContent} · Magic Studio`;
-  renderTarget();
-  renderBlocks();
-  renderStoryboard();
-  await setView(start.view || (opened.mode === "animation" ? "animation" : "project"));
-  window.workshopDrawers?.close(false);
-  await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
-}
-
+function placeInk() { appShell.placeInk(); }
+async function showStudio() { return appShell.showStudio(); }
+async function openWorkspace(view: string): Promise<void> { return appShell.openWorkspace(view); }
+async function setView(view: string, action?: any) { return appShell.setView(view, action); }
+function updateStoryboardAccess() { appShell.updateStoryboardAccess(); }
+function serverUrl() { return appShell.serverUrl(); }
+function videoProject() { return appShell.videoProject(); }
+function renderTarget() { appShell.renderTarget(); }
+async function toggleServer() { return appShell.toggleServer(); }
+async function load() { return appShell.load(); }
+async function openProject(path: string, start: any = {}) { return appShell.openProject(path, start); }
+async function applyOpenedProject(opened: any, start: any = {}) { return appShell.applyOpenedProject(opened, start); }
 
 $("target").addEventListener("click", toggleServer);
 $("footer-server").addEventListener("click", toggleServer);
-$("footer-instance").addEventListener("click",async()=>{if(!state.project){toast("Open a project to copy its command");return;}try{await navigator.clipboard.writeText(magicCommandText("ui.feedback"));toast("Copied project feedback command");}catch{toast("Could not copy the project command");}});
+$("footer-instance").addEventListener("click", async () => {
+  if (!state.project) { toast("Open a project to copy its command"); return; }
+  try { await navigator.clipboard.writeText(magicCommandText("ui.feedback")); toast("Copied project feedback command"); }
+  catch { toast("Could not copy the project command"); }
+});
 $("studio-start").addEventListener("click", toggleServer);
 window.addEventListener("resize", placeInk);
 placeInk();
-window.addEventListener('DOMContentLoaded',()=>load().catch(e=>{toast(String(e));acFeedback.errors.push({message:String(e).slice(0,300)});acFeedback.report('error');}));
+window.addEventListener('DOMContentLoaded', () => load().catch((e) => {
+  toast(String(e));
+  acFeedback.errors.push({ message: String(e).slice(0, 300) });
+  acFeedback.report('error');
+}));
