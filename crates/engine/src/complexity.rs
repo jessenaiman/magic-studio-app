@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::workspace::resolve_craft_cli;
 
@@ -107,21 +107,24 @@ fn parse_csv_line(line: &str) -> Vec<String> {
     res
 }
 
-/// Measure the repository's complexity and reading cost.
-pub fn read(root: &Path, scan: bool) -> Value {
-    let cache = root.join("target/analytics/lizard.json");
-    let revision = source_revision(root);
-    let dirty = source_dirty(root);
-    let previous = std::fs::read(&cache)
+fn saved_scan(root: &Path, cache: &Path) -> Option<Value> {
+    std::fs::read(cache)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .filter(|v| v["available"] == true && v["source_root"] == root.to_string_lossy().as_ref());
-    if !scan {
-        return previous.map(|value| cached_result(value, &revision, dirty)).unwrap_or_else(||
-            json!({"available":false,"tool":"lizard","state":"not_measured","reason":"No saved scan. Refresh scan to measure code.","source_root":root,"current_revision":revision}));
-    }
-    let mut result = measure(root);
-    result["tool"] = json!("lizard");
+        .filter(|v| v["available"] == true && v["source_root"] == root.to_string_lossy().as_ref())
+}
+
+fn unscanned_result(
+    previous: Option<Value>,
+    root: &Path,
+    revision: &Option<String>,
+    dirty: Option<bool>,
+) -> Value {
+    previous.map(|value| cached_result(value, revision, dirty)).unwrap_or_else(||
+        json!({"available":false,"tool":"lizard","state":"not_measured","reason":"No saved scan. Refresh scan to measure code.","source_root":root,"current_revision":revision}))
+}
+
+fn annotate_tool(result: &mut Value) {
     let executable = resolve_craft_cli("lizard");
     let executable_path = if Path::new(&executable).is_file() {
         Some(std::path::PathBuf::from(&executable))
@@ -133,70 +136,94 @@ pub fn read(root: &Path, scan: bool) -> Value {
         })
     };
     result["tool_path"] = json!(executable_path);
-    result["tool_version"] = json!(
-        std::process::Command::new(&executable)
-            .arg("--version")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-    );
-    result["targets"] = json!(scan_targets(root));
-    result["source_root"] = json!(root);
-    result["source_revision"] = json!(revision);
-    result["source_dirty"] = json!(dirty);
-    result["measured_at_unix_secs"] = json!(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()
-            .map(|v| v.as_secs())
-    );
-    result["cached"] = json!(false);
-    let partial = result["scan_failures"]
-        .as_array()
-        .is_some_and(|failures| !failures.is_empty());
-    result["state"] = json!(if result["available"] != true {
+    result["tool_version"] = json!(std::process::Command::new(&executable)
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()));
+}
+
+fn scan_state_label(result: &Value, partial: bool) -> &'static str {
+    if result["available"] != true {
         "error"
     } else if partial {
         "partial"
     } else {
         "measured"
-    });
+    }
+}
+
+fn unavailable_result(
+    mut result: Value,
+    previous: Option<Value>,
+    revision: &Option<String>,
+    dirty: Option<bool>,
+) -> Value {
+    let error = "Lizard returned no measurements; check tool availability and scan_failures.";
+    if let Some(value) = previous {
+        let mut saved = cached_result(value, revision, dirty);
+        saved["last_error"] = json!(error);
+        saved["last_scan_failures"] = result["scan_failures"].clone();
+        return saved;
+    }
+    result["reason"] = json!(error);
+    result
+}
+
+fn save_scan(cache: &Path, result: &Value) -> std::io::Result<()> {
+    let parent = cache
+        .parent()
+        .ok_or_else(|| std::io::Error::other("cache has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    // A unique temporary file prevents concurrent scans from truncating the saved result.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|v| v.as_nanos())
+        .unwrap_or(0);
+    let temporary = cache.with_extension(format!("{}-{stamp}.tmp", std::process::id()));
+    let bytes = serde_json::to_vec(result).map_err(std::io::Error::other)?;
+    std::fs::write(&temporary, bytes)?;
+    if let Err(error) = std::fs::rename(&temporary, cache) {
+        let _ = std::fs::remove_file(temporary);
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Measure the repository's complexity and reading cost.
+pub fn read(root: &Path, scan: bool) -> Value {
+    let cache = root.join("target/analytics/lizard.json");
+    let revision = source_revision(root);
+    let dirty = source_dirty(root);
+    let previous = saved_scan(root, &cache);
+    if !scan {
+        return unscanned_result(previous, root, &revision, dirty);
+    }
+    let mut result = measure(root);
+    result["tool"] = json!("lizard");
+    annotate_tool(&mut result);
+    result["targets"] = json!(scan_targets(root));
+    result["source_root"] = json!(root);
+    result["source_revision"] = json!(revision);
+    result["source_dirty"] = json!(dirty);
+    result["measured_at_unix_secs"] = json!(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|v| v.as_secs()));
+    result["cached"] = json!(false);
+    let partial = result["scan_failures"]
+        .as_array()
+        .is_some_and(|failures| !failures.is_empty());
+    result["state"] = json!(scan_state_label(&result, partial));
     if result["available"] != true {
-        let error = "Lizard returned no measurements; check tool availability and scan_failures.";
-        if let Some(value) = previous {
-            let mut saved = cached_result(value, &revision, dirty);
-            saved["last_error"] = json!(error);
-            saved["last_scan_failures"] = result["scan_failures"].clone();
-            return saved;
-        }
-        result["reason"] = json!(error);
-        return result;
+        return unavailable_result(result, previous, &revision, dirty);
     }
     // A partial scan must not replace the last complete saved measurement.
     if partial {
         return result;
     }
-    let save = || -> std::io::Result<()> {
-        let parent = cache
-            .parent()
-            .ok_or_else(|| std::io::Error::other("cache has no parent"))?;
-        std::fs::create_dir_all(parent)?;
-        // A unique temporary file prevents concurrent scans from truncating the saved result.
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|v| v.as_nanos())
-            .unwrap_or(0);
-        let temporary = cache.with_extension(format!("{}-{stamp}.tmp", std::process::id()));
-        let bytes = serde_json::to_vec(&result).map_err(std::io::Error::other)?;
-        std::fs::write(&temporary, bytes)?;
-        if let Err(error) = std::fs::rename(&temporary, &cache) {
-            let _ = std::fs::remove_file(temporary);
-            return Err(error);
-        }
-        Ok(())
-    };
-    if let Err(error) = save() {
+    if let Err(error) = save_scan(&cache, &result) {
         result["cache_error"] = json!(error.to_string());
     }
     result
@@ -256,20 +283,26 @@ fn cached_result(mut value: Value, revision: &Option<String>, dirty: Option<bool
     value
 }
 
-fn measure(root: &Path) -> Value {
-    let lizard_bin = resolve_craft_cli("lizard");
-    let long_file_limit = long_file_limit(root);
-    let targets = scan_targets(root);
-    let (stdout, mut scan_failures) = lizard_csv(&lizard_bin, root, &targets);
-    let mut functions = Vec::new();
-    let mut files = std::collections::HashSet::new();
-    let mut per_file: std::collections::BTreeMap<String, (u64, usize, u64)> =
-        std::collections::BTreeMap::new();
-    let mut total_nloc = 0u64;
-    let mut total_tokens = 0u64;
-    let mut over_15 = 0usize;
-    let mut max_ccn = 0u64;
+struct ScanTally {
+    functions: Vec<Value>,
+    files: std::collections::HashSet<String>,
+    per_file: std::collections::BTreeMap<String, (u64, usize, u64)>,
+    total_nloc: u64,
+    total_tokens: u64,
+    over_15: usize,
+    max_ccn: u64,
+}
 
+fn tally_rows(stdout: &str) -> ScanTally {
+    let mut tally = ScanTally {
+        functions: Vec::new(),
+        files: std::collections::HashSet::new(),
+        per_file: std::collections::BTreeMap::new(),
+        total_nloc: 0,
+        total_tokens: 0,
+        over_15: 0,
+        max_ccn: 0,
+    };
     for line in stdout.lines() {
         let fields = parse_csv_line(line);
         if fields.len() < 11 {
@@ -292,20 +325,20 @@ fn measure(root: &Path) -> Value {
         let start_line = fields[9].parse::<u64>().unwrap_or(1);
         let end_line = fields[10].parse::<u64>().unwrap_or(start_line);
 
-        files.insert(file.clone());
-        let entry = per_file.entry(file.clone()).or_insert((0, 0, 0));
+        tally.files.insert(file.clone());
+        let entry = tally.per_file.entry(file.clone()).or_insert((0, 0, 0));
         entry.0 = entry.0.saturating_add(ccn);
         entry.1 += 1;
         entry.2 = entry.2.max(ccn);
-        total_nloc = total_nloc.saturating_add(nloc);
-        total_tokens = total_tokens.saturating_add(tokens);
+        tally.total_nloc = tally.total_nloc.saturating_add(nloc);
+        tally.total_tokens = tally.total_tokens.saturating_add(tokens);
         if ccn > 15 {
-            over_15 += 1;
+            tally.over_15 += 1;
         }
-        if ccn > max_ccn {
-            max_ccn = ccn;
+        if ccn > tally.max_ccn {
+            tally.max_ccn = ccn;
         }
-        functions.push(json!({
+        tally.functions.push(json!({
             "name": name,
             "file": file,
             "start_line": start_line,
@@ -316,17 +349,18 @@ fn measure(root: &Path) -> Value {
             "params": params,
         }));
     }
-    functions.sort_by_key(|f| {
-        (
-            std::cmp::Reverse(f["ccn"].as_u64().unwrap_or(0)),
-            std::cmp::Reverse(f["nloc"].as_u64().unwrap_or(0)),
-        )
-    });
-    let hotspots: Vec<Value> = functions.iter().take(25).cloned().collect();
+    tally
+}
 
+fn file_cost_rows(
+    root: &Path,
+    per_file: &std::collections::BTreeMap<String, (u64, usize, u64)>,
+    scan_failures: &mut Vec<String>,
+    long_file_limit: u64,
+) -> Vec<Value> {
     // Per-file cost: physical lines (what an agent has to read) next to cyclomatic
     // complexity (what the code costs to change).
-    let mut file_rows: Vec<Value> = per_file
+    per_file
         .iter()
         .map(|(file, (ccn, functions, max_file_ccn))| {
             let lines = match std::fs::read_to_string(root.join(file)) {
@@ -345,29 +379,32 @@ fn measure(root: &Path) -> Value {
                 "long": lines.map(|value| value >= long_file_limit),
             })
         })
-        .collect();
-    file_rows.sort_by_key(|row| {
-        (
-            std::cmp::Reverse(row["lines"].as_u64().unwrap_or(0)),
-            std::cmp::Reverse(row["ccn"].as_u64().unwrap_or(0)),
-        )
-    });
+        .collect()
+}
+
+fn long_file_rows(file_rows: &[Value]) -> (Vec<Value>, usize) {
     let long_files: Vec<Value> = file_rows
         .iter()
         .filter(|row| row["long"].as_bool().unwrap_or(false))
         .cloned()
         .collect();
-    let long_file_count = long_files.len();
     let longest_files: Vec<Value> = long_files.iter().take(15).cloned().collect();
-    let mut by_ccn: Vec<Value> = file_rows.clone();
+    (longest_files, long_files.len())
+}
+
+fn largest_ccn_rows(file_rows: &[Value]) -> Vec<Value> {
+    let mut by_ccn: Vec<Value> = file_rows.to_vec();
     by_ccn.sort_by_key(|row| {
         (
             std::cmp::Reverse(row["ccn"].as_u64().unwrap_or(0)),
             std::cmp::Reverse(row["lines"].as_u64().unwrap_or(0)),
         )
     });
-    let largest_ccn_files: Vec<Value> = by_ccn.iter().take(15).cloned().collect();
-    let ui_files_analyzed = file_rows
+    by_ccn.iter().take(15).cloned().collect()
+}
+
+fn count_ui_files(file_rows: &[Value]) -> usize {
+    file_rows
         .iter()
         .filter(|row| {
             row["file"]
@@ -375,21 +412,46 @@ fn measure(root: &Path) -> Value {
                 .unwrap_or("")
                 .starts_with("apps/src-tauri/ui/")
         })
-        .count();
+        .count()
+}
+
+fn measure(root: &Path) -> Value {
+    let lizard_bin = resolve_craft_cli("lizard");
+    let long_file_limit = long_file_limit(root);
+    let targets = scan_targets(root);
+    let (stdout, mut scan_failures) = lizard_csv(&lizard_bin, root, &targets);
+    let mut tally = tally_rows(&stdout);
+    tally.functions.sort_by_key(|f| {
+        (
+            std::cmp::Reverse(f["ccn"].as_u64().unwrap_or(0)),
+            std::cmp::Reverse(f["nloc"].as_u64().unwrap_or(0)),
+        )
+    });
+    let hotspots: Vec<Value> = tally.functions.iter().take(25).cloned().collect();
+    let mut file_rows = file_cost_rows(root, &tally.per_file, &mut scan_failures, long_file_limit);
+    file_rows.sort_by_key(|row| {
+        (
+            std::cmp::Reverse(row["lines"].as_u64().unwrap_or(0)),
+            std::cmp::Reverse(row["ccn"].as_u64().unwrap_or(0)),
+        )
+    });
+    let (longest_files, long_file_count) = long_file_rows(&file_rows);
+    let largest_ccn_files = largest_ccn_rows(&file_rows);
+    let ui_files_analyzed = count_ui_files(&file_rows);
     let total_lines: u64 = file_rows
         .iter()
         .map(|row| row["lines"].as_u64().unwrap_or(0))
         .sum();
 
     json!({
-        "available": !functions.is_empty(),
+        "available": !tally.functions.is_empty(),
         "tool": "lizard",
-        "files_analyzed": files.len(),
-        "functions_analyzed": functions.len(),
-        "total_nloc": total_nloc,
-        "total_code_tokens": total_tokens,
-        "functions_over_ccn_15": over_15,
-        "max_ccn": max_ccn,
+        "files_analyzed": tally.files.len(),
+        "functions_analyzed": tally.functions.len(),
+        "total_nloc": tally.total_nloc,
+        "total_code_tokens": tally.total_tokens,
+        "functions_over_ccn_15": tally.over_15,
+        "max_ccn": tally.max_ccn,
         "hotspots": hotspots,
         "long_file_threshold_lines": long_file_limit,
         "long_files": long_file_count,
