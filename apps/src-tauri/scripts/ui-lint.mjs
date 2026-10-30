@@ -25,7 +25,7 @@ const listed = RATCHET
   : fs.readdirSync(UI);
 const BASELINE = new URL('./ui-lint.baseline.json', import.meta.url);
 
-const jsFiles = listed.filter(name => name.endsWith('.js'));
+const jsFiles = listed.filter(name => name.endsWith('.ts'));
 const config = (() => {
   try {
     return JSON.parse(read('components.json'));
@@ -159,7 +159,7 @@ function jsCounts(file, source) {
   const styleWrites = occurrences(source, /\.style\.[A-Za-z-]+\s*=\s*/g);
   const geometryWrites = occurrences(source, /\.style\.(?:left|top|right|bottom|width|height|transform|opacity|display|visibility|pointerEvents|background|zIndex|overflow|flex|cursor|borderRadius|boxShadow)\s*=\s*/g);
   let handBuiltDots = 0;
-  if (file !== 'companion-boxes.js') {
+  if (file !== 'companion-boxes.ts') {
     handBuiltDots += occurrences(source, /class\s*:\s*[`'"]dot\b/g);
     handBuiltDots += occurrences(source, /className\s*=\s*[`'"]dot\b/g);
     handBuiltDots += occurrences(source, /classList\.(?:add|remove)\(\s*[`'"]dot\b/g);
@@ -188,7 +188,7 @@ function reportFor(sources) {
     fileCounts.set(file, file.endsWith('.css') ? cssCounts(file, source) : jsCounts(file, source));
   }
   const c = fileCounts.get(css) ?? { lines: 0, rules: 0, selectors: 0, px_outside_root: 0, hex_outside_root: 0 };
-  const js = [...fileCounts].filter(([file]) => file.endsWith('.js'));
+  const js = [...fileCounts].filter(([file]) => file.endsWith('.ts'));
   const sum = key => js.reduce((total, [, counts]) => total + (counts[key] ?? 0), 0);
   const cssText = withoutComments(sources.get(css) ?? '');
   const classes = new Set(cssText.match(/\.[A-Za-z][\w-]*/g) || []).size;

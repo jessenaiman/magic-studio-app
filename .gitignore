@@ -164,3 +164,37 @@ docs/codacy-report.md
 apps/src-tauri/acceptance/artifacts/
 
 /apps/src-tauri/ui/vendor/backstage/
+
+# TypeScript UI: ui/<name>.js is generated from ui/<name>.ts by build.rs (bun build)
+/apps/src-tauri/ui/resources.js
+/apps/src-tauri/ui/panel-header.js
+/apps/src-tauri/ui/studio-caption-compat.js
+/apps/src-tauri/ui/drawers.js
+/apps/src-tauri/ui/project-card.js
+/apps/src-tauri/ui/feedback.js
+/apps/src-tauri/ui/report.js
+/apps/src-tauri/ui/app-bar.js
+/apps/src-tauri/ui/clip-placement.js
+/apps/src-tauri/ui/timeline.js
+/apps/src-tauri/ui/image-prompt.js
+/apps/src-tauri/ui/motion-authoring.js
+/apps/src-tauri/ui/animation-jobs.js
+/apps/src-tauri/ui/home.js
+/apps/src-tauri/ui/companion-rails.js
+/apps/src-tauri/ui/song.js
+/apps/src-tauri/ui/theatre.js
+/apps/src-tauri/ui/backstage-terminal.js
+/apps/src-tauri/ui/storyboard.js
+/apps/src-tauri/ui/menu.js
+/apps/src-tauri/ui/asset-sheet-review.js
+/apps/src-tauri/ui/project.js
+/apps/src-tauri/ui/ui-commands.js
+/apps/src-tauri/ui/companions.js
+/apps/src-tauri/ui/analytics.js
+/apps/src-tauri/ui/sequence.js
+/apps/src-tauri/ui/agent.js
+/apps/src-tauri/ui/companion-boxes.js
+/apps/src-tauri/ui/companion-sprites.js
+/apps/src-tauri/ui/app.js
+/apps/src-tauri/ui/animation.js
+/apps/src-tauri/ui/words.js

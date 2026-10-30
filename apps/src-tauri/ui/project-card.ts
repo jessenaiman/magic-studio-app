@@ -1,5 +1,5 @@
 // A project card presents catalog data. Navigation and history belong to its host.
-function projectCard(project, { open, locate, forget }) {
+function projectCard(project: any, { open, locate, forget }: {open: (project: any, action?: any) => any, locate: (project: any) => any, forget: (project: any) => any}) {
   const availability = project.availability || (project.exists ? 'available' : 'missing');
   const canOpen = availability === 'available';
   const labels = { available: 'Available', missing: 'Location unavailable', unreadable: 'Cannot read project' };

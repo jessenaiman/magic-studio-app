@@ -97,7 +97,7 @@ function imagePromptBlock() {
     generate.disabled = true;
     updateStatus();
     draft.timer = setInterval(updateStatus, 250);
-    const submitted = { prompt: draft.prompt, model: draft.model, quality: 'auto' };
+    const submitted: {prompt: any, model: any, quality: string, references?: any} = { prompt: draft.prompt, model: draft.model, quality: 'auto' };
     if (captured) submitted.references = captured.references;
     try {
       const result = await invoke('engine_command', { id: 'image.generate', params: submitted });

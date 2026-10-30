@@ -3,15 +3,15 @@ async function animationTheatreSnapshot(){
  theatreRequireSaved();
  if(magicTheatre.availability!=='ready'||!magicTheatre.ready||!magicTheatre.frame)throw Error(magicTheatre.error||'Wait for the native timeline before capturing a pose.');
  const project=state.project,frame=magicTheatre.frame,request=++magicTheatre.nextRequest;
- const value=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{magicTheatre.exports.delete(request);reject(Error('Timeline snapshot timed out; no pose exported.'));},5000);magicTheatre.exports.set(request,{project,resolve,reject,timer});frame.contentWindow.postMessage({magicTheatre:true,type:'export',request,project},location.origin);});
+ const value=await new Promise<any>((resolve,reject)=>{const timer=setTimeout(()=>{magicTheatre.exports.delete(request);reject(Error('Timeline snapshot timed out; no pose exported.'));},5000);magicTheatre.exports.set(request,{project,resolve,reject,timer});frame.contentWindow.postMessage({magicTheatre:true,type:'export',request,project},location.origin);});
  if(state.project!==project||magicTheatre.frame!==frame)throw Error('Project changed during timeline capture.');
  theatreRequireSaved();return value.state;
 }
 function motionAuthoringPanels(meta){
  const project=state.project,character=motion.character,track=motion.track,part=meta.layers.find(l=>l.id===motion.selected),action=meta.tracks.find(t=>t.id===track),caps=action?.authoring||{},hash=meta.rig_sha256;
  const current=()=>state.project===project&&motion.character===character;
- const identity=()=>({expected_project:project,character,track,expected_rig_sha256:hash});
- const field=(id,label,value,type='number',range=null)=>{
+ const identity=(): Record<string, any>=>({expected_project:project,character,track,expected_rig_sha256:hash});
+ const field=(id: string,label: string,value: any,type='number',range: any[]|null=null): any=>{
   if(range&&typeof value==='number'&&Number.isFinite(value)){
    const [min,max,step,unit]=range,node=motionRange(`authoring-${id}`,label,Math.min(min,value),Math.max(max,value),step,value,unit,()=>{});
    const input=node.input;input.defaultValue=input.value;
@@ -42,8 +42,8 @@ function motionAuthoringPanels(meta){
   }finally{motion.authoringBusy=false;for(const control of editControls)control.disabled=control.unavailable===true;}
  }
  const run=(id,params)=>edit(id,params).catch(error=>{if(current()){status.textContent=String(error);status.className='image-error';}});
- const dirty=new Set(),values={},partRows=[];
- for(const [property,label,count]of [['position','Position',2],['scale','Scale',2],['rotation','Rotation',1],['pivot','Pivot',2]]){
+ const dirty=new Set<string>(),values: Record<string, any[]>={},partRows=[];
+ for(const [property,label,count]of [['position','Position',2],['scale','Scale',2],['rotation','Rotation',1],['pivot','Pivot',2]] as [string,string,number][]){
   const v=property==='pivot'?part?.pivot:action?.static_overrides?.[part?.id]?.[property];
   const fields=Array.from({length:count},(_,i)=>{
    const size=meta.canvas?.[i],range=property==='scale'?[-200,200,1,'%']:property==='rotation'?[-180,180,1,'°']:Number.isFinite(size)&&size>0?[property==='pivot'?0:-size,size,0.1,'px']:null;

@@ -1,13 +1,21 @@
 // One shell for chat, artwork and the read-only lyrics reader. Contents never remount on toggle.
-function createTopDrawers({root=document,canOpen=()=>true,onChange=()=>{},onLayout=()=>{},onSettings=()=>{}}={}) {
-  const host=root.getElementById('magic-workstation');let active=null,lastHeight=-1;
+interface TopDrawerOptions {
+  root?: Document;
+  canOpen?: () => boolean;
+  onChange?: (name: string | null, previous?: string | null) => void;
+  onLayout?: (height: number) => void;
+  onSettings?: (id: string) => void;
+}
+
+function createTopDrawers({root=document,canOpen=()=>true,onChange=()=>{},onLayout=()=>{},onSettings=()=>{}}: TopDrawerOptions = {}) {
+  const host=root.getElementById('magic-workstation');let active: string | null=null,lastHeight=-1;
   const panels=()=>[...root.querySelectorAll('[data-drawer]')];
   const buttons=()=>[...root.querySelectorAll('[data-drawer-toggle]')];
   const layout=()=>{
     const height=active?host.getBoundingClientRect().height:0;
     if(height!==lastHeight){lastHeight=height;onLayout(height);}
   };
-  function show(name,restoreFocus=false) {
+  function show(name: string | null,restoreFocus=false) {
     const panel=panels().find(node=>node.dataset.drawer===name);
     if(name&&(!panel||!canOpen()))return false;
     if(name===active)return true;
@@ -28,7 +36,7 @@ function createTopDrawers({root=document,canOpen=()=>true,onChange=()=>{},onLayo
     const settings=event.target.closest('[data-drawer-settings]');
     if(settings){const node=root.getElementById(settings.dataset.drawerSettings);if(node){node.hidden=!node.hidden;settings.setAttribute('aria-expanded',String(!node.hidden));if(!node.hidden)onSettings(node.id);}return;}
     if(event.target.closest('[data-drawer-close]')){api.close();return;}
-    if(active&&!host.contains(event.target))api.close(false);
+    if(active&&!host.contains(event.target as Node))api.close(false);
   });
   root.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&active&&!root.getElementById('point-overlay')?.classList.contains('on')){event.preventDefault();api.close();}

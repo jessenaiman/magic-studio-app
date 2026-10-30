@@ -99,7 +99,7 @@ $("new-form").addEventListener("submit", async (e) => {
   if (!$("new-audio").value) return toast("Choose the song's audio first");
   $("new-create").disabled = true;
   try {
-    const action=acFeedback.actions.get(e.submitter);
+    const action=acFeedback.actions.get(e.submitter) as any;
     const opened = await invoke("project_create", {request:action?.request_id,control:action?.control, name: $("new-name").value, audio: $("new-audio").value, root: $("new-root").value });
     state.creating = false;
     newProjectForm.hidden = true;

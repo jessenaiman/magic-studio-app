@@ -21,7 +21,7 @@ async function theatreGuardIdentityChange(project){
  if(!frame)return;
  if(!magicTheatre.ready||magicTheatre.project!==project)throw new Error('Wait for the motion timeline before changing the project.');
  const request=++magicTheatre.nextRequest;
- const response=await new Promise((resolve,reject)=>{
+ const response=await new Promise<any>((resolve,reject)=>{
   const timer=setTimeout(()=>{magicTheatre.exports.delete(request);reject(new Error('Motion timeline did not confirm its state; project was not changed.'));},5000);
   magicTheatre.exports.set(request,{project,resolve,reject,timer,barrier:true});
   frame.contentWindow.postMessage({magicTheatre:true,type:'interaction_barrier',request},location.origin);
@@ -94,7 +94,7 @@ async function theatreSave(){
  if(magicTheatre.availability!=='ready')throw new Error('Theatre is not ready to save');
  const project=state.project,frame=magicTheatre.frame,request=++magicTheatre.nextRequest,revision=magicTheatre.interactionRevision,button=$('theatre-save');button.disabled=true;
  try{
-  const exported=await new Promise((resolve,reject)=>{
+  const exported=await new Promise<any>((resolve,reject)=>{
    const timer=setTimeout(()=>{magicTheatre.exports.delete(request);reject(new Error('Theatre export timed out; no project save was submitted'));},5000);
    magicTheatre.exports.set(request,{project,resolve,reject,timer});
    frame.contentWindow.postMessage({magicTheatre:true,type:'export',request,project},location.origin);

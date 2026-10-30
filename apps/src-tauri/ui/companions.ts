@@ -5,7 +5,7 @@
 // Sproket goes to the worst red/yellow and poses alert or work. Gaffer follows the most recently
 // changed signal and wanders there. No command is inspected, no job is correlated and no per-control
 // knowledge lives here: a box reports a state, the state maps to a number, the number picks a pose.
-function createCompanions(frames, options = {}) {
+function createCompanions(frames: any, options: any = {}) {
   const sprites = options.sprites || null;
   const rails = options.rails || null;
   const boxes = options.boxes || window.companionBoxes || null;
@@ -17,7 +17,7 @@ function createCompanions(frames, options = {}) {
   let settleTimer = null;
   // per-pet timers live on pets[name]
   const nodes = {};
-  const pets = {};
+  const pets: Record<string, any> = {};
   const travelling = {};
 
   for (const name of ["sproket", "gaffer"]) {

@@ -25,9 +25,39 @@ const BOX_STATES = ["idle", "working", "ready", "needs-attention", "failed"];
 const SIGNAL = { idle: 0, ready: 1, working: 1, "needs-attention": 2, failed: 3 };
 const SIGNAL_LABEL = { 0: "idle", 1: "in use", 2: "attention", 3: "problem" };
 
+// The rail or box a control belongs to, if any.
+function controlOwner(node: any): string | null {
+  return node.closest('[data-companion-rail]')?.getAttribute('data-companion-rail') || node.closest('[data-box-id]')?.getAttribute('data-box-id');
+}
+
+function controlVisible(node: any, rect: DOMRect, computed: CSSStyleDeclaration): boolean {
+  return rect.width > 0 && rect.height > 0 && computed.visibility !== 'hidden' && !node.closest('[hidden],[aria-hidden=true]');
+}
+
+// What an agent may do to a control: set or key an editable one, click a clickable one.
+function controlActions(editable: boolean, clickable: boolean): string[] {
+  if (editable) return ['ui.set', 'ui.key'];
+  return clickable ? ['ui.click'] : [];
+}
+
+const INSPECTED_STYLES = ['display', 'visibility', 'color', 'backgroundColor', 'fontSize', 'fontWeight', 'overflow', 'position'];
+
+// The value an inspector reports for a control: checked state, a number's range, or a select's options.
+function controlData(node: any, kind: string): Record<string, any> | null {
+  if (node.type === 'checkbox' || node.type === 'radio') return { checked: !!node.checked };
+  if (node.matches('input[type=number],input[type=range]')) return { value: node.value, min: node.min, max: node.max, step: node.step };
+  if (kind === 'select') return { value: node.value, options: [...node.options].map((o: any) => ({ value: o.value, label: o.label, disabled: o.disabled })) };
+  return null;
+}
+
+// The element's own text nodes (not its children's), trimmed and capped.
+function ownText(node: any): string {
+  return [...(node.childNodes || [])].filter((n: any) => n.nodeType === 3).map((n: any) => n.textContent.trim()).filter(Boolean).join(' ').slice(0, 160);
+}
+
 function createCompanionBoxes() {
   const boxes = new Map();
-  const listeners = new Set();
+  const listeners = new Set<() => void>();
   const jobs = new Map();
   const jobId = value => typeof value === "string" ? value : value?.id || null;
   let quiet = false;
@@ -58,22 +88,20 @@ function createCompanionBoxes() {
     const nodes = [root, ...root.querySelectorAll('*')].filter(n => registerElement(n));
     const items = nodes.map(node => {
       const record = registerElement(node), parent = registerElement(node.parentElement), rect = node.getBoundingClientRect(), computed = getComputedStyle(node);
-      const configId = node.dataset.uiConfig || node.id, entry = window.uiConfig?.elements?.[configId], owner = node.closest('[data-companion-rail]')?.getAttribute('data-companion-rail') || node.closest('[data-box-id]')?.getAttribute('data-box-id');
+      const configId = node.dataset.uiConfig || node.id, entry = window.uiConfig?.elements?.[configId], owner = controlOwner(node);
       const live = owner ? get(owner) : null;
       const kind = node.tagName.toLowerCase(), editable = node.matches('input,select,textarea,[contenteditable=true]');
       const clickable = node.matches('button,a[href],[role=button],[role=tab],.chip,.proj,.object,.lyric');
-      const data = node.type === 'checkbox' || node.type === 'radio' ? { checked: !!node.checked } :
-        node.matches('input[type=number],input[type=range]') ? { value: node.value, min: node.min, max: node.max, step: node.step } :
-        kind === 'select' ? { value: node.value, options: [...node.options].map(o => ({ value: o.value, label: o.label, disabled: o.disabled })) } : null;
+      const data = controlData(node, kind);
       return { index: record.index, id: node.id || null, target: node.id || `@${record.index}`, parent_index: parent?.index ?? null, parent_id: node.parentElement?.id || null,
         tag: kind, component: entry?.component || kind, config: entry ? configId : null, rail: entry?.rail || null, container: owner ? canonical(owner) : null,
-        rect: [rect.x, rect.y, rect.width, rect.height], visible: rect.width > 0 && rect.height > 0 && computed.visibility !== 'hidden' && !node.closest('[hidden],[aria-hidden=true]'),
+        rect: [rect.x, rect.y, rect.width, rect.height], visible: controlVisible(node, rect, computed),
         enabled: !node.disabled, selected: node.getAttribute('aria-selected') || node.getAttribute('aria-pressed') || null,
         signal: live ? boxSignal(live) : null, busy: live ? live.state === "working" : null,
         label: node.getAttribute('aria-label') || node.title || entry?.label || null, data,
-        text: editable || node.closest('#agent-log,#agent-messages') ? null : [...(node.childNodes || [])].filter(n => n.nodeType === 3).map(n => n.textContent.trim()).filter(Boolean).join(' ').slice(0, 160),
-        style: Object.fromEntries(['display','visibility','color','backgroundColor','fontSize','fontWeight','overflow','position'].map(key => [key, computed[key]])),
-        commands: (node.dataset.commands || '').split(/\s+/).filter(Boolean), actions: editable ? ['ui.set','ui.key'] : clickable ? ['ui.click'] : [] };
+        text: editable || node.closest('#agent-log,#agent-messages') ? null : ownText(node),
+        style: Object.fromEntries(INSPECTED_STYLES.map(key => [key, computed[key]])),
+        commands: (node.dataset.commands || '').split(/\s+/).filter(Boolean), actions: controlActions(editable, clickable) };
     });
     const signature = JSON.stringify([currentProject(), items]);
     if (signature !== componentSignature) { componentSignature = signature; componentRevision++; }
@@ -156,7 +184,7 @@ function createCompanionBoxes() {
 
   // The authoritative path: an event happened and says what the box is doing.
   // `fact` is what the engine or a correlated job reported.
-  function fact({ id, project = null, context = null, state = null, reason = null, priority = null, request = null, job = null, resolution = null, source = "engine", observed_at = null } = {}) {
+  function fact({ id, project = null, context = null, state = null, reason = null, priority = null, request = null, job = null, resolution = null, source = "engine", observed_at = null }: {id?: string, project?: any, context?: any, state?: any, reason?: any, priority?: any, request?: any, job?: any, resolution?: any, source?: string, observed_at?: any} = {}) {
     const box = register(id, { project, context });
     if (!box) return null;
     if (state && BOX_STATES.includes(state)) box.state = state;
@@ -194,7 +222,7 @@ function createCompanionBoxes() {
 
   // A command's receipt, kept beside the control it came from. Global Undo/Redo and Autosave read
   // this instead of every element growing its own save logic: one shape, written once.
-  function recordReceipt(id, result = {}) {
+  function recordReceipt(id: string, result: any = {}) {
     const box = boxes.get(canonical(id));
     if (!box) return null;
     const dirty = result.dirty;
@@ -225,7 +253,7 @@ function createCompanionBoxes() {
         reason: failed ? String(event.error || result.error || "Operation failed") : working ? "Working" : "Command completed", source: "command result" });
       if (event.phase === "success") recordReceipt(context.box, { ...result, command: event.command });
   }
-  function capture(command, params = {}) {
+  function capture(command: string, params: any = {}) {
       const action = typeof acFeedback === "undefined" ? null : acFeedback.action;
       const job = jobId(params.job) || jobId(params.job_id), owner = job ? jobs.get(`${state.project}:${job}`) : null;
       const node = document.getElementById(params?._control || action?.control) || [...document.querySelectorAll("[data-commands]")].find(n => (n.getAttribute("data-commands") || "").split(/\s+/).includes(command));

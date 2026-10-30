@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true
+  },
+  "exclude": ["apps/src-tauri/ui/vendor"],
+  "include": ["apps/src-tauri/types/**/*.d.ts", "apps/src-tauri/ui/**/*.js", "apps/src-tauri/ui/**/*.ts"]
+}

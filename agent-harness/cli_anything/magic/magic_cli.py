@@ -249,93 +249,43 @@ def cli(
     type=click.Choice(tuple(audit_core.TOOLS)),
     help=(
         "Select a native tool; repeat to choose several. "
-        "Default: Lizard for a file, all nine for a directory."
+        "Default: Lizard for a file, every tool for a directory."
     ),
 )
 @click.option(
-    "--format", "output_format", type=click.Choice(("text", "csv", "json")),
-    default="text",
-    show_default=True,
-    help="Lizard output: ranked native text diagnostics or native CSV measurements.",
-)
-@click.option(
     "--base", default="HEAD", show_default=True,
-    help="Scope and --compare: git revision the change is measured from.",
-)
-@click.option(
-    "--tasks", is_flag=True,
-    help="Ranked one-fix tasks for agents (file:line, evidence, action, tool).",
-)
-@click.option(
-    "--limit", default=25, show_default=True, help="--tasks: how many; 0 = all."
-)
-@click.option(
-    "--compare", is_flag=True,
-    help="One before/now table of design and code metrics; nonzero if any got worse.",
+    help="Git revision the scope is measured from.",
 )
 @click.pass_context
 def audit(
-    ctx: click.Context, path: Path, tools: tuple[str, ...], output_format: str,
-    base: str, compare: bool, tasks: bool, limit: int,
+    ctx: click.Context, path: Path, tools: tuple[str, ...], base: str,
 ) -> None:
-    """Run native repository checks with unmodified tool output.
+    """Run the repository's own checks and print what they print.
 
     Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace,
-    jscpd, PurgeCSS, scope. Each
-    tool uses PATH (or root node_modules/.bin) and the nearest repository
-    configuration at or above PATH, up to the repository top.
-    Missing tools/configuration are errors, not passing or skipped checks.
-    Lizard shows function locations, file totals, CCN, length and cognitive
-    complexity, with warnings ranked by CCN. code-limits.json requires
-    max_function_ccn; optional max_function_lines (100),
-    max_function_cognitive_complexity (15) set thresholds.
-    Wallace measures our stylesheets (not vendor/node_modules/target) as one
-    design: unique colours, font sizes and declarations, ID selectors and
-    specificity. Compare its table before and after a UI change. jscpd lists
-    repeated blocks (.jscpd.json): missed chances to share one class, helper
-    or component. PurgeCSS (purgecss.config.cjs) lists selectors no component
-    or page produces: dead styles; its JSON omits only the purged CSS text.
-    CSS is component code: read Stylelint, Wallace, jscpd and PurgeCSS
-    together after every UI change. scope prints git's diff stat since --base
-    for the whole repository, and untracked files, so changes outside PATH
-    show as creep.
+    jscpd, PurgeCSS, scope. Each tool uses PATH (or root node_modules/.bin)
+    and the nearest repository configuration at or above PATH, up to the
+    repository top. Missing tools/configuration are errors, not passing or
+    skipped checks.
 
-    --compare measures PATH at --base and now with the same configuration and
-    prints one table (before, now, change, better/worse; lower is better), the
-    scope since --base, and each stylesheet's concerns with suggested files.
-    It exits 1 when any metric got worse.
+    Tool output reaches this terminal exactly as the tool wrote it. This
+    command only decides what to run and where to run it; it does not parse,
+    score, rank or summarize findings.
 
-    --tasks turns the same native findings into ranked one-fix tasks for
-    agents: code doing an ArtCraft app's job (with the CLI commands to chain),
-    app-named declarations, duplicated blocks, complex functions, inline and
-    dead styles, style-rule problems. --format json gives them as JSON.
-    CSV mode also runs native warnings on stderr so violations still fail.
-    Other tools keep their native formats.
+    Lizard takes its thresholds from code-limits.json: max_function_ccn,
+    max_function_lines (100), max_function_cognitive_complexity (15).
 
     Each native exit code is printed; the command returns the first nonzero
     status, or 0 if all selected tools return 0. Setup/invocation errors use 2;
     signals use 128 + signal. Remaining selected tools still run after failure.
     Global --dry-run validates setup and prints commands without running them.
-    No install, autofix, Codacy, AgentLinter, or upload feature is invoked.
 
     A file defaults to Lizard. For a Rust file such as module.rs, Lizard also
-    scans its companion module/ directory when present, so extracted functions
-    stay in the audit. Native output names every analyzed file. Other explicit
-    tools receive the exact file path. A Lizard directory check stays within
-    that directory and inherits the repository limits.
-    Clippy requires a crate directory. File checks use repository configuration.
+    scans its companion module/ directory when present. Clippy requires a crate
+    directory. File checks use repository configuration.
     """
-    if tasks:
-        from cli_anything.magic.core.audit_tasks import report as task_report
-
-        ctx.exit(task_report(path.resolve(), limit, output_format == "json"))
-    if compare:
-        from cli_anything.magic.core.audit_compare import compare as compare_metrics
-
-        ctx.exit(compare_metrics(path.resolve(), base))
     ctx.exit(audit_core.run_audit(
-        path.resolve(), tools, dry_run=ctx.obj["dry_run"], output_format=output_format,
-        base=base,
+        path.resolve(), tools, dry_run=ctx.obj["dry_run"], base=base,
     ))
 
 

@@ -23,7 +23,11 @@ function seqEase(name, u) {
 }
 
 // The resting state and the departing state of one side, in the motion spec's units.
-function seqSideValues(kind, [w, h]) {
+/**
+ * @param {string} kind
+ * @param {number[]} canvas
+ */
+function seqSideValues(kind: string, [w, h]: number[]) {
   const rest = { position: [0, 0], rotation: 0, scale: [0, 0], opacity: 0 };
   const travel = 0.12;
   switch (kind) {

@@ -5,7 +5,9 @@
 // film roll of the designed lines (right) run down the page on the song clock; the stage, the
 // line's lanes and the options for what is picked stay pinned in the centre. The Video view plays
 // the finished HyperFrames video through its preview player.
-const wordsPanel = { mode:"lyrics", topShelf:"scene", shelf:"acts", links:{color:null,front:false,pulse:true,hidden:false}, linkDrag:null, cue: null, cueDrag: null, previewRange: null, autoPlay: false, loopLine: false, stageDirty: false, pendingSeek: null, read: null, align: null, studio: null, selected: null, line: null, item: null, picked: [], designs: new Map(), styleEdits: {}, stage: null, time: 0, playing: false, size: { width: 1920, height: 1080 }, lanes: null, view: "design", tab: "look", scene: true, sceneAt: null, followed: null, canvas: null, audio: null, drag: null, server: null, player: null, show: "still", offset: 0, timeLabel: null, effects: null };
+// The Lyrics view's one state bag; the fields set here are its starting state and the rest are
+// added as the view runs, hence the open index signature.
+const wordsPanel: Record<string, any> = { mode:"lyrics", topShelf:"scene", shelf:"acts", links:{color:null,front:false,pulse:true,hidden:false}, linkDrag:null, cue: null, cueDrag: null, previewRange: null, autoPlay: false, loopLine: false, stageDirty: false, pendingSeek: null, read: null, align: null, studio: null, selected: null, line: null, item: null, picked: [], designs: new Map(), styleEdits: {}, stage: null, time: 0, playing: false, size: { width: 1920, height: 1080 }, lanes: null, view: "design", tab: "look", scene: true, sceneAt: null, followed: null, canvas: null, audio: null, drag: null, server: null, player: null, show: "still", offset: 0, timeLabel: null, effects: null };
 try {const links=JSON.parse(localStorage.getItem("magicstudio.lyrics.links")||"{}");
   if(/^#[0-9a-f]{6}$/i.test(links.color))wordsPanel.links.color=links.color;
   for(const key of ["front","pulse","hidden"])if(typeof links[key]==="boolean")wordsPanel.links[key]=links[key];
@@ -151,7 +153,7 @@ function wordsLines(anim) {
   return lines;
 }
 // A timeline item's song time and length, as data; the timeline rule turns seconds into height.
-function wordsPlace(node, at, len) {
+function wordsPlace(node: any, at: number, len?: number) {
   node.style.setProperty("--at-s", at.toFixed(3));
   if (len != null) node.style.setProperty("--len-s", Math.max(0, len).toFixed(3));
   return node;
@@ -1239,7 +1241,7 @@ function wordsFitClock(view) {
   let scale = base;
   for (const row of view.querySelectorAll(".words-tl > .words-line")) {
     const seconds = Number(row.style.getPropertyValue("--len-s"));
-    if (seconds > 0) scale = Math.max(scale, (row.scrollHeight + parseFloat(getComputedStyle(row).marginTop || 0) + 4) / seconds);
+    if (seconds > 0) scale = Math.max(scale, (row.scrollHeight + parseFloat(getComputedStyle(row).marginTop || "0") + 4) / seconds);
   }
   if (scale > base) view.style.setProperty("--song-s", `${Math.ceil(scale)}px`);
 }
@@ -1574,7 +1576,7 @@ function wordsWidth(view = $("view-design")) {
   view.classList.toggle("narrow", view.clientWidth < 1100);
   view.classList.toggle("tight", view.clientWidth < 600);
 }
-let wordsObservedWidth = -1;
+let wordsObservedWidth: string | number = -1;
 const wordsViewFitter = new ResizeObserver(() => {
   const view=$("view-design");if(!view)return;
   const width=`${view.clientWidth}:${innerHeight}:${view.getBoundingClientRect().top}`;
@@ -1629,7 +1631,7 @@ function wordsOptionPreview(kind, key) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 160 64"); svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("class", "words-option-preview"); svg.setAttribute("data-kind", kind); svg.setAttribute("data-choice", key);
-  const add = (tag, attrs, text) => {
+  const add = (tag: string, attrs: Record<string, any>, text?: string) => {
     const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
     if (text) node.textContent = text; svg.appendChild(node); return node;
@@ -1681,9 +1683,9 @@ function wordsBuildChoiceCard(kind, key, item, on, onclick) {
   return card;
 }
 
-function wordsMeaningShelf(anim, lib, k, picked, text) {
+function wordsMeaningShelf(anim: any, lib: any, k: any, picked: string[], text: (v: any) => string) {
   const actsFor = (act) => { const acts = { ...k.acts }; for (const id of picked) { if (act) acts[id] = act; else delete acts[id]; } return acts; };
-  const groups = Object.values(Object.entries(k.acts || {}).reduce((acc, [id, act]) => {
+  const groups: any[] = Object.values(Object.entries(k.acts || {}).reduce((acc: Record<string, any>, [id, act]) => {
     const key = `${text(id).toLowerCase().replace(/[^a-z]/g, "")}|${act}`;
     (acc[key] ??= { ids: [], act, word: text(id).replace(/[^\p{L}'-]/gu, "") }).ids.push(id);
     return acc;
@@ -1696,7 +1698,7 @@ function wordsMeaningShelf(anim, lib, k, picked, text) {
     }, `${g.word}${g.ids.length > 1 ? ` ×${g.ids.length}` : ""} · ${lib.acts?.[g.act]?.name || g.act}`))),
     picked.length ? el("div", { class: "words-effects" },
       wordsCard(false, "No act", "Arrives like the other words", () => wordsKinetic({ acts: actsFor(null) })),
-      ...Object.entries(lib.acts || {}).map(([key, item]) => wordsCard(picked.every((id) => k.acts?.[id] === key), item.name, item.does, () => wordsKinetic({ acts: actsFor(key) }))))
+      ...Object.entries((lib.acts || {}) as Record<string, any>).map(([key, item]) => wordsCard(picked.every((id) => k.acts?.[id] === key), item.name, item.does, () => wordsKinetic({ acts: actsFor(key) }))))
       : el("p", { class: "muted" }, "Click a word in the lyrics on the left to give it an act.")
   ];
 }
@@ -1717,7 +1719,7 @@ function wordsStrokesShelf(anim, lib, k, picked, text, trackKind) {
       "aria-label": `Edit drawing for ${text(d.word_id)}`,
       onclick: () => { wordsPanel.cue = `${anim.animation_id}-draw-${d.index}`; wordsPanel.picked = [d.word_id]; wordsRender(); }
     }, `${text(d.word_id)} · ${d.drawing?.name || lib.strokes?.[d.stroke]?.name || d.stroke}`))),
-    picked.length ? el("div", { class: "words-effects" }, ...Object.entries(lib.strokes || {}).filter(([, item]) => (item.track || "graphics") === trackKind).map(([key, item]) => {
+    picked.length ? el("div", { class: "words-effects" }, ...Object.entries((lib.strokes || {}) as Record<string, any>).filter(([, item]) => (item.track || "graphics") === trackKind).map(([key, item]) => {
       const card = wordsCard(picked.every((id) => k.draws?.some((d) => d.word_id === id && d.stroke === key)), item.name, item.does,
         () => wordsKinetic({ draws: wordsToggleStroke(k, lib, picked, key, trackKind) }));
       const svg = wordsStroke(item); svg.setAttribute("class", "words-stroke-sample"); card.prepend(svg); return card;
@@ -1797,9 +1799,9 @@ function wordsSelectionBar(anim, lib, k, picked) {
 }
 
 function wordsUpperTracks(anim) {
-  const lib = wordsPanel.read?.kinetic_library || {}, k = anim?.kinetic;
+  const lib: any = wordsPanel.read?.kinetic_library || {}, k = anim?.kinetic;
   if (!k) return wordsBackdropPicker(anim);
-  const curLettering = Object.entries(lib.letterings || {}).find(([, l]) => Object.entries(l.style).every(([key, value]) => k.style?.[key] === value))?.[0];
+  const curLettering = Object.entries((lib.letterings || {}) as Record<string, any>).find(([, l]) => Object.entries(l.style).every(([key, value]) => k.style?.[key] === value))?.[0];
   const top = wordsPanel.topShelf;
   const pickTop = (key) => () => { wordsPanel.topShelf = wordsPanel.topShelf === key ? null : key; wordsRender(); };
   const sceneName = wordsPanel.show === "stage" || !anim.background_asset ? "Video" : (wordsAvailableBackdrops().find((b) => b.id === anim.background_asset)?.name || anim.background_asset);
@@ -1818,7 +1820,7 @@ function wordsUpperTracks(anim) {
 }
 
 function wordsLayers(anim) {
-  const lib = wordsPanel.read.kinetic_library || {}, k = anim.kinetic;
+  const lib: any = wordsPanel.read.kinetic_library || {}, k = anim.kinetic;
   const picked = wordsPanel.picked.filter((id) => anim.words.some((w) => w.word_id === id));
   const text = (id) => anim.words.find((w) => w.word_id === id)?.text || id;
   const shelf = wordsPanel.shelf;
@@ -1856,7 +1858,7 @@ async function wordsFlushPendingEdits(anim) {
   const unsavedDoc = !wordsPanel.read?.saved;
   const hasEdits = unsavedDoc || wordsPanel.designs.size > 0 || Object.keys(wordsPanel.styleEdits).length > 0;
   if (!hasEdits) return true;
-  const params = { animation_id: anim.animation_id, expected_source_revision: anim.source_revision, origin: "magicstudio-design" };
+  const params: Record<string, any> = { animation_id: anim.animation_id, expected_source_revision: anim.source_revision, origin: "magicstudio-design" };
   if (unsavedDoc && anim.kinetic) params.kinetic = anim.kinetic;
   if (wordsPanel.designs.size) params.design = Object.fromEntries(wordsPanel.designs);
   if (Object.keys(wordsPanel.styleEdits).length) params.style = wordsPanel.styleEdits;

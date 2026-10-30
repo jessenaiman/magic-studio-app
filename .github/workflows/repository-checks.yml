@@ -26,5 +26,6 @@ jobs:
           set -euo pipefail
           node --version
           git diff --check HEAD^ HEAD
-          for source in apps/src-tauri/ui/*.js; do node --check "$source"; done
+          npm ci --ignore-scripts
+          npx tsc -p .
           node apps/src-tauri/scripts/ui-lint.mjs --report
