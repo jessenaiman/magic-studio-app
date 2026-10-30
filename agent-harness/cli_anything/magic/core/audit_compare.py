@@ -20,6 +20,7 @@ CONFIGS = (
     ".jscpd.json",
     "purgecss.config.cjs",
     "code-limits.json",
+    "eslint.config.mjs",
 )
 
 
@@ -70,6 +71,13 @@ def stylelint(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, flo
     )
     results = json.loads(report.read_text() or "[]")
     return {"Stylelint problems": sum(len(r["warnings"]) for r in results)}
+
+
+def eslint(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]:
+    # The config's file patterns are repository-relative: run from the measured tree.
+    command = [tool(repo, "eslint"), "--config", str(repo / CONFIGS[4])]
+    results = json.loads(run([*command, "--format", "json", str(target)], tree))
+    return {"Inline styles + JS lint (ESLint)": sum(len(r["messages"]) for r in results)}
 
 
 def jscpd(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, float]:
@@ -129,6 +137,7 @@ def concerns(repo: Path, tree: Path, target: Path, work: Path) -> dict[str, floa
 
 MEASURES: tuple[Callable[[Path, Path, Path, Path], dict[str, float]], ...] = (
     stylelint,
+    eslint,
     wallace,
     concerns,
     jscpd,
