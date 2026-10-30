@@ -291,7 +291,7 @@ fn scene_render_requires_a_registered_source() {
     assert!(missing.to_string().contains("registered Blender source"));
     session
         .animation_sources
-        .insert("probe".into(), json!({"backend":"synfig"}));
+        .insert("probe".into(), json!({"backend":"other"}));
     let wrong_backend =
         magicstudio_engine::exports::cmd_render_scene_source(&mut session, &json!({"id":"probe"}))
             .unwrap_err();

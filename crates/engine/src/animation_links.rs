@@ -101,9 +101,7 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = text(p, "backend")?;
     let extensions: &[&str] = match backend {
         "blender" => &["blend"],
-        "synfig" => &["sif", "sifz"],
-        "mlt" => &["json"],
-        _ => return Err(bad("backend must be blender, synfig or mlt")),
+        _ => return Err(bad("backend must be blender")),
     };
     let source = crate::workspace::resolve_workspace_path(s, text(p, "source")?).canonicalize()?;
     if !source.is_file()
@@ -113,23 +111,11 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
             .is_some_and(|v| extensions.contains(&v))
     {
         return Err(bad(
-            "Source extension does not match backend; MLT uses assembly JSON",
+            "Source extension does not match backend",
         ));
     }
-    let bundle = if backend == "synfig" {
-        let root = if let Some(raw) = p["bundle"].as_str().filter(|v| !v.is_empty()) {
-            crate::workspace::resolve_workspace_path(s, raw)
-        } else {
-            source.parent().unwrap_or(&source).to_path_buf()
-        };
-        let root = root.canonicalize()?;
-        if !root.is_dir() || !source.starts_with(&root) {
-            return Err(bad("Source must be inside its dependency bundle"));
-        }
-        Some(root)
-    } else {
-        None
-    };
+    // A saved .blend packs its dependencies; no separate bundle directory.
+    let bundle: Option<std::path::PathBuf> = None;
     let character = p["character"].as_str().filter(|v| !v.is_empty());
     let track = p["track"].as_str().filter(|v| !v.is_empty());
     if character.is_some() != track.is_some() {
@@ -157,8 +143,6 @@ fn render_params(source: &Value, p: &Value) -> Result<Value> {
         .ok_or_else(|| bad("options must be an object"))?;
     let native: &[&str] = match backend {
         "blender" => &["max_frames", "resolution_percent"],
-        "synfig" => &["first_frame", "last_frame", "fps", "width", "height"],
-        "mlt" => &[],
         _ => return Err(bad("Unsupported registered backend")),
     };
     for key in options.keys() {
@@ -169,12 +153,7 @@ fn render_params(source: &Value, p: &Value) -> Result<Value> {
         }
     }
     let mut request = Value::Object(options.clone());
-    let key = match backend {
-        "blender" => "blend",
-        "synfig" => "source",
-        _ => "timeline",
-    };
-    request[key] = source["source"].clone();
+    request["blend"] = source["source"].clone();
     for key in ["bundle", "character", "track"] {
         if !source[key].is_null() {
             request[key] = source[key].clone();
@@ -189,8 +168,6 @@ pub fn render(s: &mut Session, p: &Value) -> Result<Value> {
     let request = render_params(&source, p)?;
     let mut job = match text(&source, "backend")? {
         "blender" => crate::animation_jobs::cmd_start_scene_job(s, &request)?,
-        "synfig" => crate::vector_scene::start(s, &request)?,
-        "mlt" => crate::mlt::start(s, &request)?,
         _ => return Err(bad("Unsupported registered backend")),
     };
     job["source_id"] = source["id"].clone();

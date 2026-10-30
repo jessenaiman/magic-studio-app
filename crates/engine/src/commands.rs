@@ -144,8 +144,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "animation.status"
         | "animation.list"
         | "animation.scene.actions"
-        | "animation.vector.discover"
-        | "mlt.discover"
         | "song.lyrics"
         | "words.align"
         | "words.read"
@@ -186,8 +184,6 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"agent.send"
             | b"ui.eval"
             | b"animation.scene.render"
-            | b"mlt.start"
-            | b"animation.vector.render"
             | b"motion.pose.export"
             | b"animation.render"
             | b"motion.place_section"
@@ -312,21 +308,6 @@ pub fn build() -> Vec<CommandSpec> {
             crate::animation_jobs::cmd_start_scene_job
         ),
         query!(
-            "animation.vector.discover",
-            "Discover Synfig Native Renderer",
-            "{}",
-            crate::vector_scene::discover
-        ),
-        cmd!(
-            "animation.vector.render",
-            "Render Saved Synfig Scene",
-            ["Animation"],
-            None,
-            "{\"source\":\"saved .sif/.sifz\",\"bundle\":\"self-contained source directory\",\"first_frame\":0,\"last_frame\":23,\"fps\":24,\"width\":512,\"height\":512,\"memory_mb\":4096,\"timeout_seconds\":300}",
-            always,
-            crate::vector_scene::start
-        ),
-        query!(
             "animation.sources",
             "Registered native animation sources",
             "{\"expected_project\":\"optional project identity\"}",
@@ -338,7 +319,7 @@ pub fn build() -> Vec<CommandSpec> {
             "Register editable native source",
             ["Animation"],
             None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender|synfig|mlt\",\"source\":\"editable native file; MLT assembly JSON\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
+            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender\",\"source\":\"saved .blend\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
             always,
             crate::animation_links::set
         ).help("Link an editable file to a project and optionally associate a character action, then save the project.",
@@ -394,21 +375,6 @@ pub fn build() -> Vec<CommandSpec> {
             "Headless Bounded Migration Preparation",
             "{\"request\":\"worker request.json\"}",
             crate::animation_jobs::cmd_prepare_animation_job
-        ),
-        query!(
-            "mlt.discover",
-            "Discover MLT assembly runtime",
-            "{}",
-            crate::mlt::discover
-        ),
-        cmd!(
-            "mlt.start",
-            "Assemble clips and audio with MLT",
-            ["Video"],
-            None,
-            "{\"timeline\":\"generic timeline JSON path\",\"memory_mb\":4096,\"timeout_seconds\":300}",
-            always,
-            crate::mlt::start
         ),
         query!(
             "project.attach",
