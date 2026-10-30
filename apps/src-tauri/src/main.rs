@@ -12,7 +12,8 @@
 //! - [`execute_engine_command`] dispatches registry commands and moves eligible
 //!   long-running work off the UI thread; [`merge_back`] preserves concurrent edits.
 //! - [`project_dispatch`] routes UI project transitions through guarded native dispatch.
-//! - [`bridge`] serves supported native control transport; [`menu`] handles menus.
+//! - [`desktop_commands`] owns guarded desktop operations; [`local_ipc`] discovers live windows.
+//! - [`menu`] handles menus.
 //! - [`feedback`] presents command outcomes; [`state_of`] assembles project state.
 //!
 //! This is a binary implementation reference, including private items. Generating
@@ -72,9 +73,6 @@ fn launch_options() -> Value {
             "--character" => character = args.next(),
             "--view" => view = args.next(),
             "--open" => open = args.next(),
-            "--control" => {
-                args.next();
-            }
             _ => positional.push(a),
         }
     }
@@ -88,27 +86,26 @@ fn launch_options() -> Value {
     json!({"project": project, "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "animate_only": animate_only, "character": character})
 }
 
-#[derive(Default)]
-struct ControlPort(std::sync::Mutex<Option<u16>>);
-pub fn studio_identity(app: &tauri::AppHandle) -> Value {
-    json!({"application":"Magic Studio","frontend":"Tauri","pid":std::process::id(),"executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"build_id":env!("MAGICSTUDIO_BUILD_ID"),"branch":env!("MAGICSTUDIO_BUILD_BRANCH"),"agent_pane":std::env::var("HERDR_PANE_ID").ok(),"control_port":app.state::<ControlPort>().0.lock().ok().and_then(|v|*v)})
+pub fn studio_identity() -> Value {
+    json!({"application":"Magic Studio","frontend":"Tauri","pid":std::process::id(),"executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"build_id":env!("MAGICSTUDIO_BUILD_ID"),"branch":env!("MAGICSTUDIO_BUILD_BRANCH"),"agent_pane":std::env::var("HERDR_PANE_ID").ok()})
 }
 #[tauri::command]
-fn startup(app: tauri::AppHandle) -> Value {
+fn startup() -> Value {
     let mut start = launch_options();
-    start["identity"] = studio_identity(&app);
+    start["identity"] = studio_identity();
     start
 }
 
 mod backstage_pty;
 mod backstage_terminal;
-mod bridge;
+mod desktop_commands;
+mod local_ipc;
 mod feedback;
 mod menu;
 mod project_dispatch;
 
 /// The engine session of the open project: one for the window, shared by the page's commands and
-/// the `--control` bridge (the CLI and MCP), like the session of the older UI.
+/// same-user CLI and MCP requests.
 pub struct Engine(pub std::sync::Mutex<Session>);
 impl Default for Engine {
     fn default() -> Self {
@@ -1158,12 +1155,11 @@ fn main() {
         .manage(backstage_pty::TerminalState::default())
         .manage(View::default())
         .manage(DrawerHeight::default())
-        .manage(ControlPort::default())
         .manage(Engine::default())
         .manage(project_dispatch::Pending::default())
         .manage(feedback::Feedback::default())
-        .manage(bridge::Pending::default())
-        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, bridge::bridge_reply, studio_show, studio_hide, drawer_layout])
+        .manage(desktop_commands::Pending::default())
+        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, desktop_commands::desktop_reply, studio_show, studio_hide, drawer_layout])
         .setup(|app| {
             #[cfg(unix)]
             if let Some(path)=launch_options()["project"].as_str() {
@@ -1174,8 +1170,6 @@ fn main() {
                     }
                 }
             }
-            let port=std::env::args().skip_while(|a|a!="--control").nth(1).map(|v|v.parse::<u16>()).transpose()?.unwrap_or(0);
-            bridge::serve(app.handle().clone(),port)?;
             let window = WindowBuilder::new(app, "main").title("Magic Studio").inner_size(1440.0, 900.0).build()?;
             let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
             window.add_child(
@@ -1187,13 +1181,13 @@ fn main() {
                 menu::install(&window)?;
             }
             #[cfg(unix)]
-            if let Err(e)=bridge::serve_local(app.handle().clone()){eprintln!("private UI feedback: {e}");}
+            if let Err(e)=local_ipc::serve(app.handle().clone()){eprintln!("private UI feedback: {e}");}
             // Every resize re-applies the layout for the open tab.
             let handle = app.handle().clone();
             window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested{api,..}=event {
                     if let Err(error)=feedback::guard(&handle,"app.quit",false){api.prevent_close();if let Some(view)=handle.get_webview("project"){let _=view.eval(format!("toast({});",json!(error)));}}
-                    else{#[cfg(unix)] bridge::cleanup(&handle);}
+                    else{#[cfg(unix)] local_ipc::cleanup(&handle);}
                 }
                 if let WindowEvent::Resized(_) = event {
                     layout(&handle);
@@ -1203,5 +1197,5 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("Magic Studio shell failed to start")
-        .run(|app,event|{if matches!(event,tauri::RunEvent::Exit){backstage_terminal::cleanup(app);#[cfg(unix)] bridge::cleanup(app);}});
+        .run(|app,event|{if matches!(event,tauri::RunEvent::Exit){backstage_terminal::cleanup(app);#[cfg(unix)] local_ipc::cleanup(app);}});
 }

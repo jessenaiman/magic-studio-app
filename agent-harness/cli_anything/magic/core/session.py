@@ -2,7 +2,7 @@
 
 Implements `_locked_save_json` from CLI-Anything `guides/session-locking.md` and
 routes operations transparently between:
-1. Live Studio windows (`unix:<socket>` or `--bridge <port>`) when the active project
+1. Live Studio windows (private same-user IPC) when the active project
    is open in Magic Studio or a Studio window is bound.
 2. Headless engine execution (`magicstudio-shell --headless`) when working headlessly
    on a `.magic` project file.
@@ -146,7 +146,7 @@ class Session:
 
     def execute(
         self, cmd_id: str, params: dict[str, Any] | None = None,
-        bridge: str | None = None, dry_run: bool = False,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         req = dict(params or {})
         dry_run = dry_run or req.get("_dry_run") is True
@@ -172,14 +172,11 @@ class Session:
             target = str(resolve_project_path(target))
             req["path" if selecting else "project"] = target
 
-        if bridge:
-            self.close()
-            result = backend.call_bridge(bridge, cmd_id, req)
-        elif self.studio_endpoint and not selecting:
+        if self.studio_endpoint and not selecting:
             if target and self.project_path and target != self.project_path:
                 raise RuntimeError("Pinned Studio targets a different project; explicitly open the intended project first")
             try:
-                result = backend.call_bridge(
+                result = backend.call_studio(
                     self.studio_endpoint, cmd_id, req,
                     expected_project=self.project_path, expected_instance=self.studio_instance,
                 )
@@ -190,14 +187,14 @@ class Session:
             live = backend.studio_for_project(target) if target else None
             if live:
                 self.close()
-                result = backend.call_bridge(
+                result = backend.call_studio(
                     live["endpoint"], cmd_id, req, expected_project=target,
                     expected_instance=live.get("instance"),
                 )
                 if not dry_run:
                     self.bind_studio(live)
             elif cmd_id.startswith("ui.") or cmd_id == "app.quit":
-                result = backend.call_bridge("auto", cmd_id, req, expected_project=target)
+                result = backend.call_studio("auto", cmd_id, req, expected_project=target)
             else:
                 result = self.execute_headless(cmd_id, req)
             if selecting and not live and not dry_run and result.get("ok") is not False:

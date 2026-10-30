@@ -30,7 +30,7 @@ Source: Grok session `01a16e65-5099-7572-9be0-010a885aad89`, `chat_history.jsonl
 - Rizzo chat: `/home/jesse/.claude/projects/-run-media-jesse-Speedy-Work-omhas-animation/03fc8a53-4d50-42c7-b40d-ba8ef42209a5.jsonl`. Lines 5000 (Track 15 handoff), 5436 (proposed second sheet workflow), 6255 (acknowledged duplication/missing controls), 6466 (stop and historical bee findings).
 - Architecture: `docs/architecture/panel-contract.html`, with newer binding corrections in `docs/architecture/implementation-plan.md`. Old agent names do not assign today's work.
 - Song: `/run/media/jesse/Speedy/media/three-times-around/project/Three Times Around.magic`; current creative authority: adjacent `intent.md`.
-- Rizzo's checkout: `/run/media/jesse/Speedy/Work/omhas-animation/.worktrees/song-lyrics-reader`, branch `feature/lyrics-design-timeline`; working binary `target/debug/mc`, live bridge 19971. Do not restart or switch it for this review.
+- Rizzo's checkout: `/run/media/jesse/Speedy/Work/omhas-animation/.worktrees/song-lyrics-reader`, branch `feature/lyrics-design-timeline`; working binary `target/debug/mc`, historical TCP endpoint on port 19971. Do not restart or switch it for this review.
 - Historical layered bee spec: `/run/media/jesse/Speedy/media/bumble-bee/project/animationcraft-bee/bee_motion_spec_v2.json`.
 - Bee reconstruction evidence: `/home/jesse/Documents/Codex/2026-10-24/task/reconstruct_bee.py`, `verify_bee.py`, `bee-reconstruction/cli-map.json`. These are evidence/fixtures, not the reusable production interface to copy per subject.
 

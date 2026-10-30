@@ -73,7 +73,7 @@ Run these gates in order. Update this checklist with commit SHAs and evidence as
 
 ### 1. Register and expose every UI component
 
-**Owners/files:** Codex; common constructor/static initialization in `ui/app.js`, registry in `ui/companion-boxes.js`, `ui/bridge.js`, Rust panel types, shell bridge and CLI discovery.
+**Owners/files:** Codex; common constructor/static initialization in `ui/app.js`, registry in `ui/companion-boxes.js`, `ui/ui-commands.js`, Rust panel types, desktop command handler and CLI discovery.
 
 - [ ] Define one record schema covering every field in binding requirement 2 and document it in `docs/architecture/tui-contract.md`.
 - [ ] Route static and dynamic components through the same registration function; preserve authored IDs and assign instance indices to unnamed nodes.
@@ -129,7 +129,7 @@ Progress reports name the completed behavior, commit, checks and remaining block
 
 Applied Claude's committed lyrics change `cfabfb7b02856ce08716746cb0aee7f8881a72ac` from `feature/lyrics-design-timeline` to this implementation worktree: exact `words.js` and marked Words CSS block, preserving shared styles. Integration is currently uncommitted; no PR exists.
 
-The rebuilt task-owned preview runs in workspace 17 on bridge 19963 with Hey Ho Little Fish opened from project history. Six lyric sections load; frontend errors and unconfigured diagnostics are empty. Parts is hidden in this view while its component remains in telemetry. `combined-lyrics.png` records the actual app and existing video preview. Visible lyric lines are clipped at the current time-to-height scale: this is an outstanding layout issue, not a passed visual gate.
+The rebuilt task-owned preview runs in workspace 17 with a historical TCP endpoint on port 19963 with Hey Ho Little Fish opened from project history. Six lyric sections load; frontend errors and unconfigured diagnostics are empty. Parts is hidden in this view while its component remains in telemetry. `combined-lyrics.png` records the actual app and existing video preview. Visible lyric lines are clipped at the current time-to-height scale: this is an outstanding layout issue, not a passed visual gate.
 
 Missing-state repair now preserves independent engine errors. New Chat now acknowledges its applied engine revision; the live UI and engine both reported revision 2 after the operation. Shared controls passed at widths 700, 941 and 1261 before lyrics integration. The combined build passes workspace compilation, UI handler tests and lint ratchet; strict style-size acceptance remains unmet. ASCII pets now use the same configured rails as sprites and reject zero-width slots. New SVG art remains inactive until gates pass.
 

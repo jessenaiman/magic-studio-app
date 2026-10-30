@@ -1,4 +1,4 @@
-// The page's half of the `--control` bridge (src/bridge.rs): what the CLI and MCP see and click.
+// Desktop UI operations invoked through Tauri by src/desktop_commands.rs.
 // An element's id is its DOM id, else its aria-label, else its visible text; a region is a DOM id
 // or a CSS selector.
 const CLICKABLE = "button, [role=button], [role=tab], a[href], input, select, textarea, .chip, .object, .lyric";
@@ -40,7 +40,7 @@ function find(target, instance = null) {
   throw new Error(`no element "${target}"; ui.elements lists them`);
 }
 
-window.magicBridge = {
+window.magicUI = {
   controls(params = {}) {
     const report = window.uiRegistry.inspect({ ...params, root: regionNode(params.region) });
     return { ...report, component_instance: report.instance };

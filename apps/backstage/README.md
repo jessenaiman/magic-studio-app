@@ -41,7 +41,7 @@ magic-cli --session-file /dev/null exec crew.list --params '{}'
 
 These are direct argument vectors, not shell strings. `/dev/null` is verified as a
 character device: the CLI cannot inherit a saved project/window binding. No
-`--project`, bridge, dry-run, project-open, discovery, agent/model call, or generic
+`--project`, desktop connection, dry-run, project-open, discovery, agent/model call, or generic
 command dispatcher is used. No repeat calls occur on tab/file selection. A refresh
 in flight is not duplicated; the prior observation stays visible until completion.
 Each call has a 10-second deadline and 1 MiB stdout/stderr limits. Only its own

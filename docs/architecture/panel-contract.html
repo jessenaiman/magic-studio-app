@@ -109,7 +109,7 @@ flowchart LR
   T --> TUI["TUI Booth rows<br/>redraw when revision changes"]
   T --> CLI["mc panels<br/>--json · --check"]
   T --> PET["Sproket and Gaffer<br/>read the same signals"]
-  CLI -->|"ui.panel id flag value"| B["bridge.rs → acBridge.panel"]
+  CLI -->|"ui.panel id flag value"| B["desktop_commands.rs → magicUI"]
   B -->|"calls the panel's own handler"| R
     </pre></div>
     <p class="caption">No new IPC and no new poller: the record rides the feedback payload the TUI already reads every second. The revision tells the TUI when to redraw. One generic setter replaces per-switch commands.</p>
@@ -209,9 +209,9 @@ flowchart LR
       <thead><tr><th>#</th><th>Owner</th><th>Delivers</th><th>Main paths</th><th>Waits on</th><th>Status</th></tr></thead>
       <tbody>
         <tr><td class="num">1</td><td>Rizzo</td><td>Boxes survive a project switch</td><td><code>ui/companion-boxes.js</code>, <code>tests/companions.mjs</code></td><td>–</td><td><span class="chip done">46c304a</span></td></tr>
-        <tr><td class="num">2</td><td>Beaker</td><td>Panel record, change-only revision, unconfigured list</td><td><code>ui/feedback.js</code>, <code>ui/bridge.js</code>, <code>tests/panels.mjs</code></td><td>1</td><td><span class="chip done">edea6ea</span></td></tr>
+        <tr><td class="num">2</td><td>Beaker</td><td>Panel record, change-only revision, unconfigured list</td><td><code>ui/feedback.js</code>, <code>ui/ui-commands.js</code>, <code>tests/panels.mjs</code></td><td>1</td><td><span class="chip done">edea6ea</span></td></tr>
         <tr><td class="num">3</td><td>Rizzo</td><td>Rust <code>panels</code> types with reasons; typed <code>Studio</code></td><td><code>crates/engine/src/panels.rs</code>, <code>apps/mc/src/studios.rs</code></td><td>–</td><td><span class="chip work">working</span></td></tr>
-        <tr><td class="num">4</td><td>Rizzo</td><td><code>mc panels</code>; generic <code>ui.panel</code> setter</td><td><code>apps/mc/src/panels.rs</code>, <code>src/bridge.rs</code></td><td>2, 3</td><td><span class="chip wait">waiting</span></td></tr>
+        <tr><td class="num">4</td><td>Rizzo</td><td><code>mc panels</code>; generic <code>ui.panel</code> setter</td><td><code>apps/mc/src/panels.rs</code>, <code>src/desktop_commands.rs</code></td><td>2, 3</td><td><span class="chip wait">waiting</span></td></tr>
         <tr><td class="num">5</td><td>Gonzo</td><td>TUI panel rows and a "UI health" row: untracked · no look · unstyled</td><td><code>apps/mc/src/center/panels.rs</code></td><td>3</td><td><span class="chip wait">orienting</span></td></tr>
         <tr><td class="num">6</td><td>Rizzo</td><td>Per-pet timer and cooldown</td><td><code>ui/companions.js</code></td><td>1</td><td><span class="chip wait">waiting</span></td></tr>
         <tr><td class="num">7</td><td>Beaker</td><td>One dot, one panel component, tokens, lint</td><td><code>ui/style.css</code>, <code>ui/*.js</code></td><td>2</td><td><span class="chip done">73ea47a…53d0fa2</span></td></tr>

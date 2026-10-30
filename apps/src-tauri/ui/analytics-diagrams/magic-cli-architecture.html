@@ -5037,7 +5037,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
         <g data-graph-role="automatic-crossover" style="--step:4">
           <path data-graph-role="automatic-crossover-underlay" d="M 640 273.95 L 677 273.95 Q 685 273.95 685 265.95 L 685 180 Q 685 172 693 172 L 730 172" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="session-ctx" data-edge-to="live-studio" data-edge-label="Unix socket / bridge" data-edge-key="4" data-edge-id="ctx-to-live" data-composition-points="640,273.95;685,273.95;685,172;730,172" data-composition-crossover="halo" data-composition-independent="true" d="M 640 273.95 L 677 273.95 Q 685 273.95 685 265.95 L 685 180 Q 685 172 693 172 L 730 172" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-edge-from="session-ctx" data-edge-to="live-studio" data-edge-label="Private Studio IPC" data-edge-key="4" data-edge-id="ctx-to-live" data-composition-points="640,273.95;685,273.95;685,172;730,172" data-composition-crossover="halo" data-composition-independent="true" d="M 640 273.95 L 677 273.95 Q 685 273.95 685 265.95 L 685 180 Q 685 172 693 172 L 730 172" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
           <path data-graph-role="automatic-crossover-underlay" d="M 640 289 L 677 289 Q 685 289 685 297 L 685 384 Q 685 392 693 392 L 730 392" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -5174,9 +5174,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="451" y="318.5" width="86.8" height="14" rx="3" class="c-mask"/>
           <text x="494.4" y="328.5" class="t-edge-default" font-size="8" text-anchor="middle">app_open / state</text>
         </g>
-        <g data-detail="context" data-edge-from="session-ctx" data-edge-to="live-studio" data-edge-label="Unix socket / bridge" data-edge-key="4" data-edge-id="ctx-to-live">
+        <g data-detail="context" data-edge-from="session-ctx" data-edge-to="live-studio" data-edge-label="Private Studio IPC" data-edge-key="4" data-edge-id="ctx-to-live">
           <rect x="632" y="202.975" width="106" height="14" rx="3" class="c-mask"/>
-          <text x="685" y="212.975" class="t-edge-emphasis" font-size="8" text-anchor="middle">Unix socket / bridge</text>
+          <text x="685" y="212.975" class="t-edge-emphasis" font-size="8" text-anchor="middle">Private Studio IPC</text>
         </g>
         <g data-detail="context" data-edge-from="session-ctx" data-edge-to="headless-engine" data-edge-label="headless exec" data-edge-key="5" data-edge-id="ctx-to-headless">
           <rect x="648.8" y="320.5" width="72.4" height="14" rx="3" class="c-mask"/>
@@ -5418,7 +5418,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>magic studio &lt;project&gt; or magic project open &lt;project&gt; binds the active session context</li>
           <li>All domain groups (storyboard, character, motion, video, ui, exec) route automatically</li>
-          <li>No manual --bridge choice per command and no silent fallback to another open window</li>
+          <li>Automatic routing retains the selected project and window</li>
         </ul>
       </div>
 

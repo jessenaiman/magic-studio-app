@@ -36,7 +36,7 @@ pub fn execute(app: &tauri::AppHandle, id: &str, mut params: Value) -> Result<Va
     }
     let _request = Request(&pending);
     params["_ui_dispatch_token"] = json!(token);
-    let mut result = crate::bridge::handle(app, id, &params)?;
+    let mut result = crate::desktop_commands::handle(app, id, &params)?;
     if result["reused_session"] == true {
         return Ok(result);
     }

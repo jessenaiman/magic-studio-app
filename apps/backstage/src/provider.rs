@@ -1,4 +1,4 @@
-//! Exact latest-main Magic CLI observer calls. No persisted caller binding or bridge.
+//! Exact latest-main Magic CLI observer calls. No persisted caller binding or desktop connection.
 use serde_json::Value;
 use std::{
     collections::HashSet,

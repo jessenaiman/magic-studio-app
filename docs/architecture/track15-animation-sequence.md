@@ -15,7 +15,7 @@
 - No invented UI, additional timeline or independent animation evaluator. Use the working Animation left inspector as the visual reference and the architecture diagram as the structural reference.
 - Any touched panel or horizontal rail joins the shared configured header/body/status, state, selection and CLI inspection contract. Remove its replaced implementation rather than adding another styling layer.
 - Apply Ponytail review to connected code and the rendered UI. Record changed-file line and selector counts; include new code/config in totals. Do not raise lint baselines or compress formatting to claim a reduction.
-- Preserve Rizzo's checkout, bridge 19971, project, original artwork, receipts, authored tracks and lyric design. Use an isolated project copy and a task-owned preview during implementation.
+- Preserve Rizzo's checkout, historical TCP endpoint on port 19971, project, original artwork, receipts, authored tracks and lyric design. Use an isolated project copy and a task-owned preview during implementation.
 - Keep media in the selected media project and planning/evidence in `docs/architecture/`. Explicit project-local output paths are required; legacy default `exports/` paths can land in the source repo.
 - Track 15's latest intent requires shallow-water staging: sandbar, lagoon and tide pool. Do not restore the removed underwater/deep-sea backgrounds. Keep artist lyrics unchanged.
 - No subject names or guessed anatomy in algorithms. Part IDs, hierarchy, pivots, rigid/bending behavior, expressions and limits are data. Split only the parts needed for the requested action.
@@ -41,7 +41,7 @@ Sources: Rizzo transcript `03fc8a53-4d50-42c7-b40d-ba8ef42209a5.jsonl`, especial
 
 ## The sequence and scripts underneath it
 
-Run from the implementation checkout so engine adapters find that checkout's `pipeline/`. Use an explicit project on each invocation, or a single `mc run recipe.jsonl` session starting with `project.open`. A live invocation must explicitly select the task's own bridge.
+Run from the implementation checkout so engine adapters find that checkout's `pipeline/`. Use an explicit project on each invocation, or a single `mc run recipe.jsonl` session starting with `project.open`. A live invocation must explicitly select the task's selected project/window.
 
 | Order | CLI operation | Implementation / underlying script | Availability or required work |
 |---|---|---|---|
@@ -53,7 +53,7 @@ Run from the implementation checkout so engine adapters find that checkout's `pi
 | 5 | `motion.action.set`, `motion.part.set`, `motion.layers.set`, `motion.path`, `motion.sample`, `motion.edit.undo` | `motion_authoring.rs`, `motion.rs` | Existing static part edits, paths and action duration/loop. Missing general term authoring and binding authoring must be exposed through the engine (see controls below). |
 | 6 | `export.layered_motion spec=... tracks=... stills=6 video=false`, then `motion.export_track` / `export.layered_motion ... video=true` | `exports.rs`, `motion.rs` → `pipeline/layered_motion.py` → editable EffectCraft project, frames, ffmpeg WebM | Existing primary cutout route. Preview stills before full rendering. Read the returned output paths rather than selecting the newest file on disk. |
 | 7 | Optional scripted Blender comparison: `animation.source.from_rig` → `animation.source.set/render` → `animation.status` → `animation.source.accept` | Proposed rig importer; existing `animation_links.rs`, `blender.rs`, `pipeline/blender_animation_worker.py` | `animation.source.from_rig` is proposed, not available. Existing fixed-humanoid bridge is unsuitable for ship/crab/bee. Adapt the existing worker/import path from explicit parts and bindings; do not resurrect a second live renderer or silently use a stock character. |
-| 8 | `validate.motion video=... fps=30 loop=... reference=... spec=...`; `motion.sample`; `ui.look` | `pipeline/motion_validate.py`, existing sampler and shell bridge | Validate decoded alpha/frames/timing plus actual action, joins, expression swaps and UI/export agreement. Keep automated checks separate from visual findings. |
+| 8 | `validate.motion video=... fps=30 loop=... reference=... spec=...`; `motion.sample`; `ui.look` | `pipeline/motion_validate.py`, existing sampler and desktop command handler | Validate decoded alpha/frames/timing plus actual action, joins, expression swaps and UI/export agreement. Keep automated checks separate from visual findings. |
 | 9 | Reviewed `motion.place_section`, or explicit `motion.path` → `motion.export_track` → `validate.motion` → `video.place_track` | Rizzo's `motion.rs`; `video_target.rs` → `pipeline/place_hyperframes_track.py` | Use the explicit chain for comparisons so candidates stay separate. Production placement uses only the selected verified result, original song timing, background-before-character stack and source provenance. |
 | 10 | Proposed `video.snapshot` / `video.render` adapters; existing `words.*` only where lyrics must be connected | Existing HyperFrames CLI through `video_target.rs`; existing words commands | Verify composites at action/scene boundaries before full-song export. Replace duplicate karaoke only when the existing designed lyric track is connected; do not redesign the lyrics UI. |
 
@@ -129,13 +129,13 @@ The replacement agent and division of work are not assigned yet. Grok is out of 
 | Part editing supports constants, not adjustable oscillation, replacement timing or bending. | `motion-authoring.js`, `motion.part.set` | Wire the shared validated term/binding editor to existing inspector controls; show unsupported capabilities explicitly. |
 | Captain wave moves the body; separate face controls have no authored parts/bindings. | `motion.tracks` readback and existing capability flags | Repair data/bindings before enabling a control; verify actual arm/face pixels. |
 | Right Parts tabs and panel padding retain their own selectors. | `.segmented`, configured panel styles, working left inspector | Migrate touched tabs/headers/bodies, then delete duplicate selectors and measure net reduction. |
-| Playback controls keep speed, amount and loop-preview values in frontend state. | `animation.js`, bridge automation and engine sample/export parameters | Inventory each control's units, read/set route and persistence; distinguish audition settings from saved action edits. |
+| Playback controls keep speed, amount and loop-preview values in frontend state. | `animation.js`, UI automation and engine sample/export parameters | Inventory each control's units, read/set route and persistence; distinguish audition settings from saved action edits. |
 | Timeline edits can block engine authoring/export and differ from sampled motion. | Existing Theatre guards | Preserve edits; resolve shared evaluation or expose the exact unsupported case. No replacement timeline. |
 | Final composite snapshots/render require leaving mc. | Installed HyperFrames CLI and `video_target.rs` | Thin mc adapters with output validation. |
 
 Measured at planning base: CSS 1,016 lines/741 selectors; JS 4,527 lines. Existing ui-lint passes its baseline, while its report still exceeds historical acceptance counts by 105 CSS lines, 68 selectors and 300 JS lines. A lint pass does not prove reduced complexity. Refactor acceptance requires lower combined touched UI/CSS/config totals and fewer duplicate selectors, with required engine additions reported separately.
 
-Live inspection of bridge 19971 now returns connection refused. This pass did not restart it; current visual findings require a task-owned preview. Prior header clipping measurements are historical, not a fresh current-build result.
+Live inspection of historical TCP endpoint on port 19971 now returns connection refused. This pass did not restart it; current visual findings require a task-owned preview. Prior header clipping measurements are historical, not a fresh current-build result.
 
 ### Instructions for the comparison runner
 
@@ -168,7 +168,7 @@ Live inspection of bridge 19971 now returns connection refused. This pass did no
 
 ### 3. Adjustable acting with the same CLI and UI values
 
-**Files:** `motion_authoring.rs`, `motion.rs`, `commands.rs`, `ui/animation.js`, `ui/motion-authoring.js`, `ui/components.json`, `ui/style.css`, existing motion/bridge tests.
+**Files:** `motion_authoring.rs`, `motion.rs`, `commands.rs`, `ui/animation.js`, `ui/motion-authoring.js`, `ui/components.json`, `ui/style.css`, existing motion/UI operation checks.
 
 - [ ] Extend guarded part editing as described above; expose binding/hierarchy/limit corrections through the same saved rig contract. Create named actions using those parts and pose/replacement drawings.
 - [ ] Test a parameter at two values: actual sampled/displaced pixels and expression timing must change as requested. Test invalid/unsupported terms, stale hashes, last frame, zero/boundary values, undo and save/reopen.
