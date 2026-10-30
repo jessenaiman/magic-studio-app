@@ -17,3 +17,11 @@ class PanelHeader {
     this.element.setAttribute('aria-label', title);
   }
 }
+
+// One label/control shape for inspector forms; hosts choose the control's behavior.
+class InspectorField {
+  constructor(label, input) {
+    this.input=input;
+    this.node=el('label',{},el('span',{},label),input);
+  }
+}

@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use crate::{EngineError, Result, Session};
 
 use crate::workspace::{
-    build_blender_check_args, build_effectcraft_script_args, build_filmcraft_load_args,
-    resolve_craft_cli, resolve_workspace_path, run_pipeline, run_tool_in, workspace_root,
+    build_effectcraft_script_args, resolve_craft_cli, resolve_workspace_path, run_python_json,
+    run_tool_in, workspace_root,
 };
 
 /// Resolve the active cutout rig plan path (asset's plan or the default on-disk location).
@@ -228,12 +228,14 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
     let project_path = resolve_workspace_path(s, project_raw);
     let frame_path = resolve_workspace_path(s, frame_raw);
 
-    let args = build_filmcraft_load_args(
-        &media_path.to_string_lossy(),
-        &project_path.to_string_lossy(),
-        &frame_path.to_string_lossy(),
-    );
-    let pipeline_out = run_pipeline(s, &args)?;
+    let args = vec![
+        media_path.to_string_lossy().into_owned(),
+        "--project".into(),
+        project_path.to_string_lossy().into_owned(),
+        "--frame-out".into(),
+        frame_path.to_string_lossy().into_owned(),
+    ];
+    let pipeline_out = run_python_json(s, "pipeline.filmcraft_bridge", &args)?;
     let imported_ok = pipeline_out
         .get("importedToFilmCraft")
         .and_then(Value::as_bool)
@@ -260,150 +262,25 @@ pub fn cmd_export_filmcraft(s: &mut Session, params: &Value) -> Result<Value> {
     }))
 }
 
-/// Blender 5.3 rigged render via `studio_pipeline_cli.py blender-check`.
+/// Render an existing registered Blender source through the native animation job system.
 pub fn cmd_export_blender(s: &mut Session, params: &Value) -> Result<Value> {
-    let explicit_char = params
-        .get("character")
-        .or_else(|| params.get("asset"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let character = explicit_char.clone().or_else(|| s.active_asset.clone());
-
-    let asset_ref = if let Some(ref c) = explicit_char {
-        s.assets.get(c.as_str())
-    } else {
-        s.current_asset()
-    };
-
-    let explicit_image = params
-        .get("image")
-        .and_then(Value::as_str)
-        .filter(|p| !p.trim().is_empty())
-        .map(|p| resolve_workspace_path(s, p));
-
-    let source_image_opt = if let Some(img) = explicit_image {
-        if !img.is_file() {
-            return Err(EngineError::InvalidParams(format!(
-                "source image file not found: {}",
-                img.display()
-            )));
-        }
-        Some(img)
-    } else if let Some(asset) = asset_ref {
-        let candidate = asset
-            .raw_original_path
-            .clone()
-            .filter(|p| p.is_file())
-            .unwrap_or_else(|| asset.path.clone());
-        if candidate.is_file() {
-            Some(candidate)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    let known_cast = [
-        "hopper",
-        "whiskers",
-        "puddles",
-        "jenny",
-        "rusty",
-        "miss_hayley",
-        "old_mac",
-    ];
-    let is_known_cast = character
-        .as_deref()
-        .is_some_and(|c| known_cast.contains(&c.to_ascii_lowercase().as_str()));
-
-    if source_image_opt.is_none() && !is_known_cast {
-        return Err(EngineError::InvalidParams(format!(
-            "cannot resolve source image for character {:?}; load an asset with a valid image path or pass 'image'",
-            character
-        )));
+    let source = params["id"]
+        .as_str()
+        .and_then(|id| s.animation_sources.get(id))
+        .ok_or_else(|| {
+            EngineError::InvalidParams("Choose a registered Blender source with id".into())
+        })?;
+    if source["backend"] != "blender" {
+        return Err(EngineError::InvalidParams(
+            "The selected source is not a Blender source".into(),
+        ));
     }
-
-    let rec_arch = asset_ref
-        .and_then(|a| a.intake_recommendation.as_ref())
-        .and_then(|r| r.get("archetype"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let rec_verb = asset_ref
-        .and_then(|a| a.intake_recommendation.as_ref())
-        .and_then(|r| r.get("primaryVerb"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-
-    let archetype = params
-        .get("archetype")
-        .and_then(Value::as_str)
-        .or(rec_arch.as_deref())
-        .unwrap_or("humanoid_biped");
-    let verb = params
-        .get("verb")
-        .and_then(Value::as_str)
-        .or(rec_verb.as_deref())
-        .unwrap_or("move_traverse");
-
-    let default_mp4 = match character.as_deref() {
-        Some(c) if c != "hopper" => format!("exports/blender_characters/{c}/{c}_blender53.mp4"),
-        _ => "exports/hopper_4dir_blender53.mp4".to_string(),
-    };
-    let default_png = match character.as_deref() {
-        Some(c) if c != "hopper" => {
-            format!("exports/blender_characters/{c}/{c}_blender53_preview.png")
-        }
-        _ => "exports/hopper_4dir_blender53_preview.png".to_string(),
-    };
-    let out_mp4_raw = params
-        .get("out_mp4")
-        .or_else(|| params.get("output"))
-        .and_then(Value::as_str)
-        .unwrap_or(&default_mp4);
-    let out_png_raw = params
-        .get("out_png")
-        .and_then(Value::as_str)
-        .unwrap_or(&default_png);
-    let glb_opt = params
-        .get("glb")
-        .and_then(Value::as_str)
-        .map(|g| resolve_workspace_path(s, g));
-
-    let out_mp4 = resolve_workspace_path(s, out_mp4_raw);
-    let out_png = resolve_workspace_path(s, out_png_raw);
-    let glb_str = glb_opt.as_ref().map(|p| p.to_string_lossy().into_owned());
-
-    let mut args = build_blender_check_args(
-        archetype,
-        verb,
-        &out_mp4.to_string_lossy(),
-        &out_png.to_string_lossy(),
-        glb_str.as_deref(),
-    );
-    if let Some(c) = &character {
-        args.push("--character".to_string());
-        args.push(c.clone());
-    }
-    if let Some(src_img) = &source_image_opt {
-        args.push("--image".to_string());
-        args.push(src_img.to_string_lossy().into_owned());
-    }
-    let pipeline_out = run_pipeline(s, &args)?;
-    Ok(json!({
-        "ok": true,
-        "command": "export.blender",
-        "character": character,
-        "source_image": source_image_opt.map(|p| p.to_string_lossy().into_owned()),
-        "archetype": archetype,
-        "verb": verb,
-        "out_mp4": out_mp4.to_string_lossy(),
-        "out_png": out_png.to_string_lossy(),
-        "pipeline": pipeline_out,
-    }))
+    let mut result = crate::animation_links::render(s, params)?;
+    result["command"] = json!("export.blender");
+    Ok(result)
 }
 
-/// Farm-school scene lineup via `studio_pipeline_cli.py farm-school-scene`.
+/// Render the lineup using its owning pipeline module.
 pub fn cmd_scene_farm_school_lineup(s: &mut Session, params: &Value) -> Result<Value> {
     let out_dir_raw = params
         .get("out_dir")
@@ -411,7 +288,6 @@ pub fn cmd_scene_farm_school_lineup(s: &mut Session, params: &Value) -> Result<V
         .unwrap_or("exports/farm_school_milestone");
     let out_dir = resolve_workspace_path(s, out_dir_raw);
     let mut args = vec![
-        "farm-school-scene".to_string(),
         "--out-dir".to_string(),
         out_dir.to_string_lossy().into_owned(),
     ];
@@ -419,7 +295,7 @@ pub fn cmd_scene_farm_school_lineup(s: &mut Session, params: &Value) -> Result<V
         args.push("--character".to_string());
         args.push(only_char.to_string());
     }
-    let pipeline_out = run_pipeline(s, &args)?;
+    let pipeline_out = run_python_json(s, "pipeline.farm_school_scene_builder", &args)?;
     Ok(json!({
         "ok": true,
         "command": "scene.farm_school_lineup",
@@ -428,7 +304,7 @@ pub fn cmd_scene_farm_school_lineup(s: &mut Session, params: &Value) -> Result<V
     }))
 }
 
-/// Character iteration export via `studio_pipeline_cli.py iterate-character`.
+/// Export the character package using its owning pipeline module.
 pub fn cmd_export_character_iteration(s: &mut Session, params: &Value) -> Result<Value> {
     let character = params
         .get("character")
@@ -443,13 +319,12 @@ pub fn cmd_export_character_iteration(s: &mut Session, params: &Value) -> Result
         .unwrap_or("exports/design_share");
     let resolved_out = resolve_workspace_path(s, out_root);
     let args = vec![
-        "iterate-character".to_string(),
         "--character".to_string(),
         character.clone(),
         "--out-root".to_string(),
         resolved_out.to_string_lossy().into_owned(),
     ];
-    let pipeline_out = run_pipeline(s, &args)?;
+    let pipeline_out = run_python_json(s, "pipeline.character_iteration_exporter", &args)?;
     Ok(json!({
         "ok": true,
         "command": "export.character_iteration",

@@ -390,6 +390,16 @@
       "style_writes": 0,
       "geometry_without_custom_property": 0,
       "lines": 19
+    },
+    "asset-sheet-review.js": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 3,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 123
     }
   }
 }

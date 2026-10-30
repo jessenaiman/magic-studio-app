@@ -47,6 +47,7 @@ except ImportError:
 
 PROPS = {"position": 2, "rotation": 1, "scale": 2, "opacity": 1}
 EASES = {
+    "hold": lambda u: 0 if u < 1 else 1,
     "linear": lambda u: u,
     "smooth": lambda u: u * u * (3 - 2 * u),
     "in": lambda u: u * u * u,
@@ -489,7 +490,7 @@ def build_jsx(spec, project, work, blur):
         cid = re.sub(r"\W", "_", tid)
         names = track.get("layers") or list(spec["layers"])
         out.append(
-            f"var comp_{cid} = app.project.items.addComp({json.dumps(tid)}, {comp_w}, {comp_h}, 1.0, {duration:.4f}, {fps});"
+            f"var comp_{cid} = app.project.items.addComp({json.dumps(tid)}, {comp_w}, {comp_h}, 1.0, {duration:.17g}, {fps});"
         )
         if blur:
             out.append(
@@ -544,8 +545,11 @@ def build_jsx(spec, project, work, blur):
                 handle = f"{v}.property({json.dumps(name)})"
                 for t, value in keys:
                     out.append(
-                        f"{handle}.setValueAtTime({t:.5f}, {jsx_value(prop, value, origin)});"
+                        f"{handle}.setValueAtTime({t:.17g}, {jsx_value(prop, value, origin)});"
                     )
+                terms = track.get("motion", {}).get(lid, {}).get(prop, [])
+                if keys and terms and all(term.get("kind") == "keys" and term.get("ease") == "hold" for term in terms):
+                    out.append(f"for(var k=1;k<={handle}.numKeys;k++) {handle}.setInterpolationTypeAtKey(k,KeyframeInterpolationType.HOLD,KeyframeInterpolationType.HOLD);")
                 if expression:
                     out.append(f"{handle}.expression = {json.dumps(expression)};")
     out.append(f"app.project.save(new File({json.dumps(str(project))}));")

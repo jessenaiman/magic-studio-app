@@ -16,6 +16,13 @@ fn eval_ease(ease_name: &str, u: f64) -> f64 {
     let u = u.clamp(0.0, 1.0);
     match ease_name {
         "linear" => u,
+        "hold" => {
+            if u < 1.0 {
+                0.0
+            } else {
+                1.0
+            }
+        }
         "in" => u * u * u,
         "out" => {
             let inv = 1.0 - u;
@@ -458,7 +465,7 @@ fn validate(rig: &LoadedCutoutRigPlan) -> Result<()> {
                             return Err(invalid("Unknown motion term"));
                         }
                         if let Some(ease) = term["ease"].as_str()
-                            && !["smooth", "linear", "in", "out"].contains(&ease)
+                            && !["smooth", "linear", "in", "out", "hold"].contains(&ease)
                         {
                             return Err(invalid("Unknown easing"));
                         }
@@ -491,6 +498,9 @@ fn validate(rig: &LoadedCutoutRigPlan) -> Result<()> {
 /// Standard actions are scripts in the existing exporter vocabulary, not another evaluator.
 /// Root motion follows the stage's idle/walk/run bounce and jump anticipation/lift/settle pattern.
 pub(crate) fn standard_tracks(rig: &LoadedCutoutRigPlan) -> Vec<Value> {
+    if rig.effectcraft["frame_sequence"].is_object() {
+        return Vec::new();
+    }
     let b = rig.character_bbox;
     let width = (b[2] - b[0]).max(1) as f64;
     let height = (b[3] - b[1]).max(1) as f64;
@@ -809,6 +819,7 @@ pub fn cmd_motion_tracks(s: &mut Session, params: &Value) -> Result<Value> {
             "loop":t["loop"].as_bool().unwrap_or(false),
             "path":t["path"],
             "standard":t["standard"].as_bool().unwrap_or(false),
+            "sprite_action":t["sprite_action"].as_bool().unwrap_or(false),
             "label":t["label"],
             "channels":summarize_track_channels(&t["motion"], s.theatre_state.as_ref(), &id, tid),
             "static_overrides":crate::motion_authoring::static_overrides(t, &rig.effectcraft["layers"]),
@@ -895,7 +906,7 @@ pub fn cmd_motion_tracks(s: &mut Session, params: &Value) -> Result<Value> {
     let character_config = crate::character::load_character_config(s, &id, project_root.as_deref());
     let actions: Vec<_> = tracks
         .iter()
-        .filter(|t| t["standard"] == true && t["id"] != "@rest")
+        .filter(|t| (t["standard"] == true || t["sprite_action"] == true) && t["id"] != "@rest")
         .map(|t| {
             let track_id = t["id"]
                 .as_str()

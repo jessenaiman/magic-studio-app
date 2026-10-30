@@ -13,36 +13,19 @@ Delegates directly to `img2threejs/forge`:
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict
 
 from PIL import Image
 from pipeline.pose_and_part_cutter import _ocr_labels
-from pipeline.vault_characters import slice_real_character_image
+from pipeline.intake_router import inspect_image_with_photocraft
 
 IMG2THREEJS_FORGE = Path.home() / ".codex" / "skills" / "img2threejs" / "forge"
 for _sub in ("stage1_intake", "stage4_review", "stage3_build", "_shared"):
     _p = str(IMG2THREEJS_FORGE / _sub)
     if _p not in sys.path:
         sys.path.insert(0, _p)
-
-
-def run_jev_verified_slicer(image_path: str, out_dir: str) -> Dict[str, Any]:
-    """Slice turnaround/character sheet via `photocraft-cli` (`vault_characters.py`)."""
-    sliced = slice_real_character_image(image_path, out_dir)
-    sliced["jevQaReport"] = {
-        "passed": True,
-        "iterationsRun": 1,
-        "tool": "photocraft-cli+img2threejs",
-    }
-    report_path = os.path.join(out_dir, "jev_qa_report.json")
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(sliced["jevQaReport"], f, indent=2)
-    return sliced
 
 
 def compare_reference_and_import_with_jev(
@@ -130,20 +113,7 @@ def compare_reference_and_import_with_jev(
         else (pixel_rms_diff is not None and pixel_rms_diff <= 0.15)
     )
 
-    pc_bin = shutil.which("photocraft-cli")
-    pc_info: Dict[str, Any] = {}
-    if pc_bin:
-        proc = subprocess.run(
-            [pc_bin, "info", str(ren_p), "--compact"],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        if proc.returncode == 0 and proc.stdout.strip().startswith("{"):
-            try:
-                pc_info = json.loads(proc.stdout.strip().splitlines()[-1])
-            except Exception:
-                pc_info = {}
+    pc_info = inspect_image_with_photocraft(str(ren_p))
 
     comparison_state = {
         "reference_image": {
@@ -195,11 +165,11 @@ def compare_reference_and_import_with_jev(
         next_task = "normalize_cell_aspect_ratio"
 
     jev_judgment = {
-        "model": "img2threejs-divine-eye+typesafe-jev",
-        "background_cleanly_transparent": 1.0 if has_alpha else 0.0,
-        "character_interior_intact": round(1.0 - (interior_diff_score or 0.0), 4),
+        "model": "img2threejs-divine-eye",
+        "background_cleanly_transparent": None,
+        "character_interior_intact": round(1.0 - interior_diff_score, 4) if interior_diff_score is not None else None,
         "expected_color_matches_rendered": 1.0 if color_ok else 0.0,
-        "rotation_profile_matches": 1.0 if aspect_ok else 0.2,
+        "rotation_profile_matches": None,
         "visual_defect": visual_defect,
         "next_task": next_task,
         "import_fidelity_score": round(de_eval["fidelity"] * 3.0, 3),
@@ -209,3 +179,16 @@ def compare_reference_and_import_with_jev(
         "comparison": comparison_state,
         "jev": jev_judgment,
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("reference")
+    parser.add_argument("imported")
+    parser.add_argument("--manifest")
+    parser.add_argument("--yaw", type=float, default=0.0)
+    args = parser.parse_args()
+    print(json.dumps(compare_reference_and_import_with_jev(
+        args.reference, args.imported, args.manifest, args.yaw,
+    )))

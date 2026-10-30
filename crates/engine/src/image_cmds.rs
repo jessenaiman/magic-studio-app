@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{EngineError, Result, Session};
+pub(crate) mod medium;
+pub use medium::cmd_image_apply_medium;
 
 use crate::workspace::{
     build_photocraft_run_args, resolve_craft_cli, resolve_workspace_path, run_tool_in,
@@ -460,6 +462,9 @@ pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
     if !sheet.is_file() {
         return Err(invalid(format!("rig sheet not found: {}", sheet.display())));
     }
+    let review_asset = s.project_assets.iter().find(|a| a.id == sheet_ref || a.path.as_ref() == Some(&sheet))
+        .map(|a|a.id.as_str()).ok_or_else(||invalid("Register the complete sheet as a project asset and review it before building a rig".into()))?;
+    crate::sheets::require_sheet_review(s, review_asset, &sheet)?;
     let receipt = sheet.with_file_name("generation.json");
     let explicit_parts = p
         .get("parts")

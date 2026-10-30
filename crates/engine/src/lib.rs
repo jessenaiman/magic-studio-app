@@ -85,7 +85,7 @@ pub mod opentoonz;
 pub mod panels;
 pub mod part_replacement;
 pub mod parts;
-pub mod photocraft;
+pub mod magic_design;
 pub mod project;
 pub mod project_settings;
 pub(crate) mod read_only_file;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Blender 5.3 Multi-Character & Farm School Lineup Scene Orchestrator.
+Blender Multi-Character & Farm School Lineup Scene Orchestrator.
 
 Sequentially loads the three refactored 3D+2D pipeline stages:
   1. `pipeline/step_volume_hull.py`     — 2D turnaround + `motion_range.json` (`footLiftPx`) -> `visual_hull.npz`
@@ -47,7 +47,7 @@ def _blender_rig_helper_code() -> str:
     return BLENDER_HELPERS
 
 
-def render_single_character_blender53(
+def render_single_character_blender(
     slug: str,
     out_mp4: str,
     out_png: str,
@@ -98,10 +98,10 @@ def build_farm_school_milestone(
     if only_character and only_character != "all":
         slug = only_character.lower().strip()
         folder = out / "characters" / slug
-        return render_single_character_blender53(
+        return render_single_character_blender(
             slug,
-            str(folder / f"{slug}_blender53.mp4"),
-            str(folder / f"{slug}_blender53_preview.png"),
+            str(folder / f"{slug}_blender.mp4"),
+            str(folder / f"{slug}_blender_preview.png"),
             str(folder / f"{slug}_rig.glb"),
             str(folder / f"{slug}_rig.blend"),
         )
@@ -112,10 +112,10 @@ def build_farm_school_milestone(
         slug = source["slug"]
         folder = out / "characters" / slug
         reports.append(
-            render_single_character_blender53(
+            render_single_character_blender(
                 slug,
-                str(folder / f"{slug}_blender53.mp4"),
-                str(folder / f"{slug}_blender53_preview.png"),
+                str(folder / f"{slug}_blender.mp4"),
+                str(folder / f"{slug}_blender_preview.png"),
                 str(folder / f"{slug}_rig.glb"),
                 str(folder / f"{slug}_rig.blend"),
             )

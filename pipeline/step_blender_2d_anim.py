@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import math
-from pipeline.blender53_bridge import send_blender_mcp_code
 from pipeline.step_blender_mesh_rig import BLENDER_MESH_RIG_CODE
 
 
@@ -302,38 +301,27 @@ BLENDER_HELPERS = BLENDER_MESH_RIG_CODE + "\n" + BLENDER_2D_ANIM_CODE
 
 
 def run_blender_stage(code: str, timeout: float = 3600) -> dict:
-    full_script = BLENDER_HELPERS + "\n" + code
-    try:
-        response = send_blender_mcp_code(full_script, timeout=timeout)
-        if response.get("status") != "success":
-            raise RuntimeError(f"Blender MCP failed: {response}")
-        output = response.get("result", {}).get("result", "")
-    except (ConnectionRefusedError, OSError):
-        from pathlib import Path
-        import shutil
-        import subprocess
-        import tempfile
+    from pathlib import Path
+    import os
+    import shutil
+    import subprocess
+    import tempfile
 
-        blender_bin = shutil.which("blender") or "/usr/bin/blender"
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write(full_script)
-            script_path = tf.name
-        try:
-            proc = subprocess.run(
-                [blender_bin, "--background", "--python", script_path],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            output = (proc.stdout or "") + "\n" + (proc.stderr or "")
-        finally:
-            Path(script_path).unlink(missing_ok=True)
+    blender = os.environ.get("BLENDER_BIN") or shutil.which("blender")
+    if not blender:
+        raise RuntimeError("Blender CLI not found; set BLENDER_BIN or put it on PATH")
+    with tempfile.TemporaryDirectory(prefix="magic-blender-") as directory:
+        script = Path(directory) / "render.py"
+        script.write_text(BLENDER_HELPERS + "\n" + code, encoding="utf-8")
+        proc = subprocess.run(
+            [blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python", str(script)],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    output = proc.stdout + "\n" + proc.stderr
+    if proc.returncode:
+        raise RuntimeError(f"Blender exited {proc.returncode}: {output[-3000:]}")
     marker = "FARM_SCHOOL_RESULT="
-    lines = [
-        line[len(marker) :] for line in output.splitlines() if line.startswith(marker)
-    ]
-    if not lines:
+    reports = [line[len(marker):] for line in output.splitlines() if line.startswith(marker)]
+    if not reports:
         raise RuntimeError(f"Blender returned no verified result: {output[-3000:]}")
-    return json.loads(lines[-1])
+    return json.loads(reports[-1])

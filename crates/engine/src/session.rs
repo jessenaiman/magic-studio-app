@@ -787,6 +787,11 @@ impl LoadedCutoutRigPlan {
             }
         }
 
+        if raw["frame_sequence"].is_object() {
+            if let Some(part) = parts.first() {
+                source_image = part.full_layer_path.clone();
+            }
+        }
         let control_bindings = load_control_bindings(raw, path, &parts)?;
         Ok(Self {
             control_bindings,

@@ -682,6 +682,22 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
         std::fs::write(&provenance, format!("{doc:#}\n"))?;
         stored = Some(copy);
     }
+    // Character/image import prepares the cutout before registration. Background plates,
+    // manifests, and already transparent artwork retain their supplied pixels.
+    let mut matting = Value::Null;
+    if params["remove_background"].as_bool().unwrap_or(true)
+        && params.get("background").is_none()
+        && matches!(kind, "image" | "auto" | "character")
+        && let Some(source) = stored.as_ref()
+        && let Ok(image) = image::ImageReader::open(source)
+            .and_then(|r| r.with_guessed_format())
+            .map_err(EngineError::from)
+            .and_then(|r| r.decode().map_err(EngineError::from))
+        && !image.to_rgba8().pixels().any(|p| p[3] < 255)
+    {
+        matting = crate::magic_design::matte_image(s, source, params)?;
+        stored = matting["image"].as_str().map(PathBuf::from);
+    }
     s.project_assets.push(crate::ProjectAsset {
         id: id.clone(),
         name: name.into(),
@@ -698,7 +714,7 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     }
     Ok(
         json!({"ok": true, "asset_id": id, "loaded": load, "assets": s.project_assets,
-        "copied_to": copy_into.is_some().then_some(&stored)}),
+        "copied_to": copy_into.is_some().then_some(&stored),"matting":matting}),
     )
 }
 
@@ -773,7 +789,7 @@ pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> 
             agent_selection: s.agent_selection.clone(),
             ..Session::default()
         };
-        crate::photocraft::cmd_asset_load_manifest(&mut loader, &json!({"preset": preset}))?;
+        crate::magic_design::cmd_asset_load_manifest(&mut loader, &json!({"preset": preset}))?;
         let loaded_id = loader
             .active_asset
             .clone()
@@ -897,7 +913,7 @@ pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> 
                         "expected a pose/turnaround manifest or cutout rig plan".into(),
                     ));
                 }
-                crate::photocraft::cmd_asset_load_manifest(
+                crate::magic_design::cmd_asset_load_manifest(
                     &mut staged,
                     &json!({"asset": entry.id, "manifest": manifest_path}),
                 )?;
@@ -907,6 +923,11 @@ pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> 
             let mut asset = staged.assets.remove(&entry.id).unwrap_or_default();
             asset.id = entry.id.clone();
             asset.path = path.clone();
+            if let Ok(bytes) = std::fs::read(path.with_extension("matte.json"))
+                && let Ok(receipt) = serde_json::from_slice::<Value>(&bytes)
+            {
+                asset.raw_original_path = receipt["source_image"].as_str().map(PathBuf::from);
+            }
             asset.width = image.width();
             asset.height = image.height();
             asset.has_alpha = image.color().has_alpha();

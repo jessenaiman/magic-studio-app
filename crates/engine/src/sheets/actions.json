@@ -1,0 +1,145 @@
+[
+  {
+    "id": "walk",
+    "label": "Walking frames",
+    "looping": true,
+    "hold_frames": 1,
+    "panels": [
+      "Left contact | Left foot forward, right foot back, both contact ground",
+      "Left down | Weight settles onto left foot, body slightly lowered",
+      "Left passing | Left foot planted, right foot passes beneath body",
+      "Left up | Left heel rises, right foot reaches forward",
+      "Right contact | Right foot forward, left foot back, both contact ground",
+      "Right down | Weight settles onto right foot, body slightly lowered",
+      "Right passing | Right foot planted, left foot passes beneath body",
+      "Right up | Right heel rises, left foot reaches forward toward first frame"
+    ]
+  },
+  {
+    "id": "jump",
+    "label": "Jumping",
+    "looping": false,
+    "hold_frames": 1,
+    "panels": [
+      "Rest | Grounded neutral pose",
+      "Anticipation | Compress before takeoff",
+      "Takeoff | Push upward from ground",
+      "Rising | Body rising, feet above ground baseline",
+      "Apex | Highest airborne pose",
+      "Falling | Descending toward ground",
+      "Landing | Feet contact ground, body compresses",
+      "Settle | Return to grounded rest"
+    ]
+  },
+  {
+    "id": "run",
+    "label": "Running",
+    "looping": true,
+    "hold_frames": 1,
+    "panels": [
+      "Left contact | Left foot strikes ground ahead, right foot behind",
+      "Left compression | Weight on left foot, body compresses",
+      "Left push | Left foot pushes off, right foot swings forward",
+      "Flight to right | Both feet airborne, right foot leading",
+      "Right contact | Right foot strikes ground ahead, left foot behind",
+      "Right compression | Weight on right foot, body compresses",
+      "Right push | Right foot pushes off, left foot swings forward",
+      "Flight to left | Both feet airborne, left foot leading toward first frame"
+    ]
+  },
+  {
+    "id": "lie_down",
+    "label": "Lying down",
+    "looping": false,
+    "hold_frames": 1,
+    "panels": [
+      "Standing | Grounded standing rest",
+      "Lower | Begin lowering body toward ground",
+      "Crouch | Body close to ground, prepare to recline",
+      "Recline | Lower onto side using existing supports",
+      "Nearly lying | Body almost settled on ground",
+      "Ground contact | Body makes gentle contact with the ground",
+      "Lying down | Comfortable lying pose, hold here",
+      "Resting | Hold the final comfortable lying pose"
+    ]
+  },
+  {
+    "id": "sit_down",
+    "label": "Sitting down",
+    "looping": false,
+    "hold_frames": 1,
+    "panels": [
+      "Standing | Grounded standing rest",
+      "Prepare | Shift weight to prepare to sit",
+      "Lower | Lower body toward ground",
+      "Nearly seated | Almost seated, retain balance",
+      "Contact | Body contacts ground",
+      "Seated | Comfortable seated pose, hold here"
+    ]
+  },
+  {
+    "id": "stand_up",
+    "label": "Standing up",
+    "looping": false,
+    "hold_frames": 1,
+    "panels": [
+      "Seated | Comfortable seated rest",
+      "Prepare | Shift weight to prepare to rise",
+      "Push | Push upward using existing supports",
+      "Rise | Body halfway to standing",
+      "Straighten | Nearly upright",
+      "Standing | Grounded standing rest, hold here"
+    ]
+  },
+  {
+    "id": "wave",
+    "label": "Waving",
+    "looping": false,
+    "hold_frames": 1,
+    "panels": [
+      "Rest | Neutral rest",
+      "Raise | Raise one existing waving appendage",
+      "Wave out | Wave outward",
+      "Wave in | Wave inward",
+      "Wave out again | Repeat outward wave",
+      "Lower | Lower appendage toward rest"
+    ]
+  },
+  {
+    "id": "clap",
+    "label": "Clapping",
+    "looping": true,
+    "hold_frames": 1,
+    "panels": [
+      "Open | Existing clapping appendages apart",
+      "Approach | Move appendages toward each other",
+      "Clap contact | Appendages touch visibly",
+      "Release | Separate after clap",
+      "Open again | Return to open pose",
+      "Prepare next clap | Begin next approach"
+    ]
+  },
+  {
+    "id": "sway",
+    "label": "Swaying",
+    "looping": true,
+    "hold_frames": 4,
+    "panels": [
+      "Centre | Upright neutral pose",
+      "Lean left | Small leftward lean, feet planted",
+      "Left extreme | Maximum gentle left lean, feet planted",
+      "Return from left | Ease back toward centre",
+      "Centre crossing | Pass upright toward right",
+      "Lean right | Small rightward lean, feet planted",
+      "Right extreme | Maximum gentle right lean, feet planted",
+      "Return from right | Ease toward first upright frame"
+    ]
+  },
+  {
+    "id": "custom",
+    "label": "Custom",
+    "looping": false,
+    "hold_frames": 1,
+    "panels": []
+  }
+]

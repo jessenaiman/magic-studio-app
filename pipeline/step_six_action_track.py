@@ -377,13 +377,9 @@ def build_six_action_package(
                         "label": f.get("label", "standing"),
                         "file": str((p_dir / f["file"]).resolve()),
                         "size": f.get("size", [0, 0]),
-                        "footLiftPx": float(
-                            motion.get("poses", {})
+                        "footLiftPx": motion.get("poses", {})
                             .get(f.get("label", "standing"), {})
-                            .get("metrics", {})
-                            .get("footLiftPx")
-                            or 0.0
-                        ),
+                            .get("metrics", {}).get("footLiftPx"),
                     }
                     for f in seq
                 ],
@@ -456,7 +452,7 @@ def build_six_action_package(
         "actionCount": len(action_tracks),
         "actions": [a["id"] for a in action_tracks],
         "keyframeCount": ec_res["keyframeCount"],
-        "footLiftMaxPx": motion["limits"]["footLiftPx"]["max"],
+        "footLiftMaxPx": (motion["limits"].get("footLiftPx") or {}).get("max"),
         "maxVerticalDriftPx": registration["maxVerticalDriftPx"]
         if registration
         else None,
