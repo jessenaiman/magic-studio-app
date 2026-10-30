@@ -41,3 +41,32 @@ class InspectorField {
     this.node=el('label',{},el('span',{},label),input);
   }
 }
+
+// Arrow, Home and End move between a tablist's tabs the way the workspace bar does.
+// Selection follows focus; views that rebuild on select get focus back by label.
+const TABLIST_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+function tablistTabs(list: Element): HTMLButtonElement[] {
+  return [...list.querySelectorAll<HTMLButtonElement>('[role=tab]')].filter(tab => !tab.disabled);
+}
+function tablistStep(key: string, index: number, count: number): number {
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  return (index + (key === 'ArrowRight' ? 1 : -1) + count) % count;
+}
+function tablistSelect(list: Element, next: number): void {
+  const label = list.getAttribute('aria-label');
+  tablistTabs(list)[next].click();
+  const live = list.isConnected || !label ? list : document.querySelector(`[role=tablist][aria-label="${CSS.escape(label)}"]`);
+  if (live) tablistTabs(live)[next]?.focus();
+}
+document.addEventListener('keydown', (event: KeyboardEvent) => {
+  if (!TABLIST_KEYS.includes(event.key)) return;
+  const tab = (event.target as HTMLElement).closest?.('[role=tab]') as HTMLButtonElement | null;
+  const list = tab?.closest('[role=tablist]');
+  const tabs = list ? tablistTabs(list) : [];
+  const index = tabs.indexOf(tab);
+  if (index < 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  tablistSelect(list, tablistStep(event.key, index, tabs.length));
+});
