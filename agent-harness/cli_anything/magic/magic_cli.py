@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -451,11 +452,27 @@ def session_clear(ctx: click.Context) -> None:
     emit({"ok": True})
 
 
+def fix_routes(exc: Exception) -> str:
+    """A failure is a magic-cli gap: ask for a fix instead of working around it."""
+    command = shlex.join(["magic-cli", *sys.argv[1:]])
+    body = f"Command:\n    {command}\n\nError:\n    {str(exc)[:1500]}"
+    issue = shlex.join([
+        "gh", "issue", "create", "--title", f"magic-cli fails: {command[:70]}",
+        "--body", body,
+    ])
+    return (
+        "Request a magic-cli fix (do not work around it with the tool directly):\n"
+        "  quick       small and in scope: fix this magic-cli command now\n"
+        f"  issue       {issue}\n"
+        "  brainstorm  unsure which designer step or tool applies: ask Jesse first"
+    )
+
+
 def main() -> None:
     try:
         cli(prog_name="magic-cli")
     except (RuntimeError, OSError, ValueError) as exc:
-        click.echo(f"magic-cli: {exc}", err=True)
+        click.echo(f"magic-cli: {exc}\n\n{fix_routes(exc)}", err=True)
         sys.exit(1)
 
 
