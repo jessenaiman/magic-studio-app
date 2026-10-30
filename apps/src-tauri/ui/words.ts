@@ -38,211 +38,235 @@ const wordsStudioSection = (anim) => wordsPanel.studio?.sections?.find((s) => s.
 const wordsClip = (id, anim = wordsCurrent()) => wordsStudioSection(anim)?.clips.find((c) => c.word_id === id);
 const wordsClock = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 
-function wordsLabel(anim) {
-  const s = anim.scope || {};
-  const name = String(s.section || "lyrics").replace(/_(\d+)$/, " $1").replace(/_/g, " ");
-  return `${name[0].toUpperCase()}${name.slice(1)}${s.section === "chorus" || s.occurrence > 1 ? ` ${s.occurrence}` : ""}`;
-}
+function wordsLabel(anim: any) { return wordsDesignController.label(anim); }
+const wordsEnsureKinetic = (a: any) => (a.kinetic ??= {
+  layout: "karaoke", entrance: "pop", acts: {}, draws: [], overlay: "none", band: "top", seed: 1,
+  style: { font: "Fraunces", hero_font: "Fraunces", weight: 600, hero_weight: 700, hero_italic: true, size: 58, hero_size: 92, color: "#FFF6E3", hero_color: "#FFD27D", outline: "#143042" }
+});
+async function wordsBootstrapStudio(studio: any) { return wordsDesignController.bootstrapStudio(studio); }
+async function wordsOpen() { return wordsDesignController.open(); }
+const wordsFontsLoaded = new Set<string>();
+async function wordsLoadFonts(fonts: any[]) { return wordsDesignController.loadFonts(fonts); }
+const wordsSongFont = (anim: any) => anim.style?.font || wordsPanel.read?.fonts?.[0]?.family || "sans-serif";
+function wordsSelect(id: string) { return wordsDesignController.select(id); }
+function wordsEffects(anim: any) { return wordsDesignController.effects(anim); }
+async function wordsApplyRegistry(name: string | null) { return wordsDesignController.applyRegistry(name); }
+const wordsAt = (w: any) => wordsClip(w.word_id, wordsPanel.read?.document?.animations?.find((a: any) => a.words.includes(w)) || wordsCurrent())?.start ?? +w.start;
+function wordsSpan(anim: any) { return wordsDesignController.span(anim); }
+function wordsLines(anim: any) { return wordsDesignController.lines(anim); }
+function wordsPlace(node: any, at: number, len?: number) { return wordsDesignController.place(node, at, len); }
+function wordsRows(animations: any[]) { return wordsDesignController.rows(animations); }
+const wordsBand = (a: any, tag: string, extra: Record<string, any> = {}, nextStart = Infinity) => {
+  const span = wordsSpan(a), end = Math.min(span.end, nextStart);
+  return wordsPlace(el(tag, { class: `words-band${a.animation_id === wordsPanel.selected ? " active" : ""}`, "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", ...extra },
+    el("strong", {}, wordsLabel(a)), el("span", { class: "meta" }, wordsClock(span.start))), span.start, Math.max(0.2, end - span.start));
+};
+const wordsLineWords = (anim: any, lineId: string) => anim.words.filter((w: any) => w.line_id === lineId);
+const wordsWorld = () => [wordsPanel.size?.width || 1920, wordsPanel.size?.height || 1080];
+function wordsLineSpan(anim: any, lineId: string) { return wordsDesignController.lineSpan(anim, lineId); }
+function wordsLineWindow(anim: any, lineId = wordsPanel.line) { return wordsDesignController.lineWindow(anim, lineId); }
+function wordsPreviewLine(anim = wordsCurrent(), lineId = wordsPanel.line, play = true) { return wordsDesignController.previewLine(anim, lineId, play); }
+function wordsDesign(anim: any, lineId: string) { return wordsDesignController.design(anim, lineId); }
+function wordsDesignEdit(anim: any, lineId: string, change: (d: any) => void) { return wordsDesignController.designEdit(anim, lineId, change); }
+function wordsLayout(anim: any, lineId: string, kind: string) { return wordsDesignController.layout(anim, lineId, kind); }
+const wordsMeasurer = document.createElement("canvas").getContext("2d")!;
+function wordsMeasure(anim: any, text: string, size: number, look: string) { return wordsDesignController.measure(anim, text, size, look); }
+const wordsEase = { out2: (x: number) => 1 - (1 - x) ** 2, out3: (x: number) => 1 - (1 - x) ** 3, sin: (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x) };
+const wordsClamp = (x: number) => Math.max(0, Math.min(1, x));
 
-const wordsEnsureKinetic = (a) => (a.kinetic ??= { layout: "karaoke", entrance: "pop", acts: {}, draws: [], overlay: "none", band: "top", seed: 1,
-  style: { font: "Fraunces", hero_font: "Fraunces", weight: 600, hero_weight: 700, hero_italic: true, size: 58, hero_size: 92, color: "#FFF6E3", hero_color: "#FFD27D", outline: "#143042" } });
+class WordsDesignController {
+  label(anim: any) {
+    const s = anim.scope || {};
+    const name = String(s.section || "lyrics").replace(/_(\d+)$/, " $1").replace(/_/g, " ");
+    return `${name[0].toUpperCase()}${name.slice(1)}${s.section === "chorus" || s.occurrence > 1 ? ` ${s.occurrence}` : ""}`;
+  }
 
-async function wordsBootstrapStudio(studio) {
-  if (!serverUrl() && typeof designCommand === "function") await designCommand("video.server_start").catch(() => {});
-  if (studio?.sections?.length) return studio;
-  await wordsCommand("words.track").catch(() => {});
-  return wordsCommand("words.studio_track").catch((error) => ({ error: String(error).replace(/^.*?: /, "") }));
-}
+  async bootstrapStudio(studio: any) {
+    if (!serverUrl() && typeof designCommand === "function") await designCommand("video.server_start").catch(() => {});
+    if (studio?.sections?.length) return studio;
+    await wordsCommand("words.track").catch(() => {});
+    return wordsCommand("words.studio_track").catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") }));
+  }
 
-async function wordsOpen() {
-  const view = $("view-design");
-  if (!view) return;
-  if (!wordsPanel.read) view.replaceChildren(el("p", { class: "panel-empty inline" }, "Loading the words…"));
-  try {
-    const [read, align, rawStudio, backgrounds] = await Promise.all([
-      wordsCommand("words.read"),
-      wordsCommand("words.align"),
-      wordsCommand("words.studio_track").catch((error) => ({ error: String(error).replace(/^.*?: /, "") })),
-      wordsCommand("storyboard.backgrounds").catch(error=>({images:[],error:String(error).replace(/^.*?: /, "")})),
-    ]);
-    const studio = await wordsBootstrapStudio(rawStudio);
-    (read.document?.animations || []).forEach(wordsEnsureKinetic);
-    wordsPanel.read = read;
-    wordsPanel.backgrounds = backgrounds;
-    wordsPanel.align = align;
-    await wordsLoadFonts(read.fonts || []);
-    wordsPanel.studio = studio;
-    if (!wordsCurrent()) wordsPanel.selected = read.document.animations[0]?.animation_id || null;
+  async open() {
+    const view = $("view-design");
+    if (!view) return;
+    if (!wordsPanel.read) view.replaceChildren(el("p", { class: "panel-empty inline" }, "Loading the words…"));
+    try {
+      const [read, align, rawStudio, backgrounds] = await Promise.all([
+        wordsCommand("words.read"),
+        wordsCommand("words.align"),
+        wordsCommand("words.studio_track").catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") })),
+        wordsCommand("storyboard.backgrounds").catch((error: any) => ({ images: [], error: String(error).replace(/^.*?: /, "") })),
+      ]);
+      const studio = await this.bootstrapStudio(rawStudio);
+      (read.document?.animations || []).forEach(wordsEnsureKinetic);
+      wordsPanel.read = read;
+      wordsPanel.backgrounds = backgrounds;
+      wordsPanel.align = align;
+      await this.loadFonts(read.fonts || []);
+      wordsPanel.studio = studio;
+      if (!wordsCurrent()) wordsPanel.selected = read.document.animations[0]?.animation_id || null;
+      wordsRender();
+      wordsVideoRange();
+    } catch (error) {
+      view.replaceChildren(el("div", { class: "panel-empty boxed" },
+        el("p", {}, "Words starts from the artist's lyric sheet."),
+        el("p", { class: "muted" }, String(error).replace(/^.*?: /, "")),
+        el("p", { class: "muted" }, "Attach the original in Project › Song › Lyrics & notes.")));
+    }
+  }
+
+  async loadFonts(fonts: any[]) {
+    await Promise.all(fonts.filter((f) => !wordsFontsLoaded.has(f.path)).map(async (f) => {
+      wordsFontsLoaded.add(f.path);
+      try { document.fonts.add(await new FontFace(f.family, `url(${JSON.stringify(convertFileSrc(f.path))})`, { weight: f.weight || "400" }).load()); }
+      catch (error) { toast(`The video's font ${f.family} did not load: ${error}`); }
+    }));
+  }
+
+  select(id: string) {
+    if (wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length) {
+      if (!confirm("Discard unsaved lyric changes?")) return;
+    }
+    wordsPanel.designs.clear(); wordsPanel.styleEdits = {}; wordsPanel.line = null; wordsPanel.item = null; wordsPanel.selected = id;
     wordsRender();
     wordsVideoRange();
-  } catch (error) {
-    view.replaceChildren(el("div", { class: "panel-empty boxed" },
-      el("p", {}, "Words starts from the artist's lyric sheet."),
-      el("p", { class: "muted" }, String(error).replace(/^.*?: /, "")),
-      el("p", { class: "muted" }, "Attach the original in Project › Song › Lyrics & notes.")));
+  }
+
+  effects(anim: any) {
+    const current = anim.effects?.text?.name;
+    const registry = wordsPanel.effects?.kinds?.text?.effects || [];
+    if (!wordsPanel.effects) {
+      wordsPanel.effects = { loading: true };
+      wordsCommand("words.effects", { kind: "text" }).catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") }))
+        .then((found: any) => { wordsPanel.effects = found; if (state.view === "design") wordsRender(); });
+    }
+    return el("div", { class: "words-effects" },
+      current ? el("button", { class: "effect", "data-effect": "", onclick: () => this.applyRegistry(null) },
+        el("strong", {}, `Using ${current}`), el("span", { class: "muted" }, "Click to remove this effect.")) : null,
+      wordsPanel.effects?.error ? el("p", { class: "muted" }, wordsPanel.effects.error)
+        : wordsPanel.effects?.loading ? el("p", { class: "muted" }, "Finding effects…") : null,
+      ...registry.filter((e: any) => e.name !== current).map((e: any) => el("button", { class: "effect", "data-effect": e.name, title: (e.tags || []).join(" · "), onclick: () => this.applyRegistry(e.name) },
+        el("strong", {}, e.title || e.name), el("span", { class: "muted" }, e.description || ""))));
+  }
+
+  async applyRegistry(name: string | null) {
+    const anim = wordsCurrent();
+    if (!anim) return;
+    if (wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length) return toast("Save or discard the lyric changes first");
+    try {
+      if (name) { toast(`Installing ${name}…`); await wordsCommand("words.effect_install", { name }); }
+      const result = await wordsCommand("words.save", {
+        animation_id: anim.animation_id, expected_source_revision: anim.source_revision,
+        origin: "magicstudio-design", effects: { text: name ? { name } : null }
+      });
+      if (result.conflict) { toast("Someone changed this section first; reloaded the latest"); return this.open(); }
+      await wordsCommand("words.compose", { animation_id: anim.animation_id });
+      wordsPanel.show = name ? "edited" : "full";
+      wordsPanel.stage = null;
+      toast(name ? `${name} on ${this.label(anim)}` : `Effect removed from ${this.label(anim)}`);
+      await this.open();
+    } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
+  }
+
+  span(anim: any) {
+    const video = wordsStudioSection(anim);
+    return video ? { start: video.start, end: video.end } : { start: Math.min(...anim.words.map(wordsAt)), end: Math.max(...anim.words.map((w: any) => +w.end)) };
+  }
+
+  lines(anim: any) {
+    const lines: Array<{ id: string; words: any[] }> = [];
+    for (const w of anim.words) { if (lines.at(-1)?.id !== w.line_id) lines.push({ id: w.line_id, words: [] }); lines.at(-1)!.words.push(w); }
+    return lines;
+  }
+
+  place(node: any, at: number, len?: number) {
+    node.style.setProperty("--at-s", at.toFixed(3));
+    if (len != null) node.style.setProperty("--len-s", Math.max(0, len).toFixed(3));
+    return node;
+  }
+
+  rows(animations: any[]) {
+    return animations.flatMap((a, idx) => {
+      const span = this.span(a), lines = this.lines(a), nextStart = animations[idx + 1] ? this.span(animations[idx + 1]).start : Infinity;
+      const secEnd = Math.min(span.end, nextStart);
+      return lines.map((line, j) => { const at = wordsAt(line.words[0]); return [a, j, line, at, Math.max(0.2, (lines[j + 1] ? wordsAt(lines[j + 1].words[0]) : secEnd) - at)]; });
+    });
+  }
+
+  lineSpan(anim: any, lineId: string) {
+    const lines = this.lines(anim), k = Math.max(0, lines.findIndex((l) => l.id === lineId));
+    const start = wordsAt(lines[k].words[0]);
+    return { start, end: lines[k + 1] ? wordsAt(lines[k + 1].words[0]) : this.span(anim).end };
+  }
+
+  lineWindow(anim: any, lineId = wordsPanel.line) {
+    const sec = this.span(anim), span = this.lineSpan(anim, lineId || this.lines(anim)[0]?.id);
+    return { start: Math.max(sec.start, span.start - 0.15), end: Math.min(sec.end, Math.max(span.start + 0.6, span.end)) };
+  }
+
+  previewLine(anim = wordsCurrent(), lineId = wordsPanel.line, play = true) {
+    if (!anim) return;
+    const targetLine = lineId || this.lines(anim)[0]?.id;
+    if (!targetLine) return;
+    const span = this.lineSpan(anim, targetLine);
+    wordsPanel.previewRange = this.lineWindow(anim, targetLine);
+    wordsPanel.autoPlay = play;
+    wordsPanel.time = play ? wordsPanel.previewRange.start : Math.max(span.start, span.end - 0.18);
+    wordsVideoRange();
+  }
+
+  design(anim: any, lineId: string) {
+    const pending = wordsPanel.designs.get(lineId);
+    return pending !== undefined ? pending ?? this.layout(anim, lineId, "plain") : anim.design?.[lineId] ?? this.layout(anim, lineId, "plain");
+  }
+
+  designEdit(anim: any, lineId: string, change: (d: any) => void) {
+    const design = structuredClone(this.design(anim, lineId));
+    change(design);
+    wordsPanel.designs.set(lineId, design);
+    wordsRender();
+  }
+
+  layout(anim: any, lineId: string, kind: string) {
+    const words = wordsLineWords(anim, lineId), [W, H] = wordsWorld();
+    const item = (ws: any[], x: number, y: number, size: number, look = "song", motion = "quiet") => {
+      const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look)!;
+      return {
+        word_ids: ws.map((w) => w.word_id), x: Math.round(x), y: Math.round(y), size: Math.round(size), font, weight, italic, color: anim.style?.color || "#1b2a33",
+        outline: null, rotate: 0, motion, accent: motion === "quiet" ? null : ws.at(-1).word_id
+      };
+    };
+    const width = (ws: any[], size: number, look = "song") => this.measure(anim, ws.map((w) => w.text).join(" "), size, look);
+    if (kind === "poster") {
+      const hero = words.reduce((a: any, b: any) => (b.text.length > a.text.length ? b : a)), k = words.indexOf(hero), small = H * 0.04;
+      return {
+        items: [
+          ...(k ? [item(words.slice(0, k), W * 0.45, H * 0.1, small, "sans")] : []),
+          item([hero], W * 0.44, H * 0.15, H * 0.15, "serif-italic", "pop"),
+          ...(k < words.length - 1 ? [item(words.slice(k + 1), W * 0.45 + width([hero], H * 0.15, "serif-italic") * 0.6, H * 0.33, small, "sans")] : [])], draws: []
+      };
+    }
+    if (kind === "stack") {
+      const size = H * 0.085;
+      return { items: words.map((w: any, i: number) => item([w], W * 0.08, H * 0.12 + i * size * 1.1, size, i === words.length - 1 ? "serif-bold" : "song", i === words.length - 1 ? "settle" : "quiet")), draws: [] };
+    }
+    const size = H * 0.06, gap = size * 0.35, total = words.reduce((sum: number, w: any) => sum + width([w], size) + gap, -gap);
+    let x = (W - total) / 2;
+    return { items: words.map((w: any) => { const it = item([w], x, H * 0.82, size); x += width([w], size) + gap; return it; }), draws: [] };
+  }
+
+  measure(anim: any, text: string, size: number, look: string) {
+    const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look)!;
+    wordsMeasurer.font = `${italic ? "italic " : ""}${weight} ${size}px ${font === "song" ? JSON.stringify(wordsSongFont(anim)) : font === "serif" ? "serif" : "sans-serif"}`;
+    return wordsMeasurer.measureText(text).width;
   }
 }
 
-// The video's own lettering, loaded once so the designer letters in the same type.
-const wordsFontsLoaded = new Set();
-async function wordsLoadFonts(fonts) {
-  await Promise.all(fonts.filter((f) => !wordsFontsLoaded.has(f.path)).map(async (f) => {
-    wordsFontsLoaded.add(f.path);
-    try { document.fonts.add(await new FontFace(f.family, `url(${JSON.stringify(convertFileSrc(f.path))})`, { weight: f.weight || "400" }).load()); }
-    catch (error) { toast(`The video's font ${f.family} did not load: ${error}`); }
-  }));
-}
-const wordsSongFont = (anim) => anim.style?.font || wordsPanel.read?.fonts?.[0]?.family || "sans-serif";
-
-function wordsSelect(id) {
-  if (wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length) {
-    if (!confirm("Discard unsaved lyric changes?")) return;
-  }
-  wordsPanel.designs.clear(); wordsPanel.styleEdits = {}; wordsPanel.line = null; wordsPanel.item = null; wordsPanel.selected = id;
-  wordsRender();
-  wordsVideoRange();
-}
-
-// The registry's text effects for the section, as cards under the lanes.
-function wordsEffects(anim) {
-  const current = anim.effects?.text?.name;
-  const registry = wordsPanel.effects?.kinds?.text?.effects || [];
-  if (!wordsPanel.effects) {
-    wordsPanel.effects = { loading: true };
-    wordsCommand("words.effects", { kind: "text" }).catch((error) => ({ error: String(error).replace(/^.*?: /, "") }))
-      .then((found) => { wordsPanel.effects = found; if (state.view === "design") wordsRender(); });
-  }
-  return el("div", { class: "words-effects" },
-    current ? el("button", { class: "effect", "data-effect": "", onclick: () => wordsApplyRegistry(null) },
-      el("strong", {}, `Using ${current}`), el("span", { class: "muted" }, "Click to remove this effect.")) : null,
-    wordsPanel.effects?.error ? el("p", { class: "muted" }, wordsPanel.effects.error)
-      : wordsPanel.effects?.loading ? el("p", { class: "muted" }, "Finding effects…") : null,
-    ...registry.filter((e) => e.name !== current).map((e) => el("button", { class: "effect", "data-effect": e.name, title: (e.tags || []).join(" · "), onclick: () => wordsApplyRegistry(e.name) },
-      el("strong", {}, e.title || e.name), el("span", { class: "muted" }, e.description || ""))));
-}
-
-// Put a registry effect on the section's text track (null takes it off): install it if needed,
-// save it with the expected revision, compose the section and show the edited result.
-async function wordsApplyRegistry(name) {
-  const anim = wordsCurrent();
-  if (!anim) return;
-  if (wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length) return toast("Save or discard the lyric changes first");
-  try {
-    if (name) { toast(`Installing ${name}…`); await wordsCommand("words.effect_install", { name }); }
-    const result = await wordsCommand("words.save", { animation_id: anim.animation_id, expected_source_revision: anim.source_revision,
-      origin: "magicstudio-design", effects: { text: name ? { name } : null } });
-    if (result.conflict) { toast("Someone changed this section first; reloaded the latest"); return wordsOpen(); }
-    await wordsCommand("words.compose", { animation_id: anim.animation_id });
-    wordsPanel.show = name ? "edited" : "full";
-    wordsPanel.stage = null;
-    toast(name ? `${name} on ${wordsLabel(anim)}` : `Effect removed from ${wordsLabel(anim)}`);
-    await wordsOpen();
-  } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
-}
-
-// The song clock of the page. A word sits at its clip in the video (else the sheet's own time); a
-// section spans its stretch of the video (else its words).
-const wordsAt = (w) => wordsClip(w.word_id, wordsPanel.read?.document?.animations?.find((a) => a.words.includes(w)) || wordsCurrent())?.start ?? +w.start;
-function wordsSpan(anim) {
-  const video = wordsStudioSection(anim);
-  return video ? { start: video.start, end: video.end } : { start: Math.min(...anim.words.map(wordsAt)), end: Math.max(...anim.words.map((w) => +w.end)) };
-}
-function wordsLines(anim) {
-  const lines = [];
-  for (const w of anim.words) { if (lines.at(-1)?.id !== w.line_id) lines.push({ id: w.line_id, words: [] }); lines.at(-1).words.push(w); }
-  return lines;
-}
-// A timeline item's song time and length, as data; the timeline rule turns seconds into height.
-function wordsPlace(node: any, at: number, len?: number) {
-  node.style.setProperty("--at-s", at.toFixed(3));
-  if (len != null) node.style.setProperty("--len-s", Math.max(0, len).toFixed(3));
-  return node;
-}
-// Every sung line of every section, as [section, line index, line, start, length].
-function wordsRows(animations) {
-  return animations.flatMap((a, idx) => {
-    const span = wordsSpan(a), lines = wordsLines(a), nextStart = animations[idx + 1] ? wordsSpan(animations[idx + 1]).start : Infinity;
-    const secEnd = Math.min(span.end, nextStart);
-    return lines.map((line, j) => { const at = wordsAt(line.words[0]); return [a, j, line, at, Math.max(0.2, (lines[j + 1] ? wordsAt(lines[j + 1].words[0]) : secEnd) - at)]; });
-  });
-}
-const wordsBand = (a, tag, extra = {}, nextStart = Infinity) => { const span = wordsSpan(a), end = Math.min(span.end, nextStart);
-  return wordsPlace(el(tag, { class: `words-band${a.animation_id === wordsPanel.selected ? " active" : ""}`, "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", ...extra },
-    el("strong", {}, wordsLabel(a)), el("span", { class: "meta" }, wordsClock(span.start))), span.start, Math.max(0.2, end - span.start)); };
-
-// The lines of a section that hold a given word, and a line's words.
-const wordsLineWords = (anim, lineId) => anim.words.filter((w) => w.line_id === lineId);
-// The composition's size: the video's, once the player reports it.
-const wordsWorld = () => [wordsPanel.size?.width || 1920, wordsPanel.size?.height || 1080];
-// A line's span on the song clock: from its first sung word to the next line (or the section's end).
-function wordsLineSpan(anim, lineId) {
-  const lines = wordsLines(anim), k = Math.max(0, lines.findIndex((l) => l.id === lineId));
-  const start = wordsAt(lines[k].words[0]);
-  return { start, end: lines[k + 1] ? wordsAt(lines[k + 1].words[0]) : wordsSpan(anim).end };
-}
-function wordsLineWindow(anim, lineId = wordsPanel.line) {
-  const sec = wordsSpan(anim), span = wordsLineSpan(anim, lineId || wordsLines(anim)[0]?.id);
-  return { start: Math.max(sec.start, span.start - 0.15), end: Math.min(sec.end, Math.max(span.start + 0.6, span.end)) };
-}
-function wordsPreviewLine(anim = wordsCurrent(), lineId = wordsPanel.line, play = true) {
-  if (!anim) return;
-  const targetLine = lineId || wordsLines(anim)[0]?.id;
-  if (!targetLine) return;
-  const span = wordsLineSpan(anim, targetLine);
-  wordsPanel.previewRange = wordsLineWindow(anim, targetLine);
-  wordsPanel.autoPlay = play;
-  wordsPanel.time = play ? wordsPanel.previewRange.start : Math.max(span.start, span.end - 0.18);
-  wordsVideoRange();
-}
-// The design a line shows: an unsaved edit, else the saved one, else a plain line.
-function wordsDesign(anim, lineId) {
-  const pending = wordsPanel.designs.get(lineId);
-  return pending !== undefined ? pending ?? wordsLayout(anim, lineId, "plain") : anim.design?.[lineId] ?? wordsLayout(anim, lineId, "plain");
-}
-function wordsDesignEdit(anim, lineId, change) {
-  const design = structuredClone(wordsDesign(anim, lineId));
-  change(design);
-  wordsPanel.designs.set(lineId, design);
-  wordsRender();
-}
-
-// Ready-made layouts for a whole line. Sizes and places are fractions of the composition, so a
-// layout fits any video; every word stays its own item unless the layout groups context words.
-function wordsLayout(anim, lineId, kind) {
-  const words = wordsLineWords(anim, lineId), [W, H] = wordsWorld();
-  const item = (ws, x, y, size, look = "song", motion = "quiet") => {
-    const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look);
-    return { word_ids: ws.map((w) => w.word_id), x: Math.round(x), y: Math.round(y), size: Math.round(size), font, weight, italic, color: anim.style?.color || "#1b2a33",
-      outline: null, rotate: 0, motion, accent: motion === "quiet" ? null : ws.at(-1).word_id };
-  };
-  const width = (ws, size, look = "song") => wordsMeasure(anim, ws.map((w) => w.text).join(" "), size, look);
-  if (kind === "poster") {
-    // The longest word carries the line; the words around it stay small.
-    const hero = words.reduce((a, b) => (b.text.length > a.text.length ? b : a)), k = words.indexOf(hero), small = H * 0.04;
-    return { items: [
-      ...(k ? [item(words.slice(0, k), W * 0.45, H * 0.1, small, "sans")] : []),
-      item([hero], W * 0.44, H * 0.15, H * 0.15, "serif-italic", "pop"),
-      ...(k < words.length - 1 ? [item(words.slice(k + 1), W * 0.45 + width([hero], H * 0.15, "serif-italic") * 0.6, H * 0.33, small, "sans")] : [])], draws: [] };
-  }
-  if (kind === "stack") {
-    const size = H * 0.085;
-    return { items: words.map((w, i) => item([w], W * 0.08, H * 0.12 + i * size * 1.1, size, i === words.length - 1 ? "serif-bold" : "song", i === words.length - 1 ? "settle" : "quiet")), draws: [] };
-  }
-  // plain: one line along the bottom, each word in place
-  const size = H * 0.06, gap = size * 0.35, total = words.reduce((sum, w) => sum + width([w], size) + gap, -gap);
-  let x = (W - total) / 2;
-  return { items: words.map((w) => { const it = item([w], x, H * 0.82, size); x += width([w], size) + gap; return it; }), draws: [] };
-}
-
-// A word's drawn width, measured in the lettering it will use.
-const wordsMeasurer = document.createElement("canvas").getContext("2d");
-function wordsMeasure(anim, text, size, look) {
-  const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look);
-  wordsMeasurer.font = `${italic ? "italic " : ""}${weight} ${size}px ${font === "song" ? JSON.stringify(wordsSongFont(anim)) : font === "serif" ? "serif" : "sans-serif"}`;
-  return wordsMeasurer.measureText(text).width;
-}
-const wordsEase = { out2: (x) => 1 - (1 - x) ** 2, out3: (x) => 1 - (1 - x) ** 3, sin: (x) => 0.5 - 0.5 * Math.cos(Math.PI * x) };
-const wordsClamp = (x) => Math.max(0, Math.min(1, x));
+const wordsDesignController = new WordsDesignController();
+(window as any).WordsDesignController = WordsDesignController;
+(window as any).wordsDesignController = wordsDesignController;
 
 function wordsItemMotionOffset(motion: string, settled: number, arc: number) { return wordsTimelineController.itemMotionOffset(motion, settled, arc); }
 function wordsItemPulse(local: number, a: number) { return wordsTimelineController.itemPulse(local, a); }
