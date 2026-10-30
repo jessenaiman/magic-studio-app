@@ -96,58 +96,21 @@ fn review(value: &Value) -> String {
     }
     .into()
 }
-struct Targets {
-    harness: Option<String>,
-    session_id: Option<String>,
-    worktree: Option<String>,
-    resume_command: Option<String>,
-    verified_resume: bool,
-    worktree_available: bool,
-    role_path: Option<String>,
-    role_available: bool,
-}
 fn supplied_field(fields: &BTreeMap<String, String>, key: &str) -> Option<String> {
     fields.get(key).and_then(|value| supplied(value))
 }
-impl Targets {
-    fn resolve(
-        fields: &BTreeMap<String, String>,
-        warnings: &mut Vec<String>,
-        roles: &[PathBuf],
-    ) -> Self {
-        let harness = supplied_field(fields, "harness");
-        let session_id = supplied_field(fields, "session id");
-        let worktree = supplied_field(fields, "worktree");
-        let resume_command = supplied_field(fields, "resume command");
-        // This is only the author's attestation and bounded metadata validation; never execute it.
-        let verified_resume = resume_attested(fields, resume_command.as_deref())
-            && harness.is_some()
-            && session_id.is_some()
-            && worktree.is_some()
-            && warnings.is_empty();
-        let target = worktree_target(worktree.as_deref());
-        let worktree_available = target.is_some();
-        let worktree = target.map(|path| path.display().to_string()).or(worktree);
-        let (role_path, role_available) =
-            resolve_role(fields, worktree.as_deref(), roles, warnings);
-        Self {
-            harness,
-            session_id,
-            worktree,
-            resume_command,
-            verified_resume,
-            worktree_available,
-            role_path,
-            role_available,
-        }
-    }
-}
-fn resume_attested(fields: &BTreeMap<String, String>, command: Option<&str>) -> bool {
+// Session handoff values are literal PR text, not normalized human labels.
+fn recorded_field(fields: &BTreeMap<String, String>, key: &str) -> Option<String> {
     fields
-        .get("resume verified")
-        .is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "yes" | "true"))
-        && command
-            .is_some_and(|command| command.len() <= 4096 && !command.chars().any(char::is_control))
+        .get(key)
+        .filter(|value| {
+            let label = value.trim();
+            !label.is_empty()
+                && !["unknown", "none", "unavailable", "n/a"]
+                    .iter()
+                    .any(|missing| label.eq_ignore_ascii_case(missing))
+        })
+        .cloned()
 }
 fn worktree_target(worktree: Option<&str>) -> Option<PathBuf> {
     worktree
@@ -198,17 +161,20 @@ pub(super) fn parse(
     roles: &[PathBuf],
 ) -> Result<Task, String> {
     let native = NativePr::read(value, repo, requested)?;
-    let (fields, mut warnings) = fields(&native.body);
-    let targets = Targets::resolve(&fields, &mut warnings, roles);
-    Ok(assemble(native, &fields, warnings, targets))
+    let (fields, warnings) = fields(&native.body);
+    Ok(assemble(native, &fields, warnings, roles))
 }
 fn assemble(
     native: NativePr,
     fields: &BTreeMap<String, String>,
-    warnings: Vec<String>,
-    targets: Targets,
+    mut warnings: Vec<String>,
+    roles: &[PathBuf],
 ) -> Task {
     let get = |key: &str| supplied_field(fields, key);
+    let worktree = get("worktree");
+    let worktree_available = worktree_target(worktree.as_deref()).is_some();
+    let (role_path, role_available) =
+        resolve_role(fields, worktree.as_deref(), roles, &mut warnings);
     Task {
         pr_number: native.number,
         pr_url: native.url,
@@ -221,19 +187,18 @@ fn assemble(
         department: get("department"),
         implementation_role: get("implementation role"),
         agent: get("agent"),
-        harness: targets.harness,
-        session_id: targets.session_id,
+        harness: get("harness"),
+        session_id: recorded_field(fields, "session id"),
         branch: native.branch,
-        worktree: targets.worktree,
-        role_path: targets.role_path,
-        resume_command: targets.resume_command,
+        worktree,
+        role_path,
+        resume_command: recorded_field(fields, "resume command"),
         model_provider: get("model / provider"),
         next_action: get("next action"),
         action: action(get("your action")),
         blocker: get("blocker"),
-        verified_resume: targets.verified_resume,
-        role_available: targets.role_available,
-        worktree_available: targets.worktree_available,
+        role_available,
+        worktree_available,
         blocker_known: blocker_known(fields),
         warnings,
         body: native.body,
@@ -264,8 +229,8 @@ fn fields(body: &str) -> (BTreeMap<String, String>, Vec<String>) {
     let mut sections = 0;
     let mut fields = BTreeMap::new();
     let mut warnings = Vec::new();
-    for line in body.lines() {
-        let line = line.trim();
+    for raw in body.lines() {
+        let line = raw.trim();
         if line.eq_ignore_ascii_case("## MOPS handoff") {
             active = true;
             sections += 1;
@@ -277,10 +242,17 @@ fn fields(body: &str) -> (BTreeMap<String, String>, Vec<String>) {
         if !active {
             continue;
         }
-        if let Some((key, value)) = line.strip_prefix("- ").and_then(|s| s.split_once(':')) {
+        if let Some((key, value)) = raw
+            .trim_start()
+            .strip_prefix("- ")
+            .and_then(|s| s.split_once(':'))
+        {
             let key = key.trim().to_ascii_lowercase();
             if fields
-                .insert(key.clone(), value.trim().to_string())
+                .insert(
+                    key.clone(),
+                    value.strip_prefix(' ').unwrap_or(value).to_string(),
+                )
                 .is_some()
             {
                 warnings.push(format!("Duplicate handoff field: {key}"));

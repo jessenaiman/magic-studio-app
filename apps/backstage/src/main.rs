@@ -444,6 +444,12 @@ impl App {
             self.message = "No selected PR handoff".into();
             return;
         };
+        if matches!(action, MopsAction::CopyResume | MopsAction::CopyFeedback)
+            && !self.clipboard_supported
+        {
+            self.message = "Clipboard unavailable: terminal OSC52 support required".into();
+            return;
+        }
         match action {
             MopsAction::OpenPr => {
                 let url = task.pr_url.clone();
@@ -745,13 +751,9 @@ fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receive
     Ok(receiver)
 }
 fn copy_resume(task: &handoff::Task) -> String {
-    match task
-        .resume_command
-        .as_deref()
-        .filter(|_| task.verified_resume)
-    {
+    match task.copyable_resume() {
         Some(command) => copy_text(command),
-        None => "No author-verified resume command; nothing copied or executed".into(),
+        None => "No copyable recorded resume command; nothing copied or executed".into(),
     }
 }
 fn print_pr_report(args: &[String], index: usize) -> io::Result<()> {
