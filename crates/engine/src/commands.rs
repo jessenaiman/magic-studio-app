@@ -943,7 +943,7 @@ pub fn build() -> Vec<CommandSpec> {
             always,
             crate::motion::cmd_motion_export_track
         ).help("Render the selected character action through the existing script workflow and return its clip, editable source and validation results.",
-               "magic-cli --project /absolute/Project.magic animation render character=babel track=sway duration=2 amount=35 sync_video=false"),
+               "magic-cli --project /absolute/Project.magic animation render character=babel track=@sway duration=2 amount=35 sync_video=false"),
         cmd!(
             "motion.place_section",
             "Animate a song section: draw the path, export, gate and place it in the video",
@@ -1331,12 +1331,6 @@ pub fn build() -> Vec<CommandSpec> {
             "{\"animation_id\":\"words-chorus-1\",\"instance_id\":\"optional: isolated composition for a repeated placement\"}",
             always,
             crate::words::cmd_words_compose
-        ),
-        query!(
-            "words.overlaps",
-            "Words Track Overlaps",
-            "{}",
-            crate::words::cmd_words_overlaps
         ),
         query!(
             "workshop.files",
