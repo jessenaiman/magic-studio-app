@@ -24,8 +24,8 @@
     </span>
     <nav class="tabs" id="workspace-tabs" role="tablist" aria-label="Workspaces"></nav>
     <div class="drawer-toggles" aria-label="Studio assistants">
-      <button class="ghost" id="agent-toggle" data-drawer-toggle="sproket" aria-controls="magic-chat-pane" aria-expanded="false" aria-pressed="false" title="Sproket chat (Ctrl+\)" aria-label="Sproket chat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg><span class="drawer-label">Sproket</span></button>
-      <button class="ghost" id="gaffer-toggle" data-drawer-toggle="gaffer" aria-controls="magic-image-pane" aria-expanded="false" aria-pressed="false" title="Gaffer artwork" aria-label="Gaffer artwork"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 6-6 12 10"/><circle cx="16" cy="8" r="2"/></svg><span class="drawer-label">Gaffer</span></button>
+      <button class="ghost" id="agent-toggle" data-drawer-toggle="sproket" aria-controls="magic-chat-pane" aria-expanded="false" aria-pressed="false" title="Fidget chat (Ctrl+\)" aria-label="Fidget chat"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/></svg><span class="drawer-label">Fidget</span></button>
+      <button class="ghost" id="gaffer-toggle" data-drawer-toggle="gaffer" aria-controls="magic-image-pane" aria-expanded="false" aria-pressed="false" title="Doodle artwork" aria-label="Doodle artwork"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 6-6 12 10"/><circle cx="16" cy="8" r="2"/></svg><span class="drawer-label">Doodle</span></button>
     </div>
     <button class="target" id="target" aria-label="Studio server: click to start or stop" title="Studio server · click to start or stop">
       <span class="dot off" id="server-dot"></span><span id="target-name">—</span>
@@ -122,14 +122,14 @@
   </footer>
       <!-- Shared top drawers preserve each assistant’s contents and drafts. -->
       <aside class="workshop-drawers" id="magic-workstation" aria-label="Studio assistants" hidden>
-        <section id="magic-chat-pane" data-drawer="sproket" aria-label="Sproket chat" hidden>
+        <section id="magic-chat-pane" data-drawer="sproket" aria-label="Fidget chat" hidden>
       <aside class="agent" id="agent" aria-label="Agent" aria-hidden="true">
         <div class="panel-head" id="agent-head">
-          <span class="agent-title panel-title">Sproket <span class="agent-connection" id="agent-connection">· not configured</span></span>
+          <span class="agent-title panel-title">Fidget <span class="agent-connection" id="agent-connection">· not configured</span></span>
           <div class="agent-head-actions">
             <button class="icon" id="agent-new" aria-label="New chat" title="Start a fresh chat · preserve previous history"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
             <button class="icon" id="agent-config-toggle" data-drawer-settings="anim-agent-settings" aria-label="Agent settings" aria-controls="anim-agent-settings" aria-expanded="false" title="Agent settings: agent, model, thinking"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
-            <button class="icon" id="agent-close" data-drawer-close aria-label="Close Sproket chat" title="Hide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button class="icon" id="agent-close" data-drawer-close aria-label="Close Fidget chat" title="Hide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
         </div>
         <div id="anim-agent-settings" hidden>
@@ -140,7 +140,7 @@
           <button class="ghost" id="agent-catalog-refresh" title="Read the installed model catalog without inference">Refresh models</button>
           <small id="agent-catalog-status" role="status"></small>
           <label class="companion-setting"><input type="checkbox" id="ambient-companions" /> Ambient companions (off by default)</label>
-          <small class="companion-note" id="companion-note">Sproket the dog watches for problems; Gaffer the cat follows the artwork. Their state is listed below.</small>
+          <small class="companion-note" id="companion-note">Fidget the dog watches for problems; Doodle the caterpillar follows the artwork. Their state is listed below.</small>
           <ul class="companion-state" id="companion-state" aria-live="polite"></ul>
           <small>Messages start fresh. Chat settings are separate from image generation.</small>
           <label>Thinking<select id="agent-thinking" title="Reasoning effort">
@@ -162,8 +162,8 @@
         </div>
       </aside>
         </section>
-        <section id="magic-image-pane" data-drawer="gaffer" aria-label="Gaffer artwork" hidden>
-          <div class="panel-head" id="magic-image-toggle"><span class="panel-title">Gaffer · Artwork</span><span id="magic-target-image" class="magic-target">No part selected</span><button class="icon" id="gaffer-config-toggle" data-drawer-settings="image-settings" aria-label="Artwork settings" aria-controls="image-settings" aria-expanded="false" title="Artwork settings"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button><button class="icon" id="gaffer-close" data-drawer-close aria-label="Close Gaffer artwork" title="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <section id="magic-image-pane" data-drawer="gaffer" aria-label="Doodle artwork" hidden>
+          <div class="panel-head" id="magic-image-toggle"><span class="panel-title">Doodle · Artwork</span><span id="magic-target-image" class="magic-target">No part selected</span><button class="icon" id="gaffer-config-toggle" data-drawer-settings="image-settings" aria-label="Artwork settings" aria-controls="image-settings" aria-expanded="false" title="Artwork settings"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button><button class="icon" id="gaffer-close" data-drawer-close aria-label="Close Doodle artwork" title="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
           <div id="magic-image-tools" class="magic-image-tools"></div>
         </section>
       </aside>

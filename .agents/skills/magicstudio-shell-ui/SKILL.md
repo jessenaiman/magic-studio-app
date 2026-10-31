@@ -82,7 +82,7 @@ Type: system-ui 13px/1.45. Titles are 600 weight. Section labels use `.group-lab
 - **Sheet** (`.sheet-backdrop` + `.sheet`): a modal for short forms, with a blurred backdrop and the sheet
   rising 8px. Labels sit above inputs. "Choose…" pickers use the system dialog (`tauri-plugin-dialog`).
   Actions sit at the bottom right: Cancel (ghost), then the primary.
-- **Assistant drawer** (`.workshop-drawers`): Sproket and Gaffer open below their top-bar buttons.
+- **Assistant drawer** (`.workshop-drawers`): Fidget and Doodle open below their top-bar buttons.
   One shared controller preserves both contents and drafts; one drawer opens at a time. The main
   surface keeps its full width. Part artwork stays in the left Animation inspector.
 - **Toast** (`.toast`): bottom center, one line, 2.4 s.

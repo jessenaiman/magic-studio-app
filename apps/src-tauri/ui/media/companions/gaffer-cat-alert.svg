@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Gaffer alert">
-<title>Gaffer — alert</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Doodle alert">
+<title>Doodle — alert</title>
 <g stroke="#503329" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
 <g id="tail" data-pivot="106 119" transform="rotate(0 106 119)"><path d="M105 119 Q147 126 132 91" fill="none" stroke="#ee8241" stroke-width="15"/></g>
 <g id="body"><path d="M46 95 Q73 80 102 98 L110 137 Q78 151 40 137Z" fill="#ee8241"/><ellipse cx="74" cy="122" rx="20" ry="23" fill="#fff0ce" stroke="none"/></g>

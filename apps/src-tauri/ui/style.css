@@ -662,7 +662,7 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .anim-part-inspector .motion-range { max-width:none; min-width:0; }
 .anim-part-inspector > .icon { justify-self:start; }
 
-/* Sproket: one compact header bar; settings fold below it. */
+/* Fidget: one compact header bar; settings fold below it. */
 .agent-connection { color:var(--muted); font-weight:500; font-size:var(--text-xs); }
 .agent-head-actions .ghost { padding:var(--size-4) var(--size-9); font-size:var(--text-xs); }
 #agent-config-toggle[aria-expanded="true"] { border-color:var(--accent); color:var(--text); }

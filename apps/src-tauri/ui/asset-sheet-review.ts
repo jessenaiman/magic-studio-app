@@ -90,7 +90,7 @@ class AssetSheetReview {
     this.rowPicker=el('div',{id:'asset-sheet-action-rows'},...this.rowActions.map((select,i)=>new InspectorField(`Row ${i+1}`,select).node));
     this.rowModeField=el('label',{},this.rowMode,'Four action rows');
     this.panels=el('textarea',{id:'asset-sheet-panels',class:'field',rows:6,'aria-label':'Ordered panel descriptions',oninput:()=>{this.layoutDirty=true;this.actions();}});
-    this.fullPrompt=el('textarea',{id:'asset-sheet-full-prompt',class:'field',rows:8,readonly:true,'aria-label':'Full Gaffer prompt with panel template'});
+    this.fullPrompt=el('textarea',{id:'asset-sheet-full-prompt',class:'field',rows:8,readonly:true,'aria-label':'Full Doodle prompt with panel template'});
     this.timing=el('p',{id:'asset-sheet-timing',class:'muted'});
     this.motionField=new InspectorField('Action verb',this.motion).node;
     this.layoutUpdate=el('button',{id:'asset-sheet-update-layout',class:'ghost','data-commands':'assets.sheet_plan',onclick:()=>this.selectTemplate(true)},'Update panel guide');
@@ -105,7 +105,7 @@ class AssetSheetReview {
       this.plan.styles.map(style=>el('option',{value:style.id},style.label)));
     this.medium.value='original';
     this.removeBackgroundButton=el('button',{id:'asset-sheet-remove-background',class:'ghost','data-commands':'asset.make_transparent',onclick:()=>this.removeBackground()},'Remove background again');
-    this.mediumStatus=el('p',{id:'asset-sheet-medium-status',class:'muted'},'Reference for Gaffer');
+    this.mediumStatus=el('p',{id:'asset-sheet-medium-status',class:'muted'},'Reference for Doodle');
     const promptFields=el('div',{class:'panel-fields'},
       new InspectorField('Reference / generated sheet',this.existing).node,
       new InspectorField('Generated art style',this.medium).node,
@@ -113,7 +113,7 @@ class AssetSheetReview {
       new InspectorField('Sheet type',this.kind).node,this.rowModeField,this.motionField,this.rowPicker,
       new InspectorField('Panels · one label | drawing direction per line',this.panels).node,this.layoutUpdate,this.timing,
       new InspectorField('Drawing direction',this.prompt).node,
-      el('details',{},el('summary',{},'Full Gaffer prompt'),this.fullPrompt),
+      el('details',{},el('summary',{},'Full Doodle prompt'),this.fullPrompt),
       ...(this.plan.source_prompt?[el('details',{},el('summary',{},'Original generation prompt'),el('textarea',{id:'asset-sheet-original-prompt',class:'field',rows:8,readonly:true,'aria-label':'Original generation prompt'},this.plan.source_prompt))]:[]),
       el('p',{class:'muted'},'Generate a whole sheet, review it, then prepare draft pieces. The source stays intact.'));
     this.root=el('dialog',{id:'asset-sheet-review',class:'editor-dialog artwork-review','aria-label':'Asset sheets · full source review'},
@@ -132,7 +132,7 @@ class AssetSheetReview {
       if(!this.root.open||file!==this.file)return;
       this.info=info;this.showPreview();
       const reference=[this.plan.source,this.plan.reference,this.acceptedReference].includes(file);
-      this.status.textContent=`${info.width} × ${info.height} · ${reference?'Reference ready · choose the style and action for Gaffer':info.approved?'Sheet approved · preparation is a separate action':'Review the full sheet before extracting pieces'}`;
+      this.status.textContent=`${info.width} × ${info.height} · ${reference?'Reference ready · choose the style and action for Doodle':info.approved?'Sheet approved · preparation is a separate action':'Review the full sheet before extracting pieces'}`;
       this.actions();
     } catch(error) {if(file===this.file){this.status.textContent=String(error);this.actions();}}
   }
@@ -198,7 +198,7 @@ class AssetSheetReview {
     if(!this.controls)return;
     const reference=[this.plan.source,this.plan.reference,this.acceptedReference].includes(this.file);
     const loaded=!!this.info&&!reference&&!this.guideVisible&&this.image.complete&&this.image.naturalWidth>0;
-    const generate=el('button',{id:'asset-sheet-generate',class:reference?'start':'ghost','data-commands':'assets.agent_sheets',onclick:()=>this.generate()},this.busy?'Working…':'Generate with Gaffer');generate.disabled=this.busy||this.layoutDirty;
+    const generate=el('button',{id:'asset-sheet-generate',class:reference?'start':'ghost','data-commands':'assets.agent_sheets',onclick:()=>this.generate()},this.busy?'Working…':'Generate with Doodle');generate.disabled=this.busy||this.layoutDirty;
     const action=this.info?.approved
       ? el('button',{id:'asset-sheet-extract',class:'start','data-commands':'asset.cut_sheet',onclick:()=>this.extract()},'Extract draft pieces')
       : el('button',{id:'asset-sheet-approve',class:'start','data-commands':'assets.sheet_review',onclick:()=>this.approve()},'Approve full sheet');

@@ -638,7 +638,7 @@ fn generate_planned_sheets(s: &mut Session, plan: &mut SheetPlan, params: &Value
         let generated = crate::image_generation::generate(s, &request)?;
         let source = generated["image"]
             .as_str()
-            .ok_or_else(|| EngineError::InvalidParams("Gaffer returned no image".into()))?;
+            .ok_or_else(|| EngineError::InvalidParams("Doodle returned no image".into()))?;
         let destination = PathBuf::from(sheet["file"].as_str().unwrap_or_default());
         std::fs::copy(source, &destination)?;
         std::fs::write(

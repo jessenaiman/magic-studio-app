@@ -287,7 +287,7 @@ fn discover_agent_catalog(s: &Session, agent: &str) -> Result<Vec<Value>> {
     }
 }
 
-/// Sprocket's catalog: local first, then free, then paid. The order is the recommendation.
+/// Fidget's catalog: local first, then free, then paid. The order is the recommendation.
 pub fn cmd_sprocket_models(s: &mut Session, _p: &Value) -> Result<Value> {
     let selection = cmd_agent_config(s, &json!({}))?;
     let agent = selection["agent"].as_str().unwrap_or("opencode");
@@ -334,7 +334,7 @@ pub fn cmd_agent_persist(s: &mut Session, _p: &Value) -> Result<Value> {
     )
 }
 
-/// Switch Sprocket's model, verified against the catalog and persisted for the app and the CLI.
+/// Switch Fidget's model, verified against the catalog and persisted for the app and the CLI.
 pub fn cmd_sprocket_use(s: &mut Session, p: &Value) -> Result<Value> {
     let wanted = p["model"]
         .as_str()
@@ -597,7 +597,7 @@ fn models(dir: &Path) -> Result<Vec<Value>> {
     })?;
     Ok(list.iter().map(|m|json!({"providerID":m["providerID"],"id":m["id"],"name":m["name"],"enabled":m["enabled"],"capabilities":m["capabilities"],"cost":m["cost"],"local":is_local_provider(m["providerID"].as_str().unwrap_or_default())})).collect())
 }
-/// Sprocket: the app's own in-app agent, reachable from the CLI and the booth.
+/// Fidget: the app's own in-app agent, reachable from the CLI and the booth.
 /// Sending never changes the user's model/provider or persists a replacement.
 /// The selected adapter validates availability and refuses unsupported selections.
 pub fn cmd_sprocket_send(s: &mut Session, params: &Value) -> Result<Value> {
@@ -607,7 +607,7 @@ pub fn cmd_sprocket_send(s: &mut Session, params: &Value) -> Result<Value> {
         send["free_only"] = json!(true);
     }
     let mut result = cmd_agent_send(s, &send)?;
-    result["sprocket"] = json!({"name":"Sprocket","role":"the app's own in-app agent","selection":selection,"selection_repaired":null,"selection_persisted":null});
+    result["sprocket"] = json!({"name":"Fidget","role":"the app's own in-app agent","selection":selection,"selection_repaired":null,"selection_persisted":null});
     Ok(result)
 }
 
@@ -683,7 +683,7 @@ fn archive(s: &Session) -> Result<()> {
     }
     Ok(())
 }
-// Native per-session policy for bounded Sproket tool/diagnostic tasks; never image generation.
+// Native per-session policy for bounded Fidget tool/diagnostic tasks; never image generation.
 fn bounded_task_cli() -> Result<std::path::PathBuf> {
     let exe = std::env::current_exe()?;
     let folder = exe
@@ -781,7 +781,7 @@ fn chat_instructions(s: &Session) -> Result<String> {
 fn chat_task(params: &Value) -> Result<String> {
     if params["image_task"] == true {
         Ok(format!(
-            "You are Sproket, the bounded tasks, tools, and error-sniffing assistant (never image generation; Gaffer handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
+            "You are Fidget, the bounded tasks, tools, and error-sniffing assistant (never image generation; Doodle handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
             bounded_task_cli()?.display()
         ))
     } else {

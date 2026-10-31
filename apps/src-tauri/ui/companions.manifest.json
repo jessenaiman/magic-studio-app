@@ -3,8 +3,8 @@
   "generator": "Magic Studio original SVG starter artwork",
   "characters": {
     "gaffer": {
-      "label": "Gaffer",
-      "species": "cat",
+      "label": "Doodle",
+      "species": "caterpillar",
       "role": "artwork",
       "poses": {
         "rest": "media/companions/gaffer-cat-rest.svg",
@@ -15,7 +15,7 @@
       }
     },
     "sproket": {
-      "label": "Sproket",
+      "label": "Fidget",
       "species": "dog",
       "role": "issue/chat",
       "poses": {

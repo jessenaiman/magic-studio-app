@@ -145,14 +145,14 @@
     },
     "magic-chat-pane": {
       "component": "panel",
-      "label": "Sproket chat",
+      "label": "Fidget chat",
       "indicator": "hidden",
       "look": "chat",
       "rail": "magic-chat-pane"
     },
     "magic-image-pane": {
       "component": "panel",
-      "label": "Gaffer artwork",
+      "label": "Doodle artwork",
       "indicator": "hidden",
       "look": "artwork",
       "rail": "magic-image-pane"
@@ -277,14 +277,14 @@
       "component": "panel-head",
       "look": "bar",
       "density": "compact",
-      "label": "Sprocket chat",
+      "label": "Fidget chat",
       "indicator": "hidden"
     },
     "magic-image-toggle": {
       "component": "panel-head",
       "look": "heading",
       "density": "normal",
-      "label": "Gaffer artwork",
+      "label": "Doodle artwork",
       "indicator": "hidden",
       "target": "magic-image-pane"
     },
@@ -1320,19 +1320,19 @@
     },
     "agent-toggle": {
       "component": "ghost",
-      "label": "Sproket chat",
+      "label": "Fidget chat",
       "target": "magic-chat-pane",
       "indicator": "icon"
     },
     "gaffer-toggle": {
       "component": "ghost",
-      "label": "Gaffer artwork",
+      "label": "Doodle artwork",
       "target": "magic-image-pane",
       "indicator": "icon"
     },
     "gaffer-close": {
       "component": "icon",
-      "label": "Close Gaffer artwork",
+      "label": "Close Doodle artwork",
       "indicator": "hidden",
       "target": "magic-image-pane"
     },
@@ -1571,7 +1571,7 @@
     },
     "storyboard-discuss": {
       "component": "ghost",
-      "label": "Discuss storyboard with Sproket",
+      "label": "Discuss storyboard with Fidget",
       "target": "storyboard",
       "indicator": "hidden"
     },
@@ -1788,7 +1788,7 @@
     },
     "asset-sheet-full-prompt": {
       "component": "field",
-      "label": "Full Gaffer prompt",
+      "label": "Full Doodle prompt",
       "indicator": "hidden"
     },
     "asset-sheet-timing": {

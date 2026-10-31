@@ -35,7 +35,7 @@ not as a substitute for missing product commands. Avoid global mouse/focus autom
 
 ## Design contract
 
-- Sproket chat and Gaffer artwork open from the top bar through one shared drawer controller.
+- Fidget chat and Doodle artwork open from the top bar through one shared drawer controller.
   Opening either hides the other without rebuilding its contents. The creative surface stays full
   width; the native Studio moves below an open drawer. Part artwork belongs in the left Animation
   inspector.
