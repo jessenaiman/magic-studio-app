@@ -1,71 +1,101 @@
 # Magic Studio
 
-[![UI TypeScript & JS](https://img.shields.io/badge/UI_TypeScript_%26_JS-48%2F48_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/40)
-[![Tauri Desktop Shell](https://img.shields.io/badge/Tauri_Shell-8%2F8_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/42)
-[![Rust Engine Lizard](https://img.shields.io/badge/Rust_Engine_Lizard-57%2F57_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/41)
-[![Cargo Clippy](https://img.shields.io/badge/cargo_clippy--D_warnings-passing-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/40)
-[![Mayhem Analytics](https://img.shields.io/badge/Mayhem_Scan-0_Rust_%26_TS%2FJS_hotspots-brightgreen)](crates/engine/src/complexity.rs)
+*Draft for content review. Screenshots are omitted from this text-only version.*
 
 **Songs into animated films.**
 
-Plan scenes, animate artwork, design lyrics, and compose a music video in one
-desktop workspace. The native app, CLI, and MCP share the same Rust engine.
+A desktop workspace for the part between hearing a song and seeing its world.
+Plan scenes, shape artwork, animate characters, and bring words and music into
+the picture. The native app, CLI, and MCP share the same Rust engine.
 
-[Install](#install) · [Production guide](MAGIC-STUDIO.md) ·
-[Documentation](docs/README.md) · [Contributing](#contributing)
+[Platform: Linux source build](#install)
+[ArtCraft suite: required](#made-with-artcraft)
+[Mayhem: measured snapshot](#see-the-work-behind-the-work)
 
-## Storyboard: turn a song into a scene plan
-<!-- EDITORIAL: Insert a real Storyboard capture with authored scenes and artwork.
-Use the natural app-view proportions; keep navigation and useful controls visible.
-Give the image descriptive alt text and retain relevant artwork/song credits. -->
+[Get started](#install) · [Production guide](MAGIC-STUDIO.md) ·
+[Documentation](docs/README.md) · [Contribute](#contributing)
 
-Choose **File → New Project** (`Ctrl+N`), or open an existing `.magic` project.
-In **Storyboard**, bring together the recording, timed lyrics, scene descriptions,
-and artwork. Browse the scene pages and use **Save new version** to keep the plan.
-The storyboard remains an editable DeckCraft document.
+**Requires the [ArtCraft Crafting Apps suite](#made-with-artcraft).**
 
-## Animation: bring artwork to life
-<!-- EDITORIAL: Insert a real Animation capture with a prepared character,
-a selected action, its preview, and the controls used to produce that result. -->
+## From a song to a scene you can see
 
-Open **Animation** and select a rigged character and an authored action.
-In Blender mode, choose **Render preview** and inspect the movement.
-The render retains an editable Blender scene and a transparent clip in the project.
-See the [animation workflow](docs/workflows/reference-to-animation-video.md)
-for artwork preparation, motion authoring, and the remaining manual handoff.
+Start with a recording and lyrics. Bring scene timing, visual direction, artwork,
+and continuity into one editable storyboard, with an underlying DeckCraft document
+you can keep working on.
 
-## Lyrics: make the words part of the picture
-<!-- EDITORIAL: Insert a real Lyrics capture showing a designed sung line,
-its artwork, and the editing controls. Use only a supplied or cleared excerpt;
-retain the original wording and give the song/recording artist accurate credit. -->
+*Screenshot placeholder: All the Little Bunnies storyboard, Scene 01.*
 
-Open **Lyrics**, select a sung line, and shape its lettering, colour, placement,
-and motion. Give individual words emphasis, preview the treatment on the song
-clock, and save the changes. Visual design preserves the source words and timing.
+*All the Little Bunnies, Scene 01. Song and supplied notes: Kathy Reid-Naiman.
+The planned visual is a real project capture, cropped in PhotoCraft.*
 
-## Studio: bring the film together
-<!-- EDITORIAL: Insert a real Studio capture of the same project's HyperFrames
-composition and preview. Crop only irrelevant space; keep navigation readable.
-Use fluid-width images and real-text captions throughout this walkthrough. -->
+> Jesse Naiman spent two days making his best storyboard by hand. In his own
+> workflow, Magic Studio can bring that work down to a few minutes.
 
-Open **Studio** and choose **Start the studio** when it is off.
-Arrange and preview the linked HyperFrames composition, bringing the song,
-artwork, animation, and lettering together. Composition files stay in the project.
-Sproket's project conversation is available from the top bar when you need help.
+## Give the artwork a performance
 
-## Watch the finished film
+Inspect a character on the stage, choose an authored action, and work with its
+playback and motion curves. Keep the creative decisions close to the result.
+The [animation workflow](MAGIC-STUDIO.md#2-animation-prepare-artwork-and-motion) covers
+artwork preparation, motion authoring, and the remaining manual handoff.
 
-The finished-film example and its verified production credits are pending.
-<!-- EDITORIAL: Insert a real finished video verified as made with Magic Studio:
-a clickable thumbnail, title, watch URL, and verified song/recording credits.
-Credit Jesse Naiman's video and selected artwork created with AI assistance
-where applicable. Verify Magic Studio production provenance before adding it. -->
+*Screenshot placeholder: Babel character study in the Animation editor.*
+
+*Babel character study, shown in the Animation editor. This is a separate project
+from the Bunnies storyboard above.*
+
+Continue through **Lyrics** to design the sung words, then **Studio** to work on
+the linked HyperFrames composition. See the [production guide](MAGIC-STUDIO.md)
+for the complete workflow and its prerequisites.
+
+## See the work behind the work
+
+Mayhem puts source measurements inside the app. Inspect what was scanned, how
+large it is, and where complexity concentrates before deciding what to improve.
+
+*Screenshot placeholder: Mayhem code measurements for the snapshot below.*
+
+| Captured scan | Measured result |
+| --- | ---: |
+| Functions | 3,799 |
+| Files with functions | 181 |
+| Functions above CCN 15 | 0 / 3,799 |
+| Maximum function CCN | 15 |
+
+*Lizard 1.24.3 snapshot, 31 October 2026 UTC, Bunzen revision
+[`57c08ab5`](https://github.com/jessenaiman/magic-studio-app/commit/57c08ab5f75b8e39d2a17f020892016354bae70e).
+These figures describe that scan's measured scope, not the current main branch
+or an overall quality grade.*
+
+<details>
+<summary>Screenshot provenance</summary>
+
+The omitted screenshots are real desktop captures from 31 October 2026 UTC. The Bunnies storyboard
+was captured from runtime `9291bf1-1793291146`; Animation and Mayhem were captured
+from runtime `d730703-1793351806`. The Mayhem report measures the separate source
+revision linked above. Crops preserve the original UI and have no added controls.
+
+</details>
+
+## Made with ArtCraft
+
+**The [ArtCraft Crafting Apps suite](https://getartcraft.com/) is required.**
+Magic Studio coordinates the production; ArtCraft supplies the creative tools
+behind editable documents such as the DeckCraft storyboard. PhotoCraft was also
+used to prepare the planned README screenshots.
+
+Install and manage the suite with the official
+[ArtCraft Launcher](https://github.com/storytold/craft-launcher).
+Explore the [upstream open-source projects](https://github.com/storytold) and
+support the artists and developers building them. The Crafting Apps suite is
+separate from ArtCraft Studio, ArtCraft's generative image and video application.
 
 ## Install
 
 The current source-installation path is for **Linux**; other platforms remain
 unverified. Before building, install:
 
+- The **[ArtCraft Crafting Apps suite](https://getartcraft.com/)**, installed through
+  the [official Launcher](https://github.com/storytold/craft-launcher).
 - Git and Rust/Cargo **1.95 or newer**.
 - Python **3.10+** and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 - [Bun](https://bun.sh/docs/installation) for embedded frontend integrations.
@@ -100,14 +130,19 @@ Open **File → Application Settings** and choose an existing **Production proje
 root** outside the checkout. This selects the destination for new projects;
 it does not move existing ones.
 
-An installed app opens without a provider key. Production workflows require
-separate tools: HyperFrames, relevant Craft applications, and Blender, FFmpeg,
-and Linux user systemd for Blender rendering. See the [production guide](MAGIC-STUDIO.md).
+An installed app opens without a provider key. In addition to the required
+ArtCraft suite, production workflows use HyperFrames; Blender rendering also
+requires Blender, FFmpeg, and Linux user systemd. See the [production guide](MAGIC-STUDIO.md).
 The [setup guide](agent-harness/cli_anything/magic/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
 ## CLI and MCP
+
+Use the same engine from the desktop, a terminal, or your MCP client.
+
+<details>
+<summary>CLI commands and MCP configuration</summary>
 
 The CLI uses the application's command registry:
 
@@ -141,11 +176,13 @@ and **`studio_open`** to open/select a visible project. The
 [Magic command guide](agent-harness/cli_anything/magic/skills/SKILL.md) explains
 project targeting, MCP configuration, and independent session bindings.
 
+</details>
+
 ## Contributing
 
 Focused fixes, documentation improvements, and reproducible bug reports are
 welcome. Start with [CONTRIBUTING](CONTRIBUTING.md) and the
-[architecture guide](docs/architecture/README.md). Keep changes scoped and report
+[architecture guide](docs/ARCHITECTURE.md). Keep changes scoped and report
 the resulting behaviour, checks actually performed, and remaining limitations.
 Use the source setup guide for development; rebuild after editing embedded UI.
 
