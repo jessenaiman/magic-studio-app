@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::workspace::resolve_craft_cli;
 use crate::{Result, Session};
@@ -72,8 +72,14 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
     let host = read_host_telemetry();
     let usage = read_omarchy_usage();
     let project = read_project_analytics(s);
-    let root = crate::workspace::workspace_root(s);
-    let complexity = crate::complexity::read(&root, scan);
+    let complexity = match crate::workspace::audit_source_root(s) {
+        Some(root) => crate::complexity::read(&root, scan),
+        None => json!({
+            "available": false, "tool": "lizard", "state": "source_unavailable",
+            "reason": "Source checkout unavailable. Reinstall Magic Studio from its source checkout to reconnect Mayhem; bundled runtime resources are not source code.",
+            "source_root": null
+        }),
+    };
 
     Ok(json!({
         "ok": true,

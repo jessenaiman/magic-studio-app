@@ -90,6 +90,10 @@ The installer creates an application-owned Python environment and installs:
 - App, runtime, and Python environment: `~/.local/share/magic-studio`.
 - A desktop entry and icon under `~/.local/share`.
 
+Mayhem measures the source checkout recorded by the installer. Keep that checkout
+available; reinstall from its new location if you move it. Runtime assets remain
+bundled separately.
+
 Ensure `~/.local/bin` is on your `PATH`, then launch:
 
 ```sh

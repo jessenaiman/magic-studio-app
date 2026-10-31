@@ -131,6 +131,7 @@ def install_resources(
     (runtime / "installation.json").write_text(
         json.dumps(
             {
+                "source_root": str(root.resolve()),
                 "source_revision": revision,
                 "modified_source_files": dirty,
                 "native_sha256": hashlib.sha256(shell.read_bytes()).hexdigest(),

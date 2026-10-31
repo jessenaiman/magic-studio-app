@@ -39,6 +39,37 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
     s.cwd.clone()
 }
 
+/// Source measurements must never use the installed runtime-resource bundle.
+pub fn audit_source_root(s: &crate::Session) -> Option<PathBuf> {
+    let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    resolve_audit_source(&workspace_root(s), &manifest_root, &s.cwd)
+}
+
+fn source_checkout(root: &Path) -> Option<PathBuf> {
+    let root = root.canonicalize().ok()?;
+    (root.join("Cargo.toml").is_file()
+        && root.join("apps/src-tauri/Cargo.toml").is_file()
+        && root.join("crates/engine/Cargo.toml").is_file())
+    .then_some(root)
+}
+
+fn resolve_audit_source(runtime: &Path, built_from: &Path, cwd: &Path) -> Option<PathBuf> {
+    let installed = std::fs::read(runtime.join("installation.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+    if let Some(recorded) = installed.as_ref().and_then(|v| v.get("source_root")) {
+        // A moved/malformed recorded checkout must not silently select another repository.
+        let recorded = Path::new(recorded.as_str()?);
+        return recorded
+            .is_absolute()
+            .then(|| source_checkout(recorded))
+            .flatten();
+    }
+    // Legacy installations did not record their source path. Retain development use
+    // without ever treating the bundled runtime as source.
+    source_checkout(built_from).or_else(|| source_checkout(cwd))
+}
+
 /// Resolve a potentially relative path against the session workspace root.
 pub fn resolve_workspace_path(s: &crate::Session, raw: &str) -> PathBuf {
     let p = Path::new(raw);
@@ -232,4 +263,97 @@ pub fn asset_id_for_import(typed_name: Option<&str>, path: &Path) -> String {
                 .and_then(try_sanitize_asset_id)
         })
         .unwrap_or_else(|| "asset".to_string())
+}
+
+#[cfg(test)]
+mod audit_source_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "magic-audit-source-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+        fn checkout(&self, name: &str) -> PathBuf {
+            let root = self.0.join(name);
+            for path in [
+                "Cargo.toml",
+                "apps/src-tauri/Cargo.toml",
+                "crates/engine/Cargo.toml",
+            ] {
+                let path = root.join(path);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, "").unwrap();
+            }
+            root
+        }
+        fn runtime(&self, metadata: Value) -> PathBuf {
+            let root = self.0.join("runtime");
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("installation.json"), metadata.to_string()).unwrap();
+            root
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn installed_audit_uses_recorded_source_not_runtime_or_cwd() {
+        let f = Fixture::new();
+        let source = f.checkout("source");
+        let other = f.checkout("other");
+        let runtime = f.runtime(serde_json::json!({"source_root": source}));
+        assert_eq!(
+            resolve_audit_source(&runtime, &other, &other),
+            source_checkout(&source)
+        );
+        assert!(runtime.join("installation.json").is_file());
+    }
+
+    #[test]
+    fn moved_or_invalid_recorded_source_does_not_fall_back() {
+        let f = Fixture::new();
+        let fallback = f.checkout("fallback");
+        for value in [
+            serde_json::json!(f.0.join("moved")),
+            serde_json::json!("relative"),
+            Value::Null,
+        ] {
+            let runtime = f.runtime(serde_json::json!({"source_root": value}));
+            assert_eq!(resolve_audit_source(&runtime, &fallback, &fallback), None);
+        }
+    }
+
+    #[test]
+    fn legacy_install_uses_existing_build_checkout() {
+        let f = Fixture::new();
+        let source = f.checkout("source");
+        let runtime = f.runtime(serde_json::json!({"source_revision": "legacy"}));
+        assert_eq!(
+            resolve_audit_source(&runtime, &source, &f.0),
+            source_checkout(&source)
+        );
+    }
+
+    #[test]
+    fn source_unavailable_never_audits_runtime_bundle() {
+        let f = Fixture::new();
+        let runtime = f.runtime(serde_json::json!({}));
+        assert_eq!(
+            resolve_audit_source(&runtime, &f.0.join("gone"), &runtime),
+            None
+        );
+    }
 }
