@@ -89,6 +89,46 @@ Explore the [upstream open-source projects](https://github.com/storytold) and
 support the artists and developers building them. The Crafting Apps suite is
 separate from ArtCraft Studio, ArtCraft's generative image and video application.
 
+## Meet Fidget and Scribbles
+
+Two familiar faces keep help close to your creative work. Open either one from
+Magic Studio's top bar; their drawers share the space and keep their own drafts.
+
+- **Fidget the dog** is your project chat assistant. Discuss the storyboard,
+  describe a change, or use **Point** to attach a picture of an app control.
+  Open **Fidget → Agent settings**, choose an installed agent with a headless
+  mode, and use **Refresh models** to find its available provider/model IDs.
+  Set **Agent**, **Provider**, **Model** and, if needed, **Thinking** or
+  **Extra args**, then select **Save**. Set up that agent's provider or local
+  model through its normal tools first. Saving applies the chat selection and
+  attempts to retain it for the next launch; the next message starts fresh.
+  **New chat** starts a new conversation while preserving earlier history.
+- **Scribbles the cat** is the separate artwork composer. It uses the logged-in
+  **Codex CLI** and its native image tool; `codex` must be available on the app's
+  `PATH`, with access to that tool. Open **Scribbles → Artwork settings** to
+  choose **Model**, enter a **Prompt**, then select **Generate candidate**.
+  The model field selects the Codex agent, not a fixed image resolution.
+  Inspect the returned artwork before using it. These image settings do not
+  change Fidget's chat/provider selection. Artwork settings also expose a
+  **CLI command** and **Copy command** without executing it.
+
+The **Ambient companions** checkbox in Fidget's settings is off by default.
+It enables optional visual mascots that follow existing UI status signals;
+those movements do not independently diagnose problems or create artwork.
+
+For terminal use, discover the same supported configuration and image controls:
+
+```sh
+magic-cli agent config --help
+magic-cli agent models --help
+magic-cli image generate --help
+```
+
+Fidget and Scribbles are display names. Legacy `sprocket.*` command identifiers
+and internal companion/asset keys remain compatible. See the
+[production guide](MAGIC-STUDIO.md#project-agent-and-observers) for project
+sessions and the separate HyperFrames composition workflow.
+
 ## Install
 
 The current source-installation path is for **Linux**; other platforms remain
