@@ -152,7 +152,7 @@
     },
     "magic-image-pane": {
       "component": "panel",
-      "label": "Doodle artwork",
+      "label": "Scribbles artwork",
       "indicator": "hidden",
       "look": "artwork",
       "rail": "magic-image-pane"
@@ -284,7 +284,7 @@
       "component": "panel-head",
       "look": "heading",
       "density": "normal",
-      "label": "Doodle artwork",
+      "label": "Scribbles artwork",
       "indicator": "hidden",
       "target": "magic-image-pane"
     },
@@ -1326,13 +1326,13 @@
     },
     "gaffer-toggle": {
       "component": "ghost",
-      "label": "Doodle artwork",
+      "label": "Scribbles artwork",
       "target": "magic-image-pane",
       "indicator": "icon"
     },
     "gaffer-close": {
       "component": "icon",
-      "label": "Close Doodle artwork",
+      "label": "Close Scribbles artwork",
       "indicator": "hidden",
       "target": "magic-image-pane"
     },
@@ -1788,7 +1788,7 @@
     },
     "asset-sheet-full-prompt": {
       "component": "field",
-      "label": "Full Doodle prompt",
+      "label": "Full Scribbles prompt",
       "indicator": "hidden"
     },
     "asset-sheet-timing": {

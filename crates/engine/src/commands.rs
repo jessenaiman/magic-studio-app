@@ -1471,7 +1471,7 @@ fn specs_assets_and_sheets() -> Vec<CommandSpec> {
             "Generate Reviewable Asset Sheet Drafts",
             ["Rig & Matting"],
             None,
-            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Doodle model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
+            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Scribbles model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
             always,
             cmd_assets_agent_sheets
         ),

@@ -781,7 +781,7 @@ fn chat_instructions(s: &Session) -> Result<String> {
 fn chat_task(params: &Value) -> Result<String> {
     if params["image_task"] == true {
         Ok(format!(
-            "You are Fidget, the bounded tasks, tools, and error-sniffing assistant (never image generation; Doodle handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
+            "You are Fidget, the bounded tasks, tools, and error-sniffing assistant (never image generation; Scribbles handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
             bounded_task_cli()?.display()
         ))
     } else {

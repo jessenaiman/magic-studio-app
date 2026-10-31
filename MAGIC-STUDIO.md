@@ -93,7 +93,7 @@ Fidget uses `agent.send`, `agent.log`, and `agent.session` in the selected proje
 Select the intended window first; poll the existing request rather than resending
 it. `agent.new_chat` explicitly creates a fresh conversation and archives history.
 Model/provider selection belongs to that Studio instance, separate from shared
-credentials/defaults. Doodle artwork uses the separate image operation.
+credentials/defaults. Scribbles artwork uses the separate image operation.
 
 [Backstage](apps/backstage/README.md) observes saved project references and
 engineering evidence; it does not control sessions. [Backlot](backlot/README.md)
