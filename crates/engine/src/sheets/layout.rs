@@ -1,4 +1,4 @@
-//! One panel contract for the drawing guide, Gaffer's prompt, and extraction.
+//! One panel contract for the drawing guide, Doodle's prompt, and extraction.
 use crate::{EngineError, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

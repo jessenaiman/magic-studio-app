@@ -602,7 +602,7 @@ fn prepare(s: &mut Session, p: &Value, prompt: &str) -> Result<Prepared> {
     })
 }
 
-/// The result every provider returns, so the Gaffer and the asset registry see one shape.
+/// The result every provider returns, so the Doodle and the asset registry see one shape.
 fn attached_result(
     s: &mut Session,
     p: &Value,

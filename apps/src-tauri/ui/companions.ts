@@ -2,7 +2,7 @@
 //
 //   0 none · 1 green in use · 2 yellow attention · 3 red problem
 //
-// Sproket goes to the worst red/yellow and poses alert or work. Gaffer follows the most recently
+// Fidget goes to the worst red/yellow and poses alert or work. Doodle follows the most recently
 // changed signal and wanders there. No command is inspected, no job is correlated and no per-control
 // knowledge lives here: a box reports a state, the state maps to a number, the number picks a pose.
 class CompanionPetsController {

@@ -112,13 +112,13 @@ class ImagePromptController {
   }
 
   createModelInput(draft, updateCommand) {
-    const model = el('input', { id: 'image-model', value: draft.model, list: 'image-model-options', 'aria-label': 'Gaffer artwork model', title: 'Selected Codex model; pixel dimensions are determined by its native image tool' });
+    const model = el('input', { id: 'image-model', value: draft.model, list: 'image-model-options', 'aria-label': 'Doodle artwork model', title: 'Selected Codex model; pixel dimensions are determined by its native image tool' });
     model.addEventListener('input', () => {
       draft.model = model.value;
       updateCommand();
       if (!draft.busy && !draft.result && !draft.error) {
         const hdr = document.getElementById?.('magic-image-toggle');
-        if (hdr) hdr.title = `Gaffer · Artwork · ${draft.model}`;
+        if (hdr) hdr.title = `Doodle · Artwork · ${draft.model}`;
       }
     });
     return model;
@@ -127,7 +127,7 @@ class ImagePromptController {
   renderBlock() {
     const project = state.project;
     const draft = this.draftFor(project);
-    const prompt = el('textarea', { id: 'image-prompt', rows: '3', placeholder: 'Describe the artwork or part repair…', 'aria-label': 'Gaffer artwork prompt' });
+    const prompt = el('textarea', { id: 'image-prompt', rows: '3', placeholder: 'Describe the artwork or part repair…', 'aria-label': 'Doodle artwork prompt' });
     prompt.value = prompt.defaultValue = draft.prompt;
     const command = el('code', { id: 'image-command' });
     const updateCommand = () => {
@@ -145,7 +145,7 @@ class ImagePromptController {
     const status = el('p', { id: 'image-status', role: 'status', 'aria-live': 'polite', class: 'why' });
     const updateStatus = () => this.setStatus(status, draft, targetLabel, elapsed);
     updateStatus();
-    const generate = el('button', { id: 'image-generate', 'data-commands': 'image.generate', 'aria-label': 'Gaffer: generate artwork candidate', onclick: async () => { await this.generate(draft, project, prompt, generate, updateStatus, elapsed); } }, draft.busy ? 'Generating…' : 'Generate candidate');
+    const generate = el('button', { id: 'image-generate', 'data-commands': 'image.generate', 'aria-label': 'Doodle: generate artwork candidate', onclick: async () => { await this.generate(draft, project, prompt, generate, updateStatus, elapsed); } }, draft.busy ? 'Generating…' : 'Generate candidate');
     generate.disabled = draft.busy;
     const copy = el('button', { class: 'ghost', id: 'image-copy-command', title: 'Copy the exact image command without executing it', onclick: async () => {
       try { await navigator.clipboard.writeText(command.textContent); toast('Image command copied · nothing executed'); }
