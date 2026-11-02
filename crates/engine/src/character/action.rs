@@ -1,6 +1,8 @@
 //! `character.action`: key one action from the shared pose table onto the rig in EffectCraft
 //! (`prop.addKey` per pose), then Easy Ease the keys, as an animator blocks and smooths a cycle.
 
+use std::collections::HashMap;
+
 use serde_json::{Value, json};
 
 use super::{POSES, View, bad, effectcraft, point, step};
@@ -69,7 +71,7 @@ fn channel_keys(layer: &str, channels: &Value, joint: [f64; 2], when: &Placement
 }
 
 /// Each layer's rest position as EffectCraft reported it after rigging (parent space).
-fn rest_positions(parts: &Value) -> Result<std::collections::HashMap<String, [f64; 2]>> {
+fn rest_positions(parts: &Value) -> Result<HashMap<String, [f64; 2]>> {
     let rest = parts["rest_position"]
         .as_object()
         .ok_or_else(|| bad("parts.json has no rest positions; run character.rig again"))?;
@@ -77,6 +79,42 @@ fn rest_positions(parts: &Value) -> Result<std::collections::HashMap<String, [f6
         .iter()
         .filter_map(|(id, v)| point(v).map(|p| (id.clone(), p)))
         .collect())
+}
+
+/// Gap between actions in the library, so each one starts from the rest pose.
+const GAP: f64 = 0.5;
+const CHANNELS: [&str; 3] = ["position", "rotation", "scale"];
+
+/// Rest-pose keys for every layer at `t`, so no action leaks into the next one.
+fn rest_keys(rest: &HashMap<String, [f64; 2]>, t: f64, mirror: bool) -> Vec<Value> {
+    let mut out = Vec::new();
+    for (layer, position) in rest {
+        for channel in CHANNELS {
+            let value = match channel {
+                "position" => json!(position),
+                "rotation" => json!(0),
+                _ => mirrored(channel, layer, json!([100, 100]), mirror),
+            };
+            out.push(step(
+                "prop.addKey",
+                json!({"layer": layer, "path": format!("transform/{channel}"),
+                "time": t, "timeBase": "comp", "value": value}),
+            ));
+        }
+    }
+    out
+}
+
+/// Where the action lives in the library: its saved range, or the next free slot.
+fn library_slot(parts: &Value, name: &str, p: &Value) -> (Option<Value>, f64) {
+    let library = parts["actions"].as_object();
+    let saved = library.and_then(|l| l.get(name)).cloned();
+    let next = library
+        .into_iter()
+        .flatten()
+        .filter_map(|(_, r)| r["end"].as_f64())
+        .fold(0.0_f64, |a, b| a.max(b + GAP));
+    (saved, p["at"].as_f64().unwrap_or(next).max(0.0))
 }
 
 pub fn cmd_character_action(s: &mut Session, p: &Value) -> Result<Value> {
@@ -87,36 +125,45 @@ pub fn cmd_character_action(s: &mut Session, p: &Value) -> Result<Value> {
         .as_str()
         .ok_or_else(|| bad("action=<name> is required"))?;
     let (action, keys) = action_keys(&table, name)?;
-    let joints = rest_positions(&view.parts()?)?;
+    let mut parts = view.parts()?;
+    let (saved, at) = library_slot(&parts, name, p);
+    if let Some(range) = saved.filter(|_| p["rekey"] != true) {
+        return Ok(
+            json!({"ok": true, "action": name, "start": range["start"], "end": range["end"],
+            "loop": action["loop"], "ecproj": project, "keyed": false}),
+        );
+    }
+    let rest = rest_positions(&parts)?;
     let when = Placement {
-        at: p["at"].as_f64().unwrap_or(0.0).max(0.0),
+        at,
         duration: action["duration"].as_f64().unwrap_or(1.0),
         times: p["times"].as_u64().unwrap_or(1).clamp(1, 64),
         mirror: action["mirror"] == true,
     };
+    let end = when.at + when.duration * when.times as f64;
     let mut steps = vec![step("comp.open", json!({"comp": view.comp()}))];
+    steps.extend(rest_keys(&rest, when.at, when.mirror));
+    steps.extend(rest_keys(&rest, end, when.mirror));
     let mut keyed = Vec::new();
     for (layer, channels) in keys.as_object().into_iter().flatten() {
-        let Some(joint) = joints.get(layer) else {
+        let Some(position) = rest.get(layer) else {
             continue;
         };
-        steps.extend(channel_keys(layer, channels, *joint, &when));
+        steps.extend(channel_keys(layer, channels, *position, &when));
         keyed.push(layer.clone());
     }
-    if when.mirror && !keys["root"]["scale"].is_array() {
-        steps.push(step(
-            "prop.addKey",
-            json!({"layer": "root", "path": "transform/scale",
-            "time": when.at, "timeBase": "comp", "value": [-100, 100]}),
-        ));
-    }
+    steps.push(step(
+        "comp.settings",
+        json!({"duration": end.max(10.0) + GAP}),
+    ));
     steps.push(step("keys.selectAll", json!({})));
     steps.push(step("keys.easyEase", json!({})));
     effectcraft(&view.dir, Some(&project), &steps)?;
-    let end = when.at + when.duration * when.times as f64;
+    parts["actions"][name] = json!({"start": when.at, "end": end, "times": when.times});
+    view.write_parts(&parts)?;
     Ok(
         json!({"ok": true, "action": name, "layers": keyed, "start": when.at, "end": end,
-        "loop": action["loop"], "ecproj": project}),
+        "loop": action["loop"], "ecproj": project, "keyed": true}),
     )
 }
 

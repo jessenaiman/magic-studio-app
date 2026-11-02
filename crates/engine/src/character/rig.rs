@@ -68,6 +68,8 @@ fn record_rest(view: &View, project: &std::path::Path, mut parts: Value) -> Resu
         rest.insert(id.clone(), v.get("value").cloned().unwrap_or(v));
     }
     parts["rest_position"] = Value::Object(rest);
+    // A fresh rig has no keys, so its action library starts empty.
+    parts["actions"] = json!({});
     view.write_parts(&parts)
 }
 
