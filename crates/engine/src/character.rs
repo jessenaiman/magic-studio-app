@@ -10,6 +10,7 @@ mod cut;
 mod mark;
 mod meta;
 mod rig;
+mod shot;
 mod sprite;
 
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ pub use cut::cmd_character_cut;
 pub use mark::cmd_character_mark;
 pub use meta::{cmd_character_meta, cmd_character_save_marks};
 pub use rig::cmd_character_rig;
+pub use shot::cmd_character_shot;
 pub use sprite::cmd_character_sprite;
 
 /// The shared skeleton and its key poses, applied to every character.

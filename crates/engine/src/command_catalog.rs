@@ -53,6 +53,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"character.frame"
             | b"character.render"
             | b"character.sprite"
+            | b"character.shot"
             | b"character.set"
     )
 }
@@ -1146,6 +1147,15 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
 /// Characters: Scribbles marks, PhotoCraft cuts, EffectCraft rigs, animates and renders.
 fn specs_character() -> Vec<CommandSpec> {
     vec![
+        cmd!(
+            "character.shot",
+            "Place a Sprite in a Scene Shot (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"sprite\":\"sprite name\",\"name\":\"optional shot name\",\"duration\":4,\"from\":[960,780],\"to\":[960,780],\"scale\":100,\"mirror\":false}",
+            always,
+            crate::character::cmd_character_shot
+        ),
         cmd!(
             "character.sprite",
             "Sprite Cycle from a Scribbles Sheet (PhotoCraft, EffectCraft)",
