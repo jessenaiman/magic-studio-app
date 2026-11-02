@@ -40,6 +40,13 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.snapshot"
             | b"video.render"
             | b"image.generate"
+            | b"character.mark"
+            | b"character.cut"
+            | b"character.rig"
+            | b"character.action"
+            | b"character.frame"
+            | b"character.render"
+            | b"character.set"
     )
 }
 
@@ -85,6 +92,7 @@ pub fn build() -> Vec<CommandSpec> {
         specs_storyboard_part2,
         specs_workshop_and_video,
         specs_video_and_intake,
+        specs_character,
         specs_export_and_diagnostics,
     ] {
         specs.extend(section());
@@ -1123,6 +1131,90 @@ fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
             "List Commands",
             "{\"filter\":\"optional command ID or search text\"}",
             cmd_query_list
+        ),
+    ]
+}
+
+/// Characters: Scribbles marks, PhotoCraft cuts, EffectCraft rigs, animates and renders.
+fn specs_character() -> Vec<CommandSpec> {
+    vec![
+        query!(
+            "character.list",
+            "Characters and Their App Files",
+            "{}",
+            crate::character::cmd_character_list
+        ),
+        query!(
+            "character.actions",
+            "Actions in the Shared Pose Table",
+            "{}",
+            crate::character::cmd_character_actions
+        ),
+        cmd!(
+            "character.mark",
+            "Mark Parts and Joints (Scribbles)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"image\":\"drawing.png\",\"timeout_s\":600}",
+            always,
+            crate::character::cmd_character_mark
+        ),
+        cmd!(
+            "character.cut",
+            "Cut Parts into Layers (PhotoCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\"}",
+            always,
+            crate::character::cmd_character_cut
+        ),
+        cmd!(
+            "character.rig",
+            "Rig the Puppet (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\"}",
+            always,
+            crate::character::cmd_character_rig
+        ),
+        cmd!(
+            "character.action",
+            "Key an Action (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"action\":\"idle|walk_down|walk_up|walk_left|walk_right|jump|turn|wave\",\"at\":0,\"times\":1}",
+            always,
+            crate::character::cmd_character_action
+        ),
+        cmd!(
+            "character.render",
+            "Render Frames or a Clip (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"start\":0,\"end\":1,\"fps\":24,\"format\":\"frames|clip\"}",
+            always,
+            crate::character::cmd_character_render
+        ),
+        query!(
+            "character.frame",
+            "Render a Frame (EffectCraft)",
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"time\":0,\"max_side\":900}",
+            crate::character::cmd_character_frame
+        ),
+        cmd!(
+            "character.set",
+            "Key One Transform (EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"part\":\"layer\",\"prop\":\"position|rotation|scale|anchor|opacity\",\"value\":0,\"time\":0}",
+            always,
+            crate::character::cmd_character_set
+        ),
+        query!(
+            "character.open",
+            "Open in EffectCraft or PhotoCraft",
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"app\":\"effectcraft|photocraft\"}",
+            crate::character::cmd_character_open
         ),
     ]
 }

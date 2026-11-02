@@ -56,6 +56,7 @@ fn main() {
 fn theatre_bundle() {
     let sources = [
         "frontend/theatre-frame.ts",
+        "frontend/stage-canvas.ts",
         "frontend/backstage-terminal.ts",
         "frontend/project-id.ts",
         "frontend/package.json",
@@ -67,6 +68,7 @@ fn theatre_bundle() {
     let modified = |path: &str| std::fs::metadata(path).and_then(|m| m.modified()).ok();
     let bundle = modified("ui/vendor/theatre.bundle.js");
     if bundle.is_some()
+        && modified("ui/vendor/konva.bundle.js").is_some()
         && modified("ui/vendor/backstage/backstage-terminal.js").is_some()
         && sources.iter().all(|s| {
             modified(s) <= modified("ui/vendor/backstage/backstage-terminal.js")
@@ -89,6 +91,7 @@ fn theatre_bundle() {
     };
     if !std::path::Path::new("frontend/node_modules/@theatre/studio").exists()
         || !std::path::Path::new("frontend/node_modules/@xterm/xterm").exists()
+        || !std::path::Path::new("frontend/node_modules/konva").exists()
     {
         bun(&["install"]);
     }

@@ -1,0 +1,116 @@
+{
+  "skeleton": "plush-9",
+  "about": "Key poses for the shared plush skeleton. Times are seconds within one cycle. rotation and position are offsets from the part's rest pose (degrees; [dx, dy] pixels at the drawing's size); scale is absolute [x%, y%]. Parts: root (null), torso, head, ear_L, ear_R, arm_L, arm_R, leg_L, leg_R, tail. _L/_R are the character's own left/right. Walk follows contact (0, 0.5), down (0.125, 0.625), passing (0.25, 0.75) and up (0.375, 0.875); ears and tail trail their parent by about two frames.",
+  "parts": ["torso", "head", "ear_L", "ear_R", "arm_L", "arm_R", "leg_L", "leg_R", "tail"],
+  "actions": {
+    "idle": {
+      "views": ["front", "back", "side"],
+      "duration": 2.0,
+      "loop": true,
+      "keys": {
+        "torso": {"scale": [[0, [100, 100]], [1.0, [100, 102]], [2.0, [100, 100]]]},
+        "head": {"rotation": [[0, 0], [1.1, 1.5], [2.0, 0]]},
+        "ear_L": {"rotation": [[0, 0], [1.2, 3], [2.0, 0]]},
+        "ear_R": {"rotation": [[0, 0], [1.3, -3], [2.0, 0]]},
+        "tail": {"rotation": [[0, 0], [1.2, 4], [2.0, 0]]}
+      }
+    },
+    "walk_down": {
+      "views": ["front"],
+      "duration": 1.0,
+      "loop": true,
+      "keys": {
+        "root": {
+          "position": [[0, [0, 0]], [0.125, [0, 6]], [0.25, [0, 0]], [0.375, [0, -6]], [0.5, [0, 0]], [0.625, [0, 6]], [0.75, [0, 0]], [0.875, [0, -6]], [1.0, [0, 0]]],
+          "rotation": [[0, -2], [0.5, 2], [1.0, -2]]
+        },
+        "head": {"rotation": [[0, 1.5], [0.5, -1.5], [1.0, 1.5]]},
+        "leg_L": {"position": [[0, [0, 0]], [0.5, [0, 0]], [0.75, [0, -14]], [1.0, [0, 0]]]},
+        "leg_R": {"position": [[0, [0, 0]], [0.25, [0, -14]], [0.5, [0, 0]], [1.0, [0, 0]]]},
+        "arm_L": {"rotation": [[0, -8], [0.5, 8], [1.0, -8]]},
+        "arm_R": {"rotation": [[0, -8], [0.5, 8], [1.0, -8]]},
+        "ear_L": {"rotation": [[0.08, -4], [0.58, 4], [1.0, -3]]},
+        "ear_R": {"rotation": [[0.08, -4], [0.58, 4], [1.0, -3]]},
+        "tail": {"rotation": [[0.08, -5], [0.58, 5], [1.0, -4]]}
+      }
+    },
+    "walk_up": {
+      "views": ["back"],
+      "duration": 1.0,
+      "loop": true,
+      "same_as": "walk_down"
+    },
+    "walk_right": {
+      "views": ["side"],
+      "duration": 1.0,
+      "loop": true,
+      "keys": {
+        "root": {
+          "position": [[0, [0, 0]], [0.125, [0, 6]], [0.25, [0, 0]], [0.375, [0, -6]], [0.5, [0, 0]], [0.625, [0, 6]], [0.75, [0, 0]], [0.875, [0, -6]], [1.0, [0, 0]]]
+        },
+        "head": {"rotation": [[0, -2], [0.5, 2], [1.0, -2]]},
+        "leg_L": {
+          "rotation": [[0, 25], [0.25, 0], [0.5, -25], [0.75, 0], [1.0, 25]],
+          "position": [[0, [0, 0]], [0.5, [0, 0]], [0.75, [0, -8]], [1.0, [0, 0]]]
+        },
+        "leg_R": {
+          "rotation": [[0, -25], [0.25, 0], [0.5, 25], [0.75, 0], [1.0, -25]],
+          "position": [[0, [0, 0]], [0.25, [0, -8]], [0.5, [0, 0]], [1.0, [0, 0]]]
+        },
+        "arm_L": {"rotation": [[0, -20], [0.5, 20], [1.0, -20]]},
+        "arm_R": {"rotation": [[0, 20], [0.5, -20], [1.0, 20]]},
+        "ear_L": {"rotation": [[0.08, -6], [0.58, 6], [1.0, -5]]},
+        "ear_R": {"rotation": [[0.08, -6], [0.58, 6], [1.0, -5]]},
+        "tail": {"rotation": [[0.08, -8], [0.58, 8], [1.0, -6]]}
+      }
+    },
+    "walk_left": {
+      "views": ["side"],
+      "duration": 1.0,
+      "loop": true,
+      "same_as": "walk_right",
+      "mirror": true
+    },
+    "jump": {
+      "views": ["front", "back", "side"],
+      "duration": 1.0,
+      "loop": false,
+      "keys": {
+        "root": {
+          "position": [[0, [0, 0]], [0.2, [0, 14]], [0.45, [0, -120]], [0.55, [0, -120]], [0.8, [0, 10]], [1.0, [0, 0]]],
+          "scale": [[0, [100, 100]], [0.2, [104, 94]], [0.35, [96, 106]], [0.8, [104, 95]], [1.0, [100, 100]]]
+        },
+        "arm_L": {"rotation": [[0, 0], [0.2, 20], [0.45, -70], [0.8, 10], [1.0, 0]]},
+        "arm_R": {"rotation": [[0, 0], [0.2, -20], [0.45, 70], [0.8, -10], [1.0, 0]]},
+        "leg_L": {"rotation": [[0, 0], [0.45, 10], [0.8, 0]]},
+        "leg_R": {"rotation": [[0, 0], [0.45, -10], [0.8, 0]]},
+        "ear_L": {"rotation": [[0, 0], [0.3, 10], [0.55, -12], [0.9, 4], [1.0, 0]]},
+        "ear_R": {"rotation": [[0, 0], [0.3, -10], [0.55, 12], [0.9, -4], [1.0, 0]]},
+        "tail": {"rotation": [[0, 0], [0.3, 8], [0.55, -8], [1.0, 0]]}
+      }
+    },
+    "turn": {
+      "views": ["front", "back", "side"],
+      "duration": 1.2,
+      "loop": true,
+      "keys": {
+        "root": {
+          "scale": [[0, [100, 100]], [0.3, [4, 100]], [0.6, [-100, 100]], [0.9, [-4, 100]], [1.2, [100, 100]]],
+          "position": [[0, [0, 0]], [0.3, [0, -10]], [0.6, [0, 0]], [0.9, [0, -10]], [1.2, [0, 0]]]
+        },
+        "ear_L": {"rotation": [[0.1, 6], [0.7, -6], [1.2, 0]]},
+        "ear_R": {"rotation": [[0.1, 6], [0.7, -6], [1.2, 0]]}
+      }
+    },
+    "wave": {
+      "views": ["front", "side"],
+      "duration": 2.0,
+      "loop": true,
+      "keys": {
+        "arm_L": {"rotation": [[0, 0], [0.3, -120], [0.6, -100], [0.9, -120], [1.2, -100], [1.5, -120], [2.0, 0]]},
+        "head": {"rotation": [[0, 0], [0.5, -3], [1.5, -3], [2.0, 0]]},
+        "ear_L": {"rotation": [[0.1, 0], [0.6, 4], [1.6, 4], [2.0, 0]]}
+      }
+    }
+  }
+}

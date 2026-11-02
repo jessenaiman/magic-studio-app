@@ -66,6 +66,7 @@ mod agent_run;
 pub mod assembly;
 pub(crate) mod audio_trace;
 pub mod change_marker;
+pub mod character;
 pub mod command_catalog;
 pub mod command_center;
 pub mod commands;
