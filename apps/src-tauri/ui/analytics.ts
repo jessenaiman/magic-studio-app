@@ -114,15 +114,16 @@ function mayhemCoverage(comp) {
 }
 
 function mayhemHealthWarnings(d: any): string[] {
-  const comp = d?.complexity, tools = d?.tools;
-  const missing = Array.isArray(tools) ? tools.filter(tool => tool.available === false).length : 0;
-  const failed = comp?.scan_failures?.length || 0;
-  const hotspots = comp?.available === true && Number.isFinite(comp.functions_over_ccn_15) ? comp.functions_over_ccn_15 : 0;
+  const {complexity: comp = {}, tools = [], runtime_errors: runtime = {}} = d || {};
+  const missing = tools.filter(tool => tool.available === false).length;
+  const failed = (comp.scan_failures || []).length;
+  const hotspots = mayhemMeasure(comp, 'functions_over_ccn_15');
   const warnings = [];
   if (missing) warnings.push(`${missing} tools not found`);
   if (failed) warnings.push(`${failed} scan targets failed`);
   if (hotspots) warnings.push(`${hotspots} functions over CCN 15 in saved scan`);
-  if (comp?.last_error || comp?.cache_error) warnings.push('scan error recorded');
+  if (comp.last_error || comp.cache_error) warnings.push('scan error recorded');
+  if (runtime.retained_error_count) warnings.push(`${runtime.retained_error_count} recorded runtime errors`);
   return warnings;
 }
 
@@ -203,11 +204,23 @@ function mayhemOverview(d) {
   const comp = d.complexity || {}, usage = d.usage || {};
   return [
     mayhemStats(...mayhemCodeStats(comp).slice(0, 2), mayhemUsageStats(usage)[0], mayhemToolStat(d.tools)),
+    mayhemRuntimeErrors(d.runtime_errors),
     new ReportSection({title: 'Language & web stack breakdown', note: 'Color-coded by language: Desktop UI uses HTML + TypeScript + CSS; Remotion uses TSX.'}, mayhemLanguageBreakdown(comp)).element,
     el('div', {class: 'report-columns'},
       new ReportSection({title: 'Complexity hotspots', note: mayhemCoverage(comp)}, mayhemHotspots(comp, 6)).element,
       new ReportSection({title: 'Usage today', note: 'Recorded by local agent tools · not billing'}, mayhemAgents(usage, true)).element),
   ];
+}
+
+function mayhemRuntimeErrors(report: any) {
+  return new ReportSection({title: 'Recorded runtime errors', note: report?.coverage || 'Runtime error report unavailable.'},
+    new ReportTable({rows: report?.errors || [], empty: 'No retained errors for this project. Workflows remain unassessed.', columns: [
+      {label: 'When', value: row => mayhemTime(Number(row.unix_micros) / 1000000)},
+      {label: 'Operation', value: row => row.command || row.stage},
+      {label: 'Origin', value: row => row.origin || 'Unspecified'},
+      {label: 'Error', value: row => row.error || 'Failure recorded without details', title: row => [row.error, ...(row.causes || [])].filter(Boolean).join('\n')},
+      {label: 'Request', value: row => row.request_id || '—'},
+    ]}).element).element;
 }
 
 function mayhemFileTable(comp, rows) {

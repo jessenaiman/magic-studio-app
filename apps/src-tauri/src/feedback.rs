@@ -16,6 +16,7 @@ pub fn ui_report(app: tauri::AppHandle, report: Value) -> Result<(), String> {
     }
     let state = app.state::<Feedback>();
     let mut v = state.0.lock().map_err(|e| e.to_string())?;
+    record_frontend_errors(&v, &report);
     let revision = v["ui_revision"].as_u64().unwrap_or(0) + 1;
     let engine_revision = v["engine_revision"].clone();
     let mut last = v["last_command"].clone();
@@ -52,6 +53,36 @@ pub fn ui_report(app: tauri::AppHandle, report: Value) -> Result<(), String> {
     v["ack_engine_revision"] = json!(acknowledged);
     v["updated_unix_ms"] = json!(now());
     Ok(())
+}
+
+fn record_frontend_errors(previous: &Value, report: &Value) {
+    let Some(errors) = report["errors"].as_array() else {
+        return;
+    };
+    for error in errors {
+        if previous["project"] == report["project"]
+            && previous["errors"]
+                .as_array()
+                .is_some_and(|old| old.contains(error))
+        {
+            continue;
+        }
+        let detail = error["message"]
+            .as_str()
+            .unwrap_or("Frontend error without a message");
+        let source = error["source"].as_str().unwrap_or("frontend");
+        let failure = magicstudio_engine::EngineError::CommandFailed(
+            "ui.render".into(),
+            format!("{detail} ({source}, line {})", error["line"]),
+        );
+        let _context =
+            magicstudio_engine::activity::enter("ui.render", &json!({"_origin":"UI feedback"}));
+        magicstudio_engine::activity::error(
+            report["project"].as_str().map(std::path::Path::new),
+            "ui.render",
+            &failure,
+        );
+    }
 }
 fn now() -> u128 {
     std::time::SystemTime::now()

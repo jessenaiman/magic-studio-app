@@ -77,6 +77,7 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
     let root = crate::workspace::workspace_root(s);
     let complexity = crate::complexity::read(&root, scan);
     let worktrees = read_agent_worktrees(&root, scan);
+    let errors = crate::activity::errors(s, &json!({}))?;
 
     Ok(json!({
         "ok": true,
@@ -87,6 +88,7 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
         "project": project,
         "complexity": complexity,
         "worktrees": worktrees,
+        "runtime_errors": errors,
         "sampled_at_unix_secs": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|v|v.as_secs()),
         "sources": {"host":"/proc","usage":"Omarchy local usage records","project":"Project session and .agent chat log; estimated tokens = characters / 4","worktrees":"git worktree list + gh issue list + herdr agent list"},
         "commands": crate::workshop::cmd_query_list(s, &json!({}))?,
