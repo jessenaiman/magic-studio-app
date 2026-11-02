@@ -28,6 +28,17 @@ MCP dispatch uses an AnyIO lock and non-abandoning workers. Cancellation of a cl
 
 Native `--headless run` is a stop-on-error batch; the adapter uses internal `--headless serve` for persistent requests so a validation error does not discard session state. Native pipe reads and writes have the registry-based deadline too. A lost/timed-out native session is unavailable until explicit `project open` recovery; recovery never replays the failed request or replaces a still-running engine. Discovery remains available.
 
+### Runtime errors
+
+`magic-cli --project /absolute/Project.magic app errors` reads retained failures
+from the existing Rust activity journal. MCP uses `command_run` with ID
+`app.errors`. Mayhem reads the same report through `app.analytics.runtime_errors`.
+Use `after=<next_cursor>` and `limit=50` to page through retained failures.
+Rust command errors include their source chain and request ID; frontend failures
+are recorded at the Rust UI-feedback boundary. Reading does not clear errors.
+The bounded journal is observation history, not an assertion that a failure is
+still active or that an empty list proves a working workflow.
+
 ### Saved-project observation
 
 `magic-cli backstage observe path=/absolute/Project.magic` reads the specified saved project

@@ -218,15 +218,9 @@ fn announce_result(s: &Session, id: &str, params: &Value, result: &Result<Value>
             id,
             params,
             outcome_stage(v),
-            None,
+            v["error"].as_str().or_else(|| v["reason"].as_str()),
         ),
-        Err(e) => activity::command(
-            s.project_path.as_deref(),
-            id,
-            params,
-            "engine_error",
-            Some(&e.to_string()),
-        ),
+        Err(e) => activity::error(s.project_path.as_deref(), id, e),
     }
 }
 
@@ -342,7 +336,11 @@ impl Session {
         let _context = activity::enter(id, &params);
         // Cast writes are journaled workshop files, independent of the open song's writer lease.
         let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
-        let _writer = writer_lease(self, id, project_edit)?;
+        let _writer = writer_lease(self, id, project_edit).inspect_err(|error| {
+            if self.record_user_state {
+                activity::error(self.project_path.as_deref(), id, error);
+            }
+        })?;
         let prior_owner = self.project_owner.clone();
         if let Some(owner) = &_writer {
             self.project_owner = Some(owner.clone());
@@ -373,7 +371,7 @@ impl Session {
                 started.elapsed().as_millis(),
             );
         }
-        if record {
+        if record || (self.record_user_state && !result.as_ref().is_ok_and(|v| v["ok"] != false)) {
             announce_result(self, id, &params, &result);
         }
         restore_lease(

@@ -69,6 +69,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         "project.attach"
         | "backstage.observe"
         | "backstage.changes"
+        | "app.errors"
         | "project.identity"
         | "project.list_assets"
         | "project.search"

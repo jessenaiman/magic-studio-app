@@ -1688,6 +1688,12 @@ fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
             cmd_app_doctor
         ),
         query!(
+            "app.errors",
+            "Recorded Runtime Errors",
+            "{\"project\":\"optional absolute .magic path; defaults to selected project\",\"after\":0,\"limit\":50}",
+            crate::activity::errors
+        ),
+        query!(
             "command.list",
             "List Commands",
             "{\"filter\":\"optional command ID or search text\"}",

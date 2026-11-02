@@ -469,6 +469,55 @@ pub fn command(
         json!({"project":project,"project_id":project,"command_id":context["_request_id"],"command":id,"stage":stage,"origin":context["_origin"].as_str().unwrap_or("unspecified"),"client_label":context["_client"].as_str().unwrap_or("unspecified (unverified)"),"identity_status":"supplied label; not authentication","request_id":context["_request_id"],"control":context["_control"],"inputs":bounded,"error":error.map(|s|s.chars().take(350).collect::<String>()),"ui_ack":"not implied by engine completion"}),
     );
 }
+
+/// Record the original Rust error and its source chain at the command boundary.
+/// Presentation reads this existing journal; it never decides command success.
+pub fn error(project: Option<&std::path::Path>, id: &str, error: &crate::EngineError) {
+    use std::error::Error;
+    let context = CONTEXT.with(|v| v.borrow().clone());
+    let mut causes = Vec::new();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        causes.push(cause.to_string());
+        source = cause.source();
+    }
+    append(json!({
+        "stage":"engine_error", "command":id, "project":project,
+        "request_id":context["_request_id"], "origin":context["_origin"],
+        "control":context["_control"], "error":error.to_string(), "causes":causes,
+        "pid":std::process::id(), "severity":"error"
+    }));
+}
+
+/// A project-scoped view of retained failures, shared by Mayhem, CLI and MCP.
+pub fn errors(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
+    let (text, mut history) = read_log()?;
+    history.extend(parse_lines(&text));
+    let selected = selected_project(s, p);
+    let cursor = p["after"].as_u64().unwrap_or(0);
+    let limit = p["limit"].as_u64().unwrap_or(50).clamp(1, 192) as usize;
+    let mut by_sequence = std::collections::BTreeMap::new();
+    for event in newer_than(history, selected.as_ref(), cursor) {
+        if matches!(
+            event["stage"].as_str(),
+            Some("engine_error" | "handler_error" | "theatre_error" | "clip_sheet_failed")
+        ) {
+            by_sequence.insert(event["sequence"].as_u64().unwrap_or(0), event);
+        }
+    }
+    let count = by_sequence.len();
+    let errors: Vec<Value> = by_sequence.into_values().take(limit).collect();
+    let next = errors
+        .last()
+        .and_then(|e| e["sequence"].as_u64())
+        .unwrap_or(cursor);
+    Ok(json!({
+        "ok":true, "project":selected, "errors":errors, "retained_error_count":count,
+        "next_cursor":next, "has_more":count > limit,
+        "assessment":"unassessed", "source":"activity journal",
+        "coverage":"Recorded failures only; bounded history (512 notable events across projects). No errors is not proof of working workflows. A later success does not erase a failure."
+    }))
+}
 /// Measured output evidence supplements the existing started/completed lifecycle, never a UI ack.
 pub fn result(project: Option<&std::path::Path>, id: &str, value: &Value, elapsed_ms: u128) {
     let context = CONTEXT.with(|v| v.borrow().clone());
@@ -520,8 +569,12 @@ fn read_log() -> crate::Result<(String, Vec<Value>)> {
     let Some(path) = path() else {
         return Ok((String::new(), Vec::new()));
     };
-    let Ok(mut file) = OpenOptions::new().read(true).open(path) else {
-        return Ok((String::new(), Vec::new()));
+    let mut file = match OpenOptions::new().read(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((String::new(), Vec::new()));
+        }
+        Err(error) => return Err(error.into()),
     };
     file.lock_shared()?;
     let mut text = String::new();
