@@ -143,6 +143,14 @@ fn remove_retired(prefix: &Path, bin: &Path) -> Result<Vec<PathBuf>> {
             }
         }
     }
+    // The old `magic` launcher was a Python script; only that script is ours to replace.
+    let launcher = bin.join("magic");
+    let python_launcher = !launcher.is_symlink()
+        && std::fs::read_to_string(&launcher).is_ok_and(|s| s.contains("cli_anything.magic"));
+    if python_launcher {
+        io(launcher.display(), std::fs::remove_file(&launcher))?;
+        removed.push(launcher);
+    }
     let venv = prefix.join("share/magic-studio/.venv");
     if venv.is_dir() {
         io(venv.display(), std::fs::remove_dir_all(&venv))?;
@@ -221,8 +229,8 @@ fn install(prefix: Option<PathBuf>, profile: Profile) -> Result<()> {
     let prefix = prefix.unwrap_or_else(|| home.join(".local"));
     let build = built(&root, profile)?;
     install_resources(&root, &prefix, &build.join("magic-studio"))?;
-    let bin = install_binaries(&build, &prefix)?;
-    let removed = remove_retired(&prefix, &bin)?;
+    let removed = remove_retired(&prefix, &prefix.join("share/magic-studio/bin"))?;
+    install_binaries(&build, &prefix)?;
     install_desktop_entry(&root, &prefix)?;
     println!(
         "Installed Magic app, magic-cli, Backstage and desktop entry under {}",

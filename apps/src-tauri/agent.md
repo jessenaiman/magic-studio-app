@@ -18,7 +18,7 @@ live app, act through its tools, show the result, and leave work reversible and 
 ## One application, one live session
 
 Application: `apps/src-tauri` in the current Magic Studio checkout.
-Read [the command contract](../../agent-harness/MAGIC.md). The UI, CLI and MCP adapters
+Read [the command contract](../../apps/magic-cli/MAGIC.md). The UI, CLI and MCP adapters
 share the Rust command registry and the window's engine session. New/Open and project
 workflow controls enter the guarded native dispatch directly; do not add a CLI subprocess loop.
 

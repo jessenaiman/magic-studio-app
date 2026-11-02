@@ -38,6 +38,5 @@ The intended project is selected, its storyboard content or missing state is
 reported, and its linked Studio is visible or the actual blocker is stated.
 A command receipt or prepared workspace is not a finished video.
 
-Details: [routing](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/agent-harness/MAGIC.md),
-[CLI-Anything](https://github.com/HKUDS/CLI-Anything/blob/main/cli-anything-plugin/HARNESS.md),
-[official MCP SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x).
+Details: [routing](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/magic-cli/MAGIC.md),
+[rmcp, the official Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk).

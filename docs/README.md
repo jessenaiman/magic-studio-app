@@ -10,10 +10,10 @@ contributors, and readers exploring Jesse Naiman's project.
 |---|---|
 | Understand the project | [Overview and native captures](../README.md) |
 | Make a song video | [Production guide](../MAGIC-STUDIO.md) |
-| Run or build the app | [Authoritative setup guide](../agent-harness/cli_anything/magic/README.md) |
+| Run or build the app | [Authoritative setup guide](../apps/magic-cli/README.md) |
 | Understand how the pieces fit | [Architecture reading guide](architecture/README.md) |
 | Browse Rust modules, types, and source | [Build the Rust API reference](RUSTDOC.md) |
-| Use CLI or MCP commands | [Command architecture](../agent-harness/MAGIC.md) and [Magic skill](../agent-harness/cli_anything/magic/skills/SKILL.md) |
+| Use CLI or MCP commands | [Command architecture](../apps/magic-cli/MAGIC.md) and [Magic skill](../apps/magic-cli/SKILL.md) |
 | Understand Backstage and its limits | [Observer guide](../apps/backstage/README.md) |
 | Contribute safely | [Contribution and acceptance policy](../CONTRIBUTING.md) |
 

@@ -29,7 +29,6 @@
     "lib",
     "tools",
     "scripts",
-    "agent-harness",
     "schemas"
   ],
   "native_extensions": [

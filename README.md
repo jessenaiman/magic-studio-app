@@ -79,11 +79,11 @@ A fresh build downloads missing Rust, frontend, and Python dependencies.
 ```sh
 git clone https://github.com/jessenaiman/magic-studio-app.git
 cd magic-studio-app
-cargo build -p magic-studio -p backstage --release --locked
-python3 scripts/install_magic.py --profile release
+cargo build -p magic-studio -p magic-cli -p backstage --release --locked
+cargo xtask install --profile release
 ```
 
-This installs **Magic Studio**, **`magic-cli`**, and its MCP server dependencies.
+This installs **Magic Studio** and **`magic-cli`**, which also serves MCP (`magic-cli mcp`).
 The installer creates an application-owned Python environment and installs:
 
 - Commands under `~/.local/bin`.
@@ -103,7 +103,7 @@ it does not move existing ones.
 An installed app opens without a provider key. Production workflows require
 separate tools: HyperFrames, relevant Craft applications, and Blender, FFmpeg,
 and Linux user systemd for Blender rendering. See the [production guide](MAGIC-STUDIO.md).
-The [setup guide](agent-harness/cli_anything/magic/README.md) covers installer
+The [setup guide](apps/magic-cli/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
@@ -138,7 +138,7 @@ server; it does not install the app or open a window.
 
 Use **`command_list`** for discovery, **`command_run`** to execute an operation,
 and **`studio_open`** to open/select a visible project. The
-[Magic command guide](agent-harness/cli_anything/magic/skills/SKILL.md) explains
+[Magic command guide](apps/magic-cli/SKILL.md) explains
 project targeting, MCP configuration, and independent session bindings.
 
 ## Contributing

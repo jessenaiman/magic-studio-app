@@ -2,17 +2,17 @@
 
 ## Desktop and observer
 
-The desktop app is the Tauri shell in `apps/src-tauri/`, with Storyboard,
+The desktop app (`magic-studio`) is the Tauri app in `apps/src-tauri/`, with Storyboard,
 Animation, Lyrics, and Studio views. Its embedded UI, CLI, and MCP share the Rust
 engine registry in `crates/engine/src/commands.rs`. Project persistence and domain
-validation belong to the engine. The CLI-Anything Python harness is an adapter,
-not a second native installer or project implementation.
+validation belong to the engine. `magic-cli` (`apps/magic-cli/`) is a Rust front
+end over that registry, not a second native installer or project implementation.
 
 Backstage (`apps/backstage/`) is a separate Rust/Ratatui observer for saved project
 references, PR handoffs, worktrees, native audit evidence, and settings. See
-[project context](../PROJECT_CONTEXT.md), [command architecture](../agent-harness/MAGIC.md),
+[project context](../PROJECT_CONTEXT.md), [command architecture](../apps/magic-cli/MAGIC.md),
 and [Backstage](../apps/backstage/README.md) for these contracts. The
-[source-installation guide](../agent-harness/cli_anything/magic/README.md) owns
+[source-installation guide](../apps/magic-cli/README.md) owns
 app build and installation instructions.
 
 ## Reusable production pipeline
@@ -48,10 +48,11 @@ Final video output
 ```
 magic-studio-app/
 ├── apps/
-│   ├── src-tauri/            # Tauri shell: Rust engine commands + shell UI
+│   ├── src-tauri/            # magic-studio: Tauri app and its UI
+│   ├── magic-cli/            # magic-cli: command line and MCP (Rust)
 │   └── backstage/            # Rust/Ratatui observer
 ├── crates/engine/            # Shared Rust engine (commands, motion, projects)
-├── agent-harness/            # CLI-Anything magic harness (magic-cli, MCP)
+├── xtask/                    # `cargo xtask install`
 ├── agents/                   # Department agent files (storyboard, animation,
 │                             # lyrics, video-production, mayhem)
 ├── pipeline/                 # Engine-invoked production scripts (animation,

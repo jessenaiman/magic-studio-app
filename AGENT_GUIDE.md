@@ -8,9 +8,9 @@ project inspection, or lettering edit does not require a full pipeline preflight
 Use [onboarding](skills/meta/onboarding.md) only for a genuinely open-ended start.
 
 For app work, read [the app agent contract](apps/src-tauri/agent.md) and
-[the Magic CLI/MCP skill](agent-harness/cli_anything/magic/skills/SKILL.md).
+[the Magic CLI/MCP skill](apps/magic-cli/SKILL.md).
 The four creative areas are Storyboard, Animation, Lyrics, and Studio. Backstage
-is the separate observer. [Setup](agent-harness/cli_anything/magic/README.md) is
+is the separate observer. [Setup](apps/magic-cli/README.md) is
 only needed for an absent installation or an explicitly requested source build.
 
 ## Rule Zero — pipeline production

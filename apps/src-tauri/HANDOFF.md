@@ -7,9 +7,9 @@ Storyboard, Animation, Lyrics, and Studio. `magic` opens the application;
 `magic-cli` and `magic-cli mcp` expose the same registry-owned operations.
 
 Read [the app agent contract](agent.md),
-[the command architecture](../../agent-harness/MAGIC.md), and
+[the command architecture](../../apps/magic-cli/MAGIC.md), and
 [the UI skill](../../.agents/skills/magic-studio-ui/SKILL.md) before app work.
-[Setup](../../agent-harness/cli_anything/magic/README.md) is the single source for
+[Setup](../../apps/magic-cli/README.md) is the single source for
 build and installation. Embedded UI changes need a rebuilt shell.
 
 ## Production workflow

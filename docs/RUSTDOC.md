@@ -35,7 +35,7 @@ blocker, not a reason to silently fetch it. `--locked` preserves `Cargo.lock`.
 
 ## Optional native-shell and internal reference
 
-In the already prepared [native development environment](../agent-harness/cli_anything/magic/README.md):
+In the already prepared [native development environment](../apps/magic-cli/README.md):
 
 ```sh
 cargo doc --workspace --no-deps --locked

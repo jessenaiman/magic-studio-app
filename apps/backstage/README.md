@@ -48,8 +48,8 @@ Each call has a 10-second deadline and 1 MiB stdout/stderr limits. Only its own
 isolated process group is killed/reaped on timeout or shutdown, including its
 native backend. A blocking event channel wakes the UI; there is no polling timer.
 
-The verified contracts are in `agent-harness/cli_anything/magic/magic_cli.py`,
-`core/session.py`, `utils/magic_backend.py`, and the engine's `storyboard.rs`,
+The verified contracts are in `apps/magic-cli/src/main.rs`,
+`session.rs`, `studio.rs`, and the engine's `storyboard.rs`,
 `project_settings.rs`, `crew.rs`, `commands.rs`. A blank native headless session
 has no project to attach/load. The existing engine activity telemetry for journaled
 read commands remains enabled under the user's logging authorization. Backstage

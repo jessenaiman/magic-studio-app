@@ -4,7 +4,7 @@ const MAYHEM_SECTIONS = [['overview', 'Overview'], ['code', 'Code'], ['usage', '
   ['commands', 'Commands'], ['backstage', 'Backstage'], ['architecture', 'Architecture']];
 // Existing Archify references, not live system models.
 const MAYHEM_DIAGRAMS = [
-  {id: 'magic-cli', file: 'magic-cli-architecture.html', title: 'Magic CLI & Studio architecture', source: 'CLI-Anything magic harness · unified live Studio & headless engine routing', revision: null},
+  {id: 'magic-cli', file: 'magic-cli-architecture.html', title: 'Magic CLI & Studio architecture', source: 'Rust magic-cli · unified live Studio & headless engine routing', revision: null},
   {id: 'creator', file: 'creator-view.html', title: 'Creator’s loop', source: 'Existing Magic Studio creator workflow · saved 27 Oct 2026', revision: null},
 ];
 const MAYHEM_SCAN_STATES = {measured: 'Explicit scan', partial: 'Partial scan', saved: 'Saved scan', stale: 'Saved scan · revision changed', worktree_unverified: 'Saved scan · worktree changes not verified'};

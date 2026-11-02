@@ -1,7 +1,7 @@
 # Magic Studio production guide
 
-Start with the [overview](README.md), [setup](agent-harness/cli_anything/magic/README.md),
-and [current command skill](agent-harness/cli_anything/magic/skills/SKILL.md).
+Start with the [overview](README.md), [setup](apps/magic-cli/README.md),
+and [current command skill](apps/magic-cli/SKILL.md).
 Discover each operation with `magic-cli commands <domain>`; command results and
 saved native output are the authority, not historical handoff documents.
 

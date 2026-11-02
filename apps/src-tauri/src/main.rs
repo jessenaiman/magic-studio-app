@@ -20,7 +20,7 @@
 //! it requires the shell's platform Tauri prerequisites and locked dependencies;
 //! the standard engine + Backstage reference does not imply shell coverage.
 //! Read the maintained
-//! [setup guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/agent-harness/cli_anything/magic/README.md)
+//! [setup guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/magic-cli/README.md)
 //! and [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md)
 //! for supported entry points and ownership boundaries.
 //! Repository links track the default branch; new guides appear after this

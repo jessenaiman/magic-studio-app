@@ -23,15 +23,12 @@ embedded debug server, browser-only fallback or paid driver is installed.
 
 Local owner preparation, only when ready to run an approved workflow:
 
-1. Build **this checkout**: `cargo build -p magic-studio` (Rust/toolchain and
-   platform Tauri build dependencies required). Rebuild after source changes;
-   never substitute an old installed native binary. The runner fixes the backend
-   override and WDIO application to this repository's `target/debug/magic-studio`.
-2. Install `agent-harness` editable into the Python environment whose installed
-   `magic-cli` is on PATH. The launcher checks that console script's interpreter
-   resolves `cli_anything.magic.magic_cli` to this checkout before any workflow.
-   The repository installer writes this exact absolute-Python-shebang entry point
-   (`scripts/install_magic.py`); standard editable console-script installs match it.
+1. Build **this checkout**: `cargo build -p magic-studio -p magic-cli` (Rust/toolchain
+   and platform Tauri build dependencies required). Rebuild after source changes;
+   never substitute an old installed binary. The runner fixes the backend override,
+   WDIO application and acceptance CLI to this repository's `target/debug/magic-studio`
+   and `target/debug/magic-cli`.
+2. (No CLI install step: the runner uses the CLI built in step 1.)
 3. Install compatible `tauri-driver` and the distro's WebKitGTK driver
    (`webkit2gtk-driver` on Debian/Ubuntu, providing `WebKitWebDriver`). Have a
    headed desktop session for human review; `xvfb-run` is for unattended CI, not

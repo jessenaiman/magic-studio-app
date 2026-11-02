@@ -28,7 +28,7 @@ magic-cli commands
 
 `magic /absolute/Song.magic` 打开指定项目。CLI 和 MCP 与桌面应用使用同一 Rust
 命令注册表；具体语法、项目选择与 MCP 配置见
-[Magic 技能](agent-harness/cli_anything/magic/skills/SKILL.md)。
+[Magic 技能](apps/magic-cli/SKILL.md)。
 启动已安装的应用不需要重新配置源代码、Python 制作工具或下载模型。
 
 ## Backstage：独立观察工作区
@@ -42,8 +42,8 @@ Mayhem 展示工作树与原生审计证据，Settings 展示已观察到的路�
 
 ## 安装、开发和制作工具
 
-[唯一的源码安装指南](agent-harness/cli_anything/magic/README.md)说明如何构建和安装原生
-应用。CLI-Anything 命令适配器并不能替代原生应用安装。
+[唯一的源码安装指南](apps/magic-cli/README.md)说明如何构建和安装原生
+应用。`magic-cli` 命令行（Rust）并不能替代原生应用安装。
 
 Python 工具、流水线 YAML、阶段技能及模式定义仍可复用。参阅
 [制作指南](MAGIC-STUDIO.md)、[项目结构](PROJECT_CONTEXT.md)、

@@ -26,7 +26,7 @@ This is production onboarding, not installation or a second studio setup.
    open example. Use configured media, project, and animation roots; report
    missing paths/runtime without searching the machine or migrating folders.
 3. In the app, select **Studio** for the linked HyperFrames workspace; use its
-   existing Studio switch if off. Do not create another studio, install Python,
+   existing Studio switch if off. Do not create another studio, install tools,
    or start a model/agent merely to discover capabilities.
 4. Save intentional edits and inspect actual saved/visible results. A lost reply
    has an unknown outcome; inspect before retrying. A disconnected pinned window
@@ -42,6 +42,5 @@ The intended project is selected, its storyboard content or missing state is
 reported, and its linked Studio is visible or the actual blocker is stated.
 A command receipt or prepared workspace is not a finished video.
 
-Details: [routing](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/agent-harness/MAGIC.md),
-[CLI-Anything](https://github.com/HKUDS/CLI-Anything/blob/main/cli-anything-plugin/HARNESS.md),
-[official MCP SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x).
+Details: [routing](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/magic-cli/MAGIC.md),
+[rmcp, the official Rust MCP SDK](https://github.com/modelcontextprotocol/rust-sdk).

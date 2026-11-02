@@ -30,13 +30,11 @@ try {
   process.env.MAGIC_STUDIO_BIN = binary;
 } catch { blocked.push('Missing repository target/debug/magic-studio: build this checkout with cargo build -p magic-studio'); }
 try {
-  const cli = executable('magic-cli');
-  const shebang = readFileSync(cli, 'utf8').split('\n')[0];
-  if (!shebang.startsWith('#!/') || shebang.includes(' ')) throw new Error('magic-cli must be an installed Python console script with an absolute interpreter');
-  const provenance = spawnSync(shebang.slice(2), ['-c', 'import importlib.util; print(importlib.util.find_spec("cli_anything.magic.magic_cli").origin)'], { encoding: 'utf8' });
-  if (provenance.status !== 0 || realpathSync(provenance.stdout.trim()) !== join(repo, 'agent-harness/cli_anything/magic/magic_cli.py')) throw new Error('Installed magic-cli does not resolve to this checkout; install agent-harness editable in its environment');
+  const cli = realpathSync(join(repo, 'target/debug/magic-cli'));
+  if (cli !== join(repo, 'target/debug/magic-cli')) throw new Error('magic-cli must be built in this checkout, not a symlink to an installed copy');
+  accessSync(cli, constants.X_OK);
   process.env.MAGIC_ACCEPTANCE_CLI = cli;
-} catch (error) { blocked.push(error.message); }
+} catch (error) { blocked.push(error.message.startsWith('magic-cli must') ? error.message : 'Missing repository target/debug/magic-cli: build this checkout with cargo build -p magic-cli'); }
 const pending = approvals.length === 0;
 const record = { timestamp: new Date().toISOString(), status: pending ? 'pending' : blocked.length ? 'blocked' : 'ready', reason: pending ? 'No workflows have Jesse\'s observed-UI approval; zero behavioral coverage' : undefined, blocked, artifacts };
 writeFileSync(join(artifacts, 'preflight.json'), JSON.stringify(record, null, 2));

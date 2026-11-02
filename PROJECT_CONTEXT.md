@@ -17,8 +17,8 @@ second Python implementation of project persistence or UI command behavior.
 |---|---|
 | Current app behavior and agent interaction | `apps/src-tauri/agent.md` |
 | Command IDs and typed parameters | `crates/engine/src/commands.rs` |
-| CLI/MCP routing and ownership | `agent-harness/MAGIC.md` |
-| Installed app and source installation | `agent-harness/cli_anything/magic/README.md` |
+| CLI/MCP routing and ownership | `apps/magic-cli/MAGIC.md` |
+| Installed app and source installation | `apps/magic-cli/README.md` |
 | Storyboard, animation, lyrics, video workflow | `MAGIC-STUDIO.md` |
 | Native acceptance approval policy | `CONTRIBUTING.md` |
 

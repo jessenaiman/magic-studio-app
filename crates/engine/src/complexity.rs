@@ -27,12 +27,13 @@ fn long_file_limit(root: &Path) -> u64 {
         .unwrap_or(COMPLEXITY_LONG_FILE_LINES)
 }
 
-/// The sources worth measuring: the Rust engine and CLIs, the Python pipeline and
+/// The sources worth measuring: the Rust engine, app, CLI and installer, the Python pipeline and
 /// scripts, and the shell UI's own TypeScript/JavaScript modules (vendor bundles are excluded).
 fn scan_targets(root: &Path) -> Vec<String> {
     let mut targets: Vec<String> = vec![
         "crates/engine/src".to_string(),
-        "agent-harness/cli_anything/magic".to_string(),
+        "apps/magic-cli/src".to_string(),
+        "xtask/src".to_string(),
         "apps/src-tauri/src".to_string(),
         "apps/src-tauri/frontend/theatre-frame.ts".to_string(),
         "apps/src-tauri/frontend/backstage-terminal.ts".to_string(),
@@ -351,7 +352,8 @@ fn source_dirty(root: &Path) -> Option<bool> {
             "--untracked-files=normal",
             "--",
             "crates/engine/src",
-            "agent-harness/cli_anything/magic",
+            "apps/magic-cli/src",
+            "xtask/src",
             "apps/src-tauri/src",
             "apps/src-tauri/ui",
             "apps/backstage/src",
