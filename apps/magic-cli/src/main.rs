@@ -107,6 +107,15 @@ enum StudioCmd {
     Open { project: Option<String> },
     /// List responsive windows without changing the current selection.
     List,
+    /// List HyperFrames preview servers and which have no open Studio window.
+    ///
+    /// One server runs per project whose Studio target was started; closing the window
+    /// does not stop it. Without --stop-orphans nothing is changed.
+    Previews {
+        /// Stop preview servers whose project has no open Studio window.
+        #[arg(long)]
+        stop_orphans: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -295,6 +304,15 @@ fn run_studio(s: &mut Session, action: StudioCmd, dry: bool) -> Result<(), Strin
         StudioCmd::Open { project } if dry => emit(&json!({"dry_run": true, "project": project})),
         StudioCmd::Open { project } => emit(&s.open_studio(project.as_deref())?),
         StudioCmd::List => emit(&studio::discover()),
+        StudioCmd::Previews { stop_orphans } => {
+            let servers = studio::previews();
+            let stopped = if stop_orphans {
+                studio::stop_orphans(&servers)
+            } else {
+                Vec::new()
+            };
+            emit(&json!({"servers": servers, "stopped": stopped}));
+        }
     }
     Ok(())
 }

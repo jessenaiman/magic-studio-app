@@ -278,3 +278,92 @@ pub fn open(project: Option<&str>) -> Result<Value, String> {
 pub fn discover() -> Value {
     studio_sessions::discover()
 }
+
+/// The project folder of a `hyperframes preview <dir>` process, from its argv.
+fn preview_dir(argv: &[String]) -> Option<&str> {
+    let launched = argv
+        .iter()
+        .take(2)
+        .any(|w| Path::new(w).file_name().is_some_and(|n| n == "hyperframes"));
+    let at = argv.iter().position(|w| w == "preview")?;
+    if !launched {
+        return None;
+    }
+    // The folder is a path; flag values such as `--port 3` are not.
+    argv[at + 1..]
+        .iter()
+        .map(String::as_str)
+        .find(|w| !w.starts_with("--") && w.contains('/'))
+}
+
+/// Running preview servers, read from the process table. One runs per project whose Studio
+/// target was started; each says whether a window still has that project open.
+pub fn previews() -> Vec<Value> {
+    let open: Vec<PathBuf> = discover()["sessions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s["canonical_project"].as_str())
+        .filter_map(|p| Path::new(p).parent().map(Path::to_path_buf))
+        .collect();
+    let mut servers: Vec<Value> = std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
+            let raw = std::fs::read(entry.path().join("cmdline")).ok()?;
+            let argv: Vec<String> = raw
+                .split(|b| *b == 0)
+                .filter(|a| !a.is_empty())
+                .map(|a| String::from_utf8_lossy(a).into_owned())
+                .collect();
+            let dir = preview_dir(&argv)?;
+            let project = Path::new(dir).parent()?.to_path_buf();
+            Some(json!({"pid": pid, "directory": dir, "project_dir": project, "window_open": open.contains(&project)}))
+        })
+        .collect();
+    servers.sort_by_key(|s| s["pid"].as_u64());
+    servers
+}
+
+/// Stop servers whose project has no open window, when the caller asks for exactly that.
+pub fn stop_orphans(servers: &[Value]) -> Vec<u64> {
+    servers
+        .iter()
+        .filter(|s| s["window_open"] == false)
+        .filter_map(|s| s["pid"].as_u64())
+        .filter(|pid| {
+            std::process::Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status()
+                .is_ok_and(|st| st.success())
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(s: &str) -> Vec<String> {
+        s.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn preview_servers_are_found_however_hyperframes_was_installed() {
+        let npx = argv(
+            "/node /home/u/.npm/_npx/x/node_modules/.bin/hyperframes preview /p/song/hyperframes",
+        );
+        let mise = argv(
+            "/node /home/u/.local/share/mise/installs/node/26/bin/hyperframes preview --port 3 /p/fish/hyperframes",
+        );
+        assert_eq!(preview_dir(&npx), Some("/p/song/hyperframes"));
+        assert_eq!(preview_dir(&mise), Some("/p/fish/hyperframes"));
+        assert_eq!(
+            preview_dir(&argv("/usr/bin/grep hyperframes preview")),
+            None
+        );
+        assert_eq!(preview_dir(&argv("/node /x/hyperframes render /p")), None);
+    }
+}
