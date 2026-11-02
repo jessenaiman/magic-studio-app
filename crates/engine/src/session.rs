@@ -34,6 +34,8 @@ pub struct Session {
     pub project_owner: Option<std::sync::Arc<std::fs::File>>,
     /// The selected recording; uploads use the copy inside the contained HyperFrames project.
     pub song_audio: Option<PathBuf>,
+    /// Editable song details, stored only in this project's `.magic` document.
+    pub song: crate::song_metadata::SongMetadata,
     /// Whether the user approved the workshop draft PDF.
     pub draft_approved: bool,
     /// The contained HyperFrames video project.
@@ -62,6 +64,7 @@ impl Default for Session {
             agent_selection: None,
             project_owner: None,
             song_audio: None,
+            song: crate::song_metadata::SongMetadata::default(),
             draft_approved: false,
             video_target: "hyperframes".into(),
             active_asset: None,
@@ -85,6 +88,7 @@ impl Clone for Session {
             agent_selection: self.agent_selection.clone(),
             project_owner: self.project_owner.clone(),
             song_audio: self.song_audio.clone(),
+            song: self.song.clone(),
             draft_approved: self.draft_approved,
             video_target: self.video_target.clone(),
             active_asset: self.active_asset.clone(),

@@ -85,6 +85,58 @@ class SongView {
     } catch (_error) { if (state.project === project) state.lyrics = null; }
   }
 
+  metadataSummary() {
+    const metadata = state.lyrics?.metadata || {};
+    const albumTrack = [metadata.album, metadata.track_number ? `Track ${metadata.track_number}` : ''].filter(Boolean).join(' · ');
+    return el('div', { class: 'song-metadata' },
+      metadata.title ? el('strong', {}, metadata.title) : null,
+      albumTrack ? el('span', { class: 'muted' }, albumTrack) : null,
+      metadata.notes ? el('p', { class: 'song-note' }, metadata.notes) : null,
+      el('button', { id: 'song-edit-details', class: 'ghost', onclick: () => this.editMetadata() }, 'Song details…'));
+  }
+
+  editMetadata() {
+    const project = state.project;
+    if (!project || $('song-details-dialog')) return;
+    const metadata = state.lyrics?.metadata || {};
+    const fields: Record<string, any> = {};
+    const rows = [['title', 'Title'], ['album', 'Album'], ['track_number', 'Track number'],
+      ['lyrics', 'Lyrics (plain text; separate from timed lyrics)'], ['notes', 'Notes']].map(([key, label]) => {
+      const multiline = key === 'lyrics' || key === 'notes';
+      const input = el(multiline ? 'textarea' : 'input', {
+        id: `song-detail-${key}`, class: 'field', 'aria-label': label,
+        ...(multiline ? { rows: key === 'lyrics' ? 5 : 3 } : { type: key === 'track_number' ? 'number' : 'text' }),
+        ...(key === 'track_number' ? { min: 1, step: 1 } : {})
+      });
+      input.value = input.defaultValue = metadata[key] ?? '';
+      fields[key] = input;
+      return el('label', {}, label, input);
+    });
+    const status = el('p', { id: 'song-details-status', role: 'status' });
+    const save = el('button', { id: 'song-save-details', type: 'submit', class: 'start', 'data-commands': 'song.save' }, 'Save song details');
+    const root = el('dialog', { id: 'song-details-dialog', class: 'song-editor', 'aria-label': 'Song details', onclose: () => root.remove() },
+      el('h2', {}, 'Song details'),
+      el('form', { onsubmit: async (event: Event) => {
+        event.preventDefault();
+        if (state.project !== project) { status.textContent = 'The open project changed. Close this form and reopen song details.'; return; }
+        save.disabled = true;
+        try {
+          await designCommand('song.save', { title: fields.title.value, album: fields.album.value,
+            track_number: fields.track_number.value === '' ? null : Number(fields.track_number.value),
+            lyrics: fields.lyrics.value, notes: fields.notes.value });
+          await this.loadLyrics();
+          root.close();
+          toast('Song details saved');
+        } catch (error) { status.textContent = String(error); }
+        finally { save.disabled = false; }
+      } }, rows,
+        el('p', { class: 'why' }, 'Stored with this project. Plain lyrics and notes do not alter the recording, timed transcript or artist’s original lyric sheet.'),
+        status,
+        el('div', { class: 'field-row' }, el('button', { type: 'button', class: 'ghost', onclick: () => root.close() }, 'Cancel'), save)));
+    document.body.append(root);
+    root.showModal();
+  }
+
   async attachOriginal(event?: any) {
     const path = event?.currentTarget?.uiFiles?.[0] || await dialog.open({ title: "Attach the artist's original lyrics or liner notes" });
     if (!path) return;
@@ -131,15 +183,18 @@ class SongView {
   lyricsBody(lyrics: any, doc: any, liner: string[], songPath: string) {
     const model = this.lyricModel(lyrics, doc);
     const original = lyrics?.original;
+    const plain = lyrics?.metadata?.lyrics ? el('details', { class: 'song-details' }, el('summary', {}, 'Project plain lyrics'),
+      el('p', { class: 'song-note' }, lyrics.metadata.lyrics)) : null;
     const name = (path: string) => String(path).split("/").pop() || "";
     const hasLines = model.sections.some((section: any) => section.lines.length);
     if (!hasLines && !original && !liner.length) {
-      return [el("button", { id: "song-attach-original", class: "ghost", title: "Attach the original lyric sheet", onclick: (e: any) => this.attachOriginal(e) }, "Attach lyric sheet…")];
+      return [plain, el("button", { id: "song-attach-original", class: "ghost", title: "Attach the original lyric sheet", onclick: (e: any) => this.attachOriginal(e) }, "Attach lyric sheet…")];
     }
     const note = model.canonical && lyrics.artist_note
       ? el("blockquote", { class: "artist-note" }, el("p", {}, lyrics.artist_note), el("cite", {}, lyrics.artist || "The artist"))
       : null;
     return [
+      plain,
       el("p", { class: "lyric-source" }, this.lyricSourceLabel(model, lyrics)),
       note,
       el("div", { class: "lyric-actions" },

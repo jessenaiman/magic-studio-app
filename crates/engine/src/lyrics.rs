@@ -23,14 +23,12 @@ fn is_sheet(v: &Value) -> bool {
 }
 
 /// Liner-notes JSON sheets first (user-attached), then the earlier pipeline's location.
-fn canonical(dir: &Path) -> Option<(PathBuf, Value)> {
-    let mut candidates: Vec<PathBuf> = fs::read_dir(dir.join("liner-notes"))
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok().map(|e| e.path()))
+fn canonical(dir: &Path, liner: &[PathBuf]) -> Option<(PathBuf, Value)> {
+    let mut candidates: Vec<PathBuf> = liner
+        .iter()
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .cloned()
         .collect();
-    candidates.sort();
     candidates.push(dir.join("artifacts/official_lyrics.json"));
     candidates
         .into_iter()
@@ -150,7 +148,9 @@ fn sections(sheet: &Value, timed: Option<&Value>) -> Vec<Value> {
 
 /// `song.lyrics`: what to show as the song's words, with honest provenance. No writes.
 pub fn cmd_song_lyrics(s: &mut Session, _: &Value) -> Result<Value> {
-    song_lyrics_in(&crate::workshop::project_dir(s)?)
+    let mut lyrics = song_lyrics_in(&crate::workshop::project_dir(s)?)?;
+    lyrics["metadata"] = json!(s.song);
+    Ok(lyrics)
 }
 
 /// `song.lyrics` for a project folder, without a session.
@@ -166,7 +166,7 @@ pub(crate) fn song_lyrics_in(dir: &Path) -> Result<Value> {
         files.sort();
         files
     };
-    let Some((sheet_path, sheet)) = canonical(&dir) else {
+    let Some((sheet_path, sheet)) = canonical(&dir, &liner) else {
         return Ok(
             json!({"ok":true,"source":"transcript","note":"No artist lyric sheet in this project; showing the transcript as heard, uncorrected.","liner_notes":liner,"original":null}),
         );

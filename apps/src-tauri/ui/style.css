@@ -758,6 +758,11 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .song-section[data-section=lyrics] .title { color: var(--tone-lyrics); }
 .song-section[data-section=transcript] .title { color: var(--tone-transcript); }
 .song-details summary { color: var(--faint); font-size: var(--text-sm); cursor: pointer; }
+.song-metadata { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.song-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.song-editor { box-sizing: border-box; width: min(var(--size-620), 92vw); max-height: 90vh; overflow: auto; }
+.song-editor form, .song-editor label { display: flex; flex-direction: column; gap: var(--space-2); }
+.song-editor form { gap: var(--space-3); }
 .song-details[open] { display: flex; flex-direction: column; gap: var(--size-6); }
 /* Read-only transcript reader layered over the workstation panes. */
 .panel[data-look="reader"] { --panel-tone: var(--tone-lyrics); }

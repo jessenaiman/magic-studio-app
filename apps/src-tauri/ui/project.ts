@@ -121,7 +121,7 @@ class ProjectView {
         if (path) try { await this.command('workshop.set_audio', { path }); toast('Audio link saved; review timing and storyboard for this recording.'); } catch (error) { toast(String(error)); }
       }
     }, audio ? 'Change audio…' : 'Upload audio…');
-    const body = [audioItem, uploadBtn,
+    const body = [songView.metadataSummary(), audioItem, uploadBtn,
       songSection('lyrics', 'Lyrics & notes', lyricsMeta, this.ready('lyrics'), this.prerequisite('lyrics').state, lyricsBody(state.lyrics, doc, liner, audio?.path)),
       songSection('transcript', 'Transcription', transcriptMeta, this.ready('transcript'), this.prerequisite('transcript').state, transcriptItems)];
     return this.block('song', ICONS.song, 'Song', audio?.name, this.ready('song'), body, this.prerequisite('song').state, audio ? songPlayButton(audio.path) : null);

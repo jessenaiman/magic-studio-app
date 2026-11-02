@@ -41,7 +41,9 @@ fn opened_path(path: &str, project: &Path) -> PathBuf {
 }
 
 /// The keys this code writes; anything else already in the file is kept as it is.
-const MANAGED_KEYS: [&str; 6] = ["format", "version", "name", "assets", "workshop", "mode"];
+const MANAGED_KEYS: [&str; 7] = [
+    "format", "version", "name", "assets", "workshop", "mode", "song",
+];
 
 /// The persisted project state, shared by Save and unsaved-change detection.
 pub fn project_document(s: &Session) -> Value {
@@ -54,6 +56,10 @@ pub fn project_document(s: &Session) -> Value {
         .unwrap_or("Untitled");
     let mut doc = json!({"format": PROJECT_FORMAT, "version": 1, "name": name, "assets": s.project_assets,
         "workshop": {"audio": s.song_audio, "draft_approved": s.draft_approved, "target": s.video_target, "video_project": s.video_project_path}});
+    let song = json!(s.song);
+    if song.as_object().is_some_and(|fields| !fields.is_empty()) {
+        doc["song"] = song;
+    }
     if let Some(mode) = &s.project_mode {
         doc["mode"] = json!(mode);
     }
@@ -100,7 +106,7 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
         normalize_connections(&mut saved, path);
     }
     let current = project_document(s);
-    ["assets", "workshop", "mode"]
+    ["assets", "workshop", "mode", "song"]
         .iter()
         .any(|key| saved[*key] != current[*key])
 }
@@ -484,11 +490,14 @@ fn apply_opened_state(
     assets: Vec<crate::ProjectAsset>,
     owner: Option<std::sync::Arc<std::fs::File>>,
 ) -> Result<()> {
+    let song = serde_json::from_value(doc.get("song").cloned().unwrap_or_else(|| json!({})))
+        .map_err(|e| EngineError::InvalidParams(format!("invalid song metadata: {e}")))?;
     reset_for_project(s, path.to_path_buf(), assets);
     if let Some(owner) = owner {
         s.project_owner = Some(owner);
     }
     s.project_mode = project_mode(doc)?;
+    s.song = song;
     s.song_audio = doc
         .pointer("/workshop/audio")
         .and_then(Value::as_str)

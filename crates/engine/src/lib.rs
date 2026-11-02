@@ -86,6 +86,7 @@ pub(crate) mod read_only_file;
 pub mod scribbles;
 pub mod session;
 pub mod skills_registry;
+pub mod song_metadata;
 pub mod storyboard;
 pub(crate) mod storyboard_build;
 pub mod storyboard_crud;

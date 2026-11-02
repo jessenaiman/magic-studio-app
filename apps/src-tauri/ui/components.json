@@ -930,6 +930,15 @@
       "label": "Open original lyrics",
       "indicator": "hidden"
     },
+    "song-edit-details": { "component": "ghost", "label": "Song details", "indicator": "hidden" },
+    "song-details-dialog": { "component": "panel", "label": "Song details", "indicator": "hidden" },
+    "song-details-status": { "component": "status", "label": "Song details status", "indicator": "hidden" },
+    "song-save-details": { "component": "start", "label": "Save song details", "indicator": "hidden" },
+    "song-detail-title": { "component": "field", "label": "Title", "indicator": "hidden" },
+    "song-detail-album": { "component": "field", "label": "Album", "indicator": "hidden" },
+    "song-detail-track_number": { "component": "field", "label": "Track number", "indicator": "hidden" },
+    "song-detail-lyrics": { "component": "field", "label": "Plain lyrics", "indicator": "hidden" },
+    "song-detail-notes": { "component": "field", "label": "Song notes", "indicator": "hidden" },
     "song-read-along": {
       "component": "ghost",
       "label": "Read along",
