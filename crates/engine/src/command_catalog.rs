@@ -40,6 +40,9 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.snapshot"
             | b"video.render"
             | b"image.generate"
+            | b"video.frame"
+            | b"video.export"
+            | b"video.preview"
             | b"scribbles.new"
             | b"scribbles.image"
             | b"scribbles.sheet"
@@ -102,6 +105,7 @@ pub fn build() -> Vec<CommandSpec> {
         specs_video_and_intake,
         specs_character,
         specs_scribbles,
+        specs_film,
         specs_diagnostics,
     ] {
         specs.extend(section());
@@ -1323,6 +1327,63 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
             always,
             crate::scribbles::cmd_scribbles_custom
+        ),
+    ]
+}
+
+/// The film in FilmCraft: watch a preview in Studio, check frames, export, or edit in FilmCraft.
+fn specs_film() -> Vec<CommandSpec> {
+    vec![
+        query!(
+            "video.film",
+            "Film Timeline, Preview and Export Status",
+            "{}",
+            crate::film::cmd_video_film
+        ),
+        cmd!(
+            "video.preview",
+            "Render a Film Preview (FilmCraft)",
+            ["Studio"],
+            None,
+            "{}",
+            always,
+            crate::film::cmd_video_preview
+        ),
+        cmd!(
+            "video.export",
+            "Export the Film (FilmCraft)",
+            ["Studio"],
+            None,
+            "{}",
+            always,
+            crate::film::cmd_video_export
+        ),
+        query!(
+            "video.frame",
+            "Render One Film Frame (FilmCraft)",
+            "{\"seconds\":0}",
+            crate::film::cmd_video_frame
+        ),
+        query!(
+            "video.open",
+            "Open the Film in FilmCraft",
+            "{}",
+            crate::film::cmd_video_open
+        ),
+        query!(
+            "video.timeline",
+            "Film Tracks and Clips (FilmCraft)",
+            "{}",
+            crate::film::cmd_video_timeline
+        ),
+        cmd!(
+            "video.place_clip",
+            "Place a Clip on the Film (FilmCraft)",
+            ["Studio"],
+            None,
+            "{\"clip\":\"rendered .mov\",\"from\":0,\"track\":\"V2\"}",
+            always,
+            crate::film::cmd_video_place_clip
         ),
     ]
 }

@@ -143,6 +143,9 @@ async function characterExportClip(status: HTMLElement) {
   const start = motion.sample.start, end = start + motion.sample.duration;
   const result = await motionCommand('character.render', { character: motion.character, view: motion.view, start, end, fps: CHARACTER_FPS, format: 'clip' });
   motion.lastExport = { project: state.project, character: motion.character, action: motion.track, result };
-  status.textContent = 'Clip saved';
+  const from = Number(($('authoring-place-start') as HTMLInputElement | null)?.value || 0);
+  status.textContent = 'Placing the clip on the film (FilmCraft V2)…';
+  await motionCommand('video.place_clip', { clip: result.clip, from, track: 'V2' });
+  status.textContent = `Clip saved and placed on the film at ${from.toFixed(2)} s · open Studio to watch`;
   status.append(fileButton({ path: result.clip, name: String(result.clip).split('/').pop() }));
 }

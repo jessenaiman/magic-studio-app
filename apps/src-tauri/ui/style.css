@@ -389,6 +389,9 @@ summary.panel-head::-webkit-details-marker { display: none; }
 /* Studio tab: the studio webview is placed over this slot by the shell */
 #view-studio { flex-direction: column; }
 .studio-slot { flex: 1; }
+.film-view { display:flex; flex-direction:column; gap:var(--size-8); flex:1; min-height:0; padding:var(--size-12); }
+.film-player { width:100%; max-height:62vh; background:var(--bg); border-radius:var(--size-8); }
+.film-layers { width:100%; min-height:var(--size-140); overflow-x:auto; }
 .muted { color: var(--muted); }
 
 .toast { position: fixed; left: 50%; bottom: var(--size-18); transform: translate(-50%, var(--size-20)); opacity: 0; background: var(--surface-2); border: var(--size-1) solid var(--line);

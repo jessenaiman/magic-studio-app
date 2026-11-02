@@ -73,6 +73,7 @@ pub mod complexity;
 pub mod crew;
 pub mod doctor;
 pub mod feedback_state;
+pub mod film;
 pub mod headless;
 pub mod image_generation;
 pub mod lettering;

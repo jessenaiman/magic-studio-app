@@ -386,6 +386,7 @@ const WORKSPACE_OPENERS: Record<string, () => unknown> = {
   design: () => wordsOpen(),
   skills: () => { if (typeof renderResources === "function") renderResources(); },
   analytics: () => { if (typeof renderAnalytics === "function") renderAnalytics(); },
+  studio: () => filmView.open(),
 };
 
 class AppShellController {
@@ -434,7 +435,7 @@ class AppShellController {
     this.cleanupPreviousView(view);
     state.view = view;
     window.workspaceNavigation?.select(view);
-    const page = view === "studio" ? "project" : view;
+    const page = view;
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${page}`));
     this.placeInk();
     await this.openWorkspace(view);

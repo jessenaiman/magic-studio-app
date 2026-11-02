@@ -17,7 +17,7 @@ fn arg(p: &Path) -> String {
 }
 
 /// Run editor commands (one JSON object per line) and return each command's result in order.
-fn run(dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
+pub(crate) fn run(dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
     let file = project.with_extension("steps.jsonl");
     let mut body: String = steps.iter().map(|s| format!("{s}\n")).collect();
     // Keep every batch the film was built from, in order, beside the project.
@@ -50,7 +50,7 @@ fn run(dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<V
         .collect()
 }
 
-fn ids(result: &Value, field: &str) -> Vec<u64> {
+pub(crate) fn ids(result: &Value, field: &str) -> Vec<u64> {
     result[field]
         .as_array()
         .into_iter()

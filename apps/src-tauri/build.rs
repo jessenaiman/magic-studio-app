@@ -99,9 +99,11 @@ fn theatre_bundle() {
 }
 
 fn find_tsc(repo_root: &std::path::Path) -> std::path::PathBuf {
+    // The tsc process runs with the repository root as its working directory, so a relative
+    // `../../node_modules/.bin/tsc` (relative to this crate) would not resolve there.
     let local = repo_root.join("node_modules/.bin/tsc");
     if local.is_file() {
-        return local;
+        return local.canonicalize().unwrap_or(local);
     }
     if let Ok(out) = std::process::Command::new("git")
         .args(["rev-parse", "--git-common-dir"])
@@ -119,7 +121,7 @@ fn find_tsc(repo_root: &std::path::Path) -> std::path::PathBuf {
         if let Some(main_root) = resolved.parent() {
             let shared = main_root.join("node_modules/.bin/tsc");
             if shared.is_file() {
-                return shared;
+                return shared.canonicalize().unwrap_or(shared);
             }
         }
     }
