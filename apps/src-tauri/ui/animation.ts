@@ -272,9 +272,9 @@ class AnimationViewController {
         el('button', {
           id: 'btn-generate-all-sheets', class: 'icon', 'aria-label': 'Generate missing character sheets',
           html: `<svg viewBox="0 0 24 24">${MOTION_ICONS.layers}</svg>`,
-          'data-commands': 'character.mark',
-          title: 'Prepare artwork: mark, cut and rig',
-          onclick: () => { $('magic-parts-pane')?.setAttribute('open', ''); $('character-prepare')?.scrollIntoView(); },
+          'data-commands': 'scribbles.templates',
+          title: 'Scribbles: draw a character, sheet, poses or action frames',
+          onclick: () => openScribbles(),
         }),
       ],
     });

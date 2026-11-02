@@ -131,8 +131,9 @@ function characterPreparePanel() {
   const openEc = open('effectcraft'), openPc = open('photocraft');
   openEc.disabled = !view?.rigged;
   openPc.disabled = !view?.cut;
+  const scribbles = el('button', { id: 'character-scribbles', class: 'ghost', 'data-commands': 'scribbles.templates', onclick: () => openScribbles() }, 'Scribbles…');
   return el('div', { class: 'panel-fields', id: 'character-prepare' },
-    new InspectorField('View', viewPicker).node, mark, save, cutRig, status, el('div', { class: 'motion-path-actions' }, openPc, openEc));
+    scribbles, new InspectorField('View', viewPicker).node, mark, save, cutRig, status, el('div', { class: 'motion-path-actions' }, openPc, openEc));
 }
 
 /** Save a clip the film can use: ProRes 4444 with transparency, rendered by EffectCraft. */
