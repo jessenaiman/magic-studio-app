@@ -25,6 +25,13 @@ function wordsRender() { return wordsViewController.render(); }
 function wordsFitClock(view: any) { return wordsViewController.fitClock(view); }
 function wordsSizeInput(anim: any) { return wordsViewController.sizeInput(anim); }
 
+function wordsSyncLiveSliders(it: any) {
+  const sizeIn = document.querySelector('[data-slider="size"]') as HTMLInputElement | null, sizeVal = document.querySelector('[data-slider-val="size"]');
+  if (sizeIn && it.size != null) { sizeIn.value = sizeIn.defaultValue = String(Math.round(it.size)); if (sizeVal) sizeVal.textContent = `${Math.round(it.size)}px`; }
+  const tiltIn = document.querySelector('[data-slider="rotate"]') as HTMLInputElement | null, tiltVal = document.querySelector('[data-slider-val="rotate"]');
+  if (tiltIn && it.rotate != null) { tiltIn.value = tiltIn.defaultValue = String(Math.round(it.rotate)); if (tiltVal) tiltVal.textContent = `${Math.round(it.rotate)}°`; }
+}
+
 addEventListener("pointermove", (event) => {
   const drag = wordsPanel.drag, anim = wordsCurrent();
   if (!drag || !anim || !wordsPanel.line) return;
@@ -32,8 +39,9 @@ addEventListener("pointermove", (event) => {
   const it = design.items[drag.i];
   if (!it) return;
   if (drag.mode === "scale") {
-    const delta = ((event.clientX - drag.x) - (event.clientY - drag.y)) / Math.max(0.15, drag.scale);
-    it.size = Math.max(24, Math.min(260, Math.round(drag.startSize + delta * 0.45)));
+    const sx = drag.corner?.includes("w") ? -1 : 1, sy = drag.corner?.includes("n") ? -1 : 1;
+    const delta = (sx * (event.clientX - drag.x) + sy * (event.clientY - drag.y)) / Math.max(0.15, drag.scale);
+    it.size = Math.max(24, Math.min(260, Math.round(drag.startSize + delta * 0.35)));
   } else if (drag.mode === "rotate") {
     it.rotate = Math.max(-45, Math.min(45, Math.round(drag.startRot + (event.clientX - drag.x) * 0.35)));
   } else {
@@ -41,6 +49,7 @@ addEventListener("pointermove", (event) => {
     it.y = Math.round(drag.from[1] + (event.clientY - drag.y) / Math.max(0.15, drag.scale));
   }
   wordsPanel.designs.set(wordsPanel.line, design); drag.moved = true;
+  wordsSyncLiveSliders(it);
   wordsCanvasDraw();
 });
 addEventListener("pointerup", () => { const drag = wordsPanel.drag; wordsPanel.drag = null; if (drag?.moved) wordsRender(); });
@@ -334,11 +343,11 @@ class WordsViewController {
       wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || lineSpan.start)} / ${wordsClock(songSpan.end)}`),
       segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => { wordsPanel.scene = key === "scene"; this.render(); }),
       el("button", {
-        id: "words-render-lettering", class: "ghost", title: "Build EffectCraft project (lettering/lyrics.ecproj) and render transparent lyrics.mov",
+        class: "ghost", title: "Build EffectCraft project (lettering/lyrics.ecproj) and render transparent lyrics.mov",
         onclick: () => wordsStageController.renderLettering()
       }, "Render Lettering"),
       el("button", {
-        id: "words-export-film", class: "start", title: "Assemble scene backgrounds, audio and lettering in FilmCraft and export MP4",
+        class: "start", title: "Assemble scene backgrounds, audio and lettering in FilmCraft and export MP4",
         onclick: () => wordsStageController.exportFilm()
       }, "Export Film"));
   }
@@ -390,7 +399,7 @@ class WordsViewController {
     const { lineNo, description } = this.headerMeta(anim);
     const end = Math.max(...animations.map((a: any) => wordsSpan(a).end)) + 4;
     const changes = wordsPanel.designs.size + Object.keys(wordsPanel.styleEdits).length;
-    const saveLabel = changes ? `Save ${changes} change${changes > 1 ? "s" : ""} & sync Studio` : "Save & view in HyperFrames Studio";
+    const saveLabel = changes ? `Save ${changes} change${changes > 1 ? "s" : ""} & sync EffectCraft` : "Save & sync EffectCraft project";
     const save = el("button", {
       id: "words-save", class: "icon", title: saveLabel, "aria-label": saveLabel, onclick: () => wordsSave(!changes),
       html: '<svg viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3h2zM7 3v6h9V3M7 21v-8h10v8"/></svg>'
@@ -504,7 +513,7 @@ class WordsViewController {
       }
       wordsPanel.show = assetId ? "still" : "stage";
       wordsPanel.stageDirty = true;
-      document.querySelector("#words-main .words-backdrop")?.replaceWith(this.backdropPicker(anim));
+      this.render();
       await this.show(wordsPanel.show);
       wordsPanel.time = heldTime;
       this.seekSong(heldTime);
@@ -635,6 +644,8 @@ class WordsViewController {
     const scrub = $("words-scrub");
     if (scrub) { scrub.value = String(t); scrub.defaultValue = scrub.value; }
     if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(t)} / ${wordsClock(this.songSpan().end)}`;
+    wordsCanvasDraw(t);
+    wordsNow(t);
     this.video("seek", { timeSeconds: Math.max(0, t - wordsPanel.offset), seekMode: "commit" });
   }
 
@@ -647,7 +658,16 @@ class WordsViewController {
   }
 
   video(action: string, params: Record<string, any> = {}) {
-    $("words-video-frame")?.contentWindow?.postMessage({ source: "hf-parent", type: "control", action, ...params }, "*");
+    if (action === "pause" && wordsPanel.audio && !wordsPanel.audio.paused) {
+      wordsPanel.audio.pause();
+      wordsPanel.playing = false;
+    }
+    const frame = $("words-video-frame");
+    if (frame) {
+      frame.contentWindow?.postMessage({ source: "hf-parent", type: "control", action, ...params }, "*");
+    } else if (action === "play") {
+      wordsTimelineController.play(true);
+    }
   }
 
   videoRange() {
@@ -753,7 +773,10 @@ class WordsViewController {
     try {
       const result = await wordsCommand("words.save", { animation_id: anim.animation_id, expected_source_revision: anim.source_revision, origin: "magicstudio-design", kinetic });
       if (result.conflict) { toast("Someone changed these lyrics first; reloaded the latest"); return wordsOpen(); }
-      await wordsCommand("words.apply", { animation_id: anim.animation_id, use: true });
+      if (wordsPanel.read?.in_video?.includes(anim.animation_id)) {
+        await wordsCommand("words.apply", { animation_id: anim.animation_id, use: true }).catch(() => {});
+      }
+      await wordsCommand("words.letter", { render: false }).catch(() => {});
       wordsPanel.line = heldLine;
       wordsPanel.followed = `${anim.animation_id}/${heldLine}`;
       wordsPanel.previewRange = wordsLineWindow(anim, heldLine);

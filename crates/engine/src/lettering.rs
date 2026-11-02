@@ -391,6 +391,20 @@ fn item_word_time(line: &Line, item: &Value) -> (f64, f64) {
     (line.start, line.end)
 }
 
+fn item_text(line: &Line, item: &Value) -> String {
+    if let Some(s) = item["text"].as_str().filter(|s| !s.is_empty()) {
+        return s.to_owned();
+    }
+    item["word_ids"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str()?.rsplit_once("/w")?.1.parse::<usize>().ok())
+        .filter_map(|idx| line.words.get(idx).map(|(w, _)| w.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn spatial_line_steps(
     recipe: &Value,
     line: &Line,
@@ -402,7 +416,8 @@ fn spatial_line_steps(
     let mut hero_summary = Value::Null;
     for (idx, item) in design["items"].as_array().into_iter().flatten().enumerate() {
         let layer_id = format!("{}_item{idx}", line.id);
-        let text_str = item["text"].as_str().unwrap_or_default();
+        let text_owned = item_text(line, item);
+        let text_str = text_owned.as_str();
         let look = item_look(recipe, item);
         let x = item["x"].as_f64().unwrap_or(140.0);
         let y = item["y"].as_f64().unwrap_or(90.0);

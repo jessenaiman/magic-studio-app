@@ -579,7 +579,7 @@ class WordsStageController {
       el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "]"),
       el("div", { class: "words-selection-actions" },
         hasGrouped ? el("button", {
-          id: "words-split-tokens", class: "ghost", title: "Split grouped phrase into individual draggable word tokens",
+          class: "ghost", title: "Split grouped phrase into individual draggable word tokens",
           onclick: () => wordsDesignController.splitLineTokens(anim, line.id)
         }, "Split words") : null,
         el("button", {
@@ -653,9 +653,9 @@ class WordsStageController {
 
   private buildTokenSliders(lineId: string, design: any, it: any, activeIdx: number) {
     const slider = (label: string, key: "size" | "rotate", min: number, max: number, unit: string) => {
-      const valBadge = el("span", { class: "words-slider-val" }, `${Math.round(Number(it[key] || 0))}${unit}`);
+      const valBadge = el("span", { "data-slider-val": key, class: "words-slider-val" }, `${Math.round(Number(it[key] || 0))}${unit}`);
       const input = el("input", {
-        type: "range", min: String(min), max: String(max), step: "1", "aria-label": `Token ${label}`,
+        "data-slider": key, type: "range", min: String(min), max: String(max), step: "1", "aria-label": `Token ${label}`,
         oninput: (e: any) => {
           const v = Number(e.target.value);
           valBadge.textContent = `${v}${unit}`;

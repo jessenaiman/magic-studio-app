@@ -82,7 +82,6 @@ class WordsDesignController {
   }
 
   async bootstrapStudio(studio: any) {
-    if (!serverUrl() && typeof designCommand === "function") await designCommand("video.server_start").catch(() => {});
     if (studio?.sections?.length) return studio;
     await wordsCommand("words.track").catch(() => {});
     return wordsCommand("words.studio_track").catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") }));
@@ -413,7 +412,7 @@ class WordsTimelineController {
       onpointerdown: (e: any) => {
         e.preventDefault(); e.stopPropagation();
         wordsPanel.item = i;
-        wordsPanel.drag = { mode: "scale", i, x: e.clientX, y: e.clientY, startSize: it.size || 68, scale: world.getBoundingClientRect().width / W, moved: false };
+        wordsPanel.drag = { mode: "scale", corner, i, x: e.clientX, y: e.clientY, startSize: it.size || 68, scale: world.getBoundingClientRect().width / W, moved: false };
       }
     });
     const rotHandle = el("span", {
@@ -534,27 +533,46 @@ class WordsTimelineController {
     this.drawLine(canvas.world, anim, wordsPanel.line, t, true);
   }
 
-  play() {
+  private syncPlayTime(t: number) {
+    wordsPanel.time = t; wordsPanel.playing = true;
+    const scrub = $("words-scrub") as HTMLInputElement | null;
+    if (scrub) { scrub.value = String(t); scrub.defaultValue = scrub.value; }
+    if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(t)} / ${wordsClock(wordsSongSpan().end)}`;
+    this.canvasDraw(t); wordsNow(t);
+  }
+
+  private checkPlayRange(audio: HTMLAudioElement, t: number) {
+    const range = wordsPanel.previewRange;
+    if (!range || t < range.end) return true;
+    if (wordsPanel.loopLine) { audio.currentTime = range.start; return true; }
+    audio.pause(); wordsPanel.playing = false;
+    return false;
+  }
+
+  play(forceStart = false) {
     const anim = wordsCurrent();
     if (!anim || !wordsPanel.line) return;
     const path = wordsSongPath();
     if (!path) return toast("Add the song in Project › Song to hear it here");
     wordsPanel.audio ??= new Audio();
     const audio = wordsPanel.audio, span = wordsLineSpan(anim, wordsPanel.line);
-    if (!audio.paused) { audio.pause(); return; }
+    if (!forceStart && !audio.paused) { audio.pause(); wordsPanel.playing = false; return; }
     if (audio.getAttribute("src") !== convertFileSrc(path)) audio.src = convertFileSrc(path);
-    audio.currentTime = Math.max(0, span.start - 0.4);
+    audio.currentTime = wordsPanel.previewRange ? wordsPanel.previewRange.start : Math.max(0, span.start - 0.4);
     audio.play();
     const tick = () => {
       if (audio.paused || audio.ended || state.view !== "design") { audio.pause(); wordsPanel.playing = false; return; }
-      const t = audio.currentTime, animations = wordsPanel.read.document.animations;
-      const here = animations.find((a: any) => { const s = wordsSpan(a); return t >= s.start - 0.4 && t < s.end; });
-      const unsaved = wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length;
-      if (here && here.animation_id !== wordsPanel.selected && !unsaved) { wordsPanel.selected = here.animation_id; wordsPanel.line = null; wordsPanel.item = null; wordsPanel.followed = `${here.animation_id}/playing`; wordsRender(); }
-      const current = wordsCurrent(), line = wordsLines(current).findLast((l) => wordsAt(l.words[0]) <= t + 0.4);
-      if (line && line.id !== wordsPanel.line) { wordsPanel.line = line.id; wordsPanel.item = null; wordsPanel.followed = `${current.animation_id}/${line.id}`; wordsRender(); }
-      wordsPanel.time = t; wordsPanel.playing = true;
-      this.canvasDraw(t); wordsNow(t);
+      const t = audio.currentTime;
+      if (!this.checkPlayRange(audio, t)) return;
+      if (!wordsPanel.previewRange) {
+        const animations = wordsPanel.read.document.animations;
+        const here = animations.find((a: any) => { const s = wordsSpan(a); return t >= s.start - 0.4 && t < s.end; });
+        const unsaved = wordsPanel.designs.size || Object.keys(wordsPanel.styleEdits).length;
+        if (here && here.animation_id !== wordsPanel.selected && !unsaved) { wordsPanel.selected = here.animation_id; wordsPanel.line = null; wordsPanel.item = null; wordsPanel.followed = `${here.animation_id}/playing`; wordsRender(); }
+        const current = wordsCurrent(), line = wordsLines(current).findLast((l) => wordsAt(l.words[0]) <= t + 0.4);
+        if (line && line.id !== wordsPanel.line) { wordsPanel.line = line.id; wordsPanel.item = null; wordsPanel.followed = `${current.animation_id}/${line.id}`; wordsRender(); }
+      }
+      this.syncPlayTime(audio.currentTime);
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -568,10 +586,11 @@ class WordsTimelineController {
     chip.style.setProperty("--word-scale", String(scale));
   }
 
-  applyItemChipStyle(chip: any, anim: any, it: any) {
+  applyItemChipStyle(chip: any, anim: any, it: any, wordId: string) {
     const font = it.font === "song" || !it.font ? wordsSongFont(anim) : it.font;
     const color = /^#[0-9a-f]{6}$/i.test(it.color) ? it.color : "currentColor";
     const scale = Math.min(1.7, Math.max(0.8, (it.size || 110) / 110)).toFixed(2);
+    if (it.motion && it.motion !== "quiet" && (!it.accent || it.accent === wordId)) chip.dataset.hero = "true";
     this.setChipVars(chip, font, it.weight || 400, it.italic, color, scale);
   }
 
@@ -586,8 +605,8 @@ class WordsTimelineController {
   }
 
   applyChipStyle(chip: any, anim: any, w: any, it: any) {
-    if (it) this.applyItemChipStyle(chip, anim, it);
-    if (anim.kinetic) this.applyKineticChipStyle(chip, anim.kinetic, w.word_id);
+    if (it) this.applyItemChipStyle(chip, anim, it, w.word_id);
+    else if (anim.kinetic) this.applyKineticChipStyle(chip, anim.kinetic, w.word_id);
     if (wordsPanel.designs.has(w.line_id)) chip.dataset.changed = "";
   }
 

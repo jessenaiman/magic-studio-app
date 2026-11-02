@@ -131,27 +131,19 @@ fn backgrounds_from_storyboard(
             let start = sc["start_seconds"]
                 .as_f64()
                 .or_else(|| sc["start"].as_f64())
+                .or_else(|| sc["song_anchor"].as_f64())
                 .or_else(|| sc["lines"][0]["start"].as_f64())
+                .or_else(|| sc["words"][0]["start"].as_f64())
                 .unwrap_or(0.0);
             Some((start, resolve_scene_image(sc, dir, assets)?))
         })
         .collect();
     out.sort_by(|a, b| a.0.total_cmp(&b.0));
-    out.dedup_by(|a, b| a.1 == b.1);
+    out.dedup_by(|a, b| a.1 == b.1 || (a.0 - b.0).abs() < 1e-3);
     out
 }
 
 fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, PathBuf)>> {
-    for rel in ["storyboard/storyboard.json", "design/words.json"] {
-        if let Ok(bytes) = std::fs::read(dir.join(rel))
-            && let Ok(doc) = serde_json::from_slice::<Value>(&bytes)
-        {
-            let bgs = backgrounds_from_storyboard(&doc, dir, &s.project_assets);
-            if !bgs.is_empty() {
-                return Some(bgs);
-            }
-        }
-    }
     let imgs: Vec<PathBuf> = s
         .project_assets
         .iter()
@@ -159,6 +151,25 @@ fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, 
         .filter_map(|a| a.path.as_ref().map(|p| dir.join(p)))
         .filter(|p| p.is_file())
         .collect();
+    if let Ok(bytes) = std::fs::read(dir.join("storyboard/storyboard.json"))
+        && let Ok(doc) = serde_json::from_slice::<Value>(&bytes)
+    {
+        let bgs = backgrounds_from_storyboard(&doc, dir, &s.project_assets);
+        if !bgs.is_empty() {
+            return Some(bgs);
+        }
+    }
+    if let Ok(bytes) = std::fs::read(dir.join("design/words.json"))
+        && let Ok(doc) = serde_json::from_slice::<Value>(&bytes)
+    {
+        let bgs = backgrounds_from_storyboard(&doc, dir, &s.project_assets);
+        let custom = doc["animations"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|x| x["background_custom"] == true));
+        if bgs.len() > 1 || ( !bgs.is_empty() && (custom || imgs.len() <= 1) ) {
+            return Some(bgs);
+        }
+    }
     if imgs.is_empty() {
         return None;
     }
@@ -367,14 +378,22 @@ mod tests {
             ]
         });
         let bgs = backgrounds_from_storyboard(&board, &dir, &assets);
+        let words_doc = json!({
+            "animations": [
+                {"song_anchor": 0.12, "background_asset": "map"},
+                {"words": [{"start": 9.4}], "background_asset": "kitchen"}
+            ]
+        });
+        let anim_bgs = backgrounds_from_storyboard(&words_doc, &dir, &assets);
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(
             bgs,
             vec![
                 (0.0, img1.clone()),
-                (8.5, img2),
-                (14.0, img1),
+                (8.5, img2.clone()),
+                (14.0, img1.clone()),
             ]
         );
+        assert_eq!(anim_bgs, vec![(0.12, img1), (9.4, img2)]);
     }
 }
