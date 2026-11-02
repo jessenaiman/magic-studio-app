@@ -928,7 +928,7 @@ pub fn cmd_part_recut(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// Normalize a non-standard turnaround or action pose sheet (`pipeline/step_sheet_normalizer.py`):
-/// detects panels, resizes cells via PhotoCraft, labels via Hybrid OCR + Jev Vision fallback,
+/// detects panels, resizes cells via PhotoCraft, labels via Hybrid OCR + silhouette heuristic fallback,
 /// reorders into canonical slots, and expands directional walk_right/walk_left slots.
 pub fn cmd_sheet_normalize(s: &mut Session, p: &Value) -> Result<Value> {
     let invalid = |msg: String| EngineError::InvalidParams(msg);

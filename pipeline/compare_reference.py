@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step 1C: Reference vs. Rendered Image Inspection (`pipeline/jev_qa_verifier.py`).
+Step 1C: Reference vs. Rendered Image Inspection (`pipeline/compare_reference.py`).
 
 Delegates directly to `img2threejs/forge`:
 - `stage1_intake/extract_part_color_recipe.py` (`build_recipe` -> CIE L*a*b* dominant palette)
@@ -103,7 +103,7 @@ def _determine_visual_defect(
     return "none_import_matches_reference", "ready_for_user_review"
 
 
-def compare_reference_and_import_with_jev(
+def compare_reference_and_import(
     reference_path: str,
     app_imported_path: str,
     manifest_path: str | None = None,
@@ -168,8 +168,8 @@ def compare_reference_and_import_with_jev(
             "rotation_profile_check": {"yaw_deg": yaw_deg, "shape_distortion_detected": not aspect_ok},
             "ocr_and_manifest": manifest_summary,
         },
-        "jev": {
-            "model": "img2threejs-divine-eye",
+        "inspection": {
+            "analyzer": "img2threejs-divine-eye",
             "background_cleanly_transparent": None,
             "character_interior_intact": round(1.0 - interior_diff_score, 4) if interior_diff_score is not None else None,
             "expected_color_matches_rendered": 1.0 if color_ok else 0.0,
@@ -189,6 +189,6 @@ if __name__ == "__main__":
     parser.add_argument("--manifest")
     parser.add_argument("--yaw", type=float, default=0.0)
     args = parser.parse_args()
-    print(json.dumps(compare_reference_and_import_with_jev(
+    print(json.dumps(compare_reference_and_import(
         args.reference, args.imported, args.manifest, args.yaw,
     )))

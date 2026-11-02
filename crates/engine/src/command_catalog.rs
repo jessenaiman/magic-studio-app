@@ -1613,7 +1613,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
         ),
         cmd!(
             "intake.compare_reference",
-            "Compare Reference vs Import (Jev + OCR + Rotation)",
+            "Compare Reference vs Import (OCR + Rotation)",
             ["File", "Intake"],
             None,
             "{\"slot\":\"all|original|asset_sheet|turnaround\",\"yaw\":0.0}",

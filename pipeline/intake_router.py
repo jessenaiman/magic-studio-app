@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 import subprocess
-import urllib.request
 
 
 def classify_archetype_from_hint(hint_name: str = "", aspect: float = 1.0) -> dict:
@@ -119,45 +118,7 @@ def run_three_question_intake(
 ) -> dict:
     img_meta = inspect_image(image_path)
     rec = classify_archetype_from_hint(image_path, img_meta["aspect"])
-
-    api_key = os.environ.get("TYPESAFE_API_KEY", "")
     router_source = "deterministic-heuristic"
-    if api_key:
-        try:
-            payload = json.dumps(
-                {
-                    "model": "jev-latest",
-                    "primitive": "choice",
-                    "prompt": f"Classify 2D asset '{os.path.basename(image_path)}' (aspect={img_meta['aspect']}) into skeleton archetype:",
-                    "choices": [
-                        "humanoid_biped",
-                        "axial_creature",
-                        "radial_prop",
-                        "vehicle_hull",
-                    ],
-                }
-            ).encode("utf-8")
-            req = urllib.request.Request(
-                "https://api.typesafe.ai/v1/systemone",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                if data.get("selection") in (
-                    "humanoid_biped",
-                    "axial_creature",
-                    "radial_prop",
-                    "vehicle_hull",
-                ):
-                    rec["archetype"] = data["selection"]
-                    router_source = "typesafe-jev-latest"
-        except Exception:
-            pass
 
     recommended = {
         "archetype": rec["archetype"],
