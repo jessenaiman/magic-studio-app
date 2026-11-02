@@ -39,8 +39,7 @@ pub fn shell_binary() -> Result<PathBuf, String> {
         beside,
         home.as_ref()
             .map(|h| h.join(".local/share/magic-studio/bin/magic-studio")),
-        home.as_ref()
-            .map(|h| h.join(".local/bin/magic-studio")),
+        home.as_ref().map(|h| h.join(".local/bin/magic-studio")),
     ];
     let path_hit = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)

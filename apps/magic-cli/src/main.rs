@@ -1,6 +1,7 @@
 //! `magic-cli`: operate Magic Studio from a terminal or an agent. Every operation is an
 //! engine registry command; this binary only chooses where it runs (the caller's window or
 //! the engine in-process) and prints JSON.
+mod audit;
 mod mcp;
 mod project;
 mod session;
@@ -60,6 +61,32 @@ enum Cmd {
     },
     /// Serve Magic commands over MCP stdio (official rmcp SDK).
     Mcp,
+    /// Run the repository's own checks and print what they print.
+    ///
+    /// Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace, jscpd,
+    /// PurgeCSS, scope. Each tool uses PATH (or root node_modules/.bin) and the nearest
+    /// repository configuration at or above PATH, up to the repository top. Missing
+    /// tools/configuration are errors, not passing or skipped checks.
+    ///
+    /// Tool output reaches this terminal exactly as the tool wrote it. This command only
+    /// decides what to run and where; it does not parse, score, rank or summarize findings.
+    ///
+    /// Lizard takes its thresholds from code-limits.json. Each native exit code is
+    /// printed; the command returns the first nonzero status, or 0. Setup errors use 2;
+    /// signals use 128 + signal. Global --dry-run prints commands without running them.
+    /// A file defaults to Lizard; a Rust file such as module.rs also scans module/.
+    #[command(verbatim_doc_comment)]
+    Audit {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Select a native tool; repeat to choose several. Default: Lizard for a file,
+        /// every tool for a directory.
+        #[arg(long = "tool", value_parser = audit_tool)]
+        tools: Vec<String>,
+        /// Git revision the scope is measured from.
+        #[arg(long, default_value = "HEAD")]
+        base: String,
+    },
     /// Select a desktop window; list inspects responsive windows without rebinding.
     Studio {
         #[command(subcommand)]
@@ -86,6 +113,15 @@ enum StudioCmd {
 enum SessionCmd {
     Status,
     Clear,
+}
+
+fn audit_tool(name: &str) -> Result<String, String> {
+    let names: Vec<&str> = audit::TOOLS.iter().map(|t| t.name).collect();
+    if names.contains(&name) {
+        Ok(name.to_owned())
+    } else {
+        Err(format!("choose from {}", names.join(", ")))
+    }
 }
 
 fn emit(value: &Value) {
@@ -297,12 +333,17 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
         Cmd::Studio { action } => run_studio(s, action, dry)?,
         Cmd::Session { action } => run_session(s, action)?,
         Cmd::Registry(tokens) => run_registry(s, &tokens, dry)?,
-        Cmd::Mcp => unreachable!("mcp takes ownership of the session"),
+        Cmd::Mcp | Cmd::Audit { .. } => unreachable!("handled before a session is loaded"),
     }
     Ok(())
 }
 
 fn run(cli: Cli) -> Result<(), String> {
+    // The audit reads the repository, never a project or window: no session needed.
+    if let Some(Cmd::Audit { path, tools, base }) = &cli.command {
+        let target = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        std::process::exit(audit::run(&target, tools, cli.dry_run, base));
+    }
     let mcp = matches!(cli.command, Some(Cmd::Mcp));
     let mut s = Session::load(cli.session_file, if mcp { "MCP" } else { "CLI" })?;
     if let Some(project) = &cli.project {

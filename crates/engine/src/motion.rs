@@ -1701,7 +1701,11 @@ fn export_rendered_track(
         && let Some(file) = result["outputs"][0]["file"].as_str().map(str::to_owned)
     {
         let synced = crate::video_target::sync_placed_tracks_media_and_duration(
-            s, id, track_raw, Some(&file), Some(duration),
+            s,
+            id,
+            track_raw,
+            Some(&file),
+            Some(duration),
         )?;
         result["video_tracks_synced"] = synced;
     }
