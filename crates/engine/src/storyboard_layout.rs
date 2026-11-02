@@ -76,8 +76,23 @@ pub(crate) fn path_to_file_uri(path: &Path) -> String {
         let keep = b.is_ascii_alphanumeric()
             || matches!(
                 *b,
-                b'/' | b'-' | b'_' | b'.' | b'~' | b':' | b'@' | b'!' | b'$' | b'&' | b'\''
-                    | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'='
+                b'/' | b'-'
+                    | b'_'
+                    | b'.'
+                    | b'~'
+                    | b':'
+                    | b'@'
+                    | b'!'
+                    | b'$'
+                    | b'&'
+                    | b'\''
+                    | b'('
+                    | b')'
+                    | b'*'
+                    | b'+'
+                    | b','
+                    | b';'
+                    | b'='
             );
         if keep {
             out.push(*b as char);
@@ -117,9 +132,7 @@ fn validate_single_word(
     let a = w["start"].as_f64().unwrap_or(f64::NAN);
     let b = w["end"].as_f64().unwrap_or(f64::NAN);
     let text = w["text"].as_str().unwrap_or("").trim();
-    let within = 0.0 <= a
-        && a <= b
-        && (b <= duration + 0.001 || (allow_overrun && a < duration));
+    let within = 0.0 <= a && a <= b && (b <= duration + 0.001 || (allow_overrun && a < duration));
     if !a.is_finite() || !b.is_finite() || !within || a < previous || text.is_empty() {
         return Err(invalid("Invalid or unordered source word timing"));
     }
@@ -278,7 +291,11 @@ fn parse_cue(block: &str, cues: &[Value], duration: f64, allow_overrun: bool) ->
         .ok_or_else(|| invalid("Malformed caption block"))?;
     let times: Vec<f64> = lines[hit]
         .split("-->")
-        .filter_map(|seg| seg.split_whitespace().next().and_then(parse_timestamp_token))
+        .filter_map(|seg| {
+            seg.split_whitespace()
+                .next()
+                .and_then(parse_timestamp_token)
+        })
         .collect();
     if times.len() != 2 {
         return Err(invalid("Malformed cue timestamp"));
@@ -414,16 +431,21 @@ fn check_scene_images(c: &Value, groups: &[Value]) -> Result<()> {
         return Ok(());
     };
     let Some(image_map) = map_val.as_object() else {
-        return Err(invalid("scene_images keys must identify actual grouping IDs"));
+        return Err(invalid(
+            "scene_images keys must identify actual grouping IDs",
+        ));
     };
     let valid_ids: BTreeSet<&str> = groups.iter().filter_map(|g| g["id"].as_str()).collect();
     if image_map.keys().any(|k| !valid_ids.contains(k.as_str())) {
-        return Err(invalid("scene_images keys must identify actual grouping IDs"));
+        return Err(invalid(
+            "scene_images keys must identify actual grouping IDs",
+        ));
     }
-    if image_map
-        .values()
-        .any(|r| r.get("file").and_then(Value::as_str).is_none_or(str::is_empty))
-    {
+    if image_map.values().any(|r| {
+        r.get("file")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+    }) {
         return Err(invalid(
             "Each scene_images record requires an explicit file path",
         ));
@@ -672,7 +694,11 @@ fn sheet_pages(kind: &str, records: &[Value], label: &str) -> Vec<Value> {
             categories.push((cat.to_owned(), vec![record.clone()]));
         }
     }
-    let prefix = if kind == "assets" { "asset:" } else { "location:" };
+    let prefix = if kind == "assets" {
+        "asset:"
+    } else {
+        "location:"
+    };
     let mut pages = Vec::new();
     for (category_index, (category, items)) in categories.into_iter().enumerate() {
         for (sheet_idx, chunk) in items.chunks(4).enumerate() {
@@ -704,7 +730,11 @@ pub(crate) fn build_plan(c: &Value, groups: &[Value], representative: bool) -> V
     let assets = c["assets"].as_array().map_or(&[][..], Vec::as_slice);
     let locations = c["locations"].as_array().map_or(&[][..], Vec::as_slice);
     pages.extend(sheet_pages("assets", assets, "Characters & props"));
-    pages.extend(sheet_pages("locations", locations, "Backgrounds & locations"));
+    pages.extend(sheet_pages(
+        "locations",
+        locations,
+        "Backgrounds & locations",
+    ));
     for (i, x) in groups.iter().enumerate() {
         let prefix = x["section_label"]
             .as_str()
@@ -792,14 +822,7 @@ fn fit_text_to_card(d: &mut Deck, slide: &Value, sh: &Value, role: &str) {
     );
 }
 
-fn fill_text(
-    d: &mut Deck,
-    slide: &Value,
-    role: &str,
-    value: &str,
-    size: Option<f64>,
-    fit: bool,
-) {
+fn fill_text(d: &mut Deck, slide: &Value, role: &str, value: &str, size: Option<f64>, fit: bool) {
     let Some(sh) = slide["shapes"]
         .as_array()
         .into_iter()
@@ -946,7 +969,10 @@ fn contents_nav(
     };
     let plain = representative || kind == "toc";
     if plain {
-        d.q("shape.action", json!({"ids": [nav["id"]], "action": "none"}));
+        d.q(
+            "shape.action",
+            json!({"ids": [nav["id"]], "action": "none"}),
+        );
     } else if let Some(toc_idx) = all_pages.iter().position(|p| p["kind"] == "toc") {
         d.q(
             "shape.action",
@@ -955,12 +981,7 @@ fn contents_nav(
     }
 }
 
-fn fill_toc_slot(
-    d: &mut Deck,
-    slide: &Value,
-    slot: usize,
-    entry: Option<&(usize, Value)>,
-) {
+fn fill_toc_slot(d: &mut Deck, slide: &Value, slot: usize, entry: Option<&(usize, Value)>) {
     let row_role = format!("layout.toc.row.{slot}");
     let label_role = format!("auto.toc.label.{slot}");
     let meta_role = format!("auto.toc.meta.{slot}");
@@ -970,9 +991,9 @@ fn fill_toc_slot(
             .into_iter()
             .flatten()
             .filter(|x| {
-                x["altText"].as_str().is_some_and(|a| {
-                    a == row_role || a == label_role || a == meta_role
-                })
+                x["altText"]
+                    .as_str()
+                    .is_some_and(|a| a == row_role || a == label_role || a == meta_role)
             })
             .map(|x| x["id"].clone())
             .collect();
@@ -1032,7 +1053,11 @@ fn fill_overview_links(d: &mut Deck, c: &Value) {
     .iter()
     .enumerate()
     {
-        let Some(raw) = c.get(*key).and_then(Value::as_str).filter(|s| !s.is_empty()) else {
+        let Some(raw) = c
+            .get(*key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        else {
             continue;
         };
         let path = Path::new(raw);
@@ -1191,16 +1216,30 @@ fn fill_scene(
     {
         let ls = group["lyric_start"].as_f64().unwrap_or(span_start);
         let le = group["lyric_end"].as_f64().unwrap_or(span_end);
-        t.push_str(&format!(" / Words {}–{} / {first}…{last}", clock(ls), clock(le)));
+        t.push_str(&format!(
+            " / Words {}–{} / {first}…{last}",
+            clock(ls),
+            clock(le)
+        ));
     }
     fill_text(d, slide, "auto.subtitle", &t, Some(18.0), false);
-    for (label, targetkey, x) in [("Assets", "asset:", 574.0), ("Locations", "location:", 780.0)] {
+    for (label, targetkey, x) in [
+        ("Assets", "asset:", 574.0),
+        ("Locations", "location:", 780.0),
+    ] {
         if let Some(target) = all_pages
             .iter()
             .position(|p| p["key"].as_str().is_some_and(|k| k.starts_with(targetkey)))
         {
             let role = format!("nav.{targetkey}");
-            d.text(label, [x, 1130.0, 140.0, 24.0], 16.0, TEAL, true, Some(&role));
+            d.text(
+                label,
+                [x, 1130.0, 140.0, 24.0],
+                16.0,
+                TEAL,
+                true,
+                Some(&role),
+            );
             d.q(
                 "shape.action",
                 json!({"action": "slide", "slide": target, "tooltip": label}),
@@ -1210,7 +1249,10 @@ fn fill_scene(
 }
 
 fn place_sheet_picture(d: &mut Deck, slide: &Value, record: &Value, slot: usize) -> Result<()> {
-    let Some(raw_file) = record.get("file").and_then(Value::as_str).filter(|s| !s.is_empty())
+    let Some(raw_file) = record
+        .get("file")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
     else {
         return Ok(());
     };
@@ -1395,12 +1437,7 @@ fn scene_panels(
     Ok(json!({"panels": panels, "original": record["file"]}))
 }
 
-fn scene_picture(
-    d: &mut Deck,
-    slide: &Value,
-    page: &Value,
-    c: &Value,
-) -> Result<Option<Value>> {
+fn scene_picture(d: &mut Deck, slide: &Value, page: &Value, c: &Value) -> Result<Option<Value>> {
     if page["kind"] != "scene" {
         return Ok(None);
     }
@@ -1437,10 +1474,7 @@ fn page_meta(page: &Value, kind: &str, c: &Value, reference: Option<&Value>) -> 
             .get(gid)
             .cloned()
             .unwrap_or_else(|| json!({}));
-        meta["asset_links"] = c
-            .get("asset_links")
-            .cloned()
-            .unwrap_or_else(|| json!([]));
+        meta["asset_links"] = c.get("asset_links").cloned().unwrap_or_else(|| json!([]));
         meta["official_lyrics_source"] = c
             .get("official_lyrics_source")
             .cloned()
@@ -1563,12 +1597,7 @@ fn shape_overflow(index: usize, shape: &Value, cards: &BTreeMap<String, [f64; 4]
     out
 }
 
-fn link_target(
-    role: &str,
-    page: &Value,
-    pages: &[Value],
-    representative: bool,
-) -> Option<usize> {
+fn link_target(role: &str, page: &Value, pages: &[Value], representative: bool) -> Option<usize> {
     if role == "nav.contents" && !representative && page["kind"] != "toc" {
         return pages.iter().position(|p| p["kind"] == "toc");
     }
@@ -1602,8 +1631,7 @@ fn check_source_link(d: &mut Deck, shape: &Value) -> Result<()> {
     let full = d.cmd("shape.inspect", json!({"id": shape["id"]}))?;
     let action = &full["shape"]["click"]["action"];
     let url = action["url"].as_str().unwrap_or("");
-    let resolves = action["kind"] == "url"
-        && file_uri_to_path(url).is_some_and(|p| p.is_file());
+    let resolves = action["kind"] == "url" && file_uri_to_path(url).is_some_and(|p| p.is_file());
     if !resolves {
         return Err(invalid("Source file link does not resolve"));
     }
@@ -1611,8 +1639,13 @@ fn check_source_link(d: &mut Deck, shape: &Value) -> Result<()> {
 }
 
 fn page_links(
-    d: &mut Deck, slide: &Value, page: &Value, index: usize,
-    pages: &[Value], slides: &[Value], representative: bool,
+    d: &mut Deck,
+    slide: &Value,
+    page: &Value,
+    index: usize,
+    pages: &[Value],
+    slides: &[Value],
+    representative: bool,
 ) -> Result<(usize, Vec<Value>, usize)> {
     let (mut links, mut regions, mut files) = (0, Vec::new(), 0);
     for shape in slide["shapes"].as_array().into_iter().flatten() {
@@ -1621,7 +1654,9 @@ fn page_links(
             check_native_link(d, shape, target, slides)?;
             links += 1;
             if let Some([x, y, w, h]) = box_coords(&shape["box"]) {
-                regions.push(json!({"page": index + 1, "to_page": target + 1, "rect": [x, y, x + w, y + h]}));
+                regions.push(
+                    json!({"page": index + 1, "to_page": target + 1, "rect": [x, y, x + w, y + h]}),
+                );
             }
         }
         if role.starts_with("source.") {
@@ -1633,7 +1668,11 @@ fn page_links(
 }
 
 fn check_structure(
-    pages: &[Value], words: &[Value], empty_template: bool, representative: bool, actual_cues: &[Value],
+    pages: &[Value],
+    words: &[Value],
+    empty_template: bool,
+    representative: bool,
+    actual_cues: &[Value],
 ) -> Result<()> {
     if representative {
         return Ok(());
@@ -1658,15 +1697,26 @@ fn check_structure(
 }
 
 fn validate_deck(
-    d: &mut Deck, pages: &[Value], words: &[Value], groups: &[Value],
-    duration: f64, representative: bool, empty_template: bool,
+    d: &mut Deck,
+    pages: &[Value],
+    words: &[Value],
+    groups: &[Value],
+    duration: f64,
+    representative: bool,
+    empty_template: bool,
 ) -> Result<Value> {
     let slides = inspect_pages(d)?;
     if slides.len() != pages.len() {
         return Err(invalid("Page count mismatch"));
     }
-    let keys: Vec<Option<String>> = slides.iter().map(|s| note(s)["page_key"].as_str().map(str::to_owned)).collect();
-    let expected_keys: Vec<Option<String>> = pages.iter().map(|p| p["key"].as_str().map(str::to_owned)).collect();
+    let keys: Vec<Option<String>> = slides
+        .iter()
+        .map(|s| note(s)["page_key"].as_str().map(str::to_owned))
+        .collect();
+    let expected_keys: Vec<Option<String>> = pages
+        .iter()
+        .map(|p| p["key"].as_str().map(str::to_owned))
+        .collect();
     if keys != expected_keys {
         return Err(invalid("Page mapping mismatch"));
     }
@@ -1677,7 +1727,10 @@ fn validate_deck(
         let cards = slide_cards(sl);
         for sh in sl["shapes"].as_array().into_iter().flatten() {
             overflow.extend(shape_overflow(i, sh, &cards));
-            if sh["altText"].as_str().is_some_and(|a| a.starts_with("user.")) {
+            if sh["altText"]
+                .as_str()
+                .is_some_and(|a| a.starts_with("user."))
+            {
                 creative_instructions += 1;
             }
         }
@@ -1685,7 +1738,9 @@ fn validate_deck(
         links += fl;
         link_regions.extend(reg);
         file_links += files;
-        if page["kind"] == "scene" && let Some(wids) = page["group"]["word_ids"].as_array() {
+        if page["kind"] == "scene"
+            && let Some(wids) = page["group"]["word_ids"].as_array()
+        {
             actual_cues.extend(wids.iter().cloned());
         }
     }
@@ -1693,8 +1748,11 @@ fn validate_deck(
     if !empty_template {
         validate_groups(groups, words, duration)?;
     }
-    let page_summary: Vec<Value> = pages.iter().zip(slides.iter())
-        .map(|(p, s)| json!({"key": p["key"], "id": s["id"], "kind": p["kind"]})).collect();
+    let page_summary: Vec<Value> = pages
+        .iter()
+        .zip(slides.iter())
+        .map(|(p, s)| json!({"key": p["key"], "id": s["id"], "kind": p["kind"]}))
+        .collect();
     Ok(json!({
         "ok": overflow.is_empty(), "slides": slides.len(), "native_links": links,
         "link_regions": link_regions, "resolving_source_links": file_links,
@@ -1784,8 +1842,14 @@ fn duplicate_template_slides(d: &mut Deck, pages: &[Value], originals: &[Value])
 
 #[allow(clippy::too_many_arguments)]
 fn build_pages(
-    d: &mut Deck, runtime_template: &Path, pages: &[Value], c: &Value,
-    words: &[Value], groups: &[Value], duration: f64, representative: bool,
+    d: &mut Deck,
+    runtime_template: &Path,
+    pages: &[Value],
+    c: &Value,
+    words: &[Value],
+    groups: &[Value],
+    duration: f64,
+    representative: bool,
 ) -> Result<()> {
     d.cmd("file.open", json!({"path": runtime_template}))?;
     let originals = inspect_pages(d)?;
@@ -1793,19 +1857,43 @@ fn build_pages(
     for (i, page) in pages.iter().enumerate() {
         d.cmd("slide.go", json!({"index": i}))?;
         let slide = d.cmd("slide.inspect", json!({"index": i}))?;
-        fill_page(d, slide, page, c, words, groups, duration, pages, representative)?;
+        fill_page(
+            d,
+            slide,
+            page,
+            c,
+            words,
+            groups,
+            duration,
+            pages,
+            representative,
+        )?;
     }
     Ok(())
 }
 
-fn commit(d: &mut Deck, output: &Path, state: &Path, payload: &Value, previous_hash: Option<&str>) -> Result<()> {
-    let parent = output.parent().ok_or_else(|| invalid("Output has no parent directory"))?;
-    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("movie-board");
+fn commit(
+    d: &mut Deck,
+    output: &Path,
+    state: &Path,
+    payload: &Value,
+    previous_hash: Option<&str>,
+) -> Result<()> {
+    let parent = output
+        .parent()
+        .ok_or_else(|| invalid("Output has no parent directory"))?;
+    let stem = output
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("movie-board");
     if let Some(prev) = previous_hash {
         let history = parent.join("history");
         std::fs::create_dir_all(&history)?;
         let short = &prev[..prev.len().min(12)];
-        let ext = output.extension().and_then(|e| e.to_str()).unwrap_or("deckcraft");
+        let ext = output
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("deckcraft");
         let backup = history.join(format!("{stem}-{short}.{ext}"));
         if !backup.exists() {
             std::fs::copy(output, &backup)?;
@@ -1817,12 +1905,21 @@ fn commit(d: &mut Deck, output: &Path, state: &Path, payload: &Value, previous_h
     dump(state, payload)
 }
 
-fn export_pages(d: &mut Deck, output: &Path, pages: &[Value], representative: bool, fresh: bool) -> Result<()> {
+fn export_pages(
+    d: &mut Deck,
+    output: &Path,
+    pages: &[Value],
+    representative: bool,
+    fresh: bool,
+) -> Result<()> {
     let pdf = output.with_extension("pdf");
     if fresh || !pdf.is_file() {
         d.cmd("file.export", json!({"path": pdf, "format": "pdf"}))?;
     }
-    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("movie-board");
+    let stem = output
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("movie-board");
     let scene = pages.iter().position(|p| p["kind"] == "scene").unwrap_or(0);
     d.cmd("file.export", json!({"path": output.with_file_name(format!("{stem}-scene.png")), "format": "png", "slide": scene, "scale": 1}))?;
     if representative {
@@ -1843,29 +1940,55 @@ impl Drop for LockGuard {
     }
 }
 
-fn verify_existing_invariants(d: &mut Deck, output: &Path, before: Option<&[Value]>, previous_hash: Option<&str>) -> Result<()> {
-    let Some(prev_snap) = before else { return Ok(()); };
+fn verify_existing_invariants(
+    d: &mut Deck,
+    output: &Path,
+    before: Option<&[Value]>,
+    previous_hash: Option<&str>,
+) -> Result<()> {
+    let Some(prev_snap) = before else {
+        return Ok(());
+    };
     if snapshot(d)?.as_slice() != prev_snap {
         return Err(invalid("Regeneration altered authored objects"));
     }
     if Some(sha(output)?.as_str()) != previous_hash {
-        return Err(invalid("Concurrent disk edit detected; refusing to replace current deck"));
+        return Err(invalid(
+            "Concurrent disk edit detected; refusing to replace current deck",
+        ));
     }
     Ok(())
 }
 
 fn prepare_output_path(output: &Path) -> Result<(PathBuf, PathBuf, LockGuard)> {
-    let out_parent = output.parent().ok_or_else(|| invalid("Output has no parent directory"))?;
+    let out_parent = output
+        .parent()
+        .ok_or_else(|| invalid("Output has no parent directory"))?;
     std::fs::create_dir_all(out_parent)?;
-    let canonical = out_parent.canonicalize()?.join(output.file_name().ok_or_else(|| invalid("Invalid output file"))?);
+    let canonical = out_parent.canonicalize()?.join(
+        output
+            .file_name()
+            .ok_or_else(|| invalid("Invalid output file"))?,
+    );
     let state = canonical.with_extension("state.json");
     let lock = canonical.with_extension("lock");
-    std::fs::OpenOptions::new().write(true).create_new(true).open(&lock)?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock)?;
     Ok((canonical, state, LockGuard(lock)))
 }
 
-fn build_result_summary(output: &Path, pages: Vec<Value>, reopened_existing: bool, validation: Value) -> Value {
-    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("movie-board");
+fn build_result_summary(
+    output: &Path,
+    pages: Vec<Value>,
+    reopened_existing: bool,
+    validation: Value,
+) -> Value {
+    let stem = output
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("movie-board");
     json!({
         "ok": true, "page_plan": pages, "deck": output,
         "pdf": output.with_extension("pdf"), "proof": output.with_file_name(format!("{stem}-scene.png")),
@@ -1875,12 +1998,31 @@ fn build_result_summary(output: &Path, pages: Vec<Value>, reopened_existing: boo
 
 #[allow(clippy::too_many_arguments)]
 fn validate_and_verify(
-    d: &mut Deck, output: &Path, pages: &[Value], words: &[Value], groups: &[Value],
-    duration: f64, representative: bool, empty_template: bool, before: Option<&[Value]>, previous_hash: Option<&str>,
+    d: &mut Deck,
+    output: &Path,
+    pages: &[Value],
+    words: &[Value],
+    groups: &[Value],
+    duration: f64,
+    representative: bool,
+    empty_template: bool,
+    before: Option<&[Value]>,
+    previous_hash: Option<&str>,
 ) -> Result<Value> {
-    let validation = validate_deck(d, pages, words, groups, duration, representative, empty_template)?;
+    let validation = validate_deck(
+        d,
+        pages,
+        words,
+        groups,
+        duration,
+        representative,
+        empty_template,
+    )?;
     if validation["ok"] != true {
-        return Err(invalid(format!("Layout overflow: {}", validation["overflow"])));
+        return Err(invalid(format!(
+            "Layout overflow: {}",
+            validation["overflow"]
+        )));
     }
     verify_existing_invariants(d, output, before, previous_hash)?;
     Ok(validation)
@@ -1888,8 +2030,18 @@ fn validate_and_verify(
 
 #[allow(clippy::too_many_arguments)]
 fn write_deck_artifacts(
-    d: &mut Deck, output: &Path, state: &Path, template: &Path, config: &Path, fingerprint: &str,
-    pages: &[Value], groups: &[Value], representative: bool, reopened_existing: bool, previous_hash: Option<&str>, mut validation: Value,
+    d: &mut Deck,
+    output: &Path,
+    state: &Path,
+    template: &Path,
+    config: &Path,
+    fingerprint: &str,
+    pages: &[Value],
+    groups: &[Value],
+    representative: bool,
+    reopened_existing: bool,
+    previous_hash: Option<&str>,
+    mut validation: Value,
 ) -> Result<Value> {
     let state_payload = json!({
         "version": VERSION, "fingerprint": fingerprint, "template": template,
@@ -1897,7 +2049,10 @@ fn write_deck_artifacts(
         "representative": representative,
     });
     commit(d, output, state, &state_payload, previous_hash)?;
-    dump(&output.with_extension("grouping.json"), &json!({"status": "provisional / editable", "groups": groups}))?;
+    dump(
+        &output.with_extension("grouping.json"),
+        &json!({"status": "provisional / editable", "groups": groups}),
+    )?;
     export_pages(d, output, pages, representative, !reopened_existing)?;
     validation["authored_edits_preserved"] = json!(reopened_existing);
     dump(&output.with_extension("validation.json"), &validation)?;
@@ -1906,20 +2061,41 @@ fn write_deck_artifacts(
 
 #[allow(clippy::too_many_arguments)]
 fn open_or_build_deck(
-    template: &Path, c: &Value, output: &Path, pages: &[Value],
-    words: &[Value], groups: &[Value], duration: f64, representative: bool,
+    template: &Path,
+    c: &Value,
+    output: &Path,
+    pages: &[Value],
+    words: &[Value],
+    groups: &[Value],
+    duration: f64,
+    representative: bool,
 ) -> Result<(Deck, Option<Vec<Value>>)> {
     let (runtime_template, read_root) = stage_template(template, c, output)?;
     let parent_dir = output.parent().unwrap_or_else(|| Path::new("."));
     let mut d = Deck::new(&read_root, parent_dir)?;
     let before = open_existing(&mut d, output)?;
     if before.is_none() {
-        build_pages(&mut d, &runtime_template, pages, c, words, groups, duration, representative)?;
+        build_pages(
+            &mut d,
+            &runtime_template,
+            pages,
+            c,
+            words,
+            groups,
+            duration,
+            representative,
+        )?;
     }
     Ok((d, before))
 }
 
-pub(crate) fn generate(template: &Path, config: &Path, output: &Path, grouping: Option<&Path>, representative: bool) -> Result<Value> {
+pub(crate) fn generate(
+    template: &Path,
+    config: &Path,
+    output: &Path,
+    grouping: Option<&Path>,
+    representative: bool,
+) -> Result<Value> {
     let template = template.canonicalize()?;
     let (output, state, _lock_guard) = prepare_output_path(output)?;
     let (c, words, _cues, groups, duration) = read_inputs(config, grouping)?;
@@ -1927,8 +2103,46 @@ pub(crate) fn generate(template: &Path, config: &Path, output: &Path, grouping: 
     let pages = build_plan(&c, &groups, representative);
     let previous_hash = output.exists().then(|| sha(&output)).transpose()?;
     check_existing(&output, &state, &fingerprint)?;
-    let (mut d, before) = open_or_build_deck(&template, &c, &output, &pages, &words, &groups, duration, representative)?;
-    let validation = validate_and_verify(&mut d, &output, &pages, &words, &groups, duration, representative, c["empty_template"] == true, before.as_deref(), previous_hash.as_deref())?;
-    let validation = write_deck_artifacts(&mut d, &output, &state, &template, config, &fingerprint, &pages, &groups, representative, before.is_some(), previous_hash.as_deref(), validation)?;
-    Ok(build_result_summary(&output, pages, before.is_some(), validation))
+    let (mut d, before) = open_or_build_deck(
+        &template,
+        &c,
+        &output,
+        &pages,
+        &words,
+        &groups,
+        duration,
+        representative,
+    )?;
+    let validation = validate_and_verify(
+        &mut d,
+        &output,
+        &pages,
+        &words,
+        &groups,
+        duration,
+        representative,
+        c["empty_template"] == true,
+        before.as_deref(),
+        previous_hash.as_deref(),
+    )?;
+    let validation = write_deck_artifacts(
+        &mut d,
+        &output,
+        &state,
+        &template,
+        config,
+        &fingerprint,
+        &pages,
+        &groups,
+        representative,
+        before.is_some(),
+        previous_hash.as_deref(),
+        validation,
+    )?;
+    Ok(build_result_summary(
+        &output,
+        pages,
+        before.is_some(),
+        validation,
+    ))
 }

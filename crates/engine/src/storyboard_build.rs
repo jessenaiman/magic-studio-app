@@ -24,7 +24,11 @@ pub(crate) struct BuildStoryboardArgs<'a> {
 
 fn line_lyric(line: &Value) -> String {
     for key in ["lyric", "text"] {
-        if let Some(s) = line.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        if let Some(s) = line
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
             return s.to_owned();
         }
     }
@@ -55,7 +59,9 @@ fn canonical_scenes(scene_map: &Path) -> Result<Vec<Value>> {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| invalid("Canonical scene missing target"))?;
         if !targets.insert(target.to_owned()) {
-            return Err(invalid(format!("Duplicate canonical scene target: {target}")));
+            return Err(invalid(format!(
+                "Duplicate canonical scene target: {target}"
+            )));
         }
         previous = end;
         let lyric_text = packet["lines"]
@@ -84,7 +90,11 @@ const SCENE_FIELD_ALIASES: &[(&str, &[&str], &str)] = &[
         &["reference_prompt", "image_prompt"],
         "image_prompt",
     ),
-    ("animation_prompt", &["animation_prompt"], "animation_prompt"),
+    (
+        "animation_prompt",
+        &["animation_prompt"],
+        "animation_prompt",
+    ),
     (
         "layer_stack",
         &["layer_stack", "continuity", "linked_assets"],
@@ -237,8 +247,7 @@ fn normalize_scene_content(packets: &[Value], expected_fields: &[String]) -> (Va
             if !expected_fields.contains(&role) {
                 continue;
             }
-            let (label, text) =
-                resolve_scene_field(packet, &normalized, field, names, &mut used);
+            let (label, text) = resolve_scene_field(packet, &normalized, field, names, &mut used);
             record_mapped_scene_field(
                 &mut report,
                 scene_id,
@@ -319,10 +328,7 @@ fn load_fish_linked_lyrics(line_source: &Path) -> BTreeMap<String, Value> {
         .collect()
 }
 
-fn packet_lyric_sections(
-    original: &Value,
-    sections: &BTreeMap<String, Value>,
-) -> Vec<Value> {
+fn packet_lyric_sections(original: &Value, sections: &BTreeMap<String, Value>) -> Vec<Value> {
     original["script_section_id"]
         .as_str()
         .unwrap_or("")
@@ -594,11 +600,7 @@ fn source_line_breaks(words: &[Value], lines: &[Value]) -> Vec<Value> {
         }));
     }
     let all_ids: Vec<Value> = words.iter().map(|w| w["id"].clone()).collect();
-    if used == all_ids {
-        mapped
-    } else {
-        Vec::new()
-    }
+    if used == all_ids { mapped } else { Vec::new() }
 }
 
 fn chorus_phrases(words: &[Value]) -> Result<Vec<Value>> {
@@ -838,7 +840,9 @@ fn title_case_slug(slug: &str) -> String {
         .map(|part| {
             let mut chars = part.chars();
             match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                }
                 None => String::new(),
             }
         })
@@ -887,7 +891,10 @@ fn scan_background_files(bg_root: &Path) -> Vec<(String, PathBuf)> {
             let Some(name) = entry.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if let Some(img) = sorted_dir_entries(&entry).into_iter().find(|p| is_image_file(p)) {
+            if let Some(img) = sorted_dir_entries(&entry)
+                .into_iter()
+                .find(|p| is_image_file(p))
+            {
                 found.push((name.to_owned(), img));
             }
         } else if is_image_file(&entry)
@@ -940,7 +947,10 @@ fn first_character_image(entry: &Path, slug: &str) -> Option<PathBuf> {
     if assembled.is_file() {
         return Some(assembled);
     }
-    if let Some(img) = sorted_dir_entries(entry).into_iter().find(|p| is_image_file(p)) {
+    if let Some(img) = sorted_dir_entries(entry)
+        .into_iter()
+        .find(|p| is_image_file(p))
+    {
         return Some(img);
     }
     sorted_dir_entries(&entry.join("parts"))
@@ -968,10 +978,7 @@ fn discover_assets(source_root: &Path) -> Vec<Value> {
             continue;
         };
         let resolved = img.canonicalize().unwrap_or(img);
-        let fname = resolved
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let fname = resolved.file_name().and_then(|n| n.to_str()).unwrap_or("");
         assets.push(json!({
             "id": id,
             "name": title_case_slug(&id),
@@ -993,10 +1000,7 @@ fn discover_assets(source_root: &Path) -> Vec<Value> {
         };
         let id = stem.strip_suffix("-v1").unwrap_or(&stem);
         let resolved = entry.canonicalize().unwrap_or(entry);
-        let fname = resolved
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let fname = resolved.file_name().and_then(|n| n.to_str()).unwrap_or("");
         assets.push(json!({
             "id": id,
             "name": title_case_slug(id),
@@ -1228,9 +1232,7 @@ fn retained_page_content(previous: &Value, content: &[Value], has_backgrounds: b
             .iter()
             .filter(|f| {
                 f["page"].as_u64() == Some(page_num)
-                    && f["role"]
-                        .as_str()
-                        .is_some_and(|r| r.starts_with("user."))
+                    && f["role"].as_str().is_some_and(|r| r.starts_with("user."))
                     && is_authored_text(f["value"].as_str())
             })
             .cloned()
@@ -1278,9 +1280,10 @@ fn merge_location_notes_for_record(record: &mut Value, previous: &Value, content
             }
             let target_field = format!("sheet.{slot}.notes");
             if let Some(field) = content.iter().find(|f| {
-                f["page"].as_u64() == Some(page_num)
-                    && f["field"].as_str() == Some(&target_field)
-            }) && let Some(val) = field["value"].as_str().filter(|v| is_authored_text(Some(v)))
+                f["page"].as_u64() == Some(page_num) && f["field"].as_str() == Some(&target_field)
+            }) && let Some(val) = field["value"]
+                .as_str()
+                .filter(|v| is_authored_text(Some(v)))
             {
                 record["notes"] = json!(val);
                 record["notes_exact"] = json!(true);
@@ -1659,10 +1662,7 @@ fn attach_remapped_placements(
     metadata: &Value,
     panels: Option<&str>,
 ) -> Result<()> {
-    let page_plan = result["page_plan"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let page_plan = result["page_plan"].as_array().cloned().unwrap_or_default();
     let mut placements = remap_scene_placements(packets, &page_plan, panels)?;
     placements.extend(remap_inventory_placements(
         &metadata["previous_board"],

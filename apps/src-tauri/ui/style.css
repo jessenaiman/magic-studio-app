@@ -542,7 +542,7 @@ summary.panel-head::-webkit-details-marker { display: none; }
 .motion-layer.selected { background:var(--surface-2); box-shadow:inset 0 0 0 var(--size-1) var(--accent); border-radius:var(--size-6); outline:var(--size-1) solid color-mix(in srgb,var(--accent) 40%,transparent); }
 .motion-layer .icon { flex:none; }
 .motion-layer.hidden-layer { opacity:.5; }
-@media(max-width:62.5em){#view-animation.active{grid-template-columns:var(--size-140) minmax(0,1fr) var(--size-190)}.motion-inspector{width:auto;padding:var(--size-8)}}
+@media(max-width:62.5em){#view-animation.active{grid-template-columns:var(--size-140) minmax(0,1fr) var(--size-240)}.motion-inspector{width:auto;padding:var(--size-8)}}
 
 
 .motion-path-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--size-4);min-width:0}.motion-path-actions .start{margin:0 0 0 auto;padding:var(--size-7) var(--size-10);max-width:100%;white-space:normal}

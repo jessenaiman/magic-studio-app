@@ -86,7 +86,13 @@ fn wanted_resource(name: &str) -> bool {
 /// Copy tracked runtime resources and record which source and app build they came from.
 fn install_resources(root: &Path, prefix: &Path, app: &Path) -> Result<()> {
     let runtime = prefix.join("share/magic-studio/runtime");
-    for subdir in ["pipeline", ".agents/skills", "scripts", "skills", "pipeline_defs"] {
+    for subdir in [
+        "pipeline",
+        ".agents/skills",
+        "scripts",
+        "skills",
+        "pipeline_defs",
+    ] {
         let dir = runtime.join(subdir);
         if dir.is_dir() {
             io(dir.display(), std::fs::remove_dir_all(&dir))?;

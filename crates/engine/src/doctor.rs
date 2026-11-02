@@ -69,11 +69,14 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
-    let is_checkout = |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/src-tauri/Cargo.toml").is_file();
+    let is_checkout =
+        |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/src-tauri/Cargo.toml").is_file();
     if is_checkout(&s.cwd) {
         return s.cwd.clone();
     }
-    if let Ok(canon) = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize()
+    if let Ok(canon) = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
         && is_checkout(&canon)
     {
         return canon;

@@ -293,7 +293,12 @@ fn build_hero_stroke_draw(
         let (dw, dh, sx, sy) = if stroke_name == "down" || stroke_name == "arrow-down" {
             let dh = b.size * 1.2;
             let dw = dh * spec.w / spec.h;
-            ((dw), (dh), (b.x + b.w + 24.0).min(frame_w - dw - 20.0), b.top + b.size * 0.1)
+            (
+                (dw),
+                (dh),
+                (b.x + b.w + 24.0).min(frame_w - dw - 20.0),
+                b.top + b.size * 0.1,
+            )
         } else {
             let dw = b.w.max(160.0);
             let dh = dw * spec.h / spec.w;
@@ -350,7 +355,10 @@ fn design_line(recipe: &Value, words: &[Value], band: &str) -> Value {
             let top = baseline - size * 0.92;
             let word_ids: Vec<Value> = g.words.iter().map(|w_| w_["word_id"].clone()).collect();
             let accent = if g.look["motion"].as_str().unwrap_or("quiet") != "quiet" {
-                g.words.last().map(|w_| w_["word_id"].clone()).unwrap_or(Value::Null)
+                g.words
+                    .last()
+                    .map(|w_| w_["word_id"].clone())
+                    .unwrap_or(Value::Null)
             } else {
                 Value::Null
             };
@@ -367,7 +375,10 @@ fn design_line(recipe: &Value, words: &[Value], band: &str) -> Value {
                 w: *w,
                 size,
                 last_start: g.words.last().and_then(|w_| w_["start"].as_f64()),
-                hero: g.hero.clone().or_else(|| g.key.as_ref().map(|_| Value::Null)),
+                hero: g
+                    .hero
+                    .clone()
+                    .or_else(|| g.key.as_ref().map(|_| Value::Null)),
                 color: item["color"].clone(),
             });
             items.push(item);
@@ -406,9 +417,7 @@ pub(crate) fn designs(recipe: &Value, animations: &[Value]) -> Value {
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_default();
-            let band = recipe["lines"][&lid]["band"]
-                .as_str()
-                .unwrap_or(anim_band);
+            let band = recipe["lines"][&lid]["band"].as_str().unwrap_or(anim_band);
             anim_designs.insert(lid, design_line(recipe, &ws, band));
         }
         if let Some(id) = anim["animation_id"].as_str() {

@@ -106,7 +106,15 @@ fn content_readiness(design: &Value) -> Value {
     let reason = if !known {
         "Storyboard content has not been inspected".into()
     } else if !missing.is_empty() {
-        format!("{} storyboard fields still need content", missing.len())
+        let mut pages: Vec<String> = missing.iter().map(|f| f["page"].to_string()).collect();
+        pages.dedup();
+        let fields = if missing.len() == 1 {
+            "field"
+        } else {
+            "fields"
+        };
+        let on = if pages.len() == 1 { "page" } else { "pages" };
+        format!("{} empty {fields} on {} {on}", missing.len(), pages.len())
     } else if design["dirty"] == true {
         "Save pending storyboard changes".into()
     } else {

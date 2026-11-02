@@ -340,11 +340,7 @@ fn sync_project_file(
     Ok(())
 }
 
-fn execute_command(
-    s: &mut Session,
-    id: &str,
-    params: Value,
-) -> Result<Value> {
+fn execute_command(s: &mut Session, id: &str, params: Value) -> Result<Value> {
     let _context = activity::enter(id, &params);
     // Cast writes are journaled workshop files, independent of the open song's writer lease.
     let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
@@ -385,12 +381,7 @@ fn execute_command(
     if record || (s.record_user_state && !result.as_ref().is_ok_and(|v| v["ok"] != false)) {
         announce_result(s, id, &params, &result);
     }
-    restore_lease(
-        s,
-        prior_owner,
-        _writer.is_some(),
-        project_before.as_ref(),
-    );
+    restore_lease(s, prior_owner, _writer.is_some(), project_before.as_ref());
     result
 }
 

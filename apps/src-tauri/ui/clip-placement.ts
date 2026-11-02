@@ -229,7 +229,7 @@ class ClipPlacementController {
       if (!this.current()) return;
       const chapters = (toc.chapters || []).filter(s => Number.isSafeInteger(s.scene) && s.scene > 0);
       this.scenePicker.replaceChildren(
-        el('option', {value: ''}, 'Movable timeline (no scene required)'),
+        el('option', {value: ''}, 'Timeline (no scene)'),
         ...chapters.map(s => el('option', {value: String(s.scene)}, s.title || `Scene ${s.scene}`)),
       );
       if (!chapters.length) {
@@ -241,7 +241,7 @@ class ClipPlacementController {
       await this.selectScene();
     } catch {
       if (this.current()) {
-        this.scenePicker.replaceChildren(el('option', {value: ''}, 'Movable timeline (no scene required)'));
+        this.scenePicker.replaceChildren(el('option', {value: ''}, 'Timeline (no scene)'));
         this.scenePicker.value = '';
         await this.selectScene();
       }

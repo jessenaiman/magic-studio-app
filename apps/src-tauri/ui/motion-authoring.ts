@@ -194,7 +194,7 @@ function buildActionPlacementSection(ctx: any) {
  const cleanTrack=(track||'action').replace(/^@/,'');
  const defaultClipId=`${character}-${cleanTrack}`.replace(/[^a-zA-Z0-9_-]/g,'-');
  const existingPlacement=(meta.placed_tracks||[]).find(p=>p.id===defaultClipId||(p.character===character&&String(p.track||'').replace(/^@/,'')===cleanTrack));
- const placeScene=el('select',{id:'authoring-place-scene','aria-label':'Storyboard scene'},el('option',{value:''},'Movable timeline (or pick a Storyboard scene…)'));
+ const placeScene=el('select',{id:'authoring-place-scene','aria-label':'Storyboard scene'},el('option',{value:''},'Timeline (no scene)'));
  const placeStart=buildAuthoringField('place-start','Start',existingPlacement?.start??0,'number',[0,120,0.1,'s']);
  const placeDuration=buildAuthoringField('place-duration','Length',existingPlacement?.duration??action?.duration??3,'number',[0.1,30,0.1,'s']);
  const placeRate=buildAuthoringField('place-rate','Playback rate',existingPlacement?.playback_rate??1,'number',[0.25,4,0.01,'×'],'dial');

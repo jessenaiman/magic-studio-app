@@ -763,7 +763,9 @@ fn run_movie_board_build(
             "Timing-overrun source may only produce an explicitly warned draft".into(),
         ));
     }
-    let source = params["source"].as_str().map(|src| resolve_workspace_path(s, src));
+    let source = params["source"]
+        .as_str()
+        .map(|src| resolve_workspace_path(s, src));
     crate::storyboard_build::build(crate::storyboard_build::BuildStoryboardArgs {
         transcript,
         source: source.as_deref(),

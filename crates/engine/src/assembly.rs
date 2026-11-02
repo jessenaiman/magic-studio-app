@@ -166,7 +166,7 @@ fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, 
         let custom = doc["animations"]
             .as_array()
             .is_some_and(|a| a.iter().any(|x| x["background_custom"] == true));
-        if bgs.len() > 1 || ( !bgs.is_empty() && (custom || imgs.len() <= 1) ) {
+        if bgs.len() > 1 || (!bgs.is_empty() && (custom || imgs.len() <= 1)) {
             return Some(bgs);
         }
     }

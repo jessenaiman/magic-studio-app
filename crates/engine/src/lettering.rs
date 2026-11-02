@@ -421,7 +421,8 @@ fn spatial_line_steps(
         let look = item_look(recipe, item);
         let x = item["x"].as_f64().unwrap_or(140.0);
         let y = item["y"].as_f64().unwrap_or(90.0);
-        let bw = ((text_str.chars().count() as f64) * look.size * 0.72).clamp(220.0, FRAME.0 - 80.0);
+        let bw =
+            ((text_str.chars().count() as f64) * look.size * 0.72).clamp(220.0, FRAME.0 - 80.0);
         let bh = (look.size * 1.5).max(96.0);
         let mut text = text_params(&look);
         text["text"] = json!(text_str);
@@ -438,7 +439,14 @@ fn spatial_line_steps(
         }
         let (ws, we) = item_word_time(line, item);
         let move_name = item["motion"].as_str().unwrap_or("quiet");
-        animate_range(&layer_id, (0, text_str.chars().count()), move_name, ws, we, steps);
+        animate_range(
+            &layer_id,
+            (0, text_str.chars().count()),
+            move_name,
+            ws,
+            we,
+            steps,
+        );
         if item["accent"].is_string() || move_name != "quiet" {
             hero_summary = json!({"word": text_str, "motion": move_name, "at": ws});
         }
@@ -455,8 +463,14 @@ fn spatial_line_steps(
     }
     for (d_idx, draw) in design["draws"].as_array().into_iter().flatten().enumerate() {
         let vb = draw["view_box"].as_str().unwrap_or("0 0 280 30");
-        let (x, y) = (draw["x"].as_f64().unwrap_or(0.0), draw["y"].as_f64().unwrap_or(0.0));
-        let (w, h) = (draw["w"].as_f64().unwrap_or(240.0), draw["h"].as_f64().unwrap_or(30.0));
+        let (x, y) = (
+            draw["x"].as_f64().unwrap_or(0.0),
+            draw["y"].as_f64().unwrap_or(0.0),
+        );
+        let (w, h) = (
+            draw["w"].as_f64().unwrap_or(240.0),
+            draw["h"].as_f64().unwrap_or(30.0),
+        );
         for (p_idx, path) in draw["paths"].as_array().into_iter().flatten().enumerate() {
             let sid = format!("{}_draw{d_idx}_{p_idx}", line.id);
             stroke_steps(
@@ -514,7 +528,10 @@ fn build_steps_with_designs(
         };
         previous_out = gone;
         let line_design = &designs[id];
-        let hero_info = if line_design["items"].as_array().is_some_and(|a| !a.is_empty()) {
+        let hero_info = if line_design["items"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+        {
             spatial_line_steps(recipe, line, line_design, shown, gone, &mut steps)
         } else {
             let mut text = text_params(&base);
@@ -524,7 +541,9 @@ fn build_steps_with_designs(
             text["justify"] = json!("center");
             steps.push(step("layer.newText", text));
             let h_val = hero(recipe, line)
-                .map(|(k, spec)| hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps))
+                .map(|(k, spec)| {
+                    hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps)
+                })
                 .unwrap_or(Value::Null);
             steps.push(step(
                 "layer.timing",
@@ -772,8 +791,7 @@ mod tests {
         let rot = steps
             .iter()
             .find(|s| {
-                s["params"]["layer"] == "l1_item1"
-                    && s["params"]["path"] == "transform/rotation"
+                s["params"]["layer"] == "l1_item1" && s["params"]["path"] == "transform/rotation"
             })
             .unwrap();
         assert_eq!(rot["params"]["value"], -7.0);
@@ -785,8 +803,7 @@ mod tests {
         let trim_keys: Vec<(f64, f64)> = steps
             .iter()
             .filter(|s| {
-                s["params"]["layer"] == "l1_draw0_0"
-                    && s["params"]["path"] == "contents/trim/end"
+                s["params"]["layer"] == "l1_draw0_0" && s["params"]["path"] == "contents/trim/end"
             })
             .map(|s| {
                 (
