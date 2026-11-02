@@ -239,6 +239,19 @@ pub fn snapshot(app: &tauri::AppHandle) -> Result<Value, String> {
 
 /// One boundary for replacing/closing the live workspace. Unknown state never permits silent loss.
 pub fn guard(app: &tauri::AppHandle, id: &str, ui_origin: bool) -> Result<(), String> {
+    guard_with_force(app, id, ui_origin, false)
+}
+
+/// Guard with optional force flag for explicit user override.
+pub fn guard_with_force(
+    app: &tauri::AppHandle,
+    id: &str,
+    ui_origin: bool,
+    force: bool,
+) -> Result<(), String> {
+    if force {
+        return Ok(());
+    }
     if !matches!(
         id,
         "project.open" | "project.new" | "project.close" | "project.intake" | "app.quit"
@@ -254,12 +267,17 @@ pub fn guard(app: &tauri::AppHandle, id: &str, ui_origin: bool) -> Result<(), St
     }
     let fields = v["draft_fields"].as_array().is_some_and(|a| !a.is_empty());
     let pending = v["pending_invokes"].as_u64().unwrap_or(u64::MAX) > u64::from(ui_origin);
-    if v["engine_unsaved"] != false
-        || fields
-        || pending
-        || v["phase"] != "ready"
-        || v["errors"].as_array().is_none_or(|a| !a.is_empty())
-    {
+    let ui_broken = v["phase"] != "ready" || v["errors"].as_array().is_none_or(|a| !a.is_empty());
+
+    // When quitting, if the project is clean (no unsaved edits, no draft fields, no pending invokes),
+    // a frontend script error or non-ready DOM state must never trap the window or prevent quitting.
+    let blocked = if id == "app.quit" {
+        v["engine_unsaved"] != false || fields || pending
+    } else {
+        v["engine_unsaved"] != false || fields || pending || ui_broken
+    };
+
+    if blocked {
         return Err(format!(
             "{id} blocked: unsaved, pending or unknown Studio state. Review edits in Studio and save them; query `magic-cli exec ui.feedback` before retrying. No project was replaced or app closed."
         ));
