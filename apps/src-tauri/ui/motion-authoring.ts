@@ -7,13 +7,12 @@ async function animationTheatreSnapshot(){
  if(state.project!==project||magicTheatre.frame!==frame)throw Error('Project changed during timeline capture.');
  theatreRequireSaved();return value.state;
 }
-function buildAuthoringField(id: string, label: string, value: any, type = 'number', range: any[] | null = null): any {
- if(range&&typeof value==='number'&&Number.isFinite(value)){
-  const [min,max,step,unit]=range,node=motionRange(`authoring-${id}`,label,Math.min(min,value),Math.max(max,value),step,value,unit,()=>{});
-  const input=node.input;input.defaultValue=input.value;
-  return {input,node};
+function buildAuthoringField(id: string, label: string, value: any, type = 'number', range: any[] | null = null, control: InspectorNumberOptions['control'] = 'horizontal'): any {
+ if(type==='number'){
+  const [min,max,step,unit]=range||[0,100,0.1,''];
+  return new InspectorNumberField({id:`authoring-${id}`,label,value:value??null,min,max,step,unit,control});
  }
- const input=el('input',{id:`authoring-${id}`,class:'field',type:type==='number'?'text':type,inputmode:type==='number'?'decimal':undefined,value:value??'',placeholder:value===null?'Animated':undefined,'aria-label':label});
+ const input=el('input',{id:`authoring-${id}`,class:'field',type,value:value??'','aria-label':label});
  return new InspectorField(label,input);
 }
 
@@ -23,7 +22,7 @@ function buildPartCoordinateRows(meta: any, part: any, action: any, dirty: Set<s
   const v=property==='pivot'?part?.pivot:action?.static_overrides?.[part?.id]?.[property];
   const fields=Array.from({length:count},(_,i)=>{
    const size=meta.canvas?.[i],range=property==='scale'?[-200,200,1,'%']:property==='rotation'?[-180,180,1,'°']:Number.isFinite(size)&&size>0?[property==='pivot'?0:-size,size,0.1,'px']:null;
-   return buildAuthoringField(count===1?property:`${property}-${i}`,count===1?label:`${label} ${i?'Y':'X'}`,count===1?v:v?.[i]??null,'number',range);
+   return buildAuthoringField(count===1?property:`${property}-${i}`,count===1?label:`${label} ${i?'Y':'X'}`,count===1?v:v?.[i]??null,'number',range,property==='rotation'?'dial':'horizontal');
   });values[property]=fields;
   for(const f of fields)f.input.onchange=()=>dirty.add(property);
   partRows.push(el('div',{class:count===2?'motion-coordinate-row':''},...fields.map(f=>f.node)));
@@ -49,7 +48,7 @@ function applyDurationChange(p: any, action: any, actionDirty: Set<string>, dura
  const d=Number(durationInput.value);
  if(!actionDirty.has('duration')&&!(Number.isFinite(d)&&d>0&&d!==action?.duration))return;
  if(!Number.isFinite(d)||d<=0||d>600)throw Error('Duration must be in (0,600].');
- p.duration=d;placeDurationInput.value=String(d);
+ p.duration=d;placeDurationInput.value=String(d);placeDurationInput.dispatchEvent(new Event('input'));
 }
 
 function buildActionSetPayload(identity: () => Record<string, any>, action: any, actionDirty: Set<string>, labelInput: any, durationInput: any, loopInput: any, placeDurationInput: any) {
@@ -187,21 +186,21 @@ function createRigEditRunner(ctx: any) {
 function buildActionPlacementSection(ctx: any) {
  const {meta,character,track,action,caps,identity,current,run,status}=ctx;
  const label=buildAuthoringField('label','Action name',action?.label||action?.id||'','text');
- const duration=buildAuthoringField('duration','Action duration (seconds)',action?.duration);
- const loop=el('input',{id:'authoring-loop',type:'checkbox','aria-label':'Loop authored action'});
- loop.checked=action?.loop===true;loop.defaultChecked=loop.checked;
+ const duration=buildAuthoringField('duration','Duration',action?.duration,'number',[0.1,30,0.1,'s']);
+ const loopField=new InspectorToggle('authoring-loop','Loop action',action?.loop===true);
+ const loop=loopField.input;
  const actionDirty=new Set<string>();
  label.input.onchange=()=>actionDirty.add('label');duration.input.onchange=()=>actionDirty.add('duration');loop.onchange=()=>actionDirty.add('loop');
  const cleanTrack=(track||'action').replace(/^@/,'');
  const defaultClipId=`${character}-${cleanTrack}`.replace(/[^a-zA-Z0-9_-]/g,'-');
  const existingPlacement=(meta.placed_tracks||[]).find(p=>p.id===defaultClipId||(p.character===character&&String(p.track||'').replace(/^@/,'')===cleanTrack));
  const placeScene=el('select',{id:'authoring-place-scene','aria-label':'Storyboard scene'},el('option',{value:''},'Movable timeline (or pick a Storyboard scene…)'));
- const placeStart=buildAuthoringField('place-start','Video start (seconds)',existingPlacement?.start??0);
- const placeDuration=buildAuthoringField('place-duration','Video duration (seconds)',existingPlacement?.duration??action?.duration??3);
- const placeRate=buildAuthoringField('place-rate','Playback rate (×)',existingPlacement?.playback_rate??1);
+ const placeStart=buildAuthoringField('place-start','Start',existingPlacement?.start??0,'number',[0,120,0.1,'s']);
+ const placeDuration=buildAuthoringField('place-duration','Length',existingPlacement?.duration??action?.duration??3,'number',[0.1,30,0.1,'s']);
+ const placeRate=buildAuthoringField('place-rate','Playback rate',existingPlacement?.playback_rate??1,'number',[0.25,4,0.01,'×'],'dial');
  const defaultRect=Array.isArray(existingPlacement?.rect)&&existingPlacement.rect.length===4?existingPlacement.rect:[0,0,meta.canvas?.[0]||1920,meta.canvas?.[1]||1080];
- const placeX=buildAuthoringField('place-x','Stage X (px)',defaultRect[0]),placeY=buildAuthoringField('place-y','Stage Y (px)',defaultRect[1]);
- const placeW=buildAuthoringField('place-w','Stage W (px)',defaultRect[2]),placeH=buildAuthoringField('place-h','Stage H (px)',defaultRect[3]);
+ const placeX=buildAuthoringField('place-x','Stage X',defaultRect[0],'number',[-defaultRect[2],defaultRect[2],1,'px']),placeY=buildAuthoringField('place-y','Stage Y',defaultRect[1],'number',[-defaultRect[3],defaultRect[3],1,'px']);
+ const placeW=buildAuthoringField('place-w','Width',defaultRect[2],'number',[1,defaultRect[2]*2,1,'px']),placeH=buildAuthoringField('place-h','Height',defaultRect[3],'number',[1,defaultRect[3]*2,1,'px']);
  const placeStatus=el('p',{id:'authoring-place-status',class:'muted',role:'status'},existingPlacement?`Synced on HyperFrames Studio track #${existingPlacement.track_index}${existingPlacement.scene?` · Storyboard Scene ${existingPlacement.scene}`:''} (${existingPlacement.start}s–${(Number(existingPlacement.start)+Number(existingPlacement.duration)).toFixed(2)}s · ${existingPlacement.playback_rate??1}×)`:'Choose a Storyboard scene or start time to link this animation to the Storyboard & HyperFrames Studio.');
  populatePlaceSceneOptions(placeScene,current,existingPlacement?.scene);
  placeScene.onchange=async()=>{
@@ -209,18 +208,18 @@ function buildActionPlacementSection(ctx: any) {
   try{
    const s=await motionCommand('storyboard.read',{scene:Number(placeScene.value)});
    if(current()&&Number.isFinite(s.start)&&Number.isFinite(s.end)&&s.end>s.start){
-    placeStart.input.value=String(s.start);placeDuration.input.value=String(Number((s.end-s.start).toFixed(2)));
+    placeDuration.setValue(Number((s.end-s.start).toFixed(2)));placeStart.setValue(s.start);
     placeStatus.textContent=`Scene ${s.scene} selected (${s.start.toFixed(2)}s–${s.end.toFixed(2)}s) · ready to link to Storyboard & HyperFrames Studio.`;
    }
   }catch{}
  };
  const placeBtn=el('button',{id:'authoring-place-video',class:'start','data-commands':'video.place_track',
   onclick:()=>runPlaceVideoTrack({meta,character,action,cleanTrack,defaultClipId,existingPlacement,placeScene,placeStart,placeDuration,placeRate,placeX,placeY,placeW,placeH,placeStatus,placeBtn,duration,current})},
-  existingPlacement?'Update Storyboard & Studio Link':'Link to Storyboard & Studio');
+  existingPlacement?'Update placement':'Place in Studio');
  const actionApply=el('button',{id:'authoring-action-apply','data-commands':'motion.action.set',
   onclick:()=>{try{return run('motion.action.set',buildActionSetPayload(identity,action,actionDirty,label.input,duration.input,loop,placeDuration.input));}catch(error){status.textContent=String(error);}}},'Save action settings');
  actionApply.disabled=caps.action_set!==true;
- const actionNode=el('div',{class:'panel-fields'},...(caps.action_set===true?[label.node,duration.node,el('label',{},loop,'Loop authored action'),actionApply]:[]),el('hr',{}),el('strong',{},'Storyboard & HyperFrames Studio link'),el('label',{class:'field'},'Storyboard scene',placeScene),placeStart.node,placeDuration.node,placeRate.node,el('div',{class:'motion-coordinate-row'},placeX.node,placeY.node),el('div',{class:'motion-coordinate-row'},placeW.node,placeH.node),placeBtn,placeStatus);
+ const actionNode=el('div',{class:'panel-fields'},...(caps.action_set===true?[label.node,duration.node,loopField.node,actionApply]:[]),el('hr',{}),el('span',{class:'group-label'},'Scene placement'),new InspectorField('Scene',placeScene).node,placeStart.node,placeDuration.node,placeRate.node,placeX.node,placeY.node,placeW.node,placeH.node,placeBtn,placeStatus);
  return {actionNode,actionApply,label,duration,loop};
 }
 
@@ -257,7 +256,7 @@ function buildLayerStackSection(ctx: any) {
  const order=meta.layer_order||meta.layers.map(l=>l.id),index=part?order.indexOf(part.id):-1,layerCaps=meta.layer_authoring||{};
  const layerPicker=el('select',{id:'authoring-layer-picker','aria-label':'Layer in stacking order',onchange:e=>{motion.selected=e.target.value||null;animationControls();animationDraw();updateMagicSelection();}},el('option',{value:''},'Choose a layer…'),...order.map((id,i)=>el('option',{value:id},`${i} · ${meta.layers.find(l=>l.id===id)?.label||id}`)));
  layerPicker.value=part?.id||'';
- const depth=buildAuthoringField('layer-depth','Stack depth',index<0?undefined:index,'number',[0,Math.max(0,order.length-1),1,'']);
+ const depth=buildAuthoringField('layer-depth','Stack depth',index<0?undefined:index,'number',[0,Math.max(0,order.length-1),1,''],'vertical');
  depth.input.min=0;depth.input.max=Math.max(0,order.length-1);depth.input.step=1;depth.input.disabled=!part||!layerCaps.supported;
  const layerReason=el('p',{id:'authoring-layer-reason'},layerCaps.supported?`0 = back · ${Math.max(0,order.length-1)} = front. Stacking preserves parents; path and scale control spatial depth.`:layerCaps.reason||'Stack editing requires a project-local ordered rig.');
  const move=value=>{if(!part||!Number.isInteger(value)||value<0||value>=order.length){status.textContent='Choose a layer and an integer depth within this stack.';return;}return run('motion.layers.set',{expected_project:project,character,expected_rig_sha256:hash,part:part.id,depth:value});};

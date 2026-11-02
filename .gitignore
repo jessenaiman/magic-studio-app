@@ -201,3 +201,7 @@ apps/src-tauri/acceptance/artifacts/
 /apps/src-tauri/ui/words.js
 /apps/src-tauri/ui/words-design.js
 /apps/src-tauri/ui/words-flow.js
+
+/apps/src-tauri/ui/inspector-controls.js
+
+/.agent/ui-inspector-review/

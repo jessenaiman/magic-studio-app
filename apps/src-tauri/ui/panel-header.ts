@@ -36,9 +36,9 @@ class PanelHeader {
 class InspectorField {
   readonly input: any;
   readonly node: HTMLElement;
-  constructor(label: string, input: any) {
+  constructor(label: string, input: any, container = 'label') {
     this.input=input;
-    this.node=el('label',{},el('span',{},label),input);
+    this.node=el(container,{class:'inspector-field field-row'},el('span',{class:'craft-control-label'},label),input);
   }
 }
 

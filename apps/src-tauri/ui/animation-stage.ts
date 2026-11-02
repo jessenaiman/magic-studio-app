@@ -11,28 +11,36 @@ function motionExportControl() {
   let busy = false;
   const button = el('button', {
     class: 'start', id: 'motion-export', 'data-commands': 'animation.render',
-    title: 'Export the current rest/action preview as a transparent track',
+    title: 'Save the animation and update its linked Studio track',
     onclick: async () => {
       if (busy) return;
       const project = state.project, character = motion.character;
       try {
+        busy = true;
+        button.disabled = true;
+        animationPause();
+        await theatreSave();
         theatreRequireSaved();
         const duration = motion.sample?.duration / motion.speed;
         if (!character || !motion.track || !Number.isFinite(duration) || duration <= 0) {
-          throw Error('Choose a sampled action before exporting.');
+          throw Error('Choose an animation clip before saving.');
         }
-        const params = { character, track: motion.track, rest: motion.rest, amount: motion.amount, duration };
+        const params = { character, track: motion.track, rest: motion.rest, amount: motion.amount, duration, sync_video: true };
         busy = true;
         button.disabled = true;
-        status.textContent = 'Rendering transparent track…';
+        status.textContent = 'Saving animation and updating Studio…';
         const result = await motionCommand('animation.render', params);
         motion.lastExport = { project, character, params, result };
         if (state.project !== project || motion.character !== character) return;
         const file = result.outputs?.[0]?.file;
-        if (result.ok !== true || typeof file !== 'string' || !file) {
-          throw Error(result.error || 'Export returned no confirmed output file; inspect the retained receipt.');
+        if (result.ok !== true || result.validation_ok === false || typeof file !== 'string' || !file) {
+          throw Error(result.error || 'Animation save returned no verified output; inspect the retained result.');
         }
-        status.textContent = 'Track ready';
+        const synced = result.video_tracks_synced;
+        await motionCommand('project.save');
+        status.textContent = Array.isArray(synced) && synced.length
+          ? `Animation saved · Studio updated: ${synced.join(', ')}`
+          : 'Animation saved · no Studio track linked. Choose a scene under Placement.';
         status.append(fileButton({ path: file, name: file.split('/').pop() }));
       } catch (error) {
         if (state.project === project && motion.character === character) status.textContent = String(error);
@@ -41,7 +49,7 @@ function motionExportControl() {
         button.disabled = false;
       }
     },
-  }, 'Export track');
+  }, 'Save animation');
   return { button, status };
 }
 function renderCharacterMagicPanel(meta: any, pickActionTrack: any) {
@@ -372,18 +380,22 @@ class MotionPathController {
       onchange: () => { motion.pathLayer = target.value; },
     }, ...roots.map((l: any) => el('option', { value: l.id }, l.label || l.id)));
     target.value = motion.pathLayer || '';
-    const point = el('select', { id: 'motion-path-point', 'aria-label': 'Edit path point' },
+    const point = el('select', { id: 'motion-path-point', 'aria-label': 'Edit path point', disabled: !motion.points.length },
+      ...(!motion.points.length ? [el('option', { value: '' }, 'Draw a route to add points')] : []),
       ...motion.points.map((p: number[], i: number) => el('option', { value: String(i) }, `${i + 1} · ${p.map((v) => Number(v.toFixed(1))).join(', ')}`)));
-    const x = el('input', { id: 'motion-path-x', type: 'number', step: 'any', 'aria-label': 'Path point X' });
-    const y = el('input', { id: 'motion-path-y', type: 'number', step: 'any', 'aria-label': 'Path point Y' });
+    const [width, height] = motion.meta?.canvas || [1920, 1080];
+    const xField = new InspectorNumberField({ id: 'motion-path-x', label: 'X', value: null, min: -width, max: width * 2, step: 1, unit: 'px' });
+    const yField = new InspectorNumberField({ id: 'motion-path-y', label: 'Y', value: null, min: -height, max: height * 2, step: 1, unit: 'px', control: 'vertical' });
+    const x = xField.input, y = yField.input;
+    x.placeholder = y.placeholder = '—';
     const read = () => {
       const p = motion.points[Number(point.value)];
       x.disabled = y.disabled = !p;
-      if (p) { x.value = p[0]; y.value = p[1]; }
+      if (p) { xField.setValue(p[0]); yField.setValue(p[1]); }
     };
     point.onchange = read;
     for (const [input, index] of [[x, 0], [y, 1]] as [any, number][]) {
-      input.onchange = () => {
+      input.oninput = input.onchange = () => {
         const p = motion.points[Number(point.value)], value = Number(input.value);
         if (p && String(input.value).trim() && Number.isFinite(value)) {
           p[index] = value;
@@ -400,9 +412,9 @@ class MotionPathController {
     const section = motionSection('Path & depth', [
       el('label', {}, 'Path root', target),
       el('label', {}, 'Edit point', point),
-      el('div', { class: 'motion-coordinate-row' }, el('label', {}, 'X', x), el('label', {}, 'Y', y)),
+      el('div', { class: 'craft-axis-controls' }, xField.node, yField.node),
       el('p', { class: 'motion-help', title: 'Select Pen above the stage, then draw. Playback moves from the first point at zero to the last point at the chosen duration.' }, 'Draw a route. Set its timing.'),
-      motionRange('motion-path-duration', 'Duration', 0.1, Math.max(600, motion.pathDuration), 0.1, motion.pathDuration, 's', (v) => { motion.pathDuration = v; animationDraw(); }),
+      motionRange('motion-path-duration', 'Duration', 0.1, Math.max(30, motion.pathDuration), 0.1, motion.pathDuration, 's', (v) => { motion.pathDuration = v; animationDraw(); }),
       motionRange('motion-size-start', 'Start size', 1, Math.max(1000, motion.startSize), 1, motion.startSize, '%', (v) => { motion.startSize = v; }),
       motionRange('motion-size-end', 'End size', 1, Math.max(1000, motion.endSize), 1, motion.endSize, '%', (v) => { motion.endSize = v; }),
       el('div', { class: 'motion-path-actions' }, clearBtn, undo, apply),

@@ -59,6 +59,51 @@
   display: none;
 }
 
+/* InspectorField owns the shared property-row layout in every host view. */
+.inspector-field { display: grid; grid-template-columns: var(--size-64) minmax(0, 1fr); align-items: center; gap: var(--space-2); min-width: 0; color: var(--muted); font-size: var(--text-sm); }
+.inspector-field > input:not([type="checkbox"], [type="range"]), .inspector-field > select { width: 100%; min-width: 0; }
+.inspector-field > select { overflow: hidden; text-overflow: ellipsis; }
+.panel-fields > hr { width: 100%; margin: var(--space-1) 0; border: 0; border-top: thin solid var(--line); }
+/* Numeric fields extend the existing range style and inherit section tones. */
+.craft-number { --craft-tone: var(--control-accent, var(--motion-blue)); grid-template-columns: minmax(0, 1fr); gap: var(--size-2); }
+.craft-control-label { min-width: 0; line-height: 1.4; }
+.craft-number-title, .panel-fields .craft-number-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.craft-number-body { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: var(--space-2); min-width: 0; }
+.craft-number-readout { flex: none; color: var(--craft-tone); font-family: ui-monospace, monospace; font-size: var(--text-sm); font-variant-numeric: tabular-nums; text-align: right; }
+.craft-dial:focus-visible { outline: thin solid var(--craft-tone); outline-offset: var(--size-2); border-radius: var(--radius-sm); }
+.craft-number .control-range { width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; }
+.craft-number input[type="range"]:disabled { opacity: .35; cursor: default; }
+.craft-number[data-disabled="true"] { opacity: .5; }
+.craft-number[data-control="vertical"] .craft-number-body { justify-items: center; }
+.craft-number[data-control="vertical"] input[type="range"] { writing-mode: vertical-lr; direction: ltr; width: var(--size-28); height: var(--size-80); cursor: ns-resize; }
+.craft-number[data-control="vertical"] input[type="range"]::-webkit-slider-runnable-track { width: var(--size-4); height: 100%; }
+.craft-number[data-control="vertical"] input[type="range"]::-webkit-slider-thumb { margin-top: 0; margin-left: calc(-1 * var(--size-5)); }
+.craft-number[data-control="vertical"] input[type="range"]::-moz-range-track { width: var(--size-4); height: 100%; }
+.craft-number[data-control="dial"] .craft-number-body { grid-template-columns: var(--size-48) minmax(0, 1fr); }
+.craft-dial { display: block; width: var(--size-48); height: var(--size-48); cursor: ns-resize; touch-action: none; user-select: none; }
+.craft-dial svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.craft-dial-track { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 90 30; transform: rotate(135deg); transform-origin: center; }
+.craft-dial-face { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
+.craft-dial-marker { fill: none; stroke: var(--craft-tone); stroke-width: 2.5; stroke-linecap: round; }
+.craft-dial:hover .craft-dial-face { stroke: var(--craft-tone); }
+.craft-dial[aria-disabled="true"] { opacity: .35; cursor: default; }
+.motion-coordinate-row .craft-number { grid-template-columns: minmax(0, 1fr); }
+.motion-coordinate-row .craft-number-body { display: flex; flex-direction: column-reverse; align-items: stretch; gap: 0; }
+.craft-axis-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-2); border: thin solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.craft-axis-controls .craft-number { grid-template-columns: minmax(0, 1fr); }
+.craft-axis-controls .craft-number-body { display: flex; flex-direction: column-reverse; align-items: stretch; }
+.craft-axis-controls .craft-number[data-control="vertical"] .craft-number-body { flex-direction: column; align-items: center; }
+.craft-toggle, .panel-fields .craft-toggle { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--size-28); color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
+.craft-switch { --craft-tone: var(--control-accent, var(--motion-blue)); appearance: none; position: relative; flex: none; width: var(--size-32); height: var(--size-18); margin: 0; padding: 0; border: thin solid var(--line); border-radius: var(--size-99); background: var(--bg); cursor: pointer; transition: background var(--fast) var(--ease); }
+.craft-switch::after { content: ''; position: absolute; top: var(--size-2); left: var(--size-2); width: var(--size-12); height: var(--size-12); border-radius: 50%; background: var(--muted); transition: transform var(--fast) var(--ease), background var(--fast) var(--ease); }
+.craft-switch:checked { border-color: var(--craft-tone); background: color-mix(in srgb, var(--craft-tone) 20%, var(--bg)); }
+.craft-switch:checked::after { transform: translateX(var(--size-14)); background: var(--craft-tone); }
+.craft-switch:focus-visible { outline: thin solid var(--craft-tone); outline-offset: var(--size-3); }
+.craft-switch:disabled { opacity: .4; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .craft-switch, .craft-switch::after { transition: none; }
+}
+
 /* A catalog entry owns its content layout. Hosts supply data and actions. */
 .project-card {
   display: flex;

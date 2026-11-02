@@ -530,7 +530,7 @@
     "motion-quality": {
       "component": "panel",
       "look": "check",
-      "label": "Quality checks",
+      "label": "Asset checks",
       "indicator": "hidden",
       "rail": "motion-quality",
       "icon": "fit"
@@ -538,14 +538,14 @@
     "motion-quality-head": {
       "component": "panel-head",
       "look": "heading",
-      "label": "Quality checks",
+      "label": "Asset checks",
       "indicator": "hidden",
       "target": "motion-quality"
     },
     "motion-export-section": {
       "component": "panel",
       "look": "export",
-      "label": "Export & integrations",
+      "label": "Save animation",
       "indicator": "hidden",
       "rail": "motion-export-section",
       "icon": "export"
@@ -553,10 +553,10 @@
     "motion-export-section-head": {
       "component": "panel-head",
       "look": "heading",
-      "label": "Export",
+      "label": "Save animation",
       "indicator": "hidden",
       "target": "motion-export-section",
-      "description": "Export & integrations"
+      "description": "Save the animation and update its linked Studio track"
     },
     "blender-placement": {
       "component": "panel",
@@ -1122,7 +1122,7 @@
       "indicator": "hidden"
     },
     "authoring-place-video": {
-      "component": "ghost",
+      "component": "start",
       "label": "sync to video timeline",
       "indicator": "hidden",
       "command": "video.place_track"

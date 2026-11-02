@@ -179,13 +179,9 @@ function motionSection(title: string, body: any, open = false, componentId: stri
   return node;
 }
 function motionRange(id: string, label: string, min: number, max: number, step: number, value: number, unit: string, change: (v: number) => void) {
-  const out = el('output', {}, `${Number(Number(value).toFixed(2))}${unit}`);
-  const input = el('input', { id, type: 'range', min, max, step, value, 'aria-label': label, title: `${label}: ${min}–${max}${unit}` });
-  const fill = () => input.style.setProperty('--range-fill', `${max > min ? 100 * (Number(input.value) - min) / (max - min) : 0}%`);
-  fill();
-  input.addEventListener('input', () => { out.textContent = `${input.value}${unit}`; fill(); change(Number(input.value)); });
-  const node = el('label', { class: 'motion-range' }, el('span', {}, label, out), input);
-  node.input = input;
+  const field = new InspectorNumberField({ id, label, min, max, step, value, unit, change });
+  const node: any = field.node;
+  node.input = field.input;
   return node;
 }
 class AnimationViewController {
@@ -588,14 +584,11 @@ class AnimationViewController {
     const charMagicPanel = renderCharacterMagicPanel(meta, (act: string, ov?: any, pl?: boolean) => this.pickActionTrack(act, ov, pl));
     box.append(motionSection('Action', [actions, charMagicPanel, genMissingPosesBtn, el('span', { class: 'group-label' }, 'Custom tracks'), tracks, authoring.action], true));
     box.append(pathControls());
-    const loop = el('input', {
-      id: 'motion-preview-loop', type: 'checkbox',
-      onchange: (e: any) => { motion.previewLoop = e.target.checked; e.target.defaultChecked = e.target.checked; animationRemember(); },
-    });
-    loop.checked = motion.previewLoop ?? meta.tracks.find((t: any) => t.id === motion.track)?.loop ?? false;
-    loop.defaultChecked = loop.checked;
+    const loopField = new InspectorToggle('motion-preview-loop', 'Loop preview',
+      motion.previewLoop ?? meta.tracks.find((t: any) => t.id === motion.track)?.loop ?? false,
+      (checked) => { motion.previewLoop = checked; loopField.input.defaultChecked = checked; animationRemember(); });
     box.append(motionSection('Motion & timing', [
-      el('label', {}, loop, 'Loop preview'),
+      loopField.node,
       motionRange('motion-speed', 'Playback speed', 0.25, 2.25, 0.05, motion.speed, '×', (v) => { motion.speed = v; animationRemember(); }),
       motionRange('motion-amount', 'Motion amount', 0, 100, 1, motion.amount, '%', (v) => {
         motion.amount = v;
@@ -632,10 +625,10 @@ class AnimationViewController {
     }
     const pf = meta.preflight || {};
     const pfSummary = pf.total_checks
-      ? `${pf.passed_count}/${pf.total_checks} pre-flight checks passed · ${pf.sheets?.turnaround_views || 0} turnaround views · ${pf.sheets?.pose_frames || 0} pose frames`
+      ? `${pf.passed_count}/${pf.total_checks} asset structure checks passed`
       : `${meta.layers.length} layers · ${meta.tracks.length} motion tracks`;
     const pfList = el('div', { class: 'why' }, ...(pf.checks || []).map((c: any) => el('div', { class: c.ok ? 'muted' : 'why' }, `${c.ok ? '✓' : '✗'} ${c.label}`)));
-    box.append(motionSection('Quality checks', [el('p', { class: 'muted' }, pfSummary), pfList], false));
+    box.append(motionSection('Quality checks', [el('p', { class: 'muted' }, pfSummary), pfList, el('p', {class: 'motion-help'}, 'Asset structure only. Playback, joint gaps and Studio output are not verified by these checks.')], false));
     const { button: exportButton, status: exportStatus } = motionExportControl();
     box.append(motionSection('Export & integrations', [exportButton, exportStatus, authoring.pose], false));
     const authoredCount = meta.tracks.filter((t: any) => !t.standard).length;

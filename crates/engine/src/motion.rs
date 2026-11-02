@@ -1699,14 +1699,10 @@ fn export_rendered_track(
     result["amount"] = json!(p["amount"].as_f64().unwrap_or(100.0));
     if p["sync_video"].as_bool().unwrap_or(true)
         && let Some(file) = result["outputs"][0]["file"].as_str().map(str::to_owned)
-        && let Ok(synced) = crate::video_target::sync_placed_tracks_media_and_duration(
-            s,
-            id,
-            track_raw,
-            Some(&file),
-            Some(duration),
-        )
     {
+        let synced = crate::video_target::sync_placed_tracks_media_and_duration(
+            s, id, track_raw, Some(&file), Some(duration),
+        )?;
         result["video_tracks_synced"] = synced;
     }
     Ok(result)

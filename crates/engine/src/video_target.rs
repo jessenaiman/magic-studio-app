@@ -1181,9 +1181,8 @@ pub fn sync_placed_tracks_media_and_duration(
             {
                 req["path"] = json!(p);
             }
-            if let Ok(placed) = cmd_video_place_track(s, &req) {
-                updated.push(placed["id"].clone());
-            }
+            let placed = cmd_video_place_track(s, &req)?;
+            updated.push(placed["id"].clone());
         }
     }
     Ok(json!(updated))
