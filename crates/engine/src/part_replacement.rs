@@ -1215,10 +1215,10 @@ pub fn cmd_part_undo_image(s: &mut Session, params: &Value) -> Result<Value> {
     )
 }
 
-/// Resolve an installed Craft binary the way `resolve_craft_cli` names it: an
-/// explicit path must be a file, a bare name must be on PATH.
-fn installed_craft_binary(name: &str) -> Option<PathBuf> {
-    let resolved = PathBuf::from(crate::workspace::resolve_craft_cli(name));
+/// Resolve an installed tool binary: an explicit path must be a file,
+/// a bare name must be on PATH.
+fn installed_binary(name: &str) -> Option<PathBuf> {
+    let resolved = PathBuf::from(crate::workspace::resolve_tool(name));
     if resolved.components().count() > 1 {
         return resolved.is_file().then_some(resolved);
     }
@@ -1351,7 +1351,7 @@ fn editor_choice(params: &Value) -> Result<(&str, bool)> {
 fn spawn_editor(root: &Path, history: &Path, part: &str, file: &Path) -> Result<bool> {
     // photocraft-cli is headless; only the PhotoCraft app opens a window.
     // An explicit `photocraft` binary wins, else the installed desktop entry.
-    let mut launch = match installed_craft_binary("photocraft") {
+    let mut launch = match installed_binary("photocraft") {
         Some(app) => std::process::Command::new(app),
         None => {
             let entry = image_editor_entry().ok_or_else(|| {
@@ -1426,7 +1426,7 @@ pub fn cmd_part_open_image_editor(s: &mut Session, params: &Value) -> Result<Val
     };
     let bytes = std::fs::read(&file)?;
     let (width, height) = png_size(&bytes)?;
-    let photocraft_cli = installed_craft_binary("photocraft-cli");
+    let photocraft_cli = installed_binary("photocraft-cli");
     let reused = if request.spawn {
         spawn_editor(&request.root, &request.history, &request.part, &file)?
     } else {

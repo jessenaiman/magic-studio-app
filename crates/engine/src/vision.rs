@@ -199,15 +199,15 @@ fn vision_single_image(s: &Session, img_raw: &str) -> Result<Value> {
     }))
 }
 
-fn vision_character_id(s: &Session, params: &Value) -> String {
+fn vision_character_id(s: &Session, params: &Value) -> Result<String> {
     params
         .get("character")
-        .or_else(|| params.get("preset"))
         .or_else(|| params.get("asset"))
         .and_then(Value::as_str)
+        .filter(|a| !a.trim().is_empty())
         .map(str::to_string)
         .or_else(|| s.active_asset.clone())
-        .unwrap_or_else(|| "hopper".to_string())
+        .ok_or_else(|| EngineError::InvalidParams("provide 'image', 'character', or load an active asset".into()))
 }
 
 fn vision_turnaround_views(asset: &crate::Asset) -> (Vec<Value>, Vec<i64>) {
@@ -305,12 +305,9 @@ pub fn cmd_vision_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     if let Some(img_raw) = params.get("image").and_then(Value::as_str) {
         return vision_single_image(s, img_raw);
     }
-    let character = vision_character_id(s, params);
-    if !s.assets.contains_key(&character) {
-        let _ = crate::magic_design::cmd_asset_load_manifest(s, &json!({ "preset": character }));
-    }
+    let character = vision_character_id(s, params)?;
     let asset = s.assets.get(&character).cloned().ok_or_else(|| {
-        EngineError::InvalidParams(format!("character `{character}` could not be loaded"))
+        EngineError::InvalidParams(format!("character `{character}` is not loaded in session"))
     })?;
     let (turnaround_views, foot_ys) = vision_turnaround_views(&asset);
     let measured_pixel_drift_y_px = pixel_drift(&foot_ys);

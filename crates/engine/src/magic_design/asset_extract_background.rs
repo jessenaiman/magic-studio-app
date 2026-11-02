@@ -2,10 +2,7 @@ use super::paths::results_dir;
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 
-/// Split an image into its subject and a filled background plate with two headless
-/// `photocraft-cli run`s: select the subject (`rect`/`point` → Object Selection, else Select
-/// Subject), then (1) clear everything else → `<stem>_subject.png`, (2) grow the selection by `expand`
-/// px and Content-Aware Fill it → `<stem>_background.png`. Both land beside the source (see `results_dir`).
+/// TODO: USE phtocraft-cli to extract the subject and background from an image, given a selection (rect or point) and an expand radius. 
 pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<Value> {
     let id = params
         .get("asset")
@@ -46,7 +43,7 @@ pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<V
         out_dir.join(format!("{stem}_subject.png")),
         out_dir.join(format!("{stem}_background.png")),
     );
-    let bin = crate::workspace::resolve_craft_cli("photocraft-cli");
+    let bin = crate::workspace::resolve_tool("photocraft-cli");
     let tool_version = crate::workspace::run_tool_in(&root, &bin, &["--version".into()])?;
     let cut = crate::workspace::run_tool_in(
         &root,

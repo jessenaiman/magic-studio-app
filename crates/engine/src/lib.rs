@@ -33,9 +33,9 @@
 //! |---|---|
 //! | Project lifecycle, paths, settings | [`project`], [`workspace`], [`project_settings`] |
 //! | Storyboard and song workspace | [`storyboard`], [`storyboard_crud`], [`storyboard_design`], [`workshop`] |
-//! | Character, rig, motion, sequence | [`character`], [`rig`], [`motion`], [`motion_authoring`], [`sequence`] |
+//! | Character, motion, sequence | [`character`], [`motion`], [`motion_authoring`], [`sequence`] |
 //! | Lyrics, timing, native animation sources | [`lyrics`], [`words`], [`theatre`], [`animation_links`] |
-//! | Production adapters and exports | [`exports`], [`blender`], [`image_generation`], [`agent`] |
+//! | Production adapters and exports | [`exports`], [`image_generation`], [`agent`] |
 //!
 //! Commands may write project files, launch installed production tools, or call
 //! configured providers. A default session is not a sandbox for arbitrary command
@@ -67,9 +67,9 @@ pub mod animation_links;
 pub(crate) mod audio_trace;
 pub mod change_marker;
 pub mod character;
+pub mod command_catalog;
 pub mod command_center;
 pub mod commands;
-pub mod command_catalog;
 pub mod complexity;
 pub mod control_bindings;
 pub mod crew;
@@ -79,16 +79,15 @@ pub mod image_cmds;
 pub mod image_generation;
 pub mod lyrics;
 pub mod magic_design;
-pub mod mesh_geometry;
 pub mod motion;
 pub mod motion_authoring;
+pub mod motion_qa;
 pub mod panels;
 pub mod part_replacement;
 pub mod parts;
 pub mod project;
 pub mod project_settings;
 pub(crate) mod read_only_file;
-pub mod rig;
 pub mod sequence;
 pub mod session;
 mod session_layers;
@@ -101,7 +100,6 @@ pub mod storyboard_design;
 mod storyboard_document;
 pub mod studio_cues;
 pub mod theatre;
-pub mod turnaround;
 pub mod video_target;
 pub mod vision;
 pub mod words;
@@ -276,16 +274,8 @@ fn outliner_name(params: &Value, asset_id: &str) -> String {
         .unwrap_or_else(|| asset_id.replace('_', " "))
 }
 
-/// A validated intake keeps the asset's own path; a loaded manifest takes the one it names.
-fn outliner_path(
-    s: &Session,
-    id: &str,
-    params: &Value,
-    asset_path: std::path::PathBuf,
-) -> Option<std::path::PathBuf> {
-    if id == "intake.validate" && !asset_path.as_os_str().is_empty() {
-        return Some(asset_path);
-    }
+/// A loaded manifest takes the path it names.
+fn outliner_path(s: &Session, params: &Value) -> Option<std::path::PathBuf> {
     params
         .get("manifest")
         .or_else(|| params.get("image"))
@@ -296,48 +286,38 @@ fn outliner_path(
 /// Update the entry the outliner already has, else add one for this call.
 fn connect_asset_entry(
     s: &mut Session,
-    id: &str,
     asset_id: String,
     name: String,
     path: Option<std::path::PathBuf>,
-    params: &Value,
 ) {
-    if let Some(existing) = s
-        .project_assets
-        .iter_mut()
-        .find(|entry| entry.id == asset_id)
+    if s.project_assets
+        .iter()
+        .any(|entry| entry.id == asset_id)
     {
-        if id == "intake.validate" && path.is_some() {
-            existing.path = path;
-        }
         return;
     }
     s.project_assets.push(ProjectAsset {
         id: asset_id,
         name,
-        preset: params
-            .get("preset")
-            .and_then(Value::as_str)
-            .map(str::to_owned),
+        preset: None,
         path,
         kind: "auto".into(),
         parts: Vec::new(),
     });
 }
 
-/// Older import/load callers also appear in the shared project outliner.
+/// Manifest load callers also appear in the shared project outliner.
 fn connect_outliner_asset(s: &mut Session, id: &str, params: &Value) {
-    if !matches!(id, "intake.validate" | "asset.load_manifest") {
+    if id != "asset.load_manifest" {
         return;
     }
     let Some(asset) = s.current_asset() else {
         return;
     };
     let asset_id = asset.id.clone();
-    let asset_path = asset.path.clone();
     let name = outliner_name(params, &asset_id);
-    let path = outliner_path(s, id, params, asset_path);
-    connect_asset_entry(s, id, asset_id, name, path, params);
+    let path = outliner_path(s, params);
+    connect_asset_entry(s, asset_id, name, path);
 }
 
 /// Keep the open project file in step with its asset connections.

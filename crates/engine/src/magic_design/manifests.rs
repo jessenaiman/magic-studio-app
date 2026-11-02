@@ -1,23 +1,28 @@
-use super::presets::{ManifestPaths, exports_root, preset_paths, vault_hero_image};
 use crate::session::{
-    Asset, AttachedReference, LoadedCutoutRigPlan, LoadedManifest, MeasuredMotionRange,
+    Asset, LoadedCutoutRigPlan, LoadedManifest, MeasuredMotionRange,
     MeasuredTurnaroundRegistration,
 };
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
+struct ManifestPaths {
+    id: String,
+    pose: Option<PathBuf>,
+    turnaround: Option<PathBuf>,
+    motion: Option<PathBuf>,
+    registration: Option<PathBuf>,
+}
+
 /// An asset being assembled from manifests and optional local evidence.
 struct ManifestAsset<'a> {
     asset: Asset,
     root: &'a Path,
     id: &'a str,
-    is_preset_load: bool,
 }
 
 pub fn cmd_asset_load_manifest(s: &mut Session, params: &Value) -> Result<Value> {
-    let root = exports_root(&crate::workspace::workspace_root(s));
-    let is_preset_load = params.get("preset").and_then(Value::as_str).is_some();
+    let root = crate::workspace::workspace_root(s);
     let ManifestPaths {
         id: asset_id,
         pose: pose_path,
@@ -34,7 +39,6 @@ pub fn cmd_asset_load_manifest(s: &mut Session, params: &Value) -> Result<Value>
         asset,
         root: &root,
         id: &asset_id,
-        is_preset_load,
     };
     loaded.attach_pose_manifest(loaded_pose, turnaround_path.is_none());
     loaded.attach_turnaround_manifest(turnaround_path);
@@ -44,16 +48,12 @@ pub fn cmd_asset_load_manifest(s: &mut Session, params: &Value) -> Result<Value>
 }
 
 fn resolve_paths(s: &Session, params: &Value, root: &Path) -> Result<ManifestPaths> {
-    if let Some(preset) = params.get("preset").and_then(Value::as_str) {
-        return Ok(preset_paths(root, preset));
-    }
     let manifest_raw = params
         .get("manifest")
         .or_else(|| params.get("pose_manifest"))
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            EngineError::InvalidParams("missing 'preset' or 'manifest' parameter".into())
-        })?;
+        .filter(|m| !m.trim().is_empty())
+        .ok_or_else(|| EngineError::InvalidParams("missing 'manifest' parameter".into()))?;
     let resolved_pose = crate::workspace::resolve_workspace_path(s, manifest_raw);
     let id = params
         .get("asset")
@@ -76,11 +76,18 @@ fn resolve_paths(s: &Session, params: &Value, root: &Path) -> Result<ManifestPat
             .map(|p| crate::workspace::resolve_workspace_path(s, p))
     };
     Ok(ManifestPaths {
-        id,
         pose: Some(resolved_pose),
         turnaround: optional_path("turnaround_manifest"),
-        motion: optional_path("motion_range"),
-        registration: optional_path("turnaround_registration"),
+        motion: optional_path("motion_range")
+            .or_else(|| Some(root.join("exports/pose_and_parts").join(&id).join("motion_range.json"))),
+        registration: optional_path("turnaround_registration").or_else(|| {
+            Some(
+                root.join("exports/pose_and_parts")
+                    .join(&id)
+                    .join("turnaround_registration.json"),
+            )
+        }),
+        id,
     })
 }
 
@@ -154,7 +161,6 @@ impl ManifestAsset<'_> {
             self.id,
             "turnaround",
         );
-        self.restore_preset_references();
         self.asset.motion_range = motion_path
             .filter(|p| p.is_file())
             .and_then(|p| MeasuredMotionRange::load_from_path(&p).ok());
@@ -242,8 +248,6 @@ impl ManifestAsset<'_> {
         let asset = &mut self.asset;
         let root = self.root;
         let asset_id = self.id;
-        let is_preset_load = self.is_preset_load;
-        // Populate Original Design + Attached Reference sheets (PhotoCraft Step 1 transparent PNGs)
         let orig_transparent = root.join(format!(
             "exports/pose_and_parts/{asset_id}/{asset_id}_original_transparent.png"
         ));
@@ -254,21 +258,6 @@ impl ManifestAsset<'_> {
                 asset.height = h;
             }
             asset.has_alpha = true;
-        } else if is_preset_load
-            && asset.path.as_os_str().is_empty()
-            && let Some(vault_img) = vault_hero_image(asset_id)
-        {
-            asset.path = vault_img.clone();
-            asset.raw_original_path = Some(vault_img);
-            if let Ok((w, h)) = image::image_dimensions(&asset.path) {
-                asset.width = w;
-                asset.height = h;
-            }
-            asset.has_alpha = true;
-        }
-
-        if is_preset_load && asset.raw_original_path.is_none() {
-            asset.raw_original_path = vault_hero_image(asset_id);
         }
     }
 
@@ -289,41 +278,6 @@ impl ManifestAsset<'_> {
                 asset.attached_asset_sheet = Some(sheet.clone());
             }
             asset.cutout_rig = Some(plan);
-        }
-    }
-
-    fn restore_preset_references(&mut self) {
-        let asset = &mut self.asset;
-        if self.id != "hopper" || !asset.attached_references.is_empty() {
-            return;
-        }
-        let sheets = [
-            (
-                &asset.attached_asset_sheet,
-                "Guided Cutout Rig Asset Sheet",
-                "asset_sheet",
-                (1800, 1120),
-            ),
-            (
-                &asset.attached_turnaround_sheet,
-                "Turnaround Sheet Reference",
-                "turnaround_sheet",
-                (1376, 768),
-            ),
-        ];
-        for (sheet, label, kind, fallback_size) in sheets {
-            if let Some(path) = sheet {
-                let (width, height) = image::image_dimensions(path).unwrap_or(fallback_size);
-                asset.attached_references.push(AttachedReference {
-                    label: label.into(),
-                    kind: kind.into(),
-                    path: path.clone(),
-                    raw_path: None,
-                    width,
-                    height,
-                    report: None,
-                });
-            }
         }
     }
 

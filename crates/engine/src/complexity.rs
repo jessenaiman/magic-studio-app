@@ -9,7 +9,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use crate::workspace::resolve_craft_cli;
+use crate::workspace::resolve_tool;
 
 /// A file at or above this many lines is reported as a long file. The limit is
 /// configurable in code-limits.json at the repository root.
@@ -224,7 +224,7 @@ fn record_history(root: &Path, result: &Value) -> Vec<Value> {
 }
 
 fn annotate_tool(result: &mut Value) {
-    let executable = resolve_craft_cli("lizard");
+    let executable = resolve_tool("lizard");
     let executable_path = if Path::new(&executable).is_file() {
         Some(std::path::PathBuf::from(&executable))
     } else {
@@ -674,7 +674,7 @@ fn count_ui_files(file_rows: &[Value]) -> usize {
 }
 
 fn measure(root: &Path) -> Value {
-    let lizard_bin = resolve_craft_cli("lizard");
+    let lizard_bin = resolve_tool("lizard");
     let long_file_limit = long_file_limit(root);
     let targets = scan_targets(root);
     let (stdout, mut scan_failures) = lizard_csv(&lizard_bin, root, &targets);

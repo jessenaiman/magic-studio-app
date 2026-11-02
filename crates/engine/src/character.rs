@@ -48,15 +48,21 @@ pub(crate) fn resolve_character_path(rel: &str, project_root: &Path, char_dir: &
         .ok()
         .map(|rest| char_dir.join(rest.components().skip(1).collect::<PathBuf>()))
         .filter(|within| within != char_dir);
-    [Some(char_dir.join(path)), beside_manifest, Some(project_root.join(path))]
-        .into_iter()
-        .flatten()
-        .find(|candidate| candidate.exists())
-        .unwrap_or_else(|| char_dir.join(path))
+    [
+        Some(char_dir.join(path)),
+        beside_manifest,
+        Some(project_root.join(path)),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|candidate| candidate.exists())
+    .unwrap_or_else(|| char_dir.join(path))
 }
 
 fn resolve_rel(base_root: &Path, char_dir: &Path, rel: &str) -> String {
-    resolve_character_path(rel, base_root, char_dir).to_string_lossy().into_owned()
+    resolve_character_path(rel, base_root, char_dir)
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn resolve_sheet_paths(base_root: &Path, char_dir: &Path, doc: &mut Value) {
@@ -249,12 +255,18 @@ fn character_folder(s: &Session, id: &str) -> Result<PathBuf> {
     {
         return Ok(dir.to_path_buf());
     }
-    Ok(crate::workshop::project_dir(s)?.join("assets/characters").join(id))
+    Ok(crate::workshop::project_dir(s)?
+        .join("assets/characters")
+        .join(id))
 }
 
 /// A plain folder name from params, or the default; never a path that could climb out.
 fn folder_name(params: &Value, key: &str, default: &str) -> Result<String> {
-    let name = params[key].as_str().map(str::trim).filter(|v| !v.is_empty()).unwrap_or(default);
+    let name = params[key]
+        .as_str()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(default);
     if name.contains(['/', '\\']) || name == "." || name == ".." {
         return Err(invalid(format!("{key} must be a plain folder name")));
     }
@@ -279,23 +291,42 @@ pub fn cmd_character_new(s: &mut Session, params: &Value) -> Result<Value> {
         .map(|raw| crate::workspace::resolve_workspace_path(s, raw))
         .filter(|p| p.is_file())
         .ok_or_else(|| invalid("Specify image=<an existing static character image>"))?;
-    let stem = image.file_stem().and_then(|n| n.to_str()).unwrap_or("character");
-    let name = params["name"].as_str().filter(|v| !v.trim().is_empty()).unwrap_or(stem).to_string();
+    let stem = image
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or("character");
+    let name = params["name"]
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or(stem)
+        .to_string();
     let id = crate::workspace::sanitize_asset_id(&name);
-    let dir = animations_library(params)?.join(folder_name(params, "category", "characters")?).join(&id);
+    let dir = animations_library(params)?
+        .join(folder_name(params, "category", "characters")?)
+        .join(&id);
     let cfg_path = dir.join("character.magic");
     if cfg_path.exists() {
-        return Err(invalid(format!("{} already exists; open it with project.open", cfg_path.display())));
+        return Err(invalid(format!(
+            "{} already exists; open it with project.open",
+            cfg_path.display()
+        )));
     }
     std::fs::create_dir_all(&dir)?;
-    let ext = image.extension().and_then(|e| e.to_str()).unwrap_or("png").to_ascii_lowercase();
+    let ext = image
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_ascii_lowercase();
     let reference = format!("reference.{ext}");
     std::fs::copy(&image, dir.join(&reference))?;
     let doc = json!({"format": "magicstudio.character", "schemaVersion": 1, "id": id, "name": name,
         "reference": reference, "source_image": image});
     let encoded = serde_json::to_string_pretty(&doc).map_err(|e| invalid(e.to_string()))?;
     std::fs::write(&cfg_path, encoded)?;
-    crate::project::cmd_project_open(s, &json!({"path": cfg_path, "claim_owner": params["claim_owner"] != false}))
+    crate::project::cmd_project_open(
+        s,
+        &json!({"path": cfg_path, "claim_owner": params["claim_owner"] != false}),
+    )
 }
 
 pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
@@ -317,14 +348,7 @@ pub fn cmd_character_import(s: &mut Session, params: &Value) -> Result<Value> {
         let _ = std::fs::copy(&source, &draft_copy);
     }
     let cfg_path = char_dir.join("character.magic");
-    update_character_manifest(
-        &cfg_path,
-        &id,
-        &role,
-        &dest,
-        &draft_copy,
-        &source,
-    )?;
+    update_character_manifest(&cfg_path, &id, &role, &dest, &draft_copy, &source)?;
 
     if !s.project_assets.iter().any(|a| a.id == id) {
         let _ = crate::project::cmd_project_add_asset(

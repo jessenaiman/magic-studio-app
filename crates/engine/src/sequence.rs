@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::workspace::{resolve_craft_cli, resolve_workspace_path, run_tool_in, workspace_root};
+use crate::workspace::{resolve_tool, resolve_workspace_path, run_tool_in, workspace_root};
 use crate::{EngineError, Result, Session};
 
 /// Where the sequence writes: the open project's folder, else the workspace root.
@@ -241,7 +241,7 @@ pub fn cmd_sequence_render(s: &mut Session, params: &Value) -> Result<Value> {
     };
     let prep_dir = out_dir.join("work").join("layers");
     std::fs::create_dir_all(&prep_dir)?;
-    let bin = resolve_craft_cli("photocraft-cli");
+    let bin = resolve_tool("photocraft-cli");
     let canvas_px = [w as u32, h as u32];
 
     // The spec addresses layers by id, bottom to top.

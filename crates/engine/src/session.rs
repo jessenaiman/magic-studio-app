@@ -230,7 +230,7 @@ pub struct CutoutRigPart {
     pub full_layer_path: PathBuf,
 }
 
-/// A parsed `{character_id}_cutout_rig_plan.json` produced by `guided_cutout_rig_builder.py`.
+/// A parsed `{character_id}_cutout_rig_plan.json` or `rig.json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LoadedCutoutRigPlan {
     #[serde(default)]
@@ -311,7 +311,7 @@ impl LoadedCutoutRigPlan {
         let character_id = raw
             .get("character_id")
             .and_then(Value::as_str)
-            .unwrap_or("hopper")
+            .unwrap_or("character")
             .to_string();
         let rig_type = raw
             .get("rig_type")

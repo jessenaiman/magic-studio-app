@@ -62,8 +62,13 @@ pub fn root() -> Result<PathBuf> {
     configured_root(&stored()?)
 }
 
-/// An installed app's folder saved under `key` (such as `assetfurnace_home`); GUI windows
-/// launched by the desktop do not inherit a terminal's environment, so this is where they look.
+/// Read the saved Magic Studio settings object (`~/.config/magicstudio/settings.json`), or `{}`.
+pub(crate) fn stored_settings() -> Value {
+    stored().unwrap_or_else(|_| json!({}))
+}
+
+/// A folder path saved under `key` in `settings.json`; GUI windows launched by the desktop
+/// do not inherit a terminal's environment, so this is where they look.
 pub fn saved_path(key: &str) -> Option<PathBuf> {
     stored().ok()?.get(key)?.as_str().map(PathBuf::from)
 }

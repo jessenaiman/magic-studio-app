@@ -716,6 +716,358 @@ fn source_motion_request(s: &Session, params: &Value) -> Result<Value> {
     )
 }
 
+fn html_attr_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
+fn check_receipt_artwork(project_root: &Path, data: &Value) -> Result<(PathBuf, String)> {
+    let rec_proj = Path::new(data["project"].as_str().unwrap_or_default())
+        .canonicalize()
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    if rec_proj.parent() != Some(project_root) {
+        return Err(EngineError::InvalidParams(
+            "generation_receipt belongs to another project folder".into(),
+        ));
+    }
+    let artwork = Path::new(data["image"].as_str().unwrap_or_default()).canonicalize()?;
+    if !artwork.starts_with(project_root) {
+        return Err(EngineError::InvalidParams(
+            "Generated artwork is outside this project".into(),
+        ));
+    }
+    let digest = format!("{:x}", Sha256::digest(&std::fs::read(&artwork)?));
+    if Some(digest.as_str()) != data["result"]["sha256"].as_str() {
+        return Err(EngineError::InvalidParams(
+            "Generated artwork changed after its receipt; review the new version before placement"
+                .into(),
+        ));
+    }
+    Ok((artwork, digest))
+}
+
+fn verify_generation_receipt(project: &Path, receipt_rel: Option<&str>) -> Result<Option<Value>> {
+    let Some(rel) = receipt_rel.filter(|r| !r.is_empty()) else {
+        return Ok(None);
+    };
+    let project_root = project.canonicalize()?;
+    let receipt = project_root.join(rel).canonicalize()?;
+    if !receipt.starts_with(&project_root) {
+        return Err(EngineError::InvalidParams(
+            "generation_receipt must belong to this project".into(),
+        ));
+    }
+    let data: Value = serde_json::from_slice(&std::fs::read(&receipt)?)
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    if data["format"].as_str() != Some("magicstudio.image-generation")
+        || data["result"]["ok"].as_bool() != Some(true)
+    {
+        return Err(EngineError::InvalidParams(
+            "generation_receipt is not a successful native image generation".into(),
+        ));
+    }
+    let (artwork, digest) = check_receipt_artwork(&project_root, &data)?;
+    Ok(Some(json!({
+        "receipt": receipt,
+        "asset_id": data["result"]["asset_id"],
+        "image": artwork,
+        "sha256": digest,
+        "poses": data.get("poses").cloned().unwrap_or_else(|| json!([])),
+        "animation_context": data.get("animation_context").cloned().unwrap_or_else(|| json!({})),
+        "relationship": "declared source artwork; video rendering is a separate step",
+    })))
+}
+
+fn validate_placement_params(
+    request: &Value,
+    existing: &Value,
+) -> Result<(f64, f64, [f64; 4], f64)> {
+    let num = |k: &str, def: f64| {
+        request
+            .get(k)
+            .or_else(|| existing.get(k))
+            .and_then(Value::as_f64)
+            .unwrap_or(def)
+    };
+    let start = num("start", 0.0);
+    let duration = num("duration", 1.0);
+    let rect_val = request
+        .get("rect")
+        .or_else(|| existing.get("rect"))
+        .and_then(Value::as_array);
+    let rect = if let Some(arr) = rect_val {
+        if arr.len() != 4 {
+            return Err(EngineError::InvalidParams("Invalid timing or placement".into()));
+        }
+        [
+            arr[0].as_f64().unwrap_or(f64::NAN),
+            arr[1].as_f64().unwrap_or(f64::NAN),
+            arr[2].as_f64().unwrap_or(f64::NAN),
+            arr[3].as_f64().unwrap_or(f64::NAN),
+        ]
+    } else {
+        [0.0, 0.0, 1920.0, 1080.0]
+    };
+    if !start.is_finite()
+        || !duration.is_finite()
+        || start < 0.0
+        || duration <= 0.0
+        || !rect.iter().all(|v| v.is_finite())
+        || rect[2] <= 0.0
+        || rect[3] <= 0.0
+    {
+        return Err(EngineError::InvalidParams("Invalid timing or placement".into()));
+    }
+    let rate = num("playback_rate", 1.0);
+    if !rate.is_finite() || rate <= 0.0 || rate > 16.0 {
+        return Err(EngineError::InvalidParams(
+            "playback_rate must be in (0,16]".into(),
+        ));
+    }
+    Ok((start, duration, rect, rate))
+}
+
+fn ensure_composition_root_html(text: &str) -> Result<(String, usize)> {
+    if let Some(pos) = find_composition_open_end(text) {
+        return Ok((text.to_string(), pos));
+    }
+    let lower = text.to_ascii_lowercase();
+    if let Some(body_idx) = lower.find("<body")
+        && let Some(rel_end) = text[body_idx..].find('>')
+    {
+        let open_end = body_idx + rel_end + 1;
+        let injected = if let Some(close_idx) = lower.rfind("</body>") {
+            format!(
+                "{}\n<div data-composition-id=\"main\">{}</div>\n{}",
+                &text[..open_end],
+                &text[open_end..close_idx],
+                &text[close_idx..]
+            )
+        } else {
+            format!(
+                "{}\n<div data-composition-id=\"main\">{}</div>",
+                &text[..open_end],
+                &text[open_end..]
+            )
+        };
+        if let Some(pos) = find_composition_open_end(&injected) {
+            return Ok((injected, pos));
+        }
+    }
+    Err(EngineError::InvalidParams("Composition root missing".into()))
+}
+
+fn find_composition_open_end(text: &str) -> Option<usize> {
+    let attr = text.find("data-composition-id")?;
+    let _ = text[..attr].rfind('<')?;
+    let tag_end = text[attr..].find('>')?;
+    Some(attr + tag_end + 1)
+}
+
+fn strip_video_by_id(html: &str, key: &str) -> String {
+    let needle_dq = format!("id=\"{key}\"");
+    let needle_sq = format!("id='{key}'");
+    let mut out = html.to_string();
+    loop {
+        let lower = out.to_ascii_lowercase();
+        let mut found_span = None;
+        let mut cursor = 0;
+        while let Some(rel) = lower[cursor..].find("<video") {
+            let start = cursor + rel;
+            let Some(open_rel) = out[start..].find('>') else {
+                break;
+            };
+            let open_end = start + open_rel + 1;
+            let header = &out[start..open_end];
+            if (header.contains(&needle_dq) || header.contains(&needle_sq))
+                && let Some(close_rel) = lower[open_end..].find("</video>")
+            {
+                let close_end = open_end + close_rel + "</video>".len();
+                found_span = Some((start, close_end));
+                break;
+            }
+            cursor = open_end;
+        }
+        if let Some((s, e)) = found_span {
+            out.replace_range(s..e, "");
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn next_track_index(html: &str) -> i64 {
+    let mut max_idx = -1i64;
+    let marker = "data-track-index=";
+    let mut cursor = 0;
+    while let Some(rel) = html[cursor..].find(marker) {
+        let after = cursor + rel + marker.len();
+        let rest = &html[after..];
+        if let Some(first) = rest.chars().next()
+            && (first == '"' || first == '\'')
+        {
+            let inner = &rest[1..];
+            if let Some(end_q) = inner.find(first)
+                && let Ok(val) = inner[..end_q].parse::<i64>()
+            {
+                max_idx = max_idx.max(val);
+            }
+        }
+        cursor = after;
+    }
+    max_idx + 1
+}
+
+fn find_scene_insertion_offset(html: &str, comp_end: usize) -> usize {
+    let lower = html.to_ascii_lowercase();
+    let mut last_end = None;
+    let mut cursor = 0;
+    while let Some(rel) = lower[cursor..].find("<video") {
+        let start = cursor + rel;
+        let Some(open_rel) = html[start..].find('>') else {
+            break;
+        };
+        let open_end = start + open_rel + 1;
+        if html[start..open_end].contains("data-magicstudio-scene=")
+            && let Some(close_rel) = lower[open_end..].find("</video>")
+        {
+            let close_end = open_end + close_rel + "</video>".len();
+            last_end = Some(close_end);
+            cursor = close_end;
+            continue;
+        }
+        cursor = open_end;
+    }
+    last_end.unwrap_or(comp_end)
+}
+
+fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> {
+    let root = project.join("hyperframes");
+    let entry = root.join("index.html");
+    let folder = root.join("assets/animation");
+    std::fs::create_dir_all(&folder)?;
+    let key = request["id"]
+        .as_str()
+        .filter(|k| {
+            !k.is_empty()
+                && k.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+        .ok_or_else(|| {
+            EngineError::InvalidParams("id must be a stable filename-safe identifier".into())
+        })?;
+    let existing_path = folder.join(format!("{key}.json"));
+    let existing: Value = if existing_path.is_file() {
+        serde_json::from_slice(&std::fs::read(&existing_path)?).unwrap_or_else(|_| json!({}))
+    } else {
+        json!({})
+    };
+    let raw_path = request["path"]
+        .as_str()
+        .or_else(|| existing["media"].as_str())
+        .or_else(|| existing["path"].as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| EngineError::InvalidParams("path is required for a new placement".into()))?;
+    let source = Path::new(raw_path).canonicalize()?;
+    let generation = verify_generation_receipt(project, request["generation_receipt"].as_str())?;
+    let ext = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !matches!(ext.as_str(), "webm" | "mp4" | "mov") {
+        return Err(EngineError::InvalidParams("Expected a video track".into()));
+    }
+    let (start, duration, rect, rate) = validate_placement_params(request, &existing)?;
+    let raw_html = std::fs::read_to_string(&entry)?;
+    let (ensured_html, _) = ensure_composition_root_html(&raw_html)?;
+    let bytes = std::fs::read(&source)?;
+    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let short_sha = &digest[..12];
+    let orig_ext = source.extension().and_then(|e| e.to_str()).unwrap_or("webm");
+    let target = folder.join(format!("{key}-{short_sha}.{orig_ext}"));
+    if source != target {
+        std::fs::copy(&source, &target)?;
+    }
+    let cleaned = strip_video_by_id(&ensured_html, key);
+    let (_, comp_end) = ensure_composition_root_html(&cleaned)?;
+    let track_idx = next_track_index(&cleaned);
+    let [x, y, w, h] = rect;
+    let char_val = request
+        .get("character")
+        .or_else(|| existing.get("character"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let track_val = request
+        .get("track")
+        .or_else(|| existing.get("track"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let scene_str = request
+        .get("scene")
+        .or_else(|| existing.get("scene"))
+        .map(|v| match v {
+            Value::String(s) => s.clone(),
+            Value::Null => String::new(),
+            other => other.to_string(),
+        })
+        .unwrap_or_default();
+    let rel_src = target
+        .strip_prefix(&root)
+        .unwrap_or(&target)
+        .to_string_lossy();
+    let tag = format!(
+        "<video id=\"{key}\" class=\"clip\" src=\"{}\" data-start=\"{start}\" data-duration=\"{duration}\" data-playback-rate=\"{rate}\" data-track-index=\"{track_idx}\" data-magicstudio-scene=\"{}\" data-magicstudio-character=\"{}\" data-magicstudio-track=\"{}\" muted playsinline style=\"position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;object-fit:contain;z-index:10\"></video>",
+        html_attr_escape(&rel_src),
+        html_attr_escape(&scene_str),
+        html_attr_escape(char_val),
+        html_attr_escape(track_val),
+    );
+    let backup_dir = root.join(".magicstudio-history");
+    std::fs::create_dir_all(&backup_dir)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?
+        .as_nanos();
+    let backup_path = backup_dir.join(format!("index-{stamp}.html"));
+    std::fs::copy(&entry, &backup_path)?;
+    let at = find_scene_insertion_offset(&cleaned, comp_end);
+    let updated_html = format!("{}\n{}{}", &cleaned[..at], tag, &cleaned[at..]);
+    std::fs::write(&entry, updated_html)?;
+
+    let mut merged = existing.as_object().cloned().unwrap_or_default();
+    if let Some(req_obj) = request.as_object() {
+        for (k, v) in req_obj {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+    merged.insert("ok".into(), json!(true));
+    merged.insert("id".into(), json!(key));
+    merged.insert("start".into(), json!(start));
+    merged.insert("duration".into(), json!(duration));
+    merged.insert("rect".into(), json!(rect));
+    merged.insert("playback_rate".into(), json!(rate));
+    merged.insert("character".into(), json!(char_val));
+    merged.insert("track".into(), json!(track_val));
+    merged.insert("media".into(), json!(target));
+    merged.insert("path".into(), json!(target));
+    merged.insert("track_index".into(), json!(track_idx));
+    merged.insert("backup".into(), json!(backup_path));
+    if let Some(gen_info) = generation {
+        merged.insert("source_generation".into(), gen_info);
+    }
+    let out_val = Value::Object(merged);
+    std::fs::write(
+        &existing_path,
+        serde_json::to_vec_pretty(&out_val).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+    )?;
+    Ok(out_val)
+}
+
 /// Place a rendered track in HyperFrames without recreating the composition.
 pub fn cmd_video_place_track(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
@@ -739,19 +1091,7 @@ pub fn cmd_video_place_track(s: &mut Session, params: &Value) -> Result<Value> {
         let motion = source_motion_request(s, params)?;
         request["source_motion"] = motion["source_motion"].clone();
     }
-    let script = crate::workspace::workspace_root(s).join("pipeline/place_video_track.py");
-    let output = run_tool_in(
-        &dir,
-        "python3",
-        &[
-            script.to_string_lossy().into_owned(),
-            "--project".into(),
-            dir.to_string_lossy().into_owned(),
-            "--request".into(),
-            request.to_string(),
-        ],
-    )?;
-    serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))
+    place_track_in_hyperframes(&dir, &request)
 }
 
 pub fn cmd_video_server_start(s: &mut Session, params: &Value) -> Result<Value> {
