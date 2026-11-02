@@ -175,8 +175,13 @@ fn attach_reference_timing(
 }
 
 pub(crate) fn aligned(s: &mut Session) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
-    let lyrics = crate::lyrics::cmd_song_lyrics(s, &json!({}))?;
+    aligned_in(&crate::workshop::project_dir(s)?)
+}
+
+/// The artist's words in sung order with transcript timing, for a project folder.
+pub(crate) fn aligned_in(dir: &Path) -> Result<Value> {
+    let dir = dir.to_path_buf();
+    let lyrics = crate::lyrics::song_lyrics_in(&dir)?;
     if lyrics["source"] != "canonical" {
         return Err(invalid(
             "No artist lyric sheet; Words needs the artist's canonical lines",

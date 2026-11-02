@@ -150,7 +150,12 @@ fn sections(sheet: &Value, timed: Option<&Value>) -> Vec<Value> {
 
 /// `song.lyrics`: what to show as the song's words, with honest provenance. No writes.
 pub fn cmd_song_lyrics(s: &mut Session, _: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    song_lyrics_in(&crate::workshop::project_dir(s)?)
+}
+
+/// `song.lyrics` for a project folder, without a session.
+pub(crate) fn song_lyrics_in(dir: &Path) -> Result<Value> {
+    let dir = dir.to_path_buf();
     let liner: Vec<PathBuf> = {
         let mut files: Vec<PathBuf> = fs::read_dir(dir.join("liner-notes"))
             .into_iter()

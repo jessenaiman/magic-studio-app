@@ -419,15 +419,84 @@ fn apply_scene_doc_overrides(dir: &Path, scene: &mut Value, sd: SceneDoc) {
     scene["sections"] = json!(sd.sections);
 }
 
+/// One sung line of the artist's lyric copy: its id, its printed words and when it is sung.
+fn sung_lines(aligned: &Value) -> Vec<(String, String, f64, f64)> {
+    let mut out: Vec<(String, Vec<&str>, f64, f64)> = Vec::new();
+    for w in aligned["words"].as_array().into_iter().flatten() {
+        let id = w["sung_id"]
+            .as_str()
+            .or(w["line_id"].as_str())
+            .unwrap_or_default();
+        let text = w["text"].as_str().unwrap_or_default();
+        let (start, end) = (w["start"].as_f64(), w["end"].as_f64());
+        match out.last_mut() {
+            Some(line) if line.0 == id => {
+                line.1.push(text);
+                if let (Some(s), Some(e)) = (start, end) {
+                    (line.2, line.3) = (line.2.min(s), line.3.max(e));
+                }
+            }
+            _ => out.push((
+                id.to_owned(),
+                vec![text],
+                start.unwrap_or(f64::MAX),
+                end.unwrap_or(f64::MIN),
+            )),
+        }
+    }
+    // A line with no timed word has no place in the song yet.
+    out.into_iter()
+        .filter(|l| l.2 <= l.3)
+        .map(|(id, words, s, e)| (id, words.join(" "), s, e))
+        .collect()
+}
+
+/// Scenes from the artist's lyric copy: one per sung line, timed by the transcript, with an
+/// instrumental scene for each gap of `CAPTION_GAP` seconds or more. Scenes tile the song.
+/// None without a lyric sheet, a transcript, or any timed line.
+pub(crate) fn lyric_scenes(dir: &Path) -> Option<Vec<Value>> {
+    let lines = sung_lines(&crate::words::aligned_in(dir).ok()?);
+    let last_end = lines.last()?.3;
+    let total = song_seconds(dir).unwrap_or(last_end).max(last_end);
+    let instrumental =
+        |from: f64, to: f64| json!({"kind": "instrumental", "start": from, "end": to, "lines": []});
+    let mut out = Vec::new();
+    let mut cursor = 0.0;
+    for (i, (id, text, start, end)) in lines.iter().enumerate() {
+        if start - cursor >= CAPTION_GAP {
+            out.push(instrumental(cursor, *start));
+            cursor = *start;
+        }
+        let next = lines.get(i + 1).map_or(total, |l| l.2);
+        let until = if next - end >= CAPTION_GAP {
+            *end
+        } else {
+            next
+        };
+        out.push(
+            json!({"kind": "verse", "verse": i + 1, "lyric_line": id, "start": cursor, "end": until,
+            "lines": [{"start": start, "text": text}]}),
+        );
+        cursor = until;
+    }
+    if total - cursor >= CAPTION_GAP {
+        out.push(instrumental(cursor, total));
+    } else if let Some(last) = out.last_mut() {
+        last["end"] = json!(total);
+    }
+    Some(out)
+}
+
 /// The song's scenes: explicit intervals from scene files when every one has a `time:`,
-/// otherwise transcript stanzas and gaps.
+/// otherwise one per sung line of the artist's lyric copy, else the video's captions, else
+/// transcript stanzas and gaps.
 pub(crate) fn storyboard_scenes(dir: &Path) -> Result<Vec<Value>> {
     let docs: Vec<SceneDoc> = (1..)
         .take_while(|n| scene_doc_path(dir, *n).is_file())
         .map(|n| read_scene_doc(dir, n))
         .collect();
     let explicit = !docs.is_empty() && docs.iter().all(|d| d.time.is_some());
-    let captions = caption_scenes(dir);
+    let captions = lyric_scenes(dir).or_else(|| caption_scenes(dir));
     let doc: Value = match &captions {
         Some(_) if !explicit => Value::Null,
         _ => {
@@ -508,7 +577,7 @@ pub(crate) fn scene_label(i: usize, scene: &Value) -> String {
     if let Some(title) = scene["title"].as_str().filter(|t| !t.starts_with("Scene ")) {
         return format!("Scene {} · {title} · {range}", i + 1);
     }
-    if scene.get("caption").is_some() {
+    if scene.get("caption").is_some() || scene.get("lyric_line").is_some() {
         let words = scene["lines"][0]["text"].as_str().unwrap_or_default();
         return format!("Scene {} · {words} · {range}", i + 1);
     }
@@ -1539,4 +1608,37 @@ pub(crate) fn diagnose_storyboard_and_workshop(s: &Session, dir: &Path) -> Value
         "warnings": warnings,
         "next_steps": next_steps,
     })
+}
+
+#[cfg(test)]
+mod lyric_scene_tests {
+    use super::*;
+
+    fn word(line: &str, text: &str, t: Option<(f64, f64)>) -> Value {
+        let (s, e) = t.map_or((Value::Null, Value::Null), |(s, e)| (json!(s), json!(e)));
+        json!({"sung_id": line, "line_id": line, "text": text, "start": s, "end": e})
+    }
+
+    #[test]
+    fn each_sung_line_of_the_copy_is_one_scene_line_even_when_repeated() {
+        let aligned = json!({"words": [
+            word("l1", "X", None), word("l1", "marks", Some((0.0, 0.8))), word("l1", "spot", Some((1.2, 1.8))),
+            word("l4", "Crack", Some((7.7, 8.0))), word("l4", "down.", Some((10.6, 11.2))),
+            word("l5", "Crack", Some((11.3, 11.6))), word("l5", "down.", Some((14.2, 14.9))),
+            word("l6", "untimed", None),
+        ]});
+        let lines = sung_lines(&aligned);
+        let got: Vec<(&str, &str, f64, f64)> = lines
+            .iter()
+            .map(|(i, t, s, e)| (i.as_str(), t.as_str(), *s, *e))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("l1", "X marks spot", 0.0, 1.8),
+                ("l4", "Crack down.", 7.7, 11.2),
+                ("l5", "Crack down.", 11.3, 14.9),
+            ]
+        );
+    }
 }
