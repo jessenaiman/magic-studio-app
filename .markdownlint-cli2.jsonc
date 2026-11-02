@@ -1,8 +1,8 @@
 {
   "config": {
     "default": false,
-    // Skill prose is written one paragraph per line; line length is not enforced.
-    "MD013": false
+    // Loosened from 80: prose wraps at 120; code blocks and tables are held to it too.
+    "MD013": { "line_length": 120 }
   },
   "globs": [
     ".agents/skills/magic-*/**/*.md",

@@ -1,6 +1,10 @@
 ---
 name: magic-studio-ui
-description: Use before building or changing any screen of the Magic Studio Tauri shell (apps/src-tauri/ui). The shell's design system — calm dark surfaces, teal primary actions with restrained functional section accents, icons over words with tooltips, cards that lift on hover, expanding blocks, one primary action per place — with its tokens, components, motion, layout and the live verify loop.
+description: >-
+  Use before building or changing any screen of the Magic Studio desktop app (apps/src-tauri/ui).
+  The app's design system — calm dark surfaces, teal primary actions with restrained functional
+  section accents, icons over words with tooltips, cards that lift on hover, expanding blocks, one
+  primary action per place — with its tokens, components, motion, layout and the live verify loop.
 ---
 
 # Magic Studio shell UI
@@ -130,7 +134,9 @@ lifts, a 90° chevron); nothing bounces. Respect `prefers-reduced-motion` (alrea
 
 Follow the implementation order in research.md: persistent live MCP → visible actions/history/undo →
 two-way pointing/drawings/comments → captured message context → inline questions/progress → vendored
-Markdown. Use `magic-cli --project /absolute/Project.magic mcp` for the intended project. Select a visible window with `magic-cli studio open /absolute/Project.magic`, and discover its identity with `magic-cli ui feedback`. Transport is automatic; callers do not select ports.
+Markdown. Use `magic-cli --project /absolute/Project.magic mcp` for the intended project. Select a
+visible window with `magic-cli studio open /absolute/Project.magic`, and discover its identity with
+`magic-cli ui feedback`. Transport is automatic; callers do not select ports.
 Persistent config edits require user authorization.
 
 Capture view, selection, scene, track/instance, song/local time, range and revision when sending a

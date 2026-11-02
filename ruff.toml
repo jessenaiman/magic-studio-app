@@ -1,7 +1,7 @@
-# The Codacy audit's native Ruff selection, minus non-critical rules: line length
-# (E501, W505), assert (S101) and fixed-argv subprocess calls (S603, S606, S607).
+# The Codacy audit's native Ruff selection. Line length loosened from 88 to 120; assert
+# (S101) and fixed-argv subprocess calls (S603, S606, S607) are not flagged.
 # Shell-injection checks (S602, S604, S605) stay.
-line-length = 88
+line-length = 120
 force-exclude = true
 extend-exclude = [
   "**/vendor/**", "**/third_party/**", "**/third-party/**",
@@ -17,7 +17,7 @@ select = [
   "B017", "B018", "B019", "B020", "B021", "B022", "B023",
   "B024", "B025", "B026", "B027", "B028", "B029", "B030",
   "B031", "B032", "B033", "B034", "B035", "B039", "B904",
-  "B905", "B911", "C901", "E101", "E401", "E402", 
+  "B905", "B911", "C901", "E101", "E501", "E401", "E402", 
   "E701", "E702", "E703", "E711", "E712", "E713", "E714",
   "E721", "E722", "E731", "E741", "E742", "E743", "E902",
   "FA100", "FA102", "FAST001", "FAST002", "FAST003", "ICN001", "NPY001",
@@ -29,10 +29,13 @@ select = [
   "S323", "S324", "S501", "S502", "S503", "S504", "S505",
   "S506", "S507", "S508", "S509", "S601", "S602", 
   "S604", "S605", "S608", "S609", "S610",
-  "S611", "S612", "S701", "S702", "W191", "W292", "W293",
+  "S611", "S612", "S701", "S702", "W191", "W292", "W293", "W505",
   "W605",
 
 ]
+
+[lint.pycodestyle]
+max-doc-length = 120
 
 [lint.mccabe]
 # Native Python CCN threshold aligned with code-limits.json max_function_ccn.
