@@ -1139,6 +1139,21 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
 fn specs_character() -> Vec<CommandSpec> {
     vec![
         query!(
+            "character.meta",
+            "Character Views, Parts and Actions",
+            "{\"character\":\"id\"}",
+            crate::character::cmd_character_meta
+        ),
+        cmd!(
+            "character.save_marks",
+            "Save Adjusted Marks",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"parts\":[{\"id\":\"arm_L\",\"parent\":\"torso\",\"joint\":[0,0],\"outline\":[[0,0]]}]}",
+            always,
+            crate::character::cmd_character_save_marks
+        ),
+        query!(
             "character.list",
             "Characters and Their App Files",
             "{}",

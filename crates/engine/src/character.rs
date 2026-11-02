@@ -8,6 +8,7 @@
 mod action;
 mod cut;
 mod mark;
+mod meta;
 mod rig;
 
 use std::path::{Path, PathBuf};
@@ -19,6 +20,7 @@ use crate::{EngineError, Result, Session};
 pub use action::{cmd_character_action, cmd_character_actions};
 pub use cut::cmd_character_cut;
 pub use mark::cmd_character_mark;
+pub use meta::{cmd_character_meta, cmd_character_save_marks};
 pub use rig::cmd_character_rig;
 
 /// The shared skeleton and its key poses, applied to every character.

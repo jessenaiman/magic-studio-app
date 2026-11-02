@@ -63,6 +63,31 @@ fn layer_bounds(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<St
     Ok(out)
 }
 
+/// Each layer as a trimmed PNG (PhotoCraft Layers to Files), for Studio's layer list.
+fn export_layers(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<String, Value>> {
+    let dir = view.dir.join("layers");
+    if dir.is_dir() {
+        std::fs::remove_dir_all(&dir)?;
+    }
+    std::fs::create_dir_all(&dir)?;
+    let mut args = vec!["run".into(), path_arg(psd)];
+    let params = json!({"dir": dir, "format": "png", "prefix": "", "trim": true});
+    cmd(&mut args, "file.export.layersToFiles", Some(params));
+    crate::workspace::run_tool_in(&view.dir, "photocraft-cli", &args)?;
+    let mut out = serde_json::Map::new();
+    for entry in std::fs::read_dir(&dir)?.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // PhotoCraft names each file layer_<index>_<layer name>.png.
+        if let Some(id) = name
+            .strip_suffix(".png")
+            .and_then(|n| n.splitn(3, '_').nth(2))
+        {
+            out.insert(id.to_string(), json!(entry.path()));
+        }
+    }
+    Ok(out)
+}
+
 pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
     let view = View::from_params(s, p)?;
     let mut parts = view.parts()?;
@@ -92,9 +117,11 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
     args.extend(["--out".into(), path_arg(&pcraft)]);
     crate::workspace::run_tool_in(&view.dir, "photocraft-cli", &args)?;
     let bounds = layer_bounds(&view, &psd)?;
+    let files = export_layers(&view, &psd)?;
     for part in parts["parts"].as_array_mut().into_iter().flatten() {
         let id = part["id"].as_str().unwrap_or_default().to_string();
         part["bounds"] = bounds.get(&id).cloned().unwrap_or(Value::Null);
+        part["file"] = files.get(&id).cloned().unwrap_or(Value::Null);
     }
     view.write_parts(&parts)?;
     Ok(
