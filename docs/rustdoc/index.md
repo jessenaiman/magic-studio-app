@@ -26,10 +26,10 @@ Backstage → explicit bounded observations → saved references and native evid
 
 Start with the repository's
 [documentation index](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/README.md),
-[architecture reading guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md),
+[command architecture](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/magic-cli/MAGIC.md),
 and [project context](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/PROJECT_CONTEXT.md).
-Those explain ownership and the retained Python/YAML production toolkit. Rustdoc
-does not infer an architecture graph or document JavaScript/Python APIs.
+Those explain ownership and command boundaries. Rustdoc
+does not infer an architecture graph or document TypeScript/JavaScript APIs.
 Repository links track the default branch; newly added guide pages are not live
 at those links until this documentation commit merges.
 

@@ -12,7 +12,7 @@ written tool lists — they go stale the moment an app updates.
 
 One line per app — read the app itself:
 
-- magicstudio — 2D/3D character animation, rigs, Blender export — `magic-cli --help` + `magic-cli commands`
+- magicstudio — storyboard, animation, lyrics, and song-video studio — `magic-cli --help` + `magic-cli commands`
 - photocraft — raster image editor — `photocraft-cli --help` + `photocraft-cli commands`
 - effectcraft — motion-graphics compositor — `effectcraft-cli --help` + `effectcraft-cli commands`
 - filmcraft — NLE video editor — `filmcraft-cli --help` + `filmcraft-cli commands`

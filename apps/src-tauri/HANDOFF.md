@@ -18,15 +18,16 @@ build and installation. Embedded UI changes need a rebuilt shell.
   project; do not place generated projects/media in the repository.
 - Storyboard uses the canonical editable DeckCraft template. PDF/preview output
   is not native slide-object editing or creative approval.
-- Animation uses engine-owned motion and explicit rig/part data. Inspect source
-  identity, joints, rest pose, and actual output before claiming a successful rig.
+- Animation uses the installed Craft applications (PhotoCraft, VectorCraft,
+  EffectCraft, FilmCraft) through their CLIs. Inspect source identity, joints,
+  and actual rendered output before claiming a successful rig or animation.
 - Lyrics designs lettering and motion against the supplied timing.
 - Studio uses the project's HyperFrames composition. Runtime/tool failures stay
   visible rather than being hidden behind a substitute custom pipeline.
 
 [MAGIC-STUDIO.md](../../MAGIC-STUDIO.md) consolidates intake, artwork, animation,
-lyrics, video handoff, and project-agent guidance. Reusable Python tools,
-pipeline YAML, stage directors, and skills remain in place; see
+lyrics, video handoff, and project-agent guidance. Department agents and
+repository skills remain in place; see
 [project context](../../PROJECT_CONTEXT.md).
 
 ## Collaboration and verification

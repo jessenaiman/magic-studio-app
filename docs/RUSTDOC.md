@@ -1,7 +1,7 @@
 # Rust API reference
 
 Use the `rustdoc` shipped with the existing Rust toolchain. No documentation
-framework, Python setup, app installation, model, or provider call is needed.
+framework, app installation, model, or provider call is needed.
 The workspace currently requires Rust 1.95; see `Cargo.toml`. These commands run
 from the repository root and do not run tests or doctests.
 
@@ -64,7 +64,7 @@ prepared native development environment to establish shell coverage.
 ## GitHub visibility and optional hosting
 
 The [repository documentation](README.md) and
-[architecture reading guide](architecture/README.md) are readable on GitHub
+[command architecture](../apps/magic-cli/MAGIC.md) are readable on GitHub
 without deploying anything. Links from generated pages to repository guides
 track the default branch: newly added guide pages are not live at those links
 until this documentation commit merges. To host the API reference, publish the

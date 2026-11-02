@@ -28,11 +28,11 @@ The storyboard remains an editable DeckCraft document.
 <!-- EDITORIAL: Insert a real Animation capture with a prepared character,
 a selected action, its preview, and the controls used to produce that result. -->
 
-Open **Animation** and select a rigged character and an authored action.
-In Blender mode, choose **Render preview** and inspect the movement.
-The render retains an editable Blender scene and a transparent clip in the project.
-See the [animation workflow](docs/workflows/reference-to-animation-video.md)
-for artwork preparation, motion authoring, and the remaining manual handoff.
+Open **Animation** and select an imported character or prop.
+Prepare cutouts, rigs, and motion with the installed Craft applications
+(PhotoCraft, VectorCraft, EffectCraft, FilmCraft) and place transparent clips
+into the project. See the [production guide](MAGIC-STUDIO.md) for artwork
+preparation, motion authoring, and composition handoff.
 
 ## Lyrics: make the words part of the picture
 <!-- EDITORIAL: Insert a real Lyrics capture showing a designed sung line,
@@ -67,12 +67,11 @@ The current source-installation path is for **Linux**; other platforms remain
 unverified. Before building, install:
 
 - Git and Rust/Cargo **1.95 or newer**.
-- Python **3.10+** and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 - [Bun](https://bun.sh/docs/installation) for embedded frontend integrations.
 - Your distribution's [Tauri 2 Linux build dependencies](https://v2.tauri.app/start/prerequisites/#linux),
   including the native compiler and GTK/WebKitGTK libraries.
 
-A fresh build downloads missing Rust, frontend, and Python dependencies.
+A fresh build downloads missing Rust and frontend dependencies.
 
 ### Build and install the app and CLI
 
@@ -84,10 +83,10 @@ cargo xtask install --profile release
 ```
 
 This installs **Magic Studio** and **`magic-cli`**, which also serves MCP (`magic-cli mcp`).
-The installer creates an application-owned Python environment and installs:
+The installer installs:
 
 - Commands under `~/.local/bin`.
-- App, runtime, and Python environment: `~/.local/share/magic-studio`.
+- App and runtime resources: `~/.local/share/magic-studio`.
 - A desktop entry and icon under `~/.local/share`.
 
 Ensure `~/.local/bin` is on your `PATH`, then launch:
@@ -101,8 +100,8 @@ root** outside the checkout. This selects the destination for new projects;
 it does not move existing ones.
 
 An installed app opens without a provider key. Production workflows require
-separate tools: HyperFrames, relevant Craft applications, and Blender, FFmpeg,
-and Linux user systemd for Blender rendering. See the [production guide](MAGIC-STUDIO.md).
+separate tools: HyperFrames, relevant Craft applications (PhotoCraft, VectorCraft,
+EffectCraft, FilmCraft, DeckCraft, PdfCraft), and FFmpeg. See the [production guide](MAGIC-STUDIO.md).
 The [setup guide](apps/magic-cli/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
@@ -145,7 +144,7 @@ project targeting, MCP configuration, and independent session bindings.
 
 Focused fixes, documentation improvements, and reproducible bug reports are
 welcome. Start with [CONTRIBUTING](CONTRIBUTING.md) and the
-[architecture guide](docs/architecture/README.md). Keep changes scoped and report
+[command architecture](apps/magic-cli/MAGIC.md). Keep changes scoped and report
 the resulting behaviour, checks actually performed, and remaining limitations.
 Use the source setup guide for development; rebuild after editing embedded UI.
 

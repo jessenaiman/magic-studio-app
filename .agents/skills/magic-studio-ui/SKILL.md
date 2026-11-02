@@ -16,9 +16,8 @@ token before you add a color.
 
 ## Research before a new screen
 
-Read [research.md](research.md): official tool references, the proposed Animation frame, the ordered
-agent integration work and the 76-finding prevention ledger. Distinguish proposals from approved
-requirements. Present a new screen's layout and behavior and wait for user approval before building.
+Distinguish proposals from approved requirements. Present a new screen's layout and behavior and wait
+for user approval before building.
 
 The app's permanent agent instructions are `apps/src-tauri/agent.md`. Keep that document
 focused on the current app's design, technical ownership, tools and verification.
@@ -112,16 +111,16 @@ lifts, a 90° chevron); nothing bounces. Respect `prefers-reduced-motion` (alrea
   reachable, and fit artwork into the unobscured area without changing its authored position.
 - Reserve trailing action columns, use `min-width: 0` on names and bound each scroll area. Hidden,
   clipped or occluded controls must not masquerade as visible bridge targets. View changes preserve
-  the outer window size. Every relevant row of the research ledger is a release gate.
+  the outer window size.
 
 ## Code conventions
 
-- One file per view or feature in `ui/` (`app.js`, `home.js`, `agent.js`, `bridge.js`). Use the shared `$`,
-  `el()`, `toast()` and `invoke`. The vanilla UI files are embedded in the shell; `build.rs` uses Bun to generate
-  the Theatre and Milkdown bundles from `frontend/` when missing or stale. Vendor a library
+- One file per view or feature in `ui/` (`app.ts`, `home.ts`, `agent.ts`, `ui-commands.ts`). Use the shared `$`,
+  `el()`, `toast()` and `invoke`. The UI files are embedded in the shell; `build.rs` uses Bun to generate
+  the frontend bundles from `frontend/` when missing or stale. Vendor a library
   (exact version) only when writing it yourself would be hand-rolling.
 - Data comes from the engine through Tauri commands in `src/main.rs`, on the window's one `Engine`
-  session. The page never computes what the engine knows (motion, layout, status).
+  session. The page never computes what the engine or Craft tools own.
 - Every interactive element has a DOM `id` or an `aria-label`, because that's how the bridge, the CLI and
   agents find it.
 - Preserve DOM identity during polling: unchanged transcript rows, model options and question inputs
@@ -132,7 +131,7 @@ lifts, a 90° chevron); nothing bounces. Respect `prefers-reduced-motion` (alrea
 
 ## Agent and engine contract
 
-Follow the implementation order in research.md: persistent live MCP → visible actions/history/undo →
+Follow the implementation order: persistent live MCP → visible actions/history/undo →
 two-way pointing/drawings/comments → captured message context → inline questions/progress → vendored
 Markdown. Use `magic-cli --project /absolute/Project.magic mcp` for the intended project. Select a
 visible window with `magic-cli studio open /absolute/Project.magic`, and discover its identity with
@@ -145,10 +144,9 @@ ambiguous; don't silently use a changed selection. Notes use frame coordinates/t
 exports. Agent highlights never take the real pointer or keyboard focus. Permission/question cards
 retain input across refreshes. Jobs report progress/cancellation without blocking the page.
 
-The engine owns the Rust motion evaluator; no additional evaluator.
-Compare samples to `pipeline/layered_motion.py`, the export truth. JS only draws engine samples.
-Pose controls are capability-driven, with units/limits and an explicit distinction between audition
-and writing keys. Unknown measurements stay unknown.
+Animation, cutout preparation, rigging, and compositing run through the installed Craft apps
+(PhotoCraft, VectorCraft, EffectCraft, FilmCraft) called via their CLIs. Unknown measurements stay
+unknown.
 
 When a workflow requires scripts or repeated tool calls, make its reusable capability a typed engine/
 CLI/MCP command, verify it, document a one-line example and use it from the UI. Keep commands generic.

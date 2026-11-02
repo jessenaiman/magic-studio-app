@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "Magic Studio rig sheet",
-  "purpose": "One generated sheet holds the whole asset assembled plus each moving part on its own, so rig.from_sheet can cut the parts, place each one back where it sits on the assembled asset, and write a layered rig.",
+  "purpose": "One generated sheet holds the whole asset assembled plus each moving part on its own, so PhotoCraft and EffectCraft can cut the parts, place each one back where it sits on the assembled asset, and assemble a layered rig.",
   "grid": "columns = ceil(sqrt(parts + 1)); rows = ceil((parts + 1) / columns); cell 1 (top-left) is the assembled asset, then the parts in the caller's order (back to front), left to right, top to bottom.",
   "parts": "Each part is {id, description, parent (optional part id), pivot (optional [u, v] inside the part's bounds, 0..1)}. Without a pivot, the joint is where the part overlaps its parent on the assembled asset.",
   "acceptance": [

@@ -26,7 +26,7 @@ This is production onboarding, not installation or a second studio setup.
    open example. Use configured media, project, and animation roots; report
    missing paths/runtime without searching the machine or migrating folders.
 3. In the app, select **Studio** for the linked HyperFrames workspace; use its
-   existing Studio switch if off. Do not create another studio, install Python,
+   existing Studio switch if off. Do not create another studio, install tools,
    or start a model/agent merely to discover capabilities.
 4. Save intentional edits and inspect actual saved/visible results. A lost reply
    has an unknown outcome; inspect before retrying. A disconnected pinned window
