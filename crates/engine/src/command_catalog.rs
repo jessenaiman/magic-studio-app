@@ -52,6 +52,8 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"assets.agent_sheets"
             | b"rig.from_sheet"
             | b"words.design"
+            | b"words.letter"
+            | b"video.assemble"
             | b"sequence.render"
             | b"animation.source.render"
             | b"video.init"
@@ -1104,6 +1106,24 @@ fn specs_words_part1() -> Vec<CommandSpec> {
 
 fn specs_words_part2() -> Vec<CommandSpec> {
     vec![
+        cmd!(
+            "video.assemble",
+            "Assemble and Export the Film (editor)",
+            ["Studio"],
+            None,
+            "{\"backgrounds\":[{\"asset\":\"registered image id (or path)\",\"from\":0}],\"lettering\":\"optional; default lettering/lyrics.mov\",\"fps\":30,\"export\":\"true (default) writes exports/<song>.mp4\"}",
+            always,
+            crate::assembly::cmd_video_assemble
+        ),
+        cmd!(
+            "words.letter",
+            "Letter and Animate the Lyrics (effects app)",
+            ["Design"],
+            None,
+            "{\"recipe\":\"optional; default lyrics-design.json in the project\",\"render\":\"true (default) renders lettering/lyrics.mov with transparency\"}",
+            always,
+            crate::lettering::cmd_words_letter
+        ),
         cmd!(
             "words.apply",
             "Use Designed Lyrics in the Video",
