@@ -75,6 +75,7 @@ pub mod control_bindings;
 pub mod crew;
 pub mod doctor;
 pub mod exports;
+pub mod feedback_state;
 pub mod image_cmds;
 pub mod image_generation;
 pub mod lyrics;
