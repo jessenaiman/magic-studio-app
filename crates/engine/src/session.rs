@@ -116,6 +116,9 @@ pub struct ProjectAsset {
     pub path: Option<PathBuf>,
     /// `image` or the owning app's document kind.
     pub kind: String,
+    /// Fields written by other versions (for example saved part states), kept as they are.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
 }
 
 /// A loaded image asset and its decoded size.

@@ -358,6 +358,7 @@ mod tests {
                 kind: "image".into(),
                 path: Some("map.png".into()),
                 preset: None,
+                extra: Default::default(),
             },
             crate::ProjectAsset {
                 id: "kitchen".into(),
@@ -365,6 +366,7 @@ mod tests {
                 kind: "image".into(),
                 path: Some("kitchen.png".into()),
                 preset: None,
+                extra: Default::default(),
             },
         ];
         let board = json!({

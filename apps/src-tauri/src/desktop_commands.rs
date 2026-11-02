@@ -206,12 +206,42 @@ fn look_command(app: &AppHandle, params: &Value, none: &Value) -> Result<Value, 
     )
 }
 
+/// Save the open project, including storyboard text drafts, so closing never needs a prompt.
+/// Pending commands still block a close: they have not finished and cannot be saved.
+pub fn autosave(app: &AppHandle) -> Result<(), String> {
+    let state = crate::feedback::snapshot(app)?;
+    if state["active_project"].is_null() {
+        return Ok(());
+    }
+    let drafts = state["draft_fields"]
+        .as_array()
+        .is_some_and(|a| !a.is_empty());
+    if state["engine_unsaved"] == false && !drafts {
+        return Ok(());
+    }
+    if drafts {
+        eval(
+            app,
+            "if (typeof saveStoryboard === 'function') await saveStoryboard(); return true;",
+        )?;
+    }
+    crate::project_dispatch::execute(
+        app,
+        "project.save",
+        json!({"_client": "Studio autosave on close"}),
+    )?;
+    Ok(())
+}
+
 /// Close the workspace after reporting the request, then exit this process.
 fn quit_command(app: &AppHandle, id: &str, params: &Value) -> Result<Value, String> {
     let force = params
         .get("force")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    if !force {
+        autosave(app)?;
+    }
     crate::feedback::guard_with_force(app, id, false, force)?;
     magicstudio_engine::activity::append(
         json!({"stage":"close_requested","command":"app.quit","origin":params["_origin"],"client_label":params["_client"],"request_id":params["_request_id"],"project":crate::feedback::snapshot(app)?["active_project"]}),

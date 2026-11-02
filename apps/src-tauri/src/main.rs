@@ -974,15 +974,25 @@ fn setup_main_window(app: &mut tauri::App) -> std::result::Result<(), Box<dyn st
 
 fn handle_main_window_event(handle: &tauri::AppHandle, event: &WindowEvent) {
     if let WindowEvent::CloseRequested { api, .. } = event {
-        if let Err(error) = feedback::guard(handle, "app.quit", false) {
-            api.prevent_close();
-            if let Some(view) = handle.get_webview("project") {
-                let _ = view.eval(format!("toast({});", json!(error)));
+        // Save off the UI thread (the save may wait on the page), then close.
+        api.prevent_close();
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            let closed = desktop_commands::autosave(&handle)
+                .and_then(|()| feedback::guard(&handle, "app.quit", false));
+            match closed {
+                Ok(()) => {
+                    #[cfg(unix)]
+                    local_ipc::cleanup(&handle);
+                    handle.exit(0);
+                }
+                Err(error) => {
+                    if let Some(view) = handle.get_webview("project") {
+                        let _ = view.eval(format!("toast({});", json!(error)));
+                    }
+                }
             }
-        } else {
-            #[cfg(unix)]
-            local_ipc::cleanup(handle);
-        }
+        });
     }
     if let WindowEvent::Resized(_) = event {
         layout(handle);

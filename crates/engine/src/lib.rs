@@ -283,6 +283,7 @@ fn connect_asset_entry(
         preset: None,
         path,
         kind: "auto".into(),
+        extra: Default::default(),
     });
 }
 

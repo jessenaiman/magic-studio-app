@@ -956,6 +956,7 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
         preset: None,
         path: stored.clone(),
         kind,
+        extra: Default::default(),
     });
     load_and_save_asset(s, params, &id, load)?;
     Ok(
