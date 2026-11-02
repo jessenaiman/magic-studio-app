@@ -129,28 +129,6 @@ pub fn resolve_tool(name: &str) -> String {
     name.to_string()
 }
 
-/// Build the exact CLI argument vector for `photocraft-cli run <input> --cmd <id> [--params <json>] --out <output>`.
-pub fn image_batch_args(
-    input: &str,
-    cmd_id: &str,
-    params_json: Option<&str>,
-    output: &str,
-) -> Vec<String> {
-    let mut args = vec![
-        "run".to_string(),
-        input.to_string(),
-        "--cmd".to_string(),
-        cmd_id.to_string(),
-    ];
-    if let Some(p) = params_json {
-        args.push("--params".to_string());
-        args.push(p.to_string());
-    }
-    args.push("--out".to_string());
-    args.push(output.to_string());
-    args
-}
-
 pub(crate) struct ToolSlotGuard;
 impl Drop for ToolSlotGuard {
     fn drop(&mut self) {

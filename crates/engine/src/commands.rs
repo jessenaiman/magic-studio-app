@@ -3,13 +3,11 @@
 //!
 //! Command handlers live in focused modules by job (declared in `lib.rs`):
 //!   - `workspace` — path/CLI resolution
-//!   - `parts` — part visibility/solo/review
-//!   - `magic_design` — asset preparation, manifest loading, agent prompt
-//!   - `exports` — FilmCraft/EffectCraft/Blender scene exports
-//!   - `image_cmds` — break apart / puppet warp / color to alpha / content-aware fill
-//!   - `vision` — in-memory pixel analysis
 //!   - `project` — .magic lifecycle + connect/load/remove/update assets
 //!   - `workshop` — workshop/storyboard/video/assets/audio + search
+//!   - `storyboard`, `storyboard_crud`, `storyboard_design` — storyboard authoring
+//!   - `lyrics`, `words`, `lettering` — timed words and kinetic typography
+//!   - `video_target`, `assembly` — HyperFrames preview/render and FilmCraft assembly
 //!
 //! This file keeps only the `CommandSpec` registry, `command_specs()`, `find()`,
 //! `check_param_types()`, and the `build()` array wiring every id to its handler.
@@ -23,8 +21,7 @@ use crate::{EngineError, Result, Session};
 // Re-export the public engine surface that other crates address via `crate::commands::*`.
 pub use crate::project::write_project_file;
 pub use crate::workspace::{
-    asset_id_for_import, image_batch_args, resolve_tool, resolve_workspace_path, sanitize_asset_id,
-    workspace_root,
+    asset_id_for_import, resolve_tool, resolve_workspace_path, sanitize_asset_id, workspace_root,
 };
 
 pub struct CommandSpec {
@@ -75,19 +72,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "storyboard.toc"
         | "storyboard.template"
         | "storyboard.doctor"
-        | "character.assets"
-        | "assets.sheet_plan"
-        | "assets.sheet_info"
-        | "assets.assess"
-        | "assets.fixlist"
-        | "motion.tracks"
-        | "motion.clips"
-        | "motion.sample"
-        | "motion.theatre.read"
-        | "animation.sources"
-        | "animation.status"
-        | "animation.list"
-        | "animation.scene.actions"
         | "song.lyrics"
         | "words.align"
         | "words.read"
@@ -101,7 +85,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "agent.models"
         | "command.list"
         | "studio.cues"
-        | "vision.analyze"
         | "ui.state"
         | "ui.feedback"
         | "ui.elements"

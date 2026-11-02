@@ -76,8 +76,6 @@ fn lizard_csv(lizard_bin: &str, root: &Path, targets: &[String]) -> (String, Vec
             "-l",
             "rust",
             "-l",
-            "python",
-            "-l",
             "javascript",
             "-l",
             "typescript",
@@ -462,12 +460,10 @@ fn file_lang(file: &str) -> &'static str {
     match Path::new(file).extension().and_then(|e| e.to_str()) {
         Some("rs") => "rust",
         Some("ts") => "typescript",
-        Some("tsx") => "tsx",
         Some("js" | "mjs") => "javascript",
         Some("css") => "css",
         Some("html") => "html",
         Some("md") => "markdown",
-        Some("py") => "python",
         _ => "other",
     }
 }
@@ -476,12 +472,10 @@ fn lang_label(lang: &str) -> &'static str {
     match lang {
         "rust" => "Rust (.rs)",
         "typescript" => "TypeScript (.ts)",
-        "tsx" => "TSX · Remotion (.tsx)",
         "javascript" => "JavaScript (.js/.mjs)",
         "css" => "CSS (.css)",
         "html" => "HTML · Shell (.html)",
         "markdown" => "Markdown (.md)",
-        "python" => "Python (.py)",
         _ => "Other",
     }
 }
@@ -489,7 +483,7 @@ fn lang_label(lang: &str) -> &'static str {
 fn tracked_files_for_exts(root: &Path) -> Vec<String> {
     let Ok(out) = std::process::Command::new("git")
         .args([
-            "ls-files", "*.rs", "*.ts", "*.tsx", "*.js", "*.mjs", "*.css", "*.html", "*.md", "*.py",
+            "ls-files", "*.rs", "*.ts", "*.js", "*.mjs", "*.css", "*.html", "*.md",
         ])
         .current_dir(root)
         .output()

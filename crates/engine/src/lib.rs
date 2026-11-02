@@ -33,9 +33,8 @@
 //! |---|---|
 //! | Project lifecycle, paths, settings | [`project`], [`workspace`], [`project_settings`] |
 //! | Storyboard and song workspace | [`storyboard`], [`storyboard_crud`], [`storyboard_design`], [`workshop`] |
-//! | Character, motion, sequence | [`character`], [`motion`], [`motion_authoring`], [`sequence`] |
-//! | Lyrics, timing, native animation sources | [`lyrics`], [`words`], [`theatre`], [`animation_links`] |
-//! | Production adapters and exports | [`exports`], [`image_generation`], [`agent`] |
+//! | Lyrics, timing, lettering | [`lyrics`], [`words`], [`lettering`] |
+//! | Video assembly, generation, agents | [`assembly`], [`video_target`], [`image_generation`], [`agent`] |
 //!
 //! Commands may write project files, launch installed production tools, or call
 //! configured providers. A default session is not a sandbox for arbitrary command
@@ -44,7 +43,7 @@
 //!
 //! For the non-Rust layers and existing diagrams, see the repository's
 //! [documentation index](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/README.md)
-//! and [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md).
+//! and [rustdoc guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/RUSTDOC.md).
 //! Repository links track the default branch; new guides appear after this
 //! documentation change merges.
 
@@ -70,7 +69,6 @@ pub mod command_catalog;
 pub mod command_center;
 pub mod commands;
 pub mod complexity;
-pub mod control_bindings;
 pub mod crew;
 pub mod doctor;
 pub mod feedback_state;
@@ -243,64 +241,6 @@ fn restore_lease(
     }
 }
 
-/// The outliner name a call asked for, else the asset id read as words.
-fn outliner_name(params: &Value, asset_id: &str) -> String {
-    params
-        .get("name")
-        .or_else(|| params.get("asset"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(|| {
-            let sep = "_";
-            asset_id.replace(sep, " ")
-        })
-}
-
-/// A loaded manifest takes the path it names.
-fn outliner_path(s: &Session, params: &Value) -> Option<std::path::PathBuf> {
-    params
-        .get("manifest")
-        .or_else(|| params.get("image"))
-        .and_then(Value::as_str)
-        .map(|path| commands::resolve_workspace_path(s, path))
-}
-
-/// Update the entry the outliner already has, else add one for this call.
-fn connect_asset_entry(
-    s: &mut Session,
-    asset_id: String,
-    name: String,
-    path: Option<std::path::PathBuf>,
-) {
-    if s.project_assets.iter().any(|entry| entry.id == asset_id) {
-        return;
-    }
-    s.project_assets.push(ProjectAsset {
-        id: asset_id,
-        name,
-        preset: None,
-        path,
-        kind: "auto".into(),
-        extra: Default::default(),
-    });
-}
-
-/// Manifest load callers also appear in the shared project outliner.
-fn connect_outliner_asset(s: &mut Session, id: &str, params: &Value) {
-    if id != "asset.load_manifest" {
-        return;
-    }
-    let Some(asset) = s.current_asset() else {
-        return;
-    };
-    let asset_id = asset.id.clone();
-    let name = outliner_name(params, &asset_id);
-    let path = outliner_path(s, params);
-    connect_asset_entry(s, asset_id, name, path);
-}
-
 /// Keep the open project file in step with its asset connections.
 fn sync_project_file(
     s: &mut Session,
@@ -371,7 +311,6 @@ fn execute_inner(s: &mut Session, id: &str, params: Value) -> Result<Value> {
     (spec.enabled)(s).map_err(|e| EngineError::CommandFailed(id.to_string(), e))?;
     let assets_before = serde_json::to_value(&s.project_assets).ok();
     let out = (spec.run)(s, &params)?;
-    connect_outliner_asset(s, id, &params);
     sync_project_file(s, spec, id, assets_before.as_ref())?;
     if spec.journal {
         s.record(out.clone());

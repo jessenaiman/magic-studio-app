@@ -136,16 +136,4 @@ impl Session {
     pub fn record(&mut self, value: Value) {
         self.last_result = Some(value);
     }
-
-    /// Return a reference to the currently active [`Asset`], if any.
-    pub fn current_asset(&self) -> Option<&Asset> {
-        let id = self.active_asset.as_deref()?;
-        self.assets.get(id)
-    }
-
-    /// Return a mutable reference to the currently active [`Asset`], if any.
-    pub fn current_asset_mut(&mut self) -> Option<&mut Asset> {
-        let id = self.active_asset.clone()?;
-        self.assets.get_mut(&id)
-    }
 }

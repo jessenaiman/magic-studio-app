@@ -75,17 +75,17 @@ pub fn build() -> Vec<CommandSpec> {
         specs_ui_controls,
         specs_ui_inspection,
         specs_agent_and_sprocket,
-        specs_theatre_and_project,
-        specs_asset_and_rig,
-        specs_image_and_sequence,
+        specs_project,
+        specs_project_assets,
+        specs_workshop_and_lyrics,
         specs_words_part1,
         specs_words_part2,
-        specs_assets_and_sheets,
+        specs_agent_and_image,
         specs_storyboard_part1,
         specs_storyboard_part2,
         specs_workshop_and_video,
         specs_video_and_intake,
-        specs_export_and_diagnostics,
+        specs_diagnostics,
     ] {
         specs.extend(section());
     }
@@ -522,7 +522,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_theatre_and_project() -> Vec<CommandSpec> {
+fn specs_project() -> Vec<CommandSpec> {
     vec![
         query!(
             "project.list_assets",
@@ -569,7 +569,7 @@ fn specs_theatre_and_project() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_asset_and_rig() -> Vec<CommandSpec> {
+fn specs_project_assets() -> Vec<CommandSpec> {
     vec![
         cmd!(
             "project.add_asset",
@@ -610,7 +610,7 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_image_and_sequence() -> Vec<CommandSpec> {
+fn specs_workshop_and_lyrics() -> Vec<CommandSpec> {
     vec![
         query!(
             "workshop.status",
@@ -785,7 +785,7 @@ fn specs_workshop_queries() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_assets_and_sheets() -> Vec<CommandSpec> {
+fn specs_agent_and_image() -> Vec<CommandSpec> {
     vec![
         query!(
             "agent.log",
@@ -969,7 +969,7 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             "Place a rendered track in HyperFrames",
             ["Video"],
             None,
-            "{\"id\":\"clip id\",\"path\":\"video file; omit with blender_job\",\"animation_job\":\"optional completed native animation job id\",\"blender_job\":\"optional completed full Blender job id; uses its verified clip, maps rect (the original canvas) to the rendered frame and keeps its frozen provenance\",\"start\":0,\"duration\":2,\"rect\":[0,0,300,500],\"scene\":14,\"generation_receipt\":\"optional native image generation.json; links source poses and character\",\"character\":\"optional registered source motion asset; requires track\",\"track\":\"optional source motion track; requires character\",\"playback_rate\":1}",
+            "{\"id\":\"clip id\",\"path\":\"video file\",\"start\":0,\"duration\":2,\"rect\":[0,0,300,500],\"scene\":14,\"generation_receipt\":\"optional native image generation.json; links source poses and character\",\"character\":\"optional registered source motion asset; requires track\",\"track\":\"optional source motion track; requires character\",\"playback_rate\":1}",
             always,
             crate::video_target::cmd_video_place_track
         ),
@@ -1098,7 +1098,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
+fn specs_diagnostics() -> Vec<CommandSpec> {
     vec![
         query!(
             "app.analytics",
