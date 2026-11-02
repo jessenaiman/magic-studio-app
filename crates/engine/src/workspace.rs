@@ -117,6 +117,11 @@ pub fn resolve_tool(name: &str) -> String {
     {
         return cfg_val.to_string();
     }
+    if let Some(installed) =
+        std::env::var_os("HOME").and_then(|h| launcher_app(Path::new(&h), name))
+    {
+        return installed;
+    }
     if let Ok(found) = find_executable(name) {
         return found.to_string_lossy().into_owned();
     }
@@ -127,6 +132,22 @@ pub fn resolve_tool(name: &str) -> String {
         return local_bin.to_string_lossy().into_owned();
     }
     name.to_string()
+}
+
+/// The installed desktop app as the ArtCraft launcher registered it: the `Exec` program of
+/// `~/.local/share/applications/ai.storyteller.<name>.desktop`. The launcher rewrites that entry
+/// on every update, so this always names the current build; no version lives in this code.
+fn launcher_app(home: &Path, name: &str) -> Option<String> {
+    let entry = home
+        .join(".local/share/applications")
+        .join(format!("ai.storyteller.{name}.desktop"));
+    let text = std::fs::read_to_string(entry).ok()?;
+    let exec = text.lines().find_map(|l| l.strip_prefix("Exec="))?.trim();
+    let program = match exec.strip_prefix('"') {
+        Some(rest) => rest.split('"').next()?,
+        None => exec.split_whitespace().next()?,
+    };
+    Path::new(program).is_file().then(|| program.to_string())
 }
 
 pub(crate) struct ToolSlotGuard;
@@ -241,4 +262,29 @@ pub fn asset_id_for_import(typed_name: Option<&str>, path: &Path) -> String {
                 .and_then(try_sanitize_asset_id)
         })
         .unwrap_or_else(|| "asset".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::launcher_app;
+
+    /// The launcher's desktop entry names the installed build; a stale link elsewhere is ignored.
+    #[test]
+    fn desktop_apps_resolve_through_the_launcher_entry() {
+        let home = std::env::temp_dir().join(format!("magic-launcher-test-{}", std::process::id()));
+        let apps = home.join(".local/share/applications");
+        std::fs::create_dir_all(&apps).unwrap();
+        let build = home.join("photocraft-9.9.9.AppImage");
+        std::fs::write(&build, b"").unwrap();
+        std::fs::write(
+            apps.join("ai.storyteller.photocraft.desktop"),
+            format!("[Desktop Entry]\nExec=\"{}\" %F\n", build.display()),
+        )
+        .unwrap();
+        let found = launcher_app(&home, "photocraft");
+        let missing = launcher_app(&home, "vectorcraft");
+        std::fs::remove_dir_all(&home).unwrap();
+        assert_eq!(found.as_deref(), Some(build.to_str().unwrap()));
+        assert_eq!(missing, None);
+    }
 }
