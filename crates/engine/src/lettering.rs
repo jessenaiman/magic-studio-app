@@ -21,6 +21,9 @@ fn invalid(message: impl Into<String>) -> EngineError {
 /// One sung line: its id, its printed words with their sung times, and its sung span.
 struct Line {
     id: String,
+    /// Layer-name stem, unique per sung occurrence: a repeated chorus line gets `-2`, `-3`, …
+    /// EffectCraft renames duplicate layer names, so a shared name would miss later repeats.
+    layer: String,
     words: Vec<(String, Option<(f64, f64)>)>,
     start: f64,
     end: f64,
@@ -59,6 +62,7 @@ fn lines(aligned: &Value) -> Vec<Line> {
             Some(line) if line.id == id => line.words.push(word),
             _ => out.push(Line {
                 id: id.to_owned(),
+                layer: id.to_owned(),
                 words: vec![word],
                 start: f64::MAX,
                 end: f64::MIN,
@@ -71,6 +75,14 @@ fn lines(aligned: &Value) -> Vec<Line> {
         }
     }
     out.retain(|l| l.start <= l.end);
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for line in &mut out {
+        let n = seen.entry(line.id.clone()).or_insert(0);
+        *n += 1;
+        if *n > 1 {
+            line.layer = format!("{}-{n}", line.id);
+        }
+    }
     out
 }
 
@@ -273,10 +285,7 @@ fn stroke_steps(s: &Stroke<'_>, steps: &mut Vec<Value>) {
             json!({"layer": s.id, "path": "contents/trim/end", "value": v, "time": t, "timeBase": "comp"}),
         ));
     }
-    steps.push(step(
-        "layer.timing",
-        json!({"layers": [s.id], "in": s.shown, "out": s.gone}),
-    ));
+    steps.extend(trim_steps(json!(s.id), s.shown, s.gone));
 }
 
 fn text_params(look: &Look) -> Value {
@@ -290,6 +299,19 @@ fn text_params(look: &Look) -> Value {
         p["strokeOverFill"] = json!(false);
     }
     p
+}
+
+/// Show a layer only from `shown` to `gone`: select it, then Trim In and Trim Out at those times
+/// (After Effects' Alt+[ / Alt+]). `layer.timing` with bare `in`/`out` is accepted by
+/// EffectCraft but changes nothing, which left every lyric on screen for the whole song.
+fn trim_steps(layer: Value, shown: f64, gone: f64) -> Vec<Value> {
+    vec![
+        step("layer.select", json!({"layers": [layer]})),
+        step("time.set", json!({"time": shown})),
+        step("layer.timing", json!({"op": "trimInToTime"})),
+        step("time.set", json!({"time": gone})),
+        step("layer.timing", json!({"op": "trimOutToTime"})),
+    ]
 }
 
 fn step(command: &str, params: Value) -> Value {
@@ -341,7 +363,7 @@ fn hero_steps(
     span: (f64, f64),
     steps: &mut Vec<Value>,
 ) -> Value {
-    let id = line.id.as_str();
+    let id = line.layer.as_str();
     let (a, b) = line.range(k);
     let hero_look = look(recipe, spec);
     let mut style = text_params(&hero_look);
@@ -415,7 +437,7 @@ fn spatial_line_steps(
 ) -> Value {
     let mut hero_summary = Value::Null;
     for (idx, item) in design["items"].as_array().into_iter().flatten().enumerate() {
-        let layer_id = format!("{}_item{idx}", line.id);
+        let layer_id = format!("{}_item{idx}", line.layer);
         let text_owned = item_text(line, item);
         let text_str = text_owned.as_str();
         let look = item_look(recipe, item);
@@ -450,10 +472,7 @@ fn spatial_line_steps(
         if item["accent"].is_string() || move_name != "quiet" {
             hero_summary = json!({"word": text_str, "motion": move_name, "at": ws});
         }
-        steps.push(step(
-            "layer.timing",
-            json!({"layers": [layer_id], "in": shown, "out": gone}),
-        ));
+        steps.extend(trim_steps(json!(layer_id), shown, gone));
         for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
             steps.push(step(
                 "prop.set",
@@ -472,7 +491,7 @@ fn spatial_line_steps(
             draw["h"].as_f64().unwrap_or(30.0),
         );
         for (p_idx, path) in draw["paths"].as_array().into_iter().flatten().enumerate() {
-            let sid = format!("{}_draw{d_idx}_{p_idx}", line.id);
+            let sid = format!("{}_draw{d_idx}_{p_idx}", line.layer);
             stroke_steps(
                 &Stroke {
                     id: &sid,
@@ -536,7 +555,7 @@ fn build_steps_with_designs(
         } else {
             let mut text = text_params(&base);
             text["text"] = json!(line.text());
-            text["name"] = json!(id);
+            text["name"] = json!(line.layer);
             text["box"] = json!([120.0, box_y, w - 240.0, 300.0]);
             text["justify"] = json!("center");
             steps.push(step("layer.newText", text));
@@ -545,12 +564,9 @@ fn build_steps_with_designs(
                     hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps)
                 })
                 .unwrap_or(Value::Null);
-            steps.push(step(
-                "layer.timing",
-                json!({"layers": [id], "in": shown, "out": gone}),
-            ));
+            steps.extend(trim_steps(json!(line.layer), shown, gone));
             for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
-                steps.push(step("prop.set", json!({"layer": id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
+                steps.push(step("prop.set", json!({"layer": line.layer, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
             }
             h_val
         };
