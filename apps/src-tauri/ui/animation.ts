@@ -1,4 +1,5 @@
-// The engine samples motion; this view only draws images using returned matrices.
+// The Animation tab. Characters come from the character.* commands (Scribbles, PhotoCraft,
+// EffectCraft); the stage shows the frames EffectCraft renders (character-stage.ts).
 function loadStoredOpenSections(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem('animation.openSections') || '{}') || {}; }
   catch { return {}; }
@@ -216,12 +217,12 @@ class AnimationViewController {
     if (motion.resume) Object.assign(motion, motion.resume);
     this.buildShell();
     try {
-      const assets = await motionCommand('project.list_assets');
-      const list = assets.assets || assets.project_assets || [];
+      const list = await characterCatalog();
       motion.assets = list;
       if (!list.some((a: any) => a.id === motion.character)) motion.character = list[0]?.id;
       if (!motion.character) {
-        this.renderEmpty('Bring in your artwork', 'Choose an object from the Storyboard view.');
+        this.renderEmpty('No characters yet', 'Use Prepare artwork to mark a character drawing.');
+        this.renderAssets();
         return;
       }
       await this.load();
@@ -271,9 +272,9 @@ class AnimationViewController {
         el('button', {
           id: 'btn-generate-all-sheets', class: 'icon', 'aria-label': 'Generate missing character sheets',
           html: `<svg viewBox="0 0 24 24">${MOTION_ICONS.layers}</svg>`,
-          'data-commands': 'assets.sheet_plan',
-          title: 'Review complete asset sheets and edit drawing prompts',
-          onclick: () => reviewAssetSheets(motion.character, null),
+          'data-commands': 'character.mark',
+          title: 'Prepare artwork: mark, cut and rig',
+          onclick: () => { $('magic-parts-pane')?.setAttribute('open', ''); $('character-prepare')?.scrollIntoView(); },
         }),
       ],
     });
@@ -295,7 +296,7 @@ class AnimationViewController {
     view.replaceChildren();
     const assets = el('aside', { id: 'motion-asset-browser', 'aria-label': 'Animation assets' });
     const inspector = el('aside', { id: 'motion-inspector', 'aria-label': 'Animation controls' });
-    const stage = el('div', { class: 'motion-stage', id: 'motion-stage' }, el('canvas', { id: 'motion-canvas', 'aria-label': 'Character animation canvas', tabindex: 0 }));
+    const stage = el('div', { class: 'motion-stage', id: 'motion-stage' }, el('div', { id: 'motion-canvas', 'aria-label': 'Character animation canvas', tabindex: 0 }));
     const toolbar = this.buildStageToolbar();
     motion.stageHeader = toolbar;
     const transport = this.buildTransportBar();
@@ -307,7 +308,8 @@ class AnimationViewController {
       theatreMount(theatre);
     }
     motion.resizeObserver?.disconnect();
-    motion.resizeObserver = new ResizeObserver(() => animationDraw());
+    characterStage.mount($('motion-canvas'));
+    motion.resizeObserver = new ResizeObserver(() => { characterStage.fit(); animationDraw(); });
     motion.resizeObserver.observe(stage);
     $('motion-canvas').addEventListener('click', () => { if (!motion.pen) $('motion-layers')?.setAttribute('open', ''); });
     setupPathPen($('motion-canvas'));
@@ -340,18 +342,15 @@ class AnimationViewController {
     this.renderEmpty('Loading artwork…', '', true);
     if (typeof timelineRender === 'function') timelineRender();
     try {
-      const meta = await motionCommand('motion.tracks', { character });
+      const meta = characterMeta(await motionCommand('character.meta', { character }), motion.view);
       if (request !== motion.request || project !== state.project) return;
-      const images = await this.loadImages(meta);
-      if (request !== motion.request || project !== state.project) return;
-      Object.assign(motion, { meta, images, loading: false });
-      applyLoadedTrackSelection(meta, resume, refresh);
+      Object.assign(motion, { meta, images: [], loading: false, sample: null, rest: true, track: '' });
+      if (!meta.layers.some((part: any) => part.id === motion.selected)) motion.selected = null;
       $('motion-stage-status')?.remove();
       const canvas = $('motion-canvas');
       if (canvas) canvas.hidden = false;
       this.renderControls();
       await this.sample();
-      this.refreshPartDrafts();
     } catch (error) {
       if (request === motion.request && project === state.project) handleAnimationLoadError(character, error);
     } finally {
@@ -381,10 +380,12 @@ class AnimationViewController {
       } catch (err) { toast(String(err)); }
     });
     removeCharacterBtn.setAttribute('data-commands', 'project.remove_asset');
+    removeCharacterBtn.disabled = true;
+    removeCharacterBtn.title = 'A character is its folder of app files; remove it there';
     const rebuildRigBtn = el('button', {
-      id: 'motion-rebuild-rig', class: 'ghost', 'data-commands': 'assets.sheet_plan',
-      title: 'Review source sheets and prepare artwork',
-      onclick: () => reviewAssetSheets(motion.character, ['skeleton']),
+      id: 'motion-rebuild-rig', class: 'ghost', 'data-commands': 'character.mark',
+      title: 'Mark, cut and rig a character drawing',
+      onclick: () => { $('magic-parts-pane')?.setAttribute('open', ''); $('character-prepare')?.scrollIntoView(); },
     }, 'Prepare artwork…');
     const artworkDot = window.companionBoxes.dot(motion.loading ? 'busy' : motion.loadError ? 'needs-attention' : 'ready');
     artworkDot.title = motion.loading ? 'Loading artwork' : motion.loadError || 'Artwork loaded';
@@ -429,39 +430,30 @@ class AnimationViewController {
   }
 
   async pickActionTrack(action: string, overrides: any = {}, play = true) {
-    if (!theatreCanLeave()) return;
-    animationPause();
-    try {
-      const updated = await motionCommand('motion.action_track', { character: motion.character, action, ...overrides });
-      await this.applyMetadata(updated);
-      motion.track = updated.track;
-      motion.rest = updated.rest;
-      motion.time = 0;
-      motion.previewLoop = null;
-      acFeedback.report(null, null, { stage: 'clip_switched', clip: updated.track });
-      this.renderControls();
-      await this.sample();
-      if (play) await animationPlay();
-    } catch (err) { toast(String(err)); }
+    if (!theatreCanLeave() || Object.keys(overrides).length > 1) return;
+    motion.previewLoop = null;
+    await characterPlayAction(action, play);
   }
 
   buildActionsGrid(meta: any) {
     return el('div', { class: 'motion-actions-grid' },
-      meta.actions.map((t: any) => {
-        const key = t.action;
-        return el('button', {
-          id: `motion-action-${key}`, class: 'motion-action', 'aria-label': t.label,
-          html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MOTION_ICONS[key] || MOTION_ICONS.play}</svg><span class="motion-action-word">${t.label}</span>`,
-          'aria-pressed': String(!motion.rest && motion.track === t.track),
-          title: `${t.label} · ${t.standard ? 'scripted motion' : 'single character animation'}`,
-          onclick: () => this.pickActionTrack(key),
+      CHARACTER_ACTIONS.map((t) => {
+        const view = characterActionView(t.action);
+        const button = el('button', {
+          id: `motion-action-${t.button}`, class: 'motion-action', 'aria-label': t.label,
+          html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MOTION_ICONS[t.button] || MOTION_ICONS.play}</svg><span class="motion-action-word">${t.label}</span>`,
+          'aria-pressed': String(!motion.rest && motion.track === t.action),
+          title: view ? `${t.label} · ${t.action.replaceAll('_', ' ')} keyed in EffectCraft (${view} view)` : `${t.label} needs the ${meta.actions.find((a: any) => a.id === t.action)?.views?.join(' or ')} view rigged`,
+          onclick: () => this.pickActionTrack(t.action),
         });
+        button.disabled = !view;
+        return button;
       }),
       el('button', {
         id: 'motion-action-rest', class: 'motion-action', 'aria-label': 'Rest pose',
         html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MOTION_ICONS.rest}</svg><span class="motion-action-word">Rest</span>`,
         'aria-pressed': String(motion.rest), title: 'Rest pose',
-        onclick: () => this.pickActionTrack('rest', { track: motion.track, rest: true }, false),
+        onclick: () => { animationPause(); Object.assign(motion, { rest: true, sample: null, time: 0 }); this.renderControls(); animationDraw(); },
       }));
   }
 
@@ -578,11 +570,13 @@ class AnimationViewController {
     const tracks = this.buildTrackSelector(meta);
     const actions = this.buildActionsGrid(meta);
     const genMissingPosesBtn = el('button', {
-      id: 'btn-generate-missing-poses', class: 'ghost', 'data-commands': 'assets.sheet_plan',
-      title: 'Review and create whole pose sheets', onclick: () => reviewAssetSheets(motion.character, ["poses"]),
-    }, 'Pose sheets…');
+      id: 'btn-generate-missing-poses', class: 'ghost', 'data-commands': 'character.open',
+      title: 'Open the rig in EffectCraft to key a pose by hand',
+      onclick: () => motionCommand('character.open', { character: motion.character, view: meta.view?.view, app: 'effectcraft' }).catch((e: any) => toast(String(e))),
+    }, 'Edit in EffectCraft…');
+    genMissingPosesBtn.disabled = !meta.view?.rigged;
     const charMagicPanel = renderCharacterMagicPanel(meta, (act: string, ov?: any, pl?: boolean) => this.pickActionTrack(act, ov, pl));
-    box.append(motionSection('Action', [actions, charMagicPanel, genMissingPosesBtn, el('span', { class: 'group-label' }, 'Custom tracks'), tracks, authoring.action], true));
+    box.append(motionSection('Action', [actions, charMagicPanel, genMissingPosesBtn, authoring.action], true));
     box.append(pathControls());
     const loopField = new InspectorToggle('motion-preview-loop', 'Loop preview',
       motion.previewLoop ?? meta.tracks.find((t: any) => t.id === motion.track)?.loop ?? false,
@@ -603,18 +597,14 @@ class AnimationViewController {
     const selected = meta.layers.find((part: any) => part.id === motion.selected);
     const candidate = selected ? partCandidate(selected.id) : null;
     const compare = this.buildPartComparePanel(meta, selected, candidate);
-    const genLimbSheetBtn = el('button', {
-      id: 'btn-generate-limb-sheet', class: 'ghost', 'data-commands': 'assets.sheet_plan',
-      title: 'Review complete part sheets before extracting individual pieces',
-      onclick: () => reviewAssetSheets(motion.character, ["skeleton"]),
-    }, 'Part sheets…');
+    const genLimbSheetBtn = characterPreparePanel();
     const genTurnaroundBtn = el('button', {
       id: 'btn-generate-turnaround-sheet', class: 'ghost', 'data-commands': 'assets.sheet_plan',
       title: 'Review a four-view turnaround sheet and its drawing prompt',
-      onclick: () => reviewAssetSheets(motion.character, ["turnaround"]),
-    }, 'Turnaround sheets…');
+      onclick: () => { $('magic-parts-pane')?.setAttribute('open', ''); $('character-prepare-view')?.focus(); },
+    }, 'Another view…');
     authoring.layers.append(layers);
-    box.append(section, motionSection('Part artwork', el('div', { id: 'magic-parts-slot' }, genLimbSheetBtn, ...(meta.rig_sha256 ? [partsDrawer(compare)] : [])), false, 'magic-parts-pane'));
+    box.append(section, motionSection('Part artwork', el('div', { id: 'magic-parts-slot' }, genLimbSheetBtn), !meta.rig_sha256, 'magic-parts-pane'));
     const controls = meta.controls?.joints || [];
     if (meta.rig_sha256) {
       box.append(motionSection('Expression & pose', [
@@ -633,26 +623,18 @@ class AnimationViewController {
     box.append(motionSection('Export & integrations', [exportButton, exportStatus, authoring.pose], false));
     const authoredCount = meta.tracks.filter((t: any) => !t.standard).length;
     box.append(el('div', { class: 'motion-source-context', id: 'motion-source-context' },
-      el('strong', {}, `${motion.assets?.find((a: any) => a.id === motion.character)?.name || motion.character} · Subject / shared engine · ${meta.layers.length} layers / ${authoredCount} authored clips`),
+      el('strong', {}, `${motion.assets?.find((a: any) => a.id === motion.character)?.name || motion.character} · ${meta.view?.view || 'no'} view · ${meta.layers.length} parts · ${Object.keys(meta.view?.actions || {}).length} keyed actions`),
       el('span', { class: 'muted' }, selected ? `Selected: ${selected.label || selected.id}` : 'Select a part in Layers or Parts & assets')));
-    if (meta.rig_sha256) renderPartControlsBar(selected, authoring.part);
+
     if (typeof theatreSyncClips === 'function') theatreSyncClips();
     animationRemember();
   }
 
-  async refreshPartDrafts() {
-    const character = motion.character, found: Record<string, any> = {};
-    for (const part of motion.meta?.layers || []) {
-      let result;
-      try { result = await motionCommand('part.edit_image', { asset: character, part: part.id }); } catch { break; }
-      if (result.draft) found[part.id] = { ...result.draft, current_sha256: result.sha256 };
-    }
-    if (motion.character !== character || JSON.stringify(found) === JSON.stringify(motion.photoDrafts)) return;
-    motion.photoDrafts = found;
-    this.renderControls();
-  }
+  /** Parts are edited in PhotoCraft ("Open in PhotoCraft") and re-cut; there are no part drafts. */
+  async refreshPartDrafts() {}
 
   async sample() {
+    if (motion.rest || !motion.sample) { characterShowRest(); animationDraw(); return; }
     if (!motion.meta?.tracks?.length) return;
     const request = ++motion.request;
     animationPause();
@@ -682,10 +664,10 @@ class AnimationViewController {
     if (motion.mode === 'blender') { await openAnimationJobs(); return; }
     const project = state.project, request = ++motion.request;
     animationPause();
-    const catalog = await motionCommand('project.list_assets');
+    const characters = await characterCatalog();
     if (state.project !== project || request !== motion.request) return;
-    motion.assets = catalog.assets || catalog.project_assets || [];
-    const character = selectRefreshedCharacter(catalog, motion.assets);
+    motion.assets = characters;
+    const character = selectRefreshedCharacter({}, motion.assets);
     if (!character) return handleEmptyAnimationCatalog();
     if (character !== motion.character) {
       theatreRequireSaved();

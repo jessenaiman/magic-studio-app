@@ -150,7 +150,11 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
             .map(|v| {
                 let dir = entry.path().join(v);
                 let has = |ext: &str| dir.join(format!("{id}-{v}.{ext}")).is_file();
-                json!({"view": v, "parts": dir.join("parts.json").is_file(),
+                let drawing = std::fs::read_to_string(dir.join("parts.json"))
+                    .ok()
+                    .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                    .and_then(|p| p["image"].as_str().map(|i| dir.join(i)));
+                json!({"view": v, "parts": dir.join("parts.json").is_file(), "drawing": drawing,
                     "psd": has("psd"), "ecproj": has("ecproj")})
             })
             .collect();

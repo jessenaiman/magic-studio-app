@@ -13,34 +13,16 @@ function validExportResult(result: any): string {
   }
   return file;
 }
-async function runMotionExport(button: HTMLButtonElement, status: HTMLElement) {
+async function runMotionExport(_button: HTMLButtonElement, status: HTMLElement) {
   animationPause();
-  await theatreSave();
-  theatreRequireSaved();
-  const character = motion.character, duration = motion.sample?.duration / motion.speed;
-  if (!character || !motion.track || !Number.isFinite(duration) || duration <= 0) {
-    throw Error('Choose an animation clip before saving.');
-  }
-  const project = state.project;
-  const params = { character, track: motion.track, rest: motion.rest, amount: motion.amount, duration, sync_video: true };
-  status.textContent = 'Saving animation and updating Studio…';
-  const result = await motionCommand('animation.render', params);
-  motion.lastExport = { project, character, params, result };
-  if (state.project !== project || motion.character !== character) return;
-  const file = validExportResult(result);
-  const synced = result.video_tracks_synced;
-  await motionCommand('project.save');
-  status.textContent = Array.isArray(synced) && synced.length
-    ? `Animation saved · Studio updated: ${synced.join(', ')}`
-    : 'Animation saved · no Studio track linked. Choose a scene under Placement.';
-  status.append(fileButton({ path: file, name: file.split('/').pop() }));
+  await characterExportClip(status);
 }
 function motionExportControl() {
   const status = el('div', { id: 'motion-export-status', class: 'why', role: 'status' });
   let busy = false;
   const button = el('button', {
-    class: 'start', id: 'motion-export', 'data-commands': 'animation.render',
-    title: 'Save the animation and update its linked Studio track',
+    class: 'start', id: 'motion-export', 'data-commands': 'character.render',
+    title: 'Render this action as a ProRes 4444 clip with transparency (EffectCraft)',
     onclick: async () => {
       if (busy) return;
       const project = state.project, character = motion.character;
@@ -254,11 +236,9 @@ class AnimationStageController {
   async play() {
     if (motion.mode === 'composite') { seqPlay(); return; }
     if (motion.playing) { this.pause(); return; }
-    if (motion.rest) {
-      motion.rest = false;
-      motion.track = motion.track || motion.meta?.tracks?.[0]?.id;
-      animationControls();
-      await animationSample();
+    if (motion.rest || !motion.sample) {
+      await characterPlayAction(motion.track || 'idle', true);
+      return;
     }
     if (!motion.sample) return;
     if (motion.time >= motion.sample.duration) motion.time = 0;
@@ -285,44 +265,8 @@ class AnimationStageController {
     motion.tick = requestAnimationFrame(tick);
   }
 
-  drawGrid(ctx: CanvasRenderingContext2D, b: number[], w: number, h: number, scale: number) {
-    if (!motion.grid) return;
-    const gap = 50;
-    ctx.save();
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line');
-    ctx.lineWidth = 1 / scale;
-    ctx.beginPath();
-    const left = (b[0] + b[2]) / 2 - w / (2 * scale);
-    const top = (b[1] + b[3]) / 2 - h / (2 * scale);
-    for (let x = Math.floor(left / gap) * gap; x < left + w / scale; x += gap) {
-      ctx.moveTo(x, top);
-      ctx.lineTo(x, top + h / scale);
-    }
-    for (let y = Math.floor(top / gap) * gap; y < top + h / scale; y += gap) {
-      ctx.moveTo(left, y);
-      ctx.lineTo(left + w / scale, y);
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  drawFrameLayers(ctx: CanvasRenderingContext2D, frame: any, meta: any) {
-    frame.layers.forEach((l: any, i: number) => {
-      if (!l.opacity) return;
-      ctx.save();
-      ctx.transform(...(l.matrix as [number, number, number, number, number, number]));
-      theatreTransform(ctx, meta.layers[i]);
-      ctx.globalAlpha = l.opacity;
-      const crop = meta.layers[i].crop;
-      ctx.drawImage(motion.images[i], crop[0], crop[1]);
-      ctx.restore();
-    });
-  }
-
   syncReadouts(meta: any) {
-    const trackLabel = motion.rest
-      ? 'Rest pose'
-      : (meta.tracks.find((t: any) => t.id === motion.track)?.label || motion.track.replaceAll('-', ' '));
+    const trackLabel = motion.rest ? 'Rest pose' : motion.track.replaceAll('_', ' ');
     motion.stageHeader.rename(`${motion.character} · ${trackLabel}`);
     $('motion-time').textContent = `${Math.floor(motion.time / 60)}:${(motion.time % 60).toFixed(3).padStart(6, '0')}`;
     $('motion-scrub').value = motion.time;
@@ -337,30 +281,18 @@ class AnimationStageController {
     if (typeof timelineSeek === 'function') timelineSeek(motion.time);
   }
 
+  /** Show the frame EffectCraft rendered for the current time (or the drawing at rest). */
   draw() {
     if (motion.mode === 'composite') { seqDraw(); return; }
-    const canvas = $('motion-canvas'), sample = motion.sample, meta = motion.meta;
-    if (!canvas || !sample || !meta) return;
-    const rect = canvas.parentElement.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const dpr = devicePixelRatio || 1, w = rect.width, h = rect.height;
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-    }
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const b = sample.bounds || meta.bounds;
-    const scale = (motion.fit ? Math.min((w - 64) / (b[2] - b[0]), (h - 64) / (b[3] - b[1])) : 1) * motion.zoom;
-    motion.viewTransform = { scale, cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2, w, h };
-    ctx.translate(w / 2, h / 2);
-    ctx.scale(scale, scale);
-    ctx.translate(-(b[0] + b[2]) / 2, -(b[1] + b[3]) / 2);
-    this.drawGrid(ctx, b, w, h, scale);
-    const frame = sample.frames[Math.min(sample.frames.length - 1, Math.floor(motion.time * sample.fps))];
-    this.drawFrameLayers(ctx, frame, meta);
-    drawMotionPath(ctx, scale);
+    const meta = motion.meta;
+    if (!meta) return;
+    characterStage.setSize(meta.view?.size);
+    characterStage.fit();
+    const sample = motion.sample;
+    if (sample?.frames?.length && !motion.rest) {
+      characterStage.clearMarks();
+      characterStage.show(sample.frames[Math.min(sample.frames.length - 1, Math.floor(motion.time * sample.fps))]);
+    } else characterShowRest();
     this.syncReadouts(meta);
   }
 }
