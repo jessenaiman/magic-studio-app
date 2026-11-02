@@ -104,8 +104,9 @@ fn resolve_config(p: &Value) -> Result<ImageConfig> {
         .or_else(|| nonempty_str(img_settings.get("model")));
     if let Some(ref m) = model {
         let ok = m.len() <= 160
-            && m.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'/' | b':'));
+            && m.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'/' | b':')
+            });
         if !ok {
             return Err(invalid("Invalid model identifier"));
         }
@@ -207,12 +208,18 @@ fn staged_image(stdout: &str, stderr: &str) -> Result<(PathBuf, usize)> {
             "Cannot resolve native staged image: expected one thread ID and a successful built-in image call ID. Inspect events.jsonl and stderr.log.",
         ));
     }
-    let thread = threads.first().ok_or_else(|| invalid("Missing current thread ID"))?;
-    let call = calls.first().ok_or_else(|| invalid("Missing image call ID"))?;
+    let thread = threads
+        .first()
+        .ok_or_else(|| invalid("Missing current thread ID"))?;
+    let call = calls
+        .first()
+        .ok_or_else(|| invalid("Missing image call ID"))?;
     let home = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")))
-        .ok_or_else(|| invalid("Cannot locate Codex staged image: CODEX_HOME and HOME are unset"))?;
+        .ok_or_else(|| {
+            invalid("Cannot locate Codex staged image: CODEX_HOME and HOME are unset")
+        })?;
     Ok((
         home.join("generated_images")
             .join(thread)
@@ -230,7 +237,9 @@ fn validated_png(path: &Path) -> Result<(u32, u32, String)> {
     }
     let bytes = fs::read(path).map_err(|e| io_failure("read_png_bytes", path, e))?;
     if image::guess_format(&bytes).ok() != Some(image::ImageFormat::Png) {
-        return Err(invalid("Generated output is not a PNG; it was not attached"));
+        return Err(invalid(
+            "Generated output is not a PNG; it was not attached",
+        ));
     }
     let (w, h) = image::image_dimensions(path)
         .map_err(|e| invalid(&format!("Cannot read generated PNG dimensions: {e}")))?;
@@ -418,7 +427,9 @@ fn validate_rig_part_ids(parts: &[Value]) -> Result<Vec<&str>> {
             .as_str()
             .is_none_or(|d| d.trim().is_empty() || d.len() > 240)
         {
-            return Err(invalid("Each rig part needs a description of 1 to 240 bytes"));
+            return Err(invalid(
+                "Each rig part needs a description of 1 to 240 bytes",
+            ));
         }
         if ids.contains(&id) {
             return Err(invalid("rig_parts ids must be unique"));
@@ -435,7 +446,9 @@ fn validate_rig_part_links(parts: &[Value], ids: &[&str]) -> Result<()> {
                 .as_str()
                 .is_some_and(|parent| ids.contains(&parent) && parent != part["id"])
         {
-            return Err(invalid("A rig part's parent must be another listed part id"));
+            return Err(invalid(
+                "A rig part's parent must be another listed part id",
+            ));
         }
         if let Some(pivot) = part.get("pivot").filter(|v| !v.is_null()) {
             let ok = pivot.as_array().is_some_and(|a| {
@@ -444,7 +457,9 @@ fn validate_rig_part_links(parts: &[Value], ids: &[&str]) -> Result<()> {
                         .all(|v| v.as_f64().is_some_and(|v| (0.0..=1.0).contains(&v)))
             });
             if !ok {
-                return Err(invalid("A rig part's pivot is [u, v] inside its bounds, each 0 to 1"));
+                return Err(invalid(
+                    "A rig part's pivot is [u, v] inside its bounds, each 0 to 1",
+                ));
             }
         }
     }
@@ -648,7 +663,10 @@ fn generate_via_configured_http(
                 .ok_or_else(|| invalid("Invalid resolved reference path"))?;
             let bytes =
                 fs::read(path).map_err(|e| io_failure("read_reference", Path::new(path), e))?;
-            inputs.push(json!(format!("data:image/png;base64,{}", base64_encode(&bytes))));
+            inputs.push(json!(format!(
+                "data:image/png;base64,{}",
+                base64_encode(&bytes)
+            )));
         }
         request["input_references"] = json!(inputs);
     }

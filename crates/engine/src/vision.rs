@@ -207,7 +207,11 @@ fn vision_character_id(s: &Session, params: &Value) -> Result<String> {
         .filter(|a| !a.trim().is_empty())
         .map(str::to_string)
         .or_else(|| s.active_asset.clone())
-        .ok_or_else(|| EngineError::InvalidParams("provide 'image', 'character', or load an active asset".into()))
+        .ok_or_else(|| {
+            EngineError::InvalidParams(
+                "provide 'image', 'character', or load an active asset".into(),
+            )
+        })
 }
 
 fn vision_turnaround_views(asset: &crate::Asset) -> (Vec<Value>, Vec<i64>) {

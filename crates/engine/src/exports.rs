@@ -116,10 +116,26 @@ fn append_controller_nulls(cmds: &mut Vec<Value>, cw: f64, ch: f64, shift: [f64;
     let nulls = [
         ("CTRL_Root", [cx, ground_y, 0.0], None),
         ("CTRL_Hip", [cx, hip_y, 0.0], Some("CTRL_Root")),
-        ("CTRL_Hand_L", [cx - cw * 0.18, hip_y, 0.0], Some("CTRL_Hip")),
-        ("CTRL_Hand_R", [cx + cw * 0.18, hip_y, 0.0], Some("CTRL_Hip")),
-        ("CTRL_Foot_L", [cx - cw * 0.08, ground_y, 0.0], Some("CTRL_Root")),
-        ("CTRL_Foot_R", [cx + cw * 0.08, ground_y, 0.0], Some("CTRL_Root")),
+        (
+            "CTRL_Hand_L",
+            [cx - cw * 0.18, hip_y, 0.0],
+            Some("CTRL_Hip"),
+        ),
+        (
+            "CTRL_Hand_R",
+            [cx + cw * 0.18, hip_y, 0.0],
+            Some("CTRL_Hip"),
+        ),
+        (
+            "CTRL_Foot_L",
+            [cx - cw * 0.08, ground_y, 0.0],
+            Some("CTRL_Root"),
+        ),
+        (
+            "CTRL_Foot_R",
+            [cx + cw * 0.08, ground_y, 0.0],
+            Some("CTRL_Root"),
+        ),
     ];
     for (name, pos, parent) in nulls {
         cmds.push(json!({"command": "layer.newNull", "params": {"name": name}}));
@@ -401,8 +417,14 @@ fn render_track_outputs(
     let render_video = params.get("video").and_then(Value::as_bool).unwrap_or(true);
     let stills_count = params.get("stills").and_then(Value::as_u64).unwrap_or(5) as usize;
     let use_gpu = params.get("gpu").and_then(Value::as_bool).unwrap_or(true);
-    let resolution = params.get("resolution").and_then(Value::as_str).unwrap_or("full");
-    let quality = params.get("quality").and_then(Value::as_str).unwrap_or("best");
+    let resolution = params
+        .get("resolution")
+        .and_then(Value::as_str)
+        .unwrap_or("full");
+    let quality = params
+        .get("quality")
+        .and_then(Value::as_str)
+        .unwrap_or("best");
 
     let mut stills = Vec::new();
     if stills_count > 0 {
@@ -494,7 +516,8 @@ pub fn cmd_export_layered_motion(s: &mut Session, params: &Value) -> Result<Valu
         build_compositor_commands(&spec, base_dir, selected.as_deref())?;
     std::fs::write(
         &commands_path,
-        serde_json::to_vec_pretty(&commands).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+        serde_json::to_vec_pretty(&commands)
+            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
     )?;
 
     let ec_bin = resolve_tool("effectcraft-cli");

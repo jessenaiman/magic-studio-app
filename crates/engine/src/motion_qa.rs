@@ -64,6 +64,38 @@ fn check_no_sine_fakery(spec: &Value) -> Vec<String> {
     violations
 }
 
+fn first_stance_drift(keys: &[Value]) -> Option<f64> {
+    if keys.len() < 2 {
+        return None;
+    }
+    let y0 = keys[0].get(1)?.get(1)?.as_f64()?;
+    let y1 = keys[1].get(1)?.get(1)?.as_f64()?;
+    Some((y1 - y0).abs())
+}
+
+fn check_layer_stance(
+    tid: &str,
+    lid: &str,
+    props: &Value,
+    max_drift: &mut f64,
+    issues: &mut Vec<String>,
+) {
+    let low = lid.to_ascii_lowercase();
+    if !low.contains("foot") && !low.contains("leg") {
+        return;
+    }
+    for term in props["position"].as_array().into_iter().flatten() {
+        if let Some(drift) = term["keys"].as_array().and_then(|k| first_stance_drift(k)) {
+            *max_drift = max_drift.max(drift);
+            if drift > 1.5 {
+                issues.push(format!(
+                    "{tid}.{lid}: stance foot vertical drift {drift:.2}px exceeds 1.5px ground lock"
+                ));
+            }
+        }
+    }
+}
+
 fn check_foot_stance_lock(spec: &Value) -> (bool, f64, Vec<String>) {
     let mut issues = Vec::new();
     let mut max_stance_drift: f64 = 0.0;
@@ -72,38 +104,11 @@ fn check_foot_stance_lock(spec: &Value) -> (bool, f64, Vec<String>) {
     };
     for track in tracks {
         let tid = track["id"].as_str().unwrap_or("track");
-        if !tid.contains("walk") {
-            continue;
-        }
-        let Some(motion) = track["motion"].as_object() else {
-            continue;
-        };
-        for (lid, props) in motion {
-            let low = lid.to_ascii_lowercase();
-            if !low.contains("foot") && !low.contains("leg") {
-                continue;
-            }
-            if let Some(pos_terms) = props["position"].as_array() {
-                for term in pos_terms {
-                    let Some(keys) = term["keys"].as_array() else {
-                        continue;
-                    };
-                    // Stance phase keys (first two keys in contact->passing) must keep ground Y within 1.5px
-                    if keys.len() >= 2
-                        && let (Some(y0), Some(y1)) = (
-                            keys[0].get(1).and_then(|v| v.get(1)).and_then(Value::as_f64),
-                            keys[1].get(1).and_then(|v| v.get(1)).and_then(Value::as_f64),
-                        )
-                    {
-                        let drift = (y1 - y0).abs();
-                        max_stance_drift = max_stance_drift.max(drift);
-                        if drift > 1.5 {
-                            issues.push(format!(
-                                "{tid}.{lid}: stance foot vertical drift {drift:.2}px exceeds 1.5px ground lock"
-                            ));
-                        }
-                    }
-                }
+        if tid.contains("walk")
+            && let Some(motion) = track["motion"].as_object()
+        {
+            for (lid, props) in motion {
+                check_layer_stance(tid, lid, props, &mut max_stance_drift, &mut issues);
             }
         }
     }
@@ -155,7 +160,7 @@ fn check_joint_gaps_in_frames(spec: &Value, frame_paths: &[PathBuf]) -> (bool, V
             if opaque == 0 {
                 gaps.push(format!(
                     "{}: 16x16 transparent gap at joint `{id}` ({}, {})",
-                    frame. file_name().unwrap_or_default().to_string_lossy(),
+                    frame.file_name().unwrap_or_default().to_string_lossy(),
                     pv[0],
                     pv[1]
                 ));
@@ -189,6 +194,10 @@ fn collect_diagnostic_frames(s: &Session, params: &Value, spec_path: &Path) -> V
     found
 }
 
+fn matches_any(low: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|n| low.contains(n))
+}
+
 fn check_channel_coverage(spec: &Value) -> Value {
     let layers = spec["layers"].as_array().cloned().unwrap_or_default();
     let mut has_root = false;
@@ -197,25 +206,11 @@ fn check_channel_coverage(spec: &Value) -> Value {
     let mut has_overlap = false;
     for l in &layers {
         let low = l["id"].as_str().unwrap_or_default().to_ascii_lowercase();
-        if low.contains("body") || low.contains("torso") || low.contains("hip") || low.contains("root") {
-            has_root = true;
-        }
-        if low.contains("arm") || low.contains("hand") || low.contains("wing") {
-            has_arm = true;
-        }
-        if low.contains("leg") || low.contains("foot") || low.contains("shin") || low.contains("thigh") {
-            has_leg = true;
-        }
-        if low.contains("tail")
-            || low.contains("ear")
-            || low.contains("hair")
-            || low.contains("cape")
-            || low.contains("coat")
-            || low.contains("skirt")
-            || l.get("follow_through").is_some()
-        {
-            has_overlap = true;
-        }
+        has_root |= matches_any(&low, &["body", "torso", "hip", "root"]);
+        has_arm |= matches_any(&low, &["arm", "hand", "wing"]);
+        has_leg |= matches_any(&low, &["leg", "foot", "shin", "thigh"]);
+        has_overlap |= matches_any(&low, &["tail", "ear", "hair", "cape", "coat", "skirt"])
+            || l.get("follow_through").is_some();
     }
     json!({
         "layer_count": layers.len(),

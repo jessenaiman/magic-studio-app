@@ -290,10 +290,7 @@ fn connect_asset_entry(
     name: String,
     path: Option<std::path::PathBuf>,
 ) {
-    if s.project_assets
-        .iter()
-        .any(|entry| entry.id == asset_id)
-    {
+    if s.project_assets.iter().any(|entry| entry.id == asset_id) {
         return;
     }
     s.project_assets.push(ProjectAsset {

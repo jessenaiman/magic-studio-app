@@ -2,7 +2,7 @@ use super::paths::results_dir;
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 
-/// TODO: USE phtocraft-cli to extract the subject and background from an image, given a selection (rect or point) and an expand radius. 
+/// TODO: USE phtocraft-cli to extract the subject and background from an image, given a selection (rect or point) and an expand radius.
 pub fn cmd_asset_extract_background(s: &mut Session, params: &Value) -> Result<Value> {
     let id = params
         .get("asset")

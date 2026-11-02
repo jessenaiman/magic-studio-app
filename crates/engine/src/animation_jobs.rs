@@ -564,7 +564,9 @@ fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()>
             let resolved = PathBuf::from(crate::workspace::resolve_tool("magic-cli"));
             resolved.is_file().then_some(resolved)
         })
-        .ok_or_else(|| invalid("Install magic-cli beside Magic Studio to prepare legacy animations"))?;
+        .ok_or_else(|| {
+            invalid("Install magic-cli beside Magic Studio to prepare legacy animations")
+        })?;
     request["magic_cli"] = json!(executable);
     Ok(())
 }

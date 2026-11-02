@@ -1,6 +1,5 @@
 use crate::session::{
-    Asset, LoadedCutoutRigPlan, LoadedManifest, MeasuredMotionRange,
-    MeasuredTurnaroundRegistration,
+    Asset, LoadedCutoutRigPlan, LoadedManifest, MeasuredMotionRange, MeasuredTurnaroundRegistration,
 };
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
@@ -78,8 +77,13 @@ fn resolve_paths(s: &Session, params: &Value, root: &Path) -> Result<ManifestPat
     Ok(ManifestPaths {
         pose: Some(resolved_pose),
         turnaround: optional_path("turnaround_manifest"),
-        motion: optional_path("motion_range")
-            .or_else(|| Some(root.join("exports/pose_and_parts").join(&id).join("motion_range.json"))),
+        motion: optional_path("motion_range").or_else(|| {
+            Some(
+                root.join("exports/pose_and_parts")
+                    .join(&id)
+                    .join("motion_range.json"),
+            )
+        }),
         registration: optional_path("turnaround_registration").or_else(|| {
             Some(
                 root.join("exports/pose_and_parts")

@@ -8,9 +8,7 @@ use crate::agent::{
     cmd_agent_session,
 };
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
-use crate::exports::{
-    cmd_export_layered_motion, cmd_render_scene_source,
-};
+use crate::exports::{cmd_export_layered_motion, cmd_render_scene_source};
 use crate::image_cmds::{
     cmd_image_break_apart, cmd_image_color_to_alpha, cmd_image_content_aware_fill,
     cmd_image_image_size, cmd_image_puppet_warp, cmd_image_register_frame,
@@ -1656,6 +1654,12 @@ fn specs_part_and_manifest() -> Vec<CommandSpec> {
 
 fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
     vec![
+        query!(
+            "validate.motion",
+            "Validate 2.5D Puppet & Deform Motion Clip",
+            "{\"spec\":\"rig.json or rig_manifest.json\",\"frames\":[\"optional rendered frame PNGs\"]}",
+            crate::motion_qa::cmd_validate_motion
+        ),
         cmd!(
             "export.scene_render",
             "Render Blender Source",

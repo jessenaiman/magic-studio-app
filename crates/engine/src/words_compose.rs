@@ -943,6 +943,51 @@ fn build_local_words(anim: &Value, local: &dyn Fn(f64) -> f64) -> Result<Vec<Val
         .collect()
 }
 
+struct WordsComposeInputs {
+    id: String,
+    instance: Option<String>,
+    composition_id: String,
+}
+
+fn validate_words_compose_inputs(p: &Value, anim: &Value) -> Result<WordsComposeInputs> {
+    let id = p["animation_id"]
+        .as_str()
+        .ok_or_else(|| invalid("animation_id is required"))?
+        .to_owned();
+    let instance = match p["instance_id"].as_str() {
+        Some(i)
+            if !i.is_empty()
+                && i.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == 95) =>
+        {
+            Some(i.to_owned())
+        }
+        Some(_) => return Err(invalid("instance_id must be letters, digits, '-' or '_'")),
+        None => None,
+    };
+    let composition_id = instance
+        .as_deref()
+        .map_or_else(|| id.clone(), |i| format!("{id}--{i}"));
+    let untimed: Vec<&str> = anim["words"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|w| !w["start"].is_number() || !w["end"].is_number())
+        .filter_map(|w| w["word_id"].as_str())
+        .collect();
+    if !untimed.is_empty() {
+        return Err(invalid(format!(
+            "Words without timing cannot be placed: {}; resolve them with words.align",
+            untimed.join(", ")
+        )));
+    }
+    Ok(WordsComposeInputs {
+        id,
+        instance,
+        composition_id,
+    })
+}
+
 /// `words.compose`: write the derived, untrimmed HyperFrames sub-composition for one animation.
 pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
@@ -959,31 +1004,8 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     let mut synced = read["document"]["animations"][0].clone();
     sync_studio_word_times(s, &mut synced);
     let anim = &synced;
-    let instance = match p["instance_id"].as_str() {
-        Some(i)
-            if !i.is_empty()
-                && i.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') =>
-        {
-            Some(i)
-        }
-        Some(_) => return Err(invalid("instance_id must be letters, digits, '-' or '_'")),
-        None => None,
-    };
-    let composition_id = instance.map_or_else(|| id.to_owned(), |i| format!("{id}--{i}"));
-    let untimed: Vec<&str> = anim["words"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|w| !w["start"].is_number() || !w["end"].is_number())
-        .filter_map(|w| w["word_id"].as_str())
-        .collect();
-    if !untimed.is_empty() {
-        return Err(invalid(format!(
-            "Words without timing cannot be placed: {}; resolve them with words.align",
-            untimed.join(", ")
-        )));
-    }
+    let inputs = validate_words_compose_inputs(p, anim)?;
+    let (id, instance, composition_id) = (inputs.id, inputs.instance, inputs.composition_id);
     let anchor = anim["song_anchor"]
         .as_f64()
         .ok_or_else(|| invalid("Animation has no song_anchor"))?;

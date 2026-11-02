@@ -800,7 +800,9 @@ fn validate_placement_params(
         .and_then(Value::as_array);
     let rect = if let Some(arr) = rect_val {
         if arr.len() != 4 {
-            return Err(EngineError::InvalidParams("Invalid timing or placement".into()));
+            return Err(EngineError::InvalidParams(
+                "Invalid timing or placement".into(),
+            ));
         }
         [
             arr[0].as_f64().unwrap_or(f64::NAN),
@@ -819,7 +821,9 @@ fn validate_placement_params(
         || rect[2] <= 0.0
         || rect[3] <= 0.0
     {
-        return Err(EngineError::InvalidParams("Invalid timing or placement".into()));
+        return Err(EngineError::InvalidParams(
+            "Invalid timing or placement".into(),
+        ));
     }
     let rate = num("playback_rate", 1.0);
     if !rate.is_finite() || rate <= 0.0 || rate > 16.0 {
@@ -857,7 +861,9 @@ fn ensure_composition_root_html(text: &str) -> Result<(String, usize)> {
             return Ok((injected, pos));
         }
     }
-    Err(EngineError::InvalidParams("Composition root missing".into()))
+    Err(EngineError::InvalidParams(
+        "Composition root missing".into(),
+    ))
 }
 
 fn find_composition_open_end(text: &str) -> Option<usize> {
@@ -988,7 +994,10 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     let bytes = std::fs::read(&source)?;
     let digest = format!("{:x}", Sha256::digest(&bytes));
     let short_sha = &digest[..12];
-    let orig_ext = source.extension().and_then(|e| e.to_str()).unwrap_or("webm");
+    let orig_ext = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("webm");
     let target = folder.join(format!("{key}-{short_sha}.{orig_ext}"));
     if source != target {
         std::fs::copy(&source, &target)?;
@@ -1063,7 +1072,8 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     let out_val = Value::Object(merged);
     std::fs::write(
         &existing_path,
-        serde_json::to_vec_pretty(&out_val).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+        serde_json::to_vec_pretty(&out_val)
+            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
     )?;
     Ok(out_val)
 }
