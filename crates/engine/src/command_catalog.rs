@@ -1152,7 +1152,7 @@ fn specs_character() -> Vec<CommandSpec> {
             "Place a Sprite in a Scene Shot (EffectCraft)",
             ["Animation"],
             None,
-            "{\"character\":\"id\",\"sprite\":\"sprite name\",\"name\":\"optional shot name\",\"duration\":4,\"from\":[960,780],\"to\":[960,780],\"scale\":100,\"mirror\":false}",
+            "{\"character\":\"id\",\"sprite\":\"sprite name\",\"name\":\"optional shot name\",\"duration\":4,\"from\":[960,780],\"to\":[960,780],\"scale\":100,\"mirror\":false,\"hop_period\":\"optional seconds per jump (the sprite cycle)\",\"height\":140}",
             always,
             crate::character::cmd_character_shot
         ),
