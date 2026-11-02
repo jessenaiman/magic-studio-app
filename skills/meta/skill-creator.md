@@ -37,7 +37,6 @@ Before writing the skill, research:
 | Department agent | `agents/` | Instructions for one app department (storyboard, animation, lyrics, video production, mayhem) |
 | Meta skill | `skills/meta/` | Cross-cutting protocol (review, checkpoint, etc.) |
 | Tool skill | `.agents/skills/` | How to use a specific API or tool effectively |
-| Style skill | `styles/` | Visual/audio style definition (YAML playbook) |
 
 ### Step 4: Write the Skill
 
@@ -78,7 +77,7 @@ Follow this structure (adapt to skill type):
 
 2. **Include examples.** Show what good output looks like. Show what bad output looks like. The contrast teaches more than instructions alone.
 
-3. **Reference concrete resources.** Don't say "check the schema." Say "validate against `schemas/artifacts/brief.schema.json`." Don't say "use a tool." Say "use `image_selector` with the playbook's `image_prompt_prefix`."
+3. **Reference concrete resources.** Don't say "check the contract." Say "produce the `research_brief` fields the preset lists." Don't say "render it." Say "render through `animation.scene.render` and read back `animation.status`."
 
 4. **Include a self-evaluation rubric.** Every skill should end with a scoring table. This forces the agent to check its own work before proceeding.
 

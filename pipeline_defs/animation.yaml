@@ -21,12 +21,6 @@ reference_input:
     - scene_detect
     - frame_sampler
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
   - meta/reviewer
   - meta/animation-runtime-selector
@@ -37,15 +31,6 @@ orchestration:
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 15
-
-compatible_playbooks:
-  recommended:
-    - flat-motion-graphics
-    - anime-ghibli
-  also_works:
-    - clean-professional
-    - minimalist-diagram
-  custom_allowed: true
 
 stages:
   # ── Pre-Production ──────────────────────────────────────────────
@@ -101,7 +86,7 @@ stages:
         tools_available: [tts_selector, image_selector, video_selector, video_compose, audio_mixer, math_animate, diagram_gen]
         review_focus:
           - "Sample represents the approved animation mode faithfully"
-          - "Visual identity matches approved playbook and style"
+          - "Visual identity matches the approved style direction"
           - "Pacing matches reference inspiration"
 
   # ── Production ──────────────────────────────────────────────────

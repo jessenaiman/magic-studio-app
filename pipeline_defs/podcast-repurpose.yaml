@@ -17,21 +17,8 @@ orchestration:
   max_send_backs: 3
   max_wall_time_minutes: 12
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
   - meta/reviewer
-
-compatible_playbooks:
-  recommended:
-    - clean-professional
-    - flat-motion-graphics
-  also_works: []
-  custom_allowed: true
 
 stages:
   - name: idea
@@ -120,7 +107,7 @@ stages:
     human_approval_default: true
     review_focus:
       - Subtitles generated for all clips and full episode
-      - Quote card / speaker-card assets match playbook style
+      - Quote card / speaker-card assets match the approved style direction
       - Optional topic graphics are relevant and within budget
     success_criteria:
       - Schema-valid asset_manifest artifact

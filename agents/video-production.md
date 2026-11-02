@@ -16,16 +16,16 @@ preset at a time, no parallel stage workers.
 3. Review each stage against its `review_focus` and `success_criteria` using
    [reviewer](../skills/meta/reviewer.md) discipline before advancing. Required
    human gates stay `awaiting_human` until approved; never advance dependent work.
-4. Preflight tool availability with registry discovery before promising a path:
-   `python -c "from tools.tool_registry import registry; import json;
-   registry.discover(); print(json.dumps(registry.provider_menu_summary(), indent=2))"`.
+4. Preflight availability before promising a path: run the relevant CLI
+   `--help` / `commands` (`magic-cli`, the Craft CLIs, `cli-anything-blender`)
+   and check the preset's `required_tools` against what is actually installed.
    Report `passed`, `degraded`, or `blocked` — never infer availability, prices,
    or model access from documentation.
 
 ## Rules
 
-- The agent orchestrates; Python provides tools and persistence. Reuse the
-  toolkit; do not replace a preset with ad hoc provider scripts.
+- The agent orchestrates; the `pipeline/` scripts provide the mechanical steps.
+  Reuse the toolkit; do not replace a preset with ad hoc provider scripts.
 - Before generation, present the proposed result, preset, exact provider/model,
   real alternatives, estimated cost, and stage plan. Ask before material
   provider/model/runtime changes or dropping approved content.

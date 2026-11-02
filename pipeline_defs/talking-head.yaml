@@ -8,12 +8,6 @@ category: talking_head
 stability: beta
 default_checkpoint_policy: guided
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
   - meta/reviewer
 
@@ -22,12 +16,6 @@ orchestration:
   budget_default_usd: 0.50
   max_revisions_per_stage: 3
   max_send_backs: 3
-
-compatible_playbooks:
-  recommended:
-    - clean-professional
-  also_works: []
-  custom_allowed: true
 
 stages:
   - name: idea

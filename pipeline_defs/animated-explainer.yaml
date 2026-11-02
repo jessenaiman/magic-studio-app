@@ -20,12 +20,6 @@ reference_input:
     - scene_detect
     - frame_sampler
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
   - meta/reviewer
   - meta/skill-creator
@@ -37,14 +31,6 @@ orchestration:
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 20
-
-compatible_playbooks:
-  recommended:
-    - clean-professional
-    - flat-motion-graphics
-  also_works:
-    - minimalist-diagram
-  custom_allowed: true
 
 stages:
   # ── Pre-Production ──────────────────────────────────────────────
@@ -97,7 +83,7 @@ stages:
         review_focus:
           - "Sample represents the approved concept faithfully"
           - "Audio levels and voice match approved direction"
-          - "Visual style matches approved playbook"
+          - "Visual style matches the approved style direction"
 
   # ── Production ──────────────────────────────────────────────────
 
@@ -191,7 +177,7 @@ stages:
     human_approval_default: false
     review_focus:
       - All cuts reference valid assets from manifest
-      - Subtitles enabled with playbook-compatible styling
+      - Subtitle styling matches the approved style direction
       - Music configured with ducking parameters
       - No timeline gaps or overlaps
     success_criteria:

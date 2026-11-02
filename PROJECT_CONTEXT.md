@@ -36,43 +36,39 @@ See [Backstage](apps/backstage/README.md) for exact read boundaries and controls
 
 ## Reusable production toolkit
 
-Magic Studio retains the Python tools and declarative pipeline system:
+Magic Studio retains the declarative pipeline system and its production scripts:
 
 ```text
 Agent reads pipeline preset YAML → follows the Video Production department agent
-→ calls tools → reviews artifacts → saves a checkpoint → requests configured human approval
+→ runs the pipeline/ steps → reviews artifacts → requests configured human approval
 ```
 
-Python supplies capabilities and persistence utilities; the agent makes creative
-choices and follows stage/approval instructions. This toolkit can be reused
-without treating every app interaction as a complete pipeline run.
+The agent makes creative choices and follows the stage/approval entries. This
+toolkit can be reused without treating every app interaction as a complete
+pipeline run.
 
 | Layer | Source and purpose |
 |---|---|
-| Capabilities | `tools/tool_registry.py`, `tools/base_tool.py`, `tools/` |
 | Department agents | `agents/` — one agent file per department (storyboard, animation, lyrics, video production, mayhem) |
 | Production process | `pipeline_defs/` (data-only presets) |
+| Production scripts | `pipeline/` — the engine's animation, layout, and rigging steps |
 | Production guidance | `skills/INDEX.md`, `skills/core/`, `skills/creative/`, `skills/meta/` |
-| Checkpoints and budgets | `lib/checkpoint.py`, `tools/cost_tracker.py` |
-| Artifact contracts | `schemas/artifacts/`, `schemas/checkpoints/`, `schemas/pipelines/` |
-| Visual playbooks | `styles/*.yaml`, `schemas/styles/playbook.schema.json` |
 | Technology knowledge | Relevant `.agents/skills/`; preserve third-party content and notices |
-| Composition adapters | `tools/video/video_compose.py`, `remotion-composer/`, HyperFrames adapters |
-| Pipeline board | `backlot/` reads pipeline-produced artifacts/checkpoints |
+| Composition adapters | `remotion-composer/`, HyperFrames adapters |
 
-The pipeline registry and manifest are the authority for tools, stages, required
-artifacts, and approval gates. Installed providers are discovered, not inferred.
-Pipeline composition can use Remotion, HyperFrames, or FFmpeg as approved; that
-choice does not add another target to the desktop Studio.
+The preset is the authority for stages, required artifacts, and approval gates.
+Installed providers and CLIs are discovered, not inferred. Pipeline composition
+can use Remotion, HyperFrames, or FFmpeg as approved; that choice does not add
+another target to the desktop Studio.
 
 ## Extending the toolkit
 
-- New tools inherit `BaseTool`, declare real capability/provider contracts, and
-  enter registry discovery. Use selector-plus-provider routing where appropriate.
-- New pipelines need a valid `pipeline_defs/` preset with clear stage review
+- New production steps are `pipeline/` scripts invoked through the engine's
+  command registry; discover the contract, never invent an operation.
+- New pipelines need a `pipeline_defs/` preset with clear stage review
   focus, success criteria, canonical outputs, and gates.
-- Keep canonical artifacts schema-valid. Preserve checkpoint history and append
-  changed production decisions instead of silently rewriting them.
+- Keep canonical artifacts in their documented shape. Append changed production
+  decisions instead of silently rewriting them.
 - Propose native acceptance expectations first; encode behavior only after Jesse
   observes and explicitly approves the workflow.
 

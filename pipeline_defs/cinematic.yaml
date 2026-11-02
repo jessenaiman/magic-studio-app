@@ -28,23 +28,9 @@ orchestration:
   max_send_backs: 3
   max_wall_time_minutes: 12
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
   - meta/reviewer
   - meta/animation-runtime-selector
-
-compatible_playbooks:
-  recommended:
-    - flat-motion-graphics
-  also_works:
-    - clean-professional
-    - minimalist-diagram
-  custom_allowed: true
 
 stages:
   - name: research

@@ -51,7 +51,7 @@ Use fluid-width images and real-text captions throughout this walkthrough. -->
 Open **Studio** and choose **Start the studio** when it is off.
 Arrange and preview the linked HyperFrames composition, bringing the song,
 artwork, animation, and lettering together. Composition files stay in the project.
-Sproket's project conversation is available from the top bar when you need help.
+Fidget's project conversation is available from the top bar when you need help.
 
 ## Watch the finished film
 

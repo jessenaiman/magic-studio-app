@@ -169,12 +169,12 @@ class ProjectView {
       el('div', { class: 'field-row' }, createBtn, el('button', { id: 'storyboard-template-open', class: 'icon', disabled: !template, 'aria-label': 'Edit storyboard template', title: template || 'Magic Studio storyboard template', html: $('sb-open-deck').innerHTML, onclick: () => invoke('open_path', { path: template }) })),
       statusEl,
       el('button', {
-        id: 'storyboard-discuss', 'data-drawer-toggle': 'sproket', title: 'Open Sproket to discuss the missing storyboard details', onclick: async () => {
+        id: 'storyboard-discuss', 'data-drawer-toggle': 'sproket', title: 'Open Fidget to discuss the missing storyboard details', onclick: async () => {
           const input = $('agent-input');
           if (!input.value.trim()) input.value = 'Help me develop this storyboard. Read center.status creative_followup and the existing project assets. Ask me about the missing creative details before proposing placements or generating artwork.';
           input.focus();
         }
-      }, 'Discuss with Sproket'),
+      }, 'Discuss with Fidget'),
       el('button', { id: 'storyboard-check', 'data-commands': 'storyboard.design', onclick: () => this.command('storyboard.design').catch((error: any) => toast(String(error))) }, 'Check storyboard details'),
       draftBtn, scenesBtn, overviewBtn,
       el('p', { class: 'why' }, `${sb?.previews?.length || 0} pages · ${(sb?.page_size || []).join(' × ')} · Edit text on the page; drag assets onto it.`),

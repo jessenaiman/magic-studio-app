@@ -7,13 +7,13 @@ This file lists all available Layer 2 skills and documents the 3-layer knowledge
 ## Knowledge Architecture
 
 ```
-Layer 1: tools/tool_registry.py          "What tools exist and what they can do"
-         tools/base_tool.py               Each tool declares: capabilities, tier, status,
-                                          dependencies, cost, and agent_skills[]
+Layer 1: pipeline/ + pipeline_defs/      "What runs and how a production flows"
+         Engine-invoked production        Data-only presets: stages, artifacts,
+         scripts and preset stages        tools, review focus, gates
 
-         â†" agent_skills[] points to â†"
+         ↑ referenced by ↑
 
-Layer 2: skills/ + agents/                "How Magic Studio uses these tools"
+Layer 2: skills/ + agents/                "How Magic Studio uses these"
          Project-specific conventions:     Artifact mappings, enhancement chain order,
          {core,creative,meta}/ + agents/    quality checklists, department instructions
 
@@ -25,60 +25,9 @@ Layer 3: .agents/skills/                  "How the technology itself works"
 ```
 
 **How the agent uses this:**
-1. The orchestrator queries Layer 1 (`tool_registry.support_envelope()`) to see what's available
-2. Each tool's `agent_skills[]` field names the Layer 3 skills it relies on
-3. Layer 2 skills (this directory) teach the agent Magic Studio-specific conventions
-4. Layer 3 skills (`.agents/skills/`) provide generic API knowledge, loaded on-demand
-
-## Capability Families & Tool Discovery
-
-Every tool declares a `capability` (what it does) and a `provider` (who/what powers it). The registry groups tools by capability so agents can discover all options for a given task.
-
-### Selector / Provider Pattern
-
-For capability families with multiple providers (TTS, video generation), the architecture uses:
-- **Selector tool** (`tts_selector`, `video_selector`, `image_selector`) — routes to the best available provider based on requirements, API key availability, and cost. Selectors auto-discover providers from the registry. Agents should default to selectors when the user hasn't specified a provider.
-- **Provider tools** — call a specific provider directly. Agents use these when the user explicitly requests a provider or when the selector's routing isn't appropriate.
-
-### Capability Family Reference
-
-**Do not maintain a hardcoded tool list.** The registry is the single source of truth. Query it at runtime:
-
-```bash
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.capability_catalog(), indent=2))"
-```
-
-Key capability families to look for in the output:
-
-| Capability | Selector | Discovery |
-|---|---|---|
-| `tts` | `tts_selector` | Auto-discovers all `capability="tts"` tools |
-| `video_generation` | `video_selector` | Auto-discovers all `capability="video_generation"` tools |
-| `image_generation` | `image_selector` | Auto-discovers all `capability="image_generation"` tools |
-| `audio_processing` | — | FFmpeg-based local tools |
-| `enhancement` | — | Mixed providers |
-| `analysis` | — | Mixed providers |
-| `character_animation` | — | Local character specs, SVG rigs, pose libraries, action timelines, previews, and QA |
-| `3d_world_generation` | — | Local semantic terrain, procedural scattering, explicit landmarks, diagnostics, and HyperFrames/Three.js fly-through workspaces |
-| `3d_asset_acquisition` | — | Rights-safe local GLTF/GLB catalogs and provenance |
-| `3d_asset_generation` | — | Atlas/fal textured mesh generation and reconstruction for unique scene assets |
-| `3d_world_rendering` | — | Blender assembly and production rendering of detailed worlds |
-| `graphics` | — | Local rendering tools |
-| `music_library` | — | Discovers user-provided local tracks |
-| `music_search` | — | Discovers royalty-free search/download providers |
-| `music_generation` | — | Discovers paid/local generation providers |
-| `subtitle` | — | Pure Python |
-| `avatar` | — | Local GPU models |
-| `video_post` | — | FFmpeg-based local tools |
-
-### Adding New Tools
-
-1. Place the tool in the correct capability folder (or create a new one under `tools/`)
-2. Set `capability` and `provider` in the class definition
-3. If joining a multi-provider family, the existing selector discovers it automatically
-4. Attach relevant Layer 2 and Layer 3 skills via `agent_skills[]`
-5. The registry discovers tools automatically — no manual registration needed
-6. **No other files need updating** — selectors, manifests, and instructions all derive from the registry
+1. The Video Production agent reads the selected preset's stage entries to see what's required
+2. Layer 2 skills (this directory) teach the agent Magic Studio-specific conventions
+3. Layer 3 skills (`.agents/skills/`) provide generic API knowledge, loaded on-demand
 
 ## Core Skills
 
@@ -175,22 +124,8 @@ Cross-cutting skills that apply to all pipelines:
 | Animation Runtime Selector | `meta/animation-runtime-selector.md` | Choose render runtime + animation library per scene |
 | Creative Intake | `meta/creative-intake.md` | Shape an open request into a producible brief |
 | Video Reference Analyst | `meta/video-reference-analyst.md` | Inspect a supplied reference video before proposing |
-| Capability Extension | `meta/capability-extension.md` | Permissions for extending tools during a run |
-| Taste Direction | `meta/taste-direction.md` | Convert a brief into taste dials, anti-patterns, and reference strategy for proposal/playbook/atelier work |
+| Taste Direction | `meta/taste-direction.md` | Convert a brief into taste dials, anti-patterns, and reference strategy for proposal/atelier work |
 | Bespoke Composition (Atelier) | `meta/bespoke-composition.md` | Hand-author a composition from scratch (hero work) — no stock scene-types; routes art-direction → motion principles → engine mechanics → atelier render |
-
-## Style Playbooks
-
-Style playbooks (`styles/*.yaml`) define visual language, typography, motion, audio, and asset generation constraints. They are validated against `schemas/styles/playbook.schema.json`.
-
-| Playbook | Category | Mood | Best For |
-|----------|----------|------|----------|
-| `clean-professional` | motion-graphics | polished, trustworthy | Corporate, educational, SaaS |
-| `premium-minimalist` | minimalist | calm, editorial | Investor updates, expert explainers, product narratives |
-| `flat-motion-graphics` | motion-graphics | energetic, bold | Social media, TikTok, startups |
-| `minimalist-diagram` | whiteboard | focused, technical | Technical deep-dives, architecture |
-
-Load via `styles/playbook_loader.py`: `load_playbook("clean-professional")`
 
 ## Installed Agent Skills (Layer 3)
 

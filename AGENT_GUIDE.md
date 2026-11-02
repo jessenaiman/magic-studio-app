@@ -19,12 +19,13 @@ When the request calls for the reusable production toolkit, the Video
 Production department agent ([agents/video-production.md](agents/video-production.md))
 takes the work: choose the actual `pipeline_defs/<pipeline>.yaml` preset, read it
 before execution, and follow its stage entries (`produces`, `tools_available`,
-`review_focus`, `success_criteria`, gates) stage by stage. Reuse Python tools,
-YAML, schemas, and skills; do not replace the preset with ad hoc provider
-scripts. [Project context](PROJECT_CONTEXT.md) maps these sources.
+`review_focus`, `success_criteria`, gates) stage by stage. Reuse the
+`pipeline/` scripts, YAML presets, and skills; do not replace the preset with
+ad hoc provider scripts. [Project context](PROJECT_CONTEXT.md) maps these sources.
 
-The agent orchestrates; Python provides tools and persistence. Resume from real
-checkpoints. Canonical artifacts—not free-form messages—carry stage state.
+The agent orchestrates; the `pipeline/` scripts provide the mechanical steps.
+Resume from real checkpoint artifacts. Canonical artifacts—not free-form
+messages—carry stage state.
 
 ## Reference Video Entry Point
 
@@ -37,19 +38,13 @@ guessing what unseen footage contains.
 
 ## Mandatory Preflight
 
-For pipeline work, discover the actual capability envelope in the prepared source
-environment:
-
-```sh
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.provider_menu_summary(), indent=2))"
-```
-
-Check the manifest's required tools and meaningful fallbacks. Translate the result
+For pipeline work, discover the actual capability envelope in the prepared
+source environment: run the relevant CLI `--help` / `commands` (`magic-cli`, the
+Craft CLIs, `cli-anything-blender`) and check the preset's `required_tools` and
+meaningful fallbacks against what is actually installed. Translate the result
 into available capabilities, relevant setup offers, and concrete runtime warnings.
-Report `passed`, `degraded`, or `blocked`; do not infer availability, prices, keys,
-or model access from documentation. Read each tool's current contract and relevant
-`agent_skills` before use. Tools execute with `.execute(params)`, returning a
-`ToolResult`; use registry discovery instead of guessed class imports.
+Report `passed`, `degraded`, or `blocked`; do not infer availability, prices,
+keys, or model access from documentation.
 
 ## Production decisions
 
@@ -61,11 +56,11 @@ merely to make a capability summary look complete.
 
 `decision_log` is append-only. A changed decision reuses the same `category` and
 `subject`, records alternatives and why the prior choice was superseded. A
-changed asset alone must not leave the board showing the old choice.
+changed asset alone must not leave the record showing the old choice.
 
 ## Present Both Composition Runtimes (HARD RULE)
 
-For pipelines invoking `video_compose`, when Remotion and HyperFrames are both
+For composition work, when Remotion and HyperFrames are both
 available, present each with brief-specific strengths/tradeoffs, recommend one,
 wait for approval, and log all considered options under
 `render_runtime_selection`. If a pipeline requires one, explain the constraint
@@ -84,7 +79,7 @@ additional iteration/cost explained before approval. Reuse engine knowledge,
 not finished creative looks. Read [taste direction](skills/meta/taste-direction.md)
 and [bespoke composition](skills/meta/bespoke-composition.md).
 
-## Composition Runtimes (Inside video_compose)
+## Composition Runtimes
 
 Remotion uses the React composition stack; HyperFrames uses HTML/CSS/GSAP;
 FFmpeg handles direct media assembly. Inspect actual runtime availability and
@@ -103,8 +98,8 @@ An unknown outcome after timeout is not permission to replay paid work.
 ## Stages, review, and approval
 
 Read the manifest's `produces`, `tools_available`, `review_focus`,
-`success_criteria`, and `human_approval_default`. Preserve schema-valid canonical
-artifacts in the selected production workspace. Use
+`success_criteria`, and `human_approval_default`. Preserve canonical artifacts
+in their documented shape in the selected production workspace. Use
 [reviewer](skills/meta/reviewer.md) for stage self-review; do not duplicate its
 full policies here.
 
@@ -115,7 +110,7 @@ versions, provenance, original wording/timing, actual tool/model metadata, and
 budget estimate/reservation/reconciliation. Approval is per gate unless an
 explicit recorded authorization covers more.
 
-For source pipeline workspace conventions and the retained skill/tool map, use
+For source pipeline workspace conventions and the retained skill map, use
 [MAGIC-STUDIO.md](MAGIC-STUDIO.md) and [skills/INDEX.md](skills/INDEX.md).
 Keep generated projects/media outside the repository. Verify actual saved output
 and pixels before claiming success; a receipt is not visual or creative approval.

@@ -2,7 +2,7 @@
 
 ## Desktop and observer
 
-The desktop app is the Tauri shell in `apps/magicstudio-shell/`, with Storyboard,
+The desktop app is the Tauri shell in `apps/src-tauri/`, with Storyboard,
 Animation, Lyrics, and Studio views. Its embedded UI, CLI, and MCP share the Rust
 engine registry in `crates/engine/src/commands.rs`. Project persistence and domain
 validation belong to the engine. The CLI-Anything Python harness is an adapter,
@@ -15,18 +15,15 @@ and [Backstage](../apps/backstage/README.md) for these contracts. The
 [source-installation guide](../agent-harness/cli_anything/magic/README.md) owns
 app build and installation instructions.
 
-## Reusable production pipeline internals
+## Reusable production pipeline
 
-The remaining sections describe the retained Python/YAML production toolkit,
-not requirements for launching the desktop app. The agent reads pipeline
-manifests and stage skills, calls Python tools, and checkpoints artifacts.
-Creative orchestration belongs to those instructions, while Python supplies
-capabilities and persistence. These details originated in the pipeline code
-exploration of 28 March 2026 and include later provider/runtime additions.
+The remaining sections describe the retained production layer, not requirements
+for launching the desktop app. The Video Production department agent reads the
+selected pipeline preset and executes its stages with the `pipeline/` scripts.
+Creative orchestration belongs to the department agents; the scripts provide
+the mechanical steps.
 
----
-
-## High-Level Flow
+### High-Level Flow
 
 ```
 User gives topic/idea
@@ -37,8 +34,8 @@ Agent reads pipeline preset (YAML)
         v
 For each stage:
    1. Agent follows the Video Production department agent (agents/)
-   2. Agent calls Python tools via tool registry
-   3. Agent writes checkpoint (JSON) with artifacts
+   2. Agent runs the pipeline/ step for the stage
+   3. Agent records canonical artifacts
    4. Agent self-reviews using meta/reviewer skill
    5. Human approval gate (if configured)
         |
@@ -46,172 +43,53 @@ For each stage:
 Final video output
 ```
 
----
-
-## Repository Layout
+### Repository Layout
 
 ```
 magic-studio-app/
-├── lib/                    # Core runtime infrastructure (Python)
-│   ├── config_model.py     # Pydantic config: LLM, budget, checkpoint, output, paths
-│   ├── checkpoint.py       # Pipeline state persistence & stage transitions
-│   ├── pipeline_loader.py  # YAML manifest loading & validation
-│   ├── media_profiles.py   # Platform-specific render profiles (YouTube, TikTok, etc.)
-│   ├── env_loader.py       # .env variable management
-│   └── providers/          # (Reserved for future provider abstractions)
-│
-├── tools/                  # 57+ Python tool implementations
-│   ├── base_tool.py        # Abstract base class — the tool contract
-│   ├── tool_registry.py    # Auto-discovery singleton registry
-│   ├── cost_tracker.py     # Budget governance (estimate → reserve → reconcile)
-│   ├── analysis/           # Transcription, scene detection, frame sampling, video understanding
-│   ├── audio/              # TTS (ElevenLabs, OpenAI, Piper, Azure, Google), music gen, mixing, enhancement
-│   ├── avatar/             # Talking head animation, lip sync
-│   ├── enhancement/        # Upscale, bg removal, face enhance/restore, color grading
-│   ├── graphics/           # Image gen (FLUX, GPT Image, Recraft, local diffusion), stock, diagrams, code snippets, math animation
-│   ├── publishers/         # (Reserved)
-│   ├── subtitle/           # SRT/VTT generation from timestamps
-│   └── video/              # 13 video gen providers, composition, stitching, trimming
-│
-├── pipeline_defs/          # YAML pipeline manifests
-├── schemas/                # JSON Schema definitions for validation
-│   ├── artifacts/          # 11 artifact schemas (brief → publish_log)
-│   ├── checkpoints/        # Checkpoint state schema
-│   ├── pipelines/          # Pipeline manifest schema
-│   ├── styles/             # Style playbook schema
-│   └── tools/              # Tool-specific schemas
-│
-├── skills/                 # Layer 2: Magic Studio-specific agent instructions
-│   ├── core/               # FFmpeg, Remotion, WhisperX, color grading skills
-│   ├── creative/           # Video editing, enhancement, data viz, prompt engineering
-│   └── meta/               # reviewer, skill-creator, animation-runtime-selector
-│
-├── agents/                 # Department agent files (storyboard, animation, lyrics, video-production, mayhem)
-├── .agents/skills/         # Layer 3: external technology skills (FFmpeg, HyperFrames, GSAP, etc.)
-├── styles/                 # Visual style playbooks (YAML) + loader
-├── remotion-composer/      # Node.js/React — Remotion video composition renderer
-├── tests/                  # Contract tests, QA integration tests, eval harness
-├── docs/                   # Best-practices guides, session handoffs, audits
-└── config.yaml             # Global runtime configuration
+├── apps/
+│   ├── src-tauri/            # Tauri shell: Rust engine commands + shell UI
+│   └── backstage/            # Rust/Ratatui observer
+├── crates/engine/            # Shared Rust engine (commands, motion, projects)
+├── agent-harness/            # CLI-Anything magic harness (magic-cli, MCP)
+├── agents/                   # Department agent files (storyboard, animation,
+│                             # lyrics, video-production, mayhem)
+├── pipeline/                 # Engine-invoked production scripts (animation,
+│   │                         # layout, rigging, import/compare steps)
+│   └── templates/            # Rig sheets, caption/lyrics templates, deck template
+├── pipeline_defs/            # Data-only pipeline presets (stages, artifacts,
+│                             # tools, review focus, gates)
+├── skills/                   # Layer 2: Magic Studio conventions
+│   ├── core/                 # FFmpeg, Remotion, WhisperX, color grading skills
+│   ├── creative/             # Video editing, enhancement, data viz, prompting
+│   └── meta/                 # reviewer, skill-creator, runtime selection
+├── .agents/skills/           # Layer 3: external technology skills
+├── remotion-composer/        # Node.js/React — Remotion composition renderer
+└── docs/                     # Guides and workflows
 ```
 
----
-
-## Core Architectural Principles
-
-### 1. Agent-First Orchestration
+### Core Principle: Agent-First Orchestration
 
 There is **no Python orchestrator**. The LLM agent:
 - Reads the pipeline preset to know the stage order
 - Follows the Video Production department agent for stage execution
-- Calls tools, evaluates results, makes creative decisions
-- Writes checkpoints to persist state between stages
+- Runs the `pipeline/` scripts, evaluates results, makes creative decisions
+- Records canonical artifacts between stages
 
-Python provides **tools and persistence only**. All intelligence lives in the
-department agent files (Markdown) and pipeline presets (YAML).
+### Pipeline Presets
 
-### 2. Agent-directed pipeline orchestration
-
-The coding assistant reads the production instructions and makes stage decisions.
-Generation tools use their declared provider APIs; discover the actual available
-provider, model, credentials, and cost through the tool registry. The desktop's
-chat and native image adapters have their own engine contracts, separate from
-this pipeline orchestration model.
-
-### 3. Dual-Provider Support
-
-Every capability must support both **API providers** (cloud, paid) and **local/open-source alternatives** (free, GPU-dependent). The selector pattern enforces this by routing to whatever is available.
-
----
-
-## The Tool System
-
-### BaseTool Contract
-
-All tools inherit from `BaseTool` (ABC) and declare:
-
-| Field | Purpose |
-|-------|---------|
-| `name`, `version` | Identity |
-| `tier` | CORE, VOICE, ENHANCE, GENERATE, SOURCE, ANALYZE, PUBLISH |
-| `capability` | What it does (e.g., `tts`, `image_generation`, `video_post`) |
-| `provider` | Which service (e.g., `elevenlabs`, `ffmpeg`, `selector`) |
-| `runtime` | LOCAL, LOCAL_GPU, API, HYBRID |
-| `stability` | EXPERIMENTAL, BETA, PRODUCTION |
-| `dependencies` | Required binaries (`cmd:ffmpeg`), env vars (`env:ELEVENLABS_API_KEY`), Python packages (`python:torch`) |
-| `input_schema`, `output_schema` | JSON Schema for inputs/outputs |
-| `fallback_tools` | Ordered fallback chain |
-| `agent_skills` | Links to Layer 3 knowledge skills |
-| `resource_profile` | CPU, RAM, VRAM, disk, network requirements |
-| `retry_policy` | Max retries, backoff strategy |
-
-**Required method:** `execute(inputs) -> ToolResult`
-
-`ToolResult` carries: `success`, `data`, `artifacts` (file paths), `error`, `cost_usd`, `duration_seconds`, `seed`, `model`.
-
-### Tool Registry
-
-`ToolRegistry` is a singleton that auto-discovers all `BaseTool` subclasses via `pkgutil.walk_packages()`. No manual registration.
-
-Key queries:
-- `get_by_capability("tts")` — all TTS tools
-- `get_by_provider("elevenlabs")` — all ElevenLabs tools
-- `get_available()` — tools whose dependencies are satisfied
-- `find_fallback("elevenlabs_tts")` — resolve fallback chain
-- `support_envelope()` — full capability report for agent consumption
-- `gpu_required_tools()`, `network_required_tools()`
-
-### Selector Pattern
-
-Three selector tools abstract multi-provider capabilities:
-
-| Selector | Capability | How selection works |
-|----------|-----------|---------------------|
-| `tts_selector` | Text-to-speech | Ranks discovered providers by task fit, quality, control, reliability, cost, latency, and continuity |
-| `image_selector` | Image generation | Ranks discovered providers from the live registry; no hardcoded provider order |
-| `video_selector` | Video generation | Ranks discovered providers from the live registry; user preference is respected when explicitly provided |
-| `atlas_image` / `atlas_video` | Atlas Cloud generation | Exposes exact per-model route catalogs for image generation/editing and text/image/reference/video-edit generation |
-
-Selectors route based on: user preference when explicitly set, then scored ranking across available providers. They adapt input schemas between providers transparently.
-
-### Tool Inventory by Category
-
-**Analysis (5):** transcriber (WhisperX), azure_stt, scene_detect, frame_sampler, video_understand (CLIP/BLIP-2)
-
-**Audio (9):** elevenlabs_tts, google_tts, openai_tts, piper_tts, azure_tts, tts_selector, music_gen, audio_mixer, audio_enhance
-
-**Avatar (2):** talking_head (SadTalker/MuseTalk), lip_sync (Wav2Lip)
-
-**Enhancement (5):** upscale (Real-ESRGAN), bg_remove (rembg/U2Net), face_enhance, face_restore (CodeFormer/GFPGAN), color_grade (FFmpeg LUTs)
-
-**Graphics (13):** flux_image, grok_image, google_imagen, openai_image, recraft_image, local_diffusion, pexels_image, pixabay_image, image_selector, code_snippet, diagram_gen, math_animate (ManimCE), image_gen (deprecated)
-
-**Subtitle (1):** subtitle_gen
-
-**Video (18):** grok_video, heygen_video, higgsfield_video, veo_video, kling_video, runway_video, minimax_video, wan_video, hunyuan_video, cogvideo_video, ltx_video_local, ltx_video_modal, pexels_video, pixabay_video, video_selector, video_compose (FFmpeg), video_stitch, video_trimmer
-
----
-
-## Pipeline System
-
-### Pipeline Manifests
-
-Each pipeline is a YAML file in `pipeline_defs/` defining:
+Each production format is a data-only YAML preset in `pipeline_defs/`:
 
 ```yaml
 name: animated-explainer
 version: "2.0"
-category: generated          # talking_head | generated | hybrid | screen_recording | animation | cinematic | custom
+category: generated
 default_checkpoint_policy: guided
 
 orchestration:
   mode: executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
-
-compatible_playbooks:
-  - clean-professional
-  - flat-motion-graphics
 
 stages:
   - name: research
@@ -224,14 +102,14 @@ stages:
   # ... through publish
 ```
 
-### Available Pipelines
+Available presets:
 
-| Pipeline | Category | Description |
+| Preset | Category | Description |
 |----------|----------|-------------|
 | `animated-explainer` | generated | AI-produced explainer with research, narration, visuals, music |
 | `animation` | animation | Motion graphics, kinetic typography |
 | `avatar-spokesperson` | talking_head | Avatar-driven presenter videos |
-| `character-animation` | animation | Local rigged cartoon characters with SVG rigs, pose libraries, GSAP timelines, and HyperFrames rendering |
+| `character-animation` | animation | Local rigged cartoon characters (rigs, poses, actions) |
 | `cinematic` | cinematic | Trailer, teaser, mood-driven edits |
 | `clip-factory` | custom | Batch short-form clips from long source |
 | `documentary-montage` | documentary | Footage-led documentary montages |
@@ -240,299 +118,20 @@ stages:
 | `screen-demo` | screen_recording | Software screen recordings and walkthroughs |
 | `talking-head` | talking_head | Footage-led speaker videos |
 
-### Standard Stage Progression
-
-Most production pipelines follow a canonical 8-stage flow:
+Most presets follow a canonical stage flow:
 
 ```
 research → proposal → script → scene_plan → assets → edit → compose → publish
 ```
 
-Each stage:
-1. Is executed by the **Video Production department agent** (`agents/video-production.md`)
-2. Declares **tools_available** (what the agent can call)
-3. **Produces** one or more canonical artifacts
-4. Has **review_focus** criteria and **success_criteria**
-5. Can require **human approval** before proceeding
-
-Specialized pipelines may insert domain-specific stages. For example,
-`character-animation` adds `character_design` and `rig_plan` before
-`scene_plan`, then emits a HyperFrames workspace and final deliverable at
-`projects/<project-name>/renders/final.mp4`.
-
----
-
-## Checkpoint System
-
-Checkpoints persist pipeline state as JSON in the project's `pipeline/` directory.
-
-```json
-{
-  "version": "1.0",
-  "project_id": "my-video",
-  "stage": "script",
-  "status": "completed",
-  "timestamp": "2026-03-28T10:00:00Z",
-  "checkpoint_policy": "guided",
-  "human_approval_required": false,
-  "human_approved": true,
-  "artifacts": { "script": { ... } },
-  "review": { ... },
-  "cost_snapshot": { ... }
-}
-```
-
-**Status values:** `pending` | `in_progress` | `awaiting_human` | `completed` | `failed`
-
-**Checkpoint policies:**
-- `guided` — checkpoint at key creative stages, auto-proceed on mechanical ones
-- `manual_all` — human approval at every stage
-- `auto_noncreative` — auto-proceed unless stage is creative (assets, edit)
-
-**Functions:** `write_checkpoint()`, `read_checkpoint()`, `get_latest_checkpoint()`, `get_completed_stages()`, `get_next_stage()`
-
-### Canonical Artifacts (11 types, all JSON-schema validated)
-
-| Artifact | Stage | Contains |
-|----------|-------|----------|
-| `research_brief` | research | Landscape analysis, data points, audience insights, angles |
-| `proposal_packet` | proposal | Concept options, production plan, cost estimates, approval gate |
-| `brief` | idea | Title, hook, key points, tone, style, platform, duration |
-| `script` | script | Timestamped sections with enhancement cues, pronunciation guides |
-| `scene_plan` | scene_plan | Scene definitions with type, description, timing |
-| `asset_manifest` | assets | Generated assets with path, source tool, scene association |
-| `edit_decisions` | edit | Editorial cuts with in/out timings |
-| `render_report` | compose | Output metadata (format, resolution, duration) |
-| `publish_log` | publish | Platform publication entries with status |
-| `review` | (any) | Reviewer feedback and approval records |
-| `cost_log` | (any) | Budget tracking entries |
-
----
-
-## Budget Governance
-
-The `CostTracker` enforces spending controls across the pipeline.
-
-### Lifecycle
-
-```
-estimate(tool, operation, $) → entry_id
-        |
-reserve(entry_id)          # locks budget
-        |
-reconcile(entry_id, $)     # records actual spend
-```
-
-### Budget Modes
-
-| Mode | Behavior |
-|------|----------|
-| `observe` | Track costs, no enforcement |
-| `warn` | Log warnings on overruns, allow execution |
-| `cap` | Reject operations that exceed remaining budget |
-
-### Controls
-- **Total budget** (default: $10.00)
-- **Reserve holdback** (default: 10%) — kept as safety margin
-- **Single-action approval threshold** (default: $0.50) — pause for approval above this
-- **New paid tool approval** — first-time use of any paid tool requires confirmation
-- Persists to `cost_log.json` per project
-
----
-
-## 3-Layer Knowledge Architecture
-
-```
-Layer 3: .agents/skills/          External technology knowledge (47 skills)
-         "How the technology works"    FFmpeg, ElevenLabs API, FLUX, Remotion, Three.js, etc.
-              ^
-              | agent_skills[] references
-              |
-Layer 2: skills/ + agents/        Magic Studio conventions and department agents
-         "How this project uses the tech"  Quality checklists, artifact mappings, department instructions
-              ^
-              | preset stages read by the Video Production department
-              |
-Layer 1: tools/ + pipeline_defs/  Executable capabilities + pipeline presets
-         "What exists and when to use it"  BaseTool contracts, data-only pipeline presets
-```
-
-Each tool's `agent_skills[]` field links Layer 1 to Layers 2 and 3. For example:
-- `video_compose.agent_skills = ["remotion-best-practices", "remotion", "ffmpeg"]`
-- `tts_selector.agent_skills = ["text-to-speech", "elevenlabs", "openai-docs"]`
-
----
-
-## Configuration
-
-### config.yaml
-
-```yaml
-llm:
-  provider: anthropic
-  temperature: 0.7
-  max_tokens: 4096
-
-budget:
-  mode: warn
-  total_usd: 10.00
-  reserve_pct: 0.10
-  single_action_approval_usd: 0.50
-
-checkpoint:
-  policy: guided
-  storage_dir: pipeline
-
-output:
-  default_format: mp4
-  default_codec: libx264
-  default_audio_codec: aac
-  default_resolution: 1920x1080
-  default_fps: 30
-  default_crf: 23
-
-paths:
-  pipeline_dir: pipeline
-  library_dir: library
-  styles_dir: styles
-  skills_dir: skills
-  output_dir: output
-```
-
-All config is validated via Pydantic models in `lib/config_model.py`.
-
-### Environment Variables (.env)
-
-| Variable | Used By | Purpose |
-|----------|---------|---------|
-| `ELEVENLABS_API_KEY` | elevenlabs_tts, music_gen | TTS, music, sound effects |
-| `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION` | azure_stt, azure_tts | Azure AI Speech cloud transcription + neural TTS (one resource, both directions) |
-| `OPENAI_API_KEY` | openai_tts, openai_image | TTS fallback, GPT Image 2 |
-| `XAI_API_KEY` | grok_image, grok_video | Grok image editing/generation, Grok video generation |
-| `FAL_KEY` | flux_image, kling_video, veo_video, minimax_video, recraft_image | fal.ai hosted models (FLUX, Veo, Kling, MiniMax, Recraft) |
-| `KLING_API_KEY` | kling_official_video, kling_official_image, kling_tts, kling_avatar, kling_lip_sync | Official Kling direct API for video, image, TTS, avatar, and lip sync |
-| `KLING_API_BASE_URL` | kling_official_video, kling_official_image, kling_tts, kling_avatar, kling_lip_sync | Optional official Kling API endpoint override |
-| `HEYGEN_API_KEY` | heygen_video | Multi-provider video generation |
-| `PEXELS_API_KEY` | pexels_image, pexels_video | Stock media |
-| `PIXABAY_API_KEY` | pixabay_image, pixabay_video | Stock media |
-| `GOOGLE_API_KEY` | google_imagen, google_tts | Google Imagen images, Google Cloud TTS |
-| `RUNWAY_API_KEY` | runway_video | Runway Gen-3/Gen-4 direct |
-| `HIGGSFIELD_API_KEY` + `HIGGSFIELD_API_SECRET` | higgsfield_video | Higgsfield multi-model video |
-| `MODAL_LTX2_ENDPOINT_URL` | ltx_video_modal | Self-hosted LTX-2 |
-| `VIDEO_GEN_LOCAL_ENABLED` | local video tools | Enable local GPU generation |
-| `VIDEO_GEN_LOCAL_MODEL` | wan, hunyuan, ltx, cogvideo | Select local model |
-
-Kling Official support stays inside the existing provider and capability model.
-`kling_official_video` and `kling_official_image` handle Classic, Turbo, and Omni
-request shapes, while Elements and Account Usage live under `tools/_kling/` as
-internal helpers for element ID references and low-frequency account diagnostics;
-they are not separate pipeline stages, selectors, or generated-asset capabilities.
-
-Kling Official also adds provider tools only where Magic Studio already has a
-matching capability slot: `kling_tts` for `tts`, plus `kling_avatar` and
-`kling_lip_sync` for `avatar`. Official Kling audio effects and video effects are
-not registered as tools because current pipelines do not define stable
-`sound_effects` or `video_effects` capability routing.
-
----
-
-## Visual Style System
-
-Style playbooks in `styles/` define visual language for pipelines:
-
-- `clean-professional.yaml` — Corporate, polished look
-- `flat-motion-graphics.yaml` — Modern flat design
-- `minimalist-diagram.yaml` — Technical, minimal diagrams
-
-Loaded by `styles/playbook_loader.py`. Each pipeline declares `compatible_playbooks` in its manifest. Validated against `schemas/styles/playbook.schema.json`.
-
----
-
-## Media Profiles
-
-Platform-specific render configurations in `lib/media_profiles.py`:
-
-| Profile | Resolution | Aspect | Notes |
-|---------|-----------|--------|-------|
-| `youtube_landscape` | 1920x1080 | 16:9 | Standard YouTube |
-| `youtube_4k` | 3840x2160 | 16:9 | 4K YouTube |
-| `youtube_shorts` | 1080x1920 | 9:16 | Max 60s |
-| `instagram_reels` | 1080x1920 | 9:16 | Max 90s |
-| `instagram_feed` | 1080x1080 | 1:1 | Square |
-| `tiktok` | 1080x1920 | 9:16 | Vertical |
-| `linkedin` | 1920x1080 | 16:9 | Landscape |
-| `cinematic` | 2560x1080 | 21:9 | Ultrawide |
-
-Each profile specifies codec, audio codec, CRF, pixel format, max file size, max duration, and caption format. `ffmpeg_output_args(profile)` generates the corresponding FFmpeg flags.
-
----
-
-## Composition Runtimes
-
-The reusable production toolkit has a multi-runtime composition layer. Three engines live behind `video_compose`, chosen at proposal and locked in `edit_decisions.render_runtime`:
-
-### Remotion (React-based)
-
-A standalone Node.js/React subproject in `remotion-composer/` using [Remotion](https://www.remotion.dev/).
-
-- **React 18** + **Remotion 4.0** + **TypeScript 5.3**
-- Handles the existing scene-component stack (`text_card`, `stat_card`, charts, captions, `TalkingHead`, `CinematicRenderer`)
-- Scripts: `start` (studio), `build` (render), `upgrade`
-
-### HyperFrames (HTML/CSS/GSAP)
-
-Consumed via `npx hyperframes` (no monorepo checkout needed). Runtime floor: Node.js ≥ 22, FFmpeg, `npx`.
-
-- Handles kinetic typography, product promos, launch reels, website-to-video, registry blocks, and SVG/GSAP character rigs
-- Driver: `tools/video/hyperframes_compose.py` materializes a workspace under `projects/<name>/hyperframes/`, then runs `lint → validate → render`
-- Layer 3 skills vendored at `.agents/skills/hyperframes*/`; Layer 2 guide at `skills/core/hyperframes.md`
-- The `character-animation` pipeline uses HyperFrames as the production render package. Browser previews are QA/debug artifacts only, not the render path.
-
-### FFmpeg (fallback / simple cuts)
-
-- Handles pure concat/trim when no composition is needed
-- Also handles subtitle burn-in as a post-hoc operation
-
-`video_compose` reads `edit_decisions.render_runtime` and dispatches via `_render_via_hyperframes`, `_remotion_render`, or `_render_via_ffmpeg`. Silent runtime swaps are forbidden — the tool returns a structured blocker when the chosen runtime is unavailable. See `AGENT_GUIDE.md` → "Composition Runtimes (Inside video_compose)" and `skills/core/hyperframes.md` for the full decision matrix.
-
----
-
-## Acceptance architecture
-
-Legacy Python contract/QA/evaluation, JavaScript VM/browser and Rust behavioral suites have been retired. Native acceptance uses WebdriverIO with the Tauri service and installed `magic-cli`; each executable behavior requires Jesse's explicit approval after real UI observation. No workflows are approved by the infrastructure migration itself. Ordinary compiler, syntax and source-lint checks remain independent of acceptance coverage.
-
----
-
-## Pipeline tool dependencies
-
-These are toolkit prerequisites, not an additional app installation path.
-Consult each tool's discovered requirements before using it.
-
-**Core source environment:**
-- Python >= 3.10
-- FFmpeg (used by ~15 tools)
-
-**Optional (extend capabilities):**
-- Node.js (for Remotion composer)
-- GPU + CUDA (for local video/image generation)
-- Piper (offline TTS)
-- ManimCE (math animations)
-- Mermaid CLI (diagram generation)
-
-**Python packages:** pyyaml, pydantic, jsonschema, python-dotenv (core); torch, torchvision, torchaudio (GPU)
-
----
-
-## Key Design Decisions
-
-1. **No runtime orchestrator** — The LLM agent reads YAML + Markdown and drives everything. This makes the system debuggable (just read the skill) and model-agnostic.
-
-2. **Checkpoint-based resumption** — Any stage can fail and the pipeline resumes from the last checkpoint. No re-running completed stages.
-
-3. **Schema-validated artifacts** — Every stage output is validated against a JSON Schema before the checkpoint is written. Prevents garbage propagation.
-
-4. **Budget as a first-class concept** — Cost estimation before execution, budget reservation, and reconciliation. The agent cannot silently overspend.
-
-5. **Selector pattern over hard-coded providers** — Capabilities degrade gracefully. Missing an API key? The selector falls through to the next provider or a local alternative.
-
-6. **Skills over code for intelligence** — Creative decisions, quality checklists, review criteria, and prompt templates live in Markdown skills, not Python. This means the agent's behavior can be tuned by editing text files, not code.
+Each stage declares `tools_available`, `produces`, `review_focus`,
+`success_criteria`, and whether a human approval gate is required.
+Specialized presets insert domain stages — `character-animation` adds
+`character_design` and `rig_plan` before `scene_plan`.
+
+### Composition Runtimes
+
+Remotion uses the React composition stack (`remotion-composer/`); HyperFrames
+uses HTML/CSS/GSAP; FFmpeg handles direct media assembly. The desktop Studio
+targets HyperFrames. Motion-required work must keep real motion; never silently
+substitute a still-led treatment when a renderer fails.

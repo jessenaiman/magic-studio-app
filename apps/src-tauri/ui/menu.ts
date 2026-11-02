@@ -138,7 +138,7 @@ class MenuBarController {
       el('form', {id:'application-settings-form'},
         el('label', {}, 'Production project root', el('input', {id:'application-settings-root', required:'', placeholder:'/absolute/path', 'aria-label':'Production project root'})),
         el('button', {type:'button', class:'ghost', onclick:()=>this.chooseRootFolder()}, 'Choose folder…'),
-        el('p', {class:'why'}, 'Default location for new projects. Existing projects and one-project overrides are unchanged. Agent/model settings remain in Sproket.'),
+        el('p', {class:'why'}, 'Default location for new projects. Existing projects and one-project overrides are unchanged. Agent/model settings remain in Fidget.'),
         el('p', {id:'application-settings-status',role:'status'}),
         el('button', {id:'application-settings-save',type:'submit',class:'start'}, 'Save Settings')));
   }

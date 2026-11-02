@@ -22,17 +22,8 @@ orchestration:
   max_send_backs: 2
   max_wall_time_minutes: 60
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
   - meta/reviewer
-
-compatible_playbooks:
-  custom_allowed: true
 
 stages:
   - name: idea

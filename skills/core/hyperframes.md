@@ -283,11 +283,10 @@ and HyperFrames output.
 ## Cost model
 
 HyperFrames renders are local: $0 API cost, but CPU-intensive (headless
-Chrome + FFmpeg). Track via `cost_tracker`:
+Chrome + FFmpeg). Record them in the production log:
 
 - `estimate` — based on composition duration × resolution × `--workers`
-- `reserve` — 0 (no API spend)
-- `reconcile` — wall-clock render time
+- `actual` — wall-clock render time
 
 Same pattern as Remotion.
 

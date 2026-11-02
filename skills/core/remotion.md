@@ -40,8 +40,8 @@ simple standalone operations that don't benefit from React rendering.
 **Note:** The `render` operation auto-routes to Remotion by default. FFmpeg is
 only selected when Remotion is not installed or the agent explicitly calls
 `operation='compose'` for standalone operations. The agent can also write custom
-Remotion compositions on the fly via the capability-extension protocol when no
-existing composition covers the layout (e.g., custom PiP, split-screen).
+Remotion compositions on the fly when no existing scene type covers the layout
+(e.g., custom PiP, split-screen).
 
 ## Supported Scene Types (Cut Types)
 
@@ -76,8 +76,6 @@ The `anime_scene` type renders 1-4 images with smooth crossfade transitions, cin
 **Multi-image crossfade math:** Each image owns an equal time segment. Fade-out of image N and fade-in of image N+1 OVERLAP by `crossfadeDur` (~1.2s) so there's never a dead frame. Generate 2-3 images per scene from the same visual system, but vary the shot, subject, and lighting per beat. Nearby seeds help create subtle motion without flattening the whole sequence into one repeated prompt.
 
 **Reference composition:** `remotion-composer/public/demo-props/mori-no-seishin.json` — 6 anime scenes, 30 seconds, with particles, lighting, overlays, and ambient music.
-
-**Style playbook:** `styles/anime-ghibli.yaml` — Ghibli-inspired aesthetic with color palette, typography, motion parameters, and FLUX prompt prefix.
 
 **Zero-key video strategy:** When no image or video generation is available, build
 entire videos from these component types. A well-composed sequence of hero_title →
@@ -156,7 +154,7 @@ remotion-composer/
 │   │   ├── DiagramOverlay.tsx
 │   │   ├── ProgressBar.tsx
 │   │   └── TransitionWrapper.tsx
-│   └── styles/               # Tailwind + playbook-derived styles
+│   └── styles/               # Tailwind styles
 ├── public/                   # Static assets (fonts, LUTs)
 ├── package.json
 ├── remotion.config.ts
@@ -261,12 +259,12 @@ export const ExplainerVideo = {
 };
 ```
 
-### Style Playbook to Theme
+### Style Profile to Theme
 
-Style playbooks (`skills/styles/`) define visual parameters. Map them to Remotion themes:
+A project's style profile defines visual parameters. Map them to Remotion themes:
 
 ```tsx
-// Derived from the style playbook YAML
+// Derived from the project's style profile
 const cleanProfessional = {
   background: "#FFFFFF",
   text: "#1A1A1A",
@@ -316,10 +314,9 @@ Narration + background music + SFX as parallel `<Audio>` components.
 
 ### Cost Tracking
 
-Remotion renders are CPU-intensive but $0 API cost. Track via cost_tracker:
+Remotion renders are CPU-intensive but $0 API cost. Record them in the production log:
 - `estimate`: based on composition duration × resolution tier
-- `reserve`: 0 (no API spend)
-- `reconcile`: wall-clock render time for benchmarking
+- `actual`: wall-clock render time for benchmarking
 
 ## Critical Constraints
 

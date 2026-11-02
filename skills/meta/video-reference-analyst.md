@@ -110,12 +110,12 @@ See `skills/creative/video-gen-prompting.md` for primitive definitions and the c
 
 ### Step 2: Capability Audit
 
-Run standard preflight:
+Run standard preflight — discover what is actually installed, never assume:
 
 ```bash
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.support_envelope(), indent=2))"
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.provider_menu(), indent=2))"
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.capability_catalog(), indent=2))"
+magic-cli commands
+photocraft-cli --help   # and the other Craft CLIs as relevant
+cli-anything-blender --help
 ```
 
 Map the reference video's requirements against available capabilities:

@@ -664,7 +664,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         cmd!(
             "sprocket.send",
-            "Send a message to Sprocket (the app's in-app agent)",
+            "Send a message to Fidget (the app's in-app agent)",
             ["Agent"],
             None,
             "{\"message\":\"text\",\"new_chat\":true,\"session\":\"optional expected existing session; requires new_chat=false\",\"wait\":300,\"free_only\":true}",
@@ -673,7 +673,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         query!(
             "sprocket.status",
-            "Sprocket Session Status",
+            "Fidget Session Status",
             "{}",
             cmd_agent_session
         ),
@@ -688,13 +688,13 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         query!(
             "sprocket.models",
-            "Sprocket Model Catalog (local first, then free)",
+            "Fidget Model Catalog (local first, then free)",
             "{}",
             crate::agent::cmd_sprocket_models
         ),
         cmd!(
             "sprocket.use",
-            "Switch Sprocket's Model",
+            "Switch Fidget's Model",
             ["Agent"],
             None,
             "{\"model\":\"provider/id, e.g. ollama/llama3.2:latest\"}",
@@ -703,7 +703,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         query!(
             "sprocket.log",
-            "Sprocket Transcript / Reply Retrieval",
+            "Fidget Transcript / Reply Retrieval",
             "{\"refresh\":false}",
             cmd_agent_log
         ),
@@ -1296,7 +1296,7 @@ fn specs_assets_and_sheets() -> Vec<CommandSpec> {
             "Generate Reviewable Asset Sheet Drafts",
             ["Rig & Matting"],
             None,
-            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Gaffer model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
+            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Scribbles model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
             always,
             cmd_assets_agent_sheets
         ),
