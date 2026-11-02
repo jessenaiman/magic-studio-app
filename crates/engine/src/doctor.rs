@@ -34,6 +34,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
 
     let tools: Vec<Value> = [
         "magic-cli",
+        "agent-desktop",
         "codex",
         "hyperframes",
         "photocraft-cli",
@@ -84,6 +85,11 @@ fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
     crate::workspace::workspace_root(s)
 }
 
+fn read_saved_audit(root: &Path) -> Value {
+    read_usage_json(&root.join("target/analytics/audit.json"))
+        .unwrap_or_else(|| json!({ "available": false, "tools": [] }))
+}
+
 pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
     let scan = params.get("scan").and_then(Value::as_bool).unwrap_or(false);
     let doctor = cmd_app_doctor(s, &json!({ "clean": false }))?;
@@ -92,6 +98,7 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
     let project = read_project_analytics(s);
     let root = analytics_source_root(s);
     let complexity = crate::complexity::read(&root, scan);
+    let audit = read_saved_audit(&root);
     let worktrees = read_agent_worktrees(&root, scan);
     let errors = crate::activity::errors(s, &json!({}))?;
 
@@ -103,10 +110,11 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
         "usage": usage,
         "project": project,
         "complexity": complexity,
+        "audit": audit,
         "worktrees": worktrees,
         "runtime_errors": errors,
         "sampled_at_unix_secs": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|v|v.as_secs()),
-        "sources": {"host":"/proc","usage":"Omarchy local usage records","project":"Project session and .agent chat log; estimated tokens = characters / 4","worktrees":"git worktree list + gh issue list + herdr agent list"},
+        "sources": {"host":"/proc","usage":"Omarchy local usage records","project":"Project session and .agent chat log; estimated tokens = characters / 4","worktrees":"git worktree list + gh issue list + herdr agent list","audit":"target/analytics/audit.json from magic-cli audit"},
         "commands": crate::workshop::cmd_query_list(s, &json!({}))?,
     }))
 }
