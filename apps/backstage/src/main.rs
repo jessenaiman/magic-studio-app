@@ -981,9 +981,30 @@ impl App {
             KeyCode::Enter | KeyCode::Char('o') => self.open_current(false),
             KeyCode::Char('p') => self.open_current(true),
             KeyCode::Char('r') => self.refresh(control.clone(), sender.clone()),
+            KeyCode::Char('a') if self.view == View::Mayhem => {
+                self.toggle_saved_audit(control, sender);
+            }
             _ => {}
         }
         false
+    }
+    fn toggle_saved_audit(
+        &mut self,
+        control: &provider::Control,
+        sender: &std::sync::mpsc::Sender<Wake>,
+    ) {
+        if self.audit_inputs.is_some() {
+            self.audit_inputs = None;
+            self.audit = None;
+            self.audit_error = None;
+            return;
+        }
+        if let Some(inputs) = audit::Inputs::from_saved_analytics() {
+            self.audit_inputs = Some(inputs);
+            self.refresh(control.clone(), sender.clone());
+        } else {
+            self.message = "No saved audit report; run magic-cli audit first".into();
+        }
     }
     fn toggle_workshop_group(&mut self, c: char) {
         if self.view == View::Workshop

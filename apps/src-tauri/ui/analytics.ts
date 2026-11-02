@@ -45,6 +45,42 @@ function mayhemToolStat(tools = []) {
     signal: tools.length ? (found === tools.length ? 'ready' : 'needs-attention') : 'idle', detail: 'Executable on PATH · not a run'};
 }
 
+function mayhemAuditSignal(audit: any): string {
+  if (!audit.available) return 'idle';
+  return Number(audit.failed) ? 'needs-attention' : 'ready';
+}
+
+function mayhemAuditStat(audit: any = {}) {
+  const total = Number(audit.total) || 0, passed = Number(audit.passed) || 0;
+  const findings = Number(audit.total_findings) || 0;
+  return {label: 'Audit checks', value: total ? `${passed} / ${total}` : '—',
+    signal: mayhemAuditSignal(audit), share: total ? passed / total : null,
+    detail: audit.available ? `${findings} findings · rev ${audit.source_revision || '—'}` : 'Run magic-cli audit to populate'};
+}
+
+function mayhemAuditChecks(audit: any = {}) {
+  return new ReportTable({rows: audit.tools || [], empty: 'Run magic-cli audit or magic-cli review to record check numbers.', columns: [
+    {label: 'Check', value: (row) => el('span', {class: 'report-name'}, window.companionBoxes.dot(row.ok ? 'ready' : 'needs-attention'), row.label || row.tool)},
+    {label: 'Status', value: (row) => row.ok ? 'PASS' : 'FAIL'},
+    {label: 'Findings', value: (row) => row.findings ?? 0, numeric: true},
+    {label: 'Exit', value: (row) => row.exit_code ?? '—', numeric: true},
+    {label: 'Summary', value: (row) => el('code', {}, row.note || (row.ok ? 'ok' : 'failed'))},
+  ]}).element;
+}
+
+function mayhemHistory(comp: any = {}) {
+  const rows = [...(comp.history || [])].reverse().slice(0, 10);
+  return new ReportTable({rows, empty: 'Run magic-cli audit to append revision snapshots.', columns: [
+    {label: 'When', value: (row) => mayhemTime(row.timestamp)},
+    {label: 'Revision', value: (row) => el('code', {}, row.revision || '—')},
+    {label: 'Functions', value: (row) => row.functions, numeric: true},
+    {label: 'Over CCN 15', value: (row) => row.over_15, numeric: true},
+    {label: 'Max CCN', value: (row) => row.max_ccn, numeric: true},
+    {label: 'Source lines', value: (row) => row.lines, numeric: true, compact: true},
+    {label: 'Long files', value: (row) => row.long_files ?? 0, numeric: true},
+  ]}).element;
+}
+
 const MAYHEM_LANG_LABELS: Record<string, string> = {
   rust: 'Rust', typescript: 'TypeScript', tsx: 'TSX · Remotion', javascript: 'JavaScript',
   css: 'CSS', html: 'HTML · Shell', markdown: 'Markdown', python: 'Python',
@@ -114,16 +150,16 @@ function mayhemCoverage(comp) {
 }
 
 function mayhemHealthWarnings(d: any): string[] {
-  const {complexity: comp = {}, tools = [], runtime_errors: runtime = {}} = d || {};
-  const missing = tools.filter(tool => tool.available === false).length;
-  const failed = (comp.scan_failures || []).length;
-  const hotspots = mayhemMeasure(comp, 'functions_over_ccn_15');
-  const warnings = [];
-  if (missing) warnings.push(`${missing} tools not found`);
-  if (failed) warnings.push(`${failed} scan targets failed`);
-  if (hotspots) warnings.push(`${hotspots} functions over CCN 15 in saved scan`);
+  const {complexity: comp = {}, tools = [], runtime_errors: runtime = {}, audit = {}} = d || {};
+  const pairs: [number, string][] = [
+    [tools.filter(tool => tool.available === false).length, 'tools not found'],
+    [(comp.scan_failures || []).length, 'scan targets failed'],
+    [Number(mayhemMeasure(comp, 'functions_over_ccn_15')) || 0, 'functions over CCN 15 in saved scan'],
+    [Number(audit.failed) || 0, 'audit checks failed in saved review'],
+    [Number(runtime.retained_error_count) || 0, 'recorded runtime errors'],
+  ];
+  const warnings = pairs.filter(([n]) => n > 0).map(([n, text]) => `${n} ${text}`);
   if (comp.last_error || comp.cache_error) warnings.push('scan error recorded');
-  if (runtime.retained_error_count) warnings.push(`${runtime.retained_error_count} recorded runtime errors`);
   return warnings;
 }
 
@@ -201,9 +237,13 @@ class AnalyticsViewController {
 const mayhemView = new AnalyticsViewController();
 
 function mayhemOverview(d) {
-  const comp = d.complexity || {}, usage = d.usage || {};
+  const comp = d.complexity || {}, usage = d.usage || {}, audit = d.audit || {};
+  const auditNote = audit.available
+    ? `Saved magic-cli audit · ${mayhemTime(audit.measured_at_unix_secs)} · rev ${audit.source_revision || '—'}`
+    : 'Run magic-cli audit or magic-cli review to populate.';
   return [
-    mayhemStats(...mayhemCodeStats(comp).slice(0, 2), mayhemUsageStats(usage)[0], mayhemToolStat(d.tools)),
+    mayhemStats(...mayhemCodeStats(comp).slice(0, 2), mayhemAuditStat(audit), mayhemUsageStats(usage)[0], mayhemToolStat(d.tools)),
+    new ReportSection({title: 'Audit & review checks', note: auditNote}, mayhemAuditChecks(audit)).element,
     mayhemRuntimeErrors(d.runtime_errors),
     new ReportSection({title: 'Language & web stack breakdown', note: 'Color-coded by language: Desktop UI uses HTML + TypeScript + CSS; Remotion uses TSX.'}, mayhemLanguageBreakdown(comp)).element,
     el('div', {class: 'report-columns'},
@@ -245,6 +285,7 @@ function mayhemCode(d) {
     el('div', {class: 'report-columns'},
       new ReportSection({title: 'Largest files by line count', note: '2,000 lines is the long-file threshold.'}, mayhemFileTable(comp, comp.longest_files)).element,
       new ReportSection({title: 'Most complex files by total CCN', note: mayhemCoverage(comp)}, mayhemFileTable(comp, comp.largest_ccn_files), provenance).element),
+    new ReportSection({title: 'Revision complexity history', note: 'Populated by magic-cli audit / magic-cli review and explicit scans.'}, mayhemHistory(comp)).element,
   ];
 }
 
@@ -259,16 +300,17 @@ function mayhemUsage(d) {
 }
 
 function mayhemTools(d) {
-  const host = d.host || {};
+  const host = d.host || {}, audit = d.audit || {};
   const tools = new ReportTable({rows: d.tools || [], empty: 'Refresh to check tools.', columns: [
     {label: 'Tool', value: (tool) => el('span', {class: 'report-name'}, window.companionBoxes.dot(tool.available ? 'ready' : 'needs-attention'), tool.tool)},
     {label: 'Resolved', value: (tool) => el('code', {}, tool.available ? tool.resolved : 'not found')},
   ]}).element;
   const used = host.mem_total_kb ? host.mem_used_kb / host.mem_total_kb : null;
   return [
-    mayhemStats(mayhemToolStat(d.tools),
+    mayhemStats(mayhemAuditStat(audit), mayhemToolStat(d.tools),
       {label: 'Studio process', value: mayhemMemory(host.self_rss_kb), detail: `PID ${host.pid ?? '—'} · resident memory`},
       {label: 'System memory', value: mayhemMemory(host.mem_used_kb), share: used, detail: `of ${mayhemMemory(host.mem_total_kb)} · load ${host.load || '—'}`}),
+    new ReportSection({title: 'Saved audit & review checks', note: 'Recorded by magic-cli audit / magic-cli review into target/analytics/audit.json.'}, mayhemAuditChecks(audit)).element,
     new ReportSection({title: 'Production tools', note: 'Found on PATH is not a successful run. Read from /proc and PATH.'}, tools).element,
   ];
 }
