@@ -31,6 +31,9 @@ pub struct Session {
     /// `Some("animation")` for a character study (Animation only, no song or
     /// storyboard); `None` for a song project.
     pub project_mode: Option<String>,
+    /// The open file is a `magicstudio.character` manifest opened as an animation
+    /// project: Save updates only the keys the animation owns and keeps the manifest.
+    pub character_file: bool,
     /// User-facing sessions publish Home history and recent receipts; passive library/tests do not.
     pub record_user_state: bool,
     /// Active chat selection belongs to this engine/window, never to project serialization.
@@ -73,6 +76,7 @@ impl Default for Session {
             theatre_state: None,
             animation_sources: BTreeMap::new(),
             project_mode: None,
+            character_file: false,
             record_user_state: false,
             agent_selection: None,
             project_owner: None,
@@ -102,6 +106,7 @@ impl Clone for Session {
             theatre_state: self.theatre_state.clone(),
             animation_sources: self.animation_sources.clone(),
             project_mode: self.project_mode.clone(),
+            character_file: self.character_file,
             record_user_state: self.record_user_state,
             agent_selection: self.agent_selection.clone(),
             project_owner: self.project_owner.clone(),

@@ -3,7 +3,7 @@
   "generator": "Magic Studio original SVG starter artwork",
   "characters": {
     "gaffer": {
-      "label": "Gaffer",
+      "label": "Scribbles",
       "species": "cat",
       "role": "artwork",
       "poses": {
@@ -15,7 +15,7 @@
       }
     },
     "sproket": {
-      "label": "Sproket",
+      "label": "Fidget",
       "species": "dog",
       "role": "issue/chat",
       "poses": {

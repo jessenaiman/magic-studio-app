@@ -62,8 +62,8 @@ The app, CLI, and MCP share the Rust command registry; discover current operatio
 with `magic-cli commands` rather than copying historical command tables.
 [Command architecture](../../MAGIC.md) explains dispatch and ownership.
 
-The repository also retains Python tools, `pipeline_defs/`, stage-director
-`skills/`, and dependency files for reusable production workflows. Their
+The repository also retains Python tools, `pipeline_defs/` presets, department
+agent files, and dependency files for reusable production workflows. Their
 capability-specific dependencies are separate from native app installation.
 Use [the agent guide](../../../AGENT_GUIDE.md) and actual tool preflight when a
 task requires those workflows; there is no root Python-package or Make setup

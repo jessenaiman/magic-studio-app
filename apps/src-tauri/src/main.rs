@@ -32,58 +32,22 @@ use tauri::{
     LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl, WindowBuilder, WindowEvent,
 };
 
-fn default_animate_project() -> Option<String> {
-    let dir = std::env::var_os("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share"))
-        })?
-        .join("magicstudio")
-        .join("animate");
-    std::fs::create_dir_all(&dir).ok()?;
-    let path = dir.join("Character.magic");
-    if !path.exists() {
-        let doc = json!({
-            "format": "magicstudio.project",
-            "version": 1,
-            "name": "Character",
-            "assets": [],
-            "workshop": { "audio": null, "draft_approved": true, "target": "hyperframes", "video_project": null }
-        });
-        std::fs::write(&path, serde_json::to_vec_pretty(&doc).ok()?).ok()?;
-    }
-    Some(path.to_string_lossy().into_owned())
-}
-
 /// The command line, for the project view on load: project and studio URL, plus `--view <project|studio>`
 /// and `--open <song|lyrics|transcript|animate|agent>` to start on a given tab and block (or with the agent open).
 fn launch_options() -> Value {
     let (mut positional, mut view, mut open, mut character) = (Vec::new(), None, None, None);
-    let (mut new_project, mut animate_only) = (false, false);
+    let mut new_project = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--new" => new_project = true,
-            "--animate" | "-a" => {
-                animate_only = true;
-                if view.is_none() {
-                    view = Some("animation".to_string());
-                }
-            }
             "--character" => character = args.next(),
             "--view" => view = args.next(),
             "--open" => open = args.next(),
             _ => positional.push(a),
         }
     }
-    let project = positional.first().cloned().or_else(|| {
-        if animate_only && !new_project {
-            default_animate_project()
-        } else {
-            None
-        }
-    });
-    json!({"project": project, "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "animate_only": animate_only, "character": character})
+    json!({"project": positional.first(), "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "character": character})
 }
 
 pub fn studio_identity() -> Value {
@@ -1237,9 +1201,7 @@ fn main() {
                 LogicalPosition::new(0.0, 0.0),
                 LogicalSize::new(size.width, size.height),
             )?;
-            if launch_options()["animate_only"] != true {
-                menu::install(&window)?;
-            }
+            menu::install(&window)?;
             #[cfg(unix)]
             if let Err(e)=local_ipc::serve(app.handle().clone()){eprintln!("private UI feedback: {e}");}
             // Every resize re-applies the layout for the open tab.

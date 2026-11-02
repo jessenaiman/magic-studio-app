@@ -424,17 +424,13 @@ def launch_on_empty_workspace(cmd: list[str]) -> str | None:
     raise RuntimeError(f"Agent window launch failed: {detail}")
 
 
-def studio_command(
-    project: str | None, animate_only: bool, character: str | None
-) -> list[str]:
+def studio_command(project: str | None, character: str | None) -> list[str]:
     cmd = [find_magicstudio_shell()]
-    if animate_only:
-        cmd.append("--animate")
     if character:
         cmd.extend(["--character", character])
     if project:
         cmd.append(project)
-    elif not animate_only:
+    else:
         cmd.append("--new")
     return cmd
 
@@ -511,7 +507,6 @@ def find_new_window(
 
 def open_studio_window(
     project_path: str | None = None,
-    animate_only: bool = False,
     character: str | None = None,
     timeout: float = 30.0,
 ) -> dict[str, Any]:
@@ -530,7 +525,7 @@ def open_studio_window(
         existing = studio_for_project(canonical_proj)
         if existing and (live := reuse_window(existing, canonical_proj)):
             return live
-    cmd = studio_command(canonical_proj, animate_only, character)
+    cmd = studio_command(canonical_proj, character)
     sock_dir = studio_socket_dir()
     exists = sock_dir and sock_dir.is_dir()
     before = {e.name for e in sock_dir.iterdir()} if exists else set()

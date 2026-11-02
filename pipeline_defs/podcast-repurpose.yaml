@@ -12,40 +12,16 @@ default_checkpoint_policy: guided
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/podcast-repurpose/executive-producer
   budget_default_usd: 1.00
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 12
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/podcast-repurpose/executive-producer
-  - pipelines/podcast-repurpose/idea-director
-  - pipelines/podcast-repurpose/script-director
-  - pipelines/podcast-repurpose/scene-director
-  - pipelines/podcast-repurpose/asset-director
-  - pipelines/podcast-repurpose/edit-director
-  - pipelines/podcast-repurpose/compose-director
-  - pipelines/podcast-repurpose/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
-
-compatible_playbooks:
-  recommended:
-    - clean-professional
-    - flat-motion-graphics
-  also_works: []
-  custom_allowed: true
 
 stages:
   - name: idea
-    skill: pipelines/podcast-repurpose/idea-director
     optional_artifacts_in:
       - source_media_review
     produces:
@@ -63,7 +39,6 @@ stages:
       - Brief specifies output deliverable types and platform targets
 
   - name: script
-    skill: pipelines/podcast-repurpose/script-director
     required_artifacts_in:
       - brief
     produces:
@@ -86,7 +61,6 @@ stages:
       - Transcript sections have speaker labels and timestamps
 
   - name: scene_plan
-    skill: pipelines/podcast-repurpose/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -109,7 +83,6 @@ stages:
       - Every deliverable (clips + full episode) has a scene plan
 
   - name: assets
-    skill: pipelines/podcast-repurpose/asset-director
     required_artifacts_in:
       - scene_plan
       - script
@@ -134,14 +107,13 @@ stages:
     human_approval_default: true
     review_focus:
       - Subtitles generated for all clips and full episode
-      - Quote card / speaker-card assets match playbook style
+      - Quote card / speaker-card assets match the approved style direction
       - Optional topic graphics are relevant and within budget
     success_criteria:
       - Schema-valid asset_manifest artifact
       - All referenced asset files exist on disk
 
   - name: edit
-    skill: pipelines/podcast-repurpose/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -161,7 +133,6 @@ stages:
       - Edit decisions cover all planned deliverables
 
   - name: compose
-    skill: pipelines/podcast-repurpose/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -192,7 +163,6 @@ stages:
       - All output files exist and pass ffprobe validation
 
   - name: publish
-    skill: pipelines/podcast-repurpose/publish-director
     required_artifacts_in:
       - render_report
       - final_review

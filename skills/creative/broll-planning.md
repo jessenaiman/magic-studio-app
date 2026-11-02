@@ -81,7 +81,7 @@ Add a **POV keyword** to every query. Stock libraries (Pexels, Pixabay, Storyblo
 | Abstract motion | `[movement] [style] [POV]` | "light trails timelapse locked-off" |
 | Workplace | `[setting] [activity] [POV]` | "modern office meeting handheld" |
 
-If the scene description doesn't already imply a POV, ask the script/scene director — don't default to "no POV." A wrong-POV match (handheld when the scene needs drone) is harder to fix than a wrong color grade.
+If the scene description doesn't already imply a POV, ask the script/scene_plan stages — don't default to "no POV." A wrong-POV match (handheld when the scene needs drone) is harder to fix than a wrong color grade.
 
 ## Evaluating Stock Footage Quality
 

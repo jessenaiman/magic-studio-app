@@ -664,7 +664,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         cmd!(
             "sprocket.send",
-            "Send a message to Sprocket (the app's in-app agent)",
+            "Send a message to Fidget (the app's in-app agent)",
             ["Agent"],
             None,
             "{\"message\":\"text\",\"new_chat\":true,\"session\":\"optional expected existing session; requires new_chat=false\",\"wait\":300,\"free_only\":true}",
@@ -673,7 +673,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         query!(
             "sprocket.status",
-            "Sprocket Session Status",
+            "Fidget Session Status",
             "{}",
             cmd_agent_session
         ),
@@ -688,13 +688,13 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         query!(
             "sprocket.models",
-            "Sprocket Model Catalog (local first, then free)",
+            "Fidget Model Catalog (local first, then free)",
             "{}",
             crate::agent::cmd_sprocket_models
         ),
         cmd!(
             "sprocket.use",
-            "Switch Sprocket's Model",
+            "Switch Fidget's Model",
             ["Agent"],
             None,
             "{\"model\":\"provider/id, e.g. ollama/llama3.2:latest\"}",
@@ -703,7 +703,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         ),
         query!(
             "sprocket.log",
-            "Sprocket Transcript / Reply Retrieval",
+            "Fidget Transcript / Reply Retrieval",
             "{\"refresh\":false}",
             cmd_agent_log
         ),
@@ -772,6 +772,15 @@ fn specs_motion_and_character() -> Vec<CommandSpec> {
             "Retrieve imported character.magic config, sheets, angles, pose strips, and drafts",
             "{\"character\":\"asset id\"}",
             crate::character::cmd_character_assets
+        ),
+        cmd!(
+            "character.new",
+            "New standalone character from one static image",
+            ["Animation"],
+            None,
+            "{\"image\":\"/path/to/static-character.png\",\"name\":\"optional; defaults to the image name\",\"category\":\"characters (default) | backgrounds | …\",\"library\":\"optional; default <magic-studio>/animations beside the projects root\"}",
+            always,
+            crate::character::cmd_character_new
         ),
         cmd!(
             "character.import",
@@ -947,10 +956,10 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
             "Prepare reviewed artwork for animation",
             ["Rig & Matting"],
             None,
-            "{\"asset\":\"optional asset id\"}",
+            "{\"asset\":\"optional asset id\",\"stage\":\"optional: skeleton = AssetFurnace makes and rigs a 3D model first; review its skeleton before parts are cut\"}",
             has_asset,
             cmd_asset_build_cutout_rig
-        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering.",
+        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering. stage=skeleton first asks AssetFurnace (ASSETFURNACE_HOME) for a rigged 3D model and saves it with its skeleton beside the character.",
                "magic-cli --project /absolute/Project.magic animation prepare asset=babel"),
         cmd!(
             "rig.from_sheet",
@@ -1287,7 +1296,7 @@ fn specs_assets_and_sheets() -> Vec<CommandSpec> {
             "Generate Reviewable Asset Sheet Drafts",
             ["Rig & Matting"],
             None,
-            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Gaffer model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
+            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Scribbles model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
             always,
             cmd_assets_agent_sheets
         ),
@@ -1604,7 +1613,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
         ),
         cmd!(
             "intake.compare_reference",
-            "Compare Reference vs Import (Jev + OCR + Rotation)",
+            "Compare Reference vs Import (OCR + Rotation)",
             ["File", "Intake"],
             None,
             "{\"slot\":\"all|original|asset_sheet|turnaround\",\"yaw\":0.0}",

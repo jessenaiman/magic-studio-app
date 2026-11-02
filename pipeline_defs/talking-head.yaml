@@ -8,40 +8,17 @@ category: talking_head
 stability: beta
 default_checkpoint_policy: guided
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/talking-head/executive-producer
-  - pipelines/talking-head/idea-director
-  - pipelines/talking-head/script-director
-  - pipelines/talking-head/scene-director
-  - pipelines/talking-head/asset-director
-  - pipelines/talking-head/edit-director
-  - pipelines/talking-head/compose-director
-  - pipelines/talking-head/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/talking-head/executive-producer
   budget_default_usd: 0.50
   max_revisions_per_stage: 3
   max_send_backs: 3
 
-compatible_playbooks:
-  recommended:
-    - clean-professional
-  also_works: []
-  custom_allowed: true
-
 stages:
   - name: idea
-    skill: pipelines/talking-head/idea-director
     produces:
       - brief
       - decision_log
@@ -57,7 +34,6 @@ stages:
       - Brief references the provided raw footage
 
   - name: script
-    skill: pipelines/talking-head/script-director
     required_artifacts_in:
       - brief
     optional_artifacts_in:
@@ -80,7 +56,6 @@ stages:
       - Script sections have valid timestamps from transcript data
 
   - name: scene_plan
-    skill: pipelines/talking-head/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -107,7 +82,6 @@ stages:
       - Scenes cover the full duration of the raw footage
 
   - name: assets
-    skill: pipelines/talking-head/asset-director
     required_artifacts_in:
       - scene_plan
     optional_artifacts_in:
@@ -134,7 +108,6 @@ stages:
       - All referenced asset files exist on disk
 
   - name: edit
-    skill: pipelines/talking-head/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -160,7 +133,6 @@ stages:
       - Timestamps are within source duration bounds
 
   - name: compose
-    skill: pipelines/talking-head/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -211,7 +183,6 @@ stages:
       - Output video file exists and is playable
 
   - name: publish
-    skill: pipelines/talking-head/publish-director
     required_artifacts_in:
       - render_report
       - final_review

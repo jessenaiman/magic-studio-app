@@ -18,7 +18,7 @@ Read this before authoring any animated component or composition, and whenever y
 
 Apply when:
 - **Proposal stage** needs to lock `render_runtime` (remotion / hyperframes / ffmpeg)
-- A stage director (asset, edit, compose) needs to author an animated component
+- The agent at a stage (assets, edit, compose) needs to author an animated component
 - An agent is about to write Remotion JSX for a scene that involves text reveals, SVG motion, curved camera paths, shape morphs, or multi-stage choreography
 - An agent is asked to build a HyperFrames composition
 - An agent is uncertain whether to reach for a GSAP plugin vs inline `interpolate()`/`spring()`
@@ -138,14 +138,12 @@ const easedValue = easeFn(t);
 
 For the full breakdown, read `.agents/skills/gsap-react/SKILL.md`.
 
-## Check against the pipeline's stage director
+## Check against the selected pipeline preset
 
-Every pipeline's asset-director has animation-specific guidance. If you're in:
-- **animated-explainer** → read `skills/pipelines/explainer/asset-director.md` — it references the text/SVG options for kinetic typography
-- **animation** → read `skills/pipelines/animation/asset-director.md` — it references MorphSVG and MotionPath for logo/motion-graphics work
-- **cinematic** → read `skills/pipelines/cinematic/asset-director.md` — it references MotionPath for cinematic camera moves
-
-The asset-director tells you *what* to build in the context of this pipeline. This selector tells you *how*.
+Each preset in `pipeline_defs/` carries animation-specific guidance in its
+assets stage (`review_focus`, `tools_available`). Read the selected preset's
+assets stage alongside this matrix: the preset tells you *what* to build in the
+context of this pipeline. This selector tells you *how*.
 
 ## Never do
 

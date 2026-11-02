@@ -89,28 +89,27 @@ and inspect rendered frames before calling a video complete.
 
 ## Project agent and observers
 
-Sproket uses `agent.send`, `agent.log`, and `agent.session` in the selected project.
+Fidget uses `agent.send`, `agent.log`, and `agent.session` in the selected project.
 Select the intended window first; poll the existing request rather than resending
 it. `agent.new_chat` explicitly creates a fresh conversation and archives history.
 Model/provider selection belongs to that Studio instance, separate from shared
-credentials/defaults. Gaffer artwork uses the separate image operation.
+credentials/defaults. Scribbles artwork uses the separate image operation.
 
 [Backstage](apps/backstage/README.md) observes saved project references and
-engineering evidence; it does not control sessions. [Backlot](backlot/README.md)
-is the pipeline artifact/checkpoint board, not the native storyboard editor.
+engineering evidence; it does not control sessions.
 
 ## Reuse the production toolkit
 
-The source repository retains `tools/`, `lib/`, `pipeline/`, `pipeline_defs/`,
-`skills/`, `schemas/`, `styles/`, and the composition adapters. These are working
-building blocks for agent-directed production, not a second installation path.
-Read [the agent guide](AGENT_GUIDE.md) and the selected YAML/stage skills before
-using them; preflight actual dependencies and provider access in the prepared
-source environment.
+The source repository retains `pipeline/`, `pipeline_defs/`, `agents/`, `skills/`,
+and the composition adapters. These are working building blocks for
+agent-directed production, not a second installation path. Read
+[the agent guide](AGENT_GUIDE.md) and the selected pipeline preset before using
+them; preflight actual dependencies and provider access in the prepared source
+environment.
 
-Pipeline stages exchange canonical artifacts and checkpoints. Composition may
-use approved Remotion, HyperFrames, or FFmpeg paths according to the pipeline;
-the desktop Studio remains HyperFrames. Preserve approval gates, source credit,
-provenance, cost records, and editable assets when adapting a workflow.
+Pipeline stages exchange canonical artifacts. Composition may use approved
+Remotion, HyperFrames, or FFmpeg paths according to the pipeline; the desktop
+Studio remains HyperFrames. Preserve approval gates, source credit, provenance,
+cost records, and editable assets when adapting a workflow.
 
 [License](LICENSE) · [Source attribution](SOURCE-ATTRIBUTION.md)

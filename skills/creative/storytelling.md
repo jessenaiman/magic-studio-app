@@ -68,11 +68,11 @@ For a **3-minute explainer video** (scale proportionally for other lengths):
 > | "moody atmosphere" | "low-key key light, lifted shadows by 2 stops, fog volumetrics" |
 > | "powerful music swell" | "music drops out at 0:42, holds 1.5s of silence, returns with low taiko at half tempo" |
 >
-> The rule applies to script narration AND to the metadata fields scene-director consumes. For the universal vocabulary that names these visual primitives, see `skills/creative/video-gen-prompting.md`.
+> The rule applies to script narration AND to the metadata fields the scene_plan stage consumes. For the universal vocabulary that names these visual primitives, see `skills/creative/video-gen-prompting.md`.
 
 ## Subject Transitions in the Script
 
-When a script beat introduces a new subject, kills one off, or hands focus from one subject to another, **name the transition explicitly** so the scene-director doesn't have to infer it. The CMU/Harvard taxonomy uses four labels:
+When a script beat introduces a new subject, kills one off, or hands focus from one subject to another, **name the transition explicitly** so the scene_plan stage doesn't have to infer it. The CMU/Harvard taxonomy uses four labels:
 
 | Label | What it means |
 |---|---|
@@ -142,7 +142,7 @@ Each layer arrives exactly when the narration references it.
 
 ## Camera Intent Per Beat
 
-When writing a beat, attach one line of camera intent so the scene-director doesn't have to invent it from a blank slate. Use the universal vocabulary in `skills/creative/video-gen-prompting.md` (Subject / Subject Motion / Scene / Spatial Framing / Camera). One line is enough — the scene-director will expand it.
+When writing a beat, attach one line of camera intent so the scene_plan stage doesn't have to invent it from a blank slate. Use the universal vocabulary in `skills/creative/video-gen-prompting.md` (Subject / Subject Motion / Scene / Spatial Framing / Camera). One line is enough — the scene_plan stage will expand it.
 
 Example beat:
 
@@ -152,7 +152,7 @@ Narration: "We grew up imagining electrons as tiny planets orbiting the nucleus.
 Camera intent: medium shot of stylized atom; slow rotation; deep focus.
 ```
 
-The camera-intent line is consumed verbatim by the scene-director's 5-aspect spec — keep it concrete, no mood adjectives.
+The camera-intent line is consumed verbatim by the scene_plan stage's 5-aspect spec — keep it concrete, no mood adjectives.
 
 ## Pacing Rules
 

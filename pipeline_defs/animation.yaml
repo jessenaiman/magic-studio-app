@@ -21,49 +21,21 @@ reference_input:
     - scene_detect
     - frame_sampler
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/animation/executive-producer
-  - pipelines/animation/research-director
-  - pipelines/animation/proposal-director
-  - pipelines/animation/script-director
-  - pipelines/animation/scene-director
-  - pipelines/animation/asset-director
-  - pipelines/animation/edit-director
-  - pipelines/animation/compose-director
-  - pipelines/animation/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
   - meta/animation-runtime-selector
-  - meta/voice-performance-director
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/animation/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 15
 
-compatible_playbooks:
-  recommended:
-    - flat-motion-graphics
-    - anime-ghibli
-  also_works:
-    - clean-professional
-    - minimalist-diagram
-  custom_allowed: true
-
 stages:
   # ── Pre-Production ──────────────────────────────────────────────
 
   - name: research
-    skill: pipelines/animation/research-director
     produces:
       - research_brief
     tools_available: []
@@ -81,7 +53,6 @@ stages:
       - At least 5 sources cited with URLs
 
   - name: proposal
-    skill: pipelines/animation/proposal-director
     required_artifacts_in:
       - research_brief
     produces:
@@ -115,13 +86,12 @@ stages:
         tools_available: [tts_selector, image_selector, video_selector, video_compose, audio_mixer, math_animate, diagram_gen]
         review_focus:
           - "Sample represents the approved animation mode faithfully"
-          - "Visual identity matches approved playbook and style"
+          - "Visual identity matches the approved style direction"
           - "Pacing matches reference inspiration"
 
   # ── Production ──────────────────────────────────────────────────
 
   - name: script
-    skill: pipelines/animation/script-director
     required_artifacts_in:
       - proposal_packet
     optional_artifacts_in:
@@ -147,7 +117,6 @@ stages:
       - Total duration matches selected concept target within 10%
 
   - name: scene_plan
-    skill: pipelines/animation/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -167,7 +136,6 @@ stages:
       - Every scene includes animation mode and visual treatment
 
   - name: assets
-    skill: pipelines/animation/asset-director
     required_artifacts_in:
       - scene_plan
       - script
@@ -222,7 +190,6 @@ stages:
       - Real 3D-world briefs include semantic or wireframe diagnostic review before compose
 
   - name: edit
-    skill: pipelines/animation/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -243,7 +210,6 @@ stages:
       - Edit decisions cover all planned animation beats
 
   - name: compose
-    skill: pipelines/animation/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -278,7 +244,6 @@ stages:
       - self_review_completed is true with per-scene quality notes
 
   - name: publish
-    skill: pipelines/animation/publish-director
     required_artifacts_in:
       - render_report
       - final_review

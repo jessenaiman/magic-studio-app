@@ -51,7 +51,7 @@ research stage uses as its starting context. Include:
 - Any reference videos/images the user mentioned
 - Constraints that must be honored (budget, timeline, must-include)
 
-The intake_brief is passed as context to the research-director, not as a
+The intake_brief is passed as context to the research stage, not as a
 formal artifact. It exists to prevent the research stage from inventing
 intent that the user never expressed.
 

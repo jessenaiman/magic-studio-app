@@ -1,5 +1,5 @@
 // Stock Theatre UI is contained inside the current Animation surface, so it
-// cannot cover the native inspector or Sproket workstation.
+// cannot cover the native inspector or Fidget workstation.
 class TheatreController {
   frame: any = null;
   key: string | null = null;

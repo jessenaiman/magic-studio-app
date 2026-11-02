@@ -249,7 +249,7 @@ fn select(matches: &[Value]) -> Result<Option<Value>, String> {
 
 /// Shared app opening for desktop, CLI and MCP. Existing windows are never replaced.
 pub fn open(executable: &Path, project: Option<&str>) -> Result<Value, String> {
-    open_with_options(executable, project, false, None)
+    open_with_options(executable, project, None)
 }
 
 /// Focus the window already serving this project; None when there is none to reuse.
@@ -286,23 +286,19 @@ fn live_executable(executable: &Path) -> PathBuf {
         .unwrap_or_else(|| executable.to_path_buf())
 }
 
-/// The window this launch asks for: focus mode, character selection and an explicit project.
+/// The window this launch asks for: character selection and an explicit project.
 fn launch_command(
     executable: &Path,
     project: Option<&Path>,
-    animate_only: bool,
     character: Option<&str>,
 ) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
-    if animate_only {
-        command.arg("--animate");
-    }
     if let Some(ch) = character {
         command.args(["--character", ch]);
     }
     if let Some(path) = project {
         command.arg(path);
-    } else if !animate_only {
+    } else {
         command.arg("--new");
     }
     #[cfg(unix)]
@@ -368,11 +364,10 @@ fn await_ready(
     ))
 }
 
-/// Open Magic Studio with optional `--animate` focus mode and `--character` selection.
+/// Open Magic Studio with an optional `--character` selection.
 pub fn open_with_options(
     executable: &Path,
     project: Option<&str>,
-    animate_only: bool,
     character: Option<&str>,
 ) -> Result<Value, String> {
     let project = project.map(Path::new).map(canonical).transpose()?;
@@ -384,7 +379,7 @@ pub fn open_with_options(
     let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR missing")?;
     let dir = PathBuf::from(runtime).join("magicstudio-studio");
     let executable = live_executable(executable);
-    let mut command = launch_command(&executable, project.as_deref(), animate_only, character);
+    let mut command = launch_command(&executable, project.as_deref(), character);
     let mut child = command
         .spawn()
         .map_err(|e| format!("Cannot launch {}: {e}", executable.display()))?;

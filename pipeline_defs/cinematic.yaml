@@ -23,43 +23,17 @@ reference_input:
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/cinematic/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 12
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/cinematic/executive-producer
-  - pipelines/cinematic/research-director
-  - pipelines/cinematic/proposal-director
-  - pipelines/cinematic/script-director
-  - pipelines/cinematic/scene-director
-  - pipelines/cinematic/asset-director
-  - pipelines/cinematic/edit-director
-  - pipelines/cinematic/compose-director
-  - pipelines/cinematic/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
   - meta/animation-runtime-selector
-
-compatible_playbooks:
-  recommended:
-    - flat-motion-graphics
-  also_works:
-    - clean-professional
-    - minimalist-diagram
-  custom_allowed: true
 
 stages:
   - name: research
-    skill: pipelines/cinematic/research-director
     produces:
       - research_brief
     tools_available:
@@ -77,7 +51,6 @@ stages:
       - Visual references include specific URLs and descriptions
 
   - name: proposal
-    skill: pipelines/cinematic/proposal-director
     required_artifacts_in:
       - research_brief
     optional_artifacts_in:
@@ -113,7 +86,6 @@ stages:
           - "Music mood matches approved cinematic treatment"
 
   - name: script
-    skill: pipelines/cinematic/script-director
     required_artifacts_in:
       - proposal_packet
     produces:
@@ -135,7 +107,6 @@ stages:
       - Script sections map to identifiable cinematic beats
 
   - name: scene_plan
-    skill: pipelines/cinematic/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -159,7 +130,6 @@ stages:
       - Every beat has a scene treatment and asset path
 
   - name: assets
-    skill: pipelines/cinematic/asset-director
     required_artifacts_in:
       - scene_plan
     optional_artifacts_in:
@@ -207,7 +177,6 @@ stages:
       - All referenced asset files exist on disk
 
   - name: edit
-    skill: pipelines/cinematic/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -227,7 +196,6 @@ stages:
       - Edit decisions cover the full planned runtime
 
   - name: compose
-    skill: pipelines/cinematic/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -268,7 +236,6 @@ stages:
       - Output file exists and passes ffprobe validation
 
   - name: publish
-    skill: pipelines/cinematic/publish-director
     required_artifacts_in:
       - render_report
       - final_review
