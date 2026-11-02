@@ -47,17 +47,12 @@ Only receipt-correlated, decoded PNGs are attached to the project. Keep failure
 logs and partial files distinguishable from a successful asset.
 
 Rig-sheet generation uses `pipeline/templates/rig_sheet_spec.json`.
-`rig.from_sheet` cuts parts, reconstructs the original placement, and saves the
-rig plus review images. Inspect those images and joints before claiming a usable
-articulated rig. `motion.place_section` places a layered section only after its
-motion gate succeeds. Discover the current parameter contracts before use.
-
-Blender mode runs renders in a separate resource-limited worker. The same workflow
-is exposed by `animation.scene.render`, `animation.status`, `animation.cancel`, and `animation.list`.
-Editable packed `.blend` scenes retain subsequent work. See
-[Blender animation](docs/workflows/blender-animation.md) and
-[reference → animation → video](docs/workflows/reference-to-animation-video.md)
-for the actual handoff and remaining manual steps.
+Cutout preparation, vectorization, rigging, and motion authoring run through the
+installed Craft applications (`photocraft-cli`, `vectorcraft-cli`,
+`effectcraft-cli`, `filmcraft-cli`). Inspect cutout quality, joints, and rendered
+frames before claiming a usable rig or animation. Rendered transparent clips are
+placed into the composition with `video.place_track`. Discover the current
+parameter contracts with `--help` and `commands` before use.
 
 ## 3. Lyrics: design the song's lettering
 
@@ -100,7 +95,7 @@ engineering evidence; it does not control sessions.
 
 ## Reuse the production toolkit
 
-The source repository retains `pipeline/`, `agents/`, and `.agents/skills/`.
+The source repository retains `pipeline/templates/`, `agents/`, and `.agents/skills/`.
 These are working building blocks for agent-directed production, not a second
 installation path. Read [the agent guide](AGENT_GUIDE.md) before using them;
 preflight actual dependencies and provider access in the prepared source

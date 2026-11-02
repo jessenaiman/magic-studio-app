@@ -16,7 +16,7 @@
 Approved character/reference, source artwork and intended action.
 
 ## Skill
-Use the installed `2d-asset-to-animation` skill from the current skill catalog.
+Use the installed `artcraft-suite` and `character-rigging` skills from the current skill catalog.
 
 ## Output
 Reviewed parts/poses with measured pivots and a native preparation route.

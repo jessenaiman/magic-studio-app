@@ -187,12 +187,6 @@ impl AudioTrace {
             "outputs":outputs,"status":if needed{"running"}else{"skipped_existing"}});
         if needed {
             row["version_probe"] = version_probe(tool, cwd);
-            if tool == "python3" {
-                row["script"] = args
-                    .first()
-                    .map(|p| json!({"path":p,"sha256":digest(Path::new(p))}))
-                    .unwrap_or(Value::Null);
-            }
         }
         let index = self.data["steps"].as_array().map(Vec::len).unwrap_or(0);
         self.data["steps"]

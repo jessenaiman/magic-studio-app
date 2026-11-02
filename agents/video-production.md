@@ -12,19 +12,19 @@ preset at a time, no parallel stage workers.
 2. Execute stages serially in the preset's order. Produce the declared canonical
    artifacts (schema-valid, in the production workspace outside this repo) and
    write real progress to the checkpoint at each stage.
-3. Review each stage against its `review_focus` and `success_criteria` using
-   [reviewer](../skills/meta/reviewer.md) discipline before advancing. Required
-   human gates stay `awaiting_human` until approved; never advance dependent work.
+3. Review each stage against its `review_focus` and `success_criteria` before
+   advancing. Required human gates stay `awaiting_human` until approved; never
+   advance dependent work.
 4. Preflight availability before promising a path: run the relevant CLI
-   `--help` / `commands` (`magic-cli`, the Craft CLIs, `cli-anything-blender`)
-   and check the preset's `required_tools` against what is actually installed.
+   `--help` / `commands` (`magic-cli` and the Craft CLIs)
+   and check the workflow's `required_tools` against what is actually installed.
    Report `passed`, `degraded`, or `blocked` — never infer availability, prices,
    or model access from documentation.
 
 ## Rules
 
-- The agent orchestrates; the `pipeline/` scripts provide the mechanical steps.
-  Reuse the toolkit; do not replace a preset with ad hoc provider scripts.
+- The agent orchestrates; `magic-cli` and the Craft CLIs provide the mechanical steps.
+  Reuse the toolkit; do not replace a workflow with ad hoc provider scripts.
 - Before generation, present the proposed result, preset, exact provider/model,
   real alternatives, estimated cost, and stage plan. Ask before material
   provider/model/runtime changes or dropping approved content.

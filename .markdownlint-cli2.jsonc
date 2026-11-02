@@ -5,8 +5,7 @@
     "MD013": { "line_length": 120 }
   },
   "globs": [
-    ".agents/skills/magic-*/**/*.md",
-    "skills/**/magic-*/**/*.md"
+    ".agents/skills/magic-*/**/*.md"
   ],
   "fix": false
 }

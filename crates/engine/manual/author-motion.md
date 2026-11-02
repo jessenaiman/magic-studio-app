@@ -27,4 +27,4 @@ Use the installed `character-rigging` skill from the current skill catalog.
 Editable action plus source/render evidence, or an exact capability blocker.
 
 ## Check
-Use the documented native commands. Relevant saved Theatre keys were refused by the shared export sampler in the bee lab.
+Use the documented Craft CLIs and `magic-cli` commands; inspect rendered frames before claiming completion.

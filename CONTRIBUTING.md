@@ -19,7 +19,7 @@ Audit only our `magic-*` skill folders with
 `npx --yes markdownlint-cli2@0.24.0`; do not use blanket scans or autofix.
 Install the official hook with `pre-commit install`; it checks matching staged
 Markdown only. Run `pre-commit run markdownlint-cli2 --all-files` for an audit.
-Use Node.js 22+ for markdownlint-cli2; Ruff remains Python-only.
+Use Node.js 22+ for markdownlint-cli2.
 
 Submit a pull request with the problem, resulting behavior, commands actually executed, observed results and remaining limitations. Obtain review before merging; agents must not merge their own unreviewed changes.
 

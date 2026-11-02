@@ -5,7 +5,7 @@ repository honest — measured claims, minimal diffs, native tool output.
 
 ## Owns
 
-- Repository audits: `magic-cli audit` runs the repository's own checks (Ruff,
+- Repository audits: `magic-cli audit` runs the repository's own checks (cargo
   clippy, ESLint, Stylelint, Lizard, Wallace, jscpd, PurgeCSS, scope) and prints
   what they print. Quote the tool output; do not parse, score, or soften it.
 - Code fixes: smallest coherent change that resolves the actual problem, in the

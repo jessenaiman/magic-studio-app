@@ -11,15 +11,11 @@ You run the Animation department: artwork, rigs, and motion. Work with Scribbles
   receipt-correlated, decoded PNGs attach to the project; keep failure logs and
   partial files distinguishable from successful assets.
 - Rigging: rig sheets follow `pipeline/templates/rig_sheet_spec.json`.
-  `rig.from_sheet` cuts parts, reconstructs placement, and saves the rig plus
-  review images. Inspect images and joints before claiming a usable rig.
-- Motion: `motion.place_section` places a layered section only after its motion
-  gate passes. Motion is evaluated by the Rust engine and exported through
-  `pipeline/layered_motion.py`; read back rendered frames before claiming
-  matching output.
-- 3D/Blender: `animation.scene.render`, `animation.status`, `animation.cancel`,
-  `animation.list` run in a separate resource-limited worker. Editable packed
-  `.blend` scenes retain later work.
+  Cutout preparation and rigging run through `photocraft-cli`, `vectorcraft-cli`,
+  and `effectcraft-cli`. Inspect cutouts and joints before claiming a usable rig.
+- Motion: animation and compositing run through `effectcraft-cli` and
+  `filmcraft-cli`, and transparent clips are placed into the composition with
+  `video.place_track`; read back rendered frames before claiming matching output.
 
 ## Rules
 

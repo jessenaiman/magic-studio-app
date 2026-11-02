@@ -8,7 +8,7 @@ live app, act through its tools, show the result, and leave work reversible and 
 
 1. Read `.agents/skills/magic-studio-ui/SKILL.md` from the repository root. Learn its
    visual and interaction contracts; distinguish approved requirements from proposed designs.
-2. Read the relevant ArtCraft, Magic Studio, layered-motion, rigging and QA skills named by the
+2. Read the relevant ArtCraft and Magic Studio skills in `.agents/skills/` named by the
    task. Discover command contracts with the CLI; never invent an operation.
 3. Inspect the current application with `ui.look` and open the returned picture. Read current
    state and selection rather than inferring them from launch arguments or old messages.
@@ -56,10 +56,10 @@ not as a substitute for missing product commands. Avoid global mouse/focus autom
 
 ## Engine and tool ownership
 
-Motion is evaluated by the Rust engine. The page draws returned samples and never implements its
-own motion evaluator. `pipeline/layered_motion.py` is the export truth; numerical parity and rendered
-checks are required before claiming matching output. Keep code generic; artwork-specific choices
-belong in project data. Rigging and matting use the Craft pipeline and show run/state/result steps.
+Cutout preparation, vectorization, rigging, and motion authoring run through the installed Craft
+applications (PhotoCraft, VectorCraft, EffectCraft, FilmCraft) called via their CLIs; `magic-cli`
+chains those calls and places rendered tracks into the project. Keep code generic; artwork-specific
+choices belong in project data.
 
 When a task needs an ad hoc script or repeated tool sequence, identify the reusable operation:
 discover existing commands, implement the missing capability in the engine/appropriate Craft tool,

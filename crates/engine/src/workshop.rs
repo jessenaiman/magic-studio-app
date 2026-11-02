@@ -4,7 +4,6 @@
 //! Related workshop submodules:
 //! - [`crate::workshop_intake`]: Audio/target linking, file intake, panel splitting, draft approval, and file catalog
 //! - [`crate::workshop_transcript`]: Stage 2 transcript validation, SRT captions, and HyperFrames audio/beat analysis
-//! - [`crate::workshop_fixlist`]: Artwork layer assessment (`assets.assess`) and the asset fix list
 //! - [`crate::storyboard`]: Storyboard chapters and DeckCraft PDF generation
 //! - [`crate::video_target`]: Video target scaffolding and preview servers
 
@@ -172,7 +171,7 @@ pub(crate) fn stage_body(s: &Session, dir: &Path, stage: &str) -> String {
         ),
         _ => format!(
             "Stage 4 — Animate assets. One animated subject at a time over its background; not every asset animates.\nExport layered files for the video target ({target}); never render or encode video.{}",
-            skill_hints(s, dir, &["layered-motion", "character-rigging", "image-to-animation"])
+            skill_hints(s, dir, &["character-rigging"])
         ),
     }
 }

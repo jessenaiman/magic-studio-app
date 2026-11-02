@@ -9,9 +9,9 @@ Original authorship and licensing are recorded in
 
 The Tauri shell in `apps/src-tauri/` embeds four creative areas:
 Storyboard, Animation, Lyrics, and Studio. Studio targets HyperFrames. The
-Rust engine owns project data, command validation, and motion evaluation.
+Rust engine owns project data, command validation, storyboard, and lettering.
 The shell UI, `magic-cli`, and MCP use that shared command registry; there is no
-second Python implementation of project persistence or UI command behavior.
+second implementation of project persistence or UI command behavior.
 
 | Contract | Source |
 |---|---|
@@ -36,11 +36,11 @@ See [Backstage](apps/backstage/README.md) for exact read boundaries and controls
 
 ## Reusable production toolkit
 
-Magic Studio retains the declarative pipeline system and its production scripts:
+Magic Studio coordinates department agents, engine commands, and installed Craft tools:
 
 ```text
-Agent reads pipeline preset YAML → follows the Video Production department agent
-→ runs the pipeline/ steps → reviews artifacts → requests configured human approval
+Agent follows department instructions → chains magic-cli and Craft CLIs
+→ reviews artifacts → requests configured human approval
 ```
 
 The agent makes creative choices and follows the stage/approval entries. This
@@ -51,7 +51,7 @@ pipeline run.
 |---|---|
 | Department agents | `agents/` — one agent file per department (storyboard, animation, lyrics, video production, mayhem) |
 | Production engine | `crates/engine/` — native Rust storyboard, lettering (`words.letter`), and film assembly (`video.assemble`) |
-| Production scripts | `pipeline/` — animation, rigging, and media preparation steps |
+| Templates and sampler | `pipeline/templates/` and `pipeline/sample_cutout_windows.mjs` — storyboard, lettering, and rig-sheet templates |
 | Technology knowledge | Relevant `.agents/skills/`; preserve third-party content and notices |
 | Composition targets | EffectCraft (`.ecproj`), FilmCraft (`.fcproj`), DeckCraft (`.deckcraft`), HyperFrames |
 

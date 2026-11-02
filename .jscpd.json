@@ -3,7 +3,6 @@
     "css",
     "javascript",
     "typescript",
-    "python",
     "rust"
   ],
   "minTokens": 40,

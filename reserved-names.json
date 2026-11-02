@@ -25,11 +25,7 @@
   "paths": [
     "crates",
     "apps",
-    "pipeline",
-    "lib",
-    "tools",
-    "scripts",
-    "schemas"
+    "pipeline"
   ],
   "native_extensions": [
     ".deckcraft",
@@ -65,11 +61,11 @@
     ]
   },
   "imitation_hints": {
-    "about": "Agents use magic-cli only. magic-cli commands call the *craft CLIs internally.",
-    "photocraft-cli": "magic-cli image.break_apart, image.content_aware_fill, image.color_to_alpha, image.puppet_warp, image.image_size, asset.make_transparent, asset.extract_background, asset.cut_sheet, part.edit_image",
-    "effectcraft-cli": "magic-cli animation.prepare, motion.action_track, motion.path, animation.render",
-    "vectorcraft-cli": "a new magic-cli command (it calls vectorcraft-cli internally)",
-    "soundcraft-cli": "a new magic-cli command (it calls soundcraft-cli internally)"
+    "about": "Agents use magic-cli and the installed *craft CLIs; never reimplement Craft operations in our code.",
+    "photocraft-cli": "call photocraft-cli via magic-cli or directly",
+    "effectcraft-cli": "call effectcraft-cli via magic-cli or directly",
+    "vectorcraft-cli": "call vectorcraft-cli via magic-cli or directly",
+    "soundcraft-cli": "call soundcraft-cli via magic-cli or directly"
   },
   "imitation_operations": {
     "about": "Calls that edit pixels (not just read them). A file importing an imitation library with none of these is QA/reading and is not a task.",

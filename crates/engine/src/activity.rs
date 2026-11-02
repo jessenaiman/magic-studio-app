@@ -83,13 +83,6 @@ fn notable(event: &Value) -> bool {
             | "handler_error"
             | "selection_changed"
             | "clip_switched"
-            | "theatre_selection"
-            | "theatre_saved"
-            | "theatre_error"
-            | "clip_sheet_started"
-            | "clip_sheet_converted"
-            | "clip_sheet_failed"
-            | "theatre_keyframes"
             | "dispatch_running"
             | "command_result"
             | "engine_success"
@@ -101,15 +94,7 @@ fn notable(event: &Value) -> bool {
 fn history_only(event: &Value) -> bool {
     matches!(
         event["stage"].as_str(),
-        Some(
-            "selection_changed"
-                | "clip_switched"
-                | "theatre_selection"
-                | "clip_sheet_started"
-                | "clip_sheet_converted"
-                | "clip_sheet_failed"
-                | "theatre_keyframes"
-        )
+        Some("selection_changed" | "clip_switched")
     )
 }
 fn read_rows(path: &std::path::Path) -> Vec<Value> {
@@ -500,7 +485,7 @@ pub fn errors(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
     for event in newer_than(history, selected.as_ref(), cursor) {
         if matches!(
             event["stage"].as_str(),
-            Some("engine_error" | "handler_error" | "theatre_error" | "clip_sheet_failed")
+            Some("engine_error" | "handler_error")
         ) {
             by_sequence.insert(event["sequence"].as_u64().unwrap_or(0), event);
         }
