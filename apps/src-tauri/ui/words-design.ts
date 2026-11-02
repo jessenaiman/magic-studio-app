@@ -218,7 +218,14 @@ class WordsDesignController {
 
   design(anim: any, lineId: string) {
     const pending = wordsPanel.designs.get(lineId);
-    return pending !== undefined ? pending ?? this.layout(anim, lineId, "plain") : anim.design?.[lineId] ?? this.layout(anim, lineId, "plain");
+    if (pending !== undefined) return pending ?? this.layout(anim, lineId, "cascade");
+    const saved = anim.design?.[lineId];
+    if (!saved?.items?.length) return this.layout(anim, lineId, "cascade");
+    const isFlatTop = saved.items.every((it: any) => (it.y || 0) < 150 && !it.rotate);
+    if (!isFlatTop) return saved;
+    const upgraded = this.layout(anim, lineId, "cascade");
+    if (saved.draws?.length) upgraded.draws = saved.draws.map((d: any) => ({ ...d, y: Math.max(d.y || 0, 650) }));
+    return upgraded;
   }
 
   designEdit(anim: any, lineId: string, change: (d: any) => void) {
@@ -228,54 +235,69 @@ class WordsDesignController {
     wordsRender();
   }
 
+  private buildCascadeLayout(words: any[], W: number, H: number, hero: any, item: any) {
+    const k = Math.max(0, words.indexOf(hero));
+    const before = words.slice(0, k), after = words.slice(k + 1);
+    const out: any[] = [];
+    before.slice(0, 4).forEach((w: any, i: number) => {
+      const row = i < 2 ? 0 : 1, col = i % 2;
+      const x = W * (row === 0 ? 0.16 + col * 0.22 : 0.22 + col * 0.24);
+      const y = H * (row === 0 ? 0.16 + col * 0.03 : 0.31 + col * 0.03);
+      out.push(item([w], x, y, H * (i === 1 ? 0.078 : 0.066), i === 1 ? "song-bold" : "song", i === 0 ? "pop" : "rise", i === 0 ? -4 : 0));
+    });
+    if (before.length > 4) out.push(item(before.slice(4), W * 0.56, H * 0.32, H * 0.060, "song", "east", 0));
+    const heroItem = item([hero], W * 0.28, H * 0.48, H * 0.165, "serif-bold", "pop", -5);
+    heroItem.color = "#f59e0b";
+    heroItem.outline = "#2a1205";
+    out.push(heroItem);
+    if (after.length) {
+      const mid = Math.ceil(after.length / 2);
+      out.push(item(after.slice(0, mid), W * 0.46, H * 0.68, H * 0.064, "song-bold", "east", 0));
+      if (after.length > mid) out.push(item(after.slice(mid), W * 0.64, H * 0.78, H * 0.062, "song", "settle", 2));
+    }
+    return { items: out, draws: [] as any[] };
+  }
+
   layout(anim: any, lineId: string, kind: string) {
     const words = wordsLineWords(anim, lineId), [W, H] = wordsWorld();
     const item = (ws: any[], x: number, y: number, size: number, look = "song", motion = "quiet", rotate = 0) => {
       const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look)!;
       return {
         word_ids: ws.map((w) => w.word_id), x: Math.round(x), y: Math.round(y), size: Math.round(size), font, weight, italic,
-        color: motion !== "quiet" ? (anim.kinetic?.style?.hero_color || "#B8442A") : (anim.style?.color || "#173F49"),
-        outline: "#FFF8E9", rotate, motion, accent: motion === "quiet" ? null : ws.at(-1).word_id
+        color: motion !== "quiet" ? (anim.kinetic?.style?.hero_color || "#f59e0b") : (anim.style?.color || "#ffffff"),
+        outline: motion !== "quiet" ? "#2a1205" : "#141c28", rotate, motion, accent: motion === "quiet" ? null : ws.at(-1).word_id
       };
     };
     const width = (ws: any[], size: number, look = "song") => this.measure(anim, ws.map((w) => w.text).join(" "), size, look);
-    const hero = words.reduce((a: any, b: any) => (b.text.length > a.text.length ? b : a), words[0]);
+    const cleanLen = (w: any) => String(w?.text || "").replace(/[^a-zA-Z]/g, "").length;
+    const hero = words.find((w: any) => anim.kinetic?.acts?.[w.word_id]) || words.reduce((a: any, b: any) => (cleanLen(b) > cleanLen(a) ? b : a), words[0]);
+    if (kind === "cascade") return this.buildCascadeLayout(words, W, H, hero, item);
     if (kind === "poster") {
-      const k = words.indexOf(hero), small = H * 0.045;
+      const k = words.indexOf(hero), small = H * 0.065;
       return {
         items: [
-          ...(k ? [item(words.slice(0, k), W * 0.34, H * 0.12, small, "sans")] : []),
-          item([hero], W * 0.38, H * 0.2, H * 0.145, "serif-italic", "pop"),
-          ...(k < words.length - 1 ? [item(words.slice(k + 1), W * 0.42 + width([hero], H * 0.145, "serif-italic") * 0.45, H * 0.4, small, "sans")] : [])], draws: []
+          ...(k ? [item(words.slice(0, k), W * 0.26, H * 0.26, small, "song-bold", "rise", -3)] : []),
+          item([hero], W * 0.30, H * 0.42, H * 0.18, "serif-italic", "pop", -5),
+          ...(k < words.length - 1 ? [item(words.slice(k + 1), W * 0.34, H * 0.66, small, "sans", "settle", 0)] : [])], draws: []
       };
     }
     if (kind === "stack") {
-      const size = H * 0.082;
-      return { items: words.map((w: any, i: number) => item([w], W * 0.14, H * 0.12 + i * size * 1.12, size, i === words.length - 1 ? "serif-bold" : "song", i === words.length - 1 ? "settle" : "quiet")), draws: [] };
-    }
-    if (kind === "cascade") {
-      const n = Math.max(1, words.length - 1);
-      return {
-        items: words.map((w: any, i: number) => {
-          const isHero = w === hero;
-          const sz = isHero ? H * 0.13 : H * 0.068;
-          return item([w], W * (0.14 + 0.54 * (i / n)), H * (0.14 + 0.48 * (i / n)), sz, isHero ? "serif-bold" : "song-bold", isHero ? "pop" : "rise");
-        }), draws: []
-      };
+      const size = H * 0.088;
+      return { items: words.slice(0, 6).map((w: any, i: number) => item([w], W * (0.24 + i * 0.04), H * 0.18 + i * size * 1.08, w === hero ? size * 1.45 : size, w === hero ? "serif-bold" : "song-bold", w === hero ? "pop" : "settle", w === hero ? -4 : 0)), draws: [] };
     }
     if (kind === "scatter") {
-      const tilts = [-7, 5, -4, 6, -5, 4], heights = [0.18, 0.38, 0.22, 0.46, 0.28, 0.42], n = Math.max(1, words.length);
+      const tilts = [-8, 5, -5, 6, -6, 4], heights = [0.22, 0.42, 0.26, 0.54, 0.32, 0.48], n = Math.max(1, words.length);
       return {
         items: words.map((w: any, i: number) => {
           const isHero = w === hero;
-          const sz = isHero ? H * 0.135 : H * 0.068;
-          return item([w], W * (0.12 + 0.68 * (i / n)), H * heights[i % heights.length], sz, isHero ? "serif-italic" : "song", isHero ? "pop" : "quiet", tilts[i % tilts.length]);
+          const sz = isHero ? H * 0.165 : H * 0.072;
+          return item([w], W * (0.16 + 0.64 * (i / n)), H * heights[i % heights.length], sz, isHero ? "serif-italic" : "song-bold", isHero ? "pop" : "rise", tilts[i % tilts.length]);
         }), draws: []
       };
     }
-    const size = H * 0.064, gap = size * 0.38, total = words.reduce((sum: number, w: any) => sum + width([w], size) + gap, -gap);
-    let x = Math.max(80, (W - total) / 2);
-    return { items: words.map((w: any) => { const it = item([w], x, H * 0.22, size); x += width([w], size) + gap; return it; }), draws: [] };
+    const size = H * 0.072, gap = size * 0.38, total = words.reduce((sum: number, w: any) => sum + width([w], size) + gap, -gap);
+    let x = Math.max(120, (W - total) / 2);
+    return { items: words.map((w: any) => { const it = item([w], x, H * 0.42, size); x += width([w], size) + gap; return it; }), draws: [] };
   }
 
   private expandItemWords(anim: any, words: any[], it: any) {
@@ -450,10 +472,16 @@ class WordsTimelineController {
     return svg;
   }
 
-  private isItemSelected(interactive: boolean, it: any, i: number) {
+  private isItemSelected(interactive: boolean, design: any, it: any, i: number) {
     if (!interactive) return false;
     if (wordsPanel.item === i) return true;
-    return wordsPanel.item == null && (it.word_ids || []).some((id: string) => wordsPanel.picked.includes(id));
+    if (wordsPanel.item != null) return false;
+    const byPicked = (it.word_ids || []).some((id: string) => wordsPanel.picked.includes(id));
+    if (byPicked) return true;
+    const anyPickedMatch = (design.items || []).some((x: any) => (x.word_ids || []).some((id: string) => wordsPanel.picked.includes(id)));
+    if (anyPickedMatch) return false;
+    const heroIdx = (design.items || []).findIndex((x: any) => (x.size || 0) >= 140 || x.motion === "pop");
+    return i === (heroIdx >= 0 ? heroIdx : 0);
   }
 
   private applyItemVars(node: any, it: any, local: number, settled: number, pulse: number, tx: number, ty: number) {
@@ -464,15 +492,18 @@ class WordsTimelineController {
       ["--sx", String(it.motion === "pop" ? pulse : 1)], ["--sy", String(sy)]]) node.style.setProperty(key, value);
   }
 
-  drawLineItem(world: any, words: any[], span: any, local: number, interactive: boolean, W: number, it: any, i: number) {
-    const text = it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
+  drawLineItem(world: any, words: any[], span: any, local: number, interactive: boolean, W: number, it: any, i: number, design?: any) {
+    const text = (it.text || it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ")).toUpperCase && (it.size || 0) >= 145
+      ? it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ").toUpperCase()
+      : it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
     const accentWord = words.find((w: any) => w.word_id === it.accent);
     const a = (accentWord ? wordsAt(accentWord) : span.start) - span.start;
     const settled = wordsEase.out3(wordsClamp((local - a) / 0.65)), arc = wordsClamp((local - a) / 0.75);
     const pulse = this.itemPulse(local, a), [tx, ty] = this.itemMotionOffset(it.motion, settled, arc);
-    const isSelected = this.isItemSelected(interactive, it, i);
+    const isSelected = this.isItemSelected(interactive, design || { items: [it] }, it, i);
+    const isHero = (it.size || 0) >= 140 || it.motion === "pop";
     const node = el("div", {
-      class: `lyric-item${isSelected ? " active" : ""}${it.motion === "pop" ? " hero-item" : ""}`,
+      class: `lyric-item${isSelected ? " active" : ""}${isHero ? " hero-item" : ""}`,
       "data-weight": String(it.weight), "data-italic": String(it.italic), "data-font": it.font || "song"
     });
     this.applyItemVars(node, it, local, settled, pulse, tx, ty);
@@ -491,7 +522,7 @@ class WordsTimelineController {
     const [W, H] = wordsWorld(), design = wordsDesign(anim, lineId), span = wordsLineSpan(anim, lineId), words = wordsLineWords(anim, lineId);
     world.style.setProperty("--w", `${W}px`); world.style.setProperty("--h", `${H}px`);
     world.style.setProperty("--family", JSON.stringify(wordsSongFont(anim)));
-    const local = t - span.start;
+    const local = wordsPanel.playing || !interactive ? (t - span.start) : Math.max(0.55, span.end - span.start - 0.08);
     const flow = interactive ? this.flowArrowsSvg(design, words, W, H) : null;
     const strokes = design.draws.map((d: any) => {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -501,8 +532,9 @@ class WordsTimelineController {
       svg.innerHTML = d.paths.map((p: any) => `<path d="${p.d}" pathLength="1" fill="none" stroke="${p.stroke}" stroke-width="${p.width}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="${1 - wordsClamp((local - p.from) / Math.max(0.01, p.to - p.from))}"/>`).join("");
       return svg;
     });
-    const items = design.items.map((it: any, i: number) => this.drawLineItem(world, words, span, local, interactive, W, it, i));
+    const items = design.items.map((it: any, i: number) => this.drawLineItem(world, words, span, local, interactive, W, it, i, design));
     world.replaceChildren(...(flow ? [flow] : []), ...strokes, ...items);
+    requestAnimationFrame(() => { const view = $("view-design"); if (view) wordsArrows(view); });
   }
 
   activeBackdrop(anim: any) {
@@ -514,8 +546,24 @@ class WordsTimelineController {
     const world = el("div", { class: "lyric-world" });
     const bg = wordsPanel.scene ? this.activeBackdrop(anim) : null;
     const bgImg = bg ? el("img", { class: "lyric-scene-bg", src: convertFileSrc(bg.path), alt: bg.name }) : null;
+    const stageModes = el("div", { class: "lyric-stage-modes" },
+      el("button", {
+        class: "lyric-mode-pill active", title: "Drag, scale & tilt word tokens directly on the 16:9 stage",
+        onclick: () => { const lid = wordsPanel.line || wordsLines(anim)[0]?.id; if (lid) this.splitLineTokens(anim, lid); }
+      }, "✥ Kinetic Motion"),
+      el("button", {
+        class: "lyric-mode-pill warp", title: "Cycle spatial trajectory choreography across the stage",
+        onclick: () => {
+          const lid = wordsPanel.line || wordsLines(anim)[0]?.id;
+          if (!lid) return;
+          const order = ["cascade", "scatter", "poster", "stack", "plain"];
+          wordsPanel.choreoIdx = ((wordsPanel.choreoIdx || 0) + 1) % order.length;
+          wordsPanel.designs.set(lid, this.layout(anim, lid, order[wordsPanel.choreoIdx]));
+          wordsRender();
+        }
+      }, "⤴ Warp Path"));
     const hint = el("div", { class: "lyric-stage-hint" }, "Drag any word to adjust spatial trajectory · Click token below to choreograph");
-    const box = el("div", { class: `lyric-canvas${bgImg ? " has-scene-bg" : ""}`, "aria-label": "Line designer" }, bgImg, world, hint);
+    const box = el("div", { class: `lyric-canvas${bgImg ? " has-scene-bg" : ""}`, "aria-label": "Line designer" }, bgImg, world, stageModes, hint);
     wordsPanel.canvas = { box, world, bgImg };
     wordsFitter.observe(box);
     return box;
@@ -703,8 +751,8 @@ class WordsTimelineController {
     const moves = [...new Set((design.items || []).filter((it: any) => it.motion && it.motion !== "quiet").map((it: any) => WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] || it.motion))];
     const strokes = [...new Set((design.draws || []).map((d: any) => d.name))];
     const pills = [
-      ...moves.map((m) => el("span", { class: "words-line-pill move-pill" }, `⚡ ${m}`)),
-      ...strokes.map((s) => el("span", { class: "words-line-pill stroke-pill" }, `✎ ${s}`))
+      ...moves.slice(0, 2).map((m, idx) => el("span", { class: `words-line-pill ${idx ? "trail-pill" : "move-pill"}` }, `${idx ? "⇉" : "🔥"} ${m}`)),
+      ...strokes.slice(0, 1).map((s) => el("span", { class: "words-line-pill stroke-pill" }, `✎ ${s}`))
     ];
     return wordsPlace(el("div", {
       class: `words-line${j ? "" : " first"}${active ? " active" : ""}`,
@@ -713,12 +761,18 @@ class WordsTimelineController {
       onkeydown: (event: any) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.selectLine(a, line); } },
       onclick: () => this.selectLine(a, line)
     },
-      el("div", { class: "words-line-meta" },
-        bg ? el("img", { class: "words-line-thumb", src: convertFileSrc(bg.path), alt: bg.name, loading: "lazy" }) : null,
-        el("span", { class: "words-line-time" }, `[${wordsClock(at)}]`),
-        ...pills,
-        el("span", { class: "words-line-tether", "aria-hidden": "true", title: "Tethered to visual cues" }, "⚓")),
-      el("div", { class: "words-line-words" }, ...line.words.map((w: any) => this.chip(a, w)))), at, len);
+      el("div", { class: "words-line-card-row" },
+        bg ? el("div", { class: "words-line-thumb-wrap" },
+          el("img", { class: "words-line-thumb", src: convertFileSrc(bg.path), alt: bg.name, loading: "lazy" }),
+          el("span", { class: "words-line-ratio" }, "16:9")) : null,
+        el("div", { class: "words-line-body" },
+          el("div", { class: "words-line-top" },
+            el("span", { class: "words-line-time" }, `[${wordsClock(at)}]`),
+            el("div", { class: "words-line-words" }, ...line.words.map((w: any) => this.chip(a, w)))),
+          el("div", { class: "words-line-bottom" },
+            ...pills,
+            bg ? el("span", { class: "words-line-scene" }, bg.name) : null)),
+        el("span", { class: "words-line-tether", "aria-hidden": "true", title: "Tethered to 16:9 stage & stem timeline" }, "⚓"))), at, len);
   }
 
   timeline(animations: any[], end: number) {
@@ -742,18 +796,10 @@ class WordsTimelineController {
     };
     const handle = (edge: string, label: string) => cue.index == null && cue.kind !== "overlay" ? null : el("button", {
       class: `words-cue-handle ${edge}`, "aria-label": `${label} ${cue.name}`, title: `${label} · drag or use ↑ ↓ (Shift for fine timing)`,
-      onpointerdown: (event: any) => this.cueDrag(event, cue, edge), onclick: (event: any) => event.stopPropagation(),
-      onkeydown: (event: any) => {
-        if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
-        event.preventDefault(); event.stopPropagation();
-        if (cue.animation_id !== wordsPanel.selected) wordsSelect(cue.animation_id);
-        const delta = (event.key === "ArrowUp" ? -1 : 1) * (event.shiftKey ? 0.01 : 0.1);
-        const start = edge === "start" ? Math.max(0, cue.start + delta) : cue.start;
-        this.retimeCue(cue, start, edge === "start" ? start + cue.end - cue.start : Math.max(start + 0.05, cue.end + delta));
-      }
+      onpointerdown: (event: any) => this.cueDrag(event, cue, edge), onclick: (event: any) => event.stopPropagation()
     }, edge === "start" ? "●" : "━");
     const frame = wordsPlace(el("div", {
-      class: `words-graphic${wordsPanel.cue === cue.id ? " active" : ""}`, "data-cue-id": cue.id, role: "button", tabindex: "0",
+      class: `words-graphic${wordsPanel.cue === cue.id || cue.line_id === wordsPanel.line ? " active" : ""}`, "data-cue-id": cue.id, "data-line-id": cue.line_id || "", role: "button", tabindex: "0",
       "aria-label": `${cue.name} at ${wordsClock(cue.start)}`, title: `${cue.name}${cue.word ? ` · “${cue.word}”` : ""} · ${wordsClock(cue.start)} – ${wordsClock(cue.end)} · Click to replay this connection`,
       onclick: () => this.previewCue(cue), onkeydown: (event: any) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.previewCue(cue); } }
     },
@@ -765,8 +811,28 @@ class WordsTimelineController {
     return frame;
   }
 
-  roll(_animations: any[], end: number) {
-    const cues = wordsPanel.read.graphics || [], laneEnds: number[] = [];
+  private synthRollCues(animations: any[]) {
+    const out: any[] = [];
+    for (const a of animations) {
+      for (const line of wordsLines(a)) {
+        const span = wordsLineSpan(a, line.id), d = wordsDesign(a, line.id);
+        const hero = (d.items || []).find((it: any) => (it.size || 0) >= 140 || it.motion === "pop") || d.items?.[0];
+        if (!hero) continue;
+        const label = hero.word_ids.map((id: string) => line.words.find((w: any) => w.word_id === id)?.text).join(" ");
+        out.push({
+          id: `${a.animation_id}-${line.id}-stem`, animation_id: a.animation_id, line_id: line.id, kind: "drawing",
+          name: label, word: label, word_ids: hero.word_ids, start: span.start, end: Math.max(span.start + 1.2, span.end - 0.15),
+          color: hero.color || "#35e1c0", stroke: WORDS_STROKES[1]
+        });
+      }
+    }
+    return out;
+  }
+
+  roll(animations: any[], end: number) {
+    const raw = wordsPanel.read.graphics || [];
+    const cues = raw.length ? raw : this.synthRollCues(animations);
+    const laneEnds: number[] = [];
     const placed = cues.map((cue: any) => {
       let lane = laneEnds.findIndex((t) => t <= cue.start);
       if (lane < 0) lane = laneEnds.length;
@@ -775,7 +841,7 @@ class WordsTimelineController {
     const frames = placed.map(({ cue, lane }: any) => this.buildRollFrame(cue, lane));
     const roll = wordsPlace(el("div", { class: "words-tl words-roll", "aria-label": "Motion graphics on the song timeline" },
       ...wordsTicks(end),
-      ...frames, !cues.length ? el("p", { class: "words-graphics-empty" }, "Pick a word, then add a drawing to show its meaning here.") : null,
+      ...frames,
       el("span", { class: "words-tl-head" })), 0, end);
     roll.style.setProperty("--cue-lanes", String(Math.max(1, laneEnds.length)));
     return roll;

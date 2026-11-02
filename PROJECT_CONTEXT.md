@@ -50,27 +50,20 @@ pipeline run.
 | Layer | Source and purpose |
 |---|---|
 | Department agents | `agents/` — one agent file per department (storyboard, animation, lyrics, video production, mayhem) |
-| Production process | `pipeline_defs/` (data-only presets) |
-| Production scripts | `pipeline/` — the engine's animation, layout, and rigging steps |
-| Production guidance | `skills/INDEX.md`, `skills/core/`, `skills/creative/`, `skills/meta/` |
+| Production engine | `crates/engine/` — native Rust storyboard, lettering (`words.letter`), and film assembly (`video.assemble`) |
+| Production scripts | `pipeline/` — animation, rigging, and media preparation steps |
 | Technology knowledge | Relevant `.agents/skills/`; preserve third-party content and notices |
-| Composition adapters | `remotion-composer/`, HyperFrames adapters |
+| Composition targets | EffectCraft (`.ecproj`), FilmCraft (`.fcproj`), DeckCraft (`.deckcraft`), HyperFrames |
 
-The preset is the authority for stages, required artifacts, and approval gates.
-Installed providers and CLIs are discovered, not inferred. Pipeline composition
-can use Remotion, HyperFrames, or FFmpeg as approved; that choice does not add
-another target to the desktop Studio.
+Installed providers and CLIs are discovered, not inferred.
 
 ## Extending the toolkit
 
-- New production steps are `pipeline/` scripts invoked through the engine's
-  command registry; discover the contract, never invent an operation.
-- New pipelines need a `pipeline_defs/` preset with clear stage review
-  focus, success criteria, canonical outputs, and gates.
+- New production steps are registered in `crates/engine/` and invoked through the
+  engine's command registry; discover the contract, never invent an operation.
 - Keep canonical artifacts in their documented shape. Append changed production
   decisions instead of silently rewriting them.
 - Propose native acceptance expectations first; encode behavior only after Jesse
   observes and explicitly approves the workflow.
 
-Read [AGENT_GUIDE.md](AGENT_GUIDE.md) for routing and production governance and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the pipeline internals.
+Read [AGENT_GUIDE.md](AGENT_GUIDE.md) for routing and production governance.

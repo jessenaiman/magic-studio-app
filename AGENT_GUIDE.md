@@ -17,11 +17,11 @@ only needed for an absent installation or an explicitly requested source build.
 
 When the request calls for the reusable production toolkit, the Video
 Production department agent ([agents/video-production.md](agents/video-production.md))
-takes the work: choose the actual `pipeline_defs/<pipeline>.yaml` preset, read it
-before execution, and follow its stage entries (`produces`, `tools_available`,
+takes the work: follow the stage contract (`produces`, `tools_available`,
 `review_focus`, `success_criteria`, gates) stage by stage. Reuse the
-`pipeline/` scripts, YAML presets, and skills; do not replace the preset with
-ad hoc provider scripts. [Project context](PROJECT_CONTEXT.md) maps these sources.
+shared Rust engine commands, `pipeline/` scripts, and `.agents/skills/`; do not
+replace them with ad hoc provider scripts. [Project context](PROJECT_CONTEXT.md)
+maps these sources.
 
 The agent orchestrates; the `pipeline/` scripts provide the mechanical steps.
 Resume from real checkpoint artifacts. Canonical artifacts—not free-form
@@ -81,10 +81,9 @@ and [bespoke composition](skills/meta/bespoke-composition.md).
 
 ## Composition Runtimes
 
-Remotion uses the React composition stack; HyperFrames uses HTML/CSS/GSAP;
-FFmpeg handles direct media assembly. Inspect actual runtime availability and
-[scene contracts](remotion-composer/SCENE_TYPES.md). Do not promise parity where a
-pipeline depends on a runtime-specific composition or caption path.
+EffectCraft and FilmCraft handle native lettering (`words.letter`) and video
+assembly (`video.assemble`); HyperFrames uses HTML/CSS/GSAP; FFmpeg handles
+direct media assembly. Inspect actual runtime availability before promising a path.
 Motion-required work must retain real motion. Never silently turn it into a
 Ken Burns animatic because the approved renderer/provider failed.
 

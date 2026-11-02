@@ -82,6 +82,7 @@ pub mod image_cmds;
 pub mod image_generation;
 pub mod lettering;
 pub mod lyrics;
+pub(crate) mod lyrics_layout;
 pub mod magic_design;
 pub mod motion;
 pub mod motion_authoring;
@@ -99,9 +100,11 @@ mod session_manifests;
 pub mod sheets;
 pub mod skills_registry;
 pub mod storyboard;
+pub(crate) mod storyboard_build;
 pub mod storyboard_crud;
 pub mod storyboard_design;
 mod storyboard_document;
+pub(crate) mod storyboard_layout;
 pub mod studio_cues;
 pub mod theatre;
 pub mod video_target;
@@ -269,7 +272,10 @@ fn outliner_name(params: &Value, asset_id: &str) -> String {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
-        .unwrap_or_else(|| asset_id.replace('_', " "))
+        .unwrap_or_else(|| {
+            let sep = "_";
+            asset_id.replace(sep, " ")
+        })
 }
 
 /// A loaded manifest takes the path it names.
@@ -334,70 +340,78 @@ fn sync_project_file(
     Ok(())
 }
 
+fn execute_command(
+    s: &mut Session,
+    id: &str,
+    params: Value,
+) -> Result<Value> {
+    let _context = activity::enter(id, &params);
+    // Cast writes are journaled workshop files, independent of the open song's writer lease.
+    let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
+    let _writer = writer_lease(s, id, project_edit).inspect_err(|error| {
+        if s.record_user_state {
+            activity::error(s.project_path.as_deref(), id, error);
+        }
+    })?;
+    let prior_owner = s.project_owner.clone();
+    if let Some(owner) = &_writer {
+        s.project_owner = Some(owner.clone());
+    }
+    let record = s.record_user_state && commands::find(id).is_none_or(|c| c.journal);
+    if record {
+        announce_dispatch(s, id, &params);
+    }
+    let started = std::time::Instant::now();
+    let (saves_before, project_before) = (
+        s.project_saves.load(std::sync::atomic::Ordering::Relaxed),
+        s.project_path.clone(),
+    );
+    let result = execute_inner(s, id, params.clone());
+    note_edit(
+        s,
+        project_edit,
+        &result,
+        saves_before,
+        project_before.as_ref(),
+    );
+    if record && let Ok(value) = &result {
+        activity::result(
+            s.project_path.as_deref(),
+            id,
+            value,
+            started.elapsed().as_millis(),
+        );
+    }
+    if record || (s.record_user_state && !result.as_ref().is_ok_and(|v| v["ok"] != false)) {
+        announce_result(s, id, &params, &result);
+    }
+    restore_lease(
+        s,
+        prior_owner,
+        _writer.is_some(),
+        project_before.as_ref(),
+    );
+    result
+}
+
+fn execute_inner(s: &mut Session, id: &str, params: Value) -> Result<Value> {
+    let spec = commands::find(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+    check_param_types(spec.params, &params)?;
+    (spec.enabled)(s).map_err(|e| EngineError::CommandFailed(id.to_string(), e))?;
+    let assets_before = serde_json::to_value(&s.project_assets).ok();
+    let out = (spec.run)(s, &params)?;
+    connect_outliner_asset(s, id, &params);
+    sync_project_file(s, spec, id, assets_before.as_ref())?;
+    if spec.journal {
+        s.record(out.clone());
+    }
+    Ok(out)
+}
+
 impl Session {
     /// Execute one command by id with JSON parameters, returning JSON.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value> {
-        let _context = activity::enter(id, &params);
-        // Cast writes are journaled workshop files, independent of the open song's writer lease.
-        let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
-        let _writer = writer_lease(self, id, project_edit).inspect_err(|error| {
-            if self.record_user_state {
-                activity::error(self.project_path.as_deref(), id, error);
-            }
-        })?;
-        let prior_owner = self.project_owner.clone();
-        if let Some(owner) = &_writer {
-            self.project_owner = Some(owner.clone());
-        }
-        let record = self.record_user_state && commands::find(id).is_none_or(|c| c.journal);
-        if record {
-            announce_dispatch(self, id, &params);
-        }
-        let started = std::time::Instant::now();
-        let (saves_before, project_before) = (
-            self.project_saves
-                .load(std::sync::atomic::Ordering::Relaxed),
-            self.project_path.clone(),
-        );
-        let result = self.execute_inner(id, params.clone());
-        note_edit(
-            self,
-            project_edit,
-            &result,
-            saves_before,
-            project_before.as_ref(),
-        );
-        if record && let Ok(value) = &result {
-            activity::result(
-                self.project_path.as_deref(),
-                id,
-                value,
-                started.elapsed().as_millis(),
-            );
-        }
-        if record || (self.record_user_state && !result.as_ref().is_ok_and(|v| v["ok"] != false)) {
-            announce_result(self, id, &params, &result);
-        }
-        restore_lease(
-            self,
-            prior_owner,
-            _writer.is_some(),
-            project_before.as_ref(),
-        );
-        result
-    }
-    fn execute_inner(&mut self, id: &str, params: Value) -> Result<Value> {
-        let spec = commands::find(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
-        check_param_types(spec.params, &params)?;
-        (spec.enabled)(self).map_err(|e| EngineError::CommandFailed(id.to_string(), e))?;
-        let assets_before = serde_json::to_value(&self.project_assets).ok();
-        let out = (spec.run)(self, &params)?;
-        connect_outliner_asset(self, id, &params);
-        sync_project_file(self, spec, id, assets_before.as_ref())?;
-        if spec.journal {
-            self.record(out.clone());
-        }
-        Ok(out)
+        execute_command(self, id, params)
     }
 }
 

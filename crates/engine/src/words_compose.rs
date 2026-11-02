@@ -1,5 +1,5 @@
 //! Words composition and HyperFrames video placement (`words.compose`, `words.apply`, `words.design`, `words.track`).
-use crate::{EngineError, Result, Session};
+use crate::{Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -249,9 +249,8 @@ fn build_kinetic_for_design(a: &Value, recipe_doc: &Value, p: &Value, k: usize) 
 }
 
 fn run_lyrics_layout(
-    s: &Session,
     dir: &Path,
-    recipe: &Path,
+    recipe_doc: &Value,
     doc: &Value,
     times: &std::collections::HashMap<String, (f64, f64)>,
 ) -> Result<Value> {
@@ -287,30 +286,7 @@ fn run_lyrics_layout(
         serde_json::to_vec(&json!({"animations":animations}))
             .map_err(|e| invalid(e.to_string()))?,
     )?;
-    let root = crate::workspace::workspace_root(s);
-    let out = crate::workspace::run_tool_in(
-        &root,
-        "python3",
-        &[
-            root.join("pipeline/lyrics_layout.py")
-                .to_string_lossy()
-                .into_owned(),
-            "--recipe".into(),
-            recipe.to_string_lossy().into_owned(),
-            "--input".into(),
-            input.to_string_lossy().into_owned(),
-        ],
-    )?;
-    out.lines()
-        .rev()
-        .find_map(|l| serde_json::from_str::<Value>(l).ok())
-        .map(|v| v["designs"].clone())
-        .ok_or_else(|| {
-            EngineError::CommandFailed(
-                "words.design".into(),
-                "lyrics_layout.py returned no designs".into(),
-            )
-        })
+    Ok(crate::lyrics_layout::designs(recipe_doc, &animations))
 }
 
 fn design_one_section(
@@ -362,15 +338,15 @@ pub fn cmd_words_design(s: &mut Session, p: &Value) -> Result<Value> {
         .unwrap_or_else(|| dir.join("lyrics-design.json"));
     if !recipe.is_file() {
         return Err(invalid(format!(
-            "No lyric recipe at {}; write one (see pipeline/lyrics_layout.py)",
+            "No lyric recipe at {}; write one first",
             recipe.display()
         )));
     }
-    let doc = cmd_words_read(s, &json!({}))?["document"].clone();
-    let times = studio_times(s);
-    let designs = run_lyrics_layout(s, &dir, &recipe, &doc, &times)?;
     let recipe_doc: Value = serde_json::from_slice(&fs::read(&recipe)?)
         .map_err(|e| invalid(format!("lyric recipe: {e}")))?;
+    let doc = cmd_words_read(s, &json!({}))?["document"].clone();
+    let times = studio_times(s);
+    let designs = run_lyrics_layout(&dir, &recipe_doc, &doc, &times)?;
     let style = recipe_doc["font"]
         .as_str()
         .map(|f| json!({"font": f}))
@@ -988,6 +964,19 @@ fn validate_words_compose_inputs(p: &Value, anim: &Value) -> Result<WordsCompose
     })
 }
 
+fn write_section_composition_file(hf: &Path, composition_id: &str, html: &str) -> Result<PathBuf> {
+    let file = hf
+        .join("compositions/words")
+        .join(format!("{composition_id}.html"));
+    fs::create_dir_all(
+        file.parent()
+            .ok_or_else(|| invalid("Output path has no parent"))?,
+    )?;
+    fs::write(&file, html)?;
+    let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
+    Ok(file)
+}
+
 /// `words.compose`: write the derived, untrimmed HyperFrames sub-composition for one animation.
 pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
@@ -1034,14 +1023,7 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
         &data,
         &local,
     )?;
-    let file = hf
-        .join("compositions/words")
-        .join(format!("{composition_id}.html"));
-    fs::create_dir_all(
-        file.parent()
-            .ok_or_else(|| invalid("Output path has no parent"))?,
-    )?;
-    fs::write(&file, &html)?;
+    let file = write_section_composition_file(&hf, &composition_id, &html)?;
     let drawings = compose_drawing_subcompositions(
         &hf,
         anim,
@@ -1052,7 +1034,6 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
         anchor,
         &words,
     )?;
-    let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
     Ok(json!({
         "ok": true,
         "animation_id": id,

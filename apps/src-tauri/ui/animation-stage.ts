@@ -6,6 +6,35 @@ function partBadge(stateName: string, title: string) {
 }
 function renderAnimationAssets() { animationView.renderAssets(); }
 function animationControls() { animationView.renderControls(); }
+function validExportResult(result: any): string {
+  const file = result?.outputs?.[0]?.file;
+  if (result?.ok !== true || result?.validation_ok === false || typeof file !== 'string' || !file) {
+    throw Error(result?.error || 'Animation save returned no verified output; inspect the retained result.');
+  }
+  return file;
+}
+async function runMotionExport(button: HTMLButtonElement, status: HTMLElement) {
+  animationPause();
+  await theatreSave();
+  theatreRequireSaved();
+  const character = motion.character, duration = motion.sample?.duration / motion.speed;
+  if (!character || !motion.track || !Number.isFinite(duration) || duration <= 0) {
+    throw Error('Choose an animation clip before saving.');
+  }
+  const project = state.project;
+  const params = { character, track: motion.track, rest: motion.rest, amount: motion.amount, duration, sync_video: true };
+  status.textContent = 'Saving animation and updating Studio…';
+  const result = await motionCommand('animation.render', params);
+  motion.lastExport = { project, character, params, result };
+  if (state.project !== project || motion.character !== character) return;
+  const file = validExportResult(result);
+  const synced = result.video_tracks_synced;
+  await motionCommand('project.save');
+  status.textContent = Array.isArray(synced) && synced.length
+    ? `Animation saved · Studio updated: ${synced.join(', ')}`
+    : 'Animation saved · no Studio track linked. Choose a scene under Placement.';
+  status.append(fileButton({ path: file, name: file.split('/').pop() }));
+}
 function motionExportControl() {
   const status = el('div', { id: 'motion-export-status', class: 'why', role: 'status' });
   let busy = false;
@@ -18,30 +47,7 @@ function motionExportControl() {
       try {
         busy = true;
         button.disabled = true;
-        animationPause();
-        await theatreSave();
-        theatreRequireSaved();
-        const duration = motion.sample?.duration / motion.speed;
-        if (!character || !motion.track || !Number.isFinite(duration) || duration <= 0) {
-          throw Error('Choose an animation clip before saving.');
-        }
-        const params = { character, track: motion.track, rest: motion.rest, amount: motion.amount, duration, sync_video: true };
-        busy = true;
-        button.disabled = true;
-        status.textContent = 'Saving animation and updating Studio…';
-        const result = await motionCommand('animation.render', params);
-        motion.lastExport = { project, character, params, result };
-        if (state.project !== project || motion.character !== character) return;
-        const file = result.outputs?.[0]?.file;
-        if (result.ok !== true || result.validation_ok === false || typeof file !== 'string' || !file) {
-          throw Error(result.error || 'Animation save returned no verified output; inspect the retained result.');
-        }
-        const synced = result.video_tracks_synced;
-        await motionCommand('project.save');
-        status.textContent = Array.isArray(synced) && synced.length
-          ? `Animation saved · Studio updated: ${synced.join(', ')}`
-          : 'Animation saved · no Studio track linked. Choose a scene under Placement.';
-        status.append(fileButton({ path: file, name: file.split('/').pop() }));
+        await runMotionExport(button, status);
       } catch (error) {
         if (state.project === project && motion.character === character) status.textContent = String(error);
       } finally {

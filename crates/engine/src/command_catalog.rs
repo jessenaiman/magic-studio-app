@@ -1105,7 +1105,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
 }
 
 fn specs_words_part2() -> Vec<CommandSpec> {
-    vec![
+    let mut out = vec![
         cmd!(
             "video.assemble",
             "Assemble and Export the Film (editor)",
@@ -1160,6 +1160,13 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             always,
             crate::words::cmd_words_compose
         ),
+    ];
+    out.extend(specs_workshop_queries());
+    out
+}
+
+fn specs_workshop_queries() -> Vec<CommandSpec> {
+    vec![
         query!(
             "workshop.files",
             "Workshop Files",

@@ -6,10 +6,9 @@ preset at a time, no parallel stage workers.
 
 ## How production works
 
-1. Choose the actual `pipeline_defs/<pipeline>.yaml` preset that matches the
-   deliverable and read it before execution. The preset is the stage contract:
-   `produces`, `tools_available`, `review_focus`, `success_criteria`,
-   `checkpoint_required`, `human_approval_default`.
+1. Follow the workflow stage contract (`produces`, `tools_available`,
+   `review_focus`, `success_criteria`, `checkpoint_required`,
+   `human_approval_default`).
 2. Execute stages serially in the preset's order. Produce the declared canonical
    artifacts (schema-valid, in the production workspace outside this repo) and
    write real progress to the checkpoint at each stage.

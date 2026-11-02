@@ -1,3 +1,0 @@
-# Development installs use production dependencies only.
-# Behavioral acceptance is managed by the native WebdriverIO runner.
--r requirements.txt

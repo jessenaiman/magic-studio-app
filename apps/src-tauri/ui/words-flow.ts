@@ -153,23 +153,74 @@ class WordsFlowController {
     return group;
   }
 
+  private stageTetherCurve(x1: number, y1: number, x2: number, y2: number, dashed: boolean) {
+    const mx = (x1 + x2) / 2;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${mx.toFixed(1)} ${y1.toFixed(1)}, ${mx.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`);
+    path.setAttribute("class", `words-arrow-curve active${dashed ? " stage-dashed" : " stage-solid"}`);
+    if (dashed) path.setAttribute("stroke-dasharray", "6 5");
+    return path;
+  }
+
+  private stageTetherDot(cx: number, cy: number, color = "var(--accent)") {
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    for (const [k, v] of [["cx", cx.toFixed(1)], ["cy", cy.toFixed(1)], ["r", "6"], ["fill", color], ["stroke", "var(--bg)"], ["stroke-width", "2"]]) c.setAttribute(k, v);
+    return c;
+  }
+
+  private buildStageTetherGroup(view: any, box: DOMRect) {
+    const activeLine = view.querySelector(".words-tl > .words-line.active");
+    const canvas = view.querySelector(".lyric-canvas");
+    if (!activeLine || !canvas) return null;
+    const tetherPort = activeLine.querySelector(".words-line-tether") || activeLine;
+    const portRect = tetherPort.getBoundingClientRect();
+    const x1 = portRect.right - box.left + view.scrollLeft, y1 = portRect.top + portRect.height / 2 - box.top + view.scrollTop;
+    const items = [...canvas.querySelectorAll(".lyric-item")];
+    const heroNode = canvas.querySelector(".lyric-item.active") || items.at(-1) || canvas;
+    const firstNode = items[0] && items[0] !== heroNode ? items[0] : null;
+    const heroRect = heroNode.getBoundingClientRect();
+    const hxL = heroRect.left - box.left + view.scrollLeft, hy = heroRect.top + heroRect.height / 2 - box.top + view.scrollTop;
+    const hxR = heroRect.right - box.left + view.scrollLeft;
+    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    group.setAttribute("class", "words-arrow-group active primary flowing");
+    group.setAttribute("data-line-id", activeLine.dataset.lineId || "");
+    group.setAttribute("data-start", "0"); group.setAttribute("data-end", "3");
+    if (firstNode) {
+      const fRect = firstNode.getBoundingClientRect();
+      const fx = fRect.left - box.left + view.scrollLeft, fy = fRect.top + fRect.height / 2 - box.top + view.scrollTop;
+      group.append(this.stageTetherCurve(x1, y1, fx, fy, true), this.stageTetherDot(fx, fy));
+    }
+    group.append(this.stageTetherCurve(x1, y1, hxL, hy, false), this.stageTetherDot(x1, y1), this.stageTetherDot(hxL, hy, "var(--amber)"), this.buildArrowNotesNode());
+    const rightFrame = view.querySelector(".words-roll > .words-graphic.active") || view.querySelector("#words-film .words-roll");
+    if (rightFrame) {
+      const rRect = rightFrame.getBoundingClientRect();
+      const rx = rRect.left - box.left + view.scrollLeft, ry = Math.min(rRect.bottom - 20, Math.max(rRect.top + 20, heroRect.top + heroRect.height * 0.35)) - box.top + view.scrollTop;
+      group.append(this.stageTetherCurve(hxR, hy, rx, ry, false), this.stageTetherDot(rx, ry));
+    }
+    return group;
+  }
+
   arrows(view: any) {
     view.querySelector(":scope > svg.words-arrows")?.remove();
     if (wordsPanel.links.hidden) return;
     const lines = [...view.querySelectorAll(".words-tl > .words-line")], frames = [...view.querySelectorAll(".words-roll > .words-graphic")];
-    if (!lines.length || !frames.length || !frames[0].offsetParent) return;
+    if (!lines.length) return;
     const box = view.getBoundingClientRect(), svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", `words-arrows${wordsPanel.links.pulse ? " blending" : ""}${wordsPanel.links.front ? " front" : ""}`);
     svg.setAttribute("role", "group"); svg.setAttribute("aria-label", "Lyric and drawing connections");
     svg.style.setProperty("--arrows-width", `${view.scrollWidth}px`); svg.style.setProperty("--arrows-height", `${view.scrollHeight}px`);
     const scale = parseFloat(getComputedStyle(view).getPropertyValue("--song-s")) || 18;
     for (const frame of frames) {
-      const cue = wordsPanel.read.graphics.find((c: any) => c.id === frame.dataset.cueId);
+      const cue = (wordsPanel.read?.graphics || []).find((c: any) => c.id === frame.dataset.cueId);
       if (!cue) continue;
       for (const line of lines) {
         const node = this.arrowNode(view, box, scale, cue, frame, line);
         if (node) svg.appendChild(node);
       }
+    }
+    if (wordsPanel.mode === "timing") {
+      const stageTether = this.buildStageTetherGroup(view, box);
+      if (stageTether) svg.appendChild(stageTether);
     }
     view.appendChild(svg);
     this.animateFlow(view, wordsPanel.time);
@@ -305,17 +356,17 @@ class WordsFlowController {
     const tl = view?.querySelector(".words-tl"), eye = view?.querySelector(".words-preview, .lyric-canvas");
     if (!tl || !eye || tl.clientHeight <= 0) return null;
     const seconds = Number(tl.style.getPropertyValue("--len-s")) || wordsSongSpan().end;
-    const box = view.getBoundingClientRect(), eyeY = Math.max(120, eye.getBoundingClientRect().bottom - box.top + 18);
-    view.style.setProperty("--words-playhead-y", `${Math.round(eyeY)}px`);
+    const box = view.getBoundingClientRect(), eyeY = 24;
+    view.style.setProperty("--words-playhead-y", `${eyeY}px`);
     return { tl, seconds, eyeY, tlTop: tl.getBoundingClientRect().top - box.top + view.scrollTop };
   }
 
   follow(t: number, smooth = false) {
     const view = $("view-design"), g = this.rollGeometry(view);
     if (!g) return;
-    const target = g.tlTop + g.tl.clientHeight * t / g.seconds - g.eyeY;
-    wordsPanel.programmaticScrollUntil = performance.now() + (smooth ? 450 : 90);
-    view.scrollTo({ top: Math.max(0, target), behavior: smooth ? "smooth" : "instant" });
+    const target = Math.max(0, g.tlTop + g.tl.clientHeight * t / g.seconds - 120);
+    wordsPanel.programmaticScrollUntil = performance.now() + (smooth ? 450 : 180);
+    view.scrollTo({ top: target, behavior: smooth ? "smooth" : "instant" });
   }
 
   ensureBelowVideo(t: number) {
@@ -325,7 +376,7 @@ class WordsFlowController {
   syncViewScroll(view: any) {
     this.arrows(view);
     const now = performance.now();
-    if (now < (wordsPanel.programmaticScrollUntil || 0) && now >= (wordsPanel.userWheelUntil || 0)) return;
+    if (now >= (wordsPanel.userWheelUntil || 0)) return;
     const g = this.rollGeometry(view);
     if (!g) return;
     const t = Math.max(0, Math.min(wordsSongSpan().end, ((view.scrollTop + g.eyeY - g.tlTop) / g.tl.clientHeight) * g.seconds));
@@ -600,17 +651,20 @@ class WordsStageController {
 
   private colChoreography(anim: any, lineId: string) {
     const layouts: Array<[string, string, string, string]> = [
-      ["plain", "karaoke", "Plain", "Clean horizontal row"],
-      ["poster", "giant", "Poster", "Hero word large & italic"],
-      ["stack", "stack", "Stack", "Vertical stepped column"],
       ["cascade", "cascade", "Cascade", "Diagonal staircase"],
-      ["scatter", "scatter", "Scatter", "Tilted dynamic spread"]
+      ["scatter", "scatter", "Spiral / Scatter", "Tilted dynamic spread"],
+      ["poster", "giant", "Zoom Blast", "Hero word giant & tilted"],
+      ["stack", "stack", "Stack", "Vertical stepped column"],
+      ["plain", "karaoke", "Plain", "Clean horizontal row"]
     ];
     return el("div", { class: "words-engine-col", "aria-label": "Choreography layouts" },
-      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Choreography"), el("span", { class: "meta" }, "Spatial layout")),
+      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Choreography")),
       el("div", { class: "words-choreo-grid" },
-        ...layouts.map(([kind, previewKey, name, does]) => {
-          const card = wordsCard(false, name, does, () => wordsDesignEdit(anim, lineId, (d) => { d.items = wordsLayout(anim, lineId, kind).items; }));
+        ...layouts.map(([kind, previewKey, name, does], idx) => {
+          const card = wordsCard(idx === (wordsPanel.choreoIdx ?? 0), name, does, () => {
+            wordsPanel.choreoIdx = idx;
+            wordsDesignEdit(anim, lineId, (d) => { d.items = wordsLayout(anim, lineId, kind).items; });
+          });
           card.classList.add("words-diagram-card");
           card.prepend(this.optionPreview("layouts", previewKey));
           return card;
@@ -619,46 +673,39 @@ class WordsStageController {
 
   private colMotionAndMarks(anim: any, lineId: string, design: any, activeIdx: number) {
     const it = design.items?.[activeIdx] || design.items?.[0];
-    const words = wordsLineWords(anim, lineId);
-    const strokeQuick = WORDS_STROKES.filter((s) => ["Underline", "Rising swoop", "Loop", "Hill", "Arrow down"].includes(s.name));
-    return el("div", { class: "words-engine-col", "aria-label": "Motion styles and marks" },
-      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Motion & Marks"), el("span", { class: "meta" }, "EffectCraft animators")),
+    const moves: Array<[string, string, string, string]> = [
+      ["pop", "⚡", "Bounce / Pop", "Burst on beat"],
+      ["loop", "〰", "Wave / Loop", "Continuous sway"],
+      ["fall", "📐", "Kinetic Tilt", "Drop in angled"],
+      ["rise", "🔥", "Fire / Impact", "Ignite upward"],
+      ["east", "✨", "Neon Drift", "Glide right"],
+      ["settle", "★", "Sparkle Settle", "Soft landing"]
+    ];
+    return el("div", { class: "words-engine-col", "aria-label": "Motion styles and shaders" },
+      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Motion Styles & Shaders")),
       el("div", { class: "words-motion-grid" },
-        ...WORDS_MOVES.map(([key, name, does]) => wordsCard(it?.motion === key, String(name), String(does), () => wordsDesignEdit(anim, lineId, (d) => {
-          const target = d.items[activeIdx] || d.items[0];
-          if (!target) return;
-          target.motion = key;
-          if (key !== "quiet" && !target.accent) target.accent = target.word_ids.at(-1);
-        })))),
-      el("div", { class: "words-marks-bar" },
-        el("span", { class: "meta" }, "Marks:"),
-        ...strokeQuick.map((s) => {
-          const active = (design.draws || []).some((d: any) => d.name === s.name);
-          return el("button", {
-            class: `chip words-mark-pill${active ? " active" : ""}`, "aria-pressed": String(active), title: `${s.name} · ${s.does}`,
-            onclick: () => wordsDesignEdit(anim, lineId, (d) => {
-              const existingIdx = (d.draws || []).findIndex((x: any) => x.name === s.name);
-              if (existingIdx >= 0) { d.draws.splice(existingIdx, 1); return; }
-              const near = d.items[activeIdx] || d.items[0] || { x: 400, y: 120, size: 90, color: "#B8442A", accent: null };
-              const accentWord = words.find((w: any) => w.word_id === near.accent);
-              const start = Math.max(0, (accentWord ? wordsAt(accentWord) : wordsLineSpan(anim, lineId).start) - wordsLineSpan(anim, lineId).start);
-              d.draws.push({
-                name: s.name, view_box: s.view_box, x: Math.round(near.x), y: Math.round((near.y || 120) + (near.size || 80) * 1.05), w: s.w, h: s.h,
-                paths: [{ d: s.d, stroke: near.color || "#B8442A", width: 7, from: +start.toFixed(2), to: +(start + s.draw).toFixed(2) }]
-              });
-            })
-          }, `✎ ${s.name}`);
-        })));
+        ...moves.map(([key, icon, name, does]) => el("button", {
+          class: `effect words-shader-card${it?.motion === key ? " active" : ""}`,
+          role: "radio", "aria-checked": String(it?.motion === key), title: `${name} · ${does}`,
+          onclick: () => wordsDesignEdit(anim, lineId, (d) => {
+            const target = d.items[activeIdx] || d.items[0];
+            if (!target) return;
+            target.motion = key;
+            if (key !== "quiet" && !target.accent) target.accent = target.word_ids.at(-1);
+          })
+        }, el("span", { class: "words-shader-icon" }, icon), el("strong", {}, name)))));
   }
 
   private buildTokenSliders(lineId: string, design: any, it: any, activeIdx: number) {
     const slider = (label: string, key: "size" | "rotate", min: number, max: number, unit: string) => {
-      const valBadge = el("span", { "data-slider-val": key, class: "words-slider-val" }, `${Math.round(Number(it[key] || 0))}${unit}`);
+      const rawVal = Math.round(Number(it?.[key] || (key === "size" ? 88 : 0)));
+      const display = key === "size" ? `${(rawVal / 80).toFixed(2)}x` : `${rawVal}${unit}`;
+      const valBadge = el("span", { "data-slider-val": key, class: "words-slider-val" }, display);
       const input = el("input", {
         "data-slider": key, type: "range", min: String(min), max: String(max), step: "1", "aria-label": `Token ${label}`,
         oninput: (e: any) => {
           const v = Number(e.target.value);
-          valBadge.textContent = `${v}${unit}`;
+          valBadge.textContent = key === "size" ? `${(v / 80).toFixed(2)}x` : `${v}${unit}`;
           const held = wordsPanel.designs.get(lineId) ?? structuredClone(design);
           if (held.items[activeIdx]) held.items[activeIdx][key] = v;
           wordsPanel.designs.set(lineId, held);
@@ -666,50 +713,61 @@ class WordsStageController {
         },
         onchange: () => wordsRender()
       });
-      input.value = input.defaultValue = String(Math.round(Number(it[key] || 0)));
+      input.value = input.defaultValue = String(rawVal);
       return el("label", { class: "words-slider-row" }, el("span", { class: "words-slider-label" }, label), input, valBadge);
     };
-    return el("div", { class: "words-sliders-box" }, slider("Size", "size", 24, 260, "px"), slider("Tilt", "rotate", -45, 45, "°"));
+    return el("div", { class: "words-sliders-box" }, slider("Scale", "size", 24, 260, "px"), slider("Tilt", "rotate", -45, 45, "°"));
   }
 
   private colTokenStyle(anim: any, lineId: string, design: any, activeIdx: number) {
     const it = design.items?.[activeIdx] || design.items?.[0];
     if (!it) return el("div", { class: "words-engine-col" }, el("p", { class: "muted" }, "Select a token to style."));
     const words = wordsLineWords(anim, lineId);
-    const tokenLabel = it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
     const curLook = WORDS_LETTERING.find((l) => l[3] === (it.font || "song") && l[4] === it.weight && l[5] === it.italic)?.[0] || "song";
+    const strokeQuick = WORDS_STROKES.filter((s) => ["Underline", "Rising swoop", "Loop", "Arrow down"].includes(s.name));
     const fill = el("input", {
       type: "color", "aria-label": "Token fill colour",
       onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].color = e.target.value; })
     });
-    fill.value = fill.defaultValue = (/^#[0-9a-f]{6}$/i.test(it.color || "") ? it.color : "#173f49").toLowerCase();
+    fill.value = fill.defaultValue = (/^#[0-9a-f]{6}$/i.test(it.color || "") ? it.color : "#f59e0b").toLowerCase();
     const outlineColor = el("input", {
       type: "color", "aria-label": "Token outline colour",
       onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].outline = e.target.value; })
     });
-    outlineColor.value = outlineColor.defaultValue = (/^#[0-9a-f]{6}$/i.test(it.outline || "") ? it.outline : "#fff8e9").toLowerCase();
+    outlineColor.value = outlineColor.defaultValue = (/^#[0-9a-f]{6}$/i.test(it.outline || "") ? it.outline : "#2a1205").toLowerCase();
     const outlineOn = el("input", {
       type: "checkbox", "aria-label": "Token outline enabled",
       onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].outline = e.target.checked ? outlineColor.value : null; })
     });
     outlineOn.checked = outlineOn.defaultChecked = !!it.outline;
-    const accent = el("select", {
-      "aria-label": "Lands on word",
-      onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].accent = e.target.value || null; })
-    }, el("option", { value: "" }, "Line start"), ...it.word_ids.map((id: string) => el("option", { value: id }, words.find((w: any) => w.word_id === id)?.text || id)));
-    accent.value = it.accent || "";
-    return el("div", { class: "words-engine-col", "aria-label": "Token style sliders and toggles" },
-      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Token Controls"), el("span", { class: "words-editing-token" }, `“${tokenLabel}”`)),
-      this.buildTokenSliders(lineId, design, it, activeIdx),
+    return el("div", { class: "words-engine-col", "aria-label": "Lettering and drawn marks" },
+      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Lettering & Drawn Marks")),
       el("div", { class: "words-typeface-pills" },
         ...WORDS_LETTERING.map(([key, name, does, font, weight, italic]) => el("button", {
           class: `chip words-type-pill${curLook === key ? " active" : ""}`, "aria-pressed": String(curLook === key), title: `${name} · ${does}`,
           onclick: () => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) Object.assign(d.items[activeIdx], { font, weight, italic }); })
         }, String(name)))),
+      el("div", { class: "words-marks-bar" },
+        ...strokeQuick.map((s) => {
+          const active = (design.draws || []).some((d: any) => d.name === s.name);
+          return el("button", {
+            class: `chip words-mark-pill${active ? " active" : ""}`, "aria-pressed": String(active), title: `${s.name} · ${s.does}`,
+            onclick: () => wordsDesignEdit(anim, lineId, (d) => {
+              const existingIdx = (d.draws || []).findIndex((x: any) => x.name === s.name);
+              if (existingIdx >= 0) { d.draws.splice(existingIdx, 1); return; }
+              const near = d.items[activeIdx] || d.items[0] || { x: 400, y: 480, size: 160, color: "#f59e0b", accent: null };
+              const accentWord = words.find((w: any) => w.word_id === near.accent);
+              const start = Math.max(0, (accentWord ? wordsAt(accentWord) : wordsLineSpan(anim, lineId).start) - wordsLineSpan(anim, lineId).start);
+              d.draws.push({
+                name: s.name, view_box: s.view_box, x: Math.round(near.x), y: Math.round((near.y || 480) + (near.size || 140) * 1.02), w: s.w, h: s.h,
+                paths: [{ d: s.d, stroke: near.color || "#f59e0b", width: 8, from: +start.toFixed(2), to: +(start + s.draw).toFixed(2) }]
+              });
+            })
+          }, `✎ ${s.name}`);
+        })),
       el("div", { class: "words-style-toggles" },
         el("label", { class: "field-row" }, "Fill", fill),
-        el("label", { class: "field-row" }, outlineOn, "Outline", outlineColor),
-        el("label", { class: "field-row" }, "Lands on", accent)));
+        el("label", { class: "field-row" }, outlineOn, "Outline", outlineColor)));
   }
 
   upperTracks(anim: any) {
@@ -722,11 +780,11 @@ class WordsStageController {
     return el("section", { class: "words-layers words-upper-tracks", "aria-label": `${wordsLabel(anim)} scene and look tracks` },
       el("div", { class: "words-shelf-bar words-upper-bar", role: "toolbar", "aria-label": "Scene and look tracks" },
         this.shelfTab(top, "scene", "Scene", sceneName, pickTop("scene")),
-        this.shelfTab(top, "lettering", "Style", lib.letterings?.[curLettering]?.name || "Custom", pickTop("lettering")),
-        this.shelfTab(top, "layout", "Layout", lib.layouts?.[k.layout]?.name || k.layout, pickTop("layout")),
+        this.shelfTab(top, "lettering", "Style", lib.letterings?.[curLettering]?.name || "Ignite Kinetic", pickTop("lettering")),
+        this.shelfTab(top, "layout", "Layout", "Dynamic Shift", pickTop("layout")),
         this.shelfTab(top, "overlay", "Atmosphere", lib.overlays?.[k.overlay || "none"]?.name || (k.overlay || "None"), pickTop("overlay")),
         el("span", { class: "words-spacer" }),
-        el("button", { class: "ghost", title: "Shuffle the lyric layout and entrance; keep drawings", onclick: () => wordsShuffle(true) }, "Shuffle")),
+        el("button", { class: "ghost", title: "Presets & Styles", onclick: pickTop("lettering") }, "✨ Presets & Styles ▾")),
       top === "scene" ? wordsBackdropPicker(anim) : null,
       top === "lettering" ? this.choiceRow(lib, "letterings", curLettering, (key) => wordsKinetic({ style: lib.letterings[key].style })) : null,
       top === "layout" ? this.choiceRow(lib, "layouts", k.layout, (layout) => wordsKinetic({ layout })) : null,
@@ -739,12 +797,21 @@ class WordsStageController {
     const lines = wordsLines(anim), lineId = wordsPanel.line || lines[0]?.id;
     const design = lineId ? wordsDesign(anim, lineId) : { items: [], draws: [] };
     const activeIdx = this.resolveActiveItemIndex(design, picked);
+    const it = design.items?.[activeIdx] || design.items?.[0];
+    const words = lineId ? wordsLineWords(anim, lineId) : [];
+    const tokenLabel = it ? it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ").toUpperCase() : "TOKEN";
     return el("section", { class: "words-layers words-lower-tracks", "aria-label": `${wordsLabel(anim)} animation engine inspector` },
       this.selectionBar(anim, lib, k, picked),
-      el("div", { class: "words-engine-grid", role: "group", "aria-label": "Advanced Animation Engine" },
-        this.colChoreography(anim, lineId),
-        this.colMotionAndMarks(anim, lineId, design, activeIdx),
-        this.colTokenStyle(anim, lineId, design, activeIdx)));
+      el("div", { class: "words-engine-panel", role: "group", "aria-label": "Advanced Animation Engine" },
+        el("div", { class: "words-engine-header" },
+          el("div", { class: "words-engine-title" },
+            el("strong", {}, "ADVANCED ANIMATION ENGINE"),
+            el("span", { class: "words-editing-token" }, `— Editing token: "${tokenLabel}"`)),
+          it ? this.buildTokenSliders(lineId, design, it, activeIdx) : null),
+        el("div", { class: "words-engine-grid" },
+          this.colChoreography(anim, lineId),
+          this.colMotionAndMarks(anim, lineId, design, activeIdx),
+          this.colTokenStyle(anim, lineId, design, activeIdx))));
   }
 
   async apply(use: boolean) {

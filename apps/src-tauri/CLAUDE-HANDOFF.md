@@ -119,7 +119,7 @@ combined publish command, not repeated LLM arithmetic. No automatic “back to d
 - Storyboard landscape doc generated with `workshop.build_storyboard template=magic-studio source=<source>`:
   38slides,35real scenes,actual revision03 references,approved lyrics,script acting cues. Editable
   DeckCraft + linked PDF (70links verified), continuous scroll, clickable contents, collapsible project
-  details. Source script `pipeline/movie_board.py`. New builds preserve old revisions.
+  details. Native Rust `crates/engine/src/storyboard_build.rs`. New builds preserve old revisions.
 - `agent.new_chat` is shared engine/CLI/MCP, plus header+ button; preserves history/model, sends app
   agent.md to fresh session. First fresh session learned correctly but verbose boot message is visible.
 - Imported approved `artifacts/lyric-verification/lyrics.words.json` + `assets/subtitles.srt`. Raw

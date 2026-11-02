@@ -100,16 +100,15 @@ engineering evidence; it does not control sessions.
 
 ## Reuse the production toolkit
 
-The source repository retains `pipeline/`, `pipeline_defs/`, `agents/`, `skills/`,
-and the composition adapters. These are working building blocks for
-agent-directed production, not a second installation path. Read
-[the agent guide](AGENT_GUIDE.md) and the selected pipeline preset before using
-them; preflight actual dependencies and provider access in the prepared source
+The source repository retains `pipeline/`, `agents/`, and `.agents/skills/`.
+These are working building blocks for agent-directed production, not a second
+installation path. Read [the agent guide](AGENT_GUIDE.md) before using them;
+preflight actual dependencies and provider access in the prepared source
 environment.
 
-Pipeline stages exchange canonical artifacts. Composition may use approved
-Remotion, HyperFrames, or FFmpeg paths according to the pipeline; the desktop
-Studio remains HyperFrames. Preserve approval gates, source credit, provenance,
-cost records, and editable assets when adapting a workflow.
+Pipeline stages exchange canonical artifacts. Composition uses EffectCraft,
+FilmCraft, DeckCraft, or HyperFrames according to the workflow. Preserve
+approval gates, source credit, provenance, cost records, and editable assets
+when adapting a workflow.
 
 [License](LICENSE) · [Source attribution](SOURCE-ATTRIBUTION.md)

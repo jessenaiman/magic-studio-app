@@ -68,13 +68,26 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
     }))
 }
 
+fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
+    let is_checkout = |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/src-tauri/Cargo.toml").is_file();
+    if is_checkout(&s.cwd) {
+        return s.cwd.clone();
+    }
+    if let Ok(canon) = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize()
+        && is_checkout(&canon)
+    {
+        return canon;
+    }
+    crate::workspace::workspace_root(s)
+}
+
 pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
     let scan = params.get("scan").and_then(Value::as_bool).unwrap_or(false);
     let doctor = cmd_app_doctor(s, &json!({ "clean": false }))?;
     let host = read_host_telemetry();
     let usage = read_omarchy_usage();
     let project = read_project_analytics(s);
-    let root = crate::workspace::workspace_root(s);
+    let root = analytics_source_root(s);
     let complexity = crate::complexity::read(&root, scan);
     let worktrees = read_agent_worktrees(&root, scan);
     let errors = crate::activity::errors(s, &json!({}))?;

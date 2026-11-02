@@ -40,7 +40,6 @@ const RETIRED: &[&str] = &["magicstudio-shell", "python-magic-cli"];
 const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/"];
 const RESOURCE_FILES: &[&str] = &[
     "apps/src-tauri/agent.md",
-    "config.yaml",
     "SOURCE-ATTRIBUTION.md",
     "LICENSE",
 ];
@@ -87,6 +86,12 @@ fn wanted_resource(name: &str) -> bool {
 /// Copy tracked runtime resources and record which source and app build they came from.
 fn install_resources(root: &Path, prefix: &Path, app: &Path) -> Result<()> {
     let runtime = prefix.join("share/magic-studio/runtime");
+    for subdir in ["pipeline", ".agents/skills", "scripts", "skills", "pipeline_defs"] {
+        let dir = runtime.join(subdir);
+        if dir.is_dir() {
+            io(dir.display(), std::fs::remove_dir_all(&dir))?;
+        }
+    }
     for name in git(root, &["ls-files", "-z"])?
         .split('\0')
         .filter(|n| wanted_resource(n))
@@ -285,7 +290,7 @@ mod tests {
     #[test]
     fn runtime_resources_exclude_tests_and_unlisted_files() {
         assert!(wanted_resource("pipeline/templates/words-kinetic.html"));
-        assert!(wanted_resource("config.yaml"));
+        assert!(wanted_resource("apps/src-tauri/agent.md"));
         assert!(!wanted_resource("pipeline/tests/test_layout.py"));
         assert!(!wanted_resource("lib/test_helpers.py"));
         assert!(!wanted_resource("apps/magic-cli/src/main.rs"));

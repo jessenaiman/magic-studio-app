@@ -748,49 +748,32 @@ fn write_build_scene_map(
     Ok(scene_map)
 }
 
-fn build_movie_board_args(
+fn run_movie_board_build(
     s: &Session,
     params: &Value,
     template: &Path,
     transcript: &Path,
     scene_map: &Path,
     out: &Path,
-    title: String,
-) -> Result<Vec<String>> {
-    let script = crate::workspace::workspace_root(s).join("pipeline/movie_board.py");
-    let mut args = vec![
-        script.to_string_lossy().into_owned(),
-        "--template".into(),
-        template.to_string_lossy().into_owned(),
-        "--transcript".into(),
-        transcript.to_string_lossy().into_owned(),
-        "--scene-map".into(),
-        scene_map.to_string_lossy().into_owned(),
-        "--out".into(),
-        out.to_string_lossy().into_owned(),
-        "--title".into(),
+    title: &str,
+) -> Result<Value> {
+    let allow_timing_overrun = params["allow_timing_overrun"] == true;
+    if allow_timing_overrun && params["draft"] != true {
+        return Err(EngineError::InvalidParams(
+            "Timing-overrun source may only produce an explicitly warned draft".into(),
+        ));
+    }
+    let source = params["source"].as_str().map(|src| resolve_workspace_path(s, src));
+    crate::storyboard_build::build(crate::storyboard_build::BuildStoryboardArgs {
+        transcript,
+        source: source.as_deref(),
+        out,
         title,
-    ];
-    if params["allow_timing_overrun"] == true {
-        if params["draft"] != true {
-            return Err(EngineError::InvalidParams(
-                "Timing-overrun source may only produce an explicitly warned draft".into(),
-            ));
-        }
-        args.push("--allow-timing-overrun".into());
-    }
-    if let Some(source) = params["source"].as_str() {
-        args.extend([
-            "--source".into(),
-            resolve_workspace_path(s, source)
-                .to_string_lossy()
-                .into_owned(),
-        ]);
-    }
-    if let Some(panels) = params["panels"].as_str() {
-        args.extend(["--panels".into(), panels.into()]);
-    }
-    Ok(args)
+        scene_map,
+        allow_timing_overrun,
+        panels: params["panels"].as_str(),
+        template,
+    })
 }
 
 fn finalize_storyboard_build_result(
@@ -890,10 +873,8 @@ pub fn cmd_workshop_build_storyboard(s: &mut Session, params: &Value) -> Result<
     std::fs::create_dir_all(&out)?;
     let scene_map =
         write_build_scene_map(s, &dir, &out, params, &active_board, &transcript, &scenes)?;
-    let args = build_movie_board_args(s, params, &template, &transcript, &scene_map, &out, title)?;
-    let output = run_tool_in(&dir, "python3", &args)?;
-    let result: Value =
-        serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let result =
+        run_movie_board_build(s, params, &template, &transcript, &scene_map, &out, &title)?;
     finalize_storyboard_build_result(s, &dir, &out, params, result)
 }
 
@@ -942,7 +923,7 @@ pub fn cmd_storyboard_template(s: &mut Session, p: &Value) -> Result<Value> {
     let path = resolve_storyboard_template(s, requested)?;
     Ok(
         json!({"ok":true,"path":path,"editor":"DeckCraft","selected":DEFAULT_STORYBOARD_TEMPLATE,
-        "generator":"pipeline/movie_board.py","template_population":"pipeline/storyboard_layout.py"}),
+        "generator":"crates/engine/src/storyboard_build.rs","template_population":"crates/engine/src/storyboard_layout.rs"}),
     )
 }
 
@@ -1109,20 +1090,7 @@ pub fn cmd_storyboard_doctor(s: &mut Session, p: &Value) -> Result<Value> {
     );
     let start = std::time::Instant::now();
     let result = (|| -> Result<Value> {
-        let script = crate::workspace::workspace_root(s).join("pipeline/movie_board.py");
-        let output = run_tool_in(
-            &dir,
-            "python3",
-            &[
-                script.to_string_lossy().into_owned(),
-                "--doctor".into(),
-                manifest.to_string_lossy().into_owned(),
-                "--source".into(),
-                dir.to_string_lossy().into_owned(),
-            ],
-        )?;
-        let mut value: Value =
-            serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+        let mut value = crate::storyboard_build::doctor(&manifest, &dir)?;
         value["project"] = json!(s.project_path);
         value["storyboard_revision"] = json!(doctor_revision(&dir));
         value["assessed_at_unix_ms"] = json!(

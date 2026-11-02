@@ -445,7 +445,8 @@ class WordsViewController {
       const seconds = Number(row.style.getPropertyValue("--len-s"));
       if (seconds > 0) scale = Math.max(scale, (row.scrollHeight + parseFloat(getComputedStyle(row).marginTop || "0") + 4) / seconds);
     }
-    if (scale > base) view.style.setProperty("--song-s", `${Math.ceil(scale)}px`);
+    const capped = Math.min(36, scale);
+    if (capped > base) view.style.setProperty("--song-s", `${Math.ceil(capped)}px`);
   }
 
   sizeInput(anim: any) {
@@ -744,6 +745,7 @@ class WordsViewController {
   }
 
   handleStateMessage(data: any) {
+    if (!$("words-video-frame") || wordsPanel.view === "design") return;
     const song = data.currentTime + wordsPanel.offset;
     if (!data.isPlaying && performance.now() < (wordsPanel.userScrollingUntil || 0)) return;
     if (this.syncPendingSeek(song, data.isPlaying)) return;

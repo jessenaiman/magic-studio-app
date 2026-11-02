@@ -27,8 +27,8 @@ fn long_file_limit(root: &Path) -> u64 {
         .unwrap_or(COMPLEXITY_LONG_FILE_LINES)
 }
 
-/// The sources worth measuring: the Rust engine, app, CLI and installer, the Python pipeline and
-/// scripts, and the shell UI's own TypeScript/JavaScript modules (vendor bundles are excluded).
+/// The sources worth measuring: the Rust engine, app, CLI and installer, the pipeline templates/scripts,
+/// and the shell UI's own TypeScript/JavaScript modules (vendor bundles are excluded).
 fn scan_targets(root: &Path) -> Vec<String> {
     let mut targets: Vec<String> = vec![
         "crates/engine/src".to_string(),
@@ -40,7 +40,6 @@ fn scan_targets(root: &Path) -> Vec<String> {
         "apps/src-tauri/frontend/project-id.ts".to_string(),
         "apps/backstage/src".to_string(),
         "pipeline".to_string(),
-        "scripts".to_string(),
     ];
     let ui_dir = root.join("apps/src-tauri/ui");
     let Ok(entries) = std::fs::read_dir(&ui_dir) else {
@@ -358,7 +357,6 @@ fn source_dirty(root: &Path) -> Option<bool> {
             "apps/src-tauri/ui",
             "apps/backstage/src",
             "pipeline",
-            "scripts",
             "code-limits.json",
         ])
         .current_dir(root)
