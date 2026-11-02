@@ -98,14 +98,44 @@ fn theatre_bundle() {
     bun(&["run", "build"]);
 }
 
+fn find_tsc(repo_root: &std::path::Path) -> std::path::PathBuf {
+    let local = repo_root.join("node_modules/.bin/tsc");
+    if local.is_file() {
+        return local;
+    }
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .current_dir(repo_root)
+        .output()
+        && out.status.success()
+    {
+        let raw = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+        let common = std::path::Path::new(&raw);
+        let resolved = if common.is_absolute() {
+            common.to_path_buf()
+        } else {
+            repo_root.join(common)
+        };
+        if let Some(main_root) = resolved.parent() {
+            let shared = main_root.join("node_modules/.bin/tsc");
+            if shared.is_file() {
+                return shared;
+            }
+        }
+    }
+    std::path::PathBuf::from("tsc")
+}
+
 /// Every `ui/*.ts` is the source of a classic script: `ui/<name>.js` is generated from it with
-/// Bun's transpiler (types stripped, no bundling, so index.html loads it unchanged). The `.js`
-/// files are gitignored, rebuilt when missing or older than their source, like the Theatre bundle.
+/// Bun's transpiler and typechecked with `tsc -p .` so type errors fail the build.
 fn ui_typescript() {
+    println!("cargo:rerun-if-changed=../../tsconfig.json");
+    println!("cargo:rerun-if-changed=types");
     let Ok(entries) = std::fs::read_dir("ui") else {
         return;
     };
     let modified = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let mut rebuilt = false;
     for source in entries.flatten().map(|e| e.path()) {
         if source.extension().and_then(|e| e.to_str()) != Some("ts") {
             continue;
@@ -115,6 +145,7 @@ fn ui_typescript() {
         if output.exists() && modified(&source) <= modified(&output) {
             continue;
         }
+        rebuilt = true;
         let status = std::process::Command::new("bun")
             .args(["build", "--no-bundle", "--target=browser"])
             .arg(&source)
@@ -126,6 +157,24 @@ fn ui_typescript() {
             status.success(),
             "`bun build` failed for {}",
             source.display()
+        );
+    }
+    if rebuilt {
+        let repo_root = std::path::Path::new("../..");
+        let tsc = find_tsc(repo_root);
+        let status = std::process::Command::new(&tsc)
+            .args(["-p", "."])
+            .current_dir(repo_root)
+            .status()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Typechecking UI TypeScript needs tsc ({}): {e}",
+                    tsc.display()
+                )
+            });
+        assert!(
+            status.success(),
+            "`tsc -p .` failed; fix TypeScript errors before building"
         );
     }
 }

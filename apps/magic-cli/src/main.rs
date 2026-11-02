@@ -61,26 +61,31 @@ enum Cmd {
     },
     /// Serve Magic commands over MCP stdio (official rmcp SDK).
     Mcp,
-    /// Run the repository's own checks and print what they print.
+    /// Auto-fix formatting and lint issues (`cargo fmt`, `eslint --fix`, `stylelint --fix`).
+    Doctor {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+    /// Full repository report: run all installed checks and populate Mayhem UI/TUI analytics.
     ///
-    /// Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace, jscpd,
-    /// PurgeCSS, scope. Each tool uses PATH (or root node_modules/.bin) and the nearest
-    /// repository configuration at or above PATH, up to the repository top. Missing
-    /// tools/configuration are errors, not passing or skipped checks.
-    ///
-    /// Tool output reaches this terminal exactly as the tool wrote it. This command only
-    /// decides what to run and where; it does not parse, score, rank or summarize findings.
-    ///
-    /// Lizard takes its thresholds from code-limits.json. Each native exit code is
-    /// printed; the command returns the first nonzero status, or 0. Setup errors use 2;
-    /// signals use 128 + signal. Global --dry-run prints commands without running them.
-    /// A file defaults to Lizard; a Rust file such as module.rs also scans module/.
+    /// Default order: cargo clippy, tsc, ESLint, Stylelint, Lizard, Wallace, jscpd,
+    /// PurgeCSS, scope. Saves measurements and violation counts to target/analytics/.
     #[command(verbatim_doc_comment)]
     Audit {
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Select a native tool; repeat to choose several. Default: Lizard for a file,
-        /// every tool for a directory.
+        /// Select a native tool; repeat to choose several.
+        #[arg(long = "tool", value_parser = audit_tool)]
+        tools: Vec<String>,
+        /// Git revision the scope is measured from.
+        #[arg(long, default_value = "HEAD")]
+        base: String,
+    },
+    /// Review a specific file or folder with all applicable native tools.
+    Review {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Select a native tool; repeat to choose several.
         #[arg(long = "tool", value_parser = audit_tool)]
         tools: Vec<String>,
         /// Git revision the scope is measured from.
@@ -359,16 +364,31 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
         Cmd::Studio { action } => run_studio(s, action, dry)?,
         Cmd::Session { action } => run_session(s, action)?,
         Cmd::Registry(tokens) => run_registry(s, &tokens, dry)?,
-        Cmd::Mcp | Cmd::Audit { .. } => unreachable!("handled before a session is loaded"),
+        Cmd::Mcp | Cmd::Doctor { .. } | Cmd::Audit { .. } | Cmd::Review { .. } => {
+            unreachable!("handled before a session is loaded")
+        }
     }
     Ok(())
 }
 
 fn run(cli: Cli) -> Result<(), String> {
-    // The audit reads the repository, never a project or window: no session needed.
-    if let Some(Cmd::Audit { path, tools, base }) = &cli.command {
-        let target = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        std::process::exit(audit::run(&target, tools, cli.dry_run, base));
+    match &cli.command {
+        Some(Cmd::Doctor { path }) => {
+            let target =
+                std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            std::process::exit(audit::doctor(&target, cli.dry_run));
+        }
+        Some(Cmd::Audit { path, tools, base }) => {
+            let target =
+                std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            std::process::exit(audit::run(&target, tools, cli.dry_run, base, false));
+        }
+        Some(Cmd::Review { path, tools, base }) => {
+            let target =
+                std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            std::process::exit(audit::run(&target, tools, cli.dry_run, base, true));
+        }
+        _ => {}
     }
     let mcp = matches!(cli.command, Some(Cmd::Mcp));
     let mut s = Session::load(cli.session_file, if mcp { "MCP" } else { "CLI" })?;

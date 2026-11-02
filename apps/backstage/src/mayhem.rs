@@ -656,7 +656,98 @@ fn selected_project(
     }
 }
 
+fn read_saved_analytics_json(name: &str) -> Option<serde_json::Value> {
+    let path = crate::audit::default_analytics_path(name)?;
+    let bytes = std::fs::read(path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn draw_saved_mayhem_metrics(
+    f: &mut Frame,
+    area: Rect,
+    audit: Option<&serde_json::Value>,
+    lizard: Option<&serde_json::Value>,
+) {
+    let comp = audit
+        .and_then(|v| v.get("complexity"))
+        .or(lizard)
+        .unwrap_or(&serde_json::Value::Null);
+    let rev = audit
+        .and_then(|v| v["source_revision"].as_str())
+        .or_else(|| comp["source_revision"].as_str())
+        .unwrap_or("unknown");
+    let source = format!("saved target/analytics • rev {rev} • press a for tool details");
+    let body = panel(f, area, "MAYHEM AUDIT & CODE METRICS", &source);
+    let checks = audit
+        .and_then(|a| {
+            Some(format!(
+                "{} / {} passed ({} failed)",
+                a["passed"].as_u64()?,
+                a["total"].as_u64()?,
+                a["failed"].as_u64().unwrap_or(0)
+            ))
+        })
+        .unwrap_or_else(|| "Run magic-cli audit".into());
+    let rows = [
+        ("Audit checks:", checks),
+        (
+            "Functions:",
+            format!(
+                "{} analyzed • {} over CCN 15 • max CCN {}",
+                comp["functions_analyzed"].as_u64().unwrap_or(0),
+                comp["functions_over_ccn_15"].as_u64().unwrap_or(0),
+                comp["max_ccn"].as_u64().unwrap_or(0)
+            ),
+        ),
+        (
+            "Source lines:",
+            format!(
+                "{} lines across {} files ({} long >2k)",
+                comp["total_source_lines"].as_u64().unwrap_or(0),
+                comp["files_analyzed"].as_u64().unwrap_or(0),
+                comp["long_files_over_2000"].as_u64().unwrap_or(0)
+            ),
+        ),
+        (
+            "Top hotspot:",
+            comp["hotspots"]
+                .as_array()
+                .and_then(|h| h.first())
+                .map(|top| {
+                    format!(
+                        "{} (CCN {}) • {}:{}",
+                        top["name"].as_str().unwrap_or("?"),
+                        top["ccn"].as_u64().unwrap_or(0),
+                        top["file"].as_str().unwrap_or("?"),
+                        top["start_line"].as_u64().unwrap_or(0)
+                    )
+                })
+                .unwrap_or_else(|| "None".into()),
+        ),
+    ];
+    for (idx, (k, v)) in rows.iter().enumerate() {
+        let y = body.y + idx as u16 * 2;
+        if y >= body.y + body.height {
+            break;
+        }
+        label(f, Rect::new(body.x + 1, y, 15, 1), k, IVORY, false);
+        label(
+            f,
+            Rect::new(body.x + 17, y, body.width.saturating_sub(18), 1),
+            v,
+            if idx == 0 { GOLD } else { CYAN },
+            false,
+        );
+    }
+}
+
 fn tokens(f: &mut Frame, area: Rect, project: Option<&str>) {
+    let audit = read_saved_analytics_json("audit.json");
+    let lizard = read_saved_analytics_json("lizard.json");
+    if audit.is_some() || lizard.is_some() {
+        draw_saved_mayhem_metrics(f, area, audit.as_ref(), lizard.as_ref());
+        return;
+    }
     let title = "TOKEN USAGE";
     let source = project
         .map(|p| format!("selected: {p} • source unavailable"))

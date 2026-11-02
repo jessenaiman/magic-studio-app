@@ -36,7 +36,28 @@ fn valid_hex_sha(value: &str) -> bool {
     (7..=64).contains(&value.len()) && value.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+pub fn default_analytics_dir() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    let root = cwd
+        .ancestors()
+        .find(|p| p.join(".git").exists() && p.join("Cargo.toml").exists())?;
+    Some(root.join("target/analytics"))
+}
+
+pub fn default_analytics_path(name: &str) -> Option<PathBuf> {
+    let path = default_analytics_dir()?.join(name);
+    path.is_file().then_some(path)
+}
+
 impl Inputs {
+    pub fn from_saved_analytics() -> Option<Self> {
+        Some(Self {
+            baseline: Some(default_analytics_path("audit-baseline.json")?),
+            candidate: Some(default_analytics_path("audit-candidate.json")?),
+            ..Self::default()
+        })
+    }
+
     fn apply_flag(&mut self, flag: &str, value: &str) -> Result<bool, String> {
         match flag {
             "--audit-baseline" => self.baseline = Some(value.into()),
@@ -85,19 +106,19 @@ impl Inputs {
         Ok(input)
     }
     pub fn load(&self) -> Result<Comparison, String> {
+        let baseline = self
+            .baseline
+            .clone()
+            .or_else(|| default_analytics_path("audit-baseline.json"))
+            .ok_or("--audit-baseline is required (or run magic-cli audit first)")?;
+        let candidate = self
+            .candidate
+            .clone()
+            .or_else(|| default_analytics_path("audit-candidate.json"))
+            .ok_or("--audit-candidate is required (or run magic-cli audit first)")?;
         Ok(Comparison {
-            baseline: load(
-                self.baseline
-                    .as_ref()
-                    .ok_or("--audit-baseline is required")?,
-                self.baseline_sha.clone(),
-            )?,
-            candidate: load(
-                self.candidate
-                    .as_ref()
-                    .ok_or("--audit-candidate is required")?,
-                self.candidate_sha.clone(),
-            )?,
+            baseline: load(&baseline, self.baseline_sha.clone())?,
+            candidate: load(&candidate, self.candidate_sha.clone())?,
             baseline_supplement: self
                 .baseline_supplement
                 .as_ref()

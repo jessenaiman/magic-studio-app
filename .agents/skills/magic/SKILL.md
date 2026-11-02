@@ -28,9 +28,13 @@ This is production onboarding, not installation or a second studio setup.
 3. In the app, select **Studio** for the linked HyperFrames workspace; use its
    existing Studio switch if off. Do not create another studio, install tools,
    or start a model/agent merely to discover capabilities.
-4. Save intentional edits and inspect actual saved/visible results. A lost reply
-   has an unknown outcome; inspect before retrying. A disconnected pinned window
-   requires explicit reselection. For MCP entry instructions: `magic-cli mcp --help`.
+4. Save intentional edits and inspect actual saved/visible results. Use
+   `agent-desktop snapshot --app magic-studio -i` (after reading
+   `agent-desktop skills get desktop` and `agent-desktop skills get platform`)
+   to inspect and act on live accessibility refs when verifying desktop UI.
+   A lost reply has an unknown outcome; inspect before retrying. A disconnected
+   pinned window requires explicit reselection. For MCP entry instructions:
+   `magic-cli mcp --help`.
 
 ## Success Criteria
 

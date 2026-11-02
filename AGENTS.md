@@ -6,6 +6,7 @@ binary; written tool lists go stale the moment an app updates. Discover, don't
 assume:
 
 - This app: `magic-cli --help`, `magic-cli commands`, `magic-cli studio list`
+- Desktop accessibility tree (`vercel-labs/agent-desktop`): `agent-desktop skills get desktop`, `agent-desktop skills get platform`, `agent-desktop snapshot --app magic-studio -i`
 - The suite, one line per app: [`.agents/skills/artcraft-suite/SKILL.md`](.agents/skills/artcraft-suite/SKILL.md)
 - Engine behavior on this checkout: the command registry in `crates/engine/src/commands.rs`
 

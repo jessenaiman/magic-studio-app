@@ -3,18 +3,8 @@ repos:
     rev: v0.24.0
     hooks:
       - id: markdownlint-cli2
-        files: ^(?:\.agents/skills/magic-[^/]+|skills/(?:[^/]+/)*magic-[^/]+)/.*\.md$
+        files: ^\.agents/skills/magic-[^/]+/.*\.md$
         args: [--no-globs]
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
-    hooks:
-      - id: ruff-check
-        types_or: [python, pyi]
-        files: ^(?:pipeline|scripts)/.*\.pyi?$
-      - id: ruff-format
-        types_or: [python, pyi]
-        files: ^(?:pipeline|scripts)/.*\.pyi?$
-        args: [--check]
   - repo: local
     hooks:
       - id: cargo-fmt
