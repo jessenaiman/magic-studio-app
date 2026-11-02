@@ -32,11 +32,11 @@ exploration of 28 March 2026 and include later provider/runtime additions.
 User gives topic/idea
         |
         v
-Agent reads pipeline manifest (YAML)
+Agent reads pipeline preset (YAML)
         |
         v
 For each stage:
-   1. Agent reads stage-director skill (Markdown)
+   1. Agent follows the Video Production department agent (agents/)
    2. Agent calls Python tools via tool registry
    3. Agent writes checkpoint (JSON) with artifacts
    4. Agent self-reviews using meta/reviewer skill
@@ -84,9 +84,9 @@ magic-studio-app/
 ├── skills/                 # Layer 2: Magic Studio-specific agent instructions
 │   ├── core/               # FFmpeg, Remotion, WhisperX, color grading skills
 │   ├── creative/           # Video editing, enhancement, data viz, prompt engineering
-│   ├── meta/               # reviewer, checkpoint-protocol, skill-creator
-│   └── pipelines/          # Per-pipeline stage-director skills
+│   └── meta/               # reviewer, skill-creator, animation-runtime-selector
 │
+├── agents/                 # Department agent files (storyboard, animation, lyrics, video-production, mayhem)
 ├── .agents/skills/         # Layer 3: external technology skills (FFmpeg, HyperFrames, GSAP, etc.)
 ├── styles/                 # Visual style playbooks (YAML) + loader
 ├── remotion-composer/      # Node.js/React — Remotion video composition renderer
@@ -102,12 +102,13 @@ magic-studio-app/
 ### 1. Agent-First Orchestration
 
 There is **no Python orchestrator**. The LLM agent:
-- Reads the pipeline manifest to know the stage order
-- Reads each stage-director skill for detailed instructions
+- Reads the pipeline preset to know the stage order
+- Follows the Video Production department agent for stage execution
 - Calls tools, evaluates results, makes creative decisions
 - Writes checkpoints to persist state between stages
 
-Python provides **tools and persistence only**. All intelligence lives in skill instructions (Markdown) and pipeline manifests (YAML).
+Python provides **tools and persistence only**. All intelligence lives in the
+department agent files (Markdown) and pipeline presets (YAML).
 
 ### 2. Agent-directed pipeline orchestration
 
@@ -205,7 +206,6 @@ default_checkpoint_policy: guided
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/explainer/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
 
@@ -215,7 +215,6 @@ compatible_playbooks:
 
 stages:
   - name: research
-    skill: pipelines/explainer/research-director
     produces: [research_brief]
     tools_available: []
     checkpoint_required: false
@@ -235,12 +234,11 @@ stages:
 | `character-animation` | animation | Local rigged cartoon characters with SVG rigs, pose libraries, GSAP timelines, and HyperFrames rendering |
 | `cinematic` | cinematic | Trailer, teaser, mood-driven edits |
 | `clip-factory` | custom | Batch short-form clips from long source |
+| `documentary-montage` | documentary | Footage-led documentary montages |
 | `hybrid` | hybrid | Source footage + AI-generated support visuals |
-| `localization-dub` | custom | Subtitle, dub, and translate existing video |
 | `podcast-repurpose` | hybrid | Podcast highlights to video |
 | `screen-demo` | screen_recording | Software screen recordings and walkthroughs |
 | `talking-head` | talking_head | Footage-led speaker videos |
-| `framework-smoke` | custom | Minimal smoke test for framework validation |
 
 ### Standard Stage Progression
 
@@ -251,7 +249,7 @@ research → proposal → script → scene_plan → assets → edit → compose 
 ```
 
 Each stage:
-1. Has a **stage-director skill** (Markdown instructions for the agent)
+1. Is executed by the **Video Production department agent** (`agents/video-production.md`)
 2. Declares **tools_available** (what the agent can call)
 3. **Produces** one or more canonical artifacts
 4. Has **review_focus** criteria and **success_criteria**
@@ -350,13 +348,13 @@ Layer 3: .agents/skills/          External technology knowledge (47 skills)
               ^
               | agent_skills[] references
               |
-Layer 2: skills/                  Magic Studio conventions
-         "How this project uses the tech"  Pipeline integration, quality checklists, artifact mappings
+Layer 2: skills/ + agents/        Magic Studio conventions and department agents
+         "How this project uses the tech"  Quality checklists, artifact mappings, department instructions
               ^
-              | stage skill references
+              | preset stages read by the Video Production department
               |
-Layer 1: tools/ + pipeline_defs/  Executable capabilities + orchestration definitions
-         "What exists and when to use it"  BaseTool contracts, pipeline manifests
+Layer 1: tools/ + pipeline_defs/  Executable capabilities + pipeline presets
+         "What exists and when to use it"  BaseTool contracts, data-only pipeline presets
 ```
 
 Each tool's `agent_skills[]` field links Layer 1 to Layers 2 and 3. For example:

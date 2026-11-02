@@ -40,7 +40,7 @@
     },
     "production_modes": {
       "type": "array",
-      "description": "Mutually exclusive ways this pipeline can be produced. The agent picks one at the idea stage and records it in the brief; the stage director skill reads it to constrain later choices (see skills/pipelines/screen-demo/idea-director.md).",
+      "description": "Mutually exclusive ways this pipeline can be produced. The agent picks one at the idea stage and records it in the brief, then reads it to constrain later choices.",
       "items": {
         "type": "object",
         "required": ["name"],
@@ -81,7 +81,6 @@
         "properties": {
           "name": { "type": "string" },
           "agent": { "type": "string", "description": "Legacy: class name for Python-driven stages" },
-          "skill": { "type": "string", "description": "Skill path for instruction-driven stages (e.g., pipelines/explainer/idea-director)" },
           "required_artifacts_in": {
             "type": "array",
             "items": { "type": "string" },
@@ -172,7 +171,6 @@
       "description": "Executive Producer orchestration config",
       "properties": {
         "mode": { "type": "string" },
-        "skill": { "type": "string" },
         "budget_default_usd": { "type": "number" },
         "max_revisions_per_stage": { "type": "integer" },
         "max_send_backs": { "type": "integer" },

@@ -37,9 +37,8 @@ class ScreenCaptureSelector(BaseTool):
 
     # `screen-demo` named the Layer 2 pipeline directory, not a Layer 3 skill,
     # so it never resolved. No Layer 3 skill covers OS screen capture — the
-    # capture guidance this selector needs lives in the pipeline manifest's
-    # per-stage `skill:` entries (skills/pipelines/screen-demo/), which the
-    # agent already reads.
+    # capture guidance this selector needs lives in the screen-demo pipeline
+    # preset (pipeline_defs/screen-demo.yaml), which the agent already reads.
 
     capabilities = [
         "screen_recording",

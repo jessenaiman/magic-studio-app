@@ -39,8 +39,8 @@ See [Backstage](apps/backstage/README.md) for exact read boundaries and controls
 Magic Studio retains the Python tools and declarative pipeline system:
 
 ```text
-Agent reads pipeline YAML → reads the stage director skill → calls tools
-→ reviews artifacts → saves a checkpoint → requests configured human approval
+Agent reads pipeline preset YAML → follows the Video Production department agent
+→ calls tools → reviews artifacts → saves a checkpoint → requests configured human approval
 ```
 
 Python supplies capabilities and persistence utilities; the agent makes creative
@@ -50,7 +50,8 @@ without treating every app interaction as a complete pipeline run.
 | Layer | Source and purpose |
 |---|---|
 | Capabilities | `tools/tool_registry.py`, `tools/base_tool.py`, `tools/` |
-| Production process | `pipeline_defs/*.yaml`, `skills/pipelines/` |
+| Department agents | `agents/` — one agent file per department (storyboard, animation, lyrics, video production, mayhem) |
+| Production process | `pipeline_defs/` (data-only presets) |
 | Production guidance | `skills/INDEX.md`, `skills/core/`, `skills/creative/`, `skills/meta/` |
 | Checkpoints and budgets | `lib/checkpoint.py`, `tools/cost_tracker.py` |
 | Artifact contracts | `schemas/artifacts/`, `schemas/checkpoints/`, `schemas/pipelines/` |
@@ -68,8 +69,8 @@ choice does not add another target to the desktop Studio.
 
 - New tools inherit `BaseTool`, declare real capability/provider contracts, and
   enter registry discovery. Use selector-plus-provider routing where appropriate.
-- New pipelines need a valid `pipeline_defs/` manifest and referenced director
-  skills. Keep review focus, success criteria, canonical outputs, and gates clear.
+- New pipelines need a valid `pipeline_defs/` preset with clear stage review
+  focus, success criteria, canonical outputs, and gates.
 - Keep canonical artifacts schema-valid. Preserve checkpoint history and append
   changed production decisions instead of silently rewriting them.
 - Propose native acceptance expectations first; encode behavior only after Jesse

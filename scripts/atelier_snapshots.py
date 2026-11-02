@@ -12,7 +12,8 @@ config from `artifacts/edit_decisions.json` (falling back to conventional
 paths: index.tsx / artifacts/props.json / public/). The composition id comes
 from edit_decisions.bespoke.composition_id or --composition-id.
 
-See skills/meta/bespoke-composition.md and skills/meta/checkpoint-protocol.md.
+See skills/meta/bespoke-composition.md and the checkpoint policy in
+AGENT_GUIDE.md.
 """
 from __future__ import annotations
 

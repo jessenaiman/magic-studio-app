@@ -216,7 +216,6 @@ def classify_from_brief(
         "avatar-spokesperson": PromiseType.AVATAR_PRESENTER,
         "screen-demo": PromiseType.SCREEN_DEMO,
         "hybrid": PromiseType.HYBRID,
-        "localization-dub": PromiseType.LOCALIZATION,
         "podcast-repurpose": PromiseType.SOURCE_LED,
         "clip-factory": PromiseType.SOURCE_LED,
     }

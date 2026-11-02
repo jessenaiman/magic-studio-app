@@ -102,11 +102,11 @@ is the pipeline artifact/checkpoint board, not the native storyboard editor.
 ## Reuse the production toolkit
 
 The source repository retains `tools/`, `lib/`, `pipeline/`, `pipeline_defs/`,
-`skills/`, `schemas/`, `styles/`, and the composition adapters. These are working
-building blocks for agent-directed production, not a second installation path.
-Read [the agent guide](AGENT_GUIDE.md) and the selected YAML/stage skills before
-using them; preflight actual dependencies and provider access in the prepared
-source environment.
+`agents/`, `skills/`, `schemas/`, `styles/`, and the composition adapters. These
+are working building blocks for agent-directed production, not a second
+installation path. Read [the agent guide](AGENT_GUIDE.md) and the selected
+pipeline preset before using them; preflight actual dependencies and provider
+access in the prepared source environment.
 
 Pipeline stages exchange canonical artifacts and checkpoints. Composition may
 use approved Remotion, HyperFrames, or FFmpeg paths according to the pipeline;

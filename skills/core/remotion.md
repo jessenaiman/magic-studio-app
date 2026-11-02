@@ -333,7 +333,7 @@ Remotion renders are CPU-intensive but $0 API cost. Track via cost_tracker:
 ## Post-Render Verification Protocol (ALL pipelines)
 
 **Every Remotion render MUST be verified before presenting to the user.** This protocol applies
-to ALL pipelines, not just explainer. Pipeline-specific compose-directors may extend it but
+to ALL pipelines, not just explainer. Pipeline-specific compose stages may extend it but
 must not skip any step.
 
 **Step 1: Probe the output file (GATE — blocks all other steps):**

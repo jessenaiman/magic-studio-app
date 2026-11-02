@@ -226,7 +226,7 @@ registry (`src/components`, `src/Explainer`, etc.), and warns if `art_direction`
 - **Cost honesty.** Atelier costs more agent tokens and iteration than templated. Say so at proposal
   so the user opts in knowingly. Quality varies more without a stock baseline — mitigate with strong
   principle skills (above) and the distinctness review, not by reintroducing reuse.
-- **Checkpoint cadence.** Follow `skills/meta/checkpoint-protocol.md`: present script + scene plan
+- **Checkpoint cadence.** Follow the checkpoint policy in `AGENT_GUIDE.md`: present script + scene plan
   for approval BEFORE generating assets, then the **assets gate**, then a first-render checkpoint.
   Do not batch-generate ahead of sign-off, and **do not render a draft to earn the assets review** —
   the assets gate is held *before* compose (see below).

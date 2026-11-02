@@ -13,9 +13,9 @@ Layer 1: tools/tool_registry.py          "What tools exist and what they can do"
 
          â†" agent_skills[] points to â†"
 
-Layer 2: skills/                          "How Magic Studio uses these tools"
-         Project-specific conventions:     Pipeline integration, artifact mappings,
-         {core,creative,meta,pipelines}/   enhancement chain order, quality checklists
+Layer 2: skills/ + agents/                "How Magic Studio uses these tools"
+         Project-specific conventions:     Artifact mappings, enhancement chain order,
+         {core,creative,meta}/ + agents/    quality checklists, department instructions
 
          â†" references underlying tech in â†"
 
@@ -138,147 +138,30 @@ Pipeline type skills provide production guidance for specific video formats, ind
 | Screen Recording | `creative/screen-recording.md` | Code walkthroughs, tutorials, software demos |
 | Animation Pipeline | `creative/animation-pipeline.md` | Motion graphics, easing, transitions, composition |
 | 3D World Generation | `creative/3d-world-generation.md` | Continuous Three.js terrain worlds with semantic regions, explicit blockout/production tiers, licensed GLTF/PBR assets, diagnostics, and deterministic camera paths |
-| Character Animation Pipeline | `pipelines/character-animation/` | Rigged local cartoon characters, pose libraries, action timelines, SVG/Canvas/Remotion/HyperFrames rendering |
+| Character Animation | `pipeline_defs/character-animation.yaml` | Rigged local cartoon characters, pose libraries, action timelines, SVG/Canvas/Remotion/HyperFrames rendering |
 | Cinematic | `creative/cinematic.md` | Letterbox, film pacing, layered audio, color grading |
 
-## Pipeline Stage Director Skills
+## Pipeline Presets
 
-Stage director skills teach the agent HOW to execute each pipeline stage. Each skill is a detailed markdown file with process steps, quality rubrics, and self-evaluation criteria.
+`pipeline_defs/*.yaml` holds data-only production presets: stage order, tools,
+produced artifacts, review focus, success criteria, and approval gates. The
+Video Production department agent (`agents/video-production.md`) reads the
+selected preset and executes its stages serially. There are no per-pipeline
+instruction files; the preset is the stage contract.
 
-### Animated Explainer Pipeline (`pipelines/explainer/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/explainer/executive-producer.md` | `all` | **8-stage serial orchestration, quality gates, cross-stage checks, send-back** |
-| **Research Director** | `pipelines/explainer/research-director.md` | `research` | **Web research methodology, 5 search batches, landscape/trending/data/audience/expert analysis** |
-| **Proposal Director** | `pipelines/explainer/proposal-director.md` | `proposal` | **Concept options from research, production plan, cost estimate, approval gate** |
-| Script Director | `pipelines/explainer/script-director.md` | `script` | Narrative architecture, timing, enhancement cues, research integration |
-| Scene Director | `pipelines/explainer/scene-director.md` | `scene_plan` | Visual planning, technique library, feasibility |
-| Asset Director | `pipelines/explainer/asset-director.md` | `assets` | TTS, image gen, diagram gen, music, budget |
-| Edit Director | `pipelines/explainer/edit-director.md` | `edit` | Timeline assembly, subtitles, audio ducking |
-| Compose Director | `pipelines/explainer/compose-director.md` | `compose` | FFmpeg/Remotion render, audio mixing |
-| Publish Director | `pipelines/explainer/publish-director.md` | `publish` | SEO metadata, chapters, export packaging |
-
-> **Note:** The old `idea-director.md` still exists for reference but is superseded by the research + proposal two-stage flow in v2.0. The talking-head pipeline continues to use its own `idea-director`.
-
-### Talking Head Pipeline (`pipelines/talking-head/`)
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| Idea Director | `pipelines/talking-head/idea-director.md` | `idea` | Footage inspection, content assessment |
-| Script Director | `pipelines/talking-head/script-director.md` | `script` | Transcription, section segmentation |
-| Scene Director | `pipelines/talking-head/scene-director.md` | `scene_plan` | Enhancement planning, overlay placement |
-| Asset Director | `pipelines/talking-head/asset-director.md` | `assets` | Subtitle gen, audio extraction |
-| Edit Director | `pipelines/talking-head/edit-director.md` | `edit` | Cut assembly, subtitle config |
-| Compose Director | `pipelines/talking-head/compose-director.md` | `compose` | Enhancement chain, render |
-| Publish Director | `pipelines/talking-head/publish-director.md` | `publish` | Metadata, export packaging |
-
-### Screen Demo Pipeline (`pipelines/screen-demo/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/screen-demo/executive-producer.md` | `all` | **7-stage serial orchestration, legibility gates, audio clarity, pacing checks** |
-| Idea Director | `pipelines/screen-demo/idea-director.md` | `idea` | Workflow scoping, UI density assessment, output-shape choice |
-| Script Director | `pipelines/screen-demo/script-director.md` | `script` | Action mapping, procedural narration, speed planning |
-| Scene Director | `pipelines/screen-demo/scene-director.md` | `scene_plan` | Crop planning, callout restraint, aspect-ratio viability |
-| Asset Director | `pipelines/screen-demo/asset-director.md` | `assets` | Subtitle-first asset kit, audio cleanup, reusable overlays |
-| Edit Director | `pipelines/screen-demo/edit-director.md` | `edit` | Tight timeline planning, speed notes, subtitle zone control |
-| Compose Director | `pipelines/screen-demo/compose-director.md` | `compose` | Legibility-first render, crisp screen output, verification |
-| Publish Director | `pipelines/screen-demo/publish-director.md` | `publish` | Searchable metadata, chapter packaging, thumbnail concepts |
-
-### Clip Factory Pipeline (`pipelines/clip-factory/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/clip-factory/executive-producer.md` | `all` | **7-stage serial orchestration, clip selection gates, batch consistency, hook placement** |
-| Idea Director | `pipelines/clip-factory/idea-director.md` | `idea` | Batch strategy, clip families, yield planning |
-| Script Director | `pipelines/clip-factory/script-director.md` | `script` | Transcript mining, ranking, standalone validation |
-| Scene Director | `pipelines/clip-factory/scene-director.md` | `scene_plan` | Platform framing, safe zones, crop-viability planning |
-| Asset Director | `pipelines/clip-factory/asset-director.md` | `assets` | Shared brand kit, rebased subtitles, batch audio consistency |
-| Edit Director | `pipelines/clip-factory/edit-director.md` | `edit` | Hook-first mini-edits, series consistency |
-| Compose Director | `pipelines/clip-factory/compose-director.md` | `compose` | Multi-job rendering, batch resilience, per-output verification |
-| Publish Director | `pipelines/clip-factory/publish-director.md` | `publish` | Posting order, platform copy, batch cataloging |
-
-### Podcast Repurpose Pipeline (`pipelines/podcast-repurpose/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/podcast-repurpose/executive-producer.md` | `all` | **7-stage serial orchestration, audio preservation gates, clip quality, multi-deliverable** |
-| Idea Director | `pipelines/podcast-repurpose/idea-director.md` | `idea` | Deliverable mix by source mode, realistic long-form planning |
-| Script Director | `pipelines/podcast-repurpose/script-director.md` | `script` | Diarized transcript truth, highlight ranking, chapter mapping |
-| Scene Director | `pipelines/podcast-repurpose/scene-director.md` | `scene_plan` | Source-faithful treatments, audiogram vs quote vs companion planning |
-| Asset Director | `pipelines/podcast-repurpose/asset-director.md` | `assets` | Subtitle-first packaging, speaker assets, optional topic art |
-| Edit Director | `pipelines/podcast-repurpose/edit-director.md` | `edit` | Hook-led podcast clips, quote hold time, companion simplicity |
-| Compose Director | `pipelines/podcast-repurpose/compose-director.md` | `compose` | Audio-first rendering, deliverable prioritization |
-| Publish Director | `pipelines/podcast-repurpose/publish-director.md` | `publish` | Episode cross-linking, guest attribution, staggered release logic |
-
-### Cinematic Pipeline (`pipelines/cinematic/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/cinematic/executive-producer.md` | `all` | **7-stage serial orchestration, emotional pacing gates, color consistency, audio dynamics** |
-| Idea Director | `pipelines/cinematic/idea-director.md` | `idea` | Emotional arc selection, source truth, delivery-shape planning |
-| Script Director | `pipelines/cinematic/script-director.md` | `script` | Beat mapping, dialogue selects, title-card restraint |
-| Scene Director | `pipelines/cinematic/scene-director.md` | `scene_plan` | Hero-frame planning, reveal structure, transition limits |
-| Asset Director | `pipelines/cinematic/asset-director.md` | `assets` | Source selects, support-insert discipline, music/ambience planning |
-| Edit Director | `pipelines/cinematic/edit-director.md` | `edit` | Emotion-first pacing, reveal timing, audio-driven rhythm |
-| Compose Director | `pipelines/cinematic/compose-director.md` | `compose` | Grade and mix finishing, frame-treatment judgment |
-| Publish Director | `pipelines/cinematic/publish-director.md` | `publish` | Hero vs teaser packaging, poster-frame concepts |
-
-### Animation Pipeline (`pipelines/animation/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/animation/executive-producer.md` | `all` | **8-stage serial orchestration, quality gates, motion consistency, math accuracy checks** |
-| **Research Director** | `pipelines/animation/research-director.md` | `research` | **Topic + animation technique research, visual reference scan, mode-informed angles** |
-| **Proposal Director** | `pipelines/animation/proposal-director.md` | `proposal` | **Animation mode selection (Manim/Remotion/AI/diagram), reuse strategy, cost estimate, approval gate** |
-| Script Director | `pipelines/animation/script-director.md` | `script` | Animation-ready beats, text restraint, research integration, mode-aware writing |
-| Scene Director | `pipelines/animation/scene-director.md` | `scene_plan` | Animatic planning, transition systems, tool-path mapping |
-| Asset Director | `pipelines/animation/asset-director.md` | `assets` | Deterministic asset choice, reusable motifs, feasibility truth |
-| Edit Director | `pipelines/animation/edit-director.md` | `edit` | Hold timing, stagger rules, readable motion planning |
-| Compose Director | `pipelines/animation/compose-director.md` | `compose` | Sharp render output, timing integrity, safe-zone checks |
-| Publish Director | `pipelines/animation/publish-director.md` | `publish` | Animation-mode packaging, thumbnail-system alignment |
-
-> **Note:** The old `idea-director.md` still exists for reference but is superseded by the research + proposal two-stage flow in v2.0.
-
-### Hybrid Pipeline (`pipelines/hybrid/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/hybrid/executive-producer.md` | `all` | **7-stage serial orchestration, source/support balance gates, overlay density, coherence** |
-| Idea Director | `pipelines/hybrid/idea-director.md` | `idea` | Anchor-medium selection, support-layer planning, fallback visibility |
-| Script Director | `pipelines/hybrid/script-director.md` | `script` | Source-vs-support beat mapping, dialogue retention, support justification |
-| Scene Director | `pipelines/hybrid/scene-director.md` | `scene_plan` | Source-primary layout rules, overlay density control, variant-safe planning |
-| Asset Director | `pipelines/hybrid/asset-director.md` | `assets` | Shared support kits, source-vs-generated asset tracking |
-| Edit Director | `pipelines/hybrid/edit-director.md` | `edit` | Anchor-cut-first workflow, layered support timing, readable variants |
-| Compose Director | `pipelines/hybrid/compose-director.md` | `compose` | Source/support balance checks, variant verification, coherent mix |
-| Publish Director | `pipelines/hybrid/publish-director.md` | `publish` | Master-vs-derivative packaging, source-mix metadata |
-
-### Avatar Spokesperson Pipeline (`pipelines/avatar-spokesperson/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/avatar-spokesperson/executive-producer.md` | `all` | **7-stage serial orchestration, lip-sync quality gates, presenter framing, CTA landing** |
-| Idea Director | `pipelines/avatar-spokesperson/idea-director.md` | `idea` | Avatar-path classification, CTA scoping, capability truth |
-| Script Director | `pipelines/avatar-spokesperson/script-director.md` | `script` | Spoken-copy shaping, scene-safe pacing, text restraint |
-| Scene Director | `pipelines/avatar-spokesperson/scene-director.md` | `scene_plan` | Presenter layout, background discipline, variant realism |
-| Asset Director | `pipelines/avatar-spokesperson/asset-director.md` | `assets` | Avatar-path locking, narration resolution, minimal support kits |
-| Edit Director | `pipelines/avatar-spokesperson/edit-director.md` | `edit` | Presenter-first cut planning, overlay timing, CTA landing |
-| Compose Director | `pipelines/avatar-spokesperson/compose-director.md` | `compose` | Lip-sync verification, subtitle-safe framing, clean render checks |
-| Publish Director | `pipelines/avatar-spokesperson/publish-director.md` | `publish` | Audience-led packaging, presenter-first thumbnail concepts |
-
-### Localization Dub Pipeline (`pipelines/localization-dub/`) — v2.0
-
-| Skill | File | Stage | Key Capabilities |
-|-------|------|-------|-----------------|
-| **Executive Producer** | `pipelines/localization-dub/executive-producer.md` | `all` | **7-stage serial orchestration, translation accuracy gates, timing preservation, per-locale QA** |
-| Idea Director | `pipelines/localization-dub/idea-director.md` | `idea` | Scope definition, locale planning, glossary and review capture |
-| Script Director | `pipelines/localization-dub/script-director.md` | `script` | Transcript truth, translated script packaging, term preservation |
-| Scene Director | `pipelines/localization-dub/scene-director.md` | `scene_plan` | Dub-mode selection, timing-risk mapping, on-screen text planning |
-| Asset Director | `pipelines/localization-dub/asset-director.md` | `assets` | Subtitle-first localization kit, dubbed audio generation, optional lip sync |
-| Edit Director | `pipelines/localization-dub/edit-director.md` | `edit` | Locale-specific timelines, coverage planning, timing adjustments |
-| Compose Director | `pipelines/localization-dub/compose-director.md` | `compose` | Per-locale rendering, subtitle-fit checks, output labeling |
-| Publish Director | `pipelines/localization-dub/publish-director.md` | `publish` | Locale packaging, metadata precision, QA-note retention |
+| Preset | Category | Description |
+|--------|----------|-------------|
+| `animated-explainer` | generated | AI-produced explainer with research, narration, visuals, music |
+| `animation` | animation | Motion graphics, kinetic typography |
+| `avatar-spokesperson` | talking_head | Avatar-driven presenter videos |
+| `character-animation` | animation | Local rigged cartoon characters (rigs, poses, actions) |
+| `cinematic` | cinematic | Trailer, teaser, mood-driven edits |
+| `clip-factory` | custom | Batch short-form clips from long source |
+| `documentary-montage` | documentary | Footage-led documentary montages |
+| `hybrid` | hybrid | Source footage + AI-generated support visuals |
+| `podcast-repurpose` | hybrid | Podcast highlights to video |
+| `screen-demo` | screen_recording | Software screen recordings and walkthroughs |
+| `talking-head` | talking_head | Footage-led speaker videos |
 
 ## Meta Skills
 
@@ -288,9 +171,11 @@ Cross-cutting skills that apply to all pipelines:
 |-------|------|---------|
 | Onboarding | `meta/onboarding.md` | First-interaction greeting, capability discovery, starter prompts |
 | Reviewer | `meta/reviewer.md` | Self-review protocol after every stage |
-| Checkpoint Protocol | `meta/checkpoint-protocol.md` | When/how to checkpoint and request human approval |
 | Skill Creator | `meta/skill-creator.md` | Dynamically create new skills during pipeline runs |
 | Animation Runtime Selector | `meta/animation-runtime-selector.md` | Choose render runtime + animation library per scene |
+| Creative Intake | `meta/creative-intake.md` | Shape an open request into a producible brief |
+| Video Reference Analyst | `meta/video-reference-analyst.md` | Inspect a supplied reference video before proposing |
+| Capability Extension | `meta/capability-extension.md` | Permissions for extending tools during a run |
 | Taste Direction | `meta/taste-direction.md` | Convert a brief into taste dials, anti-patterns, and reference strategy for proposal/playbook/atelier work |
 | Bespoke Composition (Atelier) | `meta/bespoke-composition.md` | Hand-author a composition from scratch (hero work) — no stock scene-types; routes art-direction → motion principles → engine mechanics → atelier render |
 

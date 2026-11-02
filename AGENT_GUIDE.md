@@ -7,7 +7,7 @@ Start with the user's request. Operate the installed app through `magic` and
 project inspection, or lettering edit does not require a full pipeline preflight.
 Use [onboarding](skills/meta/onboarding.md) only for a genuinely open-ended start.
 
-For app work, read [the app agent contract](apps/magicstudio-shell/agent.md) and
+For app work, read [the app agent contract](apps/src-tauri/agent.md) and
 [the Magic CLI/MCP skill](agent-harness/cli_anything/magic/skills/SKILL.md).
 The four creative areas are Storyboard, Animation, Lyrics, and Studio. Backstage
 is the separate observer. [Setup](agent-harness/cli_anything/magic/README.md) is
@@ -15,11 +15,13 @@ only needed for an absent installation or an explicitly requested source build.
 
 ## Rule Zero — pipeline production
 
-When the request calls for the reusable production toolkit, choose the actual
-`pipeline_defs/<pipeline>.yaml`. Read it before execution, and read each stage's
-referenced director skill before working that stage. Reuse Python tools, YAML,
-schemas, and skills; do not replace the pipeline with ad hoc provider scripts.
-[Project context](PROJECT_CONTEXT.md) maps these sources.
+When the request calls for the reusable production toolkit, the Video
+Production department agent ([agents/video-production.md](agents/video-production.md))
+takes the work: choose the actual `pipeline_defs/<pipeline>.yaml` preset, read it
+before execution, and follow its stage entries (`produces`, `tools_available`,
+`review_focus`, `success_criteria`, gates) stage by stage. Reuse Python tools,
+YAML, schemas, and skills; do not replace the preset with ad hoc provider
+scripts. [Project context](PROJECT_CONTEXT.md) maps these sources.
 
 The agent orchestrates; Python provides tools and persistence. Resume from real
 checkpoints. Canonical artifacts—not free-form messages—carry stage state.
@@ -103,8 +105,7 @@ An unknown outcome after timeout is not permission to replay paid work.
 Read the manifest's `produces`, `tools_available`, `review_focus`,
 `success_criteria`, and `human_approval_default`. Preserve schema-valid canonical
 artifacts in the selected production workspace. Use
-[reviewer](skills/meta/reviewer.md) and
-[checkpoint protocol](skills/meta/checkpoint-protocol.md); do not duplicate their
+[reviewer](skills/meta/reviewer.md) for stage self-review; do not duplicate its
 full policies here.
 
 Write stage entry/progress and actual completed units to the checkpoint. Required

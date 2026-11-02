@@ -162,14 +162,6 @@ def get_required_tools(manifest: dict) -> set[str]:
     return tools
 
 
-def get_stage_skill(manifest: dict, stage_name: str) -> Optional[str]:
-    """Get the skill path for an instruction-driven stage."""
-    for stage in manifest["stages"]:
-        if stage["name"] == stage_name:
-            return stage.get("skill")
-    return None
-
-
 def get_stage_human_approval_default(manifest: dict, stage_name: str) -> Optional[bool]:
     """Whether a stage gates on human approval. None if the stage isn't declared.
 

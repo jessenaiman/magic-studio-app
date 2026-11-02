@@ -11,7 +11,6 @@ default_checkpoint_policy: guided
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/clip-factory/executive-producer
   budget_default_usd: 1.00
   max_revisions_per_stage: 3
   max_send_backs: 3
@@ -24,16 +23,7 @@ extensions:
   custom_tools: false
 
 required_skills:
-  - pipelines/clip-factory/executive-producer
-  - pipelines/clip-factory/idea-director
-  - pipelines/clip-factory/script-director
-  - pipelines/clip-factory/scene-director
-  - pipelines/clip-factory/asset-director
-  - pipelines/clip-factory/edit-director
-  - pipelines/clip-factory/compose-director
-  - pipelines/clip-factory/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
 
 compatible_playbooks:
   recommended:
@@ -44,7 +34,6 @@ compatible_playbooks:
 
 stages:
   - name: idea
-    skill: pipelines/clip-factory/idea-director
     optional_artifacts_in:
       - source_media_review
     produces:
@@ -62,7 +51,6 @@ stages:
       - Brief specifies clip count target and platform mix
 
   - name: script
-    skill: pipelines/clip-factory/script-director
     required_artifacts_in:
       - brief
     produces:
@@ -85,7 +73,6 @@ stages:
       - At least N candidate clips identified (where N >= brief target)
 
   - name: scene_plan
-    skill: pipelines/clip-factory/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -108,7 +95,6 @@ stages:
       - Each clip scene has platform, aspect ratio, and duration specified
 
   - name: assets
-    skill: pipelines/clip-factory/asset-director
     required_artifacts_in:
       - scene_plan
     optional_artifacts_in:
@@ -133,7 +119,6 @@ stages:
       - Assets exist for every planned clip
 
   - name: edit
-    skill: pipelines/clip-factory/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -153,7 +138,6 @@ stages:
       - Edit decisions exist for every planned clip
 
   - name: compose
-    skill: pipelines/clip-factory/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -186,7 +170,6 @@ stages:
       - All clip output files exist and pass ffprobe validation
 
   - name: publish
-    skill: pipelines/clip-factory/publish-director
     required_artifacts_in:
       - render_report
       - final_review

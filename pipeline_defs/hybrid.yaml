@@ -11,7 +11,6 @@ default_checkpoint_policy: guided
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/hybrid/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
   max_send_backs: 3
@@ -24,16 +23,7 @@ extensions:
   custom_tools: false
 
 required_skills:
-  - pipelines/hybrid/executive-producer
-  - pipelines/hybrid/idea-director
-  - pipelines/hybrid/script-director
-  - pipelines/hybrid/scene-director
-  - pipelines/hybrid/asset-director
-  - pipelines/hybrid/edit-director
-  - pipelines/hybrid/compose-director
-  - pipelines/hybrid/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
 
 compatible_playbooks:
   recommended:
@@ -45,7 +35,6 @@ compatible_playbooks:
 
 stages:
   - name: idea
-    skill: pipelines/hybrid/idea-director
     optional_artifacts_in:
       - source_media_review
     produces:
@@ -63,7 +52,6 @@ stages:
       - Brief distinguishes source-led and support-led elements
 
   - name: script
-    skill: pipelines/hybrid/script-director
     required_artifacts_in:
       - brief
     produces:
@@ -87,7 +75,6 @@ stages:
       - Script sections map to a feasible hybrid structure
 
   - name: scene_plan
-    skill: pipelines/hybrid/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -111,7 +98,6 @@ stages:
       - Every scene has a defined source/support treatment
 
   - name: assets
-    skill: pipelines/hybrid/asset-director
     required_artifacts_in:
       - scene_plan
     optional_artifacts_in:
@@ -148,7 +134,6 @@ stages:
       - All referenced asset files exist on disk
 
   - name: edit
-    skill: pipelines/hybrid/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -168,7 +153,6 @@ stages:
       - Edit decisions cover the planned deliverables
 
   - name: compose
-    skill: pipelines/hybrid/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -206,7 +190,6 @@ stages:
       - Output file exists and passes ffprobe validation
 
   - name: publish
-    skill: pipelines/hybrid/publish-director
     required_artifacts_in:
       - render_report
       - final_review

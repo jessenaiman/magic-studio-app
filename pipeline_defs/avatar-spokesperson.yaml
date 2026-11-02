@@ -11,7 +11,6 @@ default_checkpoint_policy: guided
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/avatar-spokesperson/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
   max_send_backs: 3
@@ -24,16 +23,7 @@ extensions:
   custom_tools: false
 
 required_skills:
-  - pipelines/avatar-spokesperson/executive-producer
-  - pipelines/avatar-spokesperson/idea-director
-  - pipelines/avatar-spokesperson/script-director
-  - pipelines/avatar-spokesperson/scene-director
-  - pipelines/avatar-spokesperson/asset-director
-  - pipelines/avatar-spokesperson/edit-director
-  - pipelines/avatar-spokesperson/compose-director
-  - pipelines/avatar-spokesperson/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
 
 compatible_playbooks:
   recommended:
@@ -44,7 +34,6 @@ compatible_playbooks:
 
 stages:
   - name: idea
-    skill: pipelines/avatar-spokesperson/idea-director
     produces:
       - brief
       - decision_log
@@ -60,7 +49,6 @@ stages:
       - Brief records avatar path, narration source, and output shape
 
   - name: script
-    skill: pipelines/avatar-spokesperson/script-director
     required_artifacts_in:
       - brief
     produces:
@@ -80,7 +68,6 @@ stages:
       - Script sections map to scene-safe presenter beats
 
   - name: scene_plan
-    skill: pipelines/avatar-spokesperson/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -99,7 +86,6 @@ stages:
       - Every scene has a defined speaker and support treatment
 
   - name: assets
-    skill: pipelines/avatar-spokesperson/asset-director
     required_artifacts_in:
       - scene_plan
       - script
@@ -136,7 +122,6 @@ stages:
       - All referenced asset files exist on disk
 
   - name: edit
-    skill: pipelines/avatar-spokesperson/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -156,7 +141,6 @@ stages:
       - Edit decisions cover the planned deliverables
 
   - name: compose
-    skill: pipelines/avatar-spokesperson/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -187,7 +171,6 @@ stages:
       - Output file exists and passes ffprobe validation
 
   - name: publish
-    skill: pipelines/avatar-spokesperson/publish-director
     required_artifacts_in:
       - render_report
       - final_review

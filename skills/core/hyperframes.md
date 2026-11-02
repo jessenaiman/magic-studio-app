@@ -449,9 +449,8 @@ the `deterministicFonts.ts` mapping table. Safe bets: `Outfit`,
 | `documentary-montage` | Wave 2 |
 | `talking-head` | Deferred — depends on TalkingHead parity |
 | `avatar-spokesperson` | Deferred — depends on TalkingHead parity |
-| `clip-factory`, `podcast-repurpose`, `localization-dub` | Deferred — current compose paths rely on Remotion caption burn |
-| `framework-smoke` | N/A (test pipeline) |
+| `clip-factory`, `podcast-repurpose` | Deferred — current compose paths rely on Remotion caption burn |
 
-Proposal and compose directors for adopted pipelines describe runtime choice
-explicitly — see each pipeline's `proposal-director.md` and
-`compose-director.md`.
+Proposal and compose stages for adopted pipelines describe runtime choice
+explicitly — see the selected preset's `proposal` and `compose` stage entries in
+`pipeline_defs/` and [the runtime selector](../meta/animation-runtime-selector.md).

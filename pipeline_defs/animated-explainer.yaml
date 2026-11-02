@@ -27,24 +27,12 @@ extensions:
   custom_tools: false
 
 required_skills:
-  - pipelines/explainer/executive-producer
-  - pipelines/explainer/research-director
-  - pipelines/explainer/proposal-director
-  - pipelines/explainer/script-director
-  - pipelines/explainer/scene-director
-  - pipelines/explainer/asset-director
-  - pipelines/explainer/edit-director
-  - pipelines/explainer/compose-director
-  - pipelines/explainer/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
   - meta/skill-creator
   - meta/animation-runtime-selector
-  - meta/voice-performance-director
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/explainer/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
   max_send_backs: 3
@@ -62,7 +50,6 @@ stages:
   # ── Pre-Production ──────────────────────────────────────────────
 
   - name: research
-    skill: pipelines/explainer/research-director
     produces:
       - research_brief
     tools_available: []
@@ -80,7 +67,6 @@ stages:
       - At least 5 sources cited with URLs
 
   - name: proposal
-    skill: pipelines/explainer/proposal-director
     required_artifacts_in:
       - research_brief
     produces:
@@ -116,7 +102,6 @@ stages:
   # ── Production ──────────────────────────────────────────────────
 
   - name: script
-    skill: pipelines/explainer/script-director
     required_artifacts_in:
       - proposal_packet
     optional_artifacts_in:
@@ -138,7 +123,6 @@ stages:
       - Total duration matches selected concept target within 10%
 
   - name: scene_plan
-    skill: pipelines/explainer/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -158,7 +142,6 @@ stages:
       - At least 3 different scene types used
 
   - name: assets
-    skill: pipelines/explainer/asset-director
     required_artifacts_in:
       - scene_plan
       - script
@@ -196,7 +179,6 @@ stages:
       - All file paths resolve to existing files
 
   - name: edit
-    skill: pipelines/explainer/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -217,7 +199,6 @@ stages:
       - Full video duration covered
 
   - name: compose
-    skill: pipelines/explainer/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -249,7 +230,6 @@ stages:
       - Output file exists and passes ffprobe validation
 
   - name: publish
-    skill: pipelines/explainer/publish-director
     required_artifacts_in:
       - render_report
       - final_review

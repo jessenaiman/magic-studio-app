@@ -34,7 +34,7 @@ Before writing the skill, research:
 
 | Type | Directory | Purpose |
 |------|-----------|---------|
-| Stage director | `skills/pipelines/<pipeline>/` | How to execute a specific pipeline stage |
+| Department agent | `agents/` | Instructions for one app department (storyboard, animation, lyrics, video production, mayhem) |
 | Meta skill | `skills/meta/` | Cross-cutting protocol (review, checkpoint, etc.) |
 | Tool skill | `.agents/skills/` | How to use a specific API or tool effectively |
 | Style skill | `styles/` | Visual/audio style definition (YAML playbook) |
