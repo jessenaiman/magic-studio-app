@@ -63,7 +63,7 @@ enum Cmd {
     Mcp,
     /// Run the repository's own checks and print what they print.
     ///
-    /// Default order: Ruff, cargo clippy, ESLint, Stylelint, Lizard, Wallace, jscpd,
+    /// Default order: cargo clippy, ESLint, Stylelint, Lizard, Wallace, jscpd,
     /// PurgeCSS, scope. Each tool uses PATH (or root node_modules/.bin) and the nearest
     /// repository configuration at or above PATH, up to the repository top. Missing
     /// tools/configuration are errors, not passing or skipped checks.

@@ -16,12 +16,6 @@ pub struct Tool {
 /// Default order for a directory.
 pub const TOOLS: &[Tool] = &[
     Tool {
-        name: "ruff",
-        label: "Ruff",
-        command: &["ruff", "check", "--no-cache", "--no-fix", "."],
-        configs: &["ruff.toml", ".ruff.toml"],
-    },
-    Tool {
         name: "clippy",
         label: "cargo clippy",
         command: &[
@@ -432,8 +426,8 @@ mod tests {
     fn config_patterns_match_exact_names_and_prefixes() {
         assert!(matches("stylelint.config.mjs", "stylelint.config.*"));
         assert!(matches(".stylelintrc.json", ".stylelintrc*"));
-        assert!(matches("ruff.toml", "ruff.toml"));
-        assert!(!matches("ruff.toml.bak", "ruff.toml"));
+        assert!(matches("Cargo.toml", "Cargo.toml"));
+        assert!(!matches("Cargo.toml.bak", "Cargo.toml"));
     }
 
     #[test]
