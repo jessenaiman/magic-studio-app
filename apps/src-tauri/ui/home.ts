@@ -32,7 +32,7 @@ class HomeViewController {
     await invoke("studio_hide").catch(() => {});
     await this.renderRecent();
     updateAppFooter();
-    requestAnimationFrame(()=>acFeedback.report('ready'));
+    await acFeedback.acknowledge(null, null);
   }
 
   async renderRecent() {
