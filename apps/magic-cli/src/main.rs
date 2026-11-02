@@ -241,20 +241,21 @@ fn registry_help(id: &str) -> Value {
 }
 
 /// Split `--params JSON` out of a registry command's arguments.
-fn split_params(rest: &[String]) -> (Vec<String>, Option<String>) {
+fn split_params(rest: &[String]) -> Result<(Vec<String>, Option<String>), String> {
     let mut args = Vec::new();
     let mut raw = None;
     let mut it = rest.iter();
     while let Some(token) = it.next() {
         if token == "--params" {
-            raw = it.next().cloned();
+            // A missing value is a malformed call, never a request to run with defaults.
+            raw = Some(it.next().cloned().ok_or("--params needs a JSON object")?);
         } else if let Some(v) = token.strip_prefix("--params=") {
             raw = Some(v.to_owned());
         } else {
             args.push(token.clone());
         }
     }
-    (args, raw)
+    Ok((args, raw))
 }
 
 fn run_jsonl(s: &mut Session, file: &str, dry_run: bool) -> Result<(), String> {
@@ -288,7 +289,7 @@ fn run_registry(s: &mut Session, tokens: &[String], dry: bool) -> Result<(), Str
     match resolve_registry(tokens) {
         Ok((id, _, true)) => emit(&registry_help(&id)),
         Ok((id, rest, false)) => {
-            let (args, raw) = split_params(&rest);
+            let (args, raw) = split_params(&rest)?;
             emit(&run_one(s, &id, parse_params(&args, raw.as_deref())?, dry)?);
         }
         Err(listing) if listing.contains("commands from the application registry") => {
@@ -305,13 +306,20 @@ fn run_studio(s: &mut Session, action: StudioCmd, dry: bool) -> Result<(), Strin
         StudioCmd::Open { project } => emit(&s.open_studio(project.as_deref())?),
         StudioCmd::List => emit(&studio::discover()),
         StudioCmd::Previews { stop_orphans } => {
-            let servers = studio::previews();
-            let stopped = if stop_orphans {
-                studio::stop_orphans(&servers)
+            let mut report = studio::previews();
+            let candidates =
+                studio::orphans(report["servers"].as_array().map_or(&[][..], Vec::as_slice));
+            // --dry-run names what would stop; nothing is signalled.
+            if stop_orphans && dry {
+                report["would_stop"] = json!(candidates);
             } else {
-                Vec::new()
-            };
-            emit(&json!({"servers": servers, "stopped": stopped}));
+                report["stopped"] = json!(if stop_orphans {
+                    studio::stop(&candidates)
+                } else {
+                    Vec::new()
+                });
+            }
+            emit(&report);
         }
     }
     Ok(())
@@ -364,8 +372,9 @@ fn run(cli: Cli) -> Result<(), String> {
     }
     let mcp = matches!(cli.command, Some(Cmd::Mcp));
     let mut s = Session::load(cli.session_file, if mcp { "MCP" } else { "CLI" })?;
+    // Selecting the project is always real; --dry-run previews the command that follows.
     if let Some(project) = &cli.project {
-        s.execute("project.open", json!({"path": project}), cli.dry_run)?;
+        s.execute("project.open", json!({"path": project}), false)?;
     }
     match cli.command {
         None => {
@@ -460,7 +469,8 @@ mod tests {
 
     #[test]
     fn params_flag_is_split_from_key_values() {
-        let (args, raw) = split_params(&toks(r#"a=1 --params {"b":2}"#));
+        let (args, raw) = split_params(&toks(r#"a=1 --params {"b":2}"#)).unwrap();
         assert_eq!((args, raw.as_deref()), (toks("a=1"), Some(r#"{"b":2}"#)));
+        assert!(split_params(&toks("a=1 --params")).is_err());
     }
 }

@@ -5,6 +5,23 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+/// The caller's runtime directory: XDG_RUNTIME_DIR, else the private `/run/user/<uid>` the
+/// desktop session made (an MCP client may start servers with a reduced environment).
+pub fn runtime_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    #[cfg(unix)]
+    {
+        let dir = PathBuf::from(format!("/run/user/{}", rustix::process::getuid().as_raw()));
+        dir.is_dir().then_some(dir)
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
 pub fn canonical(path: &Path) -> Result<PathBuf, String> {
     std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -37,16 +54,26 @@ pub fn request(path: &Path, id: &str, params: Value) -> Result<Value, String> {
 /// A command can take a while (a model turn, an import). Give it room, and say plainly
 /// that the Studio was busy instead of reporting a bare socket timeout.
 pub fn request_slow(path: &Path, id: &str, params: Value) -> Result<Value, String> {
-    request_within(
-        path,
-        id,
-        params,
-        if crate::find_command(id).is_some_and(|c| c.long_running) {
-            3600
-        } else {
-            30
-        },
-    )
+    request_within(path, id, params, reply_deadline(id)?)
+}
+
+/// Seconds to wait for a reply: MAGICSTUDIO_COMMAND_TIMEOUT_MS when set, else an hour for a
+/// long-running registry command and 30 s for the rest.
+fn reply_deadline(id: &str) -> Result<u64, String> {
+    if let Ok(raw) = std::env::var("MAGICSTUDIO_COMMAND_TIMEOUT_MS") {
+        let ms: f64 = raw
+            .trim()
+            .parse()
+            .ok()
+            .filter(|v: &f64| v.is_finite() && *v > 0.0)
+            .ok_or("MAGICSTUDIO_COMMAND_TIMEOUT_MS must be a positive number")?;
+        return Ok(((ms / 1000.0).ceil() as u64).max(1));
+    }
+    Ok(if crate::find_command(id).is_some_and(|c| c.long_running) {
+        3600
+    } else {
+        30
+    })
 }
 #[cfg(unix)]
 fn check_endpoint(path: &Path) -> Result<(), String> {
@@ -72,14 +99,10 @@ fn connected(
     Ok(BufReader::new(stream))
 }
 
+/// Only an interrupted read is retried; a timed-out one already waited the full deadline.
 #[cfg(unix)]
 fn retryable(error: &std::io::Error) -> bool {
-    matches!(
-        error.kind(),
-        std::io::ErrorKind::WouldBlock
-            | std::io::ErrorKind::TimedOut
-            | std::io::ErrorKind::Interrupted
-    )
+    error.kind() == std::io::ErrorKind::Interrupted
 }
 
 /// One answer line, retried briefly; a silent Studio is reported as busy, not as a raw timeout.
@@ -91,6 +114,10 @@ fn read_reply(
     let mut line = String::new();
     for attempt in 0..4 {
         match reader.read_line(&mut line) {
+            // The window closed the connection after the request was sent.
+            Ok(0) => {
+                return Err("The Studio closed the connection before replying; the request was sent, so its outcome is unknown. Inspect ui.feedback and the saved result before retrying — it was not retried.".into());
+            }
             Ok(_) => break,
             Err(error) if retryable(&error) && attempt < 3 => {
                 std::thread::sleep(Duration::from_millis(100));
@@ -135,8 +162,8 @@ pub fn request_within(
 /// The private directory Studio endpoints live in: Err is an error to report, Ok(None) none exists.
 #[cfg(unix)]
 fn sessions_dir() -> Result<Option<PathBuf>, String> {
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR unavailable")?;
-    let dir = PathBuf::from(runtime).join("magicstudio-studio");
+    let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
+    let dir = runtime.join("magicstudio-studio");
     if !dir.exists() {
         return Ok(None);
     }
@@ -380,8 +407,8 @@ pub fn open_with_options(
     {
         return Ok(existing);
     }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR missing")?;
-    let dir = PathBuf::from(runtime).join("magicstudio-studio");
+    let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
+    let dir = runtime.join("magicstudio-studio");
     let executable = live_executable(executable);
     let mut command = launch_command(&executable, project.as_deref(), character);
     let mut child = command

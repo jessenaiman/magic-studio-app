@@ -31,8 +31,8 @@ pub fn default_file() -> PathBuf {
     if let Some(path) = std::env::var_os("MAGIC_SESSION_FILE") {
         return PathBuf::from(path);
     }
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(|r| PathBuf::from(r).join("magicstudio"))
+    let base = magicstudio_engine::studio_sessions::runtime_dir()
+        .map(|r| r.join("magicstudio"))
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".magic")))
         .unwrap_or_else(|| PathBuf::from(".magic"));
     match std::env::var("HERDR_PANE_ID") {
@@ -194,18 +194,23 @@ impl Session {
         }
         let endpoint = self.bind.studio_endpoint.clone().unwrap_or_default();
         let project = self.bind.project_path.clone();
-        let first = studio::call(
-            &endpoint,
-            id,
-            req.clone(),
-            project.as_deref(),
-            self.bind.studio_instance.as_deref(),
-        );
+        // Follow a restarted window only when nothing reached the pinned one: its socket was
+        // already gone, or the connection was refused. A reply lost after submission is an
+        // unknown outcome and is never sent again.
+        let gone = !Path::new(endpoint.trim_start_matches("unix:")).exists();
+        let first = if gone {
+            Err(String::new())
+        } else {
+            studio::call(
+                &endpoint,
+                id,
+                req.clone(),
+                project.as_deref(),
+                self.bind.studio_instance.as_deref(),
+            )
+        };
         match first {
-            Err(e)
-                if e.starts_with("stale endpoint")
-                    || !Path::new(endpoint.trim_start_matches("unix:")).exists() =>
-            {
+            Err(e) if gone || e.starts_with("stale endpoint") => {
                 let live = self.live_for_pinned();
                 let [only] = live.as_slice() else {
                     return Err(self.unavailable());

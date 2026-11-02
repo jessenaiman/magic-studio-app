@@ -57,7 +57,7 @@ pub fn shell_binary() -> Result<PathBuf, String> {
 }
 
 fn socket_dir() -> Option<PathBuf> {
-    std::env::var_os("XDG_RUNTIME_DIR").map(|r| PathBuf::from(r).join("magicstudio-studio"))
+    studio_sessions::runtime_dir().map(|r| r.join("magicstudio-studio"))
 }
 
 fn socket_path(endpoint: &str) -> Result<&Path, String> {
@@ -279,27 +279,74 @@ pub fn discover() -> Value {
     studio_sessions::discover()
 }
 
-/// The project folder of a `hyperframes preview <dir>` process, from its argv.
-fn preview_dir(argv: &[String]) -> Option<&str> {
-    let launched = argv
-        .iter()
-        .take(2)
-        .any(|w| Path::new(w).file_name().is_some_and(|n| n == "hyperframes"));
+/// `hyperframes preview` options that take a value; written `--port=3002` or `--port 3002`.
+const PREVIEW_VALUE_FLAGS: &[&str] = &[
+    "--port",
+    "--context-fields",
+    "--context-detail",
+    "--browser-path",
+    "--user-data-dir",
+    "--remote-debugging-port",
+];
+
+/// The folder a `hyperframes preview [OPTIONS] [DIR]` process serves: DIR resolved against
+/// the process's working directory, or that directory when DIR is omitted.
+fn preview_dir(argv: &[String], cwd: &Path) -> Option<PathBuf> {
+    let name = |w: &String| {
+        Path::new(w)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+    };
+    let is_hyperframes = |w: &String| name(w).as_deref() == Some("hyperframes");
+    // The program itself, or the script node was started with; not a word in another command.
+    let launched = argv.first().is_some_and(is_hyperframes)
+        || (argv
+            .first()
+            .and_then(name)
+            .is_some_and(|n| n.starts_with("node"))
+            && argv.get(1).is_some_and(is_hyperframes));
     let at = argv.iter().position(|w| w == "preview")?;
     if !launched {
         return None;
     }
-    // The folder is a path; flag values such as `--port 3` are not.
-    argv[at + 1..]
-        .iter()
-        .map(String::as_str)
-        .find(|w| !w.starts_with("--") && w.contains('/'))
+    let mut rest = argv[at + 1..].iter();
+    while let Some(word) = rest.next() {
+        if PREVIEW_VALUE_FLAGS.contains(&word.as_str()) {
+            rest.next();
+        } else if !word.starts_with("--") {
+            return Some(cwd.join(word));
+        }
+    }
+    Some(cwd.to_path_buf())
 }
 
-/// Running preview servers, read from the process table. One runs per project whose Studio
-/// target was started; each says whether a window still has that project open.
-pub fn previews() -> Vec<Value> {
-    let open: Vec<PathBuf> = discover()["sessions"]
+/// A folder Magic made: its project folder holds a `.magic` file.
+fn magic_project(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.path().extension().is_some_and(|x| x == "magic"))
+}
+
+/// Running preview servers, read from the process table. Each says whether its folder is a
+/// Magic project's and whether a window has that project open; `window_open` is null when
+/// window discovery failed, so nothing is called an orphan on a guess.
+pub fn previews() -> Value {
+    let found = discover();
+    // A stale socket with no listener means no window; anything else leaves windows unknown.
+    let discovery_errors: Vec<Value> = found["errors"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|e| {
+            !e["error"]
+                .as_str()
+                .is_some_and(|m| m.starts_with("stale endpoint:"))
+        })
+        .cloned()
+        .collect();
+    let open: Vec<PathBuf> = found["sessions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -318,21 +365,31 @@ pub fn previews() -> Vec<Value> {
                 .filter(|a| !a.is_empty())
                 .map(|a| String::from_utf8_lossy(a).into_owned())
                 .collect();
-            let dir = preview_dir(&argv)?;
-            let project = Path::new(dir).parent()?.to_path_buf();
-            Some(json!({"pid": pid, "directory": dir, "project_dir": project, "window_open": open.contains(&project)}))
+            let cwd = std::fs::read_link(entry.path().join("cwd")).ok()?;
+            let dir = preview_dir(&argv, &cwd)?;
+            let project = dir.parent()?.to_path_buf();
+            let window_open = discovery_errors.is_empty().then(|| open.contains(&project));
+            Some(json!({"pid": pid, "directory": dir, "project_dir": project,
+                "magic_project": magic_project(&project), "window_open": window_open}))
         })
         .collect();
     servers.sort_by_key(|s| s["pid"].as_u64());
-    servers
+    json!({"servers": servers, "discovery_errors": discovery_errors})
 }
 
-/// Stop servers whose project has no open window, when the caller asks for exactly that.
-pub fn stop_orphans(servers: &[Value]) -> Vec<u64> {
+/// Servers safe to stop: a Magic project's, with no window open (known, not guessed).
+pub fn orphans(servers: &[Value]) -> Vec<u64> {
     servers
         .iter()
-        .filter(|s| s["window_open"] == false)
+        .filter(|s| s["magic_project"] == true && s["window_open"] == false)
         .filter_map(|s| s["pid"].as_u64())
+        .collect()
+}
+
+/// Stop the given servers; the pids that accepted SIGTERM.
+pub fn stop(pids: &[u64]) -> Vec<u64> {
+    pids.iter()
+        .copied()
         .filter(|pid| {
             std::process::Command::new("kill")
                 .args(["-TERM", &pid.to_string()])
@@ -352,18 +409,45 @@ mod tests {
 
     #[test]
     fn preview_servers_are_found_however_hyperframes_was_installed() {
-        let npx = argv(
-            "/node /home/u/.npm/_npx/x/node_modules/.bin/hyperframes preview /p/song/hyperframes",
-        );
-        let mise = argv(
-            "/node /home/u/.local/share/mise/installs/node/26/bin/hyperframes preview --port 3 /p/fish/hyperframes",
-        );
-        assert_eq!(preview_dir(&npx), Some("/p/song/hyperframes"));
-        assert_eq!(preview_dir(&mise), Some("/p/fish/hyperframes"));
+        let cwd = Path::new("/work");
+        let npx =
+            argv("/node /u/.npm/_npx/x/node_modules/.bin/hyperframes preview /p/song/hyperframes");
+        let mise =
+            argv("/node /u/mise/node/26/bin/hyperframes preview --port 3 /p/fish/hyperframes");
+        let eq = argv("/node /u/bin/hyperframes preview --port=3 --no-open hyperframes");
+        let bare = argv("/node /u/bin/hyperframes preview --background");
         assert_eq!(
-            preview_dir(&argv("/usr/bin/grep hyperframes preview")),
+            preview_dir(&npx, cwd),
+            Some(PathBuf::from("/p/song/hyperframes"))
+        );
+        assert_eq!(
+            preview_dir(&mise, cwd),
+            Some(PathBuf::from("/p/fish/hyperframes"))
+        );
+        assert_eq!(
+            preview_dir(&eq, cwd),
+            Some(PathBuf::from("/work/hyperframes"))
+        );
+        assert_eq!(preview_dir(&bare, cwd), Some(PathBuf::from("/work")));
+        assert_eq!(
+            preview_dir(&argv("/usr/bin/grep hyperframes preview"), cwd),
             None
         );
-        assert_eq!(preview_dir(&argv("/node /x/hyperframes render /p")), None);
+        assert_eq!(
+            preview_dir(&argv("/node /x/hyperframes render /p"), cwd),
+            None
+        );
+    }
+
+    #[test]
+    fn only_known_windowless_magic_projects_are_orphans() {
+        let s = |pid: u64, magic: bool, open: Value| json!({"pid": pid, "magic_project": magic, "window_open": open});
+        let servers = [
+            s(1, true, json!(false)),
+            s(2, false, json!(false)),
+            s(3, true, json!(true)),
+            s(4, true, Value::Null),
+        ];
+        assert_eq!(orphans(&servers), vec![1]);
     }
 }

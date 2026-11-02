@@ -90,6 +90,9 @@ impl MagicMcp {
             rand_suffix()
         ));
         if look && params["output"].is_null() {
+            if let Err(e) = std::fs::create_dir_all(&folder) {
+                return failure(format!("{}: {e}", folder.display()));
+            }
             params["output"] = json!(folder.join("window.png"));
         }
         let id = args.id.clone();

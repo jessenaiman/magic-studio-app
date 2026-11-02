@@ -210,14 +210,22 @@ fn generated_excludes(root: &Path) -> Vec<String> {
     }
 }
 
+/// A file the user may execute; a non-executable file of the same name is skipped, as
+/// `shutil.which` did.
+fn runnable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
 fn which(name: &str) -> Option<PathBuf> {
     let candidate = Path::new(name);
     if candidate.is_absolute() {
-        return candidate.is_file().then(|| candidate.to_path_buf());
+        return runnable(candidate).then(|| candidate.to_path_buf());
     }
     std::env::split_paths(&std::env::var_os("PATH")?)
         .map(|d| d.join(name))
-        .find(|p| p.is_file())
+        .find(|p| runnable(p))
 }
 
 /// Point the native command at target when it is not the config root.

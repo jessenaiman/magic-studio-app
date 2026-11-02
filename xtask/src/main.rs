@@ -136,11 +136,17 @@ fn link(entry: &Path, target: &Path) -> Result<()> {
 fn remove_retired(prefix: &Path, bin: &Path) -> Result<Vec<PathBuf>> {
     let mut removed = Vec::new();
     for name in RETIRED {
-        for path in [bin.join(name), prefix.join("bin").join(name)] {
-            if path.is_symlink() || path.is_file() {
-                io(path.display(), std::fs::remove_file(&path))?;
-                removed.push(path);
-            }
+        // Our own folder holds only what earlier installs put there.
+        let owned = bin.join(name);
+        if owned.is_symlink() || owned.is_file() {
+            io(owned.display(), std::fs::remove_file(&owned))?;
+            removed.push(owned);
+        }
+        // PREFIX/bin is shared: remove only a link, never someone else's program.
+        let link = prefix.join("bin").join(name);
+        if link.is_symlink() {
+            io(link.display(), std::fs::remove_file(&link))?;
+            removed.push(link);
         }
     }
     // The old `magic` launcher was a Python script; only that script is ours to replace.
@@ -255,6 +261,26 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_names_in_the_shared_bin_are_removed_only_when_links() {
+        let root = std::env::temp_dir().join(format!("xtask-retired-{}", std::process::id()));
+        let (bin, links) = (root.join("share/magic-studio/bin"), root.join("bin"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&links).unwrap();
+        std::fs::write(bin.join("magicstudio-shell"), "old app").unwrap();
+        std::fs::write(links.join("python-magic-cli"), "someone else's").unwrap();
+        std::os::unix::fs::symlink(
+            bin.join("magicstudio-shell"),
+            links.join("magicstudio-shell"),
+        )
+        .unwrap();
+        remove_retired(&root, &bin).unwrap();
+        assert!(!bin.join("magicstudio-shell").exists());
+        assert!(!links.join("magicstudio-shell").is_symlink());
+        assert!(links.join("python-magic-cli").is_file());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn runtime_resources_exclude_tests_and_unlisted_files() {
