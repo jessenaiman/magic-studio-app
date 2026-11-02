@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::{EngineError, Result, Session};
 use crate::project::cmd_project_add_asset;
 use crate::video_target::ensure_video_target_project;
 use crate::workshop::{
@@ -14,6 +13,7 @@ use crate::workshop::{
     workshop_status,
 };
 use crate::workspace::{has_extension, resolve_workspace_path, run_tool_in, song_audio_path};
+use crate::{EngineError, Result, Session};
 
 /// numbered_prompts parses panel descriptions from a generating prompt.
 fn numbered_prompts(text: &str) -> std::collections::BTreeMap<usize, String> {
@@ -51,12 +51,15 @@ fn numbered_prompts(text: &str) -> std::collections::BTreeMap<usize, String> {
 
 /// The audio already connected to this project: the session path, else the copy beside the video.
 fn connected_audio(s: &Session, dir: &Path, audio: &Path) -> Option<PathBuf> {
-    s.song_audio.clone().filter(|path| path.is_file()).or_else(|| {
-        audio
-            .file_name()
-            .map(|name| dir.join("hyperframes").join(name))
-            .filter(|path| path.is_file())
-    })
+    s.song_audio
+        .clone()
+        .filter(|path| path.is_file())
+        .or_else(|| {
+            audio
+                .file_name()
+                .map(|name| dir.join("hyperframes").join(name))
+                .filter(|path| path.is_file())
+        })
 }
 
 /// Same path, or the same bytes: relinking an identical recording is not a change.
@@ -105,7 +108,9 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
     let audio = song_audio_path(s, raw)?;
     let exists = ensure_video_target_project(s, &dir, "hyperframes").is_ok();
     let connected = connected_audio(s, &dir, &audio);
-    let unchanged = connected.as_ref().is_some_and(|old| same_audio(old, &audio));
+    let unchanged = connected
+        .as_ref()
+        .is_some_and(|old| same_audio(old, &audio));
     if exists && !unchanged {
         return Err(EngineError::InvalidParams("This HyperFrames project already has a timeline. Update its audio in HyperFrames before relinking the recording; the existing project was preserved".into()));
     }
@@ -488,9 +493,11 @@ fn retain_query(files: &mut Vec<Value>, params: &Value) {
         return;
     };
     files.retain(|f| {
-        ["name", "path", "group"]
-            .iter()
-            .any(|key| f[key].as_str().is_some_and(|v| v.to_ascii_lowercase().contains(&q)))
+        ["name", "path", "group"].iter().any(|key| {
+            f[key]
+                .as_str()
+                .is_some_and(|v| v.to_ascii_lowercase().contains(&q))
+        })
     });
 }
 

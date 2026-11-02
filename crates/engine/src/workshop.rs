@@ -16,9 +16,7 @@ use crate::{EngineError, Result, Session};
 
 use crate::control_bindings::CONTROLS;
 use crate::storyboard::{SceneDoc, clock, panel_spans, read_scene_doc, scene_doc_path, scenes};
-use crate::video_target::{
-    target_project_chip, target_project_path, video_server_info,
-};
+use crate::video_target::{target_project_chip, target_project_path, video_server_info};
 use crate::workspace::{has_extension, run_tool_in, workspace_root};
 
 // Re-export storyboard, video target, intake, transcript, and fix-list handlers so `crate::workshop::*` callers continue to work.
@@ -38,8 +36,8 @@ pub use crate::workshop_intake::{
     cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_remove,
     cmd_workshop_set_audio, cmd_workshop_set_target, cmd_workshop_split_panels,
 };
-pub(crate) use crate::workshop_transcript::{transcript_document, transcript_problems};
 pub use crate::workshop_transcript::{cmd_audio_analyze, cmd_workshop_import_transcript};
+pub(crate) use crate::workshop_transcript::{transcript_document, transcript_problems};
 
 /// Image file extensions recognized by the workshop.
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
@@ -331,7 +329,9 @@ fn workshop_transcript_summary(
     target_chip: &Value,
 ) -> (Value, Vec<String>, bool, String, Vec<Value>) {
     let source = transcripts.first().cloned().or_else(|| {
-        loaded_board["source_transcript"].as_str().map(PathBuf::from)
+        loaded_board["source_transcript"]
+            .as_str()
+            .map(PathBuf::from)
     });
     let doc = source
         .as_ref()
@@ -350,21 +350,38 @@ fn workshop_transcript_summary(
     let why = if source.is_none() {
         "Import existing timed lyrics, or transcribe the linked song.".to_string()
     } else if !valid {
-        format!("Transcript needs repair: {}. Original inputs are retained.", errors.join("; "))
+        format!(
+            "Transcript needs repair: {}. Original inputs are retained.",
+            errors.join("; ")
+        )
     } else if let Some(src) = loaded_board["source_transcript"].as_str() {
-        let label = Path::new(src).parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("unknown");
+        let label = Path::new(src)
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
         format!(
             "Storyboard uses native output {src} directly ({} words); no transcription rerun. Archive label: {label} (producer executable/version not recorded). {}",
             loaded_board["source_words"],
             loaded_board["timing_warning"].as_str().unwrap_or("")
         )
     } else if let Some(tool) = doc["source"].as_str() {
-        format!("Reused native transcript; recorded tool: {tool}; recorded model: {}. No transcription run in this import.", doc["model"].as_str().unwrap_or("unknown"))
+        format!(
+            "Reused native transcript; recorded tool: {tool}; recorded model: {}. No transcription run in this import.",
+            doc["model"].as_str().unwrap_or("unknown")
+        )
     } else {
-        "Transcript ready; producer unknown because the supplied file did not record it.".to_string()
+        "Transcript ready; producer unknown because the supplied file did not record it."
+            .to_string()
     };
     let mut outputs: Vec<Value> = transcripts.iter().map(|p| file_chip(p)).collect();
-    for name in ["transcript.json", "transcript.srt", "audio-analysis.json", "audiomap.json", "STORYBOARD.md"] {
+    for name in [
+        "transcript.json",
+        "transcript.srt",
+        "audio-analysis.json",
+        "audiomap.json",
+        "STORYBOARD.md",
+    ] {
         let file = dir.join(video_target).join(name);
         if file.is_file() {
             outputs.push(file_chip(&file));
@@ -389,7 +406,12 @@ fn workshop_animated_assets(s: &Session) -> Vec<Value> {
         .collect()
 }
 
-fn workshop_reference_state(s: &Session, dir: &Path, loaded_board: &Value, panels: &[PathBuf]) -> (PathBuf, bool, bool, &'static str) {
+fn workshop_reference_state(
+    s: &Session,
+    dir: &Path,
+    loaded_board: &Value,
+    panels: &[PathBuf],
+) -> (PathBuf, bool, bool, &'static str) {
     let pdf = loaded_board["pdf"]
         .as_str()
         .map(PathBuf::from)
@@ -402,11 +424,14 @@ fn workshop_reference_state(s: &Session, dir: &Path, loaded_board: &Value, panel
         .collect();
     let has_ref_art = !panels.is_empty() || !scene_docs.is_empty();
     let approved = pdf.is_file()
-        && (s.draft_approved || (!scene_docs.is_empty() && scene_docs.iter().all(|d| d.status == "approved")));
+        && (s.draft_approved
+            || (!scene_docs.is_empty() && scene_docs.iter().all(|d| d.status == "approved")));
     let why = match (has_ref_art, pdf.is_file(), approved) {
         (false, _, _) => "Initialize the storyboard (`storyboard.init`) or add scene art.",
         (true, false, _) => "Build the storyboard PDF (`workshop.build_storyboard`).",
-        (true, true, false) => "Review the storyboard and scene plates, then approve (`workshop.approve_draft`).",
+        (true, true, false) => {
+            "Review the storyboard and scene plates, then approve (`workshop.approve_draft`)."
+        }
         (true, true, true) => "Storyboard approved.",
     };
     (pdf, has_ref_art, approved, why)
@@ -425,7 +450,8 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .unwrap_or(Value::Null);
-    let (pdf, has_ref_art, approved, reference_why) = workshop_reference_state(s, &dir, &loaded_board, &panels);
+    let (pdf, has_ref_art, approved, reference_why) =
+        workshop_reference_state(s, &dir, &loaded_board, &panels);
     let panel_timing = transcripts
         .first()
         .and_then(|t| transcript_document(t).ok())
@@ -445,8 +471,13 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
             json!({"target": t, "selected": *t == target, "path": path, "exists": path.is_some()})
         })
         .collect();
-    let (supplied_transcript, transcript_errors, transcript_valid, transcript_why, transcript_outputs) =
-        workshop_transcript_summary(&dir, target, &transcripts, &loaded_board, &target_chip);
+    let (
+        supplied_transcript,
+        transcript_errors,
+        transcript_valid,
+        transcript_why,
+        transcript_outputs,
+    ) = workshop_transcript_summary(&dir, target, &transcripts, &loaded_board, &target_chip);
     let animated = workshop_animated_assets(s);
     let stages = vec![
         json!({"id": "song", "title": "Song", "done": audio_ok, "why": song_why,
@@ -471,7 +502,10 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
     ];
     let complete = stages.iter().take(3).all(|st| st["done"] == json!(true));
     let studio_info = studio(&dir);
-    let effective_video_project = s.video_project_path.clone().or_else(|| active_target_path.clone());
+    let effective_video_project = s
+        .video_project_path
+        .clone()
+        .or_else(|| active_target_path.clone());
     let diag = crate::storyboard::diagnose_storyboard_and_workshop(s, &dir);
     Ok(json!({
         "ok": true,

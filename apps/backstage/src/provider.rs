@@ -131,14 +131,17 @@ fn query(control: &Control, query: Query) -> Result<Value, String> {
     Ok(value)
 }
 #[cfg(target_os = "linux")]
-fn run(control: &Control, mut command: Command) -> Result<Vec<u8>, String> {
+fn spawn_grouped(
+    control: &Control,
+    mut command: Command,
+) -> Result<(std::process::Child, Group), String> {
     use std::os::unix::process::CommandExt;
     // Hold the lifecycle lock through spawn+registration: quit cannot miss a child.
     let mut state = control.0.lock().unwrap_or_else(|e| e.into_inner());
     if state.closed {
         return Err("Provider cancelled".into());
     }
-    let mut child = command
+    let child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -154,10 +157,49 @@ fn run(control: &Control, mut command: Command) -> Result<Vec<u8>, String> {
     let group = i32::try_from(child.id()).map_err(|_| "Provider process id out of range")?;
     state.groups.insert(group);
     drop(state);
-    let group_guard = Group {
-        control: control.clone(),
-        id: group,
+    Ok((
+        child,
+        Group {
+            control: control.clone(),
+            id: group,
+        },
+    ))
+}
+#[cfg(target_os = "linux")]
+fn format_failure(status: std::process::ExitStatus, stderr: &[u8]) -> String {
+    let detail = crate::data::clean(&String::from_utf8_lossy(stderr));
+    let missing_backend = detail.contains("magicstudio-shell")
+        && (detail.contains("not found")
+            || detail.contains("Could not find")
+            || detail.contains("not installed"));
+    let category = if missing_backend {
+        "Native backend absent"
+    } else {
+        "Provider error"
     };
+    format!(
+        "{category}: {status}: {}",
+        detail.chars().take(1000).collect::<String>()
+    )
+}
+#[cfg(target_os = "linux")]
+fn validate_output(
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+) -> Result<Vec<u8>, String> {
+    if stdout.len() > LIMIT as usize || stderr.len() > LIMIT as usize {
+        return Err("Provider output exceeded 1 MiB bound".into());
+    }
+    if !status.success() {
+        return Err(format_failure(status, &stderr));
+    }
+    Ok(stdout)
+}
+#[cfg(target_os = "linux")]
+fn run(control: &Control, command: Command) -> Result<Vec<u8>, String> {
+    let (mut child, group_guard) = spawn_grouped(control, command)?;
+    let group = group_guard.id;
     let stdout = child.stdout.take().ok_or("Provider stdout unavailable")?;
     let stderr = child.stderr.take().ok_or("Provider stderr unavailable")?;
     let out = read_pipe(stdout);
@@ -193,26 +235,7 @@ fn run(control: &Control, mut command: Command) -> Result<Vec<u8>, String> {
     let status = reaped
         .map_err(|_| "Provider reap deadline exceeded")?
         .map_err(|e| format!("Provider wait error: {e}"))?;
-    if stdout.len() > LIMIT as usize || stderr.len() > LIMIT as usize {
-        return Err("Provider output exceeded 1 MiB bound".into());
-    }
-    if !status.success() {
-        let detail = crate::data::clean(&String::from_utf8_lossy(&stderr));
-        let category = if detail.contains("magicstudio-shell")
-            && (detail.contains("not found")
-                || detail.contains("Could not find")
-                || detail.contains("not installed"))
-        {
-            "Native backend absent"
-        } else {
-            "Provider error"
-        };
-        return Err(format!(
-            "{category}: {status}: {}",
-            detail.chars().take(1000).collect::<String>()
-        ));
-    }
-    Ok(stdout)
+    validate_output(status, stdout, stderr)
 }
 
 fn bounded(input: impl Read) -> Result<Vec<u8>, String> {

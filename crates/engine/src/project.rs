@@ -314,7 +314,11 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
     let Some(dir) = path.parent() else {
         return steps;
     };
-    let Some(raw_audio) = params.get("audio").and_then(Value::as_str).filter(|v| !v.is_empty()) else {
+    let Some(raw_audio) = params
+        .get("audio")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+    else {
         link_existing_video_project(s, dir, &mut steps);
         return steps;
     };
@@ -328,17 +332,36 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
             return steps;
         }
     }
-    if let Some(t) = params.get("transcript").and_then(Value::as_str).filter(|v| !v.is_empty()) {
-        let _ = super::workshop::cmd_workshop_import_transcript(s, &json!({"path": t, "captions": params["captions"], "audiomap": params["audiomap"], "replace": true}));
+    if let Some(t) = params
+        .get("transcript")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+    {
+        let _ = super::workshop::cmd_workshop_import_transcript(
+            s,
+            &json!({"path": t, "captions": params["captions"], "audiomap": params["audiomap"], "replace": true}),
+        );
         steps.push(json!({"command": "workshop.import_transcript", "status": "complete"}));
-    } else if params.get("process_audio").and_then(Value::as_bool).unwrap_or(true) && params["prepare_only"] != true {
-        let model = params.get("model").and_then(Value::as_str).unwrap_or("large-v3");
+    } else if params
+        .get("process_audio")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+        && params["prepare_only"] != true
+    {
+        let model = params
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("large-v3");
         match super::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]})) {
             Ok(_) => steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"})),
             Err(e) => steps.push(json!({"command": "audio.analyze", "status": "failed", "error": e.to_string()})),
         }
     }
-    if !super::workshop::transcript_files(dir).is_empty() && !dir.join("storyboard/movie-board.json").is_file() && params["prepare_only"] != true && super::storyboard::cmd_storyboard_init(s, &json!({})).is_ok() {
+    if !super::workshop::transcript_files(dir).is_empty()
+        && !dir.join("storyboard/movie-board.json").is_file()
+        && params["prepare_only"] != true
+        && super::storyboard::cmd_storyboard_init(s, &json!({})).is_ok()
+    {
         steps.push(json!({"command": "storyboard.init", "status": "complete"}));
     }
     steps
@@ -786,12 +809,15 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
 
 fn outside_project_image(dir: &Path, source: &Path) -> bool {
     !source.starts_with(dir)
-        && source.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-            [
-                "png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "tif", "tiff", "exr",
-            ]
-            .contains(&e.to_ascii_lowercase().as_str())
-        })
+        && source
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| {
+                [
+                    "png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "tif", "tiff", "exr",
+                ]
+                .contains(&e.to_ascii_lowercase().as_str())
+            })
 }
 
 fn asset_destination_folder(dir: &Path, params: &Value) -> Result<(PathBuf, PathBuf)> {
@@ -801,9 +827,7 @@ fn asset_destination_folder(dir: &Path, params: &Value) -> Result<(PathBuf, Path
             .and_then(Value::as_str)
             .map(str::trim)
             // A plain folder name: nothing that could climb out of assets/.
-            .filter(|n| {
-                !n.is_empty() && !n.contains(['/', '\\']) && *n != "." && *n != ".."
-            })
+            .filter(|n| !n.is_empty() && !n.contains(['/', '\\']) && *n != "." && *n != "..")
             .map(str::to_owned)
     };
     match (dest("character"), dest("background"), dest("image")) {
@@ -1227,11 +1251,7 @@ fn stage_plain_image(staged: &mut Session, entry: &crate::ProjectAsset, path: &P
     Ok(())
 }
 
-fn stage_path_asset(
-    staged: &mut Session,
-    entry: &crate::ProjectAsset,
-    path: &Path,
-) -> Result<()> {
+fn stage_path_asset(staged: &mut Session, entry: &crate::ProjectAsset, path: &Path) -> Result<()> {
     let manifest_path = manifest_path_for(path);
     if manifest_path
         .extension()

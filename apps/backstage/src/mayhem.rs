@@ -214,6 +214,24 @@ fn project_size(project: &ProjectRecord) -> Option<u64> {
         .try_fold(0_u64, |total, file| total.checked_add(file.bytes?))
 }
 
+fn project_in_repo(project: &ProjectRecord, data: &ProjectSnapshot) -> bool {
+    if data
+        .worktrees
+        .iter()
+        .any(|w| project.path.starts_with(&w.path))
+    {
+        return true;
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| {
+            cwd.ancestors()
+                .find(|p| p.join(".git").exists())
+                .map(std::path::Path::to_path_buf)
+        })
+        .is_some_and(|root| project.path.starts_with(&root))
+}
+
 fn projects(
     f: &mut Frame,
     area: Rect,
@@ -244,65 +262,14 @@ fn projects(
         &["#", "NAME", "WORKTREES", "FILES", "SIZE", "USAGE", ""],
     );
     if git_group {
-        let repository = &data.worktrees[0];
-        let row = Rect::new(body.x, body.y + 2, body.width, 3);
-        f.render_widget(
-            Block::bordered()
-                .border_style(Style::default().fg(GOLD))
-                .style(Style::default().bg(SELECT)),
-            row,
-        );
-        rows.push((row, 0));
-        let cells = columns(Rect::new(row.x, row.y + 1, row.width, 1), &widths);
-        for (cell, value) in cells.iter().take(6).zip([
-            "›1".into(),
-            repository.project.clone(),
-            data.worktrees.len().to_string(),
-            "n/a".into(),
-            "n/a".into(),
-            "Unavailable".into(),
-        ]) {
-            label(f, *cell, &value, GOLD, false);
-        }
-        let action = Rect::new(cells[6].x, row.y, cells[6].width.max(5), 3);
-        button(f, action, repository.available);
-        if repository.available {
-            opens.push((action, repository.path.clone()));
-        }
-        label(
-            f,
-            Rect::new(body.x + 2, body.y + 6, body.width.saturating_sub(4), 1),
-            "Explicit repository scope; shared worktrees are not summed.",
-            MUTED,
-            false,
-        );
+        draw_git_group_project_row(f, body, data, &widths, opens, rows);
         return;
     }
     if data.projects.is_empty() {
-        let row = Rect::new(body.x + 1, body.y + 3, body.width.saturating_sub(15), 1);
-        label(
-            f,
-            row,
-            "Unavailable — no authoritative project inventory observed",
-            GOLD,
-            false,
-        );
-        button(
-            f,
-            Rect::new(body.x + body.width.saturating_sub(12), body.y + 2, 11, 3),
-            false,
-        );
-        if let Some(error) = &data.error {
-            label(
-                f,
-                Rect::new(body.x + 2, body.y + 6, body.width.saturating_sub(4), 1),
-                error,
-                MUTED,
-                false,
-            );
-        }
+        draw_empty_projects(f, body, data.error.as_deref());
         return;
     }
+    let max_project_bytes = data.projects.iter().filter_map(project_size).max();
     let capacity = usize::from(body.height.saturating_sub(2) / 3).max(1);
     let start = selected.saturating_sub(capacity.saturating_sub(1));
     for (slot, (index, project)) in data
@@ -318,47 +285,137 @@ fn projects(
             break;
         }
         rows.push((row, index));
-        let active = index == selected;
-        if active {
-            f.render_widget(
-                Block::bordered()
-                    .border_style(Style::default().fg(GOLD))
-                    .style(Style::default().bg(SELECT)),
-                row,
-            );
-        }
-        let cells = columns(Rect::new(row.x, row.y + 1, row.width, 1), &widths);
-        let color = if active { GOLD } else { IVORY };
-        label(f, cells[0], &(index + 1).to_string(), color, false);
-        label(f, cells[1], &project.name, color, active);
-        label(f, cells[2], "Unavailable", MUTED, false);
+        draw_project_row(
+            f,
+            row,
+            data,
+            project,
+            (index, index == selected, max_project_bytes),
+            &widths,
+            opens,
+        );
+    }
+}
+
+fn draw_git_group_project_row(
+    f: &mut Frame,
+    body: Rect,
+    data: &ProjectSnapshot,
+    widths: &[u16],
+    opens: &mut Vec<(Rect, PathBuf)>,
+    rows: &mut Vec<(Rect, usize)>,
+) {
+    let repository = &data.worktrees[0];
+    let row = Rect::new(body.x, body.y + 2, body.width, 3);
+    f.render_widget(
+        Block::bordered()
+            .border_style(Style::default().fg(GOLD))
+            .style(Style::default().bg(SELECT)),
+        row,
+    );
+    rows.push((row, 0));
+    let cells = columns(Rect::new(row.x, row.y + 1, row.width, 1), widths);
+    for (cell, value) in cells.iter().take(6).zip([
+        "›1".into(),
+        repository.project.clone(),
+        data.worktrees.len().to_string(),
+        "n/a".into(),
+        "n/a".into(),
+        "Unavailable".into(),
+    ]) {
+        label(f, *cell, &value, GOLD, false);
+    }
+    let action = Rect::new(cells[6].x, row.y, cells[6].width.max(5), 3);
+    button(f, action, repository.available);
+    if repository.available {
+        opens.push((action, repository.path.clone()));
+    }
+    label(
+        f,
+        Rect::new(body.x + 2, body.y + 6, body.width.saturating_sub(4), 1),
+        "Explicit repository scope; shared worktrees are not summed.",
+        MUTED,
+        false,
+    );
+}
+
+fn draw_empty_projects(f: &mut Frame, body: Rect, error: Option<&str>) {
+    let row = Rect::new(body.x + 1, body.y + 3, body.width.saturating_sub(15), 1);
+    label(
+        f,
+        row,
+        "Unavailable — no authoritative project inventory observed",
+        GOLD,
+        false,
+    );
+    button(
+        f,
+        Rect::new(body.x + body.width.saturating_sub(12), body.y + 2, 11, 3),
+        false,
+    );
+    if let Some(error) = error {
         label(
             f,
-            cells[3],
-            &if project.complete {
-                project.files.len().to_string()
-            } else {
-                "n/a".into()
-            },
-            IVORY,
+            Rect::new(body.x + 2, body.y + 6, body.width.saturating_sub(4), 1),
+            error,
+            MUTED,
             false,
         );
-        label(
-            f,
-            cells[4],
-            &project_size(project)
-                .map(size)
-                .unwrap_or_else(|| "n/a".into()),
-            IVORY,
-            false,
+    }
+}
+
+fn draw_project_row(
+    f: &mut Frame,
+    row: Rect,
+    data: &ProjectSnapshot,
+    project: &ProjectRecord,
+    (index, active, max_project_bytes): (usize, bool, Option<u64>),
+    widths: &[u16],
+    opens: &mut Vec<(Rect, PathBuf)>,
+) {
+    if active {
+        f.render_widget(
+            Block::bordered()
+                .border_style(Style::default().fg(GOLD))
+                .style(Style::default().bg(SELECT)),
+            row,
         );
+    }
+    let cells = columns(Rect::new(row.x, row.y + 1, row.width, 1), widths);
+    let color = if active { GOLD } else { IVORY };
+    label(f, cells[0], &(index + 1).to_string(), color, false);
+    label(f, cells[1], &project.name, color, active);
+    let in_repo = project_in_repo(project, data);
+    let worktree_count = if in_repo {
+        data.worktrees.len().to_string()
+    } else {
+        "—".into()
+    };
+    label(
+        f,
+        cells[2],
+        &worktree_count,
+        if in_repo { IVORY } else { MUTED },
+        false,
+    );
+    let files_label = if project.complete {
+        project.files.len().to_string()
+    } else {
+        "n/a".into()
+    };
+    label(f, cells[3], &files_label, IVORY, false);
+    let bytes = project_size(project);
+    let size_label = bytes.map(size).unwrap_or_else(|| "n/a".into());
+    label(f, cells[4], &size_label, IVORY, false);
+    if bytes.is_some() {
+        bar_with_percent(f, cells[5], bytes, max_project_bytes, CYAN);
+    } else {
         label(f, cells[5], "Unavailable", MUTED, false);
-        let action = Rect::new(cells[6].x, row.y, cells[6].width.max(5), 3);
-        let enabled = project.exists;
-        button(f, action, enabled);
-        if enabled {
-            opens.push((action, project.path.clone()));
-        }
+    }
+    let action = Rect::new(cells[6].x, row.y, cells[6].width.max(5), 3);
+    button(f, action, project.exists);
+    if project.exists {
+        opens.push((action, project.path.clone()));
     }
 }
 
@@ -391,27 +448,7 @@ fn worktrees(
         ],
     );
     if data.worktrees.is_empty() {
-        label(
-            f,
-            Rect::new(body.x + 2, body.y + 3, body.width.saturating_sub(16), 1),
-            "Unavailable — no scoped worktree inventory",
-            GOLD,
-            false,
-        );
-        button(
-            f,
-            Rect::new(body.x + body.width.saturating_sub(12), body.y + 2, 11, 3),
-            false,
-        );
-        if let Some(error) = &data.worktree_error {
-            label(
-                f,
-                Rect::new(body.x + 2, body.y + 6, body.width.saturating_sub(4), 1),
-                error,
-                MUTED,
-                false,
-            );
-        }
+        draw_empty_worktrees(f, body, data.worktree_error.as_deref());
         return;
     }
     let maximum = data.worktrees.iter().filter_map(|w| w.bytes).max();
@@ -430,64 +467,95 @@ fn worktrees(
             break;
         }
         rows.push((row, index));
-        let active = index == selected;
-        let color = if active { GOLD } else { IVORY };
-        if active {
-            f.render_widget(
-                Block::bordered()
-                    .border_style(Style::default().fg(GOLD))
-                    .style(Style::default().bg(SELECT)),
-                row,
-            );
-        }
-        let cells = columns(Rect::new(row.x, row.y + 1, row.width, 1), &widths);
-        label(f, cells[0], &(index + 1).to_string(), color, false);
-        label(
+        draw_worktree_row(
             f,
-            cells[1],
-            &worktree.project,
-            if active { GOLD } else { CYAN },
-            active,
+            row,
+            worktree,
+            (index, index == selected, maximum),
+            &widths,
+            opens,
         );
-        label(f, cells[2], &worktree.name, IVORY, false);
-        label(f, cells[3], &worktree.branch, IVORY, false);
+    }
+}
+
+fn draw_empty_worktrees(f: &mut Frame, body: Rect, error: Option<&str>) {
+    label(
+        f,
+        Rect::new(body.x + 2, body.y + 3, body.width.saturating_sub(16), 1),
+        "Unavailable — no scoped worktree inventory",
+        GOLD,
+        false,
+    );
+    button(
+        f,
+        Rect::new(body.x + body.width.saturating_sub(12), body.y + 2, 11, 3),
+        false,
+    );
+    if let Some(error) = error {
         label(
             f,
-            cells[4],
-            &worktree
-                .files
-                .map(|n| format!("{n}{}", if worktree.partial { "+" } else { "" }))
-                .unwrap_or_else(|| "n/a".into()),
-            IVORY,
+            Rect::new(body.x + 2, body.y + 6, body.width.saturating_sub(4), 1),
+            error,
+            MUTED,
             false,
         );
-        label(
-            f,
-            cells[5],
-            &worktree
-                .bytes
-                .map(|n| format!("{}{}", if worktree.partial { "~" } else { "" }, size(n)))
-                .unwrap_or_else(|| "n/a".into()),
-            IVORY,
-            false,
+    }
+}
+
+fn draw_worktree_row(
+    f: &mut Frame,
+    row: Rect,
+    worktree: &WorktreeRecord,
+    (index, active, maximum): (usize, bool, Option<u64>),
+    widths: &[u16],
+    opens: &mut Vec<(Rect, PathBuf)>,
+) {
+    let color = if active { GOLD } else { IVORY };
+    if active {
+        f.render_widget(
+            Block::bordered()
+                .border_style(Style::default().fg(GOLD))
+                .style(Style::default().bg(SELECT)),
+            row,
         );
-        bar_with_percent(
-            f,
-            cells[6],
-            worktree.bytes,
-            maximum,
-            [
-                Color::Rgb(230, 119, 126),
-                Color::Rgb(112, 196, 149),
-                GOLD,
-                CYAN,
-            ][index % 4],
-        );
-        let action = Rect::new(cells[7].x, row.y, cells[7].width.max(5), 3);
-        button(f, action, worktree.available);
-        if worktree.available {
-            opens.push((action, worktree.path.clone()));
-        }
+    }
+    let cells = columns(Rect::new(row.x, row.y + 1, row.width, 1), widths);
+    label(f, cells[0], &(index + 1).to_string(), color, false);
+    label(
+        f,
+        cells[1],
+        &worktree.project,
+        if active { GOLD } else { CYAN },
+        active,
+    );
+    label(f, cells[2], &worktree.name, IVORY, false);
+    label(f, cells[3], &worktree.branch, IVORY, false);
+    let files_text = worktree
+        .files
+        .map(|n| format!("{n}{}", if worktree.partial { "+" } else { "" }))
+        .unwrap_or_else(|| "n/a".into());
+    label(f, cells[4], &files_text, IVORY, false);
+    let size_text = worktree
+        .bytes
+        .map(|n| format!("{}{}", if worktree.partial { "~" } else { "" }, size(n)))
+        .unwrap_or_else(|| "n/a".into());
+    label(f, cells[5], &size_text, IVORY, false);
+    bar_with_percent(
+        f,
+        cells[6],
+        worktree.bytes,
+        maximum,
+        [
+            Color::Rgb(230, 119, 126),
+            Color::Rgb(112, 196, 149),
+            GOLD,
+            CYAN,
+        ][index % 4],
+    );
+    let action = Rect::new(cells[7].x, row.y, cells[7].width.max(5), 3);
+    button(f, action, worktree.available);
+    if worktree.available {
+        opens.push((action, worktree.path.clone()));
     }
 }
 
@@ -713,12 +781,6 @@ fn folders(
     opens: &mut Vec<(Rect, PathBuf)>,
     controls: bool,
 ) {
-    let colors = [
-        Color::Rgb(230, 119, 126),
-        Color::Rgb(112, 196, 149),
-        GOLD,
-        CYAN,
-    ];
     if folders.is_empty() {
         label(
             f,
@@ -729,63 +791,76 @@ fn folders(
         );
         return;
     }
+    let widths: &[u16] = if controls {
+        &[37, 22, 27, 14]
+    } else {
+        &[40, 24, 36]
+    };
     for (slot, folder) in folders
         .iter()
         .take(usize::from(area.height / 2))
         .enumerate()
     {
-        let y = area.y + slot as u16 * 2;
-        let widths = if controls {
-            vec![37, 22, 27, 14]
-        } else {
-            vec![40, 24, 36]
-        };
-        let cells = columns(Rect::new(area.x, y, area.width, 1), &widths);
+        draw_folder_row(f, area, (slot, folder, total, controls), widths, opens);
+    }
+}
+
+fn draw_folder_row(
+    f: &mut Frame,
+    area: Rect,
+    (slot, folder, total, controls): (usize, &FolderRecord, Option<u64>, bool),
+    widths: &[u16],
+    opens: &mut Vec<(Rect, PathBuf)>,
+) {
+    let colors = [
+        Color::Rgb(230, 119, 126),
+        Color::Rgb(112, 196, 149),
+        GOLD,
+        CYAN,
+    ];
+    let y = area.y + slot as u16 * 2;
+    let cells = columns(Rect::new(area.x, y, area.width, 1), widths);
+    let name_text = if controls {
+        format!("▱ {} ({})", folder.name, folder.files)
+    } else {
+        format!("▱ {}", folder.name)
+    };
+    label(f, cells[0], &name_text, GOLD, false);
+    label(
+        f,
+        cells[1],
+        &folder_size_text(folder.bytes, controls),
+        IVORY,
+        false,
+    );
+    bar(f, cells[2], folder.bytes, total, colors[slot % 4]);
+    // The reference lower worktree inspector has no Open column.
+    if controls {
         label(
             f,
-            cells[0],
-            &if controls {
-                format!("▱ {} ({})", folder.name, folder.files)
-            } else {
-                format!("▱ {}", folder.name)
-            },
-            GOLD,
+            cells[3],
+            "[Open]",
+            if folder.available { GOLD } else { MUTED },
             false,
         );
-        label(
-            f,
-            cells[1],
-            &folder
-                .bytes
-                .map(|n| {
-                    if controls {
-                        size(n)
-                    } else {
-                        size(n)
-                            .replace(" ", "")
-                            .replace("KB", "K")
-                            .replace("MB", "M")
-                            .replace("GB", "G")
-                    }
-                })
-                .unwrap_or_else(|| "n/a".into()),
-            IVORY,
-            false,
-        );
-        bar(f, cells[2], folder.bytes, total, colors[slot % 4]);
-        // The reference lower worktree inspector has no Open column.
-        if controls {
-            label(
-                f,
-                cells[3],
-                "[Open]",
-                if folder.available { GOLD } else { MUTED },
-                false,
-            );
-            if folder.available {
-                opens.push((cells[3], folder.path.clone()));
-            }
+        if folder.available {
+            opens.push((cells[3], folder.path.clone()));
         }
+    }
+}
+
+fn folder_size_text(bytes: Option<u64>, controls: bool) -> String {
+    let Some(n) = bytes else {
+        return "n/a".into();
+    };
+    if controls {
+        size(n)
+    } else {
+        size(n)
+            .replace(' ', "")
+            .replace("KB", "K")
+            .replace("MB", "M")
+            .replace("GB", "G")
     }
 }
 
@@ -908,55 +983,10 @@ fn bar_with_percent(
 /// Read-only presentation of caller-supplied native reports; never executes an audit.
 pub fn draw_audit(f: &mut Frame, area: Rect, app: &mut App) {
     let Some(comparison) = app.audit.as_ref() else {
-        if let Some(scope) = &app.audit_pr_context {
-            let configured = app.audit_inputs.as_ref().is_some_and(|input| {
-                scope.matches(
-                    input.baseline_sha.as_deref(),
-                    input.candidate_sha.as_deref(),
-                )
-            });
-            let status = if configured {
-                "Matching artifact inputs configured; not loaded/verified. Press R to load/verify."
-            } else {
-                "No matching native audit artifact inputs supplied."
-            };
-            draw_missing_pr(f, area, scope, status);
-            return;
-        }
-        let body = panel(
-            f,
-            area,
-            "MAYHEM — NATIVE AUDIT REPORTS",
-            "read-only supplied JSON",
-        );
-        let error = app.audit_error.as_deref().unwrap_or(if app.refreshing {
-            "Loading bounded supplied native report JSON; no checks run"
-        } else {
-            "No baseline/candidate reports supplied. Pass --audit-baseline and --audit-candidate."
-        });
-        f.render_widget(Paragraph::new(format!("{}\n\nNo checker, agent or model was run. Agentlinter: not run.\nReport provenance and native errors remain unavailable until existing native JSON reports are supplied.",crate::data::clean(error))).wrap(Wrap{trim:false}).style(Style::default().fg(GOLD)),body);
+        draw_empty_audit(f, area, app);
         return;
     };
-    let area = if let Some(error) = &app.audit_error {
-        label(
-            f,
-            Rect::new(area.x, area.y, area.width, 1),
-            &format!(
-                "STALE — refresh failed; previous reports retained: {} • d details",
-                crate::data::clean(error)
-            ),
-            Color::Rgb(245, 95, 105),
-            true,
-        );
-        Rect::new(
-            area.x,
-            area.y + 2,
-            area.width,
-            area.height.saturating_sub(2),
-        )
-    } else {
-        area
-    };
+    let area = draw_audit_stale_banner(f, area, app.audit_error.as_deref());
     if area.width < 120 || area.height < 40 {
         let body = panel(
             f,
@@ -985,23 +1015,19 @@ pub fn draw_audit(f: &mut Frame, area: Rect, app: &mut App) {
     audit_tools(
         f,
         upper[0],
-        "BASELINE",
-        &comparison.baseline,
-        &comparison.candidate,
+        ("BASELINE", false),
+        (&comparison.baseline, &comparison.candidate),
         &ids,
         selected,
-        false,
         &mut rows,
     );
     audit_tools(
         f,
         upper[1],
-        "CANDIDATE",
-        &comparison.candidate,
-        &comparison.baseline,
+        ("CANDIDATE", true),
+        (&comparison.candidate, &comparison.baseline),
         &ids,
         selected,
-        true,
         &mut rows,
     );
     audit_finding(
@@ -1009,8 +1035,7 @@ pub fn draw_audit(f: &mut Frame, area: Rect, app: &mut App) {
         bands[1],
         comparison,
         id,
-        app.audit_finding_selected,
-        selected,
+        (app.audit_finding_selected, selected),
         &mut opens,
     );
     let lower = Layout::horizontal([Constraint::Percentage(48), Constraint::Percentage(52)])
@@ -1020,6 +1045,58 @@ pub fn draw_audit(f: &mut Frame, area: Rect, app: &mut App) {
     audit_scope(f, lower[1], comparison, &mut opens);
     app.audit_rows.extend(rows);
     app.project_buttons.extend(opens);
+}
+
+fn draw_empty_audit(f: &mut Frame, area: Rect, app: &App) {
+    if let Some(scope) = &app.audit_pr_context {
+        let configured = app.audit_inputs.as_ref().is_some_and(|input| {
+            scope.matches(
+                input.baseline_sha.as_deref(),
+                input.candidate_sha.as_deref(),
+            )
+        });
+        let status = if configured {
+            "Matching artifact inputs configured; not loaded/verified. Press R to load/verify."
+        } else {
+            "No matching native audit artifact inputs supplied."
+        };
+        draw_missing_pr(f, area, scope, status);
+        return;
+    }
+    let body = panel(
+        f,
+        area,
+        "MAYHEM — NATIVE AUDIT REPORTS",
+        "read-only supplied JSON",
+    );
+    let error = app.audit_error.as_deref().unwrap_or(if app.refreshing {
+        "Loading bounded supplied native report JSON; no checks run"
+    } else {
+        "No baseline/candidate reports supplied. Pass --audit-baseline and --audit-candidate."
+    });
+    f.render_widget(Paragraph::new(format!("{}\n\nNo checker, agent or model was run. Agentlinter: not run.\nReport provenance and native errors remain unavailable until existing native JSON reports are supplied.",crate::data::clean(error))).wrap(Wrap{trim:false}).style(Style::default().fg(GOLD)),body);
+}
+
+fn draw_audit_stale_banner(f: &mut Frame, area: Rect, error: Option<&str>) -> Rect {
+    let Some(error) = error else {
+        return area;
+    };
+    label(
+        f,
+        Rect::new(area.x, area.y, area.width, 1),
+        &format!(
+            "STALE — refresh failed; previous reports retained: {} • d details",
+            crate::data::clean(error)
+        ),
+        Color::Rgb(245, 95, 105),
+        true,
+    );
+    Rect::new(
+        area.x,
+        area.y + 2,
+        area.width,
+        area.height.saturating_sub(2),
+    )
 }
 
 fn native_field(value: &serde_json::Value, key: &str) -> String {
@@ -1037,16 +1114,13 @@ fn native_number(value: &serde_json::Value, key: &str) -> Option<i64> {
     value.get(key).and_then(serde_json::Value::as_i64)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn audit_tools(
     f: &mut Frame,
     area: Rect,
-    title: &str,
-    report: &crate::audit::Report,
-    other: &crate::audit::Report,
+    (title, candidate): (&str, bool),
+    (report, other): (&crate::audit::Report, &crate::audit::Report),
     ids: &[String],
     selected: usize,
-    candidate: bool,
     rows: &mut Vec<(Rect, usize)>,
 ) {
     let body = panel(
@@ -1084,95 +1158,122 @@ fn audit_tools(
             break;
         }
         rows.push((row, index));
-        if index == selected {
-            f.render_widget(Block::default().style(Style::default().bg(SELECT)), row);
-            f.render_widget(
-                Block::default()
-                    .borders(ratatui::widgets::Borders::LEFT | ratatui::widgets::Borders::RIGHT)
-                    .border_style(Style::default().fg(GOLD)),
-                row,
-            );
-        }
-        let tool = report
-            .tools()
-            .iter()
-            .find(|tool| tool["toolId"].as_str() == Some(id.as_str()))
-            .unwrap_or(&serde_json::Value::Null);
-        let peer = other
-            .tools()
-            .iter()
-            .find(|tool| tool["toolId"].as_str() == Some(id.as_str()))
-            .unwrap_or(&serde_json::Value::Null);
-        let cells = columns(Rect::new(row.x, row.y, row.width, 1), &widths);
-        label(f, cells[0], &(index + 1).to_string(), GOLD, false);
-        label(
+        draw_audit_tool_row(
             f,
-            cells[1],
-            crate::audit::tool_label(id),
-            if index == selected { GOLD } else { IVORY },
-            index == selected,
-        );
-        f.render_widget(
-            Paragraph::new(crate::data::clean(id))
-                .style(Style::default().fg(MUTED).add_modifier(Modifier::DIM)),
-            Rect::new(
-                cells[1].x + 1,
-                row.y + 1,
-                cells[1].width.saturating_sub(1),
-                1,
-            ),
-        );
-        label(
-            f,
-            cells[2],
-            &native_field(tool, "issueCount"),
-            if native_number(tool, "issueCount").is_some_and(|n| n > 0) {
-                GOLD
-            } else {
-                IVORY
-            },
-            false,
-        );
-        label(
-            f,
-            cells[3],
-            &native_field(tool, "errorCount"),
-            if native_number(tool, "errorCount").is_some_and(|n| n > 0) {
-                Color::Rgb(242, 108, 115)
-            } else {
-                IVORY
-            },
-            false,
-        );
-        label(
-            f,
-            cells[4],
-            &native_field(tool, "filesAnalyzed"),
-            CYAN,
-            false,
-        );
-        label(f, cells[5], &native_field(tool, "status"), IVORY, false);
-        let delta = if candidate {
-            native_number(tool, "issueCount")
-                .zip(native_number(peer, "issueCount"))
-                .map(|(after, before)| after - before)
-        } else {
-            None
-        };
-        label(
-            f,
-            cells[6],
-            &delta
-                .map(|n| format!("{n:+}"))
-                .unwrap_or_else(|| "—".into()),
-            match delta {
-                Some(n) if n < 0 => Color::Rgb(112, 196, 149),
-                Some(n) if n > 0 => GOLD,
-                _ => MUTED,
-            },
-            false,
+            row,
+            (report, other),
+            (index, id.as_str(), index == selected, candidate),
+            &widths,
         );
     }
+}
+
+fn draw_audit_tool_row(
+    f: &mut Frame,
+    row: Rect,
+    (report, other): (&crate::audit::Report, &crate::audit::Report),
+    (index, id, active, candidate): (usize, &str, bool, bool),
+    widths: &[u16],
+) {
+    if active {
+        f.render_widget(Block::default().style(Style::default().bg(SELECT)), row);
+        f.render_widget(
+            Block::default()
+                .borders(ratatui::widgets::Borders::LEFT | ratatui::widgets::Borders::RIGHT)
+                .border_style(Style::default().fg(GOLD)),
+            row,
+        );
+    }
+    let tool = report
+        .tools()
+        .iter()
+        .find(|tool| tool["toolId"].as_str() == Some(id))
+        .unwrap_or(&serde_json::Value::Null);
+    let peer = other
+        .tools()
+        .iter()
+        .find(|tool| tool["toolId"].as_str() == Some(id))
+        .unwrap_or(&serde_json::Value::Null);
+    let cells = columns(Rect::new(row.x, row.y, row.width, 1), widths);
+    label(f, cells[0], &(index + 1).to_string(), GOLD, false);
+    label(
+        f,
+        cells[1],
+        crate::audit::tool_label(id),
+        if active { GOLD } else { IVORY },
+        active,
+    );
+    f.render_widget(
+        Paragraph::new(crate::data::clean(id))
+            .style(Style::default().fg(MUTED).add_modifier(Modifier::DIM)),
+        Rect::new(
+            cells[1].x + 1,
+            row.y + 1,
+            cells[1].width.saturating_sub(1),
+            1,
+        ),
+    );
+    draw_audit_tool_metrics(f, &cells, tool, peer, candidate);
+}
+
+fn draw_audit_tool_metrics(
+    f: &mut Frame,
+    cells: &[Rect],
+    tool: &serde_json::Value,
+    peer: &serde_json::Value,
+    candidate: bool,
+) {
+    label(
+        f,
+        cells[2],
+        &native_field(tool, "issueCount"),
+        if native_number(tool, "issueCount").is_some_and(|n| n > 0) {
+            GOLD
+        } else {
+            IVORY
+        },
+        false,
+    );
+    label(
+        f,
+        cells[3],
+        &native_field(tool, "errorCount"),
+        if native_number(tool, "errorCount").is_some_and(|n| n > 0) {
+            Color::Rgb(242, 108, 115)
+        } else {
+            IVORY
+        },
+        false,
+    );
+    label(
+        f,
+        cells[4],
+        &native_field(tool, "filesAnalyzed"),
+        CYAN,
+        false,
+    );
+    label(f, cells[5], &native_field(tool, "status"), IVORY, false);
+    let delta = if candidate {
+        native_number(tool, "issueCount")
+            .zip(native_number(peer, "issueCount"))
+            .map(|(after, before)| after - before)
+    } else {
+        None
+    };
+    let delta_text = delta
+        .map(|n| format!("{n:+}"))
+        .unwrap_or_else(|| "—".into());
+    label(
+        f,
+        cells[6],
+        &delta_text,
+        match delta {
+            Some(n) if n < 0 => Color::Rgb(112, 196, 149),
+            Some(n) if n > 0 => GOLD,
+            _ => MUTED,
+        },
+        false,
+    );
 }
 
 fn audit_finding(
@@ -1180,8 +1281,7 @@ fn audit_finding(
     area: Rect,
     comparison: &crate::audit::Comparison,
     tool: Option<&str>,
-    selected: usize,
-    tool_index: usize,
+    (selected, tool_index): (usize, usize),
     opens: &mut Vec<(Rect, PathBuf)>,
 ) {
     let issues: Vec<_> = comparison.candidate.native["issues"]
@@ -1214,43 +1314,64 @@ fn audit_finding(
     };
     let split =
         Layout::horizontal([Constraint::Percentage(39), Constraint::Percentage(61)]).split(body);
+    draw_finding_metadata(f, split[0], body.height, issue);
+    draw_finding_detail_pane(
+        f,
+        split[1],
+        issue,
+        comparison.finding_link(tool_index, index),
+        opens,
+    );
+}
+
+fn draw_finding_metadata(f: &mut Frame, pane: Rect, total_height: u16, issue: &serde_json::Value) {
+    let step = if total_height >= 7 { 2 } else { 1 };
     for (offset, key) in ["toolId", "patternId", "line", "severity"]
         .iter()
         .enumerate()
     {
-        let y = split[0].y + offset as u16 * if body.height >= 7 { 2 } else { 1 };
-        if y >= body.y + body.height {
+        let y = pane.y + offset as u16 * step;
+        if y >= pane.y + total_height {
             break;
         }
-        label(f, Rect::new(split[0].x + 2, y, 12, 1), key, IVORY, false);
+        label(f, Rect::new(pane.x + 2, y, 12, 1), key, IVORY, false);
+        let value = match *key {
+            "toolId" => {
+                crate::audit::tool_label(issue["toolId"].as_str().unwrap_or("Unavailable")).into()
+            }
+            "patternId" => {
+                crate::audit::rule_label(issue["patternId"].as_str().unwrap_or("Unavailable"))
+                    .into()
+            }
+            _ => native_field(issue, key),
+        };
         label(
             f,
-            Rect::new(split[0].x + 15, y, split[0].width.saturating_sub(17), 1),
-            &match *key {
-                "toolId" => {
-                    crate::audit::tool_label(issue["toolId"].as_str().unwrap_or("Unavailable"))
-                        .into()
-                }
-                "patternId" => {
-                    crate::audit::rule_label(issue["patternId"].as_str().unwrap_or("Unavailable"))
-                        .into()
-                }
-                _ => native_field(issue, key),
-            },
+            Rect::new(pane.x + 15, y, pane.width.saturating_sub(17), 1),
+            &value,
             if *key == "severity" { GOLD } else { CYAN },
             false,
         );
-        if matches!(*key, "toolId" | "patternId") && body.height >= 7 {
+        if matches!(*key, "toolId" | "patternId") && total_height >= 7 {
             f.render_widget(
                 Paragraph::new(format!("  {}", native_field(issue, key)))
                     .style(Style::default().fg(MUTED).add_modifier(Modifier::DIM)),
-                Rect::new(split[0].x + 15, y + 1, split[0].width.saturating_sub(17), 1),
+                Rect::new(pane.x + 15, y + 1, pane.width.saturating_sub(17), 1),
             );
         }
     }
+}
+
+fn draw_finding_detail_pane(
+    f: &mut Frame,
+    pane: Rect,
+    issue: &serde_json::Value,
+    link: Option<&std::path::Path>,
+    opens: &mut Vec<(Rect, PathBuf)>,
+) {
     label(
         f,
-        Rect::new(split[1].x + 1, split[1].y, 10, 1),
+        Rect::new(pane.x + 1, pane.y, 10, 1),
         "filePath",
         IVORY,
         false,
@@ -1259,16 +1380,11 @@ fn audit_finding(
         Paragraph::new(native_field(issue, "filePath"))
             .wrap(Wrap { trim: false })
             .style(Style::default().fg(CYAN)),
-        Rect::new(
-            split[1].x + 12,
-            split[1].y,
-            split[1].width.saturating_sub(14),
-            2,
-        ),
+        Rect::new(pane.x + 12, pane.y, pane.width.saturating_sub(14), 2),
     );
     label(
         f,
-        Rect::new(split[1].x + 1, split[1].y + 3, 10, 1),
+        Rect::new(pane.x + 1, pane.y + 3, 10, 1),
         "message",
         IVORY,
         false,
@@ -1278,16 +1394,16 @@ fn audit_finding(
             .wrap(Wrap { trim: false })
             .style(Style::default().fg(IVORY)),
         Rect::new(
-            split[1].x + 12,
-            split[1].y + 3,
-            split[1].width.saturating_sub(14),
-            split[1].height.saturating_sub(6),
+            pane.x + 12,
+            pane.y + 3,
+            pane.width.saturating_sub(14),
+            pane.height.saturating_sub(6),
         ),
     );
-    if let Some(path) = comparison.finding_link(tool_index, index) {
+    if let Some(path) = link {
         let action = Rect::new(
-            split[1].x + split[1].width.saturating_sub(21),
-            split[1].y + split[1].height.saturating_sub(3),
+            pane.x + pane.width.saturating_sub(21),
+            pane.y + pane.height.saturating_sub(3),
             20,
             3,
         );
@@ -1311,9 +1427,9 @@ fn audit_finding(
         label(
             f,
             Rect::new(
-                split[1].x + 1,
-                split[1].y + split[1].height.saturating_sub(1),
-                split[1].width.saturating_sub(2),
+                pane.x + 1,
+                pane.y + pane.height.saturating_sub(1),
+                pane.width.saturating_sub(2),
                 1,
             ),
             "Source link unavailable • d full native details",
@@ -1321,6 +1437,24 @@ fn audit_finding(
             false,
         );
     }
+}
+
+fn collect_audit_errors<'a>(
+    comparison: &'a crate::audit::Comparison,
+    tool: Option<&str>,
+) -> Vec<(&'static str, &'a serde_json::Value)> {
+    let mut records = Vec::new();
+    for (source, report) in [("B", &comparison.baseline), ("C", &comparison.candidate)] {
+        for error in report.native["errors"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|error| tool.is_none_or(|id| error["toolId"].as_str() == Some(id)))
+        {
+            records.push((source, error));
+        }
+    }
+    records
 }
 
 fn audit_errors(
@@ -1346,17 +1480,7 @@ fn audit_errors(
         &widths,
         &["FROM", "toolId", "phase", "kind", "message"],
     );
-    let mut records = Vec::new();
-    for (source, report) in [("B", &comparison.baseline), ("C", &comparison.candidate)] {
-        for error in report.native["errors"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|error| tool.is_none_or(|id| error["toolId"].as_str() == Some(id)))
-        {
-            records.push((source, error));
-        }
-    }
+    let records = collect_audit_errors(comparison, tool);
     let capacity = usize::from(body.height.saturating_sub(4) / 2);
     if records.is_empty() {
         label(
@@ -1387,6 +1511,16 @@ fn audit_errors(
             );
         }
     }
+    draw_audit_errors_footer(f, body, comparison, records.len(), capacity);
+}
+
+fn draw_audit_errors_footer(
+    f: &mut Frame,
+    body: Rect,
+    comparison: &crate::audit::Comparison,
+    total_records: usize,
+    capacity: usize,
+) {
     label(
         f,
         Rect::new(
@@ -1397,8 +1531,8 @@ fn audit_errors(
         ),
         &format!(
             "Showing {} of {} selected-tool native errors • d full records",
-            records.len().min(capacity),
-            records.len()
+            total_records.min(capacity),
+            total_records
         ),
         MUTED,
         false,
@@ -1442,7 +1576,7 @@ fn audit_scope(
             "caller-supplied provenance • not current HEAD"
         },
     );
-    let rows = [
+    for (index, (name, value)) in [
         (
             "Baseline SHA",
             comparison.baseline.sha.as_deref().unwrap_or("Unavailable"),
@@ -1451,8 +1585,10 @@ fn audit_scope(
             "Candidate SHA",
             comparison.candidate.sha.as_deref().unwrap_or("Unavailable"),
         ),
-    ];
-    for (index, (name, value)) in rows.iter().enumerate() {
+    ]
+    .iter()
+    .enumerate()
+    {
         label(
             f,
             Rect::new(body.x + 1, body.y + index as u16 * 2, 16, 1),
@@ -1473,6 +1609,11 @@ fn audit_scope(
             false,
         );
     }
+    draw_audit_scope_summaries(f, body, comparison);
+    draw_audit_scope_actions(f, body, comparison, opens);
+}
+
+fn draw_audit_scope_summaries(f: &mut Frame, body: Rect, comparison: &crate::audit::Comparison) {
     let before = comparison.baseline.issues();
     let after = comparison.candidate.issues();
     if body.height >= 8 {
@@ -1511,6 +1652,14 @@ fn audit_scope(
             false,
         );
     }
+}
+
+fn draw_audit_scope_actions(
+    f: &mut Frame,
+    body: Rect,
+    comparison: &crate::audit::Comparison,
+    opens: &mut Vec<(Rect, PathBuf)>,
+) {
     let actions_y = body.y + body.height.saturating_sub(3);
     let actions = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
         .spacing(1)

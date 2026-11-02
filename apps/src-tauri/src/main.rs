@@ -100,8 +100,8 @@ fn startup() -> Value {
 mod backstage_pty;
 mod backstage_terminal;
 mod desktop_commands;
-mod local_ipc;
 mod feedback;
+mod local_ipc;
 mod menu;
 mod project_dispatch;
 
@@ -380,7 +380,9 @@ async fn animation_create(
 ) -> Result<Value, String> {
     feedback::guard(&app, "project.new", true)?;
     let request = request.unwrap_or_else(feedback::new_request);
-    let path = std::path::Path::new(&root).join(&name).join(format!("{name}.magic"));
+    let path = std::path::Path::new(&root)
+        .join(&name)
+        .join(format!("{name}.magic"));
     tauri::async_runtime::spawn_blocking(move || project_dispatch::execute(&app,"project.new",json!({"path":path,"mode":"animation","_client":"Studio user (unverified label)","_request_id":request,"_control":control}))).await.map_err(|e|e.to_string())?
 }
 
@@ -1220,18 +1222,60 @@ fn main() {
         .manage(project_dispatch::Pending::default())
         .manage(feedback::Feedback::default())
         .manage(desktop_commands::Pending::default())
-        .invoke_handler(tauri::generate_handler![backstage_terminal::backstage_current, backstage_terminal::backstage_ack, backstage_terminal::backstage_start, backstage_terminal::backstage_write, backstage_terminal::backstage_resize, backstage_terminal::backstage_stop, menu::menu_action, startup, feedback::ui_report, engine_command, project_state, recent_projects, recent_forget, projects_root, project_open, new_window, project_create, animation_create, project_command, agent_config, agent_config_save, snapshot, open_path, save_attachment, desktop_commands::desktop_reply, studio_show, studio_hide, drawer_layout])
+        .invoke_handler(tauri::generate_handler![
+            backstage_terminal::backstage_current,
+            backstage_terminal::backstage_ack,
+            backstage_terminal::backstage_start,
+            backstage_terminal::backstage_write,
+            backstage_terminal::backstage_resize,
+            backstage_terminal::backstage_stop,
+            menu::menu_action,
+            startup,
+            feedback::ui_report,
+            engine_command,
+            project_state,
+            recent_projects,
+            recent_forget,
+            projects_root,
+            project_open,
+            new_window,
+            project_create,
+            animation_create,
+            project_command,
+            agent_config,
+            agent_config_save,
+            snapshot,
+            open_path,
+            save_attachment,
+            desktop_commands::desktop_reply,
+            studio_show,
+            studio_hide,
+            drawer_layout
+        ])
         .setup(|app| {
             #[cfg(unix)]
-            if let Some(path)=launch_options()["project"].as_str()
-                && let Some(existing)=magicstudio_engine::studio_sessions::for_project(std::path::Path::new(path))?
-                && let Some(endpoint)=existing["endpoint"].as_str().and_then(|v|v.strip_prefix("unix:"))
+            if let Some(path) = launch_options()["project"].as_str()
+                && let Some(existing) =
+                    magicstudio_engine::studio_sessions::for_project(std::path::Path::new(path))?
+                && let Some(endpoint) = existing["endpoint"]
+                    .as_str()
+                    .and_then(|v| v.strip_prefix("unix:"))
             {
-                magicstudio_engine::studio_sessions::request(std::path::Path::new(endpoint),"ui.focus",json!({"_expected_instance":existing["instance"],"_expected_project":path}))?;
-                app.handle().exit(0);return Ok(());
+                magicstudio_engine::studio_sessions::request(
+                    std::path::Path::new(endpoint),
+                    "ui.focus",
+                    json!({"_expected_instance":existing["instance"],"_expected_project":path}),
+                )?;
+                app.handle().exit(0);
+                return Ok(());
             }
-            let window = WindowBuilder::new(app, "main").title("Magic Studio").inner_size(1440.0, 900.0).build()?;
-            let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
+            let window = WindowBuilder::new(app, "main")
+                .title("Magic Studio")
+                .inner_size(1440.0, 900.0)
+                .build()?;
+            let size = window
+                .inner_size()?
+                .to_logical::<f64>(window.scale_factor()?);
             window.add_child(
                 WebviewBuilder::new("project", WebviewUrl::App("index.html".into())),
                 LogicalPosition::new(0.0, 0.0),
@@ -1241,13 +1285,22 @@ fn main() {
                 menu::install(&window)?;
             }
             #[cfg(unix)]
-            if let Err(e)=local_ipc::serve(app.handle().clone()){eprintln!("private UI feedback: {e}");}
+            if let Err(e) = local_ipc::serve(app.handle().clone()) {
+                eprintln!("private UI feedback: {e}");
+            }
             // Every resize re-applies the layout for the open tab.
             let handle = app.handle().clone();
             window.on_window_event(move |event| {
-                if let WindowEvent::CloseRequested{api,..}=event {
-                    if let Err(error)=feedback::guard(&handle,"app.quit",false){api.prevent_close();if let Some(view)=handle.get_webview("project"){let _=view.eval(format!("toast({});",json!(error)));}}
-                    else{#[cfg(unix)] local_ipc::cleanup(&handle);}
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    if let Err(error) = feedback::guard(&handle, "app.quit", false) {
+                        api.prevent_close();
+                        if let Some(view) = handle.get_webview("project") {
+                            let _ = view.eval(format!("toast({});", json!(error)));
+                        }
+                    } else {
+                        #[cfg(unix)]
+                        local_ipc::cleanup(&handle);
+                    }
                 }
                 if let WindowEvent::Resized(_) = event {
                     layout(&handle);
@@ -1257,5 +1310,11 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("Magic Studio shell failed to start")
-        .run(|app,event|{if matches!(event,tauri::RunEvent::Exit){backstage_terminal::cleanup(app);#[cfg(unix)] local_ipc::cleanup(app);}});
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                backstage_terminal::cleanup(app);
+                #[cfg(unix)]
+                local_ipc::cleanup(app);
+            }
+        });
 }

@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::workspace::resolve_craft_cli;
 use crate::{Result, Session};
@@ -74,6 +74,7 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
     let project = read_project_analytics(s);
     let root = crate::workspace::workspace_root(s);
     let complexity = crate::complexity::read(&root, scan);
+    let worktrees = read_agent_worktrees(&root, scan);
 
     Ok(json!({
         "ok": true,
@@ -83,8 +84,9 @@ pub fn cmd_app_analytics(s: &mut Session, params: &Value) -> Result<Value> {
         "usage": usage,
         "project": project,
         "complexity": complexity,
+        "worktrees": worktrees,
         "sampled_at_unix_secs": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|v|v.as_secs()),
-        "sources": {"host":"/proc","usage":"Omarchy local usage records","project":"Project session and .agent chat log; estimated tokens = characters / 4"},
+        "sources": {"host":"/proc","usage":"Omarchy local usage records","project":"Project session and .agent chat log; estimated tokens = characters / 4","worktrees":"git worktree list + gh issue list + herdr agent list"},
         "commands": crate::workshop::cmd_query_list(s, &json!({}))?,
     }))
 }
@@ -251,34 +253,377 @@ fn read_omarchy_usage() -> Value {
     })
 }
 
-fn read_project_analytics(s: &Session) -> Value {
+fn inspect_magic_project_file(path: &Path) -> (usize, usize, Option<u64>) {
+    let doc = read_usage_json(path).unwrap_or_default();
+    let assets_count = doc["assets"].as_array().map_or(0, Vec::len);
+    let dir = path.parent().unwrap_or(path);
+    let board = read_usage_json(&dir.join("storyboard/movie-board.json")).unwrap_or_default();
+    let storyboard_pages = board["page_plan"]
+        .as_array()
+        .or_else(|| board["pages"].as_array())
+        .or_else(|| board["scenes"].as_array())
+        .map_or(0, Vec::len);
+    let modified = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+    (assets_count, storyboard_pages, modified)
+}
+
+fn collect_recent_project_files(dir: &Path) -> Vec<Value> {
+    let mut found = Vec::new();
+    let subdirs = [
+        "",
+        "assets",
+        "storyboard",
+        "hyperframes",
+        "exports",
+        "audio",
+    ];
+    for sub in subdirs {
+        let target = if sub.is_empty() {
+            dir.to_path_buf()
+        } else {
+            dir.join(sub)
+        };
+        let Ok(entries) = std::fs::read_dir(&target) else {
+            continue;
+        };
+        for entry in entries.flatten().take(40) {
+            let p = entry.path();
+            if p.is_file()
+                && let Ok(meta) = std::fs::metadata(&p)
+            {
+                let secs = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let rel = p
+                    .strip_prefix(dir)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .to_string();
+                found.push((secs, meta.len(), rel, p.to_string_lossy().to_string()));
+            }
+        }
+    }
+    found.sort_by_key(|item| std::cmp::Reverse(item.0));
+    found
+        .into_iter()
+        .take(8)
+        .map(|(secs, bytes, rel, full)| {
+            json!({
+                "rel_path": rel,
+                "path": full,
+                "bytes": bytes,
+                "modified_unix_secs": secs,
+            })
+        })
+        .collect()
+}
+
+fn enrich_catalog_projects(s: &mut Session) -> Vec<Value> {
+    let Ok(cat) = crate::project_catalog::catalog(s, &json!({})) else {
+        return Vec::new();
+    };
+    let Some(items) = cat["projects"].as_array() else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .map(|item| {
+            let mut row = item.clone();
+            if let Some(p) = item["path"].as_str().map(Path::new)
+                && p.is_file()
+            {
+                let (assets_count, pages, modified) = inspect_magic_project_file(p);
+                row["assets_count"] = json!(assets_count);
+                row["storyboard_pages"] = json!(pages);
+                row["modified_unix_secs"] = json!(modified);
+            }
+            row
+        })
+        .collect()
+}
+
+fn resolve_activity_project(stream: &[Value]) -> Option<std::path::PathBuf> {
+    for ev in stream {
+        let Some(raw) = ev["project"].as_str() else {
+            continue;
+        };
+        let p = std::path::PathBuf::from(raw);
+        if p.is_file() {
+            return Some(p);
+        }
+        if p.is_dir()
+            && let Ok(entries) = std::fs::read_dir(&p)
+        {
+            for e in entries.flatten() {
+                if e.path().extension().is_some_and(|ext| ext == "magic") {
+                    return Some(e.path());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn read_project_analytics(s: &mut Session) -> Value {
     let turns = crate::agent::log_read(s);
     let list = turns.as_array().cloned().unwrap_or_default();
     let mut user_turns = 0usize;
     let mut assistant_turns = 0usize;
     let mut total_chars = 0usize;
     for item in &list {
-        let role = item["role"].as_str().unwrap_or_default();
-        if role == "user" {
-            user_turns += 1;
-        } else if role == "assistant" {
-            assistant_turns += 1;
+        match item["role"].as_str().unwrap_or_default() {
+            "user" => user_turns += 1,
+            "assistant" => assistant_turns += 1,
+            _ => {}
         }
         total_chars += item["text"].as_str().map(str::len).unwrap_or(0);
     }
-    let estimated_tokens = (total_chars / 4) as u64;
+    let catalog = enrich_catalog_projects(s);
+    let activity_stream = crate::activity::recent_stream(30);
+    let active_path = resolve_activity_project(&activity_stream)
+        .or_else(|| s.project_path.clone())
+        .or_else(|| {
+            catalog
+                .iter()
+                .find(|p| p["exists"] == true)
+                .and_then(|p| p["path"].as_str())
+                .map(std::path::PathBuf::from)
+        });
+    let (assets_count, storyboard_pages, modified_unix_secs, recent_files) =
+        if let Some(ref p) = active_path {
+            let (ac, sp, mod_s) = inspect_magic_project_file(p);
+            let rf = p
+                .parent()
+                .map(collect_recent_project_files)
+                .unwrap_or_default();
+            (ac.max(s.project_assets.len()), sp, mod_s, rf)
+        } else {
+            (s.project_assets.len(), 0, None, Vec::new())
+        };
     json!({
-        "project": s.project_path,
-        "assets_count": s.project_assets.len(),
+        "project": active_path,
+        "session_attached": s.project_path.is_some(),
+        "assets_count": assets_count,
+        "storyboard_pages": storyboard_pages,
+        "modified_unix_secs": modified_unix_secs,
+        "recent_files": recent_files,
+        "activity_stream": activity_stream,
+        "catalog": catalog,
         "user_turns": user_turns,
         "assistant_turns": assistant_turns,
         "total_turns": list.len(),
         "total_chars": total_chars,
-        "estimated_tokens": estimated_tokens,
+        "estimated_tokens": (total_chars / 4) as u64,
     })
 }
 
 fn which_in_path(bin: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
+}
+
+fn read_open_github_issues(root: &Path, force_refresh: bool) -> Vec<Value> {
+    let cache = root.join("target/analytics/github-issues.json");
+    let fresh = !force_refresh
+        && std::fs::metadata(&cache)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age.as_secs() < 60);
+    if fresh && let Some(v) = read_usage_json(&cache).and_then(|v| v.as_array().cloned()) {
+        return v;
+    }
+    let Ok(out) = std::process::Command::new("gh")
+        .args([
+            "issue",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "30",
+            "--json",
+            "number,title,url,body",
+        ])
+        .current_dir(root)
+        .output()
+    else {
+        return read_usage_json(&cache)
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default();
+    };
+    if !out.status.success() {
+        return read_usage_json(&cache)
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default();
+    }
+    if let Some(parent) = cache.parent() {
+        let _ = std::fs::create_dir_all(parent);
+        let _ = std::fs::write(&cache, &out.stdout);
+    }
+    serde_json::from_slice::<Vec<Value>>(&out.stdout).unwrap_or_default()
+}
+
+fn read_herdr_agents() -> Vec<Value> {
+    let Ok(out) = std::process::Command::new("herdr")
+        .args(["agent", "list"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    serde_json::from_slice::<Value>(&out.stdout)
+        .ok()
+        .and_then(|v| v["result"]["agents"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn contains_word(haystack: &str, needle: &str) -> bool {
+    haystack.match_indices(needle).any(|(idx, _)| {
+        let before_ok = idx == 0
+            || !haystack[..idx]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        let after_idx = idx + needle.len();
+        let after_ok = after_idx >= haystack.len()
+            || !haystack[after_idx..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        before_ok && after_ok
+    })
+}
+
+fn match_agent_issues(name: &str, issues: &[Value]) -> Vec<Value> {
+    if name.is_empty() || name == "magic-studio-app" {
+        return Vec::new();
+    }
+    let needle = name.to_ascii_lowercase();
+    issues
+        .iter()
+        .filter(|issue| {
+            let title = issue["title"]
+                .as_str()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let body = issue["body"]
+                .as_str()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if needle == "main" {
+                body.contains("`main`")
+            } else {
+                contains_word(&title, &needle) || contains_word(&body, &needle)
+            }
+        })
+        .take(4)
+        .map(|issue| {
+            json!({
+                "number": issue["number"],
+                "title": issue["title"],
+                "url": issue["url"],
+            })
+        })
+        .collect()
+}
+
+fn parse_worktree_blocks(stdout: &str) -> Vec<(String, String, String)> {
+    let mut list = Vec::new();
+    for block in stdout.trim().split("\n\n") {
+        let mut wt_path = String::new();
+        let mut head = String::new();
+        let mut branch = String::new();
+        for line in block.lines() {
+            if let Some(p) = line.strip_prefix("worktree ") {
+                wt_path = p.trim().to_string();
+            } else if let Some(h) = line.strip_prefix("HEAD ") {
+                head = h.trim().chars().take(8).collect();
+            } else if let Some(b) = line.strip_prefix("branch refs/heads/") {
+                branch = b.trim().to_string();
+            }
+        }
+        if !wt_path.is_empty() {
+            list.push((wt_path, head, branch));
+        }
+    }
+    list
+}
+
+fn worktree_git_summary(wt_path: &str) -> (usize, Option<String>) {
+    let dirty = std::process::Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=normal"])
+        .current_dir(wt_path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map_or(0, |o| String::from_utf8_lossy(&o.stdout).lines().count());
+    let commit = std::process::Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .current_dir(wt_path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    (dirty, commit)
+}
+
+fn read_agent_worktrees(root: &Path, force_refresh: bool) -> Vec<Value> {
+    let Ok(out) = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(root)
+        .output()
+    else {
+        return Vec::new();
+    };
+    let issues = read_open_github_issues(root, force_refresh);
+    let herdr = read_herdr_agents();
+    let mut rows = Vec::new();
+    for (wt_path, head, branch) in parse_worktree_blocks(&String::from_utf8_lossy(&out.stdout)) {
+        let name = Path::new(&wt_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| branch.clone());
+        let agent_name = if name == "magic-studio-app" {
+            "main".to_string()
+        } else {
+            name
+        };
+        let live = herdr.iter().find(|a| {
+            a["cwd"].as_str() == Some(wt_path.as_str())
+                || a["name"].as_str() == Some(agent_name.as_str())
+        });
+        let matched_issues = match_agent_issues(&agent_name, &issues);
+        let (dirty_files, last_commit) = worktree_git_summary(&wt_path);
+        rows.push(json!({
+            "agent": agent_name,
+            "path": wt_path,
+            "branch": branch,
+            "head": head,
+            "dirty_files": dirty_files,
+            "last_commit": last_commit,
+            "status": live.and_then(|a| a["agent_status"].as_str()).unwrap_or("worktree"),
+            "pane_id": live.and_then(|a| a["pane_id"].as_str()),
+            "issues": matched_issues,
+        }));
+    }
+    rows.sort_by_key(|r| {
+        let is_bunzen = r["agent"].as_str() == Some("bunzen");
+        let is_main = r["agent"].as_str() == Some("main");
+        let is_live = r["pane_id"].is_string();
+        let issue_count = r["issues"].as_array().map_or(0, Vec::len);
+        (
+            !is_bunzen,
+            !is_main,
+            !is_live,
+            std::cmp::Reverse(issue_count),
+        )
+    });
+    rows
 }

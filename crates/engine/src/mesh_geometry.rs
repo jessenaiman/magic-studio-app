@@ -128,8 +128,8 @@ fn surface(settings: ShapeSettings) -> Surface {
 
 /// Front width blended toward the quarter width, and side depth scaled for inflation.
 fn ring_radii(front: f32, quarter: f32, side: f32, surface: &Surface) -> (f32, f32) {
-    let rx = (front * (1.0 - 0.25 * surface.blend_w) + quarter * (0.25 * surface.blend_w))
-        .max(0.025);
+    let rx =
+        (front * (1.0 - 0.25 * surface.blend_w) + quarter * (0.25 * surface.blend_w)).max(0.025);
     let rz = (side * surface.depth_scale).max(0.025);
     (rx, rz)
 }
@@ -193,7 +193,8 @@ impl MeshBuffers {
                 let i10 = (iz + 1) * stride + it;
                 let i01 = iz * stride + it + 1;
                 let i11 = (iz + 1) * stride + it + 1;
-                self.indices.extend_from_slice(&[i00, i01, i11, i00, i11, i10]);
+                self.indices
+                    .extend_from_slice(&[i00, i01, i11, i00, i11, i10]);
             }
         }
     }
@@ -201,7 +202,12 @@ impl MeshBuffers {
     /// Bottom sole center cap at y = 0.0
     fn bottom_cap(&mut self, rings: usize) {
         let center = self.positions.len() as u32;
-        self.vertex([0.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.5, 1.0], [0.35, 0.30, 0.28, 1.0]);
+        self.vertex(
+            [0.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.5, 1.0],
+            [0.35, 0.30, 0.28, 1.0],
+        );
         for it in 0..rings as u32 {
             self.indices.extend_from_slice(&[center, it + 1, it]);
         }
@@ -211,7 +217,12 @@ impl MeshBuffers {
     fn top_cap(&mut self, slices: usize, rings: usize) {
         let stride = (rings + 1) as u32;
         let center = self.positions.len() as u32;
-        self.vertex([0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.5, 0.0], [0.75, 0.62, 0.50, 1.0]);
+        self.vertex(
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.5, 0.0],
+            [0.75, 0.62, 0.50, 1.0],
+        );
         let ring_start = (slices as u32) * stride;
         for it in 0..rings as u32 {
             self.indices

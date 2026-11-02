@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
-use crate::{EngineError, Result, Session};
 use crate::workshop::{FIXLIST, project_dir, studio};
 use crate::workspace::resolve_workspace_path;
+use crate::{EngineError, Result, Session};
 
 fn fixlist_path(s: &Session) -> Result<PathBuf> {
     Ok(project_dir(s)?.join(FIXLIST))
@@ -374,8 +374,7 @@ fn line_runs(
     for along in side.span.0..=side.span.1 + 1 {
         let (x, y) = point_at(side.vertical, line, along);
         let (ox, oy) = point_at(side.vertical, line + side.outward, along);
-        let edge =
-            along <= side.span.1 && solid(img, size, x, y) && !solid(img, size, ox, oy);
+        let edge = along <= side.span.1 && solid(img, size, x, y) && !solid(img, size, ox, oy);
         match (edge, start) {
             (true, None) => start = Some(along),
             (false, Some(s)) => {

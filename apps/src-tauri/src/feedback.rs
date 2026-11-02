@@ -277,7 +277,11 @@ pub fn new_request() -> String {
     )
 }
 /// This window already owns the project: focus it and record why.
-fn focus_same_session(app: &tauri::AppHandle, target: &std::path::Path, params: &Value) -> Result<Option<Value>, String> {
+fn focus_same_session(
+    app: &tauri::AppHandle,
+    target: &std::path::Path,
+    params: &Value,
+) -> Result<Option<Value>, String> {
     let active = app
         .state::<Engine>()
         .with(None, |s| Ok(s.project_path.clone()))?;

@@ -1,12 +1,11 @@
 //! Words stage views, reading, saving, and drawing link management.
-use crate::{Result, Session};
 use crate::words::{
     ACTIONS, ENTRANCES, EXITS, KINETIC_LIBRARY, aligned, default_document, document_path,
-    fill_untimed, invalid, load, reference, studio_times, tag_attr,
-    timing, with_sung_sections, word_time_key,
+    fill_untimed, invalid, load, reference, studio_times, tag_attr, timing, with_sung_sections,
+    word_time_key,
 };
-use crate::words_compose::{kinetic_design, line_design, text_effect
-};
+use crate::words_compose::{kinetic_design, line_design, text_effect};
+use crate::{Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -43,7 +42,11 @@ fn stage_only_style(html: &str) -> String {
     }
     let cast: Vec<String> = visuals
         .iter()
-        .filter(|(_, track, a, b)| visuals.iter().any(|(_, t, x, y)| t < track && x < b && a < y))
+        .filter(|(_, track, a, b)| {
+            visuals
+                .iter()
+                .any(|(_, t, x, y)| t < track && x < b && a < y)
+        })
         .map(|(id, ..)| format!("#{id}"))
         .collect();
     let hide = if cast.is_empty() {
@@ -89,29 +92,46 @@ fn without_video_media(html: &str) -> String {
 
 fn is_image_file(p: &Path) -> bool {
     p.is_file()
-        && p.extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
+        && p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+            matches!(
+                e.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "webp"
+            )
+        })
 }
 
 fn background_entry_from_dir(entry: &Path) -> Option<(String, Value)> {
     if is_image_file(entry) {
         let stem = entry.file_stem()?.to_str()?.to_owned();
         let name = entry.file_name()?.to_str()?.to_owned();
-        return Some((stem.clone(), json!({"id":stem,"asset_id":stem,"name":name,"path":entry})));
+        return Some((
+            stem.clone(),
+            json!({"id":stem,"asset_id":stem,"name":name,"path":entry}),
+        ));
     }
     let id = entry.file_name()?.to_str()?.to_owned();
-    let img = fs::read_dir(entry).ok()?.flatten().map(|e| e.path()).find(|p| is_image_file(p))?;
+    let img = fs::read_dir(entry)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| is_image_file(p))?;
     let panel = fs::read_to_string(entry.join("provenance.json"))
         .ok()
         .and_then(|s| serde_json::from_str::<Value>(&s).ok())
         .and_then(|v| v["from_panel"].as_str().map(str::to_owned))
         .unwrap_or_else(|| format!("z-{id}"));
     let name = img.file_name()?.to_str()?.to_owned();
-    Some((format!("{panel}:{id}"), json!({"id":id,"asset_id":id,"name":name,"path":img})))
+    Some((
+        format!("{panel}:{id}"),
+        json!({"id":id,"asset_id":id,"name":name,"path":img}),
+    ))
 }
 
-fn push_unique_image(out: &mut Vec<Value>, seen: &mut std::collections::HashSet<String>, item: Value) {
+fn push_unique_image(
+    out: &mut Vec<Value>,
+    seen: &mut std::collections::HashSet<String>,
+    item: Value,
+) {
     let id = item["id"].as_str().unwrap_or_default().to_owned();
     let path = item["path"].as_str().unwrap_or_default().to_owned();
     if !id.is_empty() && !path.is_empty() && seen.insert(id) && seen.insert(path) {
@@ -137,14 +157,24 @@ pub(crate) fn project_backdrop_images(s: &Session, dir: &Path) -> Vec<Value> {
             push_unique_image(&mut out, &mut seen, item);
         }
     }
-    for a in s.project_assets.iter().filter(|a| a.path.as_deref().is_some_and(is_image_file)) {
-        push_unique_image(&mut out, &mut seen, json!({"id":a.id,"asset_id":a.id,"name":a.name,"path":a.path}));
+    for a in s
+        .project_assets
+        .iter()
+        .filter(|a| a.path.as_deref().is_some_and(is_image_file))
+    {
+        push_unique_image(
+            &mut out,
+            &mut seen,
+            json!({"id":a.id,"asset_id":a.id,"name":a.name,"path":a.path}),
+        );
     }
     out
 }
 
 fn assign_default_backgrounds(doc: &mut Value, images: &[Value]) {
-    let Some(anims) = doc["animations"].as_array_mut() else { return };
+    let Some(anims) = doc["animations"].as_array_mut() else {
+        return;
+    };
     if images.is_empty() || anims.is_empty() {
         return;
     }
@@ -172,7 +202,9 @@ pub(crate) fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Re
         Sha256::digest(&bytes),
         asset.extension().and_then(|e| e.to_str()).unwrap_or("png")
     );
-    let path = dir.join("hyperframes/compositions/words/backdrops").join(&name);
+    let path = dir
+        .join("hyperframes/compositions/words/backdrops")
+        .join(&name);
     fs::create_dir_all(
         path.parent()
             .ok_or_else(|| invalid("Output path has no parent"))?,
@@ -183,12 +215,20 @@ pub(crate) fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Re
     Ok(name)
 }
 
-fn resolve_requested_backdrop<'a>(animations: &'a [Value], full: &'a Value, id: &str) -> Option<&'a str> {
+fn resolve_requested_backdrop<'a>(
+    animations: &'a [Value],
+    full: &'a Value,
+    id: &str,
+) -> Option<&'a str> {
     animations
         .iter()
         .find(|a| a["animation_id"] == id)
         .and_then(|a| a["background_asset"].as_str())
-        .or_else(|| animations.iter().find_map(|a| a["background_asset"].as_str()))
+        .or_else(|| {
+            animations
+                .iter()
+                .find_map(|a| a["background_asset"].as_str())
+        })
         .or_else(|| full["images"].as_array()?.first()?.get("id")?.as_str())
 }
 
@@ -210,8 +250,12 @@ fn build_backdrop_tags(
         if has_scene_plates && anim["background_custom"].as_bool() != Some(true) {
             continue;
         }
-        let Some(asset_id) = anim["background_asset"].as_str() else { continue };
-        let Ok(name) = stage_backdrop_file(s, dir, asset_id) else { continue };
+        let Some(asset_id) = anim["background_asset"].as_str() else {
+            continue;
+        };
+        let Ok(name) = stage_backdrop_file(s, dir, asset_id) else {
+            continue;
+        };
         let anchor = anim["song_anchor"].as_f64().unwrap_or(0.0);
         let start = if idx == 0 { 0.0 } else { anchor };
         let raw_dur = anim["authored_duration"].as_f64().unwrap_or(10.0);
@@ -230,11 +274,20 @@ fn build_backdrop_tags(
 fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
     let dir = crate::workshop::project_dir(s)?;
     let full = cmd_words_read(s, &json!({}))?;
-    let animations = full["document"]["animations"].as_array().cloned().unwrap_or_default();
+    let animations = full["document"]["animations"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let requested = resolve_requested_backdrop(&animations, &full, id)
         .ok_or_else(|| invalid("Choose this verse's scene image"))?;
     let base_name = stage_backdrop_file(s, &dir, requested)?;
-    let tags = build_backdrop_tags(s, &dir, &animations, &base_name, html.contains("id=\"scene-"));
+    let tags = build_backdrop_tags(
+        s,
+        &dir,
+        &animations,
+        &base_name,
+        html.contains("id=\"scene-"),
+    );
     let mut out = without_video_media(html);
     let root = out
         .find("data-composition-id=\"main\"")
@@ -320,15 +373,27 @@ pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
     {
         return Err(invalid(format!(
             "kind must be one of {}",
-            EFFECT_KINDS.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(", ")
+            EFFECT_KINDS
+                .iter()
+                .map(|(k, _)| *k)
+                .collect::<Vec<_>>()
+                .join(", ")
         )));
     }
     let mut kinds = serde_json::Map::new();
-    for (kind, query) in EFFECT_KINDS.iter().filter(|(k, _)| wanted.is_none_or(|w| w == *k)) {
+    for (kind, query) in EFFECT_KINDS
+        .iter()
+        .filter(|(k, _)| wanted.is_none_or(|w| w == *k))
+    {
         let out = crate::workspace::run_tool_in(
             &hf,
             &cli.to_string_lossy(),
-            &["catalog".into(), "--query".into(), (*query).into(), "--json".into()],
+            &[
+                "catalog".into(),
+                "--query".into(),
+                (*query).into(),
+                "--json".into(),
+            ],
         )?;
         let found: Value = serde_json::from_str(&out).map_err(|e| {
             invalid(format!(
@@ -341,13 +406,22 @@ pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
             .flatten()
             .map(|r| json!({"name":r["name"],"type":r["type"],"title":r["title"],"description":r["description"],"tags":r["tags"]}))
             .collect();
-        kinds.insert((*kind).into(), json!({"query":query,"tier":found["tier"],"effects":effects}));
+        kinds.insert(
+            (*kind).into(),
+            json!({"query":query,"tier":found["tier"],"effects":effects}),
+        );
     }
     Ok(json!({"source":"hyperframes registry","kinds":kinds}))
 }
 
-
-fn append_kinetic_cues(anim: &Value, words: &[Value], lib: &Value, anchor: f64, section_end: f64, cues: &mut Vec<Value>) {
+fn append_kinetic_cues(
+    anim: &Value,
+    words: &[Value],
+    lib: &Value,
+    anchor: f64,
+    section_end: f64,
+    cues: &mut Vec<Value>,
+) {
     let k = &anim["kinetic"];
     for (i, d) in k["draws"].as_array().into_iter().flatten().enumerate() {
         let Some(word) = words.iter().find(|w| w["word_id"] == d["word_id"]) else {
@@ -393,7 +467,9 @@ fn append_kinetic_cues(anim: &Value, words: &[Value], lib: &Value, anchor: f64, 
         && let Some(overlay) = lib["overlays"].get(key)
     {
         let start = (anchor + k["overlay_offset"].as_f64().unwrap_or(0.0)).max(0.0);
-        let duration = k["overlay_duration"].as_f64().unwrap_or(section_end - anchor);
+        let duration = k["overlay_duration"]
+            .as_f64()
+            .unwrap_or(section_end - anchor);
         cues.push(json!({
             "id": format!("{}-overlay", anim["animation_id"].as_str().unwrap_or("words")),
             "kind": "overlay",
@@ -408,7 +484,12 @@ fn append_kinetic_cues(anim: &Value, words: &[Value], lib: &Value, anchor: f64, 
     }
 }
 
-fn append_static_design_cues(anim: &Value, words: &[Value], section_end: f64, cues: &mut Vec<Value>) {
+fn append_static_design_cues(
+    anim: &Value,
+    words: &[Value],
+    section_end: f64,
+    cues: &mut Vec<Value>,
+) {
     for (line_id, design) in anim["design"].as_object().into_iter().flatten() {
         let line: Vec<_> = words.iter().filter(|w| w["line_id"] == *line_id).collect();
         let Some(start) = line.first().and_then(|w| w["start"].as_f64()) else {
@@ -421,8 +502,16 @@ fn append_static_design_cues(anim: &Value, words: &[Value], section_end: f64, cu
             .unwrap_or(section_end);
         for (i, d) in design["draws"].as_array().into_iter().flatten().enumerate() {
             let paths = d["paths"].as_array().into_iter().flatten();
-            let from = paths.clone().filter_map(|p| p["from"].as_f64()).reduce(f64::min).unwrap_or(0.0);
-            let to = paths.clone().filter_map(|p| p["to"].as_f64()).reduce(f64::max).unwrap_or(from);
+            let from = paths
+                .clone()
+                .filter_map(|p| p["from"].as_f64())
+                .reduce(f64::min)
+                .unwrap_or(0.0);
+            let to = paths
+                .clone()
+                .filter_map(|p| p["to"].as_f64())
+                .reduce(f64::max)
+                .unwrap_or(from);
             cues.push(json!({
                 "id": format!("{}-{line_id}-draw-{i}", anim["animation_id"].as_str().unwrap_or("words")),
                 "kind": "drawing",
@@ -445,7 +534,10 @@ fn hydrate_animation_times(
 ) {
     let scope = anim["scope"].clone();
     for w in anim["words"].as_array_mut().into_iter().flatten() {
-        if let Some((a, b)) = w["word_id"].as_str().and_then(|id| times.get(&word_time_key(&scope, id))) {
+        if let Some((a, b)) = w["word_id"]
+            .as_str()
+            .and_then(|id| times.get(&word_time_key(&scope, id)))
+        {
             w["start"] = json!(a);
             w["end"] = json!(b);
         }
@@ -591,7 +683,9 @@ fn apply_style_edits(anim: &mut Value, style: &Value) -> Result<()> {
         .ok_or_else(|| invalid("style must be an object"))?;
     for (key, value) in map {
         let valid = match key.as_str() {
-            "font" | "color" | "emphasis_color" | "outline_color" | "background" => value.is_string(),
+            "font" | "color" | "emphasis_color" | "outline_color" | "background" => {
+                value.is_string()
+            }
             "size" => value.as_f64().is_some_and(|v| (40.0..=320.0).contains(&v)),
             _ => false,
         };
@@ -692,7 +786,12 @@ fn apply_design_and_effects(dir: &Path, anim: &mut Value, id: &str, p: &Value) -
     Ok(())
 }
 
-fn apply_background_edit(s: &Session, dir: &Path, anim: &mut Value, background: &Value) -> Result<()> {
+fn apply_background_edit(
+    s: &Session,
+    dir: &Path,
+    anim: &mut Value,
+    background: &Value,
+) -> Result<()> {
     if background.is_null() {
         anim["background_asset"] = Value::Null;
         anim["background_custom"] = Value::Null;
@@ -712,7 +811,13 @@ fn apply_background_edit(s: &Session, dir: &Path, anim: &mut Value, background: 
     Ok(())
 }
 
-fn apply_save_payload(s: &Session, dir: &Path, anim: &mut Value, id: &str, p: &Value) -> Result<()> {
+fn apply_save_payload(
+    s: &Session,
+    dir: &Path,
+    anim: &mut Value,
+    id: &str,
+    p: &Value,
+) -> Result<()> {
     if let Some(background) = p.get("background_asset") {
         apply_background_edit(s, dir, anim, background)?;
     }
@@ -799,7 +904,13 @@ fn find_section_indices(doc: &Value, source: &str, target: &str) -> Result<(usiz
     Ok((si, ti))
 }
 
-fn move_drawing_between_sections(doc: &mut Value, si: usize, ti: usize, index: usize, drawing: Value) -> Result<usize> {
+fn move_drawing_between_sections(
+    doc: &mut Value,
+    si: usize,
+    ti: usize,
+    index: usize,
+    drawing: Value,
+) -> Result<usize> {
     let target_index = if si == ti {
         doc["animations"][si]["kinetic"]["draws"][index] = drawing;
         index
@@ -860,11 +971,20 @@ fn check_link_revisions(doc: &Value, si: usize, ti: usize, p: &Value) -> Result<
             .as_u64()
             .ok_or_else(|| invalid("expected_target_revision is required"))?
     };
-    Ok(doc["animations"][si]["source_revision"].as_u64() == Some(expected)
-        && doc["animations"][ti]["source_revision"].as_u64() == Some(target_expected))
+    Ok(
+        doc["animations"][si]["source_revision"].as_u64() == Some(expected)
+            && doc["animations"][ti]["source_revision"].as_u64() == Some(target_expected),
+    )
 }
 
-fn prepare_relinked_drawing(doc: &Value, si: usize, index: usize, word: &str, cue_start: f64, at: f64) -> Result<Value> {
+fn prepare_relinked_drawing(
+    doc: &Value,
+    si: usize,
+    index: usize,
+    word: &str,
+    cue_start: f64,
+    at: f64,
+) -> Result<Value> {
     let mut drawing = doc["animations"][si]["kinetic"]["draws"]
         .as_array()
         .and_then(|d| d.get(index))
@@ -892,7 +1012,14 @@ fn parse_link_request(p: &Value) -> Result<(&str, &str, &str, usize)> {
     Ok((source, target, word, index))
 }
 
-fn find_source_cue_start(s: &mut Session, doc: &Value, source: &str, index: usize, ti: usize, word: &str) -> Result<(f64, f64)> {
+fn find_source_cue_start(
+    s: &mut Session,
+    doc: &Value,
+    source: &str,
+    index: usize,
+    ti: usize,
+    word: &str,
+) -> Result<(f64, f64)> {
     let lib: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let times = studio_times(s);
     let cues = graphic_cues(doc, &lib, &times);
@@ -911,7 +1038,9 @@ pub fn cmd_words_link(s: &mut Session, p: &Value) -> Result<Value> {
     let (source, target, word, index) = parse_link_request(p)?;
     let (si, ti) = find_section_indices(&doc, source, target)?;
     if !check_link_revisions(&doc, si, ti, p)? {
-        return Ok(json!({"ok":false,"conflict":true,"reason":"A section changed; nothing relinked"}));
+        return Ok(
+            json!({"ok":false,"conflict":true,"reason":"A section changed; nothing relinked"}),
+        );
     }
     let (cue_start, at) = find_source_cue_start(s, &doc, source, index, ti, word)?;
     let drawing = prepare_relinked_drawing(&doc, si, index, word, cue_start, at)?;

@@ -1,6 +1,6 @@
 //! One production project root, independent of navigation history and per-intake overrides.
 use crate::{EngineError, Result, Session};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},

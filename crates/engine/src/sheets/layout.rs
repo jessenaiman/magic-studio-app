@@ -92,9 +92,7 @@ fn parse_panel_line(item: &Value) -> Result<(String, String)> {
     let text = item
         .as_str()
         .filter(|s| !s.trim().is_empty() && s.len() <= 400)
-        .ok_or_else(|| {
-            invalid("Each panel needs 1 to 400 bytes: label | drawing direction")
-        })?;
+        .ok_or_else(|| invalid("Each panel needs 1 to 400 bytes: label | drawing direction"))?;
     let (label, description) = split_label(text);
     if label.is_empty() || description.is_empty() {
         return Err(invalid(
@@ -112,10 +110,7 @@ fn panel_definitions(
 ) -> Result<Vec<(String, String)>> {
     let defaults = default_panels(kind, action);
     let definitions: Vec<(String, String)> = match p.get("panels") {
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(parse_panel_line)
-            .collect::<Result<_>>()?,
+        Some(Value::Array(items)) => items.iter().map(parse_panel_line).collect::<Result<_>>()?,
         None | Some(Value::Null) => defaults.iter().map(|text| split_label(text)).collect(),
         _ => return Err(invalid("panels must be an ordered array of descriptions")),
     };

@@ -1,7 +1,7 @@
 //! In-memory pixel analysis: `analyze_rgba_image` and `analyze_viewport_region` run without
 //! external screenshot/review steps, and `vision.analyze` dispatches them against a loaded asset.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 

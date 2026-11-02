@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::workspace::resolve_craft_cli;
 
@@ -34,6 +34,10 @@ fn scan_targets(root: &Path) -> Vec<String> {
         "crates/engine/src".to_string(),
         "agent-harness/cli_anything/magic".to_string(),
         "apps/src-tauri/src".to_string(),
+        "apps/src-tauri/frontend/theatre-frame.ts".to_string(),
+        "apps/src-tauri/frontend/backstage-terminal.ts".to_string(),
+        "apps/src-tauri/frontend/project-id.ts".to_string(),
+        "apps/backstage/src".to_string(),
         "pipeline".to_string(),
         "scripts".to_string(),
     ];
@@ -41,8 +45,7 @@ fn scan_targets(root: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(&ui_dir) else {
         return targets;
     };
-    let all_paths: Vec<std::path::PathBuf> =
-        entries.flatten().map(|entry| entry.path()).collect();
+    let all_paths: Vec<std::path::PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
     let has_ts = all_paths
         .iter()
         .any(|p| p.extension().and_then(|ext| ext.to_str()) == Some("ts"));
@@ -68,19 +71,17 @@ fn scan_targets(root: &Path) -> Vec<String> {
 fn lizard_csv(lizard_bin: &str, root: &Path, targets: &[String]) -> (String, Vec<String>) {
     let run = |list: &[String]| {
         let mut command = std::process::Command::new(lizard_bin);
-        command
-            .current_dir(root)
-            .args([
-                "--csv",
-                "-l",
-                "rust",
-                "-l",
-                "python",
-                "-l",
-                "javascript",
-                "-l",
-                "typescript",
-            ]);
+        command.current_dir(root).args([
+            "--csv",
+            "-l",
+            "rust",
+            "-l",
+            "python",
+            "-l",
+            "javascript",
+            "-l",
+            "typescript",
+        ]);
         for target in list {
             command.arg(target);
         }
@@ -135,8 +136,91 @@ fn unscanned_result(
     revision: &Option<String>,
     dirty: Option<bool>,
 ) -> Value {
-    previous.map(|value| cached_result(value, revision, dirty)).unwrap_or_else(||
-        json!({"available":false,"tool":"lizard","state":"not_measured","reason":"No saved scan. Refresh scan to measure code.","source_root":root,"current_revision":revision}))
+    let mut res = previous.map(|value| cached_result(value, revision, dirty)).unwrap_or_else(||
+        json!({"available":false,"tool":"lizard","state":"not_measured","reason":"No saved scan. Refresh scan to measure code.","source_root":root,"current_revision":revision}));
+    res["history"] = json!(read_history(root, &res));
+    res
+}
+
+fn commit_subject(root: &Path) -> Option<String> {
+    std::process::Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn history_entry(root: &Path, result: &Value) -> Value {
+    json!({
+        "measured_at_unix_secs": result["measured_at_unix_secs"],
+        "source_revision": result["source_revision"],
+        "commit_subject": commit_subject(root),
+        "source_dirty": result["source_dirty"],
+        "total_source_lines": result["total_source_lines"],
+        "files_analyzed": result["files_analyzed"],
+        "functions_analyzed": result["functions_analyzed"],
+        "functions_over_ccn_15": result["functions_over_ccn_15"],
+        "max_ccn": result["max_ccn"],
+        "long_files_count": result["long_files"].as_array().map_or(0, Vec::len),
+    })
+}
+
+fn read_history(root: &Path, fallback: &Value) -> Vec<Value> {
+    let path = root.join("target/analytics/audit-history.jsonl");
+    let mut entries: Vec<Value> = std::fs::read_to_string(&path)
+        .ok()
+        .map(|text| {
+            text.lines()
+                .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    if entries.is_empty() && fallback["available"] == true {
+        let entry = history_entry(root, fallback);
+        let _ = append_history_line(&path, &entry);
+        entries.push(entry);
+    }
+    let len = entries.len();
+    if len > 20 {
+        entries.drain(0..(len - 20));
+    }
+    entries
+}
+
+fn append_history_line(path: &Path, entry: &Value) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(file, "{}", serde_json::to_string(entry).unwrap_or_default())
+}
+
+fn record_history(root: &Path, result: &Value) -> Vec<Value> {
+    let path = root.join("target/analytics/audit-history.jsonl");
+    let mut entries = read_history(root, &json!({"available": false}));
+    let entry = history_entry(root, result);
+    let unchanged = entries.last().is_some_and(|last| {
+        last["source_revision"] == entry["source_revision"]
+            && last["total_source_lines"] == entry["total_source_lines"]
+            && last["functions_over_ccn_15"] == entry["functions_over_ccn_15"]
+            && last["max_ccn"] == entry["max_ccn"]
+    });
+    if !unchanged {
+        let _ = append_history_line(&path, &entry);
+        entries.push(entry);
+    }
+    let len = entries.len();
+    if len > 20 {
+        entries.drain(0..(len - 20));
+    }
+    entries
 }
 
 fn annotate_tool(result: &mut Value) {
@@ -151,12 +235,14 @@ fn annotate_tool(result: &mut Value) {
         })
     };
     result["tool_path"] = json!(executable_path);
-    result["tool_version"] = json!(std::process::Command::new(&executable)
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()));
+    result["tool_version"] = json!(
+        std::process::Command::new(&executable)
+            .arg("--version")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    );
 }
 
 fn scan_state_label(result: &Value, partial: bool) -> &'static str {
@@ -222,10 +308,12 @@ pub fn read(root: &Path, scan: bool) -> Value {
     result["source_root"] = json!(root);
     result["source_revision"] = json!(revision);
     result["source_dirty"] = json!(dirty);
-    result["measured_at_unix_secs"] = json!(std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()
-        .map(|v| v.as_secs()));
+    result["measured_at_unix_secs"] = json!(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|v| v.as_secs())
+    );
     result["cached"] = json!(false);
     let partial = result["scan_failures"]
         .as_array()
@@ -241,6 +329,7 @@ pub fn read(root: &Path, scan: bool) -> Value {
     if let Err(error) = save_scan(&cache, &result) {
         result["cache_error"] = json!(error.to_string());
     }
+    result["history"] = json!(record_history(root, &result));
     result
 }
 
@@ -265,6 +354,7 @@ fn source_dirty(root: &Path) -> Option<bool> {
             "agent-harness/cli_anything/magic",
             "apps/src-tauri/src",
             "apps/src-tauri/ui",
+            "apps/backstage/src",
             "pipeline",
             "scripts",
             "code-limits.json",
@@ -399,16 +489,7 @@ fn lang_label(lang: &str) -> &'static str {
 fn tracked_files_for_exts(root: &Path) -> Vec<String> {
     let Ok(out) = std::process::Command::new("git")
         .args([
-            "ls-files",
-            "*.rs",
-            "*.ts",
-            "*.tsx",
-            "*.js",
-            "*.mjs",
-            "*.css",
-            "*.html",
-            "*.md",
-            "*.py",
+            "ls-files", "*.rs", "*.ts", "*.tsx", "*.js", "*.mjs", "*.css", "*.html", "*.md", "*.py",
         ])
         .current_dir(root)
         .output()

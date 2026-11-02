@@ -14,7 +14,10 @@ fn apply_saved_sheet_layout(
     {
         let source_size = image::image_dimensions(source_path)?;
         if image::image_dimensions(effective_source)? != source_size {
-            return Err(EngineError::InvalidParams("Preprocessing changed the sheet canvas; its saved panel layout no longer applies".into()));
+            return Err(EngineError::InvalidParams(
+                "Preprocessing changed the sheet canvas; its saved panel layout no longer applies"
+                    .into(),
+            ));
         }
         std::fs::create_dir_all(out_dir)?;
         let file = out_dir.join("template.layout.json");

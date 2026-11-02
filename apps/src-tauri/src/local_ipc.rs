@@ -32,8 +32,7 @@ fn bind_endpoint(
         .map_err(|e| e.to_string())?
         .as_nanos();
     let socket = dir.join(format!("{}-{nonce}.sock", std::process::id()));
-    let listener =
-        std::os::unix::net::UnixListener::bind(&socket).map_err(|e| e.to_string())?;
+    let listener = std::os::unix::net::UnixListener::bind(&socket).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))
         .map_err(|e| e.to_string())?;
     Ok((socket, listener))

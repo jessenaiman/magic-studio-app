@@ -2,7 +2,7 @@
 // release packaging requires a license review. No copied editor implementation.
 import {getProject, types, onChange} from '@theatre/core';
 import studio from '@theatre/studio';
-import {theatreProjectId} from './project-id.mjs';
+import {theatreProjectId} from './project-id.ts';
 
 studio.initialize({usePersistentStorage:false});
 try{

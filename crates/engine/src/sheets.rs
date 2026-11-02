@@ -82,7 +82,9 @@ pub(crate) fn run_image_agent(
     run_agent_inner(program, args, cwd, timeout_s, true)
 }
 
-fn spawn_stdout_reader(pipe: Option<std::process::ChildStdout>) -> std::sync::mpsc::Receiver<Vec<u8>> {
+fn spawn_stdout_reader(
+    pipe: Option<std::process::ChildStdout>,
+) -> std::sync::mpsc::Receiver<Vec<u8>> {
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     if let Some(mut pipe) = pipe {
         std::thread::spawn(move || {
@@ -98,7 +100,10 @@ fn spawn_stdout_reader(pipe: Option<std::process::ChildStdout>) -> std::sync::mp
 fn spawn_stderr_reader(
     pipe: Option<std::process::ChildStderr>,
     stop_on_image: bool,
-) -> (std::sync::mpsc::Receiver<Vec<u8>>, std::sync::mpsc::Receiver<()>) {
+) -> (
+    std::sync::mpsc::Receiver<Vec<u8>>,
+    std::sync::mpsc::Receiver<()>,
+) {
     let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
     let (image_tx, image_rx) = std::sync::mpsc::channel::<()>();
     if let Some(mut pipe) = pipe {
@@ -437,7 +442,10 @@ fn build_sheet_entry(
         layout.prompt()
     );
     let mut prompt = format!("{direction}\n\n{template_prompt}");
-    if let Some(note) = params["note"].as_str().filter(|note| !note.trim().is_empty()) {
+    if let Some(note) = params["note"]
+        .as_str()
+        .filter(|note| !note.trim().is_empty())
+    {
         prompt.push_str(&format!("\nUser direction: {note}"));
     }
     let key = if requests_len > 1 {
@@ -462,7 +470,12 @@ fn build_sheet_entry(
     }))
 }
 
-fn resolve_sheet_reference(s: &Session, params: &Value, source: &Path, receipt: &Value) -> Result<PathBuf> {
+fn resolve_sheet_reference(
+    s: &Session,
+    params: &Value,
+    source: &Path,
+    receipt: &Value,
+) -> Result<PathBuf> {
     let mut reference = receipt["references"]
         .as_array()
         .into_iter()
@@ -481,10 +494,7 @@ fn resolve_sheet_reference(s: &Session, params: &Value, source: &Path, receipt: 
     Ok(reference)
 }
 
-fn resolve_sheet_asset_source<'a>(
-    s: &'a Session,
-    params: &'a Value,
-) -> Result<(&'a str, PathBuf)> {
+fn resolve_sheet_asset_source<'a>(s: &'a Session, params: &'a Value) -> Result<(&'a str, PathBuf)> {
     let asset = params["character"]
         .as_str()
         .or(params["asset"].as_str())

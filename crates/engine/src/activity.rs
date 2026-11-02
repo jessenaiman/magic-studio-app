@@ -50,8 +50,32 @@ fn history_path() -> Option<PathBuf> {
     path().map(|p| p.with_file_name("activity-history.jsonl"))
 }
 const HISTORY_LIMIT: usize = 512;
+
+fn is_polling_command(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "app.analytics"
+            | "app.doctor"
+            | "app.activity"
+            | "app.info"
+            | "command.list"
+            | "ui.feedback"
+            | "ui.eval"
+            | "ui.click"
+            | "ui.type"
+            | "ui.scroll"
+            | "project.catalog"
+            | "project.observe"
+            | "studio.list"
+    )
+}
+
 fn notable(event: &Value) -> bool {
     let stage = event["stage"].as_str().unwrap_or_default();
+    let cmd = event["command"].as_str().unwrap_or_default();
+    if is_polling_command(cmd) {
+        return matches!(stage, "engine_error" | "handler_error");
+    }
     matches!(
         stage,
         "saved_state"
@@ -66,20 +90,11 @@ fn notable(event: &Value) -> bool {
             | "clip_sheet_converted"
             | "clip_sheet_failed"
             | "theatre_keyframes"
-    ) || (matches!(
-        event["command"].as_str(),
-        Some(
-            "image.generate"
-                | "motion.path"
-                | "motion.undo_path"
-                | "motion.recipe"
-                | "export.layered_motion"
-                | "video.place_track"
-        )
-    ) && matches!(
-        stage,
-        "dispatch_running" | "command_result" | "engine_success" | "engine_needs_work"
-    ))
+            | "dispatch_running"
+            | "command_result"
+            | "engine_success"
+            | "engine_needs_work"
+    )
 }
 
 /// Page selection reports would each become a root action; they live only in the history.
@@ -221,10 +236,7 @@ fn kept_roots(groups: HashMap<String, Vec<String>>) -> HashMap<String, HashSet<S
 }
 
 /// The newest 64 stages of every retained root, oldest first.
-fn select_recent(
-    assigned: Vec<Value>,
-    keep: &HashMap<String, HashSet<String>>,
-) -> Vec<Value> {
+fn select_recent(assigned: Vec<Value>, keep: &HashMap<String, HashSet<String>>) -> Vec<Value> {
     let mut counts = HashMap::<(String, String), usize>::new();
     let mut selected = Vec::new();
     for event in assigned.into_iter().rev() {
@@ -334,18 +346,40 @@ fn fill_blank_projects(rows: &mut [Value], event: &Value) {
 }
 
 fn write_rows(file: &mut fs::File, rows: &[Value]) -> std::io::Result<()> {
-    let bytes = rows
-        .iter()
-        .map(Value::to_string)
-        .collect::<Vec<_>>()
-        .join("
-")
-        + "
+    let bytes = rows.iter().map(Value::to_string).collect::<Vec<_>>().join(
+        "
+",
+    ) + "
 ";
     file.seek(SeekFrom::Start(0))?;
     file.write_all(bytes.as_bytes())?;
     file.set_len(bytes.len() as u64)?;
     file.sync_data()
+}
+
+fn project_dir_for_event(event: &Value) -> Option<PathBuf> {
+    let raw = event["project"]
+        .as_str()
+        .or_else(|| event["outputs"]["project"].as_str())
+        .or_else(|| event["outputs"]["path"].as_str())
+        .or_else(|| event["inputs"]["path"].as_str())?;
+    let p = PathBuf::from(raw);
+    let dir = if p.extension().is_some_and(|ext| ext == "magic") || p.is_file() {
+        p.parent()?.to_path_buf()
+    } else {
+        p
+    };
+    dir.is_dir().then_some(dir)
+}
+
+fn remember_project_log(event: &Value) {
+    let Some(dir) = project_dir_for_event(event) else {
+        return;
+    };
+    let agent_dir = dir.join(".agent");
+    if fs::create_dir_all(&agent_dir).is_ok() {
+        let _ = remember(&agent_dir.join("activity-log.jsonl"), event);
+    }
 }
 
 pub fn append(mut event: Value) {
@@ -369,8 +403,11 @@ pub fn append(mut event: Value) {
         event["unix_micros"] = json!(now());
         adopt_legacy_ack(&mut event, &rows);
         fill_blank_projects(&mut rows, &event);
-        if let Some(history) = history_path().filter(|_| notable(&event)) {
-            remember(&history, &event)?;
+        if notable(&event) {
+            if let Some(history) = history_path() {
+                remember(&history, &event)?;
+            }
+            remember_project_log(&event);
         }
         if !history_only(&event) {
             rows.push(event);
@@ -383,6 +420,33 @@ pub fn append(mut event: Value) {
         eprintln!("activity receipt unavailable: {error}");
     }
 }
+
+const TRACKED_INPUT_KEYS: &[&str] = &[
+    "path",
+    "root",
+    "name",
+    "audio",
+    "transcript",
+    "captions",
+    "target",
+    "resume",
+    "replace",
+    "replace_transcript",
+    "page_id",
+    "id",
+    "title",
+    "prompt",
+    "scene",
+    "character",
+    "clip",
+    "preset",
+    "action",
+    "track",
+    "output",
+    "fps",
+    "duration",
+];
+
 pub fn command(
     project: Option<&std::path::Path>,
     id: &str,
@@ -392,20 +456,9 @@ pub fn command(
 ) {
     let context = CONTEXT.with(|v| v.borrow().clone());
     let mut bounded = json!({});
-    for key in [
-        "path",
-        "root",
-        "name",
-        "audio",
-        "transcript",
-        "captions",
-        "target",
-        "resume",
-        "replace",
-        "replace_transcript",
-    ] {
-        if let Some(v) = params.get(key) {
-            bounded[key] = if let Some(s) = v.as_str() {
+    for key in TRACKED_INPUT_KEYS {
+        if let Some(v) = params.get(*key) {
+            bounded[*key] = if let Some(s) = v.as_str() {
                 json!(s.chars().take(220).collect::<String>())
             } else {
                 v.clone()
@@ -565,4 +618,39 @@ pub fn stored(project: &std::path::Path, bytes: usize) {
     append(
         json!({"stage":"saved_state","project":project,"command":c["_command"],"request_id":c["_request_id"],"origin":c["_origin"],"client_label":c["_client"],"control":c["_control"],"storage":"project file","bytes":bytes}),
     );
+}
+
+pub fn recent_stream(limit: usize) -> Vec<Value> {
+    let Ok((text, mut history)) = read_log() else {
+        return Vec::new();
+    };
+    history.extend(parse_lines(&text));
+    let mut by_seq = HashMap::<u64, Value>::new();
+    for event in history {
+        if is_noise(&event) || !notable(&event) {
+            continue;
+        }
+        if let Some(seq) = event["sequence"].as_u64() {
+            by_seq.insert(seq, event);
+        }
+    }
+    let mut items: Vec<Value> = by_seq.into_values().collect();
+    items.sort_by_key(|v| std::cmp::Reverse(v["sequence"].as_u64().unwrap_or(0)));
+    items
+        .into_iter()
+        .take(limit)
+        .map(|ev| {
+            json!({
+                "sequence": ev["sequence"],
+                "unix_micros": ev["unix_micros"],
+                "project": ev["project"].as_str().or_else(|| ev["outputs"]["project"].as_str()),
+                "command": ev["command"],
+                "stage": ev["stage"],
+                "elapsed_ms": ev["elapsed_ms"],
+                "inputs": ev["inputs"],
+                "error": ev["error"],
+                "bytes": ev["bytes"],
+            })
+        })
+        .collect()
 }

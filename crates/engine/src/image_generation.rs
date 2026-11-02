@@ -313,7 +313,10 @@ fn with_reference_asset(s: &Session, p: &Value, request: &mut Value) -> Result<(
 
 /// The first reference is the registered asset, so the result can name it.
 fn tag_reference_asset(p: &Value, refs: &mut [Value]) {
-    if let Some(first) = refs.first_mut().filter(|_| p.get("reference_asset").is_some()) {
+    if let Some(first) = refs
+        .first_mut()
+        .filter(|_| p.get("reference_asset").is_some())
+    {
         first["asset_id"] = p["reference_asset"].clone();
     }
 }
@@ -370,9 +373,8 @@ fn scene_context(root: &Path, p: &Value) -> Result<Option<(u64, Value)>> {
         .as_u64()
         .filter(|n| *n > 0)
         .ok_or_else(|| invalid("scene must be a positive storyboard scene number"))?;
-    let board: Value =
-        serde_json::from_slice(&fs::read(root.join("storyboard/movie-board.json"))?)
-            .map_err(|e| invalid(&format!("Cannot read storyboard mapping: {e}")))?;
+    let board: Value = serde_json::from_slice(&fs::read(root.join("storyboard/movie-board.json"))?)
+        .map_err(|e| invalid(&format!("Cannot read storyboard mapping: {e}")))?;
     let count = board["scene_count"]
         .as_u64()
         .ok_or_else(|| invalid("Storyboard has no scene_count; save its native mapping first"))?;
@@ -915,7 +917,11 @@ fn generate_via_grok(
         serde_json::to_vec(&blocks).map_err(|e| invalid(&e.to_string()))?,
     )
     .map_err(|e| io_failure("write_prompt_blocks", &prompt_json, e))?;
-    write_bytes(&prepared.prompt_file, instruction.as_bytes(), "write_prompt")?;
+    write_bytes(
+        &prepared.prompt_file,
+        instruction.as_bytes(),
+        "write_prompt",
+    )?;
     let args = grok_args(&prepared, &instruction, &prompt_json);
     let mut record = grok_record(&prepared, model, &args, timeout);
     write_json_file(&prepared.receipt, &record, "write_request_receipt")?;
@@ -971,7 +977,8 @@ fn image_tokens(text: &str) -> Vec<String> {
     }) {
         let token = token.trim_start_matches('.').trim();
         let lower = token.to_ascii_lowercase();
-        if (lower.ends_with(".png") || lower.ends_with(".webp")) && !tokens.iter().any(|t| t == token)
+        if (lower.ends_with(".png") || lower.ends_with(".webp"))
+            && !tokens.iter().any(|t| t == token)
         {
             tokens.push(token.to_owned());
         }
@@ -1085,8 +1092,16 @@ fn launch_codex(
 }
 
 fn write_agent_logs(dir: &Path, run: &crate::sheets::AgentRun) -> Result<()> {
-    write_bytes(&dir.join("events.jsonl"), run.stdout.as_bytes(), "write_events")?;
-    write_bytes(&dir.join("stderr.log"), run.stderr.as_bytes(), "write_tool_log")
+    write_bytes(
+        &dir.join("events.jsonl"),
+        run.stdout.as_bytes(),
+        "write_events",
+    )?;
+    write_bytes(
+        &dir.join("stderr.log"),
+        run.stderr.as_bytes(),
+        "write_tool_log",
+    )
 }
 
 /// The agent argv for this request, with its prompt already written beside the receipt.
@@ -1191,7 +1206,14 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         receipt,
         prompt_file,
     } = prepare(s, p, prompt)?;
-    let args = codex_request(&dir, &model, &effective_prompt, &references, p, &prompt_file)?;
+    let args = codex_request(
+        &dir,
+        &model,
+        &effective_prompt,
+        &references,
+        p,
+        &prompt_file,
+    )?;
     let mut record = json!({"format":"magicstudio.image-generation", "project":project,
         "prompt":prompt, "effective_prompt":effective_prompt, "poses":poses, "animation_context":context,
         "rig_sheet":rig_layout,

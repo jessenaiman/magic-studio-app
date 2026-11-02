@@ -1,11 +1,10 @@
-"""Project management for Magic Studio (`.magic` files and HyperFrames studio websites)."""
+"""Project management for Magic Studio (`.magic` files and HyperFrames websites)."""
 
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
-
 
 
 def _resolve_existing_file(p: Path) -> Path:
@@ -24,7 +23,9 @@ def _resolve_existing_dir(p: Path) -> Path:
         if len(found) == 1:
             return found[0].resolve()
         if len(found) > 1:
-            raise ValueError(f"{anc} has {len(found)} .magic files; specify the file path")
+            raise ValueError(
+                f"{anc} has {len(found)} .magic files; specify the file path"
+            )
     raise ValueError(f"No .magic project file found in {p}")
 
 
@@ -40,13 +41,13 @@ def _lookup_recent_project(token: str) -> Path | None:
             ep = Path(entry)
             if ep.is_file() and low_token in (ep.stem.lower(), ep.name.lower()):
                 return ep.resolve()
-    except Exception:
-        pass
+    except (OSError, ValueError, TypeError):
+        return None
     return None
 
 
 def resolve_project_path(raw: str | Path) -> Path:
-    """Resolve a `.magic` file path, a project directory, or a `hyperframes/` website folder."""
+    """Resolve a `.magic` file path, project dir, or `hyperframes/` website folder."""
     p = Path(raw).expanduser()
     if p.is_file():
         return _resolve_existing_file(p)

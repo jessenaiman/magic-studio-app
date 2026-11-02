@@ -7,7 +7,10 @@ fn invalid(message: &str) -> EngineError {
 }
 
 /// The manifest this call names, proven to live inside the project.
-fn playback_source(s: &Session, p: &Value) -> Result<(std::path::PathBuf, std::path::PathBuf, Value)> {
+fn playback_source(
+    s: &Session,
+    p: &Value,
+) -> Result<(std::path::PathBuf, std::path::PathBuf, Value)> {
     let manifest = crate::workspace::resolve_workspace_path(
         s,
         p["manifest"]
@@ -153,7 +156,10 @@ fn close_demo(demo_motion: &mut Value, tracks: &[Value], cursor: f64) {
 fn dedupe_keys(keys: &mut Vec<Value>) {
     let mut unique: Vec<Value> = Vec::new();
     for key in keys.drain(..) {
-        if unique.last().is_some_and(|last| last[0].as_f64() == key[0].as_f64()) {
+        if unique
+            .last()
+            .is_some_and(|last| last[0].as_f64() == key[0].as_f64())
+        {
             unique.pop();
         }
         unique.push(key);
@@ -269,7 +275,14 @@ fn frame_spans(
 }
 
 /// Opacity keys that show this frame from `start` to `end` and nothing after it.
-fn opacity_keys(start: f64, end: f64, duration: f64, position: usize, last: bool, looping: bool) -> Vec<Value> {
+fn opacity_keys(
+    start: f64,
+    end: f64,
+    duration: f64,
+    position: usize,
+    last: bool,
+    looping: bool,
+) -> Vec<Value> {
     let mut keys = vec![json!([0, if start == 0.0 { 0 } else { -100 }])];
     if start > 0.0 {
         keys.push(json!([start, 0]));
@@ -292,7 +305,14 @@ fn action_track(row: &Value, frames: &[Value], mirrored: bool) -> Result<Value> 
     for (position, (index, start, end)) in spans.iter().enumerate() {
         let layer = format!("frame_{index:02}");
         layer_ids.push(layer.clone());
-        let keys = opacity_keys(*start, *end, duration, position, position + 1 == last, looping);
+        let keys = opacity_keys(
+            *start,
+            *end,
+            duration,
+            position,
+            position + 1 == last,
+            looping,
+        );
         motion[&layer] = json!({"opacity":[{"kind":"keys","ease":"hold","keys":keys}]});
         if mirrored {
             motion[&layer]["scale"] = json!([{"kind":"keys","ease":"hold","keys":[[0,[-200,0]]]}]);

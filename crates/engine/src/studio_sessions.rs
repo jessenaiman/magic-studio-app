@@ -63,8 +63,12 @@ fn connected(
     let stream = connect_with_retry(path)?;
     crate::local_ipc::peer(&stream).map_err(|e| format!("Studio peer check failed: {e}"))?;
     let timeout = Some(Duration::from_secs(timeout_seconds));
-    stream.set_read_timeout(timeout).map_err(|e| e.to_string())?;
-    stream.set_write_timeout(timeout).map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(timeout)
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(timeout)
+        .map_err(|e| e.to_string())?;
     Ok(BufReader::new(stream))
 }
 

@@ -1260,11 +1260,23 @@ fn build_imported_scene_doc(
     };
     for (key, value) in [
         ("skills", skills),
-        ("reference_prompt", packet_text_of(&packet["reference_prompt"])),
-        ("animation_prompt", packet_text_of(&packet["animation_prompt"])),
-        ("layer_stack", packet_text_of(&packet["layer_stack_proposal"])),
+        (
+            "reference_prompt",
+            packet_text_of(&packet["reference_prompt"]),
+        ),
+        (
+            "animation_prompt",
+            packet_text_of(&packet["animation_prompt"]),
+        ),
+        (
+            "layer_stack",
+            packet_text_of(&packet["layer_stack_proposal"]),
+        ),
         ("build_steps", packet_text_of(&packet["build_steps"])),
-        ("acceptance_checks", packet_text_of(&packet["output_checks"])),
+        (
+            "acceptance_checks",
+            packet_text_of(&packet["output_checks"]),
+        ),
         ("plan_vs_actual", packet_text_of(&packet["plan_vs_actual"])),
     ] {
         if let Some(v) = value.filter(|v| !v.trim().is_empty()) {
@@ -1386,7 +1398,10 @@ fn diagnose_video_setup(s: &Session, dir: &Path) -> (Vec<String>, Vec<String>) {
     }
     if s.video_project_path.as_ref().is_none_or(|p| !p.exists()) {
         warnings.push("Project file is not linked to hyperframes/hyperframes.json.".into());
-        next.push("Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project.".into());
+        next.push(
+            "Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project."
+                .into(),
+        );
     }
     if let Ok(html) = std::fs::read_to_string(hf.join("index.html"))
         && html.contains("<audio")
@@ -1396,7 +1411,10 @@ fn diagnose_video_setup(s: &Session, dir: &Path) -> (Vec<String>, Vec<String>) {
         next.push("Run `magic-cli exec audio.analyze` to tag the music track and generate beat/section analysis.".into());
     }
     if !hf.join("audio-analysis.json").is_file() {
-        warnings.push("hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed).".into());
+        warnings.push(
+            "hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed)."
+                .into(),
+        );
         next.push("Run `magic-cli exec audio.analyze` to generate transcript.json, transcript.srt, audio-analysis.json, and beats/.".into());
     }
     let has_beats = std::fs::read_dir(hf.join("beats"))
@@ -1418,11 +1436,21 @@ fn check_scene_reference(
     seen_refs: &mut std::collections::BTreeMap<String, usize>,
 ) -> (Option<String>, bool) {
     let Some(rel) = doc.reference.as_deref().filter(|r| !r.trim().is_empty()) else {
-        return (Some(format!("Scene {n:02} is missing a `reference:` plate image.")), false);
+        return (
+            Some(format!(
+                "Scene {n:02} is missing a `reference:` plate image."
+            )),
+            false,
+        );
     };
     let path = dir.join(rel);
     if !path.is_file() {
-        return (Some(format!("Scene {n:02} reference `{rel}` does not exist on disk.")), false);
+        return (
+            Some(format!(
+                "Scene {n:02} reference `{rel}` does not exist on disk."
+            )),
+            false,
+        );
     }
     let mut issue = None;
     let mut is_16_9 = true;
@@ -1435,7 +1463,9 @@ fn check_scene_reference(
         is_16_9 = false;
     }
     if let Some(prev) = seen_refs.insert(rel.to_string(), n) {
-        let dup = format!("Scene {n:02} reuses `{rel}` from Scene {prev:02} instead of a dedicated scene plate.");
+        let dup = format!(
+            "Scene {n:02} reuses `{rel}` from Scene {prev:02} instead of a dedicated scene plate."
+        );
         issue = Some(match issue {
             Some(existing) => format!("{existing} {dup}"),
             None => dup,
@@ -1457,7 +1487,14 @@ pub(crate) fn diagnose_storyboard_and_workshop(s: &Session, dir: &Path) -> Value
         next_steps.push("Run `magic-cli exec storyboard.init` to create the initial DeckCraft storyboard and scene files.".into());
         return json!({"warnings": warnings, "next_steps": next_steps, "scenes_total": 0, "all_scenes_complete": false});
     }
-    let required = ["action", "reference_prompt", "animation_prompt", "layer_stack", "animated_text", "teaching_cues"];
+    let required = [
+        "action",
+        "reference_prompt",
+        "animation_prompt",
+        "layer_stack",
+        "animated_text",
+        "teaching_cues",
+    ];
     let mut seen_refs = std::collections::BTreeMap::new();
     let mut art_ok_count = 0usize;
     let mut sections_ok_count = 0usize;
@@ -1477,7 +1514,10 @@ pub(crate) fn diagnose_storyboard_and_workshop(s: &Session, dir: &Path) -> Value
         if missing.is_empty() {
             sections_ok_count += 1;
         } else {
-            warnings.push(format!("Scene {n:02} is missing sections: {}.", missing.join(", ")));
+            warnings.push(format!(
+                "Scene {n:02} is missing sections: {}.",
+                missing.join(", ")
+            ));
         }
     }
     let total = scene_docs.len();

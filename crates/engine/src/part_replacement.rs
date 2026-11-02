@@ -82,10 +82,7 @@ pub(crate) fn image_edit_capability(s: &Session, spec: &Path, raw: &Value, part:
 }
 
 /// The rig the session holds for this asset.
-fn asset_rig<'a>(
-    s: &'a Session,
-    asset: &str,
-) -> Result<&'a crate::session::LoadedCutoutRigPlan> {
+fn asset_rig<'a>(s: &'a Session, asset: &str) -> Result<&'a crate::session::LoadedCutoutRigPlan> {
     s.assets
         .get(asset)
         .and_then(|a| a.cutout_rig.as_ref())
@@ -842,11 +839,7 @@ struct Operation {
     receipt: PathBuf,
 }
 
-fn begin_operation(
-    guard: &Guard,
-    images: &Images,
-    history: &Path,
-) -> Result<Operation> {
+fn begin_operation(guard: &Guard, images: &Images, history: &Path) -> Result<Operation> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| invalid(e.to_string()))?
@@ -934,10 +927,26 @@ pub fn cmd_part_replace_image(s: &mut Session, params: &Value) -> Result<Value> 
     let record = json!({"asset":guard.asset,"part":guard.part,"token":operation.token,"target":guard.target,"backup":operation.backup,"candidate":operation.candidate,
         "before_sha256":images.old_hash,"candidate_sha256":images.candidate_hash,"rig_sha256":guard.rig_hash,"revision_before":state["revision"].as_u64().unwrap_or(0),
         "revision_after":next_revision,"status":"applied","width":images.size.0,"height":images.size.1});
-    write_or_rollback(s, &guard, &images, &cache_before, &operation, &operation.receipt, &record)?;
+    write_or_rollback(
+        s,
+        &guard,
+        &images,
+        &cache_before,
+        &operation,
+        &operation.receipt,
+        &record,
+    )?;
     state["revision"] = json!(next_revision);
     state["last_token"] = json!(operation.token);
-    write_or_rollback(s, &guard, &images, &cache_before, &operation, &state_file, &state)?;
+    write_or_rollback(
+        s,
+        &guard,
+        &images,
+        &cache_before,
+        &operation,
+        &state_file,
+        &state,
+    )?;
     Ok(
         json!({"ok":true,"asset":guard.asset,"part":guard.part,"undo":operation.token,"revision":next_revision,"before_sha256":images.old_hash,"candidate_sha256":images.candidate_hash,"width":images.size.0,"height":images.size.1}),
     )
@@ -1118,7 +1127,15 @@ fn undo_history(guard: &UndoGuard, params: &Value) -> Result<UndoHistory> {
         &guard.rig_hash,
         params,
     )?;
-    ensure_unshared(&guard.root, &guard.spec, &guard.raw, &part, &target, None, true)?;
+    ensure_unshared(
+        &guard.root,
+        &guard.spec,
+        &guard.raw,
+        &part,
+        &target,
+        None,
+        true,
+    )?;
     Ok(UndoHistory {
         record,
         receipt_path,
@@ -1253,7 +1270,11 @@ fn edit_draft(root: &Path, history: &Path, part: &str, source: &Path) -> Result<
 }
 
 /// The earliest receipt for this part, as (revision, backup path, digest).
-fn earliest_receipt(root: &Path, history: &Path, part: &str) -> Result<Option<(u64, PathBuf, String)>> {
+fn earliest_receipt(
+    root: &Path,
+    history: &Path,
+    part: &str,
+) -> Result<Option<(u64, PathBuf, String)>> {
     let mut earliest: Option<(u64, PathBuf, String)> = None;
     for entry in std::fs::read_dir(history)? {
         let entry = entry?;
@@ -1356,8 +1377,10 @@ fn draft_report(root: &Path, history: &Path, part: &str, current_sha: &str) -> R
     let bytes = std::fs::read(&draft_file)?;
     let (width, height) = png_size(&bytes)?;
     let digest = sha(&bytes);
-    Ok(json!({"file":draft_file,"reused":false,"width":width,"height":height,
-        "matches_current":digest == current_sha,"sha256":digest}))
+    Ok(
+        json!({"file":draft_file,"reused":false,"width":width,"height":height,
+        "matches_current":digest == current_sha,"sha256":digest}),
+    )
 }
 
 /// The asset, part and files this editor request names.

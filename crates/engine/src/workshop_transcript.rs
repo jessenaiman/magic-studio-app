@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::{EngineError, Result, Session};
 use crate::video_target::ensure_video_target_project;
 use crate::workshop::{project_dir, transcript_files, workshop_status};
 use crate::workspace::resolve_workspace_path;
+use crate::{EngineError, Result, Session};
 
 pub(crate) fn transcript_document(path: &Path) -> Result<Value> {
     let mut doc: Value = serde_json::from_slice(&std::fs::read(path)?).map_err(|e| {
@@ -156,7 +156,11 @@ fn parse_cue(block: &str) -> Result<(f64, f64, String)> {
     let lines = block.lines().collect::<Vec<_>>();
     let timing = lines.iter().position(|l| l.contains("-->")).and_then(|i| {
         let (a, b) = lines[i].split_once("-->")?;
-        Some((parse_srt_time(a)?, parse_srt_time(b)?, lines[i + 1..].join(" ")))
+        Some((
+            parse_srt_time(a)?,
+            parse_srt_time(b)?,
+            lines[i + 1..].join(" "),
+        ))
     });
     timing.ok_or_else(|| EngineError::InvalidParams("invalid SRT cue timing".into()))
 }
@@ -422,12 +426,7 @@ fn write_captions(dir: &Path, target: &str, text: String) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn copy_filmcraft(
-    s: &Session,
-    dir: &Path,
-    params: &Value,
-    stem: &str,
-) -> Result<Option<PathBuf>> {
+fn copy_filmcraft(s: &Session, dir: &Path, params: &Value, stem: &str) -> Result<Option<PathBuf>> {
     let Some(project) = params
         .get("filmcraft_project")
         .and_then(Value::as_str)
@@ -566,12 +565,9 @@ fn analysis_audio(s: &Session, params: &Value) -> Result<PathBuf> {
 fn hyperframes_runtime(params: &Value, hf: &Path) -> Result<String> {
     let runtime =
         crate::video_target::resolve_video_cli(params["resolve_video_cli"].as_str(), Some(hf))?;
-    runtime
-        .to_str()
-        .map(str::to_string)
-        .ok_or_else(|| {
-            EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
-        })
+    runtime.to_str().map(str::to_string).ok_or_else(|| {
+        EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
+    })
 }
 
 fn transcribe_recording(

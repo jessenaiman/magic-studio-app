@@ -32,42 +32,53 @@ pub struct Comparison {
     pub baseline_supplement: Option<Report>,
     pub candidate_supplement: Option<Report>,
 }
+fn valid_hex_sha(value: &str) -> bool {
+    (7..=64).contains(&value.len()) && value.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 impl Inputs {
+    fn apply_flag(&mut self, flag: &str, value: &str) -> Result<bool, String> {
+        match flag {
+            "--audit-baseline" => self.baseline = Some(value.into()),
+            "--audit-candidate" => self.candidate = Some(value.into()),
+            "--audit-baseline-supplement" => self.baseline_supplement = Some(value.into()),
+            "--audit-candidate-supplement" => self.candidate_supplement = Some(value.into()),
+            "--audit-baseline-sha" | "--audit-candidate-sha" => {
+                if !valid_hex_sha(value) {
+                    return Err("Source SHA must be 7–64 hexadecimal characters".into());
+                }
+                if flag == "--audit-baseline-sha" {
+                    self.baseline_sha = Some(value.to_string());
+                } else {
+                    self.candidate_sha = Some(value.to_string());
+                }
+            }
+            "--audit-tool" => self.tool_filter = Some(value.to_string()),
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
     pub fn parse(args: &[String]) -> Result<Self, String> {
         let mut input = Self::default();
         let mut i = 0;
+        const FLAGS: &[&str] = &[
+            "--audit-baseline",
+            "--audit-candidate",
+            "--audit-baseline-supplement",
+            "--audit-candidate-supplement",
+            "--audit-baseline-sha",
+            "--audit-candidate-sha",
+            "--audit-tool",
+        ];
         while i < args.len() {
-            let slot = match args[i].as_str() {
-                "--audit-baseline" => Some(0),
-                "--audit-candidate" => Some(1),
-                "--audit-baseline-supplement" => Some(2),
-                "--audit-candidate-supplement" => Some(3),
-                "--audit-baseline-sha" => Some(4),
-                "--audit-candidate-sha" => Some(5),
-                "--audit-tool" => Some(6),
-                _ => None,
-            };
-            if let Some(slot) = slot {
+            let flag = args[i].as_str();
+            if FLAGS.contains(&flag) {
                 i += 1;
                 let value = args
                     .get(i)
-                    .ok_or_else(|| format!("{} requires a value", args[i - 1]))?;
-                if matches!(slot, 4 | 5)
-                    && !(value.len() >= 7
-                        && value.len() <= 64
-                        && value.chars().all(|c| c.is_ascii_hexdigit()))
-                {
-                    return Err("Source SHA must be 7–64 hexadecimal characters".into());
-                }
-                match slot {
-                    0 => input.baseline = Some(value.into()),
-                    1 => input.candidate = Some(value.into()),
-                    2 => input.baseline_supplement = Some(value.into()),
-                    3 => input.candidate_supplement = Some(value.into()),
-                    4 => input.baseline_sha = Some(value.clone()),
-                    5 => input.candidate_sha = Some(value.clone()),
-                    _ => input.tool_filter = Some(value.clone()),
-                };
+                    .ok_or_else(|| format!("{flag} requires a value"))?;
+                input.apply_flag(flag, value)?;
             }
             i += 1;
         }
@@ -100,6 +111,70 @@ impl Inputs {
         })
     }
 }
+
+fn validate_native_report(path: &std::path::Path, native: &Value) -> Result<(), String> {
+    for key in ["issues", "errors", "toolResults"] {
+        if !native[key].is_array() {
+            return Err(format!("{}: missing native {key} array", path.display()));
+        }
+    }
+    if native.get("skippedFiles").is_some_and(|v| !v.is_array()) {
+        return Err(format!(
+            "{}: native skippedFiles must be an array when supplied",
+            path.display()
+        ));
+    }
+    if !native["metadata"].is_object() {
+        return Err(format!(
+            "{}: missing native metadata object",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_issue_link(root: &PathBuf, raw: &str) -> Option<PathBuf> {
+    let relative = std::path::Path::new(raw);
+    let unsafe_rel = raw.chars().any(char::is_control)
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)));
+    if unsafe_rel {
+        None
+    } else {
+        root.join(relative)
+            .canonicalize()
+            .ok()
+            .filter(|p| p.starts_with(root) && p.is_file())
+    }
+}
+
+fn collect_source_links(native: &Value) -> (BTreeMap<String, Option<PathBuf>>, bool) {
+    let mut source_links = BTreeMap::new();
+    let mut links_partial = false;
+    let Some(root) = native["metadata"]["repositoryRoot"]
+        .as_str()
+        .map(PathBuf::from)
+        .and_then(|p| p.canonicalize().ok())
+    else {
+        return (source_links, links_partial);
+    };
+    let started = std::time::Instant::now();
+    for issue in native["issues"].as_array().unwrap() {
+        if source_links.len() >= 2000 || started.elapsed() > std::time::Duration::from_millis(500) {
+            links_partial = true;
+            break;
+        }
+        if let Some(raw) = issue["filePath"].as_str()
+            && !source_links.contains_key(raw)
+        {
+            source_links.insert(raw.to_string(), resolve_issue_link(&root, raw));
+        }
+    }
+    (source_links, links_partial)
+}
+
 fn load(path: &PathBuf, sha: Option<String>) -> Result<Report, String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if !metadata.file_type().is_file() || metadata.len() > MAX {
@@ -119,64 +194,8 @@ fn load(path: &PathBuf, sha: Option<String>) -> Result<Report, String> {
     }
     let native: Value = serde_json::from_slice(&bytes)
         .map_err(|e| format!("{}: invalid native JSON: {e}", path.display()))?;
-    for key in ["issues", "errors", "toolResults"] {
-        if !native[key].is_array() {
-            return Err(format!("{}: missing native {key} array", path.display()));
-        }
-    }
-    if native
-        .get("skippedFiles")
-        .is_some_and(|value| !value.is_array())
-    {
-        return Err(format!(
-            "{}: native skippedFiles must be an array when supplied",
-            path.display()
-        ));
-    }
-    if !native["metadata"].is_object() {
-        return Err(format!(
-            "{}: missing native metadata object",
-            path.display()
-        ));
-    }
-    let mut source_links = BTreeMap::new();
-    let mut links_partial = false;
-    if let Some(root) = native["metadata"]["repositoryRoot"]
-        .as_str()
-        .map(PathBuf::from)
-        .and_then(|p| p.canonicalize().ok())
-    {
-        let started = std::time::Instant::now();
-        for issue in native["issues"].as_array().unwrap() {
-            if source_links.len() >= 2000
-                || started.elapsed() > std::time::Duration::from_millis(500)
-            {
-                links_partial = true;
-                break;
-            }
-            let Some(raw) = issue["filePath"].as_str() else {
-                continue;
-            };
-            if source_links.contains_key(raw) {
-                continue;
-            }
-            let relative = std::path::Path::new(raw);
-            let link = if raw.chars().any(char::is_control)
-                || relative.is_absolute()
-                || relative
-                    .components()
-                    .any(|c| !matches!(c, std::path::Component::Normal(_)))
-            {
-                None
-            } else {
-                root.join(relative)
-                    .canonicalize()
-                    .ok()
-                    .filter(|p| p.starts_with(&root) && p.is_file())
-            };
-            source_links.insert(raw.to_string(), link);
-        }
-    }
+    validate_native_report(path, &native)?;
+    let (source_links, links_partial) = collect_source_links(&native);
     Ok(Report {
         source_links,
         links_partial,
@@ -268,6 +287,40 @@ impl Comparison {
         let raw = self.finding(tool, index)?["filePath"].as_str()?;
         self.candidate.source_links.get(raw)?.as_deref()
     }
+    fn write_supplement_markdown(&self, out: &mut String, a: &Report, b: &Report) {
+        writeln!(
+            out,
+            "\n## Supplemental reports — separate from primary execution"
+        )
+        .unwrap();
+        match (&self.baseline_supplement, &self.candidate_supplement) {
+            (Some(sa), Some(sb)) => {
+                writeln!(out,"\nBaseline: `{}`  \nCandidate: `{}`\n\nissues records: {} → {}; errors records: {} → {}. These do not erase primary execution errors.",cell(sa.path.display().to_string()),cell(sb.path.display().to_string()),sa.issues(),sb.issues(),sa.errors(),sb.errors()).unwrap();
+                tools_table(out, "Supplement native toolResults", sa, sb);
+                if supplement_safe(a, sa) && supplement_safe(b, sb) {
+                    writeln!(out,"\nPrimary + separate Trivy retry issue records: **{} → {} (Δ {:+})**. Addition is shown because primary Trivy issueCount is 0 in both reports; no cross-tool deduplication or completeness claim is made.",a.issues()+sa.issues(),b.issues()+sb.issues(),(b.issues()+sb.issues()) as i64-(a.issues()+sa.issues()) as i64).unwrap();
+                }
+                for (label, r) in [("Baseline supplement", sa), ("Candidate supplement", sb)] {
+                    for error in r.native["errors"].as_array().unwrap() {
+                        writeln!(
+                            out,
+                            "\n- {label}: toolId `{}`, phase `{}`, kind `{}`, level `{}` — {}",
+                            field(error, "toolId"),
+                            field(error, "phase"),
+                            field(error, "kind"),
+                            field(error, "level"),
+                            field(error, "message")
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+            _ => {
+                writeln!(out,"\nUnavailable: both supplemental paths must be supplied for a paired comparison. No supplemental counts are invented.").unwrap();
+            }
+        }
+    }
+
     pub fn markdown(&self) -> String {
         let a = &self.baseline;
         let b = &self.candidate;
@@ -316,80 +369,54 @@ impl Comparison {
         .unwrap();
         writeln!(out,"\nCounts are native report records, not a quality score. Scope differs where filesAnalyzed differs; fewer findings alone does not prove that all removed findings were fixed. Native errors and skipped files remain unresolved evidence.\n").unwrap();
         tools_table(&mut out, "Native toolResults", a, b);
-        writeln!(out,"\n## Native errors (grouped without renaming toolId / phase / kind)\n\n| toolId | phase | kind | Baseline records | Candidate records |\n|---|---|---|---:|---:|").unwrap();
-        let errors_a = errors(a);
-        let errors_b = errors(b);
-        let keys: BTreeSet<_> = errors_a.keys().chain(errors_b.keys()).collect();
-        for key in keys {
-            writeln!(
-                out,
-                "| {} | {} | {} | {} | {} |",
-                cell(&key.0),
-                cell(&key.1),
-                cell(&key.2),
-                errors_a.get(key).copied().unwrap_or(0),
-                errors_b.get(key).copied().unwrap_or(0)
-            )
-            .unwrap();
-        }
-        writeln!(out,"\n## Native patternId changes\n\nLargest absolute changes in issue-record counts; no rule names or severity fields are rewritten.\n\n| toolId | patternId | Baseline records | Candidate records | Δ |\n|---|---|---:|---:|---:|").unwrap();
-        let rules_a = rules(a);
-        let rules_b = rules(b);
-        let keys: BTreeSet<_> = rules_a.keys().chain(rules_b.keys()).collect();
-        let mut changes: Vec<_> = keys
-            .into_iter()
-            .map(|key| {
-                let av = rules_a.get(key).copied().unwrap_or(0);
-                let bv = rules_b.get(key).copied().unwrap_or(0);
-                (key, av, bv)
-            })
-            .collect();
-        changes.sort_by_key(|(_, a, b)| std::cmp::Reverse((*b - *a).abs()));
-        for (key, av, bv) in changes.into_iter().filter(|(_, a, b)| a != b).take(10) {
-            writeln!(
-                out,
-                "| {} | {} | {} | {} | {:+} |",
-                cell(&key.0),
-                cell(&key.1),
-                av,
-                bv,
-                bv - av
-            )
-            .unwrap();
-        }
-        writeln!(
-            out,
-            "\n## Supplemental reports — separate from primary execution"
-        )
-        .unwrap();
-        match (&self.baseline_supplement, &self.candidate_supplement) {
-            (Some(sa), Some(sb)) => {
-                writeln!(out,"\nBaseline: `{}`  \nCandidate: `{}`\n\nissues records: {} → {}; errors records: {} → {}. These do not erase primary execution errors.",cell(sa.path.display().to_string()),cell(sb.path.display().to_string()),sa.issues(),sb.issues(),sa.errors(),sb.errors()).unwrap();
-                tools_table(&mut out, "Supplement native toolResults", sa, sb);
-                if supplement_safe(a, sa) && supplement_safe(b, sb) {
-                    writeln!(out,"\nPrimary + separate Trivy retry issue records: **{} → {} (Δ {:+})**. Addition is shown because primary Trivy issueCount is 0 in both reports; no cross-tool deduplication or completeness claim is made.",a.issues()+sa.issues(),b.issues()+sb.issues(),(b.issues()+sb.issues()) as i64-(a.issues()+sa.issues()) as i64).unwrap();
-                }
-                for (label, r) in [("Baseline supplement", sa), ("Candidate supplement", sb)] {
-                    for error in r.native["errors"].as_array().unwrap() {
-                        writeln!(
-                            out,
-                            "\n- {label}: toolId `{}`, phase `{}`, kind `{}`, level `{}` — {}",
-                            field(error, "toolId"),
-                            field(error, "phase"),
-                            field(error, "kind"),
-                            field(error, "level"),
-                            field(error, "message")
-                        )
-                        .unwrap();
-                    }
-                }
-            }
-            _ => {
-                writeln!(out,"\nUnavailable: both supplemental paths must be supplied for a paired comparison. No supplemental counts are invented.").unwrap();
-            }
-        }
+        write_errors_and_patterns(&mut out, a, b);
+        self.write_supplement_markdown(&mut out, a, b);
         writeln!(out,"\n## Incomplete / not run\n\n- Primary errors are retained; a tool's native status `success` does not clear its nonzero errorCount.\n- {}\n- Source SHAs are unavailable unless explicitly supplied; current repository HEAD is not substituted for report provenance.\n- Full native issue/error details and source filePath/line/patternId remain in the report files listed above. No source files or audit reports were modified.\n",agent_note(a,b)).unwrap();
         out
+    }
+}
+
+fn write_errors_and_patterns(out: &mut String, a: &Report, b: &Report) {
+    writeln!(out,"\n## Native errors (grouped without renaming toolId / phase / kind)\n\n| toolId | phase | kind | Baseline records | Candidate records |\n|---|---|---|---:|---:|").unwrap();
+    let errors_a = errors(a);
+    let errors_b = errors(b);
+    let keys: BTreeSet<_> = errors_a.keys().chain(errors_b.keys()).collect();
+    for key in keys {
+        writeln!(
+            out,
+            "| {} | {} | {} | {} | {} |",
+            cell(&key.0),
+            cell(&key.1),
+            cell(&key.2),
+            errors_a.get(key).copied().unwrap_or(0),
+            errors_b.get(key).copied().unwrap_or(0)
+        )
+        .unwrap();
+    }
+    writeln!(out,"\n## Native patternId changes\n\nLargest absolute changes in issue-record counts; no rule names or severity fields are rewritten.\n\n| toolId | patternId | Baseline records | Candidate records | Δ |\n|---|---|---:|---:|---:|").unwrap();
+    let rules_a = rules(a);
+    let rules_b = rules(b);
+    let keys: BTreeSet<_> = rules_a.keys().chain(rules_b.keys()).collect();
+    let mut changes: Vec<_> = keys
+        .into_iter()
+        .map(|key| {
+            let av = rules_a.get(key).copied().unwrap_or(0);
+            let bv = rules_b.get(key).copied().unwrap_or(0);
+            (key, av, bv)
+        })
+        .collect();
+    changes.sort_by_key(|(_, av, bv)| std::cmp::Reverse((*bv - *av).abs()));
+    for (key, av, bv) in changes.into_iter().filter(|(_, av, bv)| av != bv).take(10) {
+        writeln!(
+            out,
+            "| {} | {} | {} | {} | {:+} |",
+            cell(&key.0),
+            cell(&key.1),
+            av,
+            bv,
+            bv - av
+        )
+        .unwrap();
     }
 }
 fn tools_table(out: &mut String, title: &str, a: &Report, b: &Report) {
@@ -496,26 +523,30 @@ fn agent_note(a: &Report, b: &Report) -> &'static str {
 fn tool_cell(id: &str) -> String {
     format!("{} · `{}`", cell(tool_label(id)), cell(id))
 }
+const TOOL_LABELS: &[(&str, &str)] = &[
+    ("ESLint9", "JavaScript quality"),
+    ("Ruff", "Python style"),
+    ("markdownlint", "Markdown style"),
+    ("shellcheck", "Shell review"),
+    ("Trivy", "Package security"),
+    ("Semgrep", "Security patterns"),
+    ("Stylelint", "Stylesheet quality"),
+    ("spectral", "API schema"),
+    ("Bandit", "Python security"),
+    ("PyLintPython3", "Python quality"),
+    ("Checkov", "Config security"),
+    ("Lizard", "Code complexity"),
+    ("PMD7", "Java review"),
+    ("Prospector", "Python review"),
+    ("jackson", "JSON quality"),
+];
+
 /// Display-only labels; native JSON keys and counts are never rewritten.
 pub fn tool_label(id: &str) -> &str {
-    match id {
-        "ESLint9" => "JavaScript quality",
-        "Ruff" => "Python style",
-        "markdownlint" => "Markdown style",
-        "shellcheck" => "Shell review",
-        "Trivy" => "Package security",
-        "Semgrep" => "Security patterns",
-        "Stylelint" => "Stylesheet quality",
-        "spectral" => "API schema",
-        "Bandit" => "Python security",
-        "PyLintPython3" => "Python quality",
-        "Checkov" => "Config security",
-        "Lizard" => "Code complexity",
-        "PMD7" => "Java review",
-        "Prospector" => "Python review",
-        "jackson" => "JSON quality",
-        _ => id,
-    }
+    TOOL_LABELS
+        .iter()
+        .find_map(|(k, v)| (*k == id).then_some(*v))
+        .unwrap_or(id)
 }
 pub fn rule_label(id: &str) -> &str {
     match id {

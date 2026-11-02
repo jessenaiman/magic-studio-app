@@ -108,10 +108,9 @@ fn packets_from_scenes(
     words: &[Value],
 ) -> Result<Vec<Value>> {
     let mut packets = Vec::new();
-    for (i, scene) in
-        crate::storyboard::storyboard_scenes(&crate::workshop::project_dir(s)?)?
-            .into_iter()
-            .enumerate()
+    for (i, scene) in crate::storyboard::storyboard_scenes(&crate::workshop::project_dir(s)?)?
+        .into_iter()
+        .enumerate()
     {
         packets.push(scene_packet(board, design, words, i, scene));
     }
@@ -143,7 +142,12 @@ pub(crate) fn packets(s: &mut Session) -> Result<(Value, Value, Vec<Value>)> {
     Ok((board, design, packets))
 }
 
-fn packets_from_page_plan(dir: &Path, board: &Value, design: &Value, words: &[Value]) -> Vec<Value> {
+fn packets_from_page_plan(
+    dir: &Path,
+    board: &Value,
+    design: &Value,
+    words: &[Value],
+) -> Vec<Value> {
     let mut packets = Vec::new();
     for (page, plan) in board["page_plan"]
         .as_array()
@@ -186,7 +190,11 @@ fn packets_from_page_plan(dir: &Path, board: &Value, design: &Value, words: &[Va
             .filter_map(|w| w["text"].as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        let status = if sd.status != "draft" { json!(sd.status) } else { group["status"].clone() };
+        let status = if sd.status != "draft" {
+            json!(sd.status)
+        } else {
+            group["status"].clone()
+        };
         let notes = if !sd.notes.is_empty() {
             json!(sd.notes)
         } else {
@@ -486,8 +494,7 @@ fn update_restore(s: &mut Session, p: &Value, path: &str) -> Result<Value> {
         .join("storyboard")
         .canonicalize()?;
     let path = Path::new(path).canonicalize()?;
-    if !path.starts_with(root)
-        || path.file_name().and_then(|s| s.to_str()) != Some("manifest.json")
+    if !path.starts_with(root) || path.file_name().and_then(|s| s.to_str()) != Some("manifest.json")
     {
         return Err(invalid("Restore a saved version from this storyboard"));
     }

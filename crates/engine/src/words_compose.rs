@@ -187,7 +187,11 @@ fn design_composition(
 fn without_placement(html: &str, id: &str) -> String {
     let mark = format!("data-magicstudio-words=\"{id}\"");
     let mut out = html.to_owned();
-    for (open, close) in [("<style ", "</style>\n"), ("<div ", "</div>\n"), ("<img ", ">\n")] {
+    for (open, close) in [
+        ("<style ", "</style>\n"),
+        ("<div ", "</div>\n"),
+        ("<img ", ">\n"),
+    ] {
         let mut scan = 0;
         while let Some(at) = out[scan..].find(&mark).map(|i| scan + i) {
             let Some(begin) = out[..at].rfind(open).filter(|&b| !out[b..at].contains('>')) else {
@@ -225,9 +229,12 @@ fn build_kinetic_for_design(a: &Value, recipe_doc: &Value, p: &Value, k: usize) 
                 .filter(|c| c.is_alphabetic())
                 .flat_map(char::to_lowercase)
                 .collect();
-            kin["acts"][&key]
-                .as_str()
-                .map(|act| (w["word_id"].as_str().unwrap_or_default().to_owned(), json!(act)))
+            kin["acts"][&key].as_str().map(|act| {
+                (
+                    w["word_id"].as_str().unwrap_or_default().to_owned(),
+                    json!(act),
+                )
+            })
         })
         .collect();
     json!({
@@ -241,7 +248,13 @@ fn build_kinetic_for_design(a: &Value, recipe_doc: &Value, p: &Value, k: usize) 
     })
 }
 
-fn run_lyrics_layout(s: &Session, dir: &Path, recipe: &Path, doc: &Value, times: &std::collections::HashMap<String, (f64, f64)>) -> Result<Value> {
+fn run_lyrics_layout(
+    s: &Session,
+    dir: &Path,
+    recipe: &Path,
+    doc: &Value,
+    times: &std::collections::HashMap<String, (f64, f64)>,
+) -> Result<Value> {
     let animations: Vec<Value> = doc["animations"]
         .as_array()
         .into_iter()
@@ -253,7 +266,10 @@ fn run_lyrics_layout(s: &Session, dir: &Path, recipe: &Path, doc: &Value, times:
                 .flatten()
                 .map(|w| {
                     let mut w = w.clone();
-                    if let Some(t) = w["word_id"].as_str().and_then(|id| times.get(&word_time_key(&a["scope"], id))) {
+                    if let Some(t) = w["word_id"]
+                        .as_str()
+                        .and_then(|id| times.get(&word_time_key(&a["scope"], id)))
+                    {
                         w["start"] = json!(t.0);
                     }
                     w
@@ -268,14 +284,17 @@ fn run_lyrics_layout(s: &Session, dir: &Path, recipe: &Path, doc: &Value, times:
     }
     fs::write(
         &input,
-        serde_json::to_vec(&json!({"animations":animations})).map_err(|e| invalid(e.to_string()))?,
+        serde_json::to_vec(&json!({"animations":animations}))
+            .map_err(|e| invalid(e.to_string()))?,
     )?;
     let root = crate::workspace::workspace_root(s);
     let out = crate::workspace::run_tool_in(
         &root,
         "python3",
         &[
-            root.join("pipeline/lyrics_layout.py").to_string_lossy().into_owned(),
+            root.join("pipeline/lyrics_layout.py")
+                .to_string_lossy()
+                .into_owned(),
             "--recipe".into(),
             recipe.to_string_lossy().into_owned(),
             "--input".into(),
@@ -286,7 +305,12 @@ fn run_lyrics_layout(s: &Session, dir: &Path, recipe: &Path, doc: &Value, times:
         .rev()
         .find_map(|l| serde_json::from_str::<Value>(l).ok())
         .map(|v| v["designs"].clone())
-        .ok_or_else(|| EngineError::CommandFailed("words.design".into(), "lyrics_layout.py returned no designs".into()))
+        .ok_or_else(|| {
+            EngineError::CommandFailed(
+                "words.design".into(),
+                "lyrics_layout.py returned no designs".into(),
+            )
+        })
 }
 
 fn design_one_section(
@@ -347,22 +371,39 @@ pub fn cmd_words_design(s: &mut Session, p: &Value) -> Result<Value> {
     let designs = run_lyrics_layout(s, &dir, &recipe, &doc, &times)?;
     let recipe_doc: Value = serde_json::from_slice(&fs::read(&recipe)?)
         .map_err(|e| invalid(format!("lyric recipe: {e}")))?;
-    let style = recipe_doc["font"].as_str().map(|f| json!({"font": f})).unwrap_or(json!({}));
+    let style = recipe_doc["font"]
+        .as_str()
+        .map(|f| json!({"font": f}))
+        .unwrap_or(json!({}));
     let only = p["section"].as_str();
     let mut sections = Vec::new();
-    for (k, a) in doc["animations"].as_array().into_iter().flatten().enumerate() {
+    for (k, a) in doc["animations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
         let id = a["animation_id"].as_str().unwrap_or_default();
         if only.is_some_and(|o| o != id) {
             continue;
         }
-        sections.push(design_one_section(s, a, k, &style, &designs, &recipe_doc, p)?);
+        sections.push(design_one_section(
+            s,
+            a,
+            k,
+            &style,
+            &designs,
+            &recipe_doc,
+            p,
+        )?);
     }
-    let captions = if p["apply"] != false && dir.join("hyperframes/compositions/captions.html").is_file() {
-        let aligned = aligned(s)?;
-        captions_to_video(s, &dir, &aligned)?
-    } else {
-        Value::Null
-    };
+    let captions =
+        if p["apply"] != false && dir.join("hyperframes/compositions/captions.html").is_file() {
+            let aligned = aligned(s)?;
+            captions_to_video(s, &dir, &aligned)?
+        } else {
+            Value::Null
+        };
     Ok(json!({
         "ok": true,
         "recipe": recipe,
@@ -390,7 +431,11 @@ pub fn cmd_words_track(s: &mut Session, _: &Value) -> Result<Value> {
             .or_insert(0.0);
         *e = e.max(w["end"].as_f64().unwrap_or(0.0));
     }
-    let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('"', "&quot;");
+    let esc = |t: &str| {
+        t.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('"', "&quot;")
+    };
     let mut clips = String::new();
     for (i, w) in words.iter().enumerate() {
         let (id, text) = (
@@ -438,7 +483,9 @@ fn strip_lyric_word_clips(html: &str) -> Result<String> {
             break;
         };
         let tag = &out[start..tag_end];
-        if tag_attr(tag, "class").is_some_and(|v| v.split_whitespace().any(|c| c == "lyric-word-clip")) {
+        if tag_attr(tag, "class")
+            .is_some_and(|v| v.split_whitespace().any(|c| c == "lyric-word-clip"))
+        {
             let Some(end) = out[tag_end..].find("</div>").map(|i| tag_end + i + 6) else {
                 return Err(invalid("Unclosed lyric anchor; nothing written"));
             };
@@ -504,7 +551,10 @@ fn mount_overlay(
 ) -> Result<Option<Value>> {
     let overlay = &read["document"]["animations"][0]["kinetic"]["overlay"];
     let lib: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
-    let Some(block) = overlay.as_str().and_then(|o| lib["overlays"][o]["block"].as_str()) else {
+    let Some(block) = overlay
+        .as_str()
+        .and_then(|o| lib["overlays"][o]["block"].as_str())
+    else {
         return Ok(None);
     };
     let look = &lib["overlays"][overlay.as_str().unwrap_or_default()];
@@ -550,7 +600,9 @@ fn mount_overlay(
             look["opacity"].as_f64().unwrap_or(1.0)
         ),
     );
-    Ok(Some(json!({"name":overlay,"block":block,"src":own_src,"start":overlay_start,"duration":overlay_duration})))
+    Ok(Some(
+        json!({"name":overlay,"block":block,"src":own_src,"start":overlay_start,"duration":overlay_duration}),
+    ))
 }
 
 fn section_backdrop_span(track: &Value, scope: &Value, composed: &Value, html: &str) -> (f64, f64) {
@@ -558,8 +610,9 @@ fn section_backdrop_span(track: &Value, scope: &Value, composed: &Value, html: &
     let dur = composed["authored_duration"].as_f64().unwrap_or(0.0);
     let secs = track["sections"].as_array();
     let pos = secs.and_then(|s| {
-        s.iter()
-            .position(|sec| sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"])
+        s.iter().position(|sec| {
+            sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"]
+        })
     });
     let start = if pos == Some(0) { 0.0 } else { anchor };
     let next_start = match (secs, pos) {
@@ -601,10 +654,17 @@ fn mount_section_backdrop(
             "<img id=\"{id}-backdrop\" class=\"clip lyric-backdrop-clip\" data-magicstudio-words=\"{id}\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.6}\" data-duration=\"{duration:.6}\" data-track-index=\"1\" style=\"position:absolute;inset:0;width:{w}px;height:{h}px;object-fit:cover;z-index:1\">\n"
         ),
     );
-    Some(json!({"asset_id":asset_id,"src":format!("compositions/words/backdrops/{name}"),"start":start,"duration":duration}))
+    Some(
+        json!({"asset_id":asset_id,"src":format!("compositions/words/backdrops/{name}"),"start":start,"duration":duration}),
+    )
 }
 
-fn insert_section_hide_style(html: &mut String, id: &str, clips: &[String], has_backdrop: bool) -> Result<()> {
+fn insert_section_hide_style(
+    html: &mut String,
+    id: &str,
+    clips: &[String],
+    has_backdrop: bool,
+) -> Result<()> {
     let head = html
         .find("</head>")
         .ok_or_else(|| invalid("The video's index.html has no </head>; nothing written"))?;
@@ -632,7 +692,10 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
     let index = dir.join("hyperframes/index.html");
     let id = p["animation_id"]
         .as_str()
-        .filter(|i| i.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+        .filter(|i| {
+            i.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
         .ok_or_else(|| invalid("animation_id is required (letters, digits, '-' or '_')"))?;
     let original = fs::read_to_string(&index)
         .map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
@@ -648,7 +711,9 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|sec| sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"])
+            .filter(|sec| {
+                sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"]
+            })
             .flat_map(|sec| sec["clips"].as_array().cloned().unwrap_or_default())
             .filter_map(|c| c["clip_id"].as_str().map(|c| format!("#{c}")))
             .collect();
@@ -680,7 +745,12 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
                 composed["authored_duration"].as_f64().unwrap_or(0.0)
             ),
         );
-        for (idx, draw) in composed["drawings"].as_array().into_iter().flatten().enumerate() {
+        for (idx, draw) in composed["drawings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
             html.insert_str(
                 root,
                 &format!(
@@ -698,7 +768,9 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
         if let Some(ov) = mount_overlay(s, &dir, id, &read, &mut html, root, track_index, w, h)? {
             receipt["overlay"] = ov;
         }
-        if let Some(bg) = mount_section_backdrop(s, &dir, id, &read, &composed, &track, &mut html, root, w, h) {
+        if let Some(bg) =
+            mount_section_backdrop(s, &dir, id, &read, &composed, &track, &mut html, root, w, h)
+        {
             receipt["backdrop"] = bg;
         }
         receipt["src"] = composed["src"].clone();
@@ -765,7 +837,15 @@ fn compose_drawing_subcompositions(
         let src = format!("compositions/words/{own}.html");
         fs::write(
             hf.join(&src),
-            kinetic_composition(&own_anim, &own, width, height, end - start, &shifted, "drawings")?,
+            kinetic_composition(
+                &own_anim,
+                &own,
+                width,
+                height,
+                end - start,
+                &shifted,
+                "drawings",
+            )?,
         )?;
         drawings.push(json!({"composition_id":own,"src":src,"start":start,"duration":end-start}));
     }
@@ -792,17 +872,19 @@ fn render_section_html(
     } else if anim["effects"]["text"].is_object() {
         effect_composition(anim, composition_id, width, height, duration, local)
     } else {
-        Ok(include_str!("../../../pipeline/templates/words-composition.html")
-            .replace("__COMPOSITION_ID__", composition_id)
-            .replace("__WIDTH__", &width.to_string())
-            .replace("__HEIGHT__", &height.to_string())
-            .replace("__DURATION__", &format!("{duration:.6}"))
-            .replace(
-                "__DATA__",
-                &serde_json::to_string(data)
-                    .map_err(|e| invalid(e.to_string()))?
-                    .replace("</", "<\\/"),
-            ))
+        Ok(
+            include_str!("../../../pipeline/templates/words-composition.html")
+                .replace("__COMPOSITION_ID__", composition_id)
+                .replace("__WIDTH__", &width.to_string())
+                .replace("__HEIGHT__", &height.to_string())
+                .replace("__DURATION__", &format!("{duration:.6}"))
+                .replace(
+                    "__DATA__",
+                    &serde_json::to_string(data)
+                        .map_err(|e| invalid(e.to_string()))?
+                        .replace("</", "<\\/"),
+                ),
+        )
     }
 }
 
@@ -822,14 +904,12 @@ fn sync_studio_word_times(s: &mut Session, synced: &mut Value) {
     }
     fill_untimed(synced);
     timing(synced);
-    let next_start = track["sections"]
-        .as_array()
-        .and_then(|secs| {
-            let pos = secs
-                .iter()
-                .position(|sec| sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"])?;
-            secs.get(pos + 1)?["start"].as_f64()
-        });
+    let next_start = track["sections"].as_array().and_then(|secs| {
+        let pos = secs.iter().position(|sec| {
+            sec["section"] == scope["section"] && sec["occurrence"] == scope["occurrence"]
+        })?;
+        secs.get(pos + 1)?["start"].as_f64()
+    });
     if let (Some(anchor), Some(ns)) = (synced["song_anchor"].as_f64(), next_start) {
         let cur_dur = synced["authored_duration"].as_f64().unwrap_or(0.0);
         synced["authored_duration"] = json!(cur_dur.min((ns - 0.04 - anchor).max(0.2)));
@@ -882,7 +962,8 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     let instance = match p["instance_id"].as_str() {
         Some(i)
             if !i.is_empty()
-                && i.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') =>
+                && i.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') =>
         {
             Some(i)
         }
@@ -921,7 +1002,16 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
         "style": anim["style"],
         "words": words
     });
-    let html = render_section_html(anim, &composition_id, width, height, duration, &words, &data, &local)?;
+    let html = render_section_html(
+        anim,
+        &composition_id,
+        width,
+        height,
+        duration,
+        &words,
+        &data,
+        &local,
+    )?;
     let file = hf
         .join("compositions/words")
         .join(format!("{composition_id}.html"));
@@ -930,7 +1020,16 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
             .ok_or_else(|| invalid("Output path has no parent"))?,
     )?;
     fs::write(&file, &html)?;
-    let drawings = compose_drawing_subcompositions(&hf, anim, &read, &composition_id, width, height, anchor, &words)?;
+    let drawings = compose_drawing_subcompositions(
+        &hf,
+        anim,
+        &read,
+        &composition_id,
+        width,
+        height,
+        anchor,
+        &words,
+    )?;
     let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
     Ok(json!({
         "ok": true,

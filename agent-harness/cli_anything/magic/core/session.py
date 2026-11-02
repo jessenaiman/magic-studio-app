@@ -24,6 +24,7 @@ from cli_anything.magic.utils import magic_backend as backend
 def _locked_save_json(path: str | Path, data: Any, **dump_kwargs: Any) -> None:
     """Lock before changing the session binding, including on first creation."""
     import fcntl
+
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(data, indent=2, **dump_kwargs)
@@ -52,7 +53,9 @@ class Session:
     """Stateful CLI-Anything session for Magic Studio."""
 
     def __init__(self, session_file: str | Path | None = None) -> None:
-        self.session_file = Path(session_file) if session_file else default_session_file()
+        self.session_file = (
+            Path(session_file) if session_file else default_session_file()
+        )
         self.project_path: str | None = None
         self.studio_endpoint: str | None = None
         self.studio_instance: str | None = None
@@ -69,7 +72,10 @@ class Session:
                 self.studio_endpoint = raw.get("studio_endpoint")
                 self.studio_instance = raw.get("studio_instance")
             except (OSError, ValueError, TypeError) as exc:
-                raise RuntimeError(f"Cannot read session binding {self.session_file}: {exc}; no target selected") from exc
+                raise RuntimeError(
+                    f"Cannot read session binding {self.session_file}: {exc}; "
+                    "no target selected"
+                ) from exc
 
     def save_session(self) -> None:
         """Persist current session binding (`session.json`).
@@ -85,17 +91,33 @@ class Session:
         _locked_save_json(self.session_file, state)
 
     def _live_for_pinned_project(self) -> list[dict[str, Any]]:
-        return [x for x in backend.discover_studios()["sessions"]
-                if self.project_path and self.project_path in (x.get("canonical_project"), x.get("active_project"))]
+        return [
+            x
+            for x in backend.discover_studios()["sessions"]
+            if self.project_path
+            and self.project_path
+            in (x.get("canonical_project"), x.get("active_project"))
+        ]
 
     def _unavailable_message(self) -> str:
-        """Name the live windows for the pinned project; never rebind to one silently."""
-        message = "Pinned Studio is unavailable; no other window or file writer was selected. "
+        """Name the live windows for the pinned project; never rebind silently."""
+        message = (
+            "Pinned Studio is unavailable; no other window or file writer "
+            "was selected. "
+        )
         live = self._live_for_pinned_project()
         if live:
             found = ", ".join(f"pid {x.get('pid')} ({x.get('instance')})" for x in live)
-            return message + f"A live window has this project open: {found}. Reattach with: magic-cli studio open {self.project_path}"
-        return message + "No live window has this project open. Use project open or studio open to explicitly reattach."
+            return (
+                message
+                + f"A live window has this project open: {found}. "
+                + f"Reattach with: magic-cli studio open {self.project_path}"
+            )
+        return (
+            message
+            + "No live window has this project open. "
+            + "Use project open or studio open to explicitly reattach."
+        )
 
     def bind_studio(self, live: dict[str, Any]) -> None:
         """Bind the session to a live Studio window receipt."""
@@ -144,68 +166,96 @@ class Session:
 
     def open_studio(self, project: str | None = None) -> dict[str, Any]:
         from cli_anything.magic.core.project import resolve_project_path
+
         target = str(resolve_project_path(project)) if project else None
         if self._headless_error and self._headless is not None:
-            self._headless.recover()  # Refuse a second writer while unknown work is still running.
+            # Refuse a second writer while unknown work is still running.
+            self._headless.recover()
             self._headless = None
-        self.close()  # Explicitly transfer the saved project from this engine to the GUI.
+        # Explicitly transfer the saved project from this engine to the GUI.
+        self.close()
         live = backend.open_studio_window(target)
         self.bind_studio(live)
         return live
 
     def select_project(self, path: str) -> dict[str, Any]:
-        """Explicit selection may replace an old binding only after a successful open."""
+        """Explicit selection replaces an old binding after a successful open."""
         return self.execute("project.open", {"path": path})
 
     def _route(self, cmd_id: str, req: dict[str, Any]) -> tuple[bool, str | None]:
-        """Work out the target path for this command and write it back into the request."""
+        """Work out the target path for this command and write it into the request."""
         selecting = cmd_id == "project.open"
         target = req.get("path") if selecting else req.get("project")
         global_command = cmd_id in {
-            "project.new", "project.intake", "project.catalog", "project.root",
-            "project.migrate", "project.identity", "command.list", "app.doctor",
+            "project.new",
+            "project.intake",
+            "project.catalog",
+            "project.root",
+            "project.migrate",
+            "project.identity",
+            "command.list",
+            "app.doctor",
         }
         if not target and not global_command and not selecting:
             target = self.project_path
         if target:
             from cli_anything.magic.core.project import resolve_project_path
+
             target = str(resolve_project_path(target))
             req["path" if selecting else "project"] = target
         return selecting, target
 
     def _call_pinned(
-        self, cmd_id: str, req: dict[str, Any], target: str | None,
+        self,
+        cmd_id: str,
+        req: dict[str, Any],
+        target: str | None,
     ) -> dict[str, Any]:
         """Send to the pinned window, following it when that window restarted."""
         if target and self.project_path and target != self.project_path:
-            raise RuntimeError("Pinned Studio targets a different project; explicitly open the intended project first")
+            raise RuntimeError(
+                "Pinned Studio targets a different project; "
+                "explicitly open the intended project first"
+            )
         try:
             return backend.call_studio(
-                self.studio_endpoint, cmd_id, req,
-                expected_project=self.project_path, expected_instance=self.studio_instance,
+                self.studio_endpoint,
+                cmd_id,
+                req,
+                expected_project=self.project_path,
+                expected_instance=self.studio_instance,
             )
         except OSError as exc:
-            # The window restarted: the same project in exactly one live window is the same
-            # intent, so follow it (the expected-project guard still applies). Anything else
-            # stays an explicit choice.
+            # The window restarted: the same project in one live window is the same
+            # intent, so follow it (expected-project guard still applies).
             live = self._live_for_pinned_project()
             if len(live) != 1:
                 raise RuntimeError(self._unavailable_message()) from exc
             self.bind_studio(live[0])
             return backend.call_studio(
-                live[0]["endpoint"], cmd_id, req,
-                expected_project=self.project_path, expected_instance=live[0].get("instance"),
+                live[0]["endpoint"],
+                cmd_id,
+                req,
+                expected_project=self.project_path,
+                expected_instance=live[0].get("instance"),
             )
 
     def _call_live(
-        self, cmd_id: str, req: dict[str, Any], target: str | None, dry_run: bool,
+        self,
+        cmd_id: str,
+        req: dict[str, Any],
+        target: str | None,
+        dry_run: bool,
     ) -> tuple[dict[str, Any], bool]:
-        """Send to a live window, to the UI window, or run headless. Reports whether one was bound."""
+        """Send to a live window, to the UI window, or run headless."""
         live = backend.studio_for_project(target) if target else None
         if live:
             self.close()
             result = backend.call_studio(
-                live["endpoint"], cmd_id, req, expected_project=target,
+                live["endpoint"],
+                cmd_id,
+                req,
+                expected_project=target,
                 expected_instance=live.get("instance"),
             )
             if not dry_run:
@@ -218,12 +268,14 @@ class Session:
                 "(agent windows open on the agent workspace, never the user's window)."
             )
         if cmd_id.startswith("ui.") or cmd_id == "app.quit":
-            return backend.call_studio("auto", cmd_id, req, expected_project=target), False
+            res = backend.call_studio("auto", cmd_id, req, expected_project=target)
+            return res, False
         return self.execute_headless(cmd_id, req), False
 
     def _remember(self, cmd_id: str, result: dict[str, Any]) -> None:
         """Keep the binding the engine reported, and drop it when nothing is open."""
-        if cmd_id in {"project.open", "project.new", "project.intake", "project.save"} and result.get("project"):
+        keep_cmds = {"project.open", "project.new", "project.intake", "project.save"}
+        if cmd_id in keep_cmds and result.get("project"):
             self.project_path = str(Path(result["project"]).resolve())
             self.save_session()
         elif cmd_id == "project.close":
@@ -232,7 +284,9 @@ class Session:
         # Keep the pin after quit: subsequent calls must not pick another window.
 
     def execute(
-        self, cmd_id: str, params: dict[str, Any] | None = None,
+        self,
+        cmd_id: str,
+        params: dict[str, Any] | None = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
         req = dict(params or {})
@@ -243,7 +297,7 @@ class Session:
         # their pinned window, even when another window now owns the same path.
         if cmd_id == "command.list":
             return backend.execute_headless(cmd_id, req)
-        # Isolated read-only queries must not change the caller's target or writer session.
+        # Isolated read-only queries must not change caller target or writer session.
         if cmd_id in {"backstage.observe", "backstage.changes"}:
             return backend.execute_headless(cmd_id, req)
         selecting, target = self._route(cmd_id, req)

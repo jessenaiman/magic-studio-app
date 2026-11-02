@@ -174,9 +174,8 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     inventory(f, app, main[1]);
     inspector(f, app, vertical[2]);
 }
-fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
-    let inner = panel(f, area);
-    let empty_state = if app.refreshing {
+fn sidebar_empty_state(app: &App) -> (&'static str, &'static str, &str) {
+    if app.refreshing {
         (
             "Loading",
             "Reading saved projects",
@@ -196,7 +195,34 @@ fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
             "Not observed",
             "Press r to read existing project history.",
         )
-    };
+    }
+}
+fn draw_empty_sidebar(f: &mut Frame, inner: Rect, heading: &str, detail: &str) {
+    text(
+        f,
+        Rect::new(inner.x + 2, inner.y + 4, inner.width.saturating_sub(4), 1),
+        format!("▥  {heading}"),
+        GOLD,
+        true,
+    );
+    text(
+        f,
+        Rect::new(inner.x + 2, inner.y + 6, inner.width.saturating_sub(4), 2),
+        detail,
+        MUTED,
+        false,
+    );
+    text(
+        f,
+        Rect::new(inner.x + 2, inner.y + 9, inner.width.saturating_sub(4), 1),
+        "d  source details",
+        CYAN,
+        false,
+    );
+}
+fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
+    let inner = panel(f, area);
+    let empty_state = sidebar_empty_state(app);
     let count = if app.project_data.projects.is_empty() {
         empty_state.0.into()
     } else {
@@ -211,27 +237,7 @@ fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     );
     rule(f, Rect::new(inner.x, inner.y + 2, inner.width, 1));
     if app.project_data.projects.is_empty() {
-        text(
-            f,
-            Rect::new(inner.x + 2, inner.y + 4, inner.width.saturating_sub(4), 1),
-            format!("▥  {}", empty_state.1),
-            GOLD,
-            true,
-        );
-        text(
-            f,
-            Rect::new(inner.x + 2, inner.y + 6, inner.width.saturating_sub(4), 2),
-            empty_state.2,
-            MUTED,
-            false,
-        );
-        text(
-            f,
-            Rect::new(inner.x + 2, inner.y + 9, inner.width.saturating_sub(4), 1),
-            "d  source details",
-            CYAN,
-            false,
-        );
+        draw_empty_sidebar(f, inner, empty_state.1, empty_state.2);
         return;
     }
     let available = usize::from(inner.height.saturating_sub(3) / 5);
@@ -242,94 +248,57 @@ fn sidebar(f: &mut Frame, app: &mut App, area: Rect) {
         .take(available)
         .enumerate()
     {
-        let project = &app.project_data.projects[index];
-        let row = Rect::new(inner.x, inner.y + 3 + visible as u16 * 5, inner.width, 4);
-        let selected = index == app.project_selected;
-        f.render_widget(
-            Block::default().style(Style::default().bg(if selected { GOLD } else { BG })),
-            row,
-        );
-        let color = if selected { BG } else { IVORY };
-        text(f, Rect::new(row.x + 1, row.y + 1, 3, 1), "▥", color, true);
-        text(
-            f,
-            Rect::new(row.x + 5, row.y + 1, row.width.saturating_sub(7), 1),
-            &project.name,
-            color,
-            true,
-        );
-        let count = if project.complete {
-            format!("{} files", project.files.len())
-        } else {
-            format!("{} observed • partial", project.files.len())
-        };
-        text(
-            f,
-            Rect::new(row.x + 5, row.y + 2, row.width.saturating_sub(7), 1),
-            format!("{count} • {}", bytes(total(project))),
-            color,
-            false,
-        );
-        if selected {
-            text(
-                f,
-                Rect::new(row.right().saturating_sub(2), row.y + 1, 2, 1),
-                "›",
-                BG,
-                true,
-            );
-        }
-        app.project_rows.push((row, index));
-        if !selected {
-            rule(f, Rect::new(row.x, row.bottom(), row.width, 1));
-        }
+        draw_sidebar_project(f, app, inner, visible, index);
     }
 }
-fn inventory(f: &mut Frame, app: &mut App, area: Rect) {
-    let inner = panel(f, area);
-    let Some(project) = app.project_data.projects.get(app.project_selected) else {
+fn draw_sidebar_project(f: &mut Frame, app: &mut App, inner: Rect, visible: usize, index: usize) {
+    let project = &app.project_data.projects[index];
+    let row = Rect::new(inner.x, inner.y + 3 + visible as u16 * 5, inner.width, 4);
+    let selected = index == app.project_selected;
+    f.render_widget(
+        Block::default().style(Style::default().bg(if selected { GOLD } else { BG })),
+        row,
+    );
+    let color = if selected { BG } else { IVORY };
+    text(f, Rect::new(row.x + 1, row.y + 1, 3, 1), "▥", color, true);
+    text(
+        f,
+        Rect::new(row.x + 5, row.y + 1, row.width.saturating_sub(7), 1),
+        &project.name,
+        color,
+        true,
+    );
+    let count = if project.complete {
+        format!("{} files", project.files.len())
+    } else {
+        format!("{} observed • partial", project.files.len())
+    };
+    text(
+        f,
+        Rect::new(row.x + 5, row.y + 2, row.width.saturating_sub(7), 1),
+        format!("{count} • {}", bytes(total(project))),
+        color,
+        false,
+    );
+    if selected {
         text(
             f,
-            Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), 1),
-            "Project unavailable  │  Files / size unavailable",
-            GOLD,
+            Rect::new(row.right().saturating_sub(2), row.y + 1, 2, 1),
+            "›",
+            BG,
             true,
         );
-        rule(f, Rect::new(inner.x, inner.y + 2, inner.width, 1));
-        headings(
-            f,
-            Rect::new(inner.x + 1, inner.y + 3, inner.width.saturating_sub(2), 1),
-        );
-        rule(f, Rect::new(inner.x, inner.y + 4, inner.width, 1));
-        empty_groups(
-            f,
-            app,
-            Rect::new(
-                inner.x + 1,
-                inner.y + 5,
-                inner.width.saturating_sub(2),
-                inner.height.saturating_sub(5),
-            ),
-        );
-        return;
-    };
-    let name = project.name.clone();
-    let complete = project.complete;
-    let size = total(project)
-        .map(|n| format!("{} observed", bytes(Some(n))))
-        .unwrap_or_else(|| "Size unavailable".into());
-    let count = project.files.len();
+    }
+    app.project_rows.push((row, index));
+    if !selected {
+        rule(f, Rect::new(row.x, row.bottom(), row.width, 1));
+    }
+}
+fn inventory_header(f: &mut Frame, inner: Rect, title: &str) -> Rect {
     text(
         f,
         Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), 1),
-        format!(
-            "{name}  │  Areas unavailable • {count} {} • {size}",
-            if complete {
-                "files"
-            } else {
-                "observed files • partial"
-            }
-        ),
+        title,
         GOLD,
         true,
     );
@@ -339,66 +308,45 @@ fn inventory(f: &mut Frame, app: &mut App, area: Rect) {
         Rect::new(inner.x + 1, inner.y + 3, inner.width.saturating_sub(2), 1),
     );
     rule(f, Rect::new(inner.x, inner.y + 4, inner.width, 1));
-    let body = Rect::new(
+    Rect::new(
         inner.x + 1,
         inner.y + 5,
         inner.width.saturating_sub(2),
         inner.height.saturating_sub(5),
+    )
+}
+fn inventory(f: &mut Frame, app: &mut App, area: Rect) {
+    let inner = panel(f, area);
+    let Some(project) = app.project_data.projects.get(app.project_selected) else {
+        let body = inventory_header(f, inner, "Project unavailable  │  Files / size unavailable");
+        empty_groups(f, app, body);
+        return;
+    };
+    let complete = project.complete;
+    let size = total(project)
+        .map(|n| format!("{} observed", bytes(Some(n))))
+        .unwrap_or_else(|| "Size unavailable".into());
+    let count = project.files.len();
+    let title = format!(
+        "{}  │  Areas unavailable • {count} {} • {size}",
+        project.name,
+        if complete {
+            "files"
+        } else {
+            "observed files • partial"
+        }
     );
+    let has_other = project.files.iter().any(|file| {
+        !["Storyboard", "Animations", "Lyrics", "Studio"].contains(&file.group.as_str())
+    });
+    let body = inventory_header(f, inner, &title);
     if count == 0 {
         empty_groups(f, app, body);
         return;
     }
-    let has_other = project.files.iter().any(|file| {
-        !["Storyboard", "Animations", "Lyrics", "Studio"].contains(&file.group.as_str())
-    });
     let groups = if has_other { 5 } else { 4 };
     if body.height < groups as u16 * 5 {
-        text(
-            f,
-            Rect::new(body.x, body.y, body.width, 1),
-            "Compact grid: enlarge for grouped rows; selected file is inspectable below / d",
-            GOLD,
-            false,
-        );
-        if let Some(file) = app.project_data.projects[app.project_selected]
-            .files
-            .get(app.project_file_selected)
-        {
-            text(
-                f,
-                Rect::new(body.x + 2, body.y + 2, body.width.saturating_sub(2), 1),
-                format!("▤ {}  • {}  • {}", file.name, file.kind, bytes(file.bytes)),
-                IVORY,
-                true,
-            );
-        }
-        for (i, (name, color)) in [
-            ("Storyboard", CORAL),
-            ("Animations", GREEN),
-            ("Lyrics", GOLD),
-            ("Studio", CYAN),
-            ("Unclassified", MUTED),
-        ]
-        .into_iter()
-        .take(groups as usize)
-        .enumerate()
-        {
-            if 4 + (i as u16) < body.height {
-                text(
-                    f,
-                    Rect::new(
-                        body.x + 2,
-                        body.y + 4 + i as u16,
-                        body.width.saturating_sub(2),
-                        1,
-                    ),
-                    name,
-                    color,
-                    true,
-                );
-            }
-        }
+        compact_inventory(f, app, body, groups as usize);
         return;
     }
     let sections = Layout::vertical((0..groups).map(|_| Constraint::Ratio(1, groups))).split(body);
@@ -409,86 +357,170 @@ fn inventory(f: &mut Frame, app: &mut App, area: Rect) {
         ("Studio", "□", CYAN),
         ("Unclassified", "?", MUTED),
     ];
-    for (group, (name, icon, color)) in specs.iter().take(groups as usize).enumerate() {
-        let section = sections[group];
-        let file_ids: Vec<usize> = app.project_data.projects[app.project_selected]
-            .files
-            .iter()
-            .enumerate()
-            .filter(|(_, file)| {
-                if group == 4 {
-                    !["Storyboard", "Animations", "Lyrics", "Studio"].contains(&file.group.as_str())
-                } else {
-                    file.group == *name
-                }
-            })
-            .map(|(i, _)| i)
-            .collect();
-        let collapsed = group < 4 && app.collapsed[group];
-        let count = if file_ids.is_empty() && !complete {
-            "Unavailable".into()
-        } else {
-            format!(
-                "{} {}",
-                file_ids.len(),
-                if complete { "files" } else { "observed" }
-            )
-        };
-        group_header(f, section, name, &count, icon, *color, collapsed);
-        if group < 4 {
-            app.group_rows
-                .push((Rect::new(section.x, section.y, section.width, 2), group));
-        }
-        if !collapsed {
-            let capacity = usize::from(section.height.saturating_sub(2) / 3);
-            let selected_pos = file_ids
-                .iter()
-                .position(|i| *i == app.project_file_selected)
-                .unwrap_or(0);
-            let offset = selected_pos.saturating_sub(capacity.saturating_sub(1));
-            if file_ids.is_empty() {
-                text(
-                    f,
-                    Rect::new(
-                        section.x + 5,
-                        section.y + 2,
-                        section.width.saturating_sub(5),
-                        1,
-                    ),
-                    if complete {
-                        "No observed files in this area"
-                    } else {
-                        "Unavailable — classification incomplete"
-                    },
-                    MUTED,
-                    false,
-                );
-            }
-            for (visible, index) in file_ids.iter().skip(offset).take(capacity).enumerate() {
-                file_row(
-                    f,
-                    app,
-                    Rect::new(
-                        section.x + 5,
-                        section.y + 2 + visible as u16 * 3,
-                        section.width.saturating_sub(5),
-                        1,
-                    ),
-                    *index,
-                );
-            }
-        }
-        if group + 1 < groups as usize {
-            rule(
+    for (group, spec) in specs.into_iter().take(groups as usize).enumerate() {
+        draw_inventory_group(
+            f,
+            app,
+            sections[group],
+            group,
+            spec,
+            complete,
+            group + 1 < groups as usize,
+        );
+    }
+}
+fn compact_inventory(f: &mut Frame, app: &App, body: Rect, groups: usize) {
+    text(
+        f,
+        Rect::new(body.x, body.y, body.width, 1),
+        "Compact grid: enlarge for grouped rows; selected file is inspectable below / d",
+        GOLD,
+        false,
+    );
+    if let Some(file) = app.project_data.projects[app.project_selected]
+        .files
+        .get(app.project_file_selected)
+    {
+        text(
+            f,
+            Rect::new(body.x + 2, body.y + 2, body.width.saturating_sub(2), 1),
+            format!("▤ {}  • {}  • {}", file.name, file.kind, bytes(file.bytes)),
+            IVORY,
+            true,
+        );
+    }
+    for (i, (name, color)) in [
+        ("Storyboard", CORAL),
+        ("Animations", GREEN),
+        ("Lyrics", GOLD),
+        ("Studio", CYAN),
+        ("Unclassified", MUTED),
+    ]
+    .into_iter()
+    .take(groups)
+    .enumerate()
+    {
+        if 4 + (i as u16) < body.height {
+            text(
                 f,
                 Rect::new(
-                    section.x,
-                    section.bottom().saturating_sub(1),
-                    section.width,
+                    body.x + 2,
+                    body.y + 4 + i as u16,
+                    body.width.saturating_sub(2),
                     1,
                 ),
+                name,
+                color,
+                true,
             );
         }
+    }
+}
+fn group_file_ids(
+    files: &[crate::project_data::ProjectFile],
+    group: usize,
+    name: &str,
+) -> Vec<usize> {
+    files
+        .iter()
+        .enumerate()
+        .filter(|(_, file)| {
+            if group == 4 {
+                !["Storyboard", "Animations", "Lyrics", "Studio"].contains(&file.group.as_str())
+            } else {
+                file.group == name
+            }
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+fn draw_inventory_group(
+    f: &mut Frame,
+    app: &mut App,
+    section: Rect,
+    group: usize,
+    (name, icon, color): (&str, &str, Color),
+    complete: bool,
+    has_next: bool,
+) {
+    let file_ids = group_file_ids(
+        &app.project_data.projects[app.project_selected].files,
+        group,
+        name,
+    );
+    let collapsed = group < 4 && app.collapsed[group];
+    let count = if file_ids.is_empty() && !complete {
+        "Unavailable".into()
+    } else {
+        format!(
+            "{} {}",
+            file_ids.len(),
+            if complete { "files" } else { "observed" }
+        )
+    };
+    group_header(f, section, name, &count, icon, color, collapsed);
+    if group < 4 {
+        app.group_rows
+            .push((Rect::new(section.x, section.y, section.width, 2), group));
+    }
+    if !collapsed {
+        draw_group_files(f, app, section, &file_ids, complete);
+    }
+    if has_next {
+        rule(
+            f,
+            Rect::new(
+                section.x,
+                section.bottom().saturating_sub(1),
+                section.width,
+                1,
+            ),
+        );
+    }
+}
+fn draw_group_files(
+    f: &mut Frame,
+    app: &mut App,
+    section: Rect,
+    file_ids: &[usize],
+    complete: bool,
+) {
+    let capacity = usize::from(section.height.saturating_sub(2) / 3);
+    let selected_pos = file_ids
+        .iter()
+        .position(|i| *i == app.project_file_selected)
+        .unwrap_or(0);
+    let offset = selected_pos.saturating_sub(capacity.saturating_sub(1));
+    if file_ids.is_empty() {
+        text(
+            f,
+            Rect::new(
+                section.x + 5,
+                section.y + 2,
+                section.width.saturating_sub(5),
+                1,
+            ),
+            if complete {
+                "No observed files in this area"
+            } else {
+                "Unavailable — classification incomplete"
+            },
+            MUTED,
+            false,
+        );
+    }
+    for (visible, index) in file_ids.iter().skip(offset).take(capacity).enumerate() {
+        file_row(
+            f,
+            app,
+            Rect::new(
+                section.x + 5,
+                section.y + 2 + visible as u16 * 3,
+                section.width.saturating_sub(5),
+                1,
+            ),
+            *index,
+        );
     }
 }
 fn headings(f: &mut Frame, area: Rect) {

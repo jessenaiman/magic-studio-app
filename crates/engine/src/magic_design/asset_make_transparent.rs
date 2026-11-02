@@ -85,7 +85,11 @@ pub(crate) fn matte_image(s: &Session, source: &std::path::Path, p: &Value) -> R
     Ok(result)
 }
 
-fn photocraft_background_args(source: &std::path::Path, out: &std::path::Path, p: &Value) -> Vec<String> {
+fn photocraft_background_args(
+    source: &std::path::Path,
+    out: &std::path::Path,
+    p: &Value,
+) -> Vec<String> {
     let mut args = vec!["run".into(), source.to_string_lossy().into_owned()];
     let keep = p["keep_polygons"].as_array();
     if p.get("rect").is_some() || keep.is_some() {
@@ -94,9 +98,18 @@ fn photocraft_background_args(source: &std::path::Path, out: &std::path::Path, p
             "--cmd".into(),
             "layer.new.layerFromBackground".into(),
             "--cmd".into(),
-            if has_rect { "select.object" } else { "select.subject" }.into(),
+            if has_rect {
+                "select.object"
+            } else {
+                "select.subject"
+            }
+            .into(),
             "--params".into(),
-            if has_rect { json!({"rect":p["rect"]}).to_string() } else { "{}".into() },
+            if has_rect {
+                json!({"rect":p["rect"]}).to_string()
+            } else {
+                "{}".into()
+            },
         ]);
         for polygon in keep.into_iter().flatten() {
             args.extend([

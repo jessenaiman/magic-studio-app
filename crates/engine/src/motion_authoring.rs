@@ -946,14 +946,11 @@ pub fn pose_export(s: &mut Session, p: &Value) -> Result<Value> {
     let ti = track_index(&edit.raw, p)?;
     let track = text(p, "track")?;
     verify_pose_theatre_state(s, p, &edit.character, track)?;
-    let (time, rest, amount) = parse_pose_sample_params(
-        p,
-        edit.raw["tracks"][ti]["duration"].as_f64().unwrap_or(0.),
-    )?;
+    let (time, rest, amount) =
+        parse_pose_sample_params(p, edit.raw["tracks"][ti]["duration"].as_f64().unwrap_or(0.))?;
     let (w, h) = checked_pose_canvas(&edit.raw)?;
     let reference = resolve_pose_reference_asset(s, p)?;
-    let (meta, sample, image) =
-        sample_and_render_pose(s, &edit, track, time, rest, amount, w, h)?;
+    let (meta, sample, image) = sample_and_render_pose(s, &edit, track, time, rest, amount, w, h)?;
     let (path, receipt, registered) = save_exported_pose_image(s, &edit, track, time, &image)?;
     let value = json!({"ok":true,"asset_id":registered["asset_id"],"path":path,"receipt":receipt,"approval":"pending","project_saved":false,"source_character":edit.character,"track":track,"time":time,"rest":rest,"amount":amount,"reference":reference,"rig_sha256":digest(&edit.before),"image_sha256":digest(&fs::read(&path)?),"sampler":"motion.sample","sampling":"nearest-neighbor affine PNG; saved canvas, clipped to canvas","canvas":[w,h],"theatre_applied":false,"sample":sample,"layers":meta["layers"]});
     fs::write(

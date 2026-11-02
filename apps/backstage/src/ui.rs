@@ -132,9 +132,7 @@ fn row(f: &mut Frame, area: Rect, selected: bool, odd: bool, outlined: bool) {
         );
     }
 }
-pub fn draw(f: &mut Frame, app: &mut App) {
-    let area = f.area();
-    app.outlined_controls = area.height >= 46;
+fn clear_hit_targets(app: &mut App) {
     app.mops_rows.clear();
     app.mops_actions.clear();
     app.audit_rows.clear();
@@ -146,6 +144,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     app.group_rows.clear();
     app.buttons.clear();
     app.rows.clear();
+}
+pub fn draw(f: &mut Frame, app: &mut App) {
+    let area = f.area();
+    app.outlined_controls = area.height >= 46;
+    clear_hit_targets(app);
     f.render_widget(
         Block::default().style(Style::default().bg(BG).fg(IVORY)),
         area,
@@ -175,6 +178,25 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Constraint::Length(2),
     ])
     .split(area);
+    draw_top_bar(f, area);
+    let tab_area = if app.view == View::Mops {
+        Rect::new(
+            sections[1].x,
+            sections[1].y,
+            sections[1].width * 62 / 100,
+            sections[1].height,
+        )
+    } else {
+        sections[1]
+    };
+    navigation_tabs(f, app, tab_area);
+    draw_main_body(f, app, area, &sections);
+    draw_footer(f, app, area, sections[5], tab_area);
+    if app.details {
+        details(f, app, area);
+    }
+}
+fn draw_top_bar(f: &mut Frame, area: Rect) {
     text(
         f,
         Rect::new(1, 0, area.width.saturating_sub(38), 1),
@@ -200,52 +222,22 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ),
         IVORY,
     );
-    let tab_area = if app.view == View::Mops {
-        Rect::new(
-            sections[1].x,
-            sections[1].y,
-            sections[1].width * 62 / 100,
-            sections[1].height,
-        )
-    } else {
-        sections[1]
-    };
-    navigation_tabs(f, app, tab_area);
+}
+fn draw_main_body(f: &mut Frame, app: &mut App, area: Rect, sections: &[Rect]) {
+    let body = Rect::new(
+        0,
+        sections[3].y,
+        area.width,
+        sections[3].height + sections[4].height,
+    );
     if app.view == View::Mops {
-        crate::mops::draw(
-            f,
-            Rect::new(
-                0,
-                sections[3].y,
-                area.width,
-                sections[3].height + sections[4].height,
-            ),
-            app,
-        );
+        crate::mops::draw(f, body, app);
     } else if app.view == View::Mayhem
         && (app.audit_inputs.is_some() || app.audit_pr_context.is_some())
     {
-        crate::mayhem::draw_audit(
-            f,
-            Rect::new(
-                0,
-                sections[3].y,
-                area.width,
-                sections[3].height + sections[4].height,
-            ),
-            app,
-        );
+        crate::mayhem::draw_audit(f, body, app);
     } else if app.view == View::Mayhem {
-        crate::mayhem::draw(
-            f,
-            Rect::new(
-                0,
-                sections[3].y,
-                area.width,
-                sections[3].height + sections[4].height,
-            ),
-            app,
-        );
+        crate::mayhem::draw(f, body, app);
     } else {
         let upper = Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)])
             .spacing(1)
@@ -254,7 +246,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         inspector(f, app, upper[1]);
         files(f, app, sections[4]);
     }
-    let foot = sections[5];
+}
+fn draw_footer(f: &mut Frame, app: &App, area: Rect, foot: Rect, tab_area: Rect) {
     f.render_widget(
         Block::default()
             .borders(Borders::TOP)
@@ -263,15 +256,25 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     );
     if app.view == View::Mops {
         mops_source_summary(f, app, foot, tab_area, area.width);
-    } else {
-        text(
-            f,
-            Rect::new(1, foot.y + 1, area.width.saturating_sub(2), 1),
-            "CAST : Unavailable",
-            GOLD,
-        );
+        return;
     }
-    let help = if app.view == View::Mayhem
+    text(
+        f,
+        Rect::new(1, foot.y + 1, area.width.saturating_sub(2), 1),
+        "CAST : Unavailable",
+        GOLD,
+    );
+    let help = footer_help_text(app);
+    let width = (Span::raw(help).width() as u16 + 2).min(area.width.saturating_sub(42));
+    text(
+        f,
+        Rect::new(area.width.saturating_sub(width + 1), foot.y + 1, width, 1),
+        help,
+        MUTED,
+    );
+}
+fn footer_help_text(app: &App) -> &'static str {
+    if app.view == View::Mayhem
         && app.audit_inputs.is_some()
         && app.audit_error.is_none()
         && !app.refreshing
@@ -283,18 +286,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         "↑↓ select  Enter/o open  p project folder  d details  r refresh  q quit"
     } else {
         "Notice available • d details"
-    };
-    if app.view != View::Mops {
-        let width = (Span::raw(help).width() as u16 + 2).min(area.width.saturating_sub(42));
-        text(
-            f,
-            Rect::new(area.width.saturating_sub(width + 1), foot.y + 1, width, 1),
-            help,
-            MUTED,
-        );
-    }
-    if app.details {
-        details(f, app, area);
     }
 }
 fn mops_source_summary(f: &mut Frame, app: &App, foot: Rect, tab_area: Rect, width: u16) {
@@ -700,59 +691,7 @@ fn workshop_shell(f: &mut Frame, app: &mut App, area: Rect) {
     if area.width >= 150 {
         text(f, Rect::new(31, 1, 30, 1), "│ Technicolor Workshop", IVORY);
     }
-    let tab_start = if area.width >= 150 { 62 } else { 42 };
-    let tab_width = area.width.saturating_sub(tab_start + 23);
-    let tabs = Layout::horizontal([Constraint::Percentage(20); 5])
-        .split(Rect::new(tab_start, 0, tab_width, 3));
-    for (i, label) in [
-        "WORKSHOP F1",
-        "BOOTH F2",
-        "MOPS F3",
-        "MAYHEM F4",
-        "SETTINGS F5",
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let label = if tab_width < 35 {
-            ["F1", "F2", "F3", "F4", "F5"][i]
-        } else if tab_width < 60 {
-            ["W F1", "B F2", "M F3", "Y F4", "S F5"][i]
-        } else {
-            label
-        };
-        let view = match i {
-            0 => Some(View::Workshop),
-            2 => Some(View::Mops),
-            3 => Some(View::Mayhem),
-            4 => Some(View::Settings),
-            _ => None,
-        };
-        if let Some(view) = view {
-            app.tabs.push((tabs[i], view));
-        }
-        f.render_widget(
-            Block::bordered().border_style(Style::default().fg(CORAL)),
-            tabs[i],
-        );
-        f.render_widget(
-            Paragraph::new(label)
-                .alignment(ratatui::layout::Alignment::Center)
-                .style(
-                    Style::default()
-                        .fg(if i == 0 {
-                            BG
-                        } else if view.is_none() {
-                            MUTED
-                        } else {
-                            IVORY
-                        })
-                        .bg(if i == 0 { GOLD } else { BG })
-                        .add_modifier(Modifier::BOLD),
-                ),
-            Rect::new(tabs[i].x + 1, 1, tabs[i].width.saturating_sub(2), 1),
-        );
-    }
+    workshop_tabs(f, app, area);
     let now = OffsetDateTime::now_utc();
     text(
         f,
@@ -769,6 +708,71 @@ fn workshop_shell(f: &mut Frame, app: &mut App, area: Rect) {
         Rect::new(0, 3, area.width, area.height.saturating_sub(6)),
         app,
     );
+    workshop_footer(f, app, area);
+    if app.details {
+        project_details(f, app, area);
+    }
+}
+fn workshop_tabs(f: &mut Frame, app: &mut App, area: Rect) {
+    let tab_start = if area.width >= 150 { 62 } else { 42 };
+    let tab_width = area.width.saturating_sub(tab_start + 23);
+    let tabs = Layout::horizontal([Constraint::Percentage(20); 5])
+        .split(Rect::new(tab_start, 0, tab_width, 3));
+    for (i, label) in [
+        "WORKSHOP F1",
+        "BOOTH F2",
+        "MOPS F3",
+        "MAYHEM F4",
+        "SETTINGS F5",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let label = workshop_tab_label(i, tab_width, label);
+        let view = match i {
+            0 => Some(View::Workshop),
+            2 => Some(View::Mops),
+            3 => Some(View::Mayhem),
+            4 => Some(View::Settings),
+            _ => None,
+        };
+        if let Some(view) = view {
+            app.tabs.push((tabs[i], view));
+        }
+        f.render_widget(
+            Block::bordered().border_style(Style::default().fg(CORAL)),
+            tabs[i],
+        );
+        let fg = if i == 0 {
+            BG
+        } else if view.is_none() {
+            MUTED
+        } else {
+            IVORY
+        };
+        f.render_widget(
+            Paragraph::new(label)
+                .alignment(ratatui::layout::Alignment::Center)
+                .style(
+                    Style::default()
+                        .fg(fg)
+                        .bg(if i == 0 { GOLD } else { BG })
+                        .add_modifier(Modifier::BOLD),
+                ),
+            Rect::new(tabs[i].x + 1, 1, tabs[i].width.saturating_sub(2), 1),
+        );
+    }
+}
+fn workshop_tab_label(i: usize, tab_width: u16, full: &'static str) -> &'static str {
+    if tab_width < 35 {
+        ["F1", "F2", "F3", "F4", "F5"][i]
+    } else if tab_width < 60 {
+        ["W F1", "B F2", "M F3", "Y F4", "S F5"][i]
+    } else {
+        full
+    }
+}
+fn workshop_footer(f: &mut Frame, app: &App, area: Rect) {
     let y = area.height.saturating_sub(3);
     f.render_widget(
         Block::default()
@@ -787,9 +791,6 @@ fn workshop_shell(f: &mut Frame, app: &mut App, area: Rect) {
         },
         MUTED,
     );
-    if app.details {
-        project_details(f, app, area);
-    }
 }
 fn project_details(f: &mut Frame, app: &App, area: Rect) {
     if app.view == View::Mops {

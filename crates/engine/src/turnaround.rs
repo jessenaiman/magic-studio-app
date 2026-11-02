@@ -244,4 +244,3 @@ pub fn cmd_anim_preview_2d(s: &mut Session, params: &Value) -> Result<Value> {
     }
     Ok(out)
 }
-

@@ -529,7 +529,13 @@ fn parse_keyed_layer_order<'a>(
     Ok(ids)
 }
 
-fn parse_keyed_layer_box(path: &Path, id: &str, layer: &Value, cw: u32, ch: u32) -> Result<Vec<u32>> {
+fn parse_keyed_layer_box(
+    path: &Path,
+    id: &str,
+    layer: &Value,
+    cw: u32,
+    ch: u32,
+) -> Result<Vec<u32>> {
     let b = layer["box"]
         .as_array()
         .filter(|v| v.len() == 4)
@@ -540,7 +546,9 @@ fn parse_keyed_layer_box(path: &Path, id: &str, layer: &Value, cw: u32, ch: u32)
             v.as_u64()
                 .filter(|n| *n <= 8192)
                 .map(|n| n as u32)
-                .ok_or_else(|| keyed_rig_err(path, format!("{id}: box requires nonnegative integers")))
+                .ok_or_else(|| {
+                    keyed_rig_err(path, format!("{id}: box requires nonnegative integers"))
+                })
         })
         .collect::<Result<_>>()?;
     if b[2] == 0 || b[3] == 0 || b[0] + b[2] > cw || b[1] + b[3] > ch {
@@ -552,7 +560,13 @@ fn parse_keyed_layer_box(path: &Path, id: &str, layer: &Value, cw: u32, ch: u32)
     Ok(b)
 }
 
-fn parse_keyed_layer_pivot(path: &Path, id: &str, layer: &Value, cw: u32, ch: u32) -> Result<Vec<f32>> {
+fn parse_keyed_layer_pivot(
+    path: &Path,
+    id: &str,
+    layer: &Value,
+    cw: u32,
+    ch: u32,
+) -> Result<Vec<f32>> {
     let p = layer["pivot"]
         .as_array()
         .filter(|v| v.len() == 2)
@@ -596,8 +610,9 @@ fn decode_keyed_layers(
         let b = parse_keyed_layer_box(path, id, layer, cw, ch)?;
         let p = parse_keyed_layer_pivot(path, id, layer, cw, ch)?;
         let file = base.join(format!("{id}.png"));
-        let image = image::open(&file)
-            .map_err(|e| keyed_rig_err(path, format!("{id}: cannot decode {}: {e}", file.display())))?;
+        let image = image::open(&file).map_err(|e| {
+            keyed_rig_err(path, format!("{id}: cannot decode {}: {e}", file.display()))
+        })?;
         if image.width() != b[2] || image.height() != b[3] || !image.color().has_alpha() {
             return Err(keyed_rig_err(
                 path,
@@ -752,7 +767,8 @@ fn save_cropped_layer_preview(
 ) -> Option<PathBuf> {
     let cw_crop = crop_box[2] - crop_box[0];
     let ch_crop = crop_box[3] - crop_box[1];
-    let sub = image::imageops::crop_imm(rgba, crop_box[0], crop_box[1], cw_crop, ch_crop).to_image();
+    let sub =
+        image::imageops::crop_imm(rgba, crop_box[0], crop_box[1], cw_crop, ch_crop).to_image();
     let safe_id = sanitize_layer_id(id);
     let dest = cache_dir.join(format!("{idx:02}_{safe_id}_crop.png"));
     sub.save(&dest).ok()?;
@@ -781,7 +797,11 @@ fn parse_layered_pivot(item: &Value, canvas: [u32; 2], alpha_box: [u32; 4]) -> [
     let Some(piv_obj) = item.get("pivot").and_then(Value::as_object) else {
         return [cx, cy];
     };
-    match piv_obj.get("anchor").and_then(Value::as_str).unwrap_or("center") {
+    match piv_obj
+        .get("anchor")
+        .and_then(Value::as_str)
+        .unwrap_or("center")
+    {
         "top" => [cx, y0],
         "bottom" => [cx, y1],
         "left" => [x0, cy],
@@ -820,11 +840,17 @@ fn decode_layered_spec_item(
             if p.is_absolute() { p } else { base_dir.join(p) }
         })
         .unwrap_or_default();
-    let parent = item.get("parent").and_then(Value::as_str).map(ToString::to_string);
+    let parent = item
+        .get("parent")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
     if parent.is_none() && root_file.is_none() && !file_path.as_os_str().is_empty() {
         *root_file = Some(file_path.clone());
     }
-    let component_idx = item.get("component").and_then(Value::as_u64).map(|v| v as usize);
+    let component_idx = item
+        .get("component")
+        .and_then(Value::as_u64)
+        .map(|v| v as usize);
     let mut crop_box = [0, 0, cw, ch];
     let mut alpha_box = [0, 0, cw, ch];
     let mut cropped_path = file_path.clone();
@@ -987,7 +1013,14 @@ fn render_contact_overview_panel(
 ) {
     let (lx0, ly0, lw, lh) = (24u32, 24u32, 480u32, 852u32);
     fill_sheet_panel(sheet, lx0, ly0, lw, lh, [28, 34, 46, 255]);
-    draw_rect_border(sheet, lx0, ly0, lx0 + lw - 1, ly0 + lh - 1, [68, 84, 112, 255]);
+    draw_rect_border(
+        sheet,
+        lx0,
+        ly0,
+        lx0 + lw - 1,
+        ly0 + lh - 1,
+        [68, 84, 112, 255],
+    );
 
     let cw = comp_crop.width().max(1) as f32;
     let ch = comp_crop.height().max(1) as f32;
@@ -1330,7 +1363,12 @@ impl LoadedManifest {
 
         if let Some(arr) = raw.get("frames").and_then(Value::as_array) {
             for (idx, item) in arr.iter().enumerate() {
-                frames.push(parse_manifest_frame(idx, item, &manifest_dir, &mut part_set));
+                frames.push(parse_manifest_frame(
+                    idx,
+                    item,
+                    &manifest_dir,
+                    &mut part_set,
+                ));
             }
         }
 
@@ -1415,7 +1453,11 @@ fn resolve_parent_manifest_source(raw: &Value) -> Option<PathBuf> {
 }
 
 fn parse_manifest_part(key: &str, pval: &Value, manifest_dir: &Path) -> Option<ManifestPart> {
-    let pfile = pval.get("file").and_then(Value::as_str).unwrap_or("").to_string();
+    let pfile = pval
+        .get("file")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     if pfile.is_empty() {
         return None;
     }
@@ -1435,7 +1477,10 @@ fn parse_manifest_frame(
     manifest_dir: &Path,
     part_set: &mut Vec<String>,
 ) -> ManifestFrame {
-    let index = item.get("index").and_then(Value::as_u64).unwrap_or(idx as u64) as usize;
+    let index = item
+        .get("index")
+        .and_then(Value::as_u64)
+        .unwrap_or(idx as u64) as usize;
     let label = item
         .get("label")
         .and_then(Value::as_str)
@@ -1695,7 +1740,10 @@ impl MeasuredTurnaroundRegistration {
 }
 
 fn parse_turnaround_frame(idx: usize, item: &Value, asset_root: &Path) -> ManifestFrame {
-    let index = item.get("index").and_then(Value::as_u64).unwrap_or(idx as u64) as usize;
+    let index = item
+        .get("index")
+        .and_then(Value::as_u64)
+        .unwrap_or(idx as u64) as usize;
     let label = item
         .get("label")
         .and_then(Value::as_str)

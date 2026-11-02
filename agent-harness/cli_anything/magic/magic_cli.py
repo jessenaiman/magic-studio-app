@@ -40,11 +40,22 @@ def emit(value: Any) -> None:
 
 
 _COMMAND_HINTS: dict[str, str] = {
-    "call": "Use 'magic-cli exec <command.id> key=value ...' or 'magic-cli <domain> <verb> key=value ...'.",
-    "status": "Use 'magic-cli workshop status', 'magic-cli center status', or 'magic-cli session status'.",
-    "project.status": "Use 'magic-cli workshop status' or 'magic-cli center status'.",
-    "storyboard.build": "Use 'magic-cli workshop build-storyboard' or 'magic-cli storyboard init'.",
-    "audio.transcribe": "Use 'magic-cli audio analyze' (transcribes words, exports SRT, and runs HyperFrames section/beat analysis).",
+    "call": (
+        "Use 'magic-cli exec <command.id> key=value ...' "
+        "or 'magic-cli <domain> <verb> key=value ...'."
+    ),
+    "status": (
+        "Use 'magic-cli workshop status', 'magic-cli center status', "
+        "or 'magic-cli session status'."
+    ),
+    "project.status": ("Use 'magic-cli workshop status' or 'magic-cli center status'."),
+    "storyboard.build": (
+        "Use 'magic-cli workshop build-storyboard' or 'magic-cli storyboard init'."
+    ),
+    "audio.transcribe": (
+        "Use 'magic-cli audio analyze' (transcribes words, exports SRT, "
+        "and runs HyperFrames section/beat analysis)."
+    ),
 }
 
 
@@ -60,8 +71,9 @@ def _unknown_command_hint(prefix: str, name: str, choices: list[str]) -> str:
     if close:
         parts.append(f"Did you mean: {', '.join(close)}?")
     domain = prefix.rstrip(".")
+    dom_cli = domain.replace("_", "-")
     parts.append(
-        f"Next: run 'magic-cli commands {domain}' or 'magic-cli {domain.replace('_', '-')} --help'."
+        f"Next: run 'magic-cli commands {domain}' or 'magic-cli {dom_cli} --help'."
         if domain
         else "Next: run 'magic-cli commands [FILTER]' or 'magic-cli --help'."
     )
@@ -70,9 +82,7 @@ def _unknown_command_hint(prefix: str, name: str, choices: list[str]) -> str:
 
 def execute(ctx: click.Context, command: str, params: dict[str, Any]) -> Any:
     params.setdefault("_origin", "CLI")
-    result = ctx.obj["session"].execute(
-        command, params, dry_run=ctx.obj["dry_run"]
-    )
+    result = ctx.obj["session"].execute(command, params, dry_run=ctx.obj["dry_run"])
     if (
         command == "ui.eval"
         and isinstance(result, dict)
@@ -81,7 +91,8 @@ def execute(ctx: click.Context, command: str, params: dict[str, Any]) -> Any:
         and "return " not in params["js"]
     ):
         result["hint"] = (
-            "ui.eval wraps your script in `async () => { ... }`; prefix the expression with `return ` to receive its value."
+            "ui.eval wraps your script in `async () => { ... }`; "
+            "prefix the expression with `return ` to receive its value."
         )
     return result
 
@@ -239,9 +250,7 @@ def cli(
 
 
 @cli.command("audit")
-@click.argument(
-    "path", type=click.Path(exists=True, path_type=Path), default="."
-)
+@click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
 @click.option(
     "--tool",
     "tools",
@@ -253,12 +262,17 @@ def cli(
     ),
 )
 @click.option(
-    "--base", default="HEAD", show_default=True,
+    "--base",
+    default="HEAD",
+    show_default=True,
     help="Git revision the scope is measured from.",
 )
 @click.pass_context
 def audit(
-    ctx: click.Context, path: Path, tools: tuple[str, ...], base: str,
+    ctx: click.Context,
+    path: Path,
+    tools: tuple[str, ...],
+    base: str,
 ) -> None:
     """Run the repository's own checks and print what they print.
 
@@ -284,9 +298,14 @@ def audit(
     scans its companion module/ directory when present. Clippy requires a crate
     directory. File checks use repository configuration.
     """
-    ctx.exit(audit_core.run_audit(
-        path.resolve(), tools, dry_run=ctx.obj["dry_run"], base=base,
-    ))
+    ctx.exit(
+        audit_core.run_audit(
+            path.resolve(),
+            tools,
+            dry_run=ctx.obj["dry_run"],
+            base=base,
+        )
+    )
 
 
 @cli.command("commands")
@@ -316,7 +335,7 @@ def exec_command(
 
     Next: magic-cli commands FILTER to discover IDs and parameter documentation.
     """
-    emit(execute(ctx, command, parse_params(arguments, params)))
+    emit(execute(ctx, command.removeprefix("id="), parse_params(arguments, params)))
 
 
 @cli.command("run")
@@ -341,9 +360,7 @@ def mcp(ctx: click.Context) -> None:
     """Serve Magic commands over MCP stdio using the official Python SDK."""
     from cli_anything.magic.core.mcp_server import run_mcp_stdio
 
-    run_mcp_stdio(
-        ctx.obj["session"], dry_run=ctx.obj["dry_run"]
-    )
+    run_mcp_stdio(ctx.obj["session"], dry_run=ctx.obj["dry_run"])
 
 
 @cli.group(cls=RegistryGroup, prefix="studio.")
@@ -380,12 +397,16 @@ def studio_list() -> None:
 
 
 @studio.command("previews")
-@click.option("--stop-orphans", is_flag=True, help="Stop preview servers whose project has no open Studio window.")
+@click.option(
+    "--stop-orphans",
+    is_flag=True,
+    help="Stop preview servers whose project has no open Studio window.",
+)
 def studio_previews(stop_orphans: bool) -> None:
     """List HyperFrames preview servers and which have no open Studio window.
 
-    One server runs per project whose Studio target was started; closing the window does not
-    stop it. Without --stop-orphans nothing is changed.
+    One server runs per project whose Studio target was started; closing the
+    window does not stop it. Without --stop-orphans nothing is changed.
 
     Example: magic-cli studio previews --stop-orphans
     """
@@ -428,10 +449,17 @@ def fix_routes(exc: Exception) -> str:
     """A failure is a magic-cli gap: ask for a fix instead of working around it."""
     command = shlex.join(["magic-cli", *sys.argv[1:]])
     body = f"Command:\n    {command}\n\nError:\n    {str(exc)[:1500]}"
-    issue = shlex.join([
-        "gh", "issue", "create", "--title", f"magic-cli fails: {command[:70]}",
-        "--body", body,
-    ])
+    issue = shlex.join(
+        [
+            "gh",
+            "issue",
+            "create",
+            "--title",
+            f"magic-cli fails: {command[:70]}",
+            "--body",
+            body,
+        ]
+    )
     return (
         "Request a magic-cli fix (do not work around it with the tool directly):\n"
         "  quick       small and in scope: fix this magic-cli command now\n"

@@ -439,7 +439,10 @@ fn mount_caption_track(host: &mut String, duration: f64) -> Result<bool> {
         return Ok(false);
     }
     if !host.contains("</body>") {
-        return Err(EngineError::InvalidParams("Official host has no closing body; caption source retained but no host edit performed".into()));
+        return Err(EngineError::InvalidParams(
+            "Official host has no closing body; caption source retained but no host edit performed"
+                .into(),
+        ));
     }
     let end = host.rfind("</div>").ok_or_else(|| {
         EngineError::InvalidParams(
@@ -531,7 +534,11 @@ fn native_timeline(dir: &Path, params: &Value) -> Result<Value> {
         runtime.to_str().ok_or_else(|| {
             EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
         })?,
-        &["timeline".into(), hf.to_string_lossy().into_owned(), "--json".into()],
+        &[
+            "timeline".into(),
+            hf.to_string_lossy().into_owned(),
+            "--json".into(),
+        ],
     )?;
     serde_json::from_str(&native)
         .map_err(|e| EngineError::InvalidParams(format!("HyperFrames timeline: {e}")))
@@ -543,9 +550,7 @@ fn require_audio_track(s: &Session, native: &Value) -> Result<()> {
         .as_array()
         .into_iter()
         .flatten()
-        .any(|t| {
-            t["kind"] == "audio" && t["rows"].as_array().is_some_and(|rows| !rows.is_empty())
-        });
+        .any(|t| t["kind"] == "audio" && t["rows"].as_array().is_some_and(|rows| !rows.is_empty()));
     if s.song_audio.is_some() && !has_audio {
         return Err(EngineError::InvalidParams(
             "HyperFrames project has no audio track; upload was not completed".into(),
@@ -567,10 +572,11 @@ fn contained_audio(dir: &Path, native: &Value) -> Option<PathBuf> {
         .map(|src| hf.join(src))
         .find(|path| {
             path.is_file()
-                && path
-                    .canonicalize()
-                    .ok()
-                    .is_some_and(|p| hf.canonicalize().ok().is_some_and(|root| p.starts_with(root)))
+                && path.canonicalize().ok().is_some_and(|p| {
+                    hf.canonicalize()
+                        .ok()
+                        .is_some_and(|root| p.starts_with(root))
+                })
         })
 }
 
@@ -628,8 +634,10 @@ fn init_status(
     );
     if !reused {
         let hf = dir.join("hyperframes");
-        status["runtime_executable"] =
-            json!(resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?);
+        status["runtime_executable"] = json!(resolve_video_cli(
+            params["resolve_video_cli"].as_str(),
+            Some(&hf)
+        )?);
     }
     Ok(status)
 }
@@ -679,13 +687,13 @@ fn source_motion_request(s: &Session, params: &Value) -> Result<Value> {
         .iter()
         .find(|a| a.id == character)
         .ok_or_else(|| EngineError::InvalidParams("Source character is not registered".into()))?;
-    let path = asset.path.as_ref().ok_or_else(|| {
-        EngineError::InvalidParams("Source character has no saved rig".into())
-    })?;
+    let path = asset
+        .path
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Source character has no saved rig".into()))?;
     let bytes = std::fs::read(path)?;
-    let source: Value = serde_json::from_slice(&bytes).map_err(|_| {
-        EngineError::InvalidParams("Source motion needs a saved rig JSON".into())
-    })?;
+    let source: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| EngineError::InvalidParams("Source motion needs a saved rig JSON".into()))?;
     let clip = source["tracks"]
         .as_array()
         .and_then(|tracks| tracks.iter().find(|t| t["id"] == track))
@@ -702,8 +710,10 @@ fn source_motion_request(s: &Session, params: &Value) -> Result<Value> {
             "Saved source track has no valid duration".into(),
         ));
     }
-    Ok(json!({"source_motion":{"character":character,"track":track,"duration":clip["duration"],
-        "spec":path,"canvas":source["canvas"],"rig_sha256":format!("{:x}",Sha256::digest(&bytes)),"relationship":"declared source clip; rendered media is a separate artifact"}}))
+    Ok(
+        json!({"source_motion":{"character":character,"track":track,"duration":clip["duration"],
+        "spec":path,"canvas":source["canvas"],"rig_sha256":format!("{:x}",Sha256::digest(&bytes)),"relationship":"declared source clip; rendered media is a separate artifact"}}),
+    )
 }
 
 /// Place a rendered track in HyperFrames without recreating the composition.
@@ -1394,7 +1404,9 @@ fn receipt_positive(v: &Value, what: &str) -> Result<f64> {
     if n > 0.0 {
         return Ok(n);
     }
-    Err(EngineError::InvalidParams(format!("{what} must be positive")))
+    Err(EngineError::InvalidParams(format!(
+        "{what} must be positive"
+    )))
 }
 
 /// The numbers the caller and the receipt agree on before any media is probed.
@@ -1493,7 +1505,14 @@ fn require_media_matches(facts: &ClipFacts, media: &MediaFacts) -> Result<()> {
     }
     Err(EngineError::InvalidParams(format!(
         "Clip media ({}x{}, {:.3}fps, {:.3}s) does not match its receipt ({}x{}, {:.3}fps, {:.3}s)",
-        media.width, media.height, media.fps, media.seconds, facts.width, facts.height, facts.fps, facts.seconds
+        media.width,
+        media.height,
+        media.fps,
+        media.seconds,
+        facts.width,
+        facts.height,
+        facts.fps,
+        facts.seconds
     )))
 }
 

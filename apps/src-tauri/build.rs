@@ -55,9 +55,9 @@ fn main() {
 /// or older than its sources, which keeps the `ui` change watch above from looping.
 fn theatre_bundle() {
     let sources = [
-        "frontend/theatre-frame.js",
-        "frontend/backstage-terminal.js",
-        "frontend/project-id.mjs",
+        "frontend/theatre-frame.ts",
+        "frontend/backstage-terminal.ts",
+        "frontend/project-id.ts",
         "frontend/package.json",
         "frontend/bun.lock",
     ];
@@ -99,7 +99,9 @@ fn theatre_bundle() {
 /// Bun's transpiler (types stripped, no bundling, so index.html loads it unchanged). The `.js`
 /// files are gitignored, rebuilt when missing or older than their source, like the Theatre bundle.
 fn ui_typescript() {
-    let Ok(entries) = std::fs::read_dir("ui") else { return };
+    let Ok(entries) = std::fs::read_dir("ui") else {
+        return;
+    };
     let modified = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
     for source in entries.flatten().map(|e| e.path()) {
         if source.extension().and_then(|e| e.to_str()) != Some("ts") {
@@ -117,6 +119,10 @@ fn ui_typescript() {
             .arg(&output)
             .status()
             .unwrap_or_else(|e| panic!("Compiling the UI TypeScript needs Bun on PATH: {e}"));
-        assert!(status.success(), "`bun build` failed for {}", source.display());
+        assert!(
+            status.success(),
+            "`bun build` failed for {}",
+            source.display()
+        );
     }
 }

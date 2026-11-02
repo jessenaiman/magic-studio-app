@@ -28,8 +28,8 @@ pub use crate::magic_design::decontaminate_sprite_rgba;
 pub use crate::project::write_project_file;
 pub use crate::vision::{analyze_rgba_image, analyze_viewport_region};
 pub use crate::workspace::{
-    asset_id_for_import, image_batch_args,
-    resolve_craft_cli, resolve_workspace_path, sanitize_asset_id, workspace_root,
+    asset_id_for_import, image_batch_args, resolve_craft_cli, resolve_workspace_path,
+    sanitize_asset_id, workspace_root,
 };
 
 // Import command handlers into this module so the `build()` array can reference them.
@@ -39,9 +39,8 @@ use crate::agent::{
 };
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
 use crate::exports::{
-    cmd_render_scene_source, cmd_export_character_iteration,
-    cmd_import_video_sequence, cmd_export_layered_motion,
-    cmd_scene_farm_school_lineup, cmd_validate_motion,
+    cmd_export_character_iteration, cmd_export_layered_motion, cmd_import_video_sequence,
+    cmd_render_scene_source, cmd_scene_farm_school_lineup, cmd_validate_motion,
 };
 use crate::image_cmds::{
     cmd_image_break_apart, cmd_image_color_to_alpha, cmd_image_content_aware_fill,

@@ -692,7 +692,12 @@ fn render_deck_previews(dir: &Path, deck: &Path, pages: &Path) -> Result<Vec<Pat
     Ok(previews)
 }
 
-fn append_picture_placement_commands(args: &mut Vec<String>, entries: &[Value], deck: &Path, pdf: &Path) {
+fn append_picture_placement_commands(
+    args: &mut Vec<String>,
+    entries: &[Value],
+    deck: &Path,
+    pdf: &Path,
+) {
     for item in entries {
         args.extend([
             "--cmd".into(),

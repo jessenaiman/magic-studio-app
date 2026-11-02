@@ -223,7 +223,7 @@ fn worker_owner(observed: &Result<Value>) -> Value {
     let state = match observed {
         Ok(state) => state,
         Err(error) => {
-            return json!({"worker_owner":Value::Null,"worker_owner_status":"unavailable","worker_owner_error":error.to_string()})
+            return json!({"worker_owner":Value::Null,"worker_owner_status":"unavailable","worker_owner_error":error.to_string()});
         }
     };
     if !occupied(state) {
@@ -420,7 +420,10 @@ fn resolve_rig_paths(raw: &mut Value, base: &Path) {
 }
 
 fn safe_layer_id(id: &str) -> bool {
-    !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
 }
 
 /// Keyed layers are copied by name, so the name must be one that cannot escape the snapshot.
@@ -495,8 +498,10 @@ pub fn cmd_prepare_animation_job(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn scene_request(s: &Session, p: &Value) -> Result<Value> {
-    Ok(json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
-        "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]}))
+    Ok(
+        json!({"resolution_percent":bounded(p,"resolution_percent",50,10,100)?,
+        "max_frames":bounded(p,"max_frames",90,1,18000)?,"unit":UNIT,"project":s.project_path,"character":p["character"],"track":p["track"]}),
+    )
 }
 
 /// One scene source per job: a blend, a rig plan or a volume plan.
@@ -525,7 +530,9 @@ fn read_plan(s: &Session, p: &Value, key: &str) -> Result<(PathBuf, Vec<u8>, Val
 fn volume_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
     let (path, bytes, plan) = read_plan(s, p, "volume_plan")?;
     if plan["slug"] != p["character"] || !p["character"].is_string() {
-        return Err(invalid("Volume construction requires character matching slug"));
+        return Err(invalid(
+            "Volume construction requires character matching slug",
+        ));
     }
     let track = p["track"]
         .as_str()
@@ -533,9 +540,10 @@ fn volume_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()
     if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
         return Err(invalid("Choose turntable or an authored skeleton track"));
     }
-    request["volume_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-    request["duration"] = json!(bounded(p,"duration",4,1,600)?);
-    request["voxel_resolution"] = json!(bounded(p,"voxel_resolution",144,16,256)?);
+    request["volume_plan"] =
+        json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+    request["duration"] = json!(bounded(p, "duration", 4, 1, 600)?);
+    request["voxel_resolution"] = json!(bounded(p, "voxel_resolution", 144, 16, 256)?);
     Ok(())
 }
 
@@ -549,8 +557,9 @@ fn rig_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
             "Choose a track and include the authored pose_library in the rig plan",
         ));
     }
-    request["rig_plan"] = json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-    request["duration"] = json!(bounded(p,"duration",3,1,600)?);
+    request["rig_plan"] =
+        json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
+    request["duration"] = json!(bounded(p, "duration", 3, 1, 600)?);
     Ok(())
 }
 
@@ -599,9 +608,7 @@ fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()>
     let executable = [exe.with_file_name("magic-cli")]
         .into_iter()
         .find(|p| p.is_file())
-        .ok_or_else(|| {
-            invalid("Install magic beside Magic Studio to prepare legacy animations")
-        })?;
+        .ok_or_else(|| invalid("Install magic beside Magic Studio to prepare legacy animations"))?;
     request["magic_cli"] = json!(executable);
     Ok(())
 }
@@ -679,13 +686,28 @@ fn write_worker_payloads(dir: &Path, request: &Value) -> Result<()> {
     if request["rig_plan"].is_object() {
         fs::create_dir_all(dir.join("pipeline"))?;
         fs::write(dir.join("pipeline/__init__.py"), "")?;
-        fs::write(dir.join("pipeline/rig_motion.py"), include_str!("../../../pipeline/rig_motion.py"))?;
-        fs::write(dir.join("pipeline/build_cutout_skeleton.py"), include_str!("../../../pipeline/build_cutout_skeleton.py"))?;
+        fs::write(
+            dir.join("pipeline/rig_motion.py"),
+            include_str!("../../../pipeline/rig_motion.py"),
+        )?;
+        fs::write(
+            dir.join("pipeline/build_cutout_skeleton.py"),
+            include_str!("../../../pipeline/build_cutout_skeleton.py"),
+        )?;
     }
     if request["volume_plan"].is_object() {
-        fs::write(dir.join("volume_reconstruction.py"), include_str!("../../../pipeline/volume_reconstruction.py"))?;
-        fs::write(dir.join("build_volume_scene.py"), include_str!("../../../pipeline/build_volume_scene.py"))?;
-        fs::write(dir.join("bind_volume_skeleton.py"), include_str!("../../../pipeline/bind_volume_skeleton.py"))?;
+        fs::write(
+            dir.join("volume_reconstruction.py"),
+            include_str!("../../../pipeline/volume_reconstruction.py"),
+        )?;
+        fs::write(
+            dir.join("build_volume_scene.py"),
+            include_str!("../../../pipeline/build_volume_scene.py"),
+        )?;
+        fs::write(
+            dir.join("bind_volume_skeleton.py"),
+            include_str!("../../../pipeline/bind_volume_skeleton.py"),
+        )?;
     }
     Ok(())
 }
@@ -809,9 +831,19 @@ pub(crate) fn submit(s: &Session, p: &Value, mut request: Value, backend: &str) 
     let memory = bounded(p, "memory_mb", 4096, 512, 8192)?;
     let seconds = bounded(p, "timeout_seconds", 300, 10, 3600)?;
     let stamp = job_stamp()?;
-    let kind = if backend == "blender" { "blender" } else { "native" };
+    let kind = if backend == "blender" {
+        "blender"
+    } else {
+        "native"
+    };
     let id = format!("magicstudio-{kind}-{}-{stamp}", std::process::id());
-    let plan = JobPlan { backend, id, stamp, memory, seconds };
+    let plan = JobPlan {
+        backend,
+        id,
+        stamp,
+        memory,
+        seconds,
+    };
     fill_request(&mut request, s, p, &plan);
     let dir = root(s)?.join(&plan.id);
     let (worker, request_path) = prepare_job_dir(&dir, s, p, &request, &plan)?;

@@ -400,6 +400,356 @@
       "style_writes": 0,
       "geometry_without_custom_property": 0,
       "lines": 123
+    },
+    "agent.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 505
+    },
+    "analytics.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 9,
+      "class_from_code": 1,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 312
+    },
+    "animation-jobs.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 1,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 256
+    },
+    "animation-stage.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 4,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 514
+    },
+    "animation.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 5,
+      "class_from_code": 1,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 736
+    },
+    "app-bar.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 7,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 71
+    },
+    "app.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 1,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 604
+    },
+    "asset-sheet-review.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 3,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 250
+    },
+    "backstage-terminal.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 5,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 249
+    },
+    "clip-placement.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 294
+    },
+    "companion-boxes.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 472
+    },
+    "companion-rails.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 126
+    },
+    "companion-sprites.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 74
+    },
+    "companions.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 275
+    },
+    "drawers.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 105
+    },
+    "feedback.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 146
+    },
+    "home.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 1,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 156
+    },
+    "image-prompt.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 4,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 174
+    },
+    "menu.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 2,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 233
+    },
+    "motion-authoring.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 1,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 302
+    },
+    "panel-header.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 43
+    },
+    "project-card.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 92
+    },
+    "project.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 5,
+      "class_from_code": 2,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 237
+    },
+    "report.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 71
+    },
+    "resources.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 17
+    },
+    "sequence.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 4,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 318
+    },
+    "song.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 2,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 229
+    },
+    "storyboard.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 368
+    },
+    "studio-caption-compat.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 50
+    },
+    "theatre.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 5,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 391
+    },
+    "timeline.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 1,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 206
+    },
+    "ui-commands.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 237
+    },
+    "words-design.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 703
+    },
+    "words-flow.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 686
+    },
+    "words.ts": {
+      "hand_built_dots": 0,
+      "retired": 0,
+      "ids_without_config_entry": 0,
+      "class_from_code": 0,
+      "style_attributes": 0,
+      "style_writes": 0,
+      "geometry_without_custom_property": 0,
+      "lines": 753
     }
   }
 }

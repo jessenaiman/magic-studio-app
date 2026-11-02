@@ -1,6 +1,6 @@
 //! Part visibility / solo / review state on the active asset.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 

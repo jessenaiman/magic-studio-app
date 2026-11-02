@@ -48,10 +48,7 @@ impl MeshParams {
 }
 
 /// The asset this call names (or the active one), loaded first when it is only a preset.
-fn resolved_asset(
-    s: &mut Session,
-    params: &Value,
-) -> Result<(String, crate::session::Asset)> {
+fn resolved_asset(s: &mut Session, params: &Value) -> Result<(String, crate::session::Asset)> {
     let preset = params
         .get("preset")
         .or_else(|| params.get("character"))
@@ -351,8 +348,21 @@ pub fn cmd_mesh_build_4dir(s: &mut Session, params: &Value) -> Result<Value> {
     let views = mesh_views(&turnaround)?;
     let mesh = crate::mesh_geometry::build(&views, shape.settings());
     let files = mesh_files(s, params, &dirs, &asset_id);
-    write_binary_glb(&files.glb, &mesh.positions, &mesh.normals, &mesh.uvs, &mesh.colors, &mesh.indices)?;
-    write_wavefront_obj(&files.obj, &mesh.positions, &mesh.normals, &mesh.uvs, &mesh.indices)?;
+    write_binary_glb(
+        &files.glb,
+        &mesh.positions,
+        &mesh.normals,
+        &mesh.uvs,
+        &mesh.colors,
+        &mesh.indices,
+    )?;
+    write_wavefront_obj(
+        &files.obj,
+        &mesh.positions,
+        &mesh.normals,
+        &mesh.uvs,
+        &mesh.indices,
+    )?;
     let entries = turnaround_entries(&turnaround);
     let telemetry = measured_telemetry(&asset);
     let payload = ingest_payload(
@@ -604,7 +614,10 @@ fn write_binary_glb(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, glb)?;
-    std::fs::write(path.with_extension("gltf"), ascii_document(gltf, &geometry.bin)?)?;
+    std::fs::write(
+        path.with_extension("gltf"),
+        ascii_document(gltf, &geometry.bin)?,
+    )?;
     Ok(())
 }
 

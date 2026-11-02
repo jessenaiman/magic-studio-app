@@ -1,7 +1,7 @@
 //! Coalescing invalidation for the explicitly listed Magic-owned file writes.
 //! Readers never create, clear or acknowledge the shared marker.
 use crate::{EngineError, Result, Session};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     fs,
     io::Write,

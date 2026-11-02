@@ -520,28 +520,46 @@ impl App {
         };
     }
     fn open_current(&mut self, folder: bool) {
-        if self.view == View::Mayhem
-            && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
-        {
-            let path = self
-                .audit
-                .as_ref()
-                .and_then(|a| a.finding_link(self.audit_selected, self.audit_finding_selected))
-                .map(Path::to_path_buf);
-            if let Some(path) = path {
-                self.launch(&path)
-            } else {
-                self.message =
-                    "Native finding source link unavailable/unverified; report remains inspectable"
-                        .into();
-            }
+        if self.is_audit_mayhem() {
+            self.open_audit_finding();
             return;
         }
         if self.view == View::Settings {
             self.open(if folder { usize::MAX } else { self.selected });
             return;
         }
-        let path = if self.view == View::Mayhem && self.focus_projects {
+        if let Some(path) = self.current_target_path(folder) {
+            self.launch(&path);
+        } else {
+            self.message = "Unavailable: no observed accessible target".into();
+        }
+    }
+    fn is_audit_mayhem(&self) -> bool {
+        self.view == View::Mayhem
+            && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
+    }
+    fn open_audit_finding(&mut self) {
+        let path = self
+            .audit
+            .as_ref()
+            .and_then(|a| a.finding_link(self.audit_selected, self.audit_finding_selected))
+            .map(Path::to_path_buf);
+        if let Some(path) = path {
+            self.launch(&path);
+        } else {
+            self.message =
+                "Native finding source link unavailable/unverified; report remains inspectable"
+                    .into();
+        }
+    }
+    fn current_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
+        if self.view == View::Mayhem {
+            return self.mayhem_target_path();
+        }
+        self.workshop_target_path(folder)
+    }
+    fn mayhem_target_path(&self) -> Option<std::path::PathBuf> {
+        if self.focus_projects {
             self.project_data
                 .projects
                 .get(self.project_selected)
@@ -554,65 +572,48 @@ impl App {
                         .filter(|w| w.available)
                         .map(|w| w.path.clone())
                 })
-        } else if self.view == View::Mayhem {
+        } else {
             self.project_data
                 .worktrees
                 .get(self.worktree_selected)
                 .filter(|w| w.available)
                 .map(|w| w.path.clone())
-        } else if folder && !self.focus_projects {
-            self.project_data
-                .projects
-                .get(self.project_selected)
-                .and_then(|p| p.files.get(self.project_file_selected))
-                .filter(|f| f.available)
-                .and_then(|f| f.path.parent())
-                .map(Path::to_path_buf)
-        } else if folder {
-            self.project_data
-                .projects
-                .get(self.project_selected)
-                .filter(|p| p.exists)
-                .map(|p| p.path.clone())
+        }
+    }
+    fn workshop_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
+        let project = self.project_data.projects.get(self.project_selected)?;
+        if folder && self.focus_projects {
+            return project.exists.then(|| project.path.clone());
+        }
+        let file = project
+            .files
+            .get(self.project_file_selected)
+            .filter(|f| f.available)?;
+        if folder {
+            file.path.parent().map(Path::to_path_buf)
         } else {
-            self.project_data
-                .projects
-                .get(self.project_selected)
-                .and_then(|p| p.files.get(self.project_file_selected))
-                .filter(|f| f.available)
-                .map(|f| f.path.clone())
-        };
-        if let Some(path) = path {
-            self.launch(&path)
-        } else {
-            self.message = "Unavailable: no observed accessible target".into();
+            Some(file.path.clone())
         }
     }
     fn move_selection(&mut self, down: bool) {
         if self.view == View::Mops {
-            self.mops_selected = if down {
-                self.mops_selected
-                    .saturating_add(1)
-                    .min(self.mops.tasks.len().saturating_sub(1))
-            } else {
-                self.mops_selected.saturating_sub(1)
-            };
+            step_index(&mut self.mops_selected, self.mops.tasks.len(), down);
             return;
         }
-        if self.view == View::Mayhem
-            && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
-        {
+        if self.is_audit_mayhem() {
             let len = self.audit.as_ref().map_or(0, |a| a.tool_ids().len());
-            self.audit_selected = if down {
-                self.audit_selected
-                    .saturating_add(1)
-                    .min(len.saturating_sub(1))
-            } else {
-                self.audit_selected.saturating_sub(1)
-            };
+            step_index(&mut self.audit_selected, len, down);
             self.audit_finding_selected = 0;
             return;
         }
+        self.step_primary_selection(down);
+        if self.focus_projects {
+            self.project_file_selected = 0;
+        } else if self.view == View::Workshop {
+            self.expand_selected_workshop_group();
+        }
+    }
+    fn step_primary_selection(&mut self, down: bool) {
         let (selected, len) = if self.view == View::Settings {
             (&mut self.selected, self.data.files.len())
         } else if self.focus_projects {
@@ -631,19 +632,14 @@ impl App {
                     .map_or(0, |p| p.files.len()),
             )
         };
-        *selected = if down {
-            selected.saturating_add(1).min(len.saturating_sub(1))
-        } else {
-            selected.saturating_sub(1)
-        };
-        if self.focus_projects {
-            self.project_file_selected = 0;
-        } else if self.view == View::Workshop
-            && let Some(file) = self
-                .project_data
-                .projects
-                .get(self.project_selected)
-                .and_then(|p| p.files.get(self.project_file_selected))
+        step_index(selected, len, down);
+    }
+    fn expand_selected_workshop_group(&mut self) {
+        if let Some(file) = self
+            .project_data
+            .projects
+            .get(self.project_selected)
+            .and_then(|p| p.files.get(self.project_file_selected))
             && let Some(group) = ["Storyboard", "Animations", "Lyrics", "Studio"]
                 .iter()
                 .position(|g| *g == file.group)
@@ -808,6 +804,14 @@ fn configured_app(args: &[String]) -> io::Result<App> {
     Ok(app)
 }
 
+fn step_index(selected: &mut usize, len: usize, down: bool) {
+    *selected = if down {
+        selected.saturating_add(1).min(len.saturating_sub(1))
+    } else {
+        selected.saturating_sub(1)
+    };
+}
+
 /// A background observation requests an immediate redraw; it never waits for a key.
 enum UiEvent {
     Input(Event),
@@ -839,40 +843,234 @@ fn receive_ui_event(
     }
 }
 
-fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+impl App {
+    fn poll_opener_result(&mut self) {
+        // Inspect only our explicit opener result on terminal input, never on a timer.
+        if let Some(receiver) = &self.opener_result
+            && let Ok(message) = receiver.try_recv()
+        {
+            self.message = message;
+            self.opener_result = None;
+        }
+    }
+    fn handle_input(
+        &mut self,
+        input: Event,
+        control: &provider::Control,
+        sender: &std::sync::mpsc::Sender<Wake>,
+    ) -> bool {
+        match input {
+            Event::Key(k) => {
+                if k.kind == KeyEventKind::Press {
+                    return self.handle_key_press(k.code, control, sender);
+                }
+                false
+            }
+            Event::Mouse(m) => {
+                if !self.details && m.kind == MouseEventKind::Down(MouseButton::Left) {
+                    self.handle_mouse_click(ratatui::layout::Position::new(m.column, m.row));
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+    fn handle_key_press(
+        &mut self,
+        code: KeyCode,
+        control: &provider::Control,
+        sender: &std::sync::mpsc::Sender<Wake>,
+    ) -> bool {
+        if let Some(quit) = self.handle_details_key(code) {
+            return quit;
+        }
+        if self.handle_navigation_key(code)
+            || self.handle_audit_key(code)
+            || self.handle_mops_key(code)
+        {
+            return false;
+        }
+        self.handle_action_key(code, control, sender)
+    }
+    fn handle_details_key(&mut self, code: KeyCode) -> Option<bool> {
+        if !self.details && !matches!(code, KeyCode::Char('d' | 'q')) {
+            return None;
+        }
+        match code {
+            KeyCode::Esc => self.details = false,
+            KeyCode::Char('d') => self.toggle_details(),
+            KeyCode::Char('q') => return Some(true),
+            KeyCode::PageDown => self.detail_scroll = self.detail_scroll.saturating_add(5),
+            KeyCode::PageUp => self.detail_scroll = self.detail_scroll.saturating_sub(5),
+            _ => {}
+        }
+        Some(false)
+    }
+    fn handle_navigation_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            KeyCode::Down | KeyCode::Char('j') => self.move_selection(true),
+            KeyCode::Up | KeyCode::Char('k') => self.move_selection(false),
+            KeyCode::Char(c @ '1'..='4') => self.toggle_workshop_group(c),
+            KeyCode::Tab => self.focus_projects = !self.focus_projects,
+            KeyCode::F(1) => self.view = View::Workshop,
+            KeyCode::F(2) => self.message = "Booth is not implemented".into(),
+            KeyCode::F(3) => self.view = View::Mops,
+            KeyCode::F(4) => self.view = View::Mayhem,
+            KeyCode::F(5) => self.view = View::Settings,
+            _ => return false,
+        }
+        true
+    }
+    fn handle_audit_key(&mut self, code: KeyCode) -> bool {
+        if self.view != View::Mayhem || self.audit_inputs.is_none() {
+            return false;
+        }
+        match code {
+            KeyCode::Char('B') => self.open_audit_json(true),
+            KeyCode::Char('C') => self.open_audit_json(false),
+            KeyCode::Char('[') => {
+                self.audit_finding_selected = self.audit_finding_selected.saturating_sub(1);
+            }
+            KeyCode::Char(']') => {
+                let n = self
+                    .audit
+                    .as_ref()
+                    .map_or(0, |a| a.finding_count(self.audit_selected));
+                step_index(&mut self.audit_finding_selected, n, true);
+            }
+            _ => return false,
+        }
+        true
+    }
+    fn open_audit_json(&mut self, baseline: bool) {
+        let path = self.audit.as_ref().map(|a| {
+            if baseline {
+                a.baseline.path.clone()
+            } else {
+                a.candidate.path.clone()
+            }
+        });
+        if let Some(path) = path {
+            self.launch(&path);
+        }
+    }
+    fn handle_mops_key(&mut self, code: KeyCode) -> bool {
+        if self.view != View::Mops {
+            return false;
+        }
+        let action = match code {
+            KeyCode::Enter | KeyCode::Char('o') => MopsAction::OpenPr,
+            KeyCode::Char('c') => MopsAction::CopyResume,
+            KeyCode::Char('f') => MopsAction::CopyFeedback,
+            KeyCode::Char('p') => MopsAction::OpenWorktree,
+            KeyCode::Char('l') => MopsAction::OpenRole,
+            KeyCode::Char('m') => MopsAction::ViewMayhem,
+            _ => return false,
+        };
+        self.mops_action(action);
+        true
+    }
+    fn handle_action_key(
+        &mut self,
+        code: KeyCode,
+        control: &provider::Control,
+        sender: &std::sync::mpsc::Sender<Wake>,
+    ) -> bool {
+        match code {
+            KeyCode::Char('q') | KeyCode::Esc => return true,
+            KeyCode::Enter | KeyCode::Char('o') => self.open_current(false),
+            KeyCode::Char('p') => self.open_current(true),
+            KeyCode::Char('r') => self.refresh(control.clone(), sender.clone()),
+            _ => {}
+        }
+        false
+    }
+    fn toggle_workshop_group(&mut self, c: char) {
+        if self.view == View::Workshop
+            && let Some(digit) = c.to_digit(10)
+        {
+            let i = (digit - 1) as usize;
+            self.collapsed[i] = !self.collapsed[i];
+        }
+    }
+    fn toggle_details(&mut self) {
+        self.details = !self.details;
+        self.detail_scroll = 0;
+    }
+    fn handle_mouse_click(&mut self, p: ratatui::layout::Position) {
+        if self.handle_overlay_or_tab_click(p) {
+            return;
+        }
+        self.handle_row_or_button_click(p);
+    }
+    fn handle_overlay_or_tab_click(&mut self, p: ratatui::layout::Position) -> bool {
+        if let Some((_, action)) = self.mops_actions.iter().find(|(r, _)| r.contains(p)) {
+            self.mops_action(*action);
+        } else if let Some((_, i)) = self.mops_rows.iter().find(|(r, _)| r.contains(p)) {
+            self.mops_selected = *i;
+        } else if let Some((_, i)) = self.audit_rows.iter().find(|(r, _)| r.contains(p)) {
+            self.audit_selected = *i;
+            self.audit_finding_selected = 0;
+        } else if let Some((_, view)) = self.tabs.iter().find(|(r, _)| r.contains(p)) {
+            self.view = *view;
+        } else if let Some((_, path)) = self.project_buttons.iter().find(|(r, _)| r.contains(p)) {
+            let path = path.clone();
+            self.launch(&path);
+        } else {
+            return false;
+        }
+        true
+    }
+    fn handle_row_or_button_click(&mut self, p: ratatui::layout::Position) {
+        if let Some((_, i)) = self.group_rows.iter().find(|(r, _)| r.contains(p)) {
+            self.collapsed[*i] = !self.collapsed[*i];
+        } else if let Some((_, i)) = self.worktree_rows.iter().find(|(r, _)| r.contains(p)) {
+            self.worktree_selected = *i;
+            self.focus_projects = false;
+        } else if let Some((_, i)) = self.project_file_rows.iter().find(|(r, _)| r.contains(p)) {
+            self.project_file_selected = *i;
+            self.focus_projects = false;
+        } else if let Some((_, i)) = self.project_rows.iter().find(|(r, _)| r.contains(p)) {
+            self.project_selected = *i;
+            self.project_file_selected = 0;
+            self.focus_projects = true;
+        } else if let Some((_, i)) = self.buttons.iter().find(|(r, _)| r.contains(p)) {
+            self.open(*i);
+        } else if let Some((_, i)) = self.rows.iter().find(|(r, _)| r.contains(p)) {
+            self.selected = *i;
+        }
+    }
+}
+
+fn maybe_run_cli_report(args: &[String]) -> io::Result<bool> {
     if let Some(index) = args.iter().position(|a| a == "--mayhem-pr-report") {
-        return print_pr_report(&args, index);
+        print_pr_report(args, index)?;
+        return Ok(true);
     }
     if args.iter().any(|a| a == "--mayhem-report") {
-        let input = audit::Inputs::parse(&args).map_err(io::Error::other)?;
+        let input = audit::Inputs::parse(args).map_err(io::Error::other)?;
         let report = input.load().map_err(io::Error::other)?;
         let output = match input.tool_filter.as_deref() {
             Some(tool) => report.markdown_tool(tool).map_err(io::Error::other)?,
             None => report.markdown(),
         };
         print!("{output}");
-        return Ok(());
+        return Ok(true);
     }
-
-    match std::env::args()
+    Ok(false)
+}
+fn apply_color_flag(args: &[String]) {
+    match args
+        .iter()
         .find(|a| a.starts_with("--color="))
-        .as_deref()
+        .map(String::as_str)
     {
         Some("--color=always") => crossterm::style::force_color_output(true),
         Some("--color=never") => crossterm::style::force_color_output(false),
         _ => {}
     }
-    let mut app = configured_app(&args)?;
-    let mut terminal = ratatui::init();
-    execute!(io::stdout(), EnableMouseCapture)?;
-    let control = provider::Control::default();
-    let _lifecycle = provider::Owner(control.clone());
-    let (sender, receiver) = std::sync::mpsc::channel();
-    // Drop closes the signal listener after normal exit or an early UI error.
-    #[cfg(unix)]
-    let _shutdown = ShutdownSignals::new(sender.clone())?;
-    let input_sender = sender.clone();
+}
+fn spawn_terminal_reader(input_sender: std::sync::mpsc::Sender<Wake>) {
     std::thread::spawn(move || {
         loop {
             let input = event::read();
@@ -882,143 +1080,48 @@ fn main() -> io::Result<()> {
             }
         }
     });
-    if app.view != View::Mops {
-        app.refresh(control.clone(), sender.clone());
-    }
-    let result = (|| loop {
-        // Inspect only our explicit opener result on terminal input, never on a timer.
-        if let Some(receiver) = &app.opener_result
-            && let Ok(message) = receiver.try_recv()
-        {
-            app.message = message;
-            app.opener_result = None;
-        }
-        terminal.draw(|f| ui::draw(f, &mut app))?;
-        let input = match receive_ui_event(&receiver, &mut app)? {
+}
+fn run_event_loop(
+    terminal: &mut ratatui::DefaultTerminal,
+    app: &mut App,
+    control: &provider::Control,
+    sender: &std::sync::mpsc::Sender<Wake>,
+    receiver: &std::sync::mpsc::Receiver<Wake>,
+) -> io::Result<()> {
+    loop {
+        app.poll_opener_result();
+        terminal.draw(|f| ui::draw(f, app))?;
+        let input = match receive_ui_event(receiver, app)? {
             UiEvent::Input(input) => input,
             UiEvent::Redraw => continue,
             UiEvent::Shutdown => break Ok(()),
         };
-        match input {
-            Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {
-                KeyCode::Esc if app.details => app.details = false,
-                KeyCode::Char('q') | KeyCode::Esc => break Ok(()),
-                KeyCode::PageDown if app.details => {
-                    app.detail_scroll = app.detail_scroll.saturating_add(5)
-                }
-                KeyCode::PageUp if app.details => {
-                    app.detail_scroll = app.detail_scroll.saturating_sub(5)
-                }
-                _ if app.details && !matches!(k.code, KeyCode::Char('d')) => {}
-                KeyCode::Down | KeyCode::Char('j') => app.move_selection(true),
-                KeyCode::Up | KeyCode::Char('k') => app.move_selection(false),
-                KeyCode::Char(c @ ('B' | 'C'))
-                    if app.view == View::Mayhem && app.audit_inputs.is_some() =>
-                {
-                    let path = app.audit.as_ref().map(|a| {
-                        if c == 'B' {
-                            a.baseline.path.clone()
-                        } else {
-                            a.candidate.path.clone()
-                        }
-                    });
-                    if let Some(path) = path {
-                        app.launch(&path);
-                    }
-                }
-                KeyCode::Char('[') if app.view == View::Mayhem && app.audit_inputs.is_some() => {
-                    app.audit_finding_selected = app.audit_finding_selected.saturating_sub(1)
-                }
-                KeyCode::Char(']') if app.view == View::Mayhem && app.audit_inputs.is_some() => {
-                    let n = app
-                        .audit
-                        .as_ref()
-                        .map_or(0, |a| a.finding_count(app.audit_selected));
-                    app.audit_finding_selected = app
-                        .audit_finding_selected
-                        .saturating_add(1)
-                        .min(n.saturating_sub(1));
-                }
-                KeyCode::Tab => app.focus_projects = !app.focus_projects,
-                KeyCode::Enter | KeyCode::Char('o') if app.view == View::Mops => {
-                    app.mops_action(MopsAction::OpenPr)
-                }
-                KeyCode::Char('c') if app.view == View::Mops => {
-                    app.mops_action(MopsAction::CopyResume)
-                }
-                KeyCode::Char('f') if app.view == View::Mops => {
-                    app.mops_action(MopsAction::CopyFeedback)
-                }
-                KeyCode::Char('p') if app.view == View::Mops => {
-                    app.mops_action(MopsAction::OpenWorktree)
-                }
-                KeyCode::Char('l') if app.view == View::Mops => {
-                    app.mops_action(MopsAction::OpenRole)
-                }
-                KeyCode::Char('m') if app.view == View::Mops => {
-                    app.mops_action(MopsAction::ViewMayhem)
-                }
-                KeyCode::Enter | KeyCode::Char('o') => app.open_current(false),
-                KeyCode::Char('p') => app.open_current(true),
-                KeyCode::Char(c @ '1'..='4') if app.view == View::Workshop => {
-                    let i = c as usize - '1' as usize;
-                    app.collapsed[i] = !app.collapsed[i];
-                }
-                KeyCode::Char('r') => {
-                    app.refresh(control.clone(), sender.clone());
-                }
-                KeyCode::F(1) => app.view = View::Workshop,
-                KeyCode::F(4) => app.view = View::Mayhem,
-                KeyCode::F(5) => app.view = View::Settings,
-                KeyCode::F(3) => app.view = View::Mops,
-                KeyCode::F(2) => app.message = "Booth is not implemented".into(),
-                KeyCode::Char('d') => {
-                    app.details = !app.details;
-                    app.detail_scroll = 0;
-                }
-                _ => {}
-            },
-            Event::Mouse(m)
-                if !app.details && m.kind == MouseEventKind::Down(MouseButton::Left) =>
-            {
-                let p = ratatui::layout::Position::new(m.column, m.row);
-                if let Some((_, action)) = app.mops_actions.iter().find(|(r, _)| r.contains(p)) {
-                    app.mops_action(*action);
-                } else if let Some((_, i)) = app.mops_rows.iter().find(|(r, _)| r.contains(p)) {
-                    app.mops_selected = *i;
-                } else if let Some((_, i)) = app.audit_rows.iter().find(|(r, _)| r.contains(p)) {
-                    app.audit_selected = *i;
-                    app.audit_finding_selected = 0;
-                } else if let Some((_, view)) = app.tabs.iter().find(|(r, _)| r.contains(p)) {
-                    app.view = *view;
-                } else if let Some((_, path)) =
-                    app.project_buttons.iter().find(|(r, _)| r.contains(p))
-                {
-                    let path = path.clone();
-                    app.launch(&path);
-                } else if let Some((_, i)) = app.group_rows.iter().find(|(r, _)| r.contains(p)) {
-                    app.collapsed[*i] = !app.collapsed[*i];
-                } else if let Some((_, i)) = app.worktree_rows.iter().find(|(r, _)| r.contains(p)) {
-                    app.worktree_selected = *i;
-                    app.focus_projects = false;
-                } else if let Some((_, i)) =
-                    app.project_file_rows.iter().find(|(r, _)| r.contains(p))
-                {
-                    app.project_file_selected = *i;
-                    app.focus_projects = false;
-                } else if let Some((_, i)) = app.project_rows.iter().find(|(r, _)| r.contains(p)) {
-                    app.project_selected = *i;
-                    app.project_file_selected = 0;
-                    app.focus_projects = true;
-                } else if let Some((_, i)) = app.buttons.iter().find(|(r, _)| r.contains(p)) {
-                    app.open(*i);
-                } else if let Some((_, i)) = app.rows.iter().find(|(r, _)| r.contains(p)) {
-                    app.selected = *i;
-                }
-            }
-            _ => {}
+        if app.handle_input(input, control, sender) {
+            break Ok(());
         }
-    })();
+    }
+}
+
+fn main() -> io::Result<()> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if maybe_run_cli_report(&args)? {
+        return Ok(());
+    }
+    apply_color_flag(&args);
+    let mut app = configured_app(&args)?;
+    let mut terminal = ratatui::init();
+    execute!(io::stdout(), EnableMouseCapture)?;
+    let control = provider::Control::default();
+    let _lifecycle = provider::Owner(control.clone());
+    let (sender, receiver) = std::sync::mpsc::channel();
+    // Drop closes the signal listener after normal exit or an early UI error.
+    #[cfg(unix)]
+    let _shutdown = ShutdownSignals::new(sender.clone())?;
+    spawn_terminal_reader(sender.clone());
+    if app.view != View::Mops {
+        app.refresh(control.clone(), sender.clone());
+    }
+    let result = run_event_loop(&mut terminal, &mut app, &control, &sender, &receiver);
     control.cancel();
     let cleanup = execute!(io::stdout(), DisableMouseCapture);
     ratatui::restore();

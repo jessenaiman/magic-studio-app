@@ -62,9 +62,9 @@
 
 pub mod activity;
 pub mod agent;
+pub mod animation_jobs;
 pub mod animation_links;
 pub(crate) mod audio_trace;
-pub mod animation_jobs;
 pub mod change_marker;
 pub mod character;
 pub mod command_center;
@@ -77,13 +77,13 @@ pub mod exports;
 pub mod image_cmds;
 pub mod image_generation;
 pub mod lyrics;
+pub mod magic_design;
 pub mod mesh_geometry;
 pub mod motion;
 pub mod motion_authoring;
 pub mod panels;
 pub mod part_replacement;
 pub mod parts;
-pub mod magic_design;
 pub mod project;
 pub mod project_settings;
 pub(crate) mod read_only_file;
@@ -212,7 +212,13 @@ fn outcome_stage(value: &Value) -> &'static str {
 
 fn announce_result(s: &Session, id: &str, params: &Value, result: &Result<Value>) {
     match result {
-        Ok(v) => activity::command(s.project_path.as_deref(), id, params, outcome_stage(v), None),
+        Ok(v) => activity::command(
+            s.project_path.as_deref(),
+            id,
+            params,
+            outcome_stage(v),
+            None,
+        ),
         Err(e) => activity::command(
             s.project_path.as_deref(),
             id,
@@ -234,9 +240,7 @@ fn note_edit(
     if !(project_edit && result.as_ref().is_ok_and(|v| v["ok"] != false)) {
         return;
     }
-    if s.project_saves
-        .load(std::sync::atomic::Ordering::Relaxed)
-        != saves_before
+    if s.project_saves.load(std::sync::atomic::Ordering::Relaxed) != saves_before
         || s.project_path.as_ref() != project_before
     {
         s.edits_since_save = 0;
@@ -392,7 +396,12 @@ impl Session {
         if record {
             announce_result(self, id, &params, &result);
         }
-        restore_lease(self, prior_owner, _writer.is_some(), project_before.as_ref());
+        restore_lease(
+            self,
+            prior_owner,
+            _writer.is_some(),
+            project_before.as_ref(),
+        );
         result
     }
     fn execute_inner(&mut self, id: &str, params: Value) -> Result<Value> {

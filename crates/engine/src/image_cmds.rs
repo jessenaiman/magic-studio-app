@@ -2,7 +2,7 @@
 //! color-to-alpha, and content-aware fill. Each resolves the active asset, shells out to
 //! `photocraft-cli`, and writes a derived PNG.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{EngineError, Result, Session};
