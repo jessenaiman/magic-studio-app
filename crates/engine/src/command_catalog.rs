@@ -52,6 +52,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"character.action"
             | b"character.frame"
             | b"character.render"
+            | b"character.sprite"
             | b"character.set"
     )
 }
@@ -1145,6 +1146,15 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
 /// Characters: Scribbles marks, PhotoCraft cuts, EffectCraft rigs, animates and renders.
 fn specs_character() -> Vec<CommandSpec> {
     vec![
+        cmd!(
+            "character.sprite",
+            "Sprite Cycle from a Scribbles Sheet (PhotoCraft, EffectCraft)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"action\":\"walk|run|jump|wave|turn\",\"sheet\":\"Scribbles action sheet PNG\",\"name\":\"optional sprite name; default the action\",\"columns\":4,\"rows\":2,\"fps\":12,\"duration\":4,\"mirror\":false}",
+            always,
+            crate::character::cmd_character_sprite
+        ),
         query!(
             "character.meta",
             "Character Views, Parts and Actions",
@@ -1213,7 +1223,7 @@ fn specs_character() -> Vec<CommandSpec> {
             "Render Frames or a Clip (EffectCraft)",
             ["Animation"],
             None,
-            "{\"character\":\"id\",\"view\":\"front|back|side\",\"start\":0,\"end\":1,\"fps\":24,\"format\":\"frames|clip\"}",
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"sprite\":\"optional sprite name instead of view\",\"start\":0,\"end\":1,\"fps\":24,\"format\":\"frames|clip\"}",
             always,
             crate::character::cmd_character_render
         ),

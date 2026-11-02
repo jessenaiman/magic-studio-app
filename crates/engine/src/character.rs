@@ -10,6 +10,7 @@ mod cut;
 mod mark;
 mod meta;
 mod rig;
+mod sprite;
 
 use std::path::{Path, PathBuf};
 
@@ -22,6 +23,7 @@ pub use cut::cmd_character_cut;
 pub use mark::cmd_character_mark;
 pub use meta::{cmd_character_meta, cmd_character_save_marks};
 pub use rig::cmd_character_rig;
+pub use sprite::cmd_character_sprite;
 
 /// The shared skeleton and its key poses, applied to every character.
 pub(crate) const POSES: &str = include_str!("character/poses.json");
@@ -192,7 +194,7 @@ pub fn cmd_character_frame(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn render_args(
-    view: &View,
+    comp: &str,
     project: &Path,
     out: &Path,
     range: (f64, f64, u64),
@@ -203,7 +205,7 @@ fn render_args(
         "render".into(),
         path_arg(project),
         "--comp".into(),
-        view.comp(),
+        comp.to_string(),
     ];
     args.extend([
         "--out".into(),
@@ -246,11 +248,33 @@ fn rendered_pngs(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(frames)
 }
 
+/// The folder, `.ecproj` and comp to render: a sprite (`sprite=<name>`) or a rigged view.
+fn render_target(s: &Session, p: &Value) -> Result<(PathBuf, PathBuf, String)> {
+    if let Some(name) = p["sprite"].as_str() {
+        let id = p["character"]
+            .as_str()
+            .map(crate::workspace::sanitize_asset_id)
+            .ok_or_else(|| bad("character=<id> is required"))?;
+        let dir = sprite::sprite_dir(s, &id, name)?;
+        let comp = format!("{id}-{name}");
+        let project = dir.join(format!("{comp}.ecproj"));
+        if !project.is_file() {
+            return Err(bad(format!(
+                "{} is missing; run character.sprite first",
+                project.display()
+            )));
+        }
+        return Ok((dir, project, comp));
+    }
+    let view = View::from_params(s, p)?;
+    let project = view.require("ecproj", "character.rig")?;
+    Ok((view.dir.clone(), project, view.comp()))
+}
+
 /// Render a time range as a PNG sequence (canvas playback) or a ProRes 4444 clip with alpha
 /// (for the film), in one EffectCraft render.
 pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
-    let view = View::from_params(s, p)?;
-    let project = view.require("ecproj", "character.rig")?;
+    let (base, project, comp) = render_target(s, p)?;
     let start = p["start"].as_f64().unwrap_or(0.0).max(0.0);
     let end = p["end"]
         .as_f64()
@@ -258,17 +282,17 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         .unwrap_or(start + 1.0);
     let fps = p["fps"].as_u64().unwrap_or(24).clamp(1, 60);
     let clip = p["format"].as_str() == Some("clip");
-    let name = format!("{}-{start:.2}-{end:.2}", view.comp());
+    let name = format!("{comp}-{start:.2}-{end:.2}");
     let (dir, out) = if clip {
-        let dir = view.dir.join("clips");
+        let dir = base.join("clips");
         (dir.clone(), dir.join(format!("{name}.mov")))
     } else {
-        let dir = view.dir.join("frames").join(&name);
+        let dir = base.join("frames").join(&name);
         (dir.clone(), dir.join("frame.png"))
     };
     std::fs::create_dir_all(&dir)?;
-    let args = render_args(&view, &project, &out, (start, end, fps), clip);
-    crate::workspace::run_tool_in(&view.dir, "effectcraft-cli", &args)?;
+    let args = render_args(&comp, &project, &out, (start, end, fps), clip);
+    crate::workspace::run_tool_in(&base, "effectcraft-cli", &args)?;
     let frames = if clip {
         Vec::new()
     } else {
