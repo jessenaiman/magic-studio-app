@@ -188,7 +188,25 @@ struct Inputs {
     audio: PathBuf,
     lettering: PathBuf,
     backgrounds: Vec<(f64, PathBuf)>,
+    /// Character shot clips (`character.shot`) and the second each starts at.
+    characters: Vec<(f64, PathBuf)>,
     duration: f64,
+}
+
+/// `characters: [{"clip": path, "from": seconds}]`, each clip an existing file.
+fn character_clips(dir: &Path, p: &Value) -> Result<Vec<(f64, PathBuf)>> {
+    let mut out = Vec::new();
+    for entry in p["characters"].as_array().into_iter().flatten() {
+        let clip = entry["clip"]
+            .as_str()
+            .map(|c| dir.join(c))
+            .filter(|c| c.is_file());
+        let clip =
+            clip.ok_or_else(|| invalid(format!("character clip missing: {}", entry["clip"])))?;
+        out.push((entry["from"].as_f64().unwrap_or(0.0), clip));
+    }
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    Ok(out)
 }
 
 fn inputs(s: &Session, dir: &Path, p: &Value) -> Result<Inputs> {
@@ -233,16 +251,18 @@ fn inputs(s: &Session, dir: &Path, p: &Value) -> Result<Inputs> {
         audio,
         lettering,
         backgrounds,
+        characters: character_clips(dir, p)?,
         duration,
     })
 }
 
-/// The editor project: a sequence with the audio on A1, backgrounds filling V1 by time, and
-/// the lettering on V2.
+/// The editor project: a sequence with the audio on A1, backgrounds filling V1 by time,
+/// character shots on V2 at their times, and the lettering on V3 above them.
 fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()> {
     let mut media = vec![arg(&film.audio)];
     media.extend(film.backgrounds.iter().map(|(_, i)| arg(i)));
     media.push(arg(&film.lettering));
+    media.extend(film.characters.iter().map(|(_, c)| arg(c)));
     let made = run(
         dir,
         project,
@@ -261,7 +281,9 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()>
             media.len()
         )));
     }
-    let (audio, lyrics, stills) = (items[0], items[items.len() - 1], &items[1..items.len() - 1]);
+    let nb = film.backgrounds.len();
+    let (audio, stills, lyrics, shots) =
+        (items[0], &items[1..=nb], items[nb + 1], &items[nb + 2..]);
     let times: Vec<f64> = film.backgrounds.iter().map(|(t, _)| *t).collect();
     let mut place = vec![
         json!({"id": "timeline.place", "params": {"item": audio, "track": "A1", "seconds": 0, "insert": false, "video": false}}),
@@ -269,9 +291,12 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()>
     for ((from, length), item) in spans(&times, film.duration).into_iter().zip(stills) {
         place.push(json!({"id": "timeline.place", "params": {"item": item, "track": "V1", "seconds": from, "insert": false, "duration": {"seconds": length}}}));
     }
-    place.push(json!({"id": "timeline.place", "params": {"item": lyrics, "track": "V2", "seconds": 0, "insert": false, "audio": false}}));
+    for ((from, _), item) in film.characters.iter().zip(shots) {
+        place.push(json!({"id": "timeline.place", "params": {"item": item, "track": "V2", "seconds": from, "insert": false, "audio": false}}));
+    }
+    place.push(json!({"id": "timeline.place", "params": {"item": lyrics, "track": "V3", "seconds": 0, "insert": false, "audio": false}}));
     let placed = run(dir, project, false, &place)?;
-    let clips: Vec<u64> = placed[1..placed.len() - 1]
+    let clips: Vec<u64> = placed[1..=nb]
         .iter()
         .flat_map(|r| ids(r, "clips"))
         .collect();
@@ -321,7 +346,7 @@ pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
         .collect();
     Ok(
         json!({"ok": true, "project": project, "export": exported, "duration": film.duration,
-        "backgrounds": backgrounds, "lettering": film.lettering}),
+        "backgrounds": backgrounds, "characters": film.characters.len(), "lettering": film.lettering}),
     )
 }
 

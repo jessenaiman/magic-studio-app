@@ -725,7 +725,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             "Assemble and Export the Film (editor)",
             ["Studio"],
             None,
-            "{\"backgrounds\":\"optional [{\\\"asset\\\":\\\"registered image id (or path)\\\",\\\"from\\\":0}]; defaults to storyboard scene backgrounds\",\"lettering\":\"optional; default lettering/lyrics.mov\",\"fps\":30,\"export\":\"true (default) writes exports/<song>.mp4\"}",
+            "{\"backgrounds\":\"optional [{\\\"asset\\\":\\\"registered image id (or path)\\\",\\\"from\\\":0}]; defaults to storyboard scene backgrounds\",\"characters\":\"optional [{\\\"clip\\\":\\\"character.shot .mov\\\",\\\"from\\\":seconds}] on V2\",\"lettering\":\"optional; default lettering/lyrics.mov (V3)\",\"fps\":30,\"export\":\"true (default) writes exports/<song>.mp4\"}",
             always,
             crate::assembly::cmd_video_assemble
         ),
