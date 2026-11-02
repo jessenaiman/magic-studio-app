@@ -1,5 +1,5 @@
 //! `character.sprite`: a Scribbles action sheet becomes a 2D sprite cycle. PhotoCraft crops each
-//! cell into a frame; EffectCraft imports the frames as an image sequence, loops it with Time
+//! cell into a frame and removes its background; EffectCraft imports the frames as an image sequence, loops it with Time
 //! Remap + `loopOut("cycle")` and (for a left-facing copy) flips it. Saved as an `.ecproj`.
 
 use std::path::{Path, PathBuf};
@@ -39,6 +39,12 @@ fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32)) -> Result<Vec<PathBuf
             "image.crop".into(),
             "--params".into(),
             crop.to_string(),
+            // Scribbles leaves a faint haze where the sheet should be clear; Remove Background
+            // makes every frame truly transparent so it composites cleanly over a scene.
+            "--cmd".into(),
+            "layer.removeBackground".into(),
+            "--params".into(),
+            "{\"refine\":true}".into(),
             "--out".into(),
             path_arg(&file),
         ];
