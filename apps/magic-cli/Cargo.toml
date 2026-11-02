@@ -1,0 +1,24 @@
+[package]
+name = "magic-cli"
+description = "Magic Studio command line and MCP server: one binary over the shared engine registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "magic-cli"
+path = "src/main.rs"
+
+[dependencies]
+magicstudio-engine = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4.6", features = ["derive", "env"] }
+rmcp = { version = "3.8", default-features = false, features = ["server", "macros", "transport-io"] }
+schemars = "1.2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync"] }
+base64 = "0.22"

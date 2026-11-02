@@ -208,7 +208,10 @@ fn look_command(app: &AppHandle, params: &Value, none: &Value) -> Result<Value, 
 
 /// Close the workspace after reporting the request, then exit this process.
 fn quit_command(app: &AppHandle, id: &str, params: &Value) -> Result<Value, String> {
-    let force = params.get("force").and_then(Value::as_bool).unwrap_or(false);
+    let force = params
+        .get("force")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     crate::feedback::guard_with_force(app, id, false, force)?;
     magicstudio_engine::activity::append(
         json!({"stage":"close_requested","command":"app.quit","origin":params["_origin"],"client_label":params["_client"],"request_id":params["_request_id"],"project":crate::feedback::snapshot(app)?["active_project"]}),
