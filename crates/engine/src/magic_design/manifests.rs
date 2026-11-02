@@ -302,25 +302,23 @@ impl ManifestAsset<'_> {
                 &asset.attached_asset_sheet,
                 "Guided Cutout Rig Asset Sheet",
                 "asset_sheet",
-                "/home/jesse/main-vault/Creative/Design/Characters/3d poses/Create_pose_sheet_for_puppet_202607180130_15.jpeg",
                 (1800, 1120),
             ),
             (
                 &asset.attached_turnaround_sheet,
                 "Turnaround Sheet Reference",
                 "turnaround_sheet",
-                "/home/jesse/main-vault/Creative/Design/Characters/3d poses/Character_turnaround_sheet_anima…_202607180130_5.jpeg",
                 (1376, 768),
             ),
         ];
-        for (sheet, label, kind, raw_path, fallback_size) in sheets {
+        for (sheet, label, kind, fallback_size) in sheets {
             if let Some(path) = sheet {
                 let (width, height) = image::image_dimensions(path).unwrap_or(fallback_size);
                 asset.attached_references.push(AttachedReference {
                     label: label.into(),
                     kind: kind.into(),
                     path: path.clone(),
-                    raw_path: Some(raw_path.into()),
+                    raw_path: None,
                     width,
                     height,
                     report: None,

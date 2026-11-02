@@ -168,10 +168,10 @@ Bespoke compositions are **throwaway and project-local** — they never enter an
 - Author under `projects/<slug>/` (gitignored). The render tool auto-stages your `.tsx`/`.ts`
   source into `remotion-composer/projects/<slug>/` via mtime-skip copy so webpack can resolve
   `node_modules` — your source-of-truth stays under `projects/`.
-- Scaffold with `python scripts/scaffold_atelier_project.py <slug>` — emits engine
-  plumbing only (entry / Root / blank `Composition.tsx` / `art-direction.md` / props
-  template / README). Zero creative content; the placeholder is a deliberately ugly black
-  screen so the post-render review correctly refuses to ship the scaffold unauthored.
+- Scaffold the project folder by hand (entry / Root / blank `Composition.tsx` /
+  `art-direction.md` / props template / README). Zero creative content in the
+  scaffold; the placeholder is a deliberately ugly black screen so the
+  post-render review correctly refuses to ship the scaffold unauthored.
 - Keep media in `projects/<slug>/public/` and pass that as `bespoke.public_dir`.
 - Render via `video_compose` `operation="render"`:
 
@@ -226,7 +226,7 @@ registry (`src/components`, `src/Explainer`, etc.), and warns if `art_direction`
 - **Cost honesty.** Atelier costs more agent tokens and iteration than templated. Say so at proposal
   so the user opts in knowingly. Quality varies more without a stock baseline — mitigate with strong
   principle skills (above) and the distinctness review, not by reintroducing reuse.
-- **Checkpoint cadence.** Follow `skills/meta/checkpoint-protocol.md`: present script + scene plan
+- **Checkpoint cadence.** Follow the checkpoint policy in `AGENT_GUIDE.md`: present script + scene plan
   for approval BEFORE generating assets, then the **assets gate**, then a first-render checkpoint.
   Do not batch-generate ahead of sign-off, and **do not render a draft to earn the assets review** —
   the assets gate is held *before* compose (see below).
@@ -245,9 +245,9 @@ registry (`src/components`, `src/Explainer`, etc.), and warns if `art_direction`
     --frame=<mid_frame> --props=<abs artifacts/props.json> --public-dir=<abs public/>
   ```
 
-  A helper that reads the scene_plan and renders all stills is at
-  `scripts/atelier_snapshots.py` (`python scripts/atelier_snapshots.py <slug>`). Then STOP at the
-  assets gate. The full/draft render is the **compose** stage, after approval.
+  Render each scene's still with the same CLI (no bundled helper remains). Then
+  STOP at the assets gate. The full/draft render is the **compose** stage, after
+  approval.
 
 ## Worked precedents (for the *workflow*, not the look)
 

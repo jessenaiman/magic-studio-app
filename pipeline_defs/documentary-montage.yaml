@@ -17,34 +17,16 @@ reference_input:
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/documentary-montage/executive-producer
   budget_default_usd: 1.00
   max_revisions_per_stage: 3
   max_send_backs: 2
   max_wall_time_minutes: 60
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/documentary-montage/executive-producer
-  - pipelines/documentary-montage/idea-director
-  - pipelines/documentary-montage/scene-director
-  - pipelines/documentary-montage/asset-director
-  - pipelines/documentary-montage/edit-director
-  - pipelines/documentary-montage/compose-director
   - meta/reviewer
-  - meta/checkpoint-protocol
-
-compatible_playbooks:
-  custom_allowed: true
 
 stages:
   - name: idea
-    skill: pipelines/documentary-montage/idea-director
     produces:
       - brief
     tools_available: []
@@ -64,7 +46,6 @@ stages:
       - end_tag_plan present in metadata (text, palette, duration, mode — may be `null` ONLY with explicit user opt-out note)
 
   - name: scene_plan
-    skill: pipelines/documentary-montage/scene-director
     required_artifacts_in:
       - brief
     produces:
@@ -84,7 +65,6 @@ stages:
       - Sum of target_hold_seconds within 10% of brief.duration_seconds
 
   - name: assets
-    skill: pipelines/documentary-montage/asset-director
     required_artifacts_in:
       - scene_plan
       - brief
@@ -116,7 +96,6 @@ stages:
       - metadata.corpus_stats present (standard path) OR metadata.search_stats present (fast path)
 
   - name: edit
-    skill: pipelines/documentary-montage/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -139,7 +118,6 @@ stages:
       - Timeline duration within 10% of brief.duration_seconds
 
   - name: compose
-    skill: pipelines/documentary-montage/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest

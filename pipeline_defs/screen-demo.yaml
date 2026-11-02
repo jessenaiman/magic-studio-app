@@ -42,41 +42,17 @@ production_modes:
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/screen-demo/executive-producer
   budget_default_usd: 1.00
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 10
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/screen-demo/executive-producer
-  - pipelines/screen-demo/idea-director
-  - pipelines/screen-demo/script-director
-  - pipelines/screen-demo/scene-director
-  - pipelines/screen-demo/asset-director
-  - pipelines/screen-demo/edit-director
-  - pipelines/screen-demo/compose-director
-  - pipelines/screen-demo/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
   - meta/animation-runtime-selector
-
-compatible_playbooks:
-  recommended:
-    - minimalist-diagram
-    - clean-professional
-  also_works: []
-  custom_allowed: true
 
 stages:
   - name: idea
-    skill: pipelines/screen-demo/idea-director
     produces:
       - brief
       - decision_log
@@ -92,7 +68,6 @@ stages:
       - Brief references the provided screen recording footage
 
   - name: script
-    skill: pipelines/screen-demo/script-director
     required_artifacts_in:
       - brief
     optional_artifacts_in:
@@ -118,7 +93,6 @@ stages:
       - Script sections have timestamps from transcript or manual annotation
 
   - name: scene_plan
-    skill: pipelines/screen-demo/scene-director
     required_artifacts_in:
       - script
     optional_artifacts_in:
@@ -141,7 +115,6 @@ stages:
       - Every key workflow step has a corresponding scene
 
   - name: assets
-    skill: pipelines/screen-demo/asset-director
     required_artifacts_in:
       - scene_plan
     optional_artifacts_in:
@@ -172,7 +145,6 @@ stages:
       - All referenced asset files exist on disk
 
   - name: edit
-    skill: pipelines/screen-demo/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -192,7 +164,6 @@ stages:
       - All cuts reference valid source files and assets
 
   - name: compose
-    skill: pipelines/screen-demo/compose-director
     required_artifacts_in:
       - edit_decisions
       - asset_manifest
@@ -226,7 +197,6 @@ stages:
       - Output file exists and passes ffprobe validation
 
   - name: publish
-    skill: pipelines/screen-demo/publish-director
     required_artifacts_in:
       - render_report
       - final_review

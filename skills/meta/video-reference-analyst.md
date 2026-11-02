@@ -63,7 +63,7 @@ the visual transitions, the narration style]
 Now let me check what I can do with your current setup..."
 ```
 
-The 5-aspect block above is the **canonical form** that `proposal-director`, `script-director`, and `scene-director` will read. Do not collapse it back into prose — keep the labels.
+The 5-aspect block above is the **canonical form** that The `proposal`, `script`, and `scene_plan` stages will read. Do not collapse it back into prose — keep the labels.
 
 **Motion classification is critical.** The VideoAnalysisBrief now includes per-scene
 `motion_type` ("motion_clip", "animated_still", "static_image") and `flow_variance`.
@@ -94,7 +94,7 @@ comprehensive — the tools provide structure; your vision provides understandin
 
 ### 5-Aspect Structured Output (MANDATORY)
 
-The analyst's report MUST break down the reference video into the **five aspects** from the CMU/Harvard CHAI study (also the canonical structure used in `skills/creative/video-gen-prompting.md`). A narrative-only summary is no longer sufficient — downstream stages (proposal, script, scene-director) ingest the 5-aspect form directly without re-parsing prose.
+The analyst's report MUST break down the reference video into the **five aspects** from the CMU/Harvard CHAI study (also the canonical structure used in `skills/creative/video-gen-prompting.md`). A narrative-only summary is no longer sufficient — downstream stages (proposal, script, scene_plan) ingest the 5-aspect form directly without re-parsing prose.
 
 **Decision-tree captioning policy.** For each detected shot, walk all five aspects in order:
 
@@ -110,12 +110,12 @@ See `skills/creative/video-gen-prompting.md` for primitive definitions and the c
 
 ### Step 2: Capability Audit
 
-Run standard preflight:
+Run standard preflight — discover what is actually installed, never assume:
 
 ```bash
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.support_envelope(), indent=2))"
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.provider_menu(), indent=2))"
-python -c "from tools.tool_registry import registry; import json; registry.discover(); print(json.dumps(registry.capability_catalog(), indent=2))"
+magic-cli commands
+photocraft-cli --help   # and the other Craft CLIs as relevant
+cli-anything-blender --help
 ```
 
 Map the reference video's requirements against available capabilities:
@@ -183,7 +183,7 @@ message already answers some of these, skip those.
 the agent must do targeted research before proposing concepts. Do NOT skip this
 and rely solely on the reference analysis + your own knowledge.
 
-Research scope (keep it focused — this is not the full research-director stage):
+Research scope (keep it focused — this is not the full research stage):
 
 1. **Content landscape:** Search for 3-5 existing videos similar to what the user
    wants. What works? What's been overdone? What angles are fresh? This grounds
@@ -209,7 +209,7 @@ Research scope (keep it focused — this is not the full research-director stage
   escalation, unexpected payoff"
 
 **Time budget:** 2-3 minutes of web search. This is a lightweight pass, not a
-deep investigation. The full research-director stage runs later inside the
+deep investigation. The full research stage runs later inside the
 pipeline if needed.
 
 ### Step 4: Creative Proposals (2-3 variants)
@@ -368,12 +368,12 @@ Iterate on sample feedback until approved. Store samples at:
 After sample approval, the agent MUST enter the pipeline. This is not optional.
 
 **Mandatory steps:**
-1. Read the pipeline manifest: `pipeline_defs/animation.yaml` (or whichever
+1. Read the pipeline preset: `pipeline_defs/animation.yaml` (or whichever
    pipeline matches the production type)
 2. Execute **stage by stage** in order — research → proposal → script →
    scene_plan → assets → edit → compose → publish
-3. Before EACH stage, read its director skill from
-   `skills/pipelines/<pipeline>/<stage>-director.md`
+3. Before EACH stage, read the preset's stage entry (`produces`, `tools_available`,
+   `review_focus`, `success_criteria`) and the Video Production department agent
 4. Produce the required artifacts at each stage
 5. Hit every checkpoint where `checkpoint_required: true`
 6. Get user approval where `human_approval_default: true`

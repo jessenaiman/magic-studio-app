@@ -69,6 +69,7 @@ pub mod change_marker;
 pub mod character;
 pub mod command_center;
 pub mod commands;
+pub mod command_catalog;
 pub mod complexity;
 pub mod control_bindings;
 pub mod crew;

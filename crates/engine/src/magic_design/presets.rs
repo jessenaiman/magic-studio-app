@@ -17,9 +17,9 @@ pub(super) fn exports_root(root: &Path) -> PathBuf {
     root.to_path_buf()
 }
 
-/// Vault hero image path for a character slug (hardcoded user library paths).
+/// Hero image relative to the explicitly configured character library.
 pub(super) fn vault_hero_image(slug: &str) -> Option<PathBuf> {
-    let vault = Path::new("/home/jesse/main-vault/Creative/Design/Characters");
+    let vault = crate::project_settings::characters_root()?;
     let rel = match slug {
         "hopper" => "Hopper-no-background.png_202607180130.jpeg",
         "whiskers" => "Whiskers-no-back.png_202607180130.jpeg",

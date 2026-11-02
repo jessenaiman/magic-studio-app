@@ -60,6 +60,18 @@ def planes(rgba: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return img, mask
 
 
+def _match_region(a_img, around, step, radius, p):
+    if around is None:
+        return 0, 0, a_img
+    x0 = max(0, int(around[0] / step) - radius)
+    y0 = max(0, int(around[1] / step) - radius)
+    x1 = min(a_img.shape[1], int(around[0] / step) + radius + p.shape[1])
+    y1 = min(a_img.shape[0], int(around[1] / step) + radius + p.shape[0])
+    region = a_img[y0:y1, x0:x1]
+    if region.shape[0] < p.shape[0] or region.shape[1] < p.shape[1]:
+        return x0, y0, None
+    return x0, y0, region
+
 def match(
     assembled: np.ndarray,
     part: np.ndarray,
@@ -94,17 +106,9 @@ def match(
         ):
             continue
         p_img, p_mask = planes(p)
-        if around is not None:
-            x0 = max(0, int(around[0] / step) - radius)
-            y0 = max(0, int(around[1] / step) - radius)
-            x1 = min(a_img.shape[1], int(around[0] / step) + radius + p.shape[1])
-            y1 = min(a_img.shape[0], int(around[1] / step) + radius + p.shape[0])
-            region = a_img[y0:y1, x0:x1]
-            if region.shape[0] < p.shape[0] or region.shape[1] < p.shape[1]:
-                continue
-        else:
-            x0 = y0 = 0
-            region = a_img
+        x0, y0, region = _match_region(a_img, around, step, radius, p)
+        if region is None:
+            continue
         m4 = np.repeat(p_mask[:, :, None], 4, axis=2)
         res = cv2.matchTemplate(region, p_img, cv2.TM_SQDIFF, mask=m4) / max(
             1.0, float(p_mask.sum())
@@ -126,213 +130,14 @@ def place(
     return match(assembled, part, s * np.asarray(fine), around=(x, y), radius=12)
 
 
-def run(
-    sheet: Path,
-    receipt: Path | None = None,
-    out_dir: Path | None = None,
-    pivots: dict | None = None,
-    places: dict | None = None,
-    order: list | None = None,
-    explicit_parts: list | None = None,
-    explicit_ref: Path | None = None,
-) -> dict:
-    import math
+def _assign_layers(reference, placed, parts, roots, canvas, report):
+    order = [p["id"] for p in parts]
+    owner = _compute_owner(reference, placed, parts, roots, canvas, report)
+    placed, report = _build_layers(owner, reference, placed, parts, order, report, canvas)
+    return placed, report
 
-    if out_dir is None:
-        raise ValueError("out_dir is required")
-    receipt_data = (
-        json.loads(receipt.read_text()) if (receipt and receipt.is_file()) else {}
-    )
-    layout = receipt_data.get("rig_sheet")
-    if explicit_parts:
-        cells_count = len(explicit_parts) + 1
-        cols = int(math.ceil(math.sqrt(cells_count)))
-        rows = int(math.ceil(cells_count / cols))
-        parts = explicit_parts
-    elif layout:
-        cols, rows, parts = layout["columns"], layout["rows"], layout["parts"]
-    else:
-        raise ValueError(
-            "Provide either --parts (for an existing user sheet) or a valid rig_sheet --receipt"
-        )
-    # Pivots given now ([u, v] in the part, by id) correct a joint without drawing a new sheet.
-    parts = [{**p, "pivot": (pivots or {}).get(p["id"], p.get("pivot"))} for p in parts]
-    with Image.open(sheet) as im:
-        w, h = im.size
-    ids = ["assembled"] + [p["id"] for p in parts]
-    frames = [
-        {
-            "label": pid,
-            "box": [
-                i % cols * w // cols,
-                i // cols * h // rows,
-                (i % cols + 1) * w // cols,
-                (i // cols + 1) * h // rows,
-            ],
-        }
-        for i, pid in enumerate(ids)
-    ]
-    cut_dir = out_dir / "cut"
-    manifest = cut_sheet(
-        sheet, cut_dir, kind="single", layout={"frames": frames}, use_ocr=False
-    )
-    files = {f["label"]: cut_dir / f["file"] for f in manifest["frames"]}
-    cells = {
-        f["label"]: [
-            f["sourceOffset"][0],
-            f["sourceOffset"][1],
-            f["sourceOffset"][0] + f["sourceBox"][2] - f["sourceBox"][0],
-            f["sourceOffset"][1] + f["sourceBox"][3] - f["sourceBox"][1],
-        ]
-        for f in manifest["frames"]
-    }
-    if order:  # back-to-front stacking given now; a part in front of its partner is backed by the partner's hidden art
-        if sorted(order) != sorted(p["id"] for p in parts):
-            raise ValueError(
-                f"order must list every part once: {[p['id'] for p in parts]}"
-            )
-        parts = sorted(parts, key=lambda p: order.index(p["id"]))
-    missing = [pid for pid in ids if pid not in files]
-    if missing:
-        raise ValueError(f"cells with nothing cut: {missing}")
 
-    # What the rig shows at rest comes from the asset's own image (explicit_ref or the sheet's first reference)
-    # when it has transparency; otherwise from the sheet's redrawn assembled cell.
-    refs = (
-        [explicit_ref]
-        if explicit_ref
-        else [
-            Path(r["path"])
-            for r in receipt_data.get("references") or []
-            if r.get("path")
-        ]
-    )
-    use_ref = (
-        bool(refs)
-        and refs[0] is not None
-        and refs[0].is_file()
-        and Image.open(refs[0]).mode in ("RGBA", "LA")
-    )
-    assembled = trimmed(refs[0] if use_ref else files["assembled"])
-    ah, aw = assembled.shape[:2]
-    mx, my = int(aw * MARGIN), int(ah * MARGIN)
-    canvas = (aw + 2 * mx, ah + 2 * my)
-    placed, report = {}, []
-    reference = np.zeros((canvas[1], canvas[0], 4), np.uint8)
-    reference[my : my + ah, mx : mx + aw] = assembled
-    ref_mask = reference[:, :, 3] > 16
-
-    def put(spec, s, cx, cy, err, how):
-        p = cv2.resize(
-            trims[spec["id"]],
-            None,
-            fx=s,
-            fy=s,
-            interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR,
-        )
-        layer = np.zeros((canvas[1], canvas[0], 4), np.uint8)
-        cx, cy = int(round(cx)), int(round(cy))
-        x0, y0 = max(0, cx), max(0, cy)
-        x1, y1 = min(canvas[0], cx + p.shape[1]), min(canvas[1], cy + p.shape[0])
-        layer[y0:y1, x0:x1] = p[y0 - cy : y1 - cy, x0 - cx : x1 - cx]
-        placed[spec["id"]] = layer
-        report.append(
-            {
-                "id": spec["id"],
-                "scale": round(float(s), 3),
-                "position": [cx, cy],
-                "size": [p.shape[1], p.shape[0]],
-                "match_error": round(err, 1),
-                "placed_by": how,
-            }
-        )
-
-    # The sheet draws every part at one scale, though generators often enlarge them all to fill their cells.
-    # Each part's own best scale over a wide range votes; the median is the sheet's scale, and every part is
-    # then placed near it, so a part with much hidden artwork cannot settle at a wrong size.
-    trims = {
-        spec["id"]: trimmed(files[spec["id"]], cells[spec["id"]]) for spec in parts
-    }
-    votes = [
-        place(assembled, trims[spec["id"]], np.geomspace(0.2, 4.0, 48))[1]
-        for spec in parts
-    ]
-    sheet_scale = float(np.median(votes))
-    roots = [spec for spec in parts if not spec.get("parent")]
-    for spec in parts:
-        if spec in roots:
-            continue
-        if spec["id"] in (
-            places or {}
-        ):  # a placement correction: the part's centre in canvas pixels
-            cx, cy = places[spec["id"]]
-            h, w = trims[spec["id"]].shape[:2]
-            put(
-                spec,
-                sheet_scale,
-                cx - w * sheet_scale / 2,
-                cy - h * sheet_scale / 2,
-                0.0,
-                "given centre",
-            )
-            continue
-        err, s, x, y = place(
-            assembled, trims[spec["id"]], sheet_scale * np.linspace(0.9, 1.1, 9)
-        )
-        put(spec, s, x + mx, y + my, err, "colour")
-    # A root carries the most hidden artwork, so a free scale search misjudges it. The sheet draws every
-    # part at one scale, so the root takes the scale its children were placed at and only its position
-    # is matched.
-    child_scale = (
-        float(np.median([row["scale"] for row in report])) if report else sheet_scale
-    )
-    for spec in roots:
-        err, s, x, y = place(assembled, trims[spec["id"]], [child_scale], fine=[1.0])
-        put(spec, s, x + mx, y + my, err, "colour at the children's scale")
-    report.sort(key=lambda row: [p["id"] for p in parts].index(row["id"]))
-
-    def bounds(mask):
-        ys, xs = np.nonzero(mask)
-        return xs.min(), ys.min(), xs.max(), ys.max()
-
-    by_id = {p["id"]: p for p in parts}
-    for row in report:
-        spec = by_id[row["id"]]
-        mask = placed[row["id"]][:, :, 3] > 16
-        x0, y0, x1, y1 = bounds(mask)
-        parent = spec.get("parent")
-        if spec.get("pivot"):
-            u, v = spec["pivot"]
-            pivot, source = [x0 + u * (x1 - x0), y0 + v * (y1 - y0)], "given"
-        elif parent:
-            overlap = mask & cv2.dilate(
-                (placed[parent][:, :, 3] > 16).astype(np.uint8),
-                np.ones((9, 9), np.uint8),
-            ).astype(bool)
-            if overlap.any():
-                ys, xs = np.nonzero(overlap)
-                pivot, source = (
-                    [float(xs.mean()), float(ys.mean())],
-                    "overlap with parent",
-                )
-            else:
-                pivot, source = (
-                    [(x0 + x1) / 2, (y0 + y1) / 2],
-                    "centre (does not touch parent)",
-                )
-        else:
-            pivot, source = [(x0 + x1) / 2, (y0 + y1) / 2], "centre"
-        row.update(
-            parent=parent,
-            pivot=[round(pivot[0], 1), round(pivot[1], 1)],
-            pivot_source=source,
-        )
-
-    # Every visible pixel of the asset belongs to one part: of the parts whose placed sheet drawing covers it
-    # and resembles it there, the one that matches best (smoothed, so regions are whole; nearer the front wins ties); a
-    # pixel no part covers goes to the nearest owned pixel's part. A layer holds the asset's own pixels where
-    # it owns them, and its sheet pixels only where they hide behind a joint partner in front (the painted
-    # joint art a turning part uncovers). So the rig at rest is the asset itself.
+def _compute_owner(reference, placed, parts, roots, canvas, report):
     order = [p["id"] for p in parts]
     visible = reference[:, :, 3] > 0
     cost = np.full((len(order),) + visible.shape, np.inf, np.float32)
@@ -391,6 +196,10 @@ def run(
     if gaps.any() and (owner >= 0).any():
         _, (iy, ix) = ndi.distance_transform_edt(owner < 0, return_indices=True)
         owner[gaps] = owner[iy[gaps], ix[gaps]]
+    return owner
+
+
+def _build_layers(owner, reference, placed, parts, order, report, canvas):
     layers = {}
     for k, pid in enumerate(order):
         layer = np.zeros_like(reference)
@@ -425,7 +234,10 @@ def run(
             float((layers[a][:, :, 3][front] > 16).mean()) if front.any() else 0.0, 3
         )
     placed = layers
+    return placed, report
 
+
+def _write_outputs(out_dir, placed, reference, report, parts, canvas, sheet_scale, refs, use_ref, manifest):
     out_dir.mkdir(parents=True, exist_ok=True)
     composite = Image.new("RGBA", canvas)
     for spec in parts:  # back to front
@@ -501,6 +313,243 @@ def run(
     }
     (out_dir / "placement.json").write_text(json.dumps(result, indent=2))
     return result
+
+
+def _place_parts(assembled, files, cells, parts, places, mx, my, canvas, put, report, placed):
+    trims = {
+        spec["id"]: trimmed(files[spec["id"]], cells[spec["id"]]) for spec in parts
+    }
+    votes = [
+        place(assembled, trims[spec["id"]], np.geomspace(0.2, 4.0, 48))[1]
+        for spec in parts
+    ]
+    sheet_scale = float(np.median(votes))
+    roots = [spec for spec in parts if not spec.get("parent")]
+    for spec in parts:
+        if spec in roots:
+            continue
+        if spec["id"] in (
+            places or {}
+        ):  # a placement correction: the part's centre in canvas pixels
+            cx, cy = places[spec["id"]]
+            h, w = trims[spec["id"]].shape[:2]
+            put(
+                spec,
+                sheet_scale,
+                cx - w * sheet_scale / 2,
+                cy - h * sheet_scale / 2,
+                0.0,
+                "given centre",
+            )
+            continue
+        err, s, x, y = place(
+            assembled, trims[spec["id"]], sheet_scale * np.linspace(0.9, 1.1, 9)
+        )
+        put(spec, s, x + mx, y + my, err, "colour")
+    # A root carries the most hidden artwork, so a free scale search misjudges it. The sheet draws every
+    # part at one scale, so the root takes the scale its children were placed at and only its position
+    # is matched.
+    child_scale = (
+        float(np.median([row["scale"] for row in report])) if report else sheet_scale
+    )
+    for spec in roots:
+        err, s, x, y = place(assembled, trims[spec["id"]], [child_scale], fine=[1.0])
+        put(spec, s, x + mx, y + my, err, "colour at the children's scale")
+    report.sort(key=lambda row: [p["id"] for p in parts].index(row["id"]))
+    return sheet_scale, roots, trims
+
+
+def _assign_pivots(parts, report, placed, bounds):
+    by_id = {p["id"]: p for p in parts}
+    for row in report:
+        spec = by_id[row["id"]]
+        mask = placed[row["id"]][:, :, 3] > 16
+        x0, y0, x1, y1 = bounds(mask)
+        parent = spec.get("parent")
+        if spec.get("pivot"):
+            u, v = spec["pivot"]
+            pivot, source = [x0 + u * (x1 - x0), y0 + v * (y1 - y0)], "given"
+        elif parent:
+            overlap = mask & cv2.dilate(
+                (placed[parent][:, :, 3] > 16).astype(np.uint8),
+                np.ones((9, 9), np.uint8),
+            ).astype(bool)
+            if overlap.any():
+                ys, xs = np.nonzero(overlap)
+                pivot, source = (
+                    [float(xs.mean()), float(ys.mean())],
+                    "overlap with parent",
+                )
+            else:
+                pivot, source = (
+                    [(x0 + x1) / 2, (y0 + y1) / 2],
+                    "centre (does not touch parent)",
+                )
+        else:
+            pivot, source = [(x0 + x1) / 2, (y0 + y1) / 2], "centre"
+        row.update(
+            parent=parent,
+            pivot=[round(pivot[0], 1), round(pivot[1], 1)],
+            pivot_source=source,
+        )
+    
+    
+
+
+def _resolve_layout(receipt_data, explicit_parts):
+    import math
+    layout = receipt_data.get("rig_sheet")
+    if explicit_parts:
+        cells_count = len(explicit_parts) + 1
+        cols = int(math.ceil(math.sqrt(cells_count)))
+        rows = int(math.ceil(cells_count / cols))
+        parts = explicit_parts
+    elif layout:
+        cols, rows, parts = layout["columns"], layout["rows"], layout["parts"]
+    else:
+        raise ValueError(
+            "Provide either --parts (for an existing user sheet) or a valid rig_sheet --receipt"
+        )
+    return cols, rows, parts
+
+def _apply_order(parts, order):
+    if not order:
+        return parts
+    if sorted(order) != sorted(p["id"] for p in parts):
+        raise ValueError(
+            f"order must list every part once: {[p['id'] for p in parts]}"
+        )
+    return sorted(parts, key=lambda p: order.index(p["id"]))
+
+def _prepare(sheet, receipt, out_dir, explicit_parts, order, pivots):
+    if out_dir is None:
+        raise ValueError("out_dir is required")
+    receipt_data = (
+        json.loads(receipt.read_text()) if (receipt and receipt.is_file()) else {}
+    )
+    cols, rows, parts = _resolve_layout(receipt_data, explicit_parts)
+    # Pivots given now ([u, v] in the part, by id) correct a joint without drawing a new sheet.
+    parts = [{**p, "pivot": (pivots or {}).get(p["id"], p.get("pivot"))} for p in parts]
+    with Image.open(sheet) as im:
+        w, h = im.size
+    ids = ["assembled"] + [p["id"] for p in parts]
+    frames = [
+        {
+            "label": pid,
+            "box": [
+                i % cols * w // cols,
+                i // cols * h // rows,
+                (i % cols + 1) * w // cols,
+                (i // cols + 1) * h // rows,
+            ],
+        }
+        for i, pid in enumerate(ids)
+    ]
+    cut_dir = out_dir / "cut"
+    manifest = cut_sheet(
+        sheet, cut_dir, kind="single", layout={"frames": frames}, use_ocr=False
+    )
+    files = {f["label"]: cut_dir / f["file"] for f in manifest["frames"]}
+    cells = {
+        f["label"]: [
+            f["sourceOffset"][0],
+            f["sourceOffset"][1],
+            f["sourceOffset"][0] + f["sourceBox"][2] - f["sourceBox"][0],
+            f["sourceOffset"][1] + f["sourceBox"][3] - f["sourceBox"][1],
+        ]
+        for f in manifest["frames"]
+    }
+    parts = _apply_order(parts, order)
+    missing = [pid for pid in ids if pid not in files]
+    if missing:
+        raise ValueError(f"cells with nothing cut: {missing}")
+    return receipt_data, cols, rows, parts, ids, frames, cut_dir, manifest, files, cells, missing
+
+
+def run(
+    sheet: Path,
+    receipt: Path | None = None,
+    out_dir: Path | None = None,
+    pivots: dict | None = None,
+    places: dict | None = None,
+    order: list | None = None,
+    explicit_parts: list | None = None,
+    explicit_ref: Path | None = None,
+) -> dict:
+    import math
+
+    receipt_data, cols, rows, parts, ids, frames, cut_dir, manifest, files, cells, missing = _prepare(sheet, receipt, out_dir, explicit_parts, order, pivots)
+    if missing:
+        raise ValueError(f"cells with nothing cut: {missing}")
+    # What the rig shows at rest comes from the asset's own image (explicit_ref or the sheet's first reference)
+    # when it has transparency; otherwise from the sheet's redrawn assembled cell.
+    refs = (
+        [explicit_ref]
+        if explicit_ref
+        else [
+            Path(r["path"])
+            for r in receipt_data.get("references") or []
+            if r.get("path")
+        ]
+    )
+    use_ref = (
+        bool(refs)
+        and refs[0] is not None
+        and refs[0].is_file()
+        and Image.open(refs[0]).mode in ("RGBA", "LA")
+    )
+    assembled = trimmed(refs[0] if use_ref else files["assembled"])
+    ah, aw = assembled.shape[:2]
+    mx, my = int(aw * MARGIN), int(ah * MARGIN)
+    canvas = (aw + 2 * mx, ah + 2 * my)
+    placed, report = {}, []
+    reference = np.zeros((canvas[1], canvas[0], 4), np.uint8)
+    reference[my : my + ah, mx : mx + aw] = assembled
+    ref_mask = reference[:, :, 3] > 16
+
+    def put(spec, s, cx, cy, err, how):
+        p = cv2.resize(
+            trims[spec["id"]],
+            None,
+            fx=s,
+            fy=s,
+            interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR,
+        )
+        layer = np.zeros((canvas[1], canvas[0], 4), np.uint8)
+        cx, cy = int(round(cx)), int(round(cy))
+        x0, y0 = max(0, cx), max(0, cy)
+        x1, y1 = min(canvas[0], cx + p.shape[1]), min(canvas[1], cy + p.shape[0])
+        layer[y0:y1, x0:x1] = p[y0 - cy : y1 - cy, x0 - cx : x1 - cx]
+        placed[spec["id"]] = layer
+        report.append(
+            {
+                "id": spec["id"],
+                "scale": round(float(s), 3),
+                "position": [cx, cy],
+                "size": [p.shape[1], p.shape[0]],
+                "match_error": round(err, 1),
+                "placed_by": how,
+            }
+        )
+
+    # The sheet draws every part at one scale, though generators often enlarge them all to fill their cells.
+    # Each part's own best scale over a wide range votes; the median is the sheet's scale, and every part is
+    # then placed near it, so a part with much hidden artwork cannot settle at a wrong size.
+    sheet_scale, roots, trims = _place_parts(assembled, files, cells, parts, places, mx, my, canvas, put, report, placed)
+
+    def bounds(mask):
+        ys, xs = np.nonzero(mask)
+        return xs.min(), ys.min(), xs.max(), ys.max()
+
+    _assign_pivots(parts, report, placed, bounds)
+    # Every visible pixel of the asset belongs to one part: of the parts whose placed sheet drawing covers it
+    # and resembles it there, the one that matches best (smoothed, so regions are whole; nearer the front wins ties); a
+    # pixel no part covers goes to the nearest owned pixel's part. A layer holds the asset's own pixels where
+    # it owns them, and its sheet pixels only where they hide behind a joint partner in front (the painted
+    # joint art a turning part uncovers). So the rig at rest is the asset itself.
+    placed, report = _assign_layers(reference, placed, parts, roots, canvas, report)
+
+    return _write_outputs(out_dir, placed, reference, report, parts, canvas, sheet_scale, refs, use_ref, manifest)
 
 
 def main(argv=None) -> int:

@@ -16,7 +16,7 @@
 Approved character/reference, source artwork and intended action.
 
 ## Skill
-/home/jesse/.codex/skills/2d-asset-to-animation/SKILL.md
+Use the installed `2d-asset-to-animation` skill from the current skill catalog.
 
 ## Output
 Reviewed parts/poses with measured pivots and a native preparation route.

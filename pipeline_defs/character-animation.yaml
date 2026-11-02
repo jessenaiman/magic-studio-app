@@ -20,47 +20,19 @@ reference_input:
     - scene_detect
     - frame_sampler
 
-extensions:
-  custom_scripts: true
-  custom_playbooks: true
-  custom_skills: true
-  custom_tools: false
-
 required_skills:
-  - pipelines/character-animation/executive-producer
-  - pipelines/character-animation/research-director
-  - pipelines/character-animation/proposal-director
-  - pipelines/character-animation/script-director
-  - pipelines/character-animation/character-design-director
-  - pipelines/character-animation/rig-plan-director
-  - pipelines/character-animation/scene-director
-  - pipelines/character-animation/asset-director
-  - pipelines/character-animation/edit-director
-  - pipelines/character-animation/compose-director
-  - pipelines/character-animation/publish-director
   - meta/reviewer
-  - meta/checkpoint-protocol
   - meta/animation-runtime-selector
 
 orchestration:
   mode: executive-producer
-  skill: pipelines/character-animation/executive-producer
   budget_default_usd: 2.00
   max_revisions_per_stage: 3
   max_send_backs: 3
   max_wall_time_minutes: 20
 
-compatible_playbooks:
-  recommended:
-    - flat-motion-graphics
-  also_works:
-    - clean-professional
-    - minimalist-diagram
-  custom_allowed: true
-
 stages:
   - name: research
-    skill: pipelines/character-animation/research-director
     produces:
       - research_brief
     tools_available: []
@@ -75,7 +47,6 @@ stages:
       - Technique notes identify reusable rigs, pose libraries, and effects needs
 
   - name: proposal
-    skill: pipelines/character-animation/proposal-director
     required_artifacts_in:
       - research_brief
     produces:
@@ -111,7 +82,6 @@ stages:
           - Sample proves character style, rig integrity, pose readability, and motion timing
 
   - name: script
-    skill: pipelines/character-animation/script-director
     required_artifacts_in:
       - proposal_packet
     optional_artifacts_in:
@@ -132,7 +102,6 @@ stages:
       - Character beats and audio architecture are explicit
 
   - name: character_design
-    skill: pipelines/character-animation/character-design-director
     required_artifacts_in:
       - script
       - proposal_packet
@@ -152,7 +121,6 @@ stages:
       - Every main character has required emotions, actions, and views
 
   - name: rig_plan
-    skill: pipelines/character-animation/rig-plan-director
     required_artifacts_in:
       - character_design
     produces:
@@ -173,7 +141,6 @@ stages:
       - Every required action has at least one pose or action strategy
 
   - name: scene_plan
-    skill: pipelines/character-animation/scene-director
     required_artifacts_in:
       - script
       - character_design
@@ -195,7 +162,6 @@ stages:
       - Every scene maps to rigged characters and required assets
 
   - name: assets
-    skill: pipelines/character-animation/asset-director
     required_artifacts_in:
       - character_design
       - rig_plan
@@ -224,7 +190,6 @@ stages:
       - Character assets are organized under projects/<name>/assets/characters
 
   - name: edit
-    skill: pipelines/character-animation/edit-director
     required_artifacts_in:
       - scene_plan
       - asset_manifest
@@ -249,7 +214,6 @@ stages:
       - Every scene has timed actions
 
   - name: compose
-    skill: pipelines/character-animation/compose-director
     required_artifacts_in:
       - edit_decisions
       - action_timeline
@@ -281,7 +245,6 @@ stages:
       - Output exists and passes technical validation
 
   - name: publish
-    skill: pipelines/character-animation/publish-director
     required_artifacts_in:
       - render_report
       - final_review

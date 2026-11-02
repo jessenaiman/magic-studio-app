@@ -52,7 +52,7 @@ needed, user permits Sol6.1 only. No paid model/provider switches made.
 Project `/run/media/jesse/Speedy/media/merriweather/nelly/Nelly.magic`.
 Shell on19897, Animation view, `mouse`, `@jump`, amount35%, speed2/2.58, paused at end.
 HyperFrames managed server3058. Protected other servers3002/3021–3023 untouched.
-Backlot read-only reference server4750 was started from source repo `.venv/bin/python -m backlot serve`.
+Backlot read-only reference server4750 was started from source repo `.venv/bin/python -m backlot serve` (the Backlot board has since been removed).
 Old egui19898 is closed. Do not maintain or delete it.
 In-app OpenCode session `ses_ea28376feffeRZ1TMZxBJQw0Hw`; MiniMax M3.1 Flash Free. Last assigned
 read-only validation of exported jump, placement record and HF check. May retrieve result via API.

@@ -10,10 +10,10 @@ repos:
     hooks:
       - id: ruff-check
         types_or: [python, pyi]
-        files: ^(?:backlot|pipeline|tools|scripts|agent-harness)/.*\.pyi?$
+        files: ^(?:pipeline|scripts|agent-harness)/.*\.pyi?$
       - id: ruff-format
         types_or: [python, pyi]
-        files: ^(?:backlot|pipeline|tools|scripts|agent-harness)/.*\.pyi?$
+        files: ^(?:pipeline|scripts|agent-harness)/.*\.pyi?$
         args: [--check]
   - repo: local
     hooks:

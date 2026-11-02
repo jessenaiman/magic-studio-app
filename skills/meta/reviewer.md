@@ -31,8 +31,8 @@ Before reviewing, gather:
 ### Step 2: Schema Validation
 
 First, the non-negotiable check:
-- Validate the artifact against its JSON schema (`schemas/artifacts/<name>.schema.json`)
-- If schema validation fails, this is a **critical** finding — fix immediately, do not proceed
+- Validate the artifact against its documented contract (the preset's `produces` entry)
+- If required fields are missing or malformed, this is a **critical** finding — fix immediately, do not proceed
 
 ### Step 3: Review Against Focus Items
 
@@ -200,7 +200,7 @@ Run at **scene_plan** and **edit** stages. Use `lib/slideshow_risk.py` to comput
 
 ## Decision Log Review
 
-Run at **every stage** after proposal. The decision log (`schemas/artifacts/decision_log.schema.json`) is a cumulative audit trail.
+Run at **every stage** after proposal. The decision log is a cumulative audit trail.
 
 ### Checks:
 1. **Existence**: Does the checkpoint reference a `decision_log_ref`? If not after proposal stage, flag as **SUGGESTION**.
