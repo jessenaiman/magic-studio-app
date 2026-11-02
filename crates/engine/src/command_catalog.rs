@@ -40,6 +40,12 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.snapshot"
             | b"video.render"
             | b"image.generate"
+            | b"scribbles.new"
+            | b"scribbles.image"
+            | b"scribbles.sheet"
+            | b"scribbles.poses"
+            | b"scribbles.actions"
+            | b"scribbles.custom"
             | b"character.mark"
             | b"character.cut"
             | b"character.rig"
@@ -93,6 +99,7 @@ pub fn build() -> Vec<CommandSpec> {
         specs_workshop_and_video,
         specs_video_and_intake,
         specs_character,
+        specs_scribbles,
         specs_diagnostics,
     ] {
         specs.extend(section());
@@ -1230,6 +1237,72 @@ fn specs_character() -> Vec<CommandSpec> {
             "Open in EffectCraft or PhotoCraft",
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"app\":\"effectcraft|photocraft\"}",
             crate::character::cmd_character_open
+        ),
+    ]
+}
+
+/// Scribbles: structured drawing requests, one template per kind of animation asset.
+fn specs_scribbles() -> Vec<CommandSpec> {
+    vec![
+        query!(
+            "scribbles.templates",
+            "Scribbles Templates",
+            "{}",
+            crate::scribbles::cmd_scribbles_templates
+        ),
+        cmd!(
+            "scribbles.new",
+            "New Character (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_new
+        ),
+        cmd!(
+            "scribbles.image",
+            "Redraw for Animation (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_image
+        ),
+        cmd!(
+            "scribbles.sheet",
+            "Turnaround Sheet (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_sheet
+        ),
+        cmd!(
+            "scribbles.poses",
+            "Pose Sheet (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_poses
+        ),
+        cmd!(
+            "scribbles.actions",
+            "Action Frames (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn\"}",
+            always,
+            crate::scribbles::cmd_scribbles_actions
+        ),
+        cmd!(
+            "scribbles.custom",
+            "Custom Drawing (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_custom
         ),
     ]
 }

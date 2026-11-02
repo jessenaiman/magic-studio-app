@@ -82,6 +82,7 @@ pub mod panels;
 pub mod project;
 pub mod project_settings;
 pub(crate) mod read_only_file;
+pub mod scribbles;
 pub mod session;
 pub mod skills_registry;
 pub mod storyboard;
