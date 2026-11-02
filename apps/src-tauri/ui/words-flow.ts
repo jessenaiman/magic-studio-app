@@ -279,7 +279,7 @@ class WordsFlowController {
       line.classList.toggle("singing-line", singing);
       line.classList.toggle("past", t > e + 0.2 && !singing);
     }
-    for (const chip of view.querySelectorAll(".words-line > .word.lettered")) {
+    for (const chip of view.querySelectorAll(".words-line .word.lettered")) {
       const s = Number(chip.dataset.start), e = Number(chip.dataset.end);
       chip.classList.toggle("singing", Number.isFinite(s) && t >= s - 0.05 && t <= e + 0.18);
     }
@@ -536,54 +536,59 @@ class WordsStageController {
     }, el("span", { class: "muted" }, `${label}: `), el("strong", {}, value));
   }
 
-  private buildWordSelectionChip(anim: any, line: any, lib: any, k: any, picked: string[], w: any) {
-    const act = k.acts?.[w.word_id], actName = act ? (lib.acts?.[act]?.name || act) : null;
-    const on = picked.includes(w.word_id);
+  private buildTokenPill(anim: any, line: any, words: any[], it: any, idx: number, activeIdx: number) {
+    const label = it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
+    const move = it.motion && it.motion !== "quiet" ? (WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] || it.motion) : null;
+    const on = idx === activeIdx;
+    const icon = it.motion === "pop" ? "🔥" : it.motion === "rise" ? "↗" : it.motion === "fall" ? "↘" : it.motion === "loop" ? "↻" : "⚡";
     return el("button", {
-      class: `chip words-line-word${on ? " active" : ""}${act ? " has-act" : ""}`,
-      "data-word-id": w.word_id,
-      title: `${w.text} (${wordsClock(wordsAt(w))}) · Click to edit word act`,
+      class: `chip words-line-word${on ? " active" : ""}${move ? " has-act" : ""}`,
+      "data-token-index": String(idx),
+      title: `${label} · Click to edit token style, motion & marks`,
       onclick: () => {
-        wordsPanel.cue = null; wordsPanel.picked = [w.word_id]; wordsPanel.shelf = "acts";
-        wordsPanel.followed = `${anim.animation_id}/${line.id}`;
-        wordsPanel.time = wordsAt(w) + 0.12;
-        wordsRender(); wordsSeekSong(wordsPanel.time);
+        wordsPanel.cue = null;
+        wordsPanel.item = idx;
+        wordsPanel.picked = [...it.word_ids];
+        const firstWord = words.find((w: any) => w.word_id === (it.accent || it.word_ids[0]));
+        if (firstWord) wordsPanel.time = wordsAt(firstWord) + 0.12;
+        wordsRender();
+        wordsSeekSong(wordsPanel.time);
       }
-    }, actName ? `${w.text} · ${actName}` : w.text);
+    }, label, move ? el("span", { class: "words-token-move" }, `${icon} ${move}`) : null);
   }
 
-  selectionBar(anim: any, lib: any, k: any, picked: string[]) {
+  private resolveActiveItemIndex(design: any, picked: string[]) {
+    if (wordsPanel.item != null && design.items?.[wordsPanel.item]) return wordsPanel.item;
+    const byPick = (design.items || []).findIndex((it: any) => it.word_ids?.some((id: string) => picked.includes(id)));
+    if (byPick >= 0) return byPick;
+    const heroIdx = (design.items || []).findIndex((it: any) => it.motion && it.motion !== "quiet");
+    return heroIdx >= 0 ? heroIdx : 0;
+  }
+
+  selectionBar(anim: any, _lib: any, _k: any, picked: string[]) {
     const lines = wordsLines(anim), lineIdx = Math.max(0, lines.findIndex((l) => l.id === wordsPanel.line));
     const line = lines[lineIdx] || lines[0];
     if (!line) return null;
-    const span = wordsLineSpan(anim, line.id);
-    const cue = wordsPanel.cue ? wordsPanel.read.graphics?.find((c: any) => c.id === wordsPanel.cue) : null;
-    const badge = cue ? `Cue: ${cue.name}` : `${wordsLabel(anim)} · Line ${lineIdx + 1}`;
-    const allPicked = line.words.length > 1 && line.words.every((w: any) => picked.includes(w.word_id));
-    return el("div", { class: "words-selection-bar", role: "region", "aria-label": "Selected line and words" },
-      el("div", { class: "words-selection-meta" },
-        el("strong", { class: "words-selection-badge" }, badge),
-        el("span", { class: "meta" }, `${wordsClock(span.start)} – ${wordsClock(span.end)}`)),
+    const design = wordsDesign(anim, line.id), words = wordsLineWords(anim, line.id);
+    const activeIdx = this.resolveActiveItemIndex(design, picked);
+    const hasGrouped = (design.items || []).some((it: any) => (it.word_ids?.length || 0) > 1);
+    return el("div", { class: "words-selection-bar", role: "region", "aria-label": "Selected line tokens" },
+      el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "["),
       el("div", { class: "words-selection-words" },
-        ...line.words.map((w: any) => this.buildWordSelectionChip(anim, line, lib, k, picked, w)),
-        line.words.length > 1 ? el("button", {
-          class: `chip words-line-word${allPicked ? " active" : ""}`,
-          title: "Select all words in this line",
-          onclick: () => {
-            wordsPanel.cue = null; wordsPanel.picked = line.words.map((w: any) => w.word_id); wordsPanel.shelf = "acts";
-            wordsPanel.followed = `${anim.animation_id}/${line.id}`; wordsRender();
-          }
-        }, "All line") : null),
+        ...(design.items || []).map((it: any, idx: number) => this.buildTokenPill(anim, line, words, it, idx, activeIdx))),
+      el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "]"),
       el("div", { class: "words-selection-actions" },
+        hasGrouped ? el("button", {
+          id: "words-split-tokens", class: "ghost", title: "Split grouped phrase into individual draggable word tokens",
+          onclick: () => wordsDesignController.splitLineTokens(anim, line.id)
+        }, "Split words") : null,
         el("button", {
-          id: "words-replay-line",
-          title: "Play just this line's animation",
+          id: "words-replay-line", class: "ghost", title: "Play just this line's animation",
           onclick: () => wordsPreviewLine(anim, line.id, true)
-        }, "▶ Replay line"),
+        }, "▶ Replay"),
         el("button", {
-          id: "words-loop-line",
-          "aria-pressed": String(wordsPanel.loopLine),
-          title: "Loop this line continuously while trying animations",
+          id: "words-loop-line", class: "ghost", "aria-pressed": String(wordsPanel.loopLine),
+          title: "Loop this line continuously",
           onclick: () => {
             wordsPanel.loopLine = !wordsPanel.loopLine;
             if (wordsPanel.loopLine) wordsPreviewLine(anim, line.id, true);
@@ -591,6 +596,120 @@ class WordsStageController {
             wordsRender();
           }
         }, wordsPanel.loopLine ? "⟳ Looping" : "⟳ Loop")));
+  }
+
+  private colChoreography(anim: any, lineId: string) {
+    const layouts: Array<[string, string, string, string]> = [
+      ["plain", "karaoke", "Plain", "Clean horizontal row"],
+      ["poster", "giant", "Poster", "Hero word large & italic"],
+      ["stack", "stack", "Stack", "Vertical stepped column"],
+      ["cascade", "cascade", "Cascade", "Diagonal staircase"],
+      ["scatter", "scatter", "Scatter", "Tilted dynamic spread"]
+    ];
+    return el("div", { class: "words-engine-col", "aria-label": "Choreography layouts" },
+      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Choreography"), el("span", { class: "meta" }, "Spatial layout")),
+      el("div", { class: "words-choreo-grid" },
+        ...layouts.map(([kind, previewKey, name, does]) => {
+          const card = wordsCard(false, name, does, () => wordsDesignEdit(anim, lineId, (d) => { d.items = wordsLayout(anim, lineId, kind).items; }));
+          card.classList.add("words-diagram-card");
+          card.prepend(this.optionPreview("layouts", previewKey));
+          return card;
+        })));
+  }
+
+  private colMotionAndMarks(anim: any, lineId: string, design: any, activeIdx: number) {
+    const it = design.items?.[activeIdx] || design.items?.[0];
+    const words = wordsLineWords(anim, lineId);
+    const strokeQuick = WORDS_STROKES.filter((s) => ["Underline", "Rising swoop", "Loop", "Hill", "Arrow down"].includes(s.name));
+    return el("div", { class: "words-engine-col", "aria-label": "Motion styles and marks" },
+      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Motion & Marks"), el("span", { class: "meta" }, "EffectCraft animators")),
+      el("div", { class: "words-motion-grid" },
+        ...WORDS_MOVES.map(([key, name, does]) => wordsCard(it?.motion === key, String(name), String(does), () => wordsDesignEdit(anim, lineId, (d) => {
+          const target = d.items[activeIdx] || d.items[0];
+          if (!target) return;
+          target.motion = key;
+          if (key !== "quiet" && !target.accent) target.accent = target.word_ids.at(-1);
+        })))),
+      el("div", { class: "words-marks-bar" },
+        el("span", { class: "meta" }, "Marks:"),
+        ...strokeQuick.map((s) => {
+          const active = (design.draws || []).some((d: any) => d.name === s.name);
+          return el("button", {
+            class: `chip words-mark-pill${active ? " active" : ""}`, "aria-pressed": String(active), title: `${s.name} · ${s.does}`,
+            onclick: () => wordsDesignEdit(anim, lineId, (d) => {
+              const existingIdx = (d.draws || []).findIndex((x: any) => x.name === s.name);
+              if (existingIdx >= 0) { d.draws.splice(existingIdx, 1); return; }
+              const near = d.items[activeIdx] || d.items[0] || { x: 400, y: 120, size: 90, color: "#B8442A", accent: null };
+              const accentWord = words.find((w: any) => w.word_id === near.accent);
+              const start = Math.max(0, (accentWord ? wordsAt(accentWord) : wordsLineSpan(anim, lineId).start) - wordsLineSpan(anim, lineId).start);
+              d.draws.push({
+                name: s.name, view_box: s.view_box, x: Math.round(near.x), y: Math.round((near.y || 120) + (near.size || 80) * 1.05), w: s.w, h: s.h,
+                paths: [{ d: s.d, stroke: near.color || "#B8442A", width: 7, from: +start.toFixed(2), to: +(start + s.draw).toFixed(2) }]
+              });
+            })
+          }, `✎ ${s.name}`);
+        })));
+  }
+
+  private buildTokenSliders(lineId: string, design: any, it: any, activeIdx: number) {
+    const slider = (label: string, key: "size" | "rotate", min: number, max: number, unit: string) => {
+      const valBadge = el("span", { class: "words-slider-val" }, `${Math.round(Number(it[key] || 0))}${unit}`);
+      const input = el("input", {
+        type: "range", min: String(min), max: String(max), step: "1", "aria-label": `Token ${label}`,
+        oninput: (e: any) => {
+          const v = Number(e.target.value);
+          valBadge.textContent = `${v}${unit}`;
+          const held = wordsPanel.designs.get(lineId) ?? structuredClone(design);
+          if (held.items[activeIdx]) held.items[activeIdx][key] = v;
+          wordsPanel.designs.set(lineId, held);
+          wordsCanvasDraw();
+        },
+        onchange: () => wordsRender()
+      });
+      input.value = input.defaultValue = String(Math.round(Number(it[key] || 0)));
+      return el("label", { class: "words-slider-row" }, el("span", { class: "words-slider-label" }, label), input, valBadge);
+    };
+    return el("div", { class: "words-sliders-box" }, slider("Size", "size", 24, 260, "px"), slider("Tilt", "rotate", -45, 45, "°"));
+  }
+
+  private colTokenStyle(anim: any, lineId: string, design: any, activeIdx: number) {
+    const it = design.items?.[activeIdx] || design.items?.[0];
+    if (!it) return el("div", { class: "words-engine-col" }, el("p", { class: "muted" }, "Select a token to style."));
+    const words = wordsLineWords(anim, lineId);
+    const tokenLabel = it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
+    const curLook = WORDS_LETTERING.find((l) => l[3] === (it.font || "song") && l[4] === it.weight && l[5] === it.italic)?.[0] || "song";
+    const fill = el("input", {
+      type: "color", "aria-label": "Token fill colour",
+      onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].color = e.target.value; })
+    });
+    fill.value = fill.defaultValue = (/^#[0-9a-f]{6}$/i.test(it.color || "") ? it.color : "#173f49").toLowerCase();
+    const outlineColor = el("input", {
+      type: "color", "aria-label": "Token outline colour",
+      onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].outline = e.target.value; })
+    });
+    outlineColor.value = outlineColor.defaultValue = (/^#[0-9a-f]{6}$/i.test(it.outline || "") ? it.outline : "#fff8e9").toLowerCase();
+    const outlineOn = el("input", {
+      type: "checkbox", "aria-label": "Token outline enabled",
+      onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].outline = e.target.checked ? outlineColor.value : null; })
+    });
+    outlineOn.checked = outlineOn.defaultChecked = !!it.outline;
+    const accent = el("select", {
+      "aria-label": "Lands on word",
+      onchange: (e: any) => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) d.items[activeIdx].accent = e.target.value || null; })
+    }, el("option", { value: "" }, "Line start"), ...it.word_ids.map((id: string) => el("option", { value: id }, words.find((w: any) => w.word_id === id)?.text || id)));
+    accent.value = it.accent || "";
+    return el("div", { class: "words-engine-col", "aria-label": "Token style sliders and toggles" },
+      el("div", { class: "words-engine-col-head" }, el("strong", {}, "Token Controls"), el("span", { class: "words-editing-token" }, `“${tokenLabel}”`)),
+      this.buildTokenSliders(lineId, design, it, activeIdx),
+      el("div", { class: "words-typeface-pills" },
+        ...WORDS_LETTERING.map(([key, name, does, font, weight, italic]) => el("button", {
+          class: `chip words-type-pill${curLook === key ? " active" : ""}`, "aria-pressed": String(curLook === key), title: `${name} · ${does}`,
+          onclick: () => wordsDesignEdit(anim, lineId, (d) => { if (d.items[activeIdx]) Object.assign(d.items[activeIdx], { font, weight, italic }); })
+        }, String(name)))),
+      el("div", { class: "words-style-toggles" },
+        el("label", { class: "field-row" }, "Fill", fill),
+        el("label", { class: "field-row" }, outlineOn, "Outline", outlineColor),
+        el("label", { class: "field-row" }, "Lands on", accent)));
   }
 
   upperTracks(anim: any) {
@@ -615,26 +734,17 @@ class WordsStageController {
   }
 
   layers(anim: any) {
-    const lib: any = wordsPanel.read.kinetic_library || {}, k = anim.kinetic;
+    const lib: any = wordsPanel.read?.kinetic_library || {}, k = anim.kinetic || {};
     const picked = wordsPanel.picked.filter((id: string) => anim.words.some((w: any) => w.word_id === id));
-    const text = (id: string) => anim.words.find((w: any) => w.word_id === id)?.text || id;
-    const shelf = wordsPanel.shelf;
-    const pickBottom = (key: string) => () => { wordsPanel.shelf = wordsPanel.shelf === key ? null : key; wordsRender(); };
-    const graphicsCount = (k.draws || []).filter((d: any) => (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === "graphics").length;
-    const marksCount = (k.draws || []).filter((d: any) => (d.track || lib.strokes?.[d.stroke]?.track || "graphics") === "lettering").length;
-    return el("section", { class: "words-layers words-lower-tracks", "aria-label": `${wordsLabel(anim)} motion and meaning tracks` },
+    const lines = wordsLines(anim), lineId = wordsPanel.line || lines[0]?.id;
+    const design = lineId ? wordsDesign(anim, lineId) : { items: [], draws: [] };
+    const activeIdx = this.resolveActiveItemIndex(design, picked);
+    return el("section", { class: "words-layers words-lower-tracks", "aria-label": `${wordsLabel(anim)} animation engine inspector` },
       this.selectionBar(anim, lib, k, picked),
-      el("div", { class: "words-shelf-bar words-lower-bar", role: "toolbar", "aria-label": "Motion and meaning tracks" },
-        this.shelfTab(shelf, "arrive", "Arrive", lib.entrances?.[k.entrance]?.name || k.entrance, pickBottom("arrive")),
-        this.shelfTab(shelf, "acts", "Meaning", `${Object.keys(k.acts || {}).length} words`, pickBottom("acts")),
-        this.shelfTab(shelf, "cues", "Cues", `${graphicsCount} drawn`, pickBottom("cues")),
-        this.shelfTab(shelf, "marks", "Marks", `${marksCount}`, pickBottom("marks")),
-        el("span", { class: "words-spacer" }),
-        el("button", { class: "ghost", "aria-label": "Draw cue on scene", onclick: () => wordsDrawCue(anim) }, "Draw cue")),
-      shelf === "arrive" ? this.choiceRow(lib, "entrances", k.entrance, (entrance) => wordsKinetic({ entrance })) : null,
-      shelf === "acts" ? el("div", { class: "words-shelf-body" }, ...this.meaningShelf(anim, lib, k, picked, text)) : null,
-      shelf === "cues" ? el("div", { class: "words-shelf-body" }, ...this.strokesShelf(anim, lib, k, picked, text, "graphics"), wordsCueEditor(anim)) : null,
-      shelf === "marks" ? el("div", { class: "words-shelf-body" }, ...this.strokesShelf(anim, lib, k, picked, text, "lettering")) : null);
+      el("div", { class: "words-engine-grid", role: "group", "aria-label": "Advanced Animation Engine" },
+        this.colChoreography(anim, lineId),
+        this.colMotionAndMarks(anim, lineId, design, activeIdx),
+        this.colTokenStyle(anim, lineId, design, activeIdx)));
   }
 
   async apply(use: boolean) {
@@ -663,20 +773,39 @@ class WordsStageController {
     return true;
   }
 
-  async save(openStudio = false) {
+  async renderLettering() {
     const anim = wordsCurrent();
     if (!anim) return;
     try {
       if (!(await this.flushPendingEdits(anim))) return;
-      await wordsCommand("words.apply", { animation_id: anim.animation_id, use: true });
-      if (!serverUrl() && typeof designCommand === "function") {
-        await designCommand("video.server_start");
-        if (typeof renderTarget === "function") renderTarget();
-      }
-      wordsPanel.stage = null;
+      toast("Building EffectCraft project & rendering transparent lettering…");
+      const res = await wordsCommand("words.letter", { render: true });
       await wordsOpen();
-      if (openStudio && typeof setView === "function") await setView("studio");
-      toast(openStudio ? `Synced ${wordsLabel(anim)} · viewing live in HyperFrames Studio` : `Saved & synced ${wordsLabel(anim)} to HyperFrames video`);
+      toast(`Lettering rendered: ${res.render || res.project}`);
+    } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
+  }
+
+  async exportFilm() {
+    const anim = wordsCurrent();
+    if (!anim) return;
+    try {
+      if (!(await this.flushPendingEdits(anim))) return;
+      toast("Rendering EffectCraft lettering & assembling FilmCraft MP4…");
+      await wordsCommand("words.letter", { render: true });
+      const res = await wordsCommand("video.assemble", { export: true });
+      await wordsOpen();
+      toast(`Film exported: ${res.export || res.project}`);
+    } catch (error) { toast(String(error).replace(/^.*?: /, "")); }
+  }
+
+  async save(_openStudio = false) {
+    const anim = wordsCurrent();
+    if (!anim) return;
+    try {
+      if (!(await this.flushPendingEdits(anim))) return;
+      await wordsCommand("words.letter", { render: false }).catch(() => {});
+      await wordsOpen();
+      toast(`Saved ${wordsLabel(anim)} choreography to EffectCraft project`);
     } catch (error) { toast(String(error)); }
   }
 }

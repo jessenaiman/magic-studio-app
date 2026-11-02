@@ -231,30 +231,72 @@ class WordsDesignController {
 
   layout(anim: any, lineId: string, kind: string) {
     const words = wordsLineWords(anim, lineId), [W, H] = wordsWorld();
-    const item = (ws: any[], x: number, y: number, size: number, look = "song", motion = "quiet") => {
+    const item = (ws: any[], x: number, y: number, size: number, look = "song", motion = "quiet", rotate = 0) => {
       const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look)!;
       return {
-        word_ids: ws.map((w) => w.word_id), x: Math.round(x), y: Math.round(y), size: Math.round(size), font, weight, italic, color: anim.style?.color || "#1b2a33",
-        outline: null, rotate: 0, motion, accent: motion === "quiet" ? null : ws.at(-1).word_id
+        word_ids: ws.map((w) => w.word_id), x: Math.round(x), y: Math.round(y), size: Math.round(size), font, weight, italic,
+        color: motion !== "quiet" ? (anim.kinetic?.style?.hero_color || "#B8442A") : (anim.style?.color || "#173F49"),
+        outline: "#FFF8E9", rotate, motion, accent: motion === "quiet" ? null : ws.at(-1).word_id
       };
     };
     const width = (ws: any[], size: number, look = "song") => this.measure(anim, ws.map((w) => w.text).join(" "), size, look);
+    const hero = words.reduce((a: any, b: any) => (b.text.length > a.text.length ? b : a), words[0]);
     if (kind === "poster") {
-      const hero = words.reduce((a: any, b: any) => (b.text.length > a.text.length ? b : a)), k = words.indexOf(hero), small = H * 0.04;
+      const k = words.indexOf(hero), small = H * 0.045;
       return {
         items: [
-          ...(k ? [item(words.slice(0, k), W * 0.45, H * 0.1, small, "sans")] : []),
-          item([hero], W * 0.44, H * 0.15, H * 0.15, "serif-italic", "pop"),
-          ...(k < words.length - 1 ? [item(words.slice(k + 1), W * 0.45 + width([hero], H * 0.15, "serif-italic") * 0.6, H * 0.33, small, "sans")] : [])], draws: []
+          ...(k ? [item(words.slice(0, k), W * 0.34, H * 0.12, small, "sans")] : []),
+          item([hero], W * 0.38, H * 0.2, H * 0.145, "serif-italic", "pop"),
+          ...(k < words.length - 1 ? [item(words.slice(k + 1), W * 0.42 + width([hero], H * 0.145, "serif-italic") * 0.45, H * 0.4, small, "sans")] : [])], draws: []
       };
     }
     if (kind === "stack") {
-      const size = H * 0.085;
-      return { items: words.map((w: any, i: number) => item([w], W * 0.08, H * 0.12 + i * size * 1.1, size, i === words.length - 1 ? "serif-bold" : "song", i === words.length - 1 ? "settle" : "quiet")), draws: [] };
+      const size = H * 0.082;
+      return { items: words.map((w: any, i: number) => item([w], W * 0.14, H * 0.12 + i * size * 1.12, size, i === words.length - 1 ? "serif-bold" : "song", i === words.length - 1 ? "settle" : "quiet")), draws: [] };
     }
-    const size = H * 0.06, gap = size * 0.35, total = words.reduce((sum: number, w: any) => sum + width([w], size) + gap, -gap);
-    let x = (W - total) / 2;
-    return { items: words.map((w: any) => { const it = item([w], x, H * 0.82, size); x += width([w], size) + gap; return it; }), draws: [] };
+    if (kind === "cascade") {
+      const n = Math.max(1, words.length - 1);
+      return {
+        items: words.map((w: any, i: number) => {
+          const isHero = w === hero;
+          const sz = isHero ? H * 0.13 : H * 0.068;
+          return item([w], W * (0.14 + 0.54 * (i / n)), H * (0.14 + 0.48 * (i / n)), sz, isHero ? "serif-bold" : "song-bold", isHero ? "pop" : "rise");
+        }), draws: []
+      };
+    }
+    if (kind === "scatter") {
+      const tilts = [-7, 5, -4, 6, -5, 4], heights = [0.18, 0.38, 0.22, 0.46, 0.28, 0.42], n = Math.max(1, words.length);
+      return {
+        items: words.map((w: any, i: number) => {
+          const isHero = w === hero;
+          const sz = isHero ? H * 0.135 : H * 0.068;
+          return item([w], W * (0.12 + 0.68 * (i / n)), H * heights[i % heights.length], sz, isHero ? "serif-italic" : "song", isHero ? "pop" : "quiet", tilts[i % tilts.length]);
+        }), draws: []
+      };
+    }
+    const size = H * 0.064, gap = size * 0.38, total = words.reduce((sum: number, w: any) => sum + width([w], size) + gap, -gap);
+    let x = Math.max(80, (W - total) / 2);
+    return { items: words.map((w: any) => { const it = item([w], x, H * 0.22, size); x += width([w], size) + gap; return it; }), draws: [] };
+  }
+
+  private expandItemWords(anim: any, words: any[], it: any) {
+    if ((it.word_ids?.length || 0) <= 1) return [it];
+    let cx = it.x || 160;
+    const gap = (it.size || 58) * 0.36, out: any[] = [];
+    for (const wid of it.word_ids) {
+      const w = words.find((x: any) => x.word_id === wid);
+      if (!w) continue;
+      out.push({ ...structuredClone(it), text: w.text, word_ids: [wid], x: Math.round(cx), accent: it.accent === wid ? wid : null });
+      cx += this.measure(anim, w.text, it.size || 58, "song") + gap;
+    }
+    return out;
+  }
+
+  splitLineTokens(anim: any, lineId: string) {
+    const words = wordsLineWords(anim, lineId);
+    this.designEdit(anim, lineId, (d) => {
+      d.items = (d.items || []).flatMap((it: any) => this.expandItemWords(anim, words, it));
+    });
   }
 
   measure(anim: any, text: string, size: number, look: string) {
@@ -365,23 +407,82 @@ class WordsTimelineController {
     });
   }
 
-  drawLineItem(world: any, words: any[], span: any, local: number, interactive: boolean, W: number, it: any, i: number) {
-    const text = it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
-    const accentWord = words.find((w: any) => w.word_id === it.accent);
-    const a = (accentWord ? wordsAt(accentWord) : span.start) - span.start;
-    const settled = wordsEase.out3(wordsClamp((local - a) / 0.65)), arc = wordsClamp((local - a) / 0.75);
-    const pulse = this.itemPulse(local, a);
-    const [tx, ty] = this.itemMotionOffset(it.motion, settled, arc);
-    const node = el("div", { class: `lyric-item${interactive && wordsPanel.item === i ? " active" : ""}`, "data-weight": String(it.weight), "data-italic": String(it.italic), "data-font": it.font || "song" });
+  private itemHandles(world: any, W: number, it: any, i: number) {
+    const scaleHandle = (corner: string) => el("span", {
+      class: `lyric-handle lyric-handle-scale ${corner}`, "data-corner": corner, title: "Drag corner to scale word size",
+      onpointerdown: (e: any) => {
+        e.preventDefault(); e.stopPropagation();
+        wordsPanel.item = i;
+        wordsPanel.drag = { mode: "scale", i, x: e.clientX, y: e.clientY, startSize: it.size || 68, scale: world.getBoundingClientRect().width / W, moved: false };
+      }
+    });
+    const rotHandle = el("span", {
+      class: "lyric-handle lyric-handle-rot", title: "Drag to tilt word (-45° to +45°)",
+      onpointerdown: (e: any) => {
+        e.preventDefault(); e.stopPropagation();
+        wordsPanel.item = i;
+        wordsPanel.drag = { mode: "rotate", i, x: e.clientX, y: e.clientY, startRot: it.rotate || 0, scale: world.getBoundingClientRect().width / W, moved: false };
+      }
+    });
+    return [rotHandle, scaleHandle("nw"), scaleHandle("ne"), scaleHandle("sw"), scaleHandle("se")];
+  }
+
+  private flowArrowsSvg(design: any, words: any[], W: number, H: number) {
+    const items = design.items || [];
+    if (items.length < 2) return null;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "lyric-flow-arrows");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("aria-hidden", "true");
+    const paths: string[] = [];
+    for (let i = 0; i < items.length - 1; i++) {
+      const a = items[i], b = items[i + 1];
+      const aTxt = a.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
+      const ax = (a.x || 0) + Math.max(60, aTxt.length * (a.size || 58) * 0.52);
+      const ay = (a.y || 0) + (a.size || 58) * 0.55;
+      const bx = (b.x || 0) - 12;
+      const by = (b.y || 0) + (b.size || 58) * 0.55;
+      const mx = (ax + bx) / 2, my = Math.min(ay, by) - 34;
+      paths.push(`<circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="5" class="lyric-flow-dot"/>`);
+      paths.push(`<path d="M ${ax.toFixed(1)} ${ay.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${bx.toFixed(1)} ${by.toFixed(1)}" class="lyric-flow-curve"/>`);
+      paths.push(`<path d="M ${(bx - 12).toFixed(1)} ${(by - 7).toFixed(1)} L ${bx.toFixed(1)} ${by.toFixed(1)} L ${(bx - 12).toFixed(1)} ${(by + 7).toFixed(1)}" class="lyric-flow-head"/>`);
+    }
+    svg.innerHTML = paths.join("");
+    return svg;
+  }
+
+  private isItemSelected(interactive: boolean, it: any, i: number) {
+    if (!interactive) return false;
+    if (wordsPanel.item === i) return true;
+    return wordsPanel.item == null && (it.word_ids || []).some((id: string) => wordsPanel.picked.includes(id));
+  }
+
+  private applyItemVars(node: any, it: any, local: number, settled: number, pulse: number, tx: number, ty: number) {
     if (it.outline) { node.dataset.outline = ""; node.style.setProperty("--outline", it.outline); }
     const sy = it.motion === "pop" ? pulse : (it.motion === "settle" ? 1 - 0.035 * settled : 1);
     for (const [key, value] of [["--x", `${it.x}px`], ["--y", `${it.y}px`], ["--size", `${it.size}px`], ["--ink", it.color], ["--rot", `${it.rotate}deg`],
       ["--o", String(wordsEase.out2(wordsClamp((local + 0.4) / 0.4)))], ["--tx", `${tx}px`], ["--ty", `${ty}px`],
       ["--sx", String(it.motion === "pop" ? pulse : 1)], ["--sy", String(sy)]]) node.style.setProperty(key, value);
+  }
+
+  drawLineItem(world: any, words: any[], span: any, local: number, interactive: boolean, W: number, it: any, i: number) {
+    const text = it.word_ids.map((id: string) => words.find((w: any) => w.word_id === id)?.text).join(" ");
+    const accentWord = words.find((w: any) => w.word_id === it.accent);
+    const a = (accentWord ? wordsAt(accentWord) : span.start) - span.start;
+    const settled = wordsEase.out3(wordsClamp((local - a) / 0.65)), arc = wordsClamp((local - a) / 0.75);
+    const pulse = this.itemPulse(local, a), [tx, ty] = this.itemMotionOffset(it.motion, settled, arc);
+    const isSelected = this.isItemSelected(interactive, it, i);
+    const node = el("div", {
+      class: `lyric-item${isSelected ? " active" : ""}${it.motion === "pop" ? " hero-item" : ""}`,
+      "data-weight": String(it.weight), "data-italic": String(it.italic), "data-font": it.font || "song"
+    });
+    this.applyItemVars(node, it, local, settled, pulse, tx, ty);
     node.append(...(it.motion === "sleep" ? this.buildSleepSpans(text, local, a) : [el("span", {}, text)]));
+    if (isSelected) node.append(...this.itemHandles(world, W, it, i));
     if (interactive) node.onpointerdown = (event: any) => {
       event.preventDefault();
-      wordsPanel.item = i; wordsPanel.drag = { i, x: event.clientX, y: event.clientY, from: [it.x, it.y], scale: world.getBoundingClientRect().width / W, moved: false };
+      wordsPanel.item = i; wordsPanel.picked = [...it.word_ids];
+      wordsPanel.drag = { mode: "move", i, x: event.clientX, y: event.clientY, from: [it.x, it.y], scale: world.getBoundingClientRect().width / W, moved: false };
       wordsRender();
     };
     return node;
@@ -392,6 +493,7 @@ class WordsTimelineController {
     world.style.setProperty("--w", `${W}px`); world.style.setProperty("--h", `${H}px`);
     world.style.setProperty("--family", JSON.stringify(wordsSongFont(anim)));
     const local = t - span.start;
+    const flow = interactive ? this.flowArrowsSvg(design, words, W, H) : null;
     const strokes = design.draws.map((d: any) => {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("class", "lyric-draw");
@@ -401,32 +503,35 @@ class WordsTimelineController {
       return svg;
     });
     const items = design.items.map((it: any, i: number) => this.drawLineItem(world, words, span, local, interactive, W, it, i));
-    world.replaceChildren(...strokes, ...items);
+    world.replaceChildren(...(flow ? [flow] : []), ...strokes, ...items);
+  }
+
+  activeBackdrop(anim: any) {
+    const list = typeof wordsAvailableBackdrops === "function" ? wordsAvailableBackdrops() : [];
+    return list.find((b: any) => b.id === anim?.background_asset) || list[0] || null;
   }
 
   canvas(anim: any) {
     const world = el("div", { class: "lyric-world" });
-    const scene = wordsPanel.scene && serverUrl() ? el("iframe", { class: "lyric-scene", title: "The scene behind the lyrics", tabindex: "-1" }) : null;
-    const box = el("div", { class: "lyric-canvas", "aria-label": "Line designer" }, scene, world);
-    wordsPanel.canvas = { box, world, scene };
+    const bg = wordsPanel.scene ? this.activeBackdrop(anim) : null;
+    const bgImg = bg ? el("img", { class: "lyric-scene-bg", src: convertFileSrc(bg.path), alt: bg.name }) : null;
+    const hint = el("div", { class: "lyric-stage-hint" }, "Drag any word to adjust spatial trajectory · Click token below to choreograph");
+    const box = el("div", { class: `lyric-canvas${bgImg ? " has-scene-bg" : ""}`, "aria-label": "Line designer" }, bgImg, world, hint);
+    wordsPanel.canvas = { box, world, bgImg };
     wordsFitter.observe(box);
-    if (scene) wordsCommand("words.lyrics_view", { show: "scene" }).then((view: any) => {
-      const server = new URL(serverUrl()!), project = server.hash.split("/")[1] || "hyperframes";
-      scene.addEventListener("load", () => this.sceneSeek(wordsPanel.time));
-      scene.setAttribute("src", `${server.origin}/api/projects/${project}/preview/comp/${view.src}`);
-    }).catch((error: any) => toast(String(error).replace(/^.*?: /, "")));
     return box;
   }
 
-  sceneSeek(t: number) {
-    wordsPanel.canvas?.scene?.contentWindow?.postMessage({ source: "hf-parent", type: "control", action: "seek", timeSeconds: Math.max(0, t), seekMode: "commit" }, "*");
-  }
+  sceneSeek(_t: number) {}
 
   canvasDraw(t = wordsPanel.time) {
     const anim = wordsCurrent(), canvas = wordsPanel.canvas;
     if (!anim || !canvas || !wordsPanel.line) return;
+    if (canvas.bgImg && wordsPanel.scene) {
+      const bg = this.activeBackdrop(anim);
+      if (bg && canvas.bgImg.getAttribute("src") !== convertFileSrc(bg.path)) canvas.bgImg.setAttribute("src", convertFileSrc(bg.path));
+    }
     this.drawLine(canvas.world, anim, wordsPanel.line, t, true);
-    if (!wordsPanel.playing || Math.abs(t - (wordsPanel.sceneAt ?? -9)) > 0.25) { this.sceneSeek(t); wordsPanel.sceneAt = t; }
   }
 
   play() {
@@ -572,19 +677,37 @@ class WordsTimelineController {
       el("span", {}, "Instrumental"), el("span", { class: "meta" }, `${wordsClock(a)} – ${wordsClock(b)}`)), a, b - a));
   }
 
+  private buildLineCard(a: any, j: number, line: any, at: number, len: number) {
+    const design = wordsDesign(a, line.id);
+    const active = a.animation_id === wordsPanel.selected && wordsPanel.line === line.id;
+    const bg = this.activeBackdrop(a);
+    const moves = [...new Set((design.items || []).filter((it: any) => it.motion && it.motion !== "quiet").map((it: any) => WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] || it.motion))];
+    const strokes = [...new Set((design.draws || []).map((d: any) => d.name))];
+    const pills = [
+      ...moves.map((m) => el("span", { class: "words-line-pill move-pill" }, `⚡ ${m}`)),
+      ...strokes.map((s) => el("span", { class: "words-line-pill stroke-pill" }, `✎ ${s}`))
+    ];
+    return wordsPlace(el("div", {
+      class: `words-line${j ? "" : " first"}${active ? " active" : ""}`,
+      "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", "data-animation-id": a.animation_id, "data-line-id": line.id, tabindex: "0",
+      title: "Click line to focus and choreograph its words on the 16:9 stage",
+      onkeydown: (event: any) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.selectLine(a, line); } },
+      onclick: () => this.selectLine(a, line)
+    },
+      el("div", { class: "words-line-meta" },
+        bg ? el("img", { class: "words-line-thumb", src: convertFileSrc(bg.path), alt: bg.name, loading: "lazy" }) : null,
+        el("span", { class: "words-line-time" }, `[${wordsClock(at)}]`),
+        ...pills,
+        el("span", { class: "words-line-tether", "aria-hidden": "true", title: "Tethered to visual cues" }, "⚓")),
+      el("div", { class: "words-line-words" }, ...line.words.map((w: any) => this.chip(a, w)))), at, len);
+  }
+
   timeline(animations: any[], end: number) {
     return wordsPlace(el("div", { class: "words-tl words-roll", "aria-label": "Lyrics on the song timeline" },
       ...wordsTicks(end),
       ...this.gaps(animations),
       ...animations.map((a, idx) => wordsBand(a, "button", { "data-section": a.animation_id, onclick: () => { const first = wordsLines(a)[0]; if (first) this.selectLine(a, first); } }, animations[idx + 1] ? wordsSpan(animations[idx + 1]).start : Infinity)),
-      ...wordsRows(animations).map(([a, j, line, at, len]) => wordsPlace(el("div", {
-        class: `words-line${j ? "" : " first"}${a.animation_id === wordsPanel.selected && wordsPanel.line === line.id ? " active" : ""}`,
-        "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse", "data-animation-id": a.animation_id, "data-line-id": line.id, tabindex: "0",
-        title: "Click line to focus and edit its entrance or words below the preview",
-        onkeydown: (event: any) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.selectLine(a, line); } },
-        onclick: () => this.selectLine(a, line)
-      },
-        ...line.words.map((w: any) => this.chip(a, w))), at, len)),
+      ...wordsRows(animations).map(([a, j, line, at, len]) => this.buildLineCard(a, j, line, at, len)),
       el("span", { class: "words-tl-head" })), 0, end);
   }
 

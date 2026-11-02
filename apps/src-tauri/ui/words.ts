@@ -27,10 +27,19 @@ function wordsSizeInput(anim: any) { return wordsViewController.sizeInput(anim);
 
 addEventListener("pointermove", (event) => {
   const drag = wordsPanel.drag, anim = wordsCurrent();
-  if (!drag || !anim) return;
+  if (!drag || !anim || !wordsPanel.line) return;
   const design = wordsPanel.designs.get(wordsPanel.line) ?? structuredClone(wordsDesign(anim, wordsPanel.line));
-  design.items[drag.i].x = Math.round(drag.from[0] + (event.clientX - drag.x) / drag.scale);
-  design.items[drag.i].y = Math.round(drag.from[1] + (event.clientY - drag.y) / drag.scale);
+  const it = design.items[drag.i];
+  if (!it) return;
+  if (drag.mode === "scale") {
+    const delta = ((event.clientX - drag.x) - (event.clientY - drag.y)) / Math.max(0.15, drag.scale);
+    it.size = Math.max(24, Math.min(260, Math.round(drag.startSize + delta * 0.45)));
+  } else if (drag.mode === "rotate") {
+    it.rotate = Math.max(-45, Math.min(45, Math.round(drag.startRot + (event.clientX - drag.x) * 0.35)));
+  } else {
+    it.x = Math.round(drag.from[0] + (event.clientX - drag.x) / Math.max(0.15, drag.scale));
+    it.y = Math.round(drag.from[1] + (event.clientY - drag.y) / Math.max(0.15, drag.scale));
+  }
   wordsPanel.designs.set(wordsPanel.line, design); drag.moved = true;
   wordsCanvasDraw();
 });
@@ -300,16 +309,38 @@ class WordsViewController {
   }
 
   designerToolbar(anim: any) {
+    const songSpan = this.songSpan(), lineSpan = wordsPanel.line ? wordsLineSpan(anim, wordsPanel.line) : { start: 0, end: songSpan.end };
     const segmented = (label: string, current: string, options: string[][], pick: (key: string) => void) => el("div", { class: "segmented", role: "tablist", "aria-label": label },
       ...options.map(([key, name]) => el("button", { role: "tab", "aria-selected": String(current === key), onclick: () => pick(key) }, name)));
-    const inVideo = wordsPanel.read.in_video?.includes(anim.animation_id);
-    return el("div", { class: "words-toolbar" },
-      el("button", { class: "icon", "aria-label": "Play this line", title: "Play from this line", onclick: wordsPlay, html: ICONS.play }),
-      el("span", { class: "meta" }, wordsClock(wordsLineSpan(anim, wordsPanel.line).start)),
+    const scrub = el("input", {
+      type: "range", id: "words-scrub", min: "0", max: String(songSpan.end), step: "0.01", "aria-label": "Song time",
+      oninput: (e: any) => {
+        e.target.defaultValue = e.target.value;
+        const t = Number(e.target.value);
+        if (wordsPanel.playing) { this.video("pause"); wordsPanel.playing = false; }
+        wordsPanel.previewRange = null; wordsPanel.autoPlay = false;
+        wordsPanel.userScrollingUntil = performance.now() + 220;
+        this.seekSong(t);
+        this.followLivePlayback(t);
+        wordsCanvasDraw(t);
+        wordsNow(t);
+        wordsFollow(t, false);
+      }
+    });
+    scrub.value = scrub.defaultValue = String(wordsPanel.time || lineSpan.start);
+    return el("div", { class: "words-toolbar transport" },
+      wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play this line", title: "Play from this line", onclick: wordsPlay, html: ICONS.play }),
+      scrub,
+      wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || lineSpan.start)} / ${wordsClock(songSpan.end)}`),
       segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => { wordsPanel.scene = key === "scene"; this.render(); }),
-      el("span", { class: "words-spacer" }),
-      el("button", { class: "ghost", title: inVideo ? "Put the video's original lyrics back for this section" : "Replace this section's lyrics in the video with the designed lines", onclick: () => wordsApply(!inVideo) },
-        inVideo ? "In the video · Restore original" : "Use in the video"));
+      el("button", {
+        id: "words-render-lettering", class: "ghost", title: "Build EffectCraft project (lettering/lyrics.ecproj) and render transparent lyrics.mov",
+        onclick: () => wordsStageController.renderLettering()
+      }, "Render Lettering"),
+      el("button", {
+        id: "words-export-film", class: "start", title: "Assemble scene backgrounds, audio and lettering in FilmCraft and export MP4",
+        onclick: () => wordsStageController.exportFilm()
+      }, "Export Film"));
   }
 
   headerMeta(anim: any) {
@@ -364,7 +395,7 @@ class WordsViewController {
       id: "words-save", class: "icon", title: saveLabel, "aria-label": saveLabel, onclick: () => wordsSave(!changes),
       html: '<svg viewBox="0 0 24 24"><path d="M5 3h12l4 4v14H3V3h2zM7 3v6h9V3M7 21v-8h10v8"/></svg>'
     });
-    const designer = wordsPanel.view === "design" && wordsPanel.line && !anim.kinetic;
+    const designer = wordsPanel.view === "design" && !!wordsPanel.line;
     this.mountMain(view, anim, animations, end, [
       new PanelHeader({
         id: "words-main-head", title: `${wordsLabel(anim)} · ${lineNo}`, description,
