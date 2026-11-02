@@ -62,6 +62,31 @@ LEDGER_ROW_RE = re.compile(r"^\| (\d+)\. [^|]+\| (.+?) \| (.+?) \|\s*$")
 TECH_RE = re.compile(r"\*\*(\d+)\*\*")
 
 
+def _parse_dialogue_line(
+    rows: list[str], i: int, chapter: Chapter, m: re.Match
+) -> int:
+    quote = m.group(3)
+    if quote is None and i + 1 < len(rows) and rows[i + 1].startswith("“"):
+        i += 1
+        quote = rows[i]
+    if quote is not None:
+        parts = [quote]
+        while not parts[-1].rstrip().endswith("”") and i + 1 < len(rows):
+            i += 1
+            parts.append(rows[i])
+        body = "\n".join(parts).strip()[1:-1]
+        shot = chapter.shots[0]
+        shot.lines.append(
+            Line(
+                f"{chapter.id}-{len(shot.lines) + 1:02d}",
+                m.group(1).strip(),
+                body,
+                (m.group(2) or "").strip(),
+            )
+        )
+    return i
+
+
 def import_script(text: str) -> list[Chapter]:
     chapters: list[Chapter] = []
     rows = text.splitlines()
@@ -92,25 +117,7 @@ def import_script(text: str) -> list[Chapter]:
                 chapter.lesson = lesson.group(1)
             m = LINE_RE.match(row)
             if m:
-                quote = m.group(3)
-                if quote is None and i + 1 < len(rows) and rows[i + 1].startswith("“"):
-                    i += 1
-                    quote = rows[i]
-                if quote is not None:
-                    parts = [quote]
-                    while not parts[-1].rstrip().endswith("”") and i + 1 < len(rows):
-                        i += 1
-                        parts.append(rows[i])
-                    body = "\n".join(parts).strip()[1:-1]
-                    shot = chapter.shots[0]
-                    shot.lines.append(
-                        Line(
-                            f"{chapter.id}-{len(shot.lines) + 1:02d}",
-                            m.group(1).strip(),
-                            body,
-                            (m.group(2) or "").strip(),
-                        )
-                    )
+                i = _parse_dialogue_line(rows, i, chapter, m)
         i += 1
     return chapters
 

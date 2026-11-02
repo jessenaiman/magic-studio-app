@@ -78,16 +78,9 @@ def measure_silhouette(image: Image.Image, threshold: int = 128) -> dict:
     }
 
 
-def register_turnaround(
-    turnaround_dir: str | Path,
-    out_dir: str | Path,
-    alpha_threshold: int = 128,
-    reference: str = "front",
-    _loaded: tuple[list[dict], dict[str, str]] | None = None,
-) -> dict:
-    frames, hashes = (
-        _loaded if _loaded is not None else read_sheet_frames(turnaround_dir)
-    )
+def _scale_turnaround_views(
+    frames: list[dict], reference: str, alpha_threshold: int
+) -> tuple[str, int, list[tuple]]:
     by_label = {
         f["meta"]["label"]: f for f in frames if f["meta"]["label"] in DIRECTIONS
     }
@@ -111,6 +104,22 @@ def register_turnaround(
         scaled = f["image"].resize((nw, nh), Image.Resampling.BICUBIC)
         measured = measure_silhouette(scaled, alpha_threshold)
         transformed.append((label, f, scaled, measured, scale))
+    return reference, target_height, transformed
+
+
+def register_turnaround(
+    turnaround_dir: str | Path,
+    out_dir: str | Path,
+    alpha_threshold: int = 128,
+    reference: str = "front",
+    _loaded: tuple[list[dict], dict[str, str]] | None = None,
+) -> dict:
+    frames, hashes = (
+        _loaded if _loaded is not None else read_sheet_frames(turnaround_dir)
+    )
+    reference, target_height, transformed = _scale_turnaround_views(
+        frames, reference, alpha_threshold
+    )
 
     padding = 16
     left_room = math.ceil(max(m["footCenterX"] for _, _, _, m, _ in transformed))

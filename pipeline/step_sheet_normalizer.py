@@ -4,7 +4,7 @@
 Takes any non-standardized turnaround or animation pose sheet:
 1. Calculates foreground image panels (`detect_components`) and strips background via `photocraft-cli`.
 2. Normalizes/resizes each panel onto a uniform cell canvas (`--cell-size 560,720`) via `photocraft-cli`.
-3. Labels panels via Hybrid OCR + Jev Vision fallback (`_ocr_labels` -> `jev_qa_verifier` / pose aspect classifier).
+3. Labels panels via Hybrid OCR + silhouette geometry fallback (`_ocr_labels` -> pose aspect classifier).
 4. Reorders panels into canonical turnaround or expandable action slots.
 5. Expands directional slots (`walk_right` <-> `walk_left`) via `photocraft-cli` (`image.imageRotation.flipCanvasHorizontal`)
    when only one walking direction is supplied, recording `mirroredFallback: true` and `missingSlots` so not every
@@ -81,7 +81,7 @@ def _action_silhouette_label(
     bot_spread: float,
     already_assigned: set[str],
 ) -> tuple[str, str]:
-    # Silhouette / Jev vision geometry classification for unlabelled action cells
+    # Silhouette geometry classification for unlabelled action cells
     preferred_order = [
         "standing",
         "walking",
@@ -97,23 +97,23 @@ def _action_silhouette_label(
         "sitting",
     ]
     if aspect > 0.88 and "arms_wide" not in already_assigned:
-        return "arms_wide", "jev_vision_silhouette"
+        return "arms_wide", "silhouette_geometry"
     if (
         top_spread > 0.62
         and "waving" not in already_assigned
         and "standing" in already_assigned
     ):
-        return "waving", "jev_vision_silhouette"
+        return "waving", "silhouette_geometry"
     if (
         bot_spread < 0.34
         and "jumping" not in already_assigned
         and "standing" in already_assigned
     ):
-        return "jumping", "jev_vision_silhouette"
+        return "jumping", "silhouette_geometry"
     for cand in preferred_order:
         if cand not in already_assigned:
-            return cand, "jev_vision_fallback"
-    return f"pose_{index:02d}", "jev_vision_extra"
+            return cand, "silhouette_fallback"
+    return f"pose_{index:02d}", "pose_index_fallback"
 
 
 def _classify_unlabelled_panel_with_vision_fallback(
@@ -123,7 +123,7 @@ def _classify_unlabelled_panel_with_vision_fallback(
     kind: str,
     already_assigned: set[str],
 ) -> tuple[str, str]:
-    """Hybrid fallback: use Jev vision verifier when configured, else silhouette geometry classifier."""
+    """Hybrid fallback: silhouette geometry classifier for unlabelled panels."""
     alpha = np.array(crop.getchannel("A")) > 20
     ys, xs = np.nonzero(alpha)
     if not len(xs):

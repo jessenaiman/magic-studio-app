@@ -87,6 +87,17 @@ def run_tool(args, deadline):
     return result.stdout
 
 
+def _check_photocraft_row_error(row):
+    result = row.get("result")
+    if row.get("error") or (isinstance(result, dict) and result.get("ok") is False):
+        detail = (
+            row.get("error")
+            or (result.get("error") if isinstance(result, dict) else None)
+            or row.get("command")
+        )
+        raise RuntimeError(f"PhotoCraft reported a failed operation: {detail}")
+
+
 def tool_call(binary, source, commands, deadline, output=None):
     args = [binary, "run", str(source)]
     for command, params in commands:
@@ -101,14 +112,7 @@ def tool_call(binary, source, commands, deadline, output=None):
             except ValueError:
                 continue
     for row in rows:
-        result = row.get("result")
-        if row.get("error") or (isinstance(result, dict) and result.get("ok") is False):
-            detail = (
-                row.get("error")
-                or (result.get("error") if isinstance(result, dict) else None)
-                or row.get("command")
-            )
-            raise RuntimeError(f"PhotoCraft reported a failed operation: {detail}")
+        _check_photocraft_row_error(row)
     return rows
 
 
@@ -132,18 +136,23 @@ def private_root(path):
     return root
 
 
-def validate_face(face, width, height):
-    """Accept only a complete, finite, in-bounds detection payload."""
+def _parse_face_payload(face):
     try:
         x, y, w, h = (float(v) for v in face["rect"])
         marks = {
             k: [float(face["landmarks"][k][0]), float(face["landmarks"][k][1])]
             for k in LANDMARKS
         }
+        return x, y, w, h, marks
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         raise ValueError(
             f"Face data is missing or malformed ({exc!r}). Supply --face-json to set it explicitly."
         ) from None
+
+
+def validate_face(face, width, height):
+    """Accept only a complete, finite, in-bounds detection payload."""
+    x, y, w, h, marks = _parse_face_payload(face)
     values = [x, y, w, h] + [c for point in marks.values() for c in point]
     if not all(math.isfinite(v) for v in values) or w <= 0 or h <= 0:
         raise ValueError(
@@ -376,24 +385,83 @@ def check_against_baseline(output, baseline, mask):
     return inside, outline
 
 
-def render(
-    source, output_root, expression, opening, blink, gaze, face_json=None, deadline_s=90
+def _load_cached_pointer(pointer):
+    if not pointer.is_file():
+        return None
+    try:
+        cached = json.loads(pointer.read_text())
+        if all(Path(p).is_file() for p in cached["frames"]):
+            return cached
+    except (ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _execute_liquify_frames(
+    binary, source, source_pixels, select, plans, mask, root, identity, deadline
 ):
-    deadline = Deadline(deadline_s)
+    work = Path(tempfile.mkdtemp(dir=root, prefix=f"{identity}-"))
+    try:
+        baseline = work / "baseline.png"
+        tool_call(binary, source, select, deadline, baseline)
+        baseline_pixels = rgba(baseline)
+        roundtrip = (
+            int(np.abs(source_pixels - baseline_pixels).max())
+            if source_pixels.shape == baseline_pixels.shape
+            else None
+        )
+        changed_pixels, outline_pixels = [], []
+        for i, (strokes, _) in enumerate(plans):
+            path = work / f"frame-{i}.png"
+            cmds = select + (
+                [("filter.liquify", {"strokes": strokes})] if strokes else []
+            )
+            tool_call(binary, source, cmds, deadline, path)
+            inside, outline = check_against_baseline(path, baseline, mask)
+            changed_pixels.append(inside)
+            outline_pixels.append(outline)
+        baseline.unlink()
+        return work, roundtrip, changed_pixels, outline_pixels
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+
+
+def _build_render_warnings(outline_pixels, plans):
+    warnings = []
+    if any(outline_pixels):
+        warnings.append(
+            "the warp changed the character outline (transparency); check that nothing bulges past the silhouette"
+        )
+    if any(clamped for _, clamped in plans):
+        warnings.append(
+            "mouth opening was limited to keep the deformation inside its region"
+        )
+    return warnings
+
+
+def _validate_render_controls(expression, opening, blink, gaze):
     if blink or gaze:
         raise ValueError(
             "Blink and gaze require explicit eyelid/pupil part or pin bindings; face landmarks alone are insufficient"
         )
-    source = Path(source).resolve(strict=True)
     if expression not in EXPRESSIONS:
         raise ValueError("Unknown expression")
     if not all(math.isfinite(v) for v in (opening, blink, gaze)):
         raise ValueError("Face controls must be finite")
-    opening, blink, gaze = (
+    return (
         max(0, min(opening, 100)),
         max(0, min(blink, 100)),
         max(-45, min(gaze, 45)),
     )
+
+
+def render(
+    source, output_root, expression, opening, blink, gaze, face_json=None, deadline_s=90
+):
+    deadline = Deadline(deadline_s)
+    opening, blink, gaze = _validate_render_controls(expression, opening, blink, gaze)
+    source = Path(source).resolve(strict=True)
     binary = (
         os.environ.get("PHOTOCRAFT_CLI")
         or shutil.which("photocraft-cli")
@@ -409,17 +477,10 @@ def render(
     identity = sha(
         source_hash, RECIPE_VERSION, version, expression, opening, blink, gaze, explicit
     )[:24]
-    # Frame folders are unique per job and never modified or deleted once published, so another
-    # app instance can keep using a result while this one renders. Only the small pointer file
-    # (identity -> newest result) is replaced, atomically.
     pointer = root / f"{identity}.json"
-    if pointer.is_file():
-        try:
-            cached = json.loads(pointer.read_text())
-            if all(Path(p).is_file() for p in cached["frames"]):
-                return cached
-        except (ValueError, KeyError, TypeError):
-            pass
+    cached = _load_cached_pointer(pointer)
+    if cached is not None:
+        return cached
 
     source_pixels = rgba(source)
     face, face_source = locate_face(
@@ -440,47 +501,18 @@ def render(
     ]
     if not any(strokes for strokes, _ in plans):
         raise ValueError("These settings do not move any pixels; nothing to preview")
-    select = selection(boxes)
-    mask = region_mask(boxes, width, height)
 
-    work = Path(tempfile.mkdtemp(dir=root, prefix=f"{identity}-"))
-    try:
-        baseline = work / "baseline.png"
-        tool_call(binary, source, select, deadline, baseline)
-        baseline_pixels = rgba(baseline)
-        roundtrip = (
-            int(np.abs(source_pixels - baseline_pixels).max())
-            if source_pixels.shape == baseline_pixels.shape
-            else None
-        )
-        changed_pixels, outline_pixels = [], []
-        for i, (strokes, _) in enumerate(plans):
-            path = work / f"frame-{i}.png"
-            tool_call(
-                binary,
-                source,
-                select
-                + ([("filter.liquify", {"strokes": strokes})] if strokes else []),
-                deadline,
-                path,
-            )
-            inside, outline = check_against_baseline(path, baseline, mask)
-            changed_pixels.append(inside)
-            outline_pixels.append(outline)
-        baseline.unlink()
-        final = work
-    except BaseException:
-        shutil.rmtree(work, ignore_errors=True)
-        raise
-    warnings = []
-    if any(outline_pixels):
-        warnings.append(
-            "the warp changed the character outline (transparency); check that nothing bulges past the silhouette"
-        )
-    if any(clamped for _, clamped in plans):
-        warnings.append(
-            "mouth opening was limited to keep the deformation inside its region"
-        )
+    final, roundtrip, changed_pixels, outline_pixels = _execute_liquify_frames(
+        binary,
+        source,
+        source_pixels,
+        selection(boxes),
+        plans,
+        region_mask(boxes, width, height),
+        root,
+        identity,
+        deadline,
+    )
     result = {
         "source": str(source),
         "frames": [str((final / f"frame-{i}.png").resolve()) for i in range(frames)],
@@ -489,7 +521,7 @@ def render(
         "method": "PhotoCraft landmarks + Liquify inside bounded mouth/eye regions",
         "recipe_version": RECIPE_VERSION,
         "tool_version": version,
-        "warnings": warnings,
+        "warnings": _build_render_warnings(outline_pixels, plans),
         "validation": {
             "status": "changed_only_inside_regions",
             "changed_pixels_per_frame": changed_pixels,

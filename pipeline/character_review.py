@@ -10,28 +10,16 @@ from pathlib import Path
 from pipeline.storyboard_layout import Deck, SCENE_ART_REGION, SIZE, fit_rect
 
 
-def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dict:
-    """Build a 5-slide DeckCraft QA review deck for a character (`.deckcraft` + `.pdf` + slide PNGs)."""
-    root = Path(__file__).resolve().parents[1]
-    slug = slug.lower().strip()
-    pose_dir = (
-        Path(out_dir).resolve() if out_dir else (root / "exports/pose_and_parts" / slug)
-    )
-    pose_dir.mkdir(parents=True, exist_ok=True)
-    share_dir = root / "exports/design_share" / slug
-    blender_dir = root / "exports/farm_school_milestone/characters" / slug
+def _load_json_if_exists(path: Path) -> dict:
+    return json.loads(path.read_text()) if path.is_file() else {}
 
-    deck_path = pose_dir / f"{slug}_qa_deck.deckcraft"
-    pdf_path = pose_dir / f"{slug}_qa_deck.pdf"
-    slides_dir = pose_dir / "qa_deck_slides"
-    slides_dir.mkdir(parents=True, exist_ok=True)
 
-    motion_path = share_dir / "motion_range.json"
-    motion = json.loads(motion_path.read_text()) if motion_path.is_file() else {}
-    verif_path = blender_dir / "verification.json"
-    verif = json.loads(verif_path.read_text()) if verif_path.is_file() else {}
-    rig_plan_path = pose_dir / f"{slug}_cutout_rig_plan.json"
-    rig_plan = json.loads(rig_plan_path.read_text()) if rig_plan_path.is_file() else {}
+def _resolve_character_slide_specs(
+    slug: str, pose_dir: Path, share_dir: Path, blender_dir: Path
+) -> list[tuple[str, str, str, Path, str]]:
+    motion = _load_json_if_exists(share_dir / "motion_range.json")
+    verif = _load_json_if_exists(blender_dir / "verification.json")
+    rig_plan = _load_json_if_exists(pose_dir / f"{slug}_cutout_rig_plan.json")
 
     turnaround_img = share_dir / "registered_turnaround/contact_sheet.jpg"
     if not turnaround_img.is_file():
@@ -42,8 +30,14 @@ def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dic
     ec_frame0_img = pose_dir / f"{slug}_ec_cutout_frame0.png"
     six_actions_img = share_dir / f"{slug}_6actions_strip.png"
     blender_img = blender_dir / f"{slug}_blender53_preview.png"
+    psd_name = (
+        Path(rig_plan["photocraft_psd"]).name
+        if rig_plan.get("photocraft_psd")
+        else "N/A"
+    )
+    qa = verif.get("qa", {})
 
-    slide_specs = [
+    return [
         (
             "01_turnaround_registration",
             f"{slug.upper()} — 1. Turnaround Registration & Normalization",
@@ -61,7 +55,7 @@ def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dic
             f"Part Count: {len(rig_plan.get('parts', []))}\n"
             f"Discovery Mode: {rig_plan.get('discovery_mode', 'photocraft_guided')}\n"
             f"Selected Parts: {', '.join(rig_plan.get('selected_parts', [])) or 'all'}\n"
-            f"PSD Archive: {Path(rig_plan.get('photocraft_psd', '')).name if rig_plan.get('photocraft_psd') else 'N/A'}",
+            f"PSD Archive: {psd_name}",
         ),
         (
             "03_effectcraft_cutout_rig",
@@ -88,53 +82,75 @@ def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dic
             f"{slug.upper()} — 5. Blender 5.3 3D Volumetric Rig & QA",
             "Closed Visual Hull, Baked Multi-View Albedo & 2D-Driven IK Gait",
             blender_img if blender_img.is_file() else turnaround_img,
-            f"Vertices: {verif.get('qa', {}).get('vertices', 'N/A')} | Bones: {verif.get('qa', {}).get('bones', 23)}\n"
-            f"Non-Manifold Edges: {verif.get('qa', {}).get('non_manifold_edges', 0)}\n"
-            f"Max Foot Target Error: {verif.get('qa', {}).get('max_foot_target_error_m', 0.0):.2e} m\n"
-            f"Used 3D Foot Lift: {verif.get('qa', {}).get('used_foot_lift_max_m', 0.0):.4f} m",
+            f"Vertices: {qa.get('vertices', 'N/A')} | Bones: {qa.get('bones', 23)}\n"
+            f"Non-Manifold Edges: {qa.get('non_manifold_edges', 0)}\n"
+            f"Max Foot Target Error: {qa.get('max_foot_target_error_m', 0.0):.2e} m\n"
+            f"Used 3D Foot Lift: {qa.get('used_foot_lift_max_m', 0.0):.4f} m",
         ),
     ]
 
+
+def _populate_qa_slide(
+    d: Deck, idx: int, s_key: str, s_title: str, s_sub: str, img_path: Path, notes_txt: str
+) -> None:
+    if idx == 0:
+        d.cmd("slide.go", index=0)
+        existing_shapes = d.cmd("slide.inspect", index=0).get("shapes", [])
+        if existing_shapes:
+            d.cmd("edit.delete", ids=[sh["id"] for sh in existing_shapes])
+        d.page("qa", s_title, s_sub, new=False)
+    else:
+        d.page("qa", s_title, s_sub, new=True)
+    d.box(SCENE_ART_REGION, "#08090C", f"layout.qa.{s_key}.well")
+    d.card(
+        "Stage QA Telemetry & Verification",
+        notes_txt,
+        [60, 800, 960, 320],
+        f"qa.{s_key}.telemetry",
+        size=20,
+    )
+    d.flush()
+    if img_path and Path(img_path).is_file():
+        pic = d.cmd("insert.picture", path=str(Path(img_path).resolve()), name=s_key)
+        pid = pic["id"]
+        native = d.cmd("shape.inspect", id=pid)["box"]
+        fitted = fit_rect(native["w"], native["h"], SCENE_ART_REGION)
+        d.cmd(
+            "shape.sizePosition",
+            ids=[pid],
+            x=fitted[0],
+            y=fitted[1],
+            w=fitted[2],
+            h=fitted[3],
+            lockAspect=False,
+        )
+        d.cmd("shape.sizePosition", ids=[pid], lockAspect=True)
+
+
+def build_character_qa_deck(slug: str, out_dir: str | Path | None = None) -> dict:
+    """Build a 5-slide DeckCraft QA review deck for a character (`.deckcraft` + `.pdf` + slide PNGs)."""
+    root = Path(__file__).resolve().parents[1]
+    slug = slug.lower().strip()
+    pose_dir = (
+        Path(out_dir).resolve() if out_dir else (root / "exports/pose_and_parts" / slug)
+    )
+    pose_dir.mkdir(parents=True, exist_ok=True)
+    share_dir = root / "exports/design_share" / slug
+    blender_dir = root / "exports/farm_school_milestone/characters" / slug
+
+    deck_path = pose_dir / f"{slug}_qa_deck.deckcraft"
+    pdf_path = pose_dir / f"{slug}_qa_deck.pdf"
+    slides_dir = pose_dir / "qa_deck_slides"
+    slides_dir.mkdir(parents=True, exist_ok=True)
+
+    slide_specs = _resolve_character_slide_specs(slug, pose_dir, share_dir, blender_dir)
     d = Deck(root, pose_dir)
     slide_pngs = []
     try:
         d.cmd("file.new")
         d.cmd("design.slideSize", w=SIZE[0], h=SIZE[1], scale="none")
         for idx, (s_key, s_title, s_sub, img_path, notes_txt) in enumerate(slide_specs):
-            if idx == 0:
-                d.cmd("slide.go", index=0)
-                existing_shapes = d.cmd("slide.inspect", index=0).get("shapes", [])
-                if existing_shapes:
-                    d.cmd("edit.delete", ids=[sh["id"] for sh in existing_shapes])
-                d.page("qa", s_title, s_sub, new=False)
-            else:
-                d.page("qa", s_title, s_sub, new=True)
-            d.box(SCENE_ART_REGION, "#08090C", f"layout.qa.{s_key}.well")
-            d.card(
-                "Stage QA Telemetry & Verification",
-                notes_txt,
-                [60, 800, 960, 320],
-                f"qa.{s_key}.telemetry",
-                size=20,
-            )
-            d.flush()
-            if img_path and Path(img_path).is_file():
-                pic = d.cmd(
-                    "insert.picture", path=str(Path(img_path).resolve()), name=s_key
-                )
-                pid = pic["id"]
-                native = d.cmd("shape.inspect", id=pid)["box"]
-                fitted = fit_rect(native["w"], native["h"], SCENE_ART_REGION)
-                d.cmd(
-                    "shape.sizePosition",
-                    ids=[pid],
-                    x=fitted[0],
-                    y=fitted[1],
-                    w=fitted[2],
-                    h=fitted[3],
-                    lockAspect=False,
-                )
-                d.cmd("shape.sizePosition", ids=[pid], lockAspect=True)
+            _populate_qa_slide(d, idx, s_key, s_title, s_sub, img_path, notes_txt)
         d.flush()
         d.cmd("file.saveAs", path=str(deck_path))
         d.cmd("file.export", path=str(pdf_path), format="pdf")

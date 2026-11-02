@@ -75,7 +75,7 @@ impl ComparisonInput<'_> {
         if let Some(manifest) = input.manifest {
             args.extend(["--manifest".into(), manifest.to_string_lossy().into_owned()]);
         }
-        crate::workspace::run_python_json(s, "pipeline.jev_qa_verifier", &args).map(Some)
+        crate::workspace::run_python_json(s, "pipeline.compare_reference", &args).map(Some)
     }
 }
 

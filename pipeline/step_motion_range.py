@@ -66,6 +66,116 @@ def _rows(frames: list[dict]) -> list[dict]:
     return groups
 
 
+def _kf(
+    t: float,
+    phase: str,
+    pose: str,
+    root_dy: float = 0.0,
+    head: float = 0.0,
+    arm_l: float = 0.0,
+    arm_r: float = 0.0,
+    leg_l: float = 0.0,
+    leg_r: float = 0.0,
+    sec: float = 0.0,
+) -> dict:
+    return {
+        "t": t,
+        "phase": phase,
+        "pose": pose,
+        "rootDyPx": root_dy,
+        "headRotDeg": head,
+        "armLRotDeg": arm_l,
+        "armRRotDeg": arm_r,
+        "legLRotDeg": leg_l,
+        "legRRotDeg": leg_r,
+        "secondaryRotDeg": sec,
+    }
+
+
+def _compile_locomotion_tracks(
+    walk_lift_px: float, run_lift_px: float, jump_lift_px: float, poses: dict
+) -> dict:
+    up_pose = "looking_up" if "looking_up" in poses else "standing"
+    down_pose = "looking_down" if "looking_down" in poses else "standing"
+    run_pose = "running" if "running" in poses else "jumping"
+    return {
+        "idle": {
+            "duration": 2.0,
+            "loop": True,
+            "keyframes": [
+                _kf(0.0, "rest", "standing"),
+                _kf(0.5, "lift", up_pose, -round(walk_lift_px * 0.25, 2), -3.0, 2.5, -2.5, 0.0, 0.0, 4.0),
+                _kf(1.0, "rest", "standing", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0),
+                _kf(1.5, "contact", down_pose, round(walk_lift_px * 0.15, 2), 2.5, -2.0, 2.0, 0.0, 0.0, -3.5),
+                _kf(2.0, "rest", "standing"),
+            ],
+        },
+        "walk": {
+            "duration": 1.6,
+            "loop": True,
+            "keyframes": [
+                _kf(0.0, "contact", "standing", 0.0, 0.0, 16.0, -16.0, -18.0, 18.0, -6.0),
+                _kf(0.4, "lift", "walking", -walk_lift_px, -3.5, 0.0, 0.0, 0.0, 0.0, 8.0),
+                _kf(0.8, "contact", "standing", 0.0, 0.0, -16.0, 16.0, 18.0, -18.0, 6.0),
+                _kf(1.2, "lift", "walking", -walk_lift_px, 3.5, 0.0, 0.0, 0.0, 0.0, -8.0),
+                _kf(1.6, "contact", "standing", 0.0, 0.0, 16.0, -16.0, -18.0, 18.0, -6.0),
+            ],
+        },
+        "run": {
+            "duration": 1.2,
+            "loop": True,
+            "keyframes": [
+                _kf(0.0, "contact", "walking", 2.0, 2.0, 26.0, -26.0, -28.0, 28.0, -10.0),
+                _kf(0.3, "apex_hold", run_pose, -run_lift_px, -4.0, 6.0, -6.0, -8.0, 8.0, 12.0),
+                _kf(0.6, "contact", "walking", 2.0, -2.0, -26.0, 26.0, 28.0, -28.0, 10.0),
+                _kf(0.9, "apex_hold", run_pose, -run_lift_px, 4.0, -6.0, 6.0, 8.0, -8.0, -12.0),
+                _kf(1.2, "contact", "walking", 2.0, 2.0, 26.0, -26.0, -28.0, 28.0, -10.0),
+            ],
+        },
+        "jump": {
+            "duration": 1.6,
+            "loop": True,
+            "keyframes": [
+                _kf(0.0, "rest", "standing"),
+                _kf(0.3, "contact", "standing", round(jump_lift_px * 0.25, 2), 3.0, 14.0, -14.0, 10.0, -10.0, -6.0),
+                _kf(0.75, "apex_hold", "jumping", -jump_lift_px, -5.0, -26.0, 26.0, -14.0, 14.0, 14.0),
+                _kf(1.2, "landing", "standing", round(jump_lift_px * 0.2, 2), 2.5, 8.0, -8.0, 8.0, -8.0, -8.0),
+                _kf(1.6, "rest", "standing"),
+            ],
+        },
+    }
+
+
+def _compile_expressive_tracks(walk_lift_px: float, poses: dict) -> dict:
+    point_pose = "pointing" if "pointing" in poses else "waving"
+    clap_pose = "clapping" if "clapping" in poses else "standing"
+    dance_pose = "dancing" if "dancing" in poses else "waving"
+    return {
+        "wave": {
+            "duration": 1.6,
+            "loop": True,
+            "keyframes": [
+                _kf(0.0, "rest", "standing", 0.0, 0.0, 0.0, -24.0, 0.0, 0.0, 0.0),
+                _kf(0.4, "lift", "waving", -round(walk_lift_px * 0.35, 2), -5.0, 4.0, -42.0, 0.0, 0.0, 9.0),
+                _kf(0.8, "apex_hold", "waving", 0.0, 4.0, -3.0, -16.0, 0.0, 0.0, -7.0),
+                _kf(1.2, "lift", "waving", -round(walk_lift_px * 0.35, 2), -4.0, 4.0, -40.0, 0.0, 0.0, 8.0),
+                _kf(1.6, "rest", "standing", 0.0, 0.0, 0.0, -24.0, 0.0, 0.0, 0.0),
+            ],
+        },
+        "talk_express": {
+            "duration": 1.6,
+            "loop": True,
+            "keyframes": [
+                _kf(0.0, "rest", "standing", 0.0, 0.0, -8.0, 8.0, 0.0, 0.0, 0.0),
+                _kf(0.4, "lift", point_pose, -round(walk_lift_px * 0.3, 2), -4.5, -20.0, 18.0, -4.0, 4.0, 7.0),
+                _kf(0.8, "contact", clap_pose, 0.0, 3.5, 12.0, -12.0, 0.0, 0.0, -6.0),
+                _kf(1.2, "lift", dance_pose, -round(walk_lift_px * 0.35, 2), -3.0, -16.0, 22.0, 4.0, -4.0, 8.0),
+                _kf(1.6, "rest", "standing", 0.0, 0.0, -8.0, 8.0, 0.0, 0.0, 0.0),
+            ],
+        },
+    }
+
+
 def compile_timed_trajectories(
     still_height_px: float, limits: dict, poses: dict
 ) -> dict:
@@ -76,413 +186,147 @@ def compile_timed_trajectories(
     walk_lift_px = round(max(4.0, still_height_px * norm_lift * 0.45), 2)
     run_lift_px = round(max(7.0, still_height_px * norm_lift * 0.75), 2)
     jump_lift_px = round(max(12.0, still_height_px * norm_lift * 1.15), 2)
-
+    tracks = _compile_locomotion_tracks(walk_lift_px, run_lift_px, jump_lift_px, poses)
+    tracks.update(_compile_expressive_tracks(walk_lift_px, poses))
     return {
         "schemaVersion": SCHEMA_VERSION,
         "fps": 24,
         "referenceHeightPx": still_height_px,
         "normalizedLiftEnvelope": round(norm_lift, 4),
-        "tracks": {
-            "idle": {
-                "duration": 2.0,
-                "loop": True,
-                "keyframes": [
-                    {
-                        "t": 0.0,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                    {
-                        "t": 0.5,
-                        "phase": "lift",
-                        "pose": "looking_up" if "looking_up" in poses else "standing",
-                        "rootDyPx": -round(walk_lift_px * 0.25, 2),
-                        "headRotDeg": -3.0,
-                        "armLRotDeg": 2.5,
-                        "armRRotDeg": -2.5,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 4.0,
-                    },
-                    {
-                        "t": 1.0,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": -2.0,
-                    },
-                    {
-                        "t": 1.5,
-                        "phase": "contact",
-                        "pose": "looking_down"
-                        if "looking_down" in poses
-                        else "standing",
-                        "rootDyPx": round(walk_lift_px * 0.15, 2),
-                        "headRotDeg": 2.5,
-                        "armLRotDeg": -2.0,
-                        "armRRotDeg": 2.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": -3.5,
-                    },
-                    {
-                        "t": 2.0,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                ],
-            },
-            "walk": {
-                "duration": 1.6,
-                "loop": True,
-                "keyframes": [
-                    {
-                        "t": 0.0,
-                        "phase": "contact",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 16.0,
-                        "armRRotDeg": -16.0,
-                        "legLRotDeg": -18.0,
-                        "legRRotDeg": 18.0,
-                        "secondaryRotDeg": -6.0,
-                    },
-                    {
-                        "t": 0.4,
-                        "phase": "lift",
-                        "pose": "walking",
-                        "rootDyPx": -walk_lift_px,
-                        "headRotDeg": -3.5,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 8.0,
-                    },
-                    {
-                        "t": 0.8,
-                        "phase": "contact",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": -16.0,
-                        "armRRotDeg": 16.0,
-                        "legLRotDeg": 18.0,
-                        "legRRotDeg": -18.0,
-                        "secondaryRotDeg": 6.0,
-                    },
-                    {
-                        "t": 1.2,
-                        "phase": "lift",
-                        "pose": "walking",
-                        "rootDyPx": -walk_lift_px,
-                        "headRotDeg": 3.5,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": -8.0,
-                    },
-                    {
-                        "t": 1.6,
-                        "phase": "contact",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 16.0,
-                        "armRRotDeg": -16.0,
-                        "legLRotDeg": -18.0,
-                        "legRRotDeg": 18.0,
-                        "secondaryRotDeg": -6.0,
-                    },
-                ],
-            },
-            "run": {
-                "duration": 1.2,
-                "loop": True,
-                "keyframes": [
-                    {
-                        "t": 0.0,
-                        "phase": "contact",
-                        "pose": "walking",
-                        "rootDyPx": 2.0,
-                        "headRotDeg": 2.0,
-                        "armLRotDeg": 26.0,
-                        "armRRotDeg": -26.0,
-                        "legLRotDeg": -28.0,
-                        "legRRotDeg": 28.0,
-                        "secondaryRotDeg": -10.0,
-                    },
-                    {
-                        "t": 0.3,
-                        "phase": "apex_hold",
-                        "pose": "running" if "running" in poses else "jumping",
-                        "rootDyPx": -run_lift_px,
-                        "headRotDeg": -4.0,
-                        "armLRotDeg": 6.0,
-                        "armRRotDeg": -6.0,
-                        "legLRotDeg": -8.0,
-                        "legRRotDeg": 8.0,
-                        "secondaryRotDeg": 12.0,
-                    },
-                    {
-                        "t": 0.6,
-                        "phase": "contact",
-                        "pose": "walking",
-                        "rootDyPx": 2.0,
-                        "headRotDeg": -2.0,
-                        "armLRotDeg": -26.0,
-                        "armRRotDeg": 26.0,
-                        "legLRotDeg": 28.0,
-                        "legRRotDeg": -28.0,
-                        "secondaryRotDeg": 10.0,
-                    },
-                    {
-                        "t": 0.9,
-                        "phase": "apex_hold",
-                        "pose": "running" if "running" in poses else "jumping",
-                        "rootDyPx": -run_lift_px,
-                        "headRotDeg": 4.0,
-                        "armLRotDeg": -6.0,
-                        "armRRotDeg": 6.0,
-                        "legLRotDeg": 8.0,
-                        "legRRotDeg": -8.0,
-                        "secondaryRotDeg": -12.0,
-                    },
-                    {
-                        "t": 1.2,
-                        "phase": "contact",
-                        "pose": "walking",
-                        "rootDyPx": 2.0,
-                        "headRotDeg": 2.0,
-                        "armLRotDeg": 26.0,
-                        "armRRotDeg": -26.0,
-                        "legLRotDeg": -28.0,
-                        "legRRotDeg": 28.0,
-                        "secondaryRotDeg": -10.0,
-                    },
-                ],
-            },
-            "jump": {
-                "duration": 1.6,
-                "loop": True,
-                "keyframes": [
-                    {
-                        "t": 0.0,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                    {
-                        "t": 0.3,
-                        "phase": "contact",
-                        "pose": "standing",
-                        "rootDyPx": round(jump_lift_px * 0.25, 2),
-                        "headRotDeg": 3.0,
-                        "armLRotDeg": 14.0,
-                        "armRRotDeg": -14.0,
-                        "legLRotDeg": 10.0,
-                        "legRRotDeg": -10.0,
-                        "secondaryRotDeg": -6.0,
-                    },
-                    {
-                        "t": 0.75,
-                        "phase": "apex_hold",
-                        "pose": "jumping",
-                        "rootDyPx": -jump_lift_px,
-                        "headRotDeg": -5.0,
-                        "armLRotDeg": -26.0,
-                        "armRRotDeg": 26.0,
-                        "legLRotDeg": -14.0,
-                        "legRRotDeg": 14.0,
-                        "secondaryRotDeg": 14.0,
-                    },
-                    {
-                        "t": 1.2,
-                        "phase": "landing",
-                        "pose": "standing",
-                        "rootDyPx": round(jump_lift_px * 0.2, 2),
-                        "headRotDeg": 2.5,
-                        "armLRotDeg": 8.0,
-                        "armRRotDeg": -8.0,
-                        "legLRotDeg": 8.0,
-                        "legRRotDeg": -8.0,
-                        "secondaryRotDeg": -8.0,
-                    },
-                    {
-                        "t": 1.6,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": 0.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                ],
-            },
-            "wave": {
-                "duration": 1.6,
-                "loop": True,
-                "keyframes": [
-                    {
-                        "t": 0.0,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": -24.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                    {
-                        "t": 0.4,
-                        "phase": "lift",
-                        "pose": "waving",
-                        "rootDyPx": -round(walk_lift_px * 0.35, 2),
-                        "headRotDeg": -5.0,
-                        "armLRotDeg": 4.0,
-                        "armRRotDeg": -42.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 9.0,
-                    },
-                    {
-                        "t": 0.8,
-                        "phase": "apex_hold",
-                        "pose": "waving",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 4.0,
-                        "armLRotDeg": -3.0,
-                        "armRRotDeg": -16.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": -7.0,
-                    },
-                    {
-                        "t": 1.2,
-                        "phase": "lift",
-                        "pose": "waving",
-                        "rootDyPx": -round(walk_lift_px * 0.35, 2),
-                        "headRotDeg": -4.0,
-                        "armLRotDeg": 4.0,
-                        "armRRotDeg": -40.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 8.0,
-                    },
-                    {
-                        "t": 1.6,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": 0.0,
-                        "armRRotDeg": -24.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                ],
-            },
-            "talk_express": {
-                "duration": 1.6,
-                "loop": True,
-                "keyframes": [
-                    {
-                        "t": 0.0,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": -8.0,
-                        "armRRotDeg": 8.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                    {
-                        "t": 0.4,
-                        "phase": "lift",
-                        "pose": "pointing" if "pointing" in poses else "waving",
-                        "rootDyPx": -round(walk_lift_px * 0.3, 2),
-                        "headRotDeg": -4.5,
-                        "armLRotDeg": -20.0,
-                        "armRRotDeg": 18.0,
-                        "legLRotDeg": -4.0,
-                        "legRRotDeg": 4.0,
-                        "secondaryRotDeg": 7.0,
-                    },
-                    {
-                        "t": 0.8,
-                        "phase": "contact",
-                        "pose": "clapping" if "clapping" in poses else "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 3.5,
-                        "armLRotDeg": 12.0,
-                        "armRRotDeg": -12.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": -6.0,
-                    },
-                    {
-                        "t": 1.2,
-                        "phase": "lift",
-                        "pose": "dancing" if "dancing" in poses else "waving",
-                        "rootDyPx": -round(walk_lift_px * 0.35, 2),
-                        "headRotDeg": -3.0,
-                        "armLRotDeg": -16.0,
-                        "armRRotDeg": 22.0,
-                        "legLRotDeg": 4.0,
-                        "legRRotDeg": -4.0,
-                        "secondaryRotDeg": 8.0,
-                    },
-                    {
-                        "t": 1.6,
-                        "phase": "rest",
-                        "pose": "standing",
-                        "rootDyPx": 0.0,
-                        "headRotDeg": 0.0,
-                        "armLRotDeg": -8.0,
-                        "armRRotDeg": 8.0,
-                        "legLRotDeg": 0.0,
-                        "legRRotDeg": 0.0,
-                        "secondaryRotDeg": 0.0,
-                    },
-                ],
-            },
-        },
+        "tracks": tracks,
     }
+
+
+def _compute_row_baselines(rows: list[dict], np: object) -> list[dict]:
+    row_info = []
+    for i, row in enumerate(rows):
+        grounds = [
+            f["measure"]["footBaselineY"]
+            - f["meta"]["sourceOffset"][1]
+            + f["meta"]["sourceBox"][1]
+            for f in row["frames"]
+        ]
+        row_info.append(
+            {
+                "row": i,
+                "baselineSourceY": float(np.median(grounds)),
+                "method": "median measured foot baseline of source-sheet row",
+                "poseLabels": [f["meta"]["label"] for f in row["frames"]],
+                "baselineSpreadPx": float(max(grounds) - min(grounds)),
+            }
+        )
+    return row_info
+
+
+def _measure_single_leg_diff(
+    frame: dict, top: float, bottom: float, alpha_threshold: int, np: object
+) -> float:
+    alpha_arr = np.array(frame["image"].getchannel("A")) >= alpha_threshold
+    leg_top = int(round(bottom - max(8, (bottom - top) * 0.35)))
+    leg_band = alpha_arr[max(0, leg_top) : int(bottom), :]
+    yy_fg, xx_fg = np.where(leg_band)
+    if len(xx_fg) <= 10:
+        return 0.0
+    mid_x = 0.5 * (float(xx_fg.min()) + float(xx_fg.max()))
+    l_yy = yy_fg[xx_fg < mid_x]
+    r_yy = yy_fg[xx_fg >= mid_x]
+    if len(l_yy) > 5 and len(r_yy) > 5:
+        return float(abs(int(l_yy.max()) - int(r_yy.max())))
+    return 0.0
+
+
+def _compute_frame_values(
+    frame: dict,
+    row_info: list[dict],
+    height: float,
+    still_area: float,
+    alpha_threshold: int,
+    np: object,
+) -> tuple[dict, list[float], float, str]:
+    m = frame["measure"]
+    meta = frame["meta"]
+    left, top, right, bottom = m["bbox"]
+    anchor_x = float(meta.get("anchor", [frame["image"].width / 2, 0])[0])
+    if frame.get("row") is not None:
+        r_meta = row_info[frame["row"]]
+        ground = r_meta["baselineSourceY"]
+        dy = meta["sourceBox"][1] - meta["sourceOffset"][1] - ground
+        row_lift = -(bottom + dy)
+        leg_diff = 0.0
+        if r_meta["baselineSpreadPx"] <= 3.0 and meta.get("label") in (
+            "walking",
+            "running",
+            "jumping",
+        ):
+            leg_diff = _measure_single_leg_diff(
+                frame, top, bottom, alpha_threshold, np
+            )
+        lift = max(float(row_lift), leg_diff) if row_lift >= 0 else float(row_lift)
+        origin = "source_row_median_baseline"
+    else:
+        dy = -m["footBaselineY"]
+        lift = None
+        origin = "own_feet; source row unavailable"
+    bounds = [left - anchor_x, top + dy, right - anchor_x, bottom + dy]
+    metrics = {
+        "widthPx": m["widthPx"],
+        "heightPx": m["heightPx"],
+        "heightRatioToStill": m["heightPx"] / height,
+        "areaPx": m["areaPx"],
+        "areaRatioToStill": m["areaPx"] / max(1, still_area),
+        "leftPx": bounds[0],
+        "topPx": bounds[1],
+        "rightPx": bounds[2],
+        "bottomPx": bounds[3],
+        "centroidXPx": m["centroid"][0] - anchor_x,
+        "centroidYPx": m["centroid"][1] + dy,
+        "footLiftPx": lift,
+    }
+    return metrics, bounds, dy, origin
+
+
+def _build_pose_profile(
+    frame: dict, height: float, dy: float, alpha_threshold: int, np: object
+) -> list[dict]:
+    profile = []
+    mask = np.array(frame["image"].getchannel("A")) >= alpha_threshold
+    cx = float(frame["meta"].get("anchor", [frame["image"].width / 2, 0])[0])
+    for h in (0.10, 0.25, 0.50, 0.75, 0.90):
+        y = int(round(-h * height - dy))
+        xs = np.flatnonzero(mask[y]) if 0 <= y < mask.shape[0] else np.array([])
+        profile.append(
+            {
+                "heightAboveGroundUnits": h,
+                "leftUnits": float((xs.min() - cx) / height) if len(xs) else None,
+                "rightUnits": float((xs.max() + 1 - cx) / height) if len(xs) else None,
+            }
+        )
+    return profile
+
+
+def _compute_metric_limits(still_metrics: dict, poses: dict) -> dict:
+    limits = {}
+    for key, still_val in still_metrics.items():
+        observed = [
+            (p["metrics"][key], label)
+            for label, p in poses.items()
+            if p["metrics"][key] is not None
+        ]
+        if not observed:
+            limits[key] = None
+            continue
+        lo, low_label = min(observed, key=lambda v: v[0])
+        hi, high_label = max(observed, key=lambda v: v[0])
+        limits[key] = {
+            "min": lo,
+            "max": hi,
+            "minPose": low_label,
+            "maxPose": high_label,
+            "still": still_val,
+            "minDeltaFromStill": lo - still_val if still_val is not None else None,
+            "maxDeltaFromStill": hi - still_val if still_val is not None else None,
+        }
+    return limits
 
 
 def measure_motion_range(
@@ -506,92 +350,17 @@ def measure_motion_range(
         raise ValueError("Missing standing (STILL) reference")
     still = labelled["standing"]
     height = max(1, still["measure"]["heightPx"])
-    rows = _rows(frames)
-    row_info = []
-    for i, row in enumerate(rows):
-        grounds = [
-            f["measure"]["footBaselineY"]
-            - f["meta"]["sourceOffset"][1]
-            + f["meta"]["sourceBox"][1]
-            for f in row["frames"]
-        ]
-        row_info.append(
-            {
-                "row": i,
-                "baselineSourceY": float(np.median(grounds)),
-                "method": "median measured foot baseline of source-sheet row",
-                "poseLabels": [f["meta"]["label"] for f in row["frames"]],
-                "baselineSpreadPx": float(max(grounds) - min(grounds)),
-            }
-        )
+    still_area = max(1, still["measure"]["areaPx"])
+    row_info = _compute_row_baselines(_rows(frames), np)
 
-    def values(frame: dict) -> tuple[dict, list[float], float, str]:
-        m = frame["measure"]
-        meta = frame["meta"]
-        left, top, right, bottom = m["bbox"]
-        anchor_x = float(meta.get("anchor", [frame["image"].width / 2, 0])[0])
-        if frame.get("row") is not None:
-            ground = row_info[frame["row"]]["baselineSourceY"]
-            dy = meta["sourceBox"][1] - meta["sourceOffset"][1] - ground
-            row_lift = -(bottom + dy)
-            # When an entire sheet row is bottom-aligned (baselineSpreadPx <= 3.0),
-            # measure single-leg stance lift inside the lower 35% leg zone.
-            leg_diff = 0.0
-            if row_info[frame["row"]]["baselineSpreadPx"] <= 3.0 and meta.get(
-                "label"
-            ) in ("walking", "running", "jumping"):
-                alpha_arr = np.array(frame["image"].getchannel("A")) >= alpha_threshold
-                leg_top = int(round(bottom - max(8, (bottom - top) * 0.35)))
-                leg_band = alpha_arr[max(0, leg_top) : bottom, :]
-                yy_fg, xx_fg = np.where(leg_band)
-                if len(xx_fg) > 10:
-                    mid_x = 0.5 * (float(xx_fg.min()) + float(xx_fg.max()))
-                    l_yy = yy_fg[xx_fg < mid_x]
-                    r_yy = yy_fg[xx_fg >= mid_x]
-                    if len(l_yy) > 5 and len(r_yy) > 5:
-                        leg_diff = float(abs(int(l_yy.max()) - int(r_yy.max())))
-            lift = max(float(row_lift), leg_diff) if row_lift >= 0 else float(row_lift)
-            origin = "source_row_median_baseline"
-        else:
-            dy = -m["footBaselineY"]
-            lift = None
-            origin = "own_feet; source row unavailable"
-        bounds = [left - anchor_x, top + dy, right - anchor_x, bottom + dy]
-        metrics = {
-            "widthPx": m["widthPx"],
-            "heightPx": m["heightPx"],
-            "heightRatioToStill": m["heightPx"] / height,
-            "areaPx": m["areaPx"],
-            "areaRatioToStill": m["areaPx"] / max(1, still["measure"]["areaPx"]),
-            "leftPx": bounds[0],
-            "topPx": bounds[1],
-            "rightPx": bounds[2],
-            "bottomPx": bounds[3],
-            "centroidXPx": m["centroid"][0] - anchor_x,
-            "centroidYPx": m["centroid"][1] + dy,
-            "footLiftPx": lift,
-        }
-        return metrics, bounds, dy, origin
-
-    still_metrics, _, _, _ = values(still)
+    still_metrics, _, _, _ = _compute_frame_values(
+        still, row_info, height, still_area, alpha_threshold, np
+    )
     poses = {}
     for label, frame in labelled.items():
-        metrics, bounds, dy, origin = values(frame)
-        profile = []
-        mask = np.array(frame["image"].getchannel("A")) >= alpha_threshold
-        for h in (0.10, 0.25, 0.50, 0.75, 0.90):
-            y = int(round(-h * height - dy))
-            xs = np.flatnonzero(mask[y]) if 0 <= y < mask.shape[0] else np.array([])
-            cx = float(frame["meta"].get("anchor", [frame["image"].width / 2, 0])[0])
-            profile.append(
-                {
-                    "heightAboveGroundUnits": h,
-                    "leftUnits": float((xs.min() - cx) / height) if len(xs) else None,
-                    "rightUnits": float((xs.max() + 1 - cx) / height)
-                    if len(xs)
-                    else None,
-                }
-            )
+        metrics, bounds, dy, origin = _compute_frame_values(
+            frame, row_info, height, still_area, alpha_threshold, np
+        )
         poses[label] = {
             "sourceFile": str(frame["path"]),
             "frameIndex": frame["meta"].get("index", 0),
@@ -608,35 +377,12 @@ def measure_motion_range(
                 for k, v in metrics.items()
             },
             "bboxStandingUnits": [v / height for v in bounds],
-            "profile": profile,
+            "profile": _build_pose_profile(frame, height, dy, alpha_threshold, np),
             "jointAnglesRadians": None,
         }
-    limits = {}
-    for key in still_metrics:
-        observed = [
-            (p["metrics"][key], label)
-            for label, p in poses.items()
-            if p["metrics"][key] is not None
-        ]
-        if not observed:
-            limits[key] = None
-            continue
-        lo, low_label = min(observed, key=lambda v: v[0])
-        hi, high_label = max(observed, key=lambda v: v[0])
-        limits[key] = {
-            "min": lo,
-            "max": hi,
-            "minPose": low_label,
-            "maxPose": high_label,
-            "still": still_metrics[key],
-            "minDeltaFromStill": lo - still_metrics[key]
-            if still_metrics[key] is not None
-            else None,
-            "maxDeltaFromStill": hi - still_metrics[key]
-            if still_metrics[key] is not None
-            else None,
-        }
+    limits = _compute_metric_limits(still_metrics, poses)
     timed_trajectories = compile_timed_trajectories(height, limits, poses)
+    target_h = registration["target"]["heightPx"] if registration else None
     result = {
         "schemaVersion": SCHEMA_VERSION,
         "kind": "observed_silhouette_motion_range",
@@ -662,12 +408,8 @@ def measure_motion_range(
         "rootTrajectory": None,
         "sourceHashes": hashes,
         "registrationFile": "turnaround_registration.json" if registration else None,
-        "turnaroundHeightPx": registration["target"]["heightPx"]
-        if registration
-        else None,
-        "poseToTurnaroundScale": registration["target"]["heightPx"] / height
-        if registration
-        else None,
+        "turnaroundHeightPx": target_h,
+        "poseToTurnaroundScale": target_h / height if target_h else None,
         "warnings": [
             "These are sampled 2D silhouette envelopes, not physiological joint limits or temporal motion.",
             "Pose artwork includes props/costume and viewpoint changes; envelopes include their pixels.",
