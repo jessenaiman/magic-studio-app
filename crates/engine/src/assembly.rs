@@ -89,6 +89,88 @@ fn spans(times: &[f64], duration: f64) -> Vec<(f64, f64)> {
         .collect()
 }
 
+fn resolve_scene_image(
+    scene: &Value,
+    dir: &Path,
+    assets: &[crate::ProjectAsset],
+) -> Option<PathBuf> {
+    let asset_id = scene["image_asset_id"]
+        .as_str()
+        .or_else(|| scene["background_asset"].as_str())
+        .or_else(|| scene["asset"].as_str());
+    if let Some(id) = asset_id
+        && let Some(path) = assets
+            .iter()
+            .find(|a| a.id == id)
+            .and_then(|a| a.path.as_ref())
+            .map(|p| dir.join(p))
+            .filter(|p| p.is_file())
+    {
+        return Some(path);
+    }
+    scene["image_path"]
+        .as_str()
+        .or_else(|| scene["illustration"].as_str())
+        .or_else(|| scene["path"].as_str())
+        .map(|p| dir.join(p))
+        .filter(|p| p.is_file())
+}
+
+fn backgrounds_from_storyboard(
+    board: &Value,
+    dir: &Path,
+    assets: &[crate::ProjectAsset],
+) -> Vec<(f64, PathBuf)> {
+    let list = board["scenes"]
+        .as_array()
+        .or_else(|| board["animations"].as_array());
+    let mut out: Vec<(f64, PathBuf)> = list
+        .into_iter()
+        .flatten()
+        .filter_map(|sc| {
+            let start = sc["start_seconds"]
+                .as_f64()
+                .or_else(|| sc["start"].as_f64())
+                .or_else(|| sc["lines"][0]["start"].as_f64())
+                .unwrap_or(0.0);
+            Some((start, resolve_scene_image(sc, dir, assets)?))
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out.dedup_by(|a, b| a.1 == b.1);
+    out
+}
+
+fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, PathBuf)>> {
+    for rel in ["storyboard/storyboard.json", "design/words.json"] {
+        if let Ok(bytes) = std::fs::read(dir.join(rel))
+            && let Ok(doc) = serde_json::from_slice::<Value>(&bytes)
+        {
+            let bgs = backgrounds_from_storyboard(&doc, dir, &s.project_assets);
+            if !bgs.is_empty() {
+                return Some(bgs);
+            }
+        }
+    }
+    let imgs: Vec<PathBuf> = s
+        .project_assets
+        .iter()
+        .filter(|a| a.kind == "image")
+        .filter_map(|a| a.path.as_ref().map(|p| dir.join(p)))
+        .filter(|p| p.is_file())
+        .collect();
+    if imgs.is_empty() {
+        return None;
+    }
+    let step = (duration / (imgs.len() as f64)).max(1.0);
+    Some(
+        imgs.into_iter()
+            .enumerate()
+            .map(|(i, p)| ((i as f64) * step, p))
+            .collect(),
+    )
+}
+
 /// What the film is made of: song, backgrounds in time order with their images, lettering.
 struct Inputs {
     name: String,
@@ -117,23 +199,24 @@ fn inputs(s: &Session, dir: &Path, p: &Value) -> Result<Inputs> {
             lettering.display()
         )));
     }
-    let entries = p["backgrounds"]
-        .as_array()
-        .filter(|b| !b.is_empty())
-        .ok_or_else(|| {
+    let duration = crate::workshop::song_seconds(dir)
+        .ok_or_else(|| invalid("Song length unknown; analyze the song first"))?;
+    let backgrounds = if let Some(entries) = p["backgrounds"].as_array().filter(|b| !b.is_empty()) {
+        let mut bgs = entries
+            .iter()
+            .map(|e| Ok((e["from"].as_f64().unwrap_or(0.0), background(s, dir, e)?)))
+            .collect::<Result<Vec<_>>>()?;
+        bgs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        bgs
+    } else {
+        auto_backgrounds(s, dir, duration).ok_or_else(|| {
             let known: Vec<&str> = s.project_assets.iter().map(|a| a.id.as_str()).collect();
             invalid(format!(
                 "backgrounds: [{{\"asset\":id,\"from\":seconds}}, ...] is required; assets: {}",
                 known.join(", ")
             ))
-        })?;
-    let mut backgrounds = entries
-        .iter()
-        .map(|e| Ok((e["from"].as_f64().unwrap_or(0.0), background(s, dir, e)?)))
-        .collect::<Result<Vec<_>>>()?;
-    backgrounds.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let duration = crate::workshop::song_seconds(dir)
-        .ok_or_else(|| invalid("Song length unknown; analyze the song first"))?;
+        })?
+    };
     Ok(Inputs {
         name,
         audio,
@@ -246,5 +329,52 @@ mod tests {
                 "{a},{b} vs {c},{d}"
             );
         }
+    }
+
+    #[test]
+    fn storyboard_backgrounds_resolve_scene_start_times_and_collapse_adjacent_duplicates() {
+        let dir = std::env::temp_dir().join(format!("magic_assembly_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let img1 = dir.join("map.png");
+        let img2 = dir.join("kitchen.png");
+        std::fs::write(&img1, b"png1").unwrap();
+        std::fs::write(&img2, b"png2").unwrap();
+        let assets = vec![
+            crate::ProjectAsset {
+                id: "map".into(),
+                name: "Map".into(),
+                kind: "image".into(),
+                path: Some("map.png".into()),
+                preset: None,
+                parts: Vec::new(),
+            },
+            crate::ProjectAsset {
+                id: "kitchen".into(),
+                name: "Kitchen".into(),
+                kind: "image".into(),
+                path: Some("kitchen.png".into()),
+                preset: None,
+                parts: Vec::new(),
+            },
+        ];
+        let board = json!({
+            "scenes": [
+                {"start_seconds": 0.0, "image_asset_id": "map"},
+                {"start_seconds": 4.2, "image_asset_id": "map"},
+                {"start_seconds": 8.5, "image_asset_id": "kitchen"},
+                {"start_seconds": 14.0, "image_path": "map.png"}
+            ]
+        });
+        let bgs = backgrounds_from_storyboard(&board, &dir, &assets);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            bgs,
+            vec![
+                (0.0, img1.clone()),
+                (8.5, img2),
+                (14.0, img1),
+            ]
+        );
     }
 }
