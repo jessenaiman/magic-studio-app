@@ -117,6 +117,28 @@ fn look(recipe: &Value, spec: &Value) -> Look {
     }
 }
 
+fn item_look(recipe: &Value, item: &Value) -> Look {
+    let font_fn =
+        |kind: &str, default: &str| recipe["fonts"][kind].as_str().unwrap_or(default).to_owned();
+    let kind = item["font"].as_str().unwrap_or("sans");
+    let bold = item["weight"].as_u64().unwrap_or(700) >= 700;
+    let italic = item["italic"].as_bool().unwrap_or(false);
+    let (font, style) = match (kind, bold, italic) {
+        ("serif" | "song", _, true) => (font_fn("serif", "C059"), "Italic"),
+        ("serif" | "song", true, false) => (font_fn("serif", "C059"), "Bold"),
+        ("serif" | "song", false, false) => (font_fn("serif", "C059"), "Roman"),
+        (_, true, _) => (font_fn("sans", "Nimbus Sans"), "Bold"),
+        (_, false, _) => (font_fn("sans", "Nimbus Sans"), "Regular"),
+    };
+    Look {
+        font,
+        style,
+        size: item["size"].as_f64().unwrap_or(58.0),
+        fill: colour(recipe, &item["color"]).unwrap_or_else(|| "#173F49".into()),
+        outline: colour(recipe, &item["outline"]),
+    }
+}
+
 /// The first recipe hero in the line, if any: (word index, its spec).
 fn hero<'a>(recipe: &'a Value, line: &Line) -> Option<(usize, &'a Value)> {
     if recipe["max_heroes"].as_u64() == Some(0) {
@@ -142,28 +164,119 @@ fn motion(name: &str, start: f64, end: f64) -> Option<(&'static str, Vec<(f64, V
                 (start + 0.24, json!([100, 100, 100])),
             ],
         ),
-        // Drops in from above.
         "fall" => (
             "position",
             vec![(start - 0.05, json!([0, -60, 0])), (start + arrive, still)],
         ),
-        // Lifts into place from below.
         "rise" => (
             "position",
             vec![(start - 0.05, json!([0, 50, 0])), (start + arrive, still)],
         ),
-        // Slides in from the left.
         "east" => (
             "position",
             vec![(start - 0.05, json!([-80, 0, 0])), (start + arrive, still)],
         ),
-        // One full turn, ending upright.
+        "west" => (
+            "position",
+            vec![(start - 0.05, json!([80, 0, 0])), (start + arrive, still)],
+        ),
+        "settle" => (
+            "position",
+            vec![(start - 0.05, json!([0, -24, 0])), (start + arrive, still)],
+        ),
+        "sleep" => (
+            "rotation",
+            vec![(start - 0.05, json!(-12)), (start + arrive, json!(0))],
+        ),
         "loop" => (
             "rotation",
             vec![(start, json!(-360)), (start + 0.8, json!(0))],
         ),
         _ => return None,
     })
+}
+
+fn stroke_preset(name: &str) -> Option<(&'static str, &'static str, f64, f64, f64)> {
+    Some(match name {
+        "underline" => (
+            "0 0 280 30",
+            "M 5 14 Q 61 5 125 13 T 269 10",
+            260.0,
+            28.0,
+            0.55,
+        ),
+        "swoop" => (
+            "0 0 790 160",
+            "M 10 145 Q 126 170 217 93 T 438 58 Q 578 29 756 7 M 730 5 L 761 5 L 746 29",
+            520.0,
+            110.0,
+            1.0,
+        ),
+        "loop" => (
+            "0 0 620 110",
+            "M 15 20 C 110 95 425 95 455 40 C 485 -4 350 -3 352 37 C 355 95 515 85 602 50 M 579 33 L 608 49 L 586 73",
+            460.0,
+            90.0,
+            1.0,
+        ),
+        "hill" => (
+            "0 0 410 95",
+            "M 7 77 Q 73 72 118 32 Q 171 -8 228 31 Q 279 75 400 76",
+            320.0,
+            74.0,
+            0.9,
+        ),
+        "down" => (
+            "0 0 160 330",
+            "M 73 13 C 27 67 104 129 66 196 Q 47 231 61 289 M 30 264 L 61 294 L 87 260",
+            120.0,
+            240.0,
+            0.8,
+        ),
+        _ => return None,
+    })
+}
+
+struct Stroke<'a> {
+    id: &'a str,
+    view_box: &'a str,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    d: &'a str,
+    color: &'a str,
+    width: f64,
+    from: f64,
+    to: f64,
+    shown: f64,
+    gone: f64,
+}
+
+fn stroke_steps(s: &Stroke<'_>, steps: &mut Vec<Value>) {
+    let svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{}\" width=\"{}\" height=\"{}\"><path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" stroke-linecap=\"round\"/></svg>",
+        s.view_box, s.w, s.h, s.d, s.color, s.width
+    );
+    steps.push(step("edit.pasteSvg", json!({"svg": svg, "name": s.id})));
+    steps.push(step(
+        "prop.set",
+        json!({"layer": s.id, "path": "transform/position", "value": [s.x + s.w / 2.0, s.y + s.h / 2.0, 0.0]}),
+    ));
+    steps.push(step(
+        "layer.addShapeItem",
+        json!({"layer": s.id, "kind": "trim"}),
+    ));
+    for (t, v) in [(s.from.max(0.0), 0.0), (s.to.max(s.from + 0.05), 100.0)] {
+        steps.push(step(
+            "prop.set",
+            json!({"layer": s.id, "path": "contents/trim/end", "value": v, "time": t, "timeBase": "comp"}),
+        ));
+    }
+    steps.push(step(
+        "layer.timing",
+        json!({"layers": [s.id], "in": s.shown, "out": s.gone}),
+    ));
 }
 
 fn text_params(look: &Look) -> Value {
@@ -183,48 +296,188 @@ fn step(command: &str, params: Value) -> Value {
     json!({"command": command, "params": params})
 }
 
+fn animate_range(
+    id: &str,
+    range: (usize, usize),
+    name: &str,
+    start: f64,
+    end: f64,
+    steps: &mut Vec<Value>,
+) {
+    let Some((property, keys)) = motion(name, start, end) else {
+        return;
+    };
+    steps.push(step(
+        "layer.addTextAnimator",
+        json!({"layer": id, "properties": [property]}),
+    ));
+    let selector = "text/animators/animator/selectors/rangeSelector";
+    for (path, value) in [
+        ("advanced/units", json!(1)),
+        ("start", json!(range.0)),
+        ("end", json!(range.1)),
+    ] {
+        steps.push(step(
+            "prop.set",
+            json!({"layer": id, "path": format!("{selector}/{path}"), "value": value}),
+        ));
+    }
+    for (time, value) in keys {
+        let path = format!("text/animators/animator/properties/{property}");
+        steps.push(step(
+            "prop.set",
+            json!({"layer": id, "path": path, "value": value, "time": time.max(0.0), "timeBase": "comp"}),
+        ));
+    }
+}
+
 /// The hero word's style and motion, limited to its characters by a range selector.
 fn hero_steps(
     recipe: &Value,
     line: &Line,
     k: usize,
     spec: &Value,
+    box_y: f64,
+    span: (f64, f64),
     steps: &mut Vec<Value>,
 ) -> Value {
     let id = line.id.as_str();
     let (a, b) = line.range(k);
-    let mut style = text_params(&look(recipe, spec));
+    let hero_look = look(recipe, spec);
+    let mut style = text_params(&hero_look);
     style["layer"] = json!(id);
     style["range"] = json!([a, b]);
     steps.push(step("layer.setText", style));
     let (start, end) = line.words[k].1.unwrap_or((line.start, line.end));
     let name = spec["motion"].as_str().unwrap_or("quiet");
-    if let Some((property, keys)) = motion(name, start, end) {
-        steps.push(step(
-            "layer.addTextAnimator",
-            json!({"layer": id, "properties": [property]}),
-        ));
-        let selector = "text/animators/animator/selectors/rangeSelector";
-        for (path, value) in [
-            ("advanced/units", json!(1)),
-            ("start", json!(a)),
-            ("end", json!(b)),
-        ] {
-            steps.push(step(
-                "prop.set",
-                json!({"layer": id, "path": format!("{selector}/{path}"), "value": value}),
-            ));
-        }
-        for (time, value) in keys {
-            let path = format!("text/animators/animator/properties/{property}");
-            steps.push(step("prop.set", json!({"layer": id, "path": path, "value": value, "time": time.max(0.0), "timeBase": "comp"})));
-        }
+    animate_range(id, (a, b), name, start, end, steps);
+    if let Some(stroke_name) = spec["stroke"].as_str()
+        && let Some((view_box, d, sw, sh, draw_s)) = stroke_preset(stroke_name)
+    {
+        let stroke_id = format!("{id}_stroke");
+        stroke_steps(
+            &Stroke {
+                id: &stroke_id,
+                view_box,
+                x: (FRAME.0 - sw) / 2.0,
+                y: box_y + 190.0,
+                w: sw,
+                h: sh,
+                d,
+                color: &hero_look.fill,
+                width: 7.0,
+                from: start,
+                to: (start + draw_s).min(span.1),
+                shown: span.0,
+                gone: span.1,
+            },
+            steps,
+        );
     }
     json!({"word": line.words[k].0, "motion": name, "at": start})
 }
 
-/// The effects-app commands for the whole song, and a summary of each line.
+fn item_word_time(line: &Line, item: &Value) -> (f64, f64) {
+    let id_str = item["accent"]
+        .as_str()
+        .or_else(|| item["word_ids"].get(0).and_then(Value::as_str))
+        .unwrap_or_default();
+    if let Some((_, suffix)) = id_str.rsplit_once("/w")
+        && let Ok(idx) = suffix.parse::<usize>()
+        && let Some((_, Some(t))) = line.words.get(idx)
+    {
+        return *t;
+    }
+    (line.start, line.end)
+}
+
+fn spatial_line_steps(
+    recipe: &Value,
+    line: &Line,
+    design: &Value,
+    shown: f64,
+    gone: f64,
+    steps: &mut Vec<Value>,
+) -> Value {
+    let mut hero_summary = Value::Null;
+    for (idx, item) in design["items"].as_array().into_iter().flatten().enumerate() {
+        let layer_id = format!("{}_item{idx}", line.id);
+        let text_str = item["text"].as_str().unwrap_or_default();
+        let look = item_look(recipe, item);
+        let x = item["x"].as_f64().unwrap_or(140.0);
+        let y = item["y"].as_f64().unwrap_or(90.0);
+        let bw = ((text_str.chars().count() as f64) * look.size * 0.72).clamp(220.0, FRAME.0 - 80.0);
+        let bh = (look.size * 1.5).max(96.0);
+        let mut text = text_params(&look);
+        text["text"] = json!(text_str);
+        text["name"] = json!(layer_id);
+        text["box"] = json!([x, y, bw, bh]);
+        text["justify"] = json!("left");
+        steps.push(step("layer.newText", text));
+        let rot = item["rotate"].as_f64().unwrap_or(0.0);
+        if rot.abs() > 1e-4 {
+            steps.push(step(
+                "prop.set",
+                json!({"layer": layer_id, "path": "transform/rotation", "value": rot}),
+            ));
+        }
+        let (ws, we) = item_word_time(line, item);
+        let move_name = item["motion"].as_str().unwrap_or("quiet");
+        animate_range(&layer_id, (0, text_str.chars().count()), move_name, ws, we, steps);
+        if item["accent"].is_string() || move_name != "quiet" {
+            hero_summary = json!({"word": text_str, "motion": move_name, "at": ws});
+        }
+        steps.push(step(
+            "layer.timing",
+            json!({"layers": [layer_id], "in": shown, "out": gone}),
+        ));
+        for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
+            steps.push(step(
+                "prop.set",
+                json!({"layer": layer_id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"}),
+            ));
+        }
+    }
+    for (d_idx, draw) in design["draws"].as_array().into_iter().flatten().enumerate() {
+        let vb = draw["view_box"].as_str().unwrap_or("0 0 280 30");
+        let (x, y) = (draw["x"].as_f64().unwrap_or(0.0), draw["y"].as_f64().unwrap_or(0.0));
+        let (w, h) = (draw["w"].as_f64().unwrap_or(240.0), draw["h"].as_f64().unwrap_or(30.0));
+        for (p_idx, path) in draw["paths"].as_array().into_iter().flatten().enumerate() {
+            let sid = format!("{}_draw{d_idx}_{p_idx}", line.id);
+            stroke_steps(
+                &Stroke {
+                    id: &sid,
+                    view_box: vb,
+                    x,
+                    y,
+                    w,
+                    h,
+                    d: path["d"].as_str().unwrap_or_default(),
+                    color: path["stroke"].as_str().unwrap_or("#B8442A"),
+                    width: path["width"].as_f64().unwrap_or(7.0),
+                    from: line.start + path["from"].as_f64().unwrap_or(0.0),
+                    to: line.start + path["to"].as_f64().unwrap_or(0.55),
+                    shown,
+                    gone,
+                },
+                steps,
+            );
+        }
+    }
+    hero_summary
+}
+
+#[cfg(test)]
 fn build_steps(recipe: &Value, all: &[Line], duration: f64) -> (Vec<Value>, Vec<Value>) {
+    build_steps_with_designs(recipe, &json!({}), all, duration)
+}
+
+fn build_steps_with_designs(
+    recipe: &Value,
+    designs: &Value,
+    all: &[Line],
+    duration: f64,
+) -> (Vec<Value>, Vec<Value>) {
     let (w, h) = FRAME;
     let top = recipe["band"].as_str() != Some("bottom");
     let box_y = if top { 50.0 } else { h - 350.0 };
@@ -245,25 +498,52 @@ fn build_steps(recipe: &Value, all: &[Line], duration: f64) -> (Vec<Value>, Vec<
             (line.end + HOLD).min(duration)
         };
         previous_out = gone;
-        let mut text = text_params(&base);
-        text["text"] = json!(line.text());
-        text["name"] = json!(id);
-        text["box"] = json!([120.0, box_y, w - 240.0, 300.0]);
-        text["justify"] = json!("center");
-        steps.push(step("layer.newText", text));
-        let hero =
-            hero(recipe, line).map(|(k, spec)| hero_steps(recipe, line, k, spec, &mut steps));
-        steps.push(step(
-            "layer.timing",
-            json!({"layers": [id], "in": shown, "out": gone}),
-        ));
-        for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
-            steps.push(step("prop.set", json!({"layer": id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
-        }
-        summary
-            .push(json!({"id": id, "text": line.text(), "in": shown, "out": gone, "hero": hero}));
+        let line_design = &designs[id];
+        let hero_info = if line_design["items"].as_array().is_some_and(|a| !a.is_empty()) {
+            spatial_line_steps(recipe, line, line_design, shown, gone, &mut steps)
+        } else {
+            let mut text = text_params(&base);
+            text["text"] = json!(line.text());
+            text["name"] = json!(id);
+            text["box"] = json!([120.0, box_y, w - 240.0, 300.0]);
+            text["justify"] = json!("center");
+            steps.push(step("layer.newText", text));
+            let h_val = hero(recipe, line)
+                .map(|(k, spec)| hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps))
+                .unwrap_or(Value::Null);
+            steps.push(step(
+                "layer.timing",
+                json!({"layers": [id], "in": shown, "out": gone}),
+            ));
+            for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
+                steps.push(step("prop.set", json!({"layer": id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
+            }
+            h_val
+        };
+        summary.push(
+            json!({"id": id, "text": line.text(), "in": shown, "out": gone, "hero": hero_info}),
+        );
     }
     (steps, summary)
+}
+
+fn words_designs(dir: &Path) -> Value {
+    let path = crate::words::document_path(dir);
+    let Ok(bytes) = std::fs::read(path) else {
+        return json!({});
+    };
+    let Ok(doc) = serde_json::from_slice::<Value>(&bytes) else {
+        return json!({});
+    };
+    let mut map = serde_json::Map::new();
+    for anim in doc["animations"].as_array().into_iter().flatten() {
+        if let Some(obj) = anim["design"].as_object() {
+            for (k, v) in obj {
+                map.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    Value::Object(map)
 }
 
 fn run_effects(dir: &Path, args: &[String]) -> Result<String> {
@@ -274,12 +554,18 @@ fn run_effects(dir: &Path, args: &[String]) -> Result<String> {
 /// lyrics, then render it with transparency unless `render` is false.
 pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
+    let designs = words_designs(&dir);
     let recipe_path = p["recipe"]
         .as_str()
         .map_or_else(|| dir.join("lyrics-design.json"), PathBuf::from);
     let recipe: Value = std::fs::read(&recipe_path)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
+        .or_else(|| {
+            designs.as_object().filter(|m| !m.is_empty()).map(|_| {
+                json!({"band": "top", "base": {"lettering": "sans-bold", "size": 58, "color": "#173F49", "outline": "#FFF8E9"}})
+            })
+        })
         .ok_or_else(|| {
             invalid(format!(
                 "No lyric design recipe at {}; propose one and get it approved first",
@@ -296,7 +582,7 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let duration = crate::workshop::song_seconds(&dir)
         .unwrap_or(last + 2.0)
         .max(last);
-    let (steps, summary) = build_steps(&recipe, &all, duration);
+    let (steps, summary) = build_steps_with_designs(&recipe, &designs, &all, duration);
     let out = dir.join("lettering");
     std::fs::create_dir_all(&out)?;
     let (project, commands) = (out.join("lyrics.ecproj"), out.join("lyrics.steps.jsonl"));
@@ -398,5 +684,120 @@ mod tests {
         assert!(summary[0]["in"].as_f64().unwrap() == 0.0);
         assert!(in1 >= out0, "{out0} {in1}");
         assert!((in1 - 3.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn spatial_line_design_places_each_item_and_rotates_and_animates_trim_strokes() {
+        let designs = json!({
+            "l1": {
+                "items": [
+                    {
+                        "text": "X marks the",
+                        "font": "sans",
+                        "weight": 700,
+                        "italic": false,
+                        "size": 58.0,
+                        "color": "#173F49",
+                        "outline": "#FFF8E9",
+                        "x": 344.0,
+                        "y": 97.0,
+                        "rotate": 0.0,
+                        "motion": "quiet",
+                        "word_ids": ["l1/w0", "l1/w1", "l1/w2"]
+                    },
+                    {
+                        "text": "spot,",
+                        "font": "serif",
+                        "weight": 700,
+                        "italic": false,
+                        "size": 130.0,
+                        "color": "#B8442A",
+                        "outline": "#FFF8E9",
+                        "x": 708.0,
+                        "y": 30.0,
+                        "rotate": -7.0,
+                        "motion": "pop",
+                        "accent": "l1/w3",
+                        "word_ids": ["l1/w3"]
+                    }
+                ],
+                "draws": [
+                    {
+                        "name": "Underline",
+                        "view_box": "0 0 280 30",
+                        "x": 754.0,
+                        "y": 168.0,
+                        "w": 253.0,
+                        "h": 27.0,
+                        "paths": [
+                            {
+                                "d": "M 5 14 Q 61 5 125 13 T 269 10",
+                                "stroke": "#B8442A",
+                                "width": 7.0,
+                                "from": 0.59,
+                                "to": 1.14
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+        let (steps, _) = build_steps_with_designs(&recipe(), &designs, &lines(&aligned()), 33.0);
+        let texts: Vec<&Value> = steps
+            .iter()
+            .filter(|s| s["command"] == "layer.newText")
+            .collect();
+        assert_eq!(texts.len(), 3);
+        assert_eq!(texts[0]["params"]["name"], "l1_item0");
+        assert_eq!(texts[0]["params"]["box"][0], 344.0);
+        assert_eq!(texts[0]["params"]["box"][1], 97.0);
+        assert_eq!(texts[1]["params"]["name"], "l1_item1");
+        assert_eq!(texts[1]["params"]["box"][0], 708.0);
+        assert_eq!(texts[1]["params"]["box"][1], 30.0);
+        let rot = steps
+            .iter()
+            .find(|s| {
+                s["params"]["layer"] == "l1_item1"
+                    && s["params"]["path"] == "transform/rotation"
+            })
+            .unwrap();
+        assert_eq!(rot["params"]["value"], -7.0);
+        let svg = steps
+            .iter()
+            .find(|s| s["command"] == "edit.pasteSvg")
+            .unwrap();
+        assert_eq!(svg["params"]["name"], "l1_draw0_0");
+        let trim_keys: Vec<(f64, f64)> = steps
+            .iter()
+            .filter(|s| {
+                s["params"]["layer"] == "l1_draw0_0"
+                    && s["params"]["path"] == "contents/trim/end"
+            })
+            .map(|s| {
+                (
+                    s["params"]["time"].as_f64().unwrap(),
+                    s["params"]["value"].as_f64().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(trim_keys, vec![(0.59, 0.0), (1.14, 100.0)]);
+    }
+
+    #[test]
+    fn recipe_hero_stroke_emits_svg_trim_shape_layer() {
+        let mut r = recipe();
+        r["heroes"]["spot"]["stroke"] = json!("underline");
+        let (steps, _) = build_steps(&r, &lines(&aligned()), 33.0);
+        let svg = steps
+            .iter()
+            .find(|s| s["command"] == "edit.pasteSvg")
+            .unwrap();
+        assert_eq!(svg["params"]["name"], "l1_stroke");
+        let trim_item = steps
+            .iter()
+            .find(|s| s["command"] == "layer.addShapeItem")
+            .unwrap();
+        assert_eq!(trim_item["params"]["layer"], "l1_stroke");
+        assert_eq!(trim_item["params"]["kind"], "trim");
     }
 }
