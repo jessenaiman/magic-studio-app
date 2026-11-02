@@ -1,6 +1,5 @@
 use crate::commands::CommandSpec;
 use crate::commands::always;
-use crate::commands::has_asset;
 
 // Import command handlers into this module so the `build()` array can reference them.
 use crate::agent::{
@@ -8,26 +7,12 @@ use crate::agent::{
     cmd_agent_session,
 };
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
-use crate::exports::{cmd_export_layered_motion, cmd_render_scene_source};
-use crate::image_cmds::{
-    cmd_image_break_apart, cmd_image_color_to_alpha, cmd_image_content_aware_fill,
-    cmd_image_image_size, cmd_image_puppet_warp, cmd_image_register_frame,
-};
-use crate::magic_design::{
-    cmd_asset_build_cutout_rig, cmd_asset_cut_sheet, cmd_asset_extract_background,
-    cmd_asset_load_manifest, cmd_asset_make_transparent, cmd_export_agent_prompt,
-};
-use crate::parts::{cmd_part_set_state, cmd_part_show_all};
 use crate::project::{
     cmd_project_add_asset, cmd_project_close, cmd_project_list_assets, cmd_project_load_asset,
     cmd_project_new, cmd_project_open, cmd_project_remove_asset, cmd_project_save,
     cmd_project_update_asset,
 };
-use crate::sequence::cmd_sequence_render;
-use crate::sheets::cmd_assets_agent_sheets;
-use crate::vision::cmd_vision_analyze;
 use crate::workshop::{
-    cmd_assets_assess, cmd_assets_fixlist, cmd_assets_fixlist_add, cmd_assets_request_sheet,
     cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_storyboard_approve,
     cmd_storyboard_edit, cmd_storyboard_import_magicstudio, cmd_storyboard_init,
     cmd_storyboard_toc, cmd_video_init, cmd_video_server_start, cmd_video_server_stop,
@@ -45,32 +30,16 @@ const fn is_long_running_id(id: &str) -> bool {
         b"project.intake"
             | b"agent.send"
             | b"ui.eval"
-            | b"animation.scene.render"
-            | b"motion.pose.export"
-            | b"animation.render"
-            | b"motion.place_section"
-            | b"assets.agent_sheets"
-            | b"rig.from_sheet"
             | b"words.design"
             | b"words.letter"
             | b"video.assemble"
-            | b"sequence.render"
-            | b"animation.source.render"
             | b"video.init"
-            | b"asset.make_transparent"
-            | b"asset.extract_background"
-            | b"animation.prepare"
-            | b"asset.cut_sheet"
-            | b"export.scene_render"
-            | b"export.layered_motion"
             | b"audio.analyze"
             | b"workshop.build_storyboard"
             | b"workshop.split_panels"
             | b"video.snapshot"
             | b"video.render"
             | b"image.generate"
-            | b"image.apply_medium"
-            | b"image.register_frame"
     )
 }
 
@@ -101,14 +70,11 @@ macro_rules! query {
 pub fn build() -> Vec<CommandSpec> {
     let mut specs = Vec::new();
     for section in [
-        specs_animation_jobs,
         specs_skills_and_crew,
         specs_backstage,
         specs_ui_controls,
         specs_ui_inspection,
-        specs_motion_authoring,
         specs_agent_and_sprocket,
-        specs_motion_and_character,
         specs_theatre_and_project,
         specs_asset_and_rig,
         specs_image_and_sequence,
@@ -119,95 +85,11 @@ pub fn build() -> Vec<CommandSpec> {
         specs_storyboard_part2,
         specs_workshop_and_video,
         specs_video_and_intake,
-        specs_part_and_manifest,
         specs_export_and_diagnostics,
     ] {
         specs.extend(section());
     }
     specs
-}
-
-fn specs_animation_jobs() -> Vec<CommandSpec> {
-    vec![
-        cmd!(
-            "animation.scene.render",
-            "Build / Render Blender Animation",
-            ["Animation"],
-            None,
-            "{\"character\":\"rig id\",\"track\":\"track id\",\"rig_plan\":\"optional JSON with parts, joints.rest_tail and authored pose_library for skeletal cutout construction\",\"volume_plan\":\"registered views JSON; track=turntable or skeleton.tracks key; skeleton requires geometry_sha256, bones and weights\",\"voxel_resolution\":144,\"duration\":3,\"blend\":\"optional saved .blend instead of construction or migration\",\"resolution_percent\":50,\"max_frames\":90,\"memory_mb\":4096,\"timeout_seconds\":300}",
-            always,
-            crate::animation_jobs::cmd_start_scene_job
-        ),
-        query!(
-            "animation.sources",
-            "Registered native animation sources",
-            "{\"expected_project\":\"optional project identity\"}",
-            crate::animation_links::sources
-        ).help("List configured animations and their current revisions before choosing one to render.",
-               "magic-cli --project /absolute/Project.magic animation sources"),
-        cmd!(
-            "animation.source.set",
-            "Register editable native source",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"stable source id\",\"backend\":\"blender\",\"source\":\"saved .blend\",\"bundle\":\"optional dependency root\",\"character\":\"optional paired rig ID\",\"track\":\"optional paired action ID\",\"expected_revision\":0}",
-            always,
-            crate::animation_links::set
-        ).help("Link an editable file to a project and optionally associate a character action, then save the project.",
-               "magic-cli --project /absolute/Project.magic animation source set expected_project=/absolute/Project.magic id=sway backend=blender source=/absolute/animation.blend expected_revision=0"),
-        cmd!(
-            "animation.source.render",
-            "Render registered native source",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"source id\",\"expected_revision\":1,\"options\":{}}",
-            always,
-            crate::animation_links::render
-        ).help("Render a registered animation using saved settings, with optional backend settings in options; inspect the returned job with animation status.",
-               "magic-cli --project /absolute/Project.magic animation source render expected_project=/absolute/Project.magic id=sway expected_revision=1 'options={\"memory_mb\":4096,\"timeout_seconds\":300}'"),
-        cmd!(
-            "animation.source.accept",
-            "Accept completed native result",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"source id\",\"expected_revision\":1,\"job\":\"completed full job id\"}",
-            always,
-            crate::animation_links::accept
-        ).help("Attach a completed full render to its unchanged source revision, then run project save to retain the result.",
-               "magic-cli --project /absolute/Project.magic animation source accept expected_project=/absolute/Project.magic id=sway expected_revision=1 job=JOB_ID"),
-        query!(
-            "animation.status",
-            "Native Animation Job Progress",
-            "{\"job\":\"job id\"}",
-            crate::animation_jobs::cmd_animation_status
-        ).help("Read a render job's progress, result, transparency evidence and failure details before accepting it.",
-               "magic-cli --project /absolute/Project.magic animation status job=JOB_ID"),
-        query!(
-            "animation.list",
-            "Native Animation Jobs and Global Owner",
-            "{}",
-            crate::animation_jobs::cmd_animation_list
-        ),
-        query!(
-            "animation.cancel",
-            "Cancel Native Animation Job",
-            "{\"job\":\"job id\"}",
-            crate::animation_jobs::cmd_animation_cancel
-        ).help("Cancel the named render job, then check animation status until cancellation finishes.",
-               "magic-cli --project /absolute/Project.magic animation cancel job=JOB_ID"),
-        query!(
-            "animation.scene.actions",
-            "Saved Blender Migration Actions",
-            "{\"character\":\"rig id\"}",
-            crate::animation_jobs::cmd_animation_actions
-        ),
-        query!(
-            "animation.scene.prepare",
-            "Headless Bounded Migration Preparation",
-            "{\"request\":\"worker request.json\"}",
-            crate::animation_jobs::cmd_prepare_animation_job
-        ),
-    ]
 }
 
 fn specs_skills_and_crew() -> Vec<CommandSpec> {
@@ -563,83 +445,6 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_motion_authoring() -> Vec<CommandSpec> {
-    vec![
-        cmd!(
-            "motion.layers.set",
-            "Set planar layer stacking",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"character\":\"asset id\",\"expected_rig_sha256\":\"current hash\",\"part\":\"alternative to order: part ID\",\"depth\":0,\"order\":[\"back-part\",\"front-part\"]}",
-            always,
-            crate::motion_authoring::layers_set
-        ),
-        cmd!(
-            "motion.part.set",
-            "Set saved action part channels",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"character\":\"asset id\",\"track\":\"authored action id\",\"part\":\"part id\",\"expected_rig_sha256\":\"motion.tracks hash\",\"position\":[0,0],\"scale\":[100,100],\"rotation\":0,\"pivot\":[0,0]}",
-            always,
-            crate::motion_authoring::part_set
-        ),
-        cmd!(
-            "motion.part.reset",
-            "Reset explicit saved part fields",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"character\":\"asset id\",\"track\":\"action id\",\"part\":\"part id\",\"expected_rig_sha256\":\"hash\",\"fields\":[\"position\",\"scale\",\"rotation\"]}",
-            always,
-            crate::motion_authoring::part_reset
-        ),
-        cmd!(
-            "motion.action.set",
-            "Edit authored action metadata",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"character\":\"asset id\",\"track\":\"stable action id\",\"expected_rig_sha256\":\"hash\",\"label\":\"Action name\",\"duration\":3,\"loop\":false}",
-            always,
-            crate::motion_authoring::action_set
-        ),
-        cmd!(
-            "motion.edit.undo",
-            "Undo a guarded rig edit",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"character\":\"asset id\",\"expected_rig_sha256\":\"current hash\",\"undo\":\"receipt token\"}",
-            always,
-            crate::motion_authoring::undo
-        ),
-        cmd!(
-            "motion.pose.export",
-            "Export and register sampled pending pose",
-            ["Animation"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"character\":\"asset id\",\"track\":\"action id\",\"time\":0,\"rest\":false,\"amount\":100,\"expected_rig_sha256\":\"hash\",\"theatre_state\":null,\"reference_asset\":\"optional asset ID\"}",
-            always,
-            crate::motion_authoring::pose_export
-        ),
-        cmd!(
-            "motion.path",
-            "Draw a timed motion path",
-            ["Animation"],
-            None,
-            "{\"character\":\"asset id\",\"track\":\"source track\",\"layer\":\"optional root layer\",\"points\":[[0,0],[100,100]],\"duration\":3,\"start_size\":100,\"end_size\":100}",
-            always,
-            crate::motion::cmd_motion_path
-        ),
-        cmd!(
-            "motion.undo_path",
-            "Undo drawn motion path",
-            ["Edit"],
-            None,
-            "{\"character\":\"asset id\",\"undo\":\"history token\"}",
-            always,
-            crate::motion::cmd_motion_undo_path
-        ),
-    ]
-}
-
 fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
     vec![
         query!(
@@ -717,125 +522,8 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_motion_and_character() -> Vec<CommandSpec> {
-    vec![
-        cmd!(
-            "animation.render",
-            "Render the selected animation",
-            ["Animation"],
-            None,
-            "{\"character\":\"asset id\",\"track\":\"track id\",\"amount\":100,\"rest\":false,\"duration\":\"optional seconds; defaults to action length\",\"sync_video\":true}",
-            always,
-            crate::motion::cmd_motion_export_track
-        ).help("Render the selected character action through the existing script workflow and return its clip, editable source and validation results.",
-               "magic-cli --project /absolute/Project.magic animation render character=babel track=@sway duration=2 amount=35 sync_video=false"),
-        cmd!(
-            "motion.place_section",
-            "Animate a song section: draw the path, export, gate and place it in the video",
-            ["Animation"],
-            None,
-            "{\"character\":\"asset id\",\"track\":\"source track (default the first)\",\"layer\":\"optional root layer\",\"points\":[[0,0],[100,100]],\"start_size\":100,\"end_size\":100,\"amount\":100,\"id\":\"video clip id\",\"start\":0,\"duration\":3,\"rect\":[0,0,1920,1080]}",
-            always,
-            crate::motion::cmd_motion_place_section
-        ),
-        cmd!(
-            "motion.action_track",
-            "Resolve an action and configure its playable rig",
-            ["Animation"],
-            None,
-            "{\"character\":\"asset id\",\"action\":\"walk\",\"track\":\"optional track override\",\"rest\":false}",
-            always,
-            crate::motion::cmd_motion_action_track
-        ),
-        query!(
-            "motion.tracks",
-            "Inspect animation tracks and layers",
-            "{\"character\":\"asset id\"}",
-            crate::motion::cmd_motion_tracks
-        ),
-        query!(
-            "character.assets",
-            "Retrieve imported character.magic config, sheets, angles, pose strips, and drafts",
-            "{\"character\":\"asset id\"}",
-            crate::character::cmd_character_assets
-        ),
-        cmd!(
-            "character.new",
-            "New standalone character from one static image",
-            ["Animation"],
-            None,
-            "{\"image\":\"/path/to/static-character.png\",\"name\":\"optional; defaults to the image name\",\"category\":\"characters (default) | backgrounds | …\",\"library\":\"optional; default <magic-studio>/animations beside the projects root\"}",
-            always,
-            crate::character::cmd_character_new
-        ),
-        cmd!(
-            "character.import",
-            "Import an image or sheet into a character folder as original draft, reference, or sheet",
-            ["Animation"],
-            None,
-            "{\"character\":\"asset id\",\"path\":\"/path/to/sheet.png\",\"role\":\"original_draft|reference|turnaround|poses|skeleton\"}",
-            always,
-            crate::character::cmd_character_import
-        ),
-        cmd!(
-            "character.configure",
-            "Configure character angle, direction, or pose in character.magic",
-            ["Animation"],
-            None,
-            "{\"character\":\"asset id\",\"angle\":\"three_quarter_right\",\"direction\":\"right\",\"pose\":\"right\"}",
-            always,
-            crate::character::cmd_character_configure
-        ),
-        query!(
-            "motion.sample",
-            "Sample engine motion for drawing",
-            "{\"character\":\"asset id\",\"track\":\"track id\",\"fps\":30,\"rest\":false,\"amount\":100,\"time\":0}",
-            crate::motion::cmd_motion_sample
-        ),
-    ]
-}
-
 fn specs_theatre_and_project() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "motion.theatre.read",
-            "Read native Theatre state",
-            "{\"expected_project\":\"optional selected .magic identity\"}",
-            crate::theatre::read
-        ),
-        query!(
-            "motion.clips",
-            "List clips and their Theatre sheets",
-            "{\"character\":\"asset id\"}",
-            crate::theatre::list
-        ),
-        cmd!(
-            "motion.clips.convert",
-            "Give every clip its own Theatre sheet",
-            [],
-            None,
-            "{\"character\":\"asset id\"}",
-            always,
-            crate::theatre::convert
-        ),
-        cmd!(
-            "motion.theatre.clear",
-            "Clear a character's Theatre keyframes",
-            [],
-            None,
-            "{\"expected_project\":\"required selected .magic identity\",\"character\":\"asset id\",\"track\":\"optional clip id; all clips when omitted\"}",
-            always,
-            crate::theatre::clear
-        ),
-        cmd!(
-            "motion.theatre.save",
-            "Save native Theatre state",
-            [],
-            None,
-            "{\"expected_project\":\"required selected .magic identity\",\"state\":{\"definitionVersion\":\"0.4.0\",\"revisionHistory\":[],\"sheetsById\":{}}}",
-            always,
-            crate::theatre::save
-        ),
         query!(
             "project.list_assets",
             "List Project Assets",
@@ -919,102 +607,11 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
             always,
             cmd_project_load_asset
         ),
-        cmd!(
-            "asset.make_transparent",
-            "Make Transparent",
-            ["Rig & Matting"],
-            None,
-            "{\"asset\":\"optional id\",\"source\":\"optional reference image\",\"attach\":true,\"reuse_alpha\":false,\"rect\":\"optional [x,y,w,h]\"}",
-            has_asset,
-            cmd_asset_make_transparent
-        ),
-        cmd!(
-            "asset.extract_background",
-            "Extract Background",
-            ["Rig & Matting"],
-            None,
-            "{\"asset\":\"optional_id\",\"rect\":\"optional [x,y,w,h] around the subject\",\"point\":\"optional [x,y] on the subject\",\"expand\":6}",
-            has_asset,
-            cmd_asset_extract_background
-        ),
-        cmd!(
-            "animation.prepare",
-            "Prepare reviewed artwork for animation",
-            ["Rig & Matting"],
-            None,
-            "{\"asset\":\"optional asset id\"}",
-            has_asset,
-            cmd_asset_build_cutout_rig
-        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering.",
-               "magic-cli --project /absolute/Project.magic animation prepare asset=babel"),
-        cmd!(
-            "rig.from_sheet",
-            "Rig From Sheet",
-            ["Rig & Matting"],
-            None,
-            "{\"sheet\":\"rig sheet asset id or PNG (image.generate rig_parts=...)\",\"name\":\"rig id\",\"out_dir\":\"optional; default assets/characters/<name>/rig\",\"pivots\":{\"part id\":\"[u,v] in the part, 0-1; corrects a joint without a new sheet\"},\"places\":{\"part id\":\"[cx,cy] centre in canvas pixels; corrects a misplaced part\"},\"order\":[\"optional: part ids back to front\"]}",
-            always,
-            crate::image_cmds::cmd_rig_from_sheet
-        ),
     ]
 }
 
 fn specs_image_and_sequence() -> Vec<CommandSpec> {
     vec![
-        cmd!(
-            "image.break_apart",
-            "Break Image Into Parts",
-            ["Edit", "Break Apart"],
-            None,
-            "{\"asset\":\"optional_id\",\"regions\":{\"part_id\":[[x,y],[x,y],[x,y]]},\"out_dir\":\"optional_dir\",\"rig_order\":[\"optional: part ids back to front; also writes rig.json for project.add_asset kind=cutout_rig\"]}",
-            always,
-            cmd_image_break_apart
-        ),
-        cmd!(
-            "image.puppet_warp",
-            "Puppet Warp Mesh",
-            ["Edit", "Break Apart"],
-            None,
-            "{\"asset\":\"optional_id\",\"source\":\"path\",\"out\":\"path\",\"pins\":[{\"src\":[x,y],\"dst\":[x,y]}],\"mode\":\"rigid|normal|distort\",\"density\":\"fewer|normal|more\",\"expansion\":2}",
-            always,
-            cmd_image_puppet_warp
-        ),
-        cmd!(
-            "image.color_to_alpha",
-            "Color to Alpha",
-            ["Edit", "Break Apart"],
-            None,
-            "{\"asset\":\"optional_id\",\"source\":\"path\",\"out\":\"path\",\"color\":\"#FFFFFF\",\"transparencyThreshold\":0,\"opacityThreshold\":1}",
-            always,
-            cmd_image_color_to_alpha
-        ),
-        cmd!(
-            "image.content_aware_fill",
-            "Content-Aware Fill",
-            ["Edit", "Break Apart"],
-            None,
-            "{\"asset\":\"optional_id\",\"source\":\"path\",\"out\":\"path\",\"select\":{\"id\":\"select.rect\",\"params\":{}},\"contents\":\"contentAware\",\"color\":\"#hex\"}",
-            always,
-            cmd_image_content_aware_fill
-        ),
-        cmd!(
-            "sequence.render",
-            "Render Image Sequence",
-            ["Animation", "Sequence"],
-            None,
-            "{\"name\":\"sequence\",\"canvas\":[1080,1080],\"fps\":30,\"duration\":4.0,\"background\":\"#101820|null\",\"layers\":[{\"id\":\"title\",\"file\":\"path.png\",\"center\":[540,540],\"scale\":100,\"entry\":{\"kind\":\"fade|rise|drop|left|right|zoom_in|zoom_out|turn\",\"duration\":0.6,\"delay\":0.0,\"ease\":\"linear|smooth|in|out\"},\"exit\":{\"kind\":\"fade\",\"duration\":0.5,\"delay\":3.4}}],\"stills\":0,\"video\":true}",
-            always,
-            cmd_sequence_render
-        ),
-        cmd!(
-            "export.layered_motion",
-            "Export Layered Motion Video",
-            ["Export"],
-            None,
-            "{\"spec\":\"layered_motion_spec.json\",\"out_dir\":\"optional_dir\",\"tracks\":\"optional_csv\",\"stills\":0,\"video\":true,\"gpu\":true,\"crf\":24}",
-            always,
-            cmd_export_layered_motion
-        ),
         query!(
             "workshop.status",
             "Workshop Stages",
@@ -1185,54 +782,11 @@ fn specs_workshop_queries() -> Vec<CommandSpec> {
             "{\"query\": \"search text\"}",
             cmd_project_search
         ),
-        query!(
-            "assets.assess",
-            "Assess Asset (clean or recreate?)",
-            "{\"path\": \"layer.png\", \"joints\": [\"optional sides a part joins on: left, right, top, bottom\"]}",
-            cmd_assets_assess
-        ),
-        query!("assets.fixlist", "Asset Fix List", "{}", cmd_assets_fixlist),
-        cmd!(
-            "assets.fixlist_add",
-            "Add to Asset Fix List",
-            ["Workshop"],
-            None,
-            "{\"asset\": \"id\", \"path\": \"png\", \"decision\": \"clean|recreate\", \"problem\": \"what is wrong\", \"tool\": \"exact command (clean)\", \"reference\": \"optional\", \"status\": \"open|done\"}",
-            always,
-            cmd_assets_fixlist_add
-        ),
-        cmd!(
-            "assets.request_sheet",
-            "Request Asset Sheet (one pass)",
-            ["Workshop"],
-            None,
-            "{}",
-            always,
-            cmd_assets_request_sheet
-        ),
     ]
 }
 
 fn specs_assets_and_sheets() -> Vec<CommandSpec> {
     vec![
-        cmd!(
-            "image.register_frame",
-            "Register a pose on a shared canvas",
-            ["Edit"],
-            None,
-            "{\"source\":\"pose.png\",\"out\":\"new-version.png\",\"canvas\":[1400,900],\"source_pivot\":[490,389],\"target_pivot\":[700,450],\"scale\":1.15}",
-            always,
-            cmd_image_register_frame
-        ),
-        cmd!(
-            "image.image_size",
-            "Image Size (normalise a sheet)",
-            ["Edit"],
-            None,
-            "{\"source\":\"path.png\",\"out\":\"path.png\",\"width\":2048,\"height\":2048,\"anchor\":\"center\",\"extensionColor\":\"#ffffff\"}",
-            always,
-            cmd_image_image_size
-        ),
         query!(
             "agent.log",
             "Agent Transcript / Reply Retrieval",
@@ -1256,60 +810,6 @@ fn specs_assets_and_sheets() -> Vec<CommandSpec> {
             "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from settings.json / MAGICSTUDIO_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
             always,
             crate::image_generation::generate
-        ),
-        cmd!(
-            "assets.sheet_plan",
-            "Inspect Asset Sheet Prompts",
-            ["Project Assets"],
-            None,
-            "{\"asset\":\"project asset id\",\"kinds\":[\"poses (default)|turnaround|skeleton\"],\"motion\":\"sway (default)|walk|jump|run|lie_down|sit_down|stand_up|wave|clap|custom\",\"motions\":[\"optional ordered actions for a batch\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"panels\":[\"optional label | drawing direction\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"fps\":12,\"hold_frames\":1,\"loop\":true}",
-            always,
-            crate::sheets::cmd_assets_sheet_plan
-        ),
-        cmd!(
-            "assets.sheet_info",
-            "Inspect Full Asset Sheet",
-            ["Project Assets"],
-            None,
-            "{\"asset\":\"project asset id\",\"sheet\":\"source PNG path\"}",
-            always,
-            crate::sheets::cmd_assets_sheet_info
-        ),
-        cmd!(
-            "assets.sheet_playback",
-            "Prepare Action Frame Playback",
-            ["Animation"],
-            None,
-            "{\"manifest\":\"extracted frame manifest.json\",\"id\":\"derived motion asset ID\",\"name\":\"optional display name\"}",
-            always,
-            crate::sheets::playback::prepare
-        ),
-        cmd!(
-            "assets.sheet_review",
-            "Review Full Asset Sheet",
-            ["Project Assets"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"asset\":\"project asset id\",\"sheet\":\"source PNG\",\"sha256\":\"displayed source hash\",\"approved\":true,\"note\":\"optional\"}",
-            always,
-            crate::sheets::cmd_assets_sheet_review
-        ),
-        cmd!(
-            "assets.agent_sheets",
-            "Generate Reviewable Asset Sheet Drafts",
-            ["Rig & Matting"],
-            None,
-            "{\"character\":\"optional id\",\"kinds\":[\"poses|turnaround|skeleton\"],\"motion\":\"sway (default) or action ID from assets.sheet_plan\",\"motions\":[\"walk\",\"jump\",\"run\"],\"reference\":\"optional accepted project PNG\",\"art_style\":\"original|flat_2d|cutout|watercolor|pencil|oil\",\"panels\":[\"optional ordered label | drawing direction\"],\"action_rows\":[\"walk\",\"jump\",\"lie_down\",\"sway\"],\"model\":\"selected Scribbles model\",\"run\":false,\"prompts\":{\"poses-walk\":\"optional drawing direction\"},\"timeout_s\":900,\"note\":\"optional\"}",
-            always,
-            cmd_assets_agent_sheets
-        ),
-        cmd!(
-            "image.apply_medium",
-            "Preview Reference Medium (PhotoCraft)",
-            ["Project Assets"],
-            None,
-            "{\"source\":\"image path\",\"medium\":\"cutout|poster|watercolor|pencil|dry_brush|oil\",\"settings\":{\"numberOfLevels\":5,\"edgeSimplicity\":6,\"edgeFidelity\":3}}",
-            always,
-            crate::image_cmds::cmd_image_apply_medium
         ),
     ]
 }
@@ -1598,110 +1098,8 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
     ]
 }
 
-fn specs_part_and_manifest() -> Vec<CommandSpec> {
-    vec![
-        cmd!(
-            "part.show_all",
-            "Show All Parts",
-            ["Edit"],
-            None,
-            "{\"character\":\"optional captured asset ID\",\"expected_project\":\"required with character\"}",
-            always,
-            cmd_part_show_all
-        ),
-        cmd!(
-            "part.replace_image",
-            "Replace One Rig Part Image",
-            ["Edit"],
-            None,
-            "{\"asset\":\"asset id\",\"part\":\"stable part id\",\"candidate\":\"project-local PNG\",\"expected_rig_sha256\":\"captured rig hash\",\"expected_part_sha256\":\"captured source hash\",\"expected_candidate_sha256\":\"captured candidate hash\",\"expected_revision\":0}",
-            always,
-            crate::part_replacement::cmd_part_replace_image
-        ),
-        cmd!(
-            "part.undo_image",
-            "Undo Rig Part Image Replacement",
-            ["Edit"],
-            None,
-            "{\"asset\":\"asset id\",\"undo\":\"replacement receipt token\"}",
-            always,
-            crate::part_replacement::cmd_part_undo_image
-        ),
-        CommandSpec {
-            id: "part.edit_image",
-            label: "Open Part in PhotoCraft",
-            menu: &["Animation", "Parts"],
-            shortcut: None,
-            params: "{\"asset\":\"optional asset id\",\"part\":\"stable part id\",\"which\":\"current|original\",\"spawn\":false}",
-            help: "",
-            example: "",
-            enabled: always,
-            run: crate::part_replacement::cmd_part_open_image_editor,
-            journal: false,
-            long_running: false,
-        },
-        cmd!(
-            "export.agent_prompt",
-            "Export Agent Rig Prompt",
-            ["File", "Export"],
-            None,
-            "{\"output\":\"optional_markdown_path\"}",
-            has_asset,
-            cmd_export_agent_prompt
-        ),
-        cmd!(
-            "asset.cut_sheet",
-            "Cut Sheet (PhotoCraft)",
-            ["Edit"],
-            None,
-            "{\"asset\": \"optional_id\", \"source\": \"optional_sheet.png\", \"out_dir\": \"optional_dir\", \"kind\": \"auto\", \"layout\": \"optional_layout.json\"}",
-            always,
-            cmd_asset_cut_sheet
-        ),
-        cmd!(
-            "asset.load_manifest",
-            "Load Asset Manifest",
-            ["File", "Open Manifest"],
-            None,
-            "{\"manifest\": \"path/to/manifest.json\", \"asset\": \"optional_id\"}",
-            always,
-            cmd_asset_load_manifest
-        ),
-        cmd!(
-            "part.set_state",
-            "Set Part Visibility / Solo",
-            ["Edit"],
-            None,
-            "{\"character\":\"optional captured asset ID\",\"expected_project\":\"required with character\",\"part\": \"name\", \"visible\": true, \"solo\": false}",
-            always,
-            cmd_part_set_state
-        ),
-    ]
-}
-
 fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "validate.motion",
-            "Validate 2.5D Puppet & Deform Motion Clip",
-            "{\"spec\":\"rig.json or rig_manifest.json\",\"frames\":[\"optional rendered frame PNGs\"]}",
-            crate::motion_qa::cmd_validate_motion
-        ),
-        cmd!(
-            "export.scene_render",
-            "Render Blender Source",
-            ["File", "Export"],
-            None,
-            "{\"expected_project\":\"selected .magic\",\"id\":\"registered Blender source id\",\"expected_revision\":1,\"options\":{\"max_frames\":90,\"resolution_percent\":50}}",
-            always,
-            cmd_render_scene_source
-        ),
-        query!(
-            "vision.analyze",
-            "Direct Pixel Vision Analysis",
-            "{\"character\": \"optional_slug\", \"image\": \"optional_path\"}",
-            cmd_vision_analyze
-        ),
         query!(
             "app.analytics",
             "Analytics: Saved Code Measurements & Status",

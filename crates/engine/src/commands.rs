@@ -22,7 +22,6 @@ use crate::{EngineError, Result, Session};
 
 // Re-export the public engine surface that other crates address via `crate::commands::*`.
 pub use crate::project::write_project_file;
-pub use crate::vision::{analyze_rgba_image, analyze_viewport_region};
 pub use crate::workspace::{
     asset_id_for_import, image_batch_args, resolve_tool, resolve_workspace_path, sanitize_asset_id,
     workspace_root,
@@ -50,12 +49,6 @@ pub struct CommandSpec {
 }
 
 impl CommandSpec {
-    pub(crate) fn help(mut self, help: &'static str, example: &'static str) -> Self {
-        self.help = help;
-        self.example = example;
-        self
-    }
-
     pub fn describe(&self) -> Value {
         serde_json::json!({"id":self.id,"label":self.label,"menu":self.menu,
             "shortcut":self.shortcut,"params":self.params,"journal":self.journal,
@@ -141,14 +134,6 @@ pub fn find(id: &str) -> Option<&'static CommandSpec> {
 
 pub(crate) fn always(_: &Session) -> std::result::Result<(), String> {
     Ok(())
-}
-
-pub(crate) fn has_asset(s: &Session) -> std::result::Result<(), String> {
-    if s.assets.is_empty() {
-        Err("no asset loaded".into())
-    } else {
-        Ok(())
-    }
 }
 
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`

@@ -62,12 +62,10 @@
 
 pub mod activity;
 pub mod agent;
-pub mod animation_jobs;
-pub mod animation_links;
+mod agent_run;
 pub mod assembly;
 pub(crate) mod audio_trace;
 pub mod change_marker;
-pub mod character;
 pub mod command_catalog;
 pub mod command_center;
 pub mod commands;
@@ -75,29 +73,17 @@ pub mod complexity;
 pub mod control_bindings;
 pub mod crew;
 pub mod doctor;
-pub mod exports;
 pub mod feedback_state;
 pub mod headless;
-pub mod image_cmds;
 pub mod image_generation;
 pub mod lettering;
 pub mod lyrics;
 pub(crate) mod lyrics_layout;
-pub mod magic_design;
-pub mod motion;
-pub mod motion_authoring;
-pub mod motion_qa;
 pub mod panels;
-pub mod part_replacement;
-pub mod parts;
 pub mod project;
 pub mod project_settings;
 pub(crate) mod read_only_file;
-pub mod sequence;
 pub mod session;
-mod session_layers;
-mod session_manifests;
-pub mod sheets;
 pub mod skills_registry;
 pub mod storyboard;
 pub(crate) mod storyboard_build;
@@ -106,24 +92,18 @@ pub mod storyboard_design;
 mod storyboard_document;
 pub(crate) mod storyboard_layout;
 pub mod studio_cues;
-pub mod theatre;
 pub mod video_target;
-pub mod vision;
 pub mod words;
 mod words_compose;
 mod words_stage;
 mod words_validate;
 pub mod workshop;
-pub mod workshop_fixlist;
 pub mod workshop_intake;
 pub mod workshop_transcript;
 pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
-pub use session::{
-    Asset, AttachedReference, LoadedManifest, ManifestFrame, MeasuredMotionRange,
-    MeasuredTurnaroundRegistration, PartState, PoseMotionMetrics, ProjectAsset, Session,
-};
+pub use session::{Asset, ProjectAsset, Session};
 
 use serde_json::Value;
 
@@ -303,7 +283,6 @@ fn connect_asset_entry(
         preset: None,
         path,
         kind: "auto".into(),
-        parts: Vec::new(),
     });
 }
 

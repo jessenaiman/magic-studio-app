@@ -14,12 +14,11 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::control_bindings::CONTROLS;
 use crate::storyboard::{SceneDoc, clock, panel_spans, read_scene_doc, scene_doc_path, scenes};
 use crate::video_target::{target_project_chip, target_project_path, video_server_info};
 use crate::workspace::{has_extension, run_tool_in, workspace_root};
 
-// Re-export storyboard, video target, intake, transcript, and fix-list handlers so `crate::workshop::*` callers continue to work.
+// Re-export storyboard, video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
 pub use crate::storyboard::{
     cmd_storyboard_approve, cmd_storyboard_edit, cmd_storyboard_import_magicstudio,
     cmd_storyboard_init, cmd_storyboard_read, cmd_storyboard_toc, cmd_workshop_build_storyboard,
@@ -28,9 +27,6 @@ pub use crate::storyboard::{
 pub use crate::video_target::{
     cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start,
     cmd_video_server_stop, cmd_video_snapshot,
-};
-pub use crate::workshop_fixlist::{
-    cmd_assets_assess, cmd_assets_fixlist, cmd_assets_fixlist_add, cmd_assets_request_sheet,
 };
 pub use crate::workshop_intake::{
     cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_remove,
@@ -50,8 +46,6 @@ pub(crate) const ASSETS_DIR: &str = "assets";
 pub const VIDEO_TARGETS: &[&str] = &["remotion", "filmcraft", "hyperframes"];
 /// FilmCraft time base: ticks per second.
 pub(crate) const SEQUENCE_TICKS_PER_SECOND: f64 = 254_016_000_000.0;
-/// Asset fix list: one decision per problem asset ("clean" or "recreate").
-pub(crate) const FIXLIST: &str = "asset-fixes.json";
 
 pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
     if let Some(duration) = std::fs::read(dir.join("transcript-provenance.json"))
@@ -394,15 +388,7 @@ fn workshop_transcript_summary(
 fn workshop_animated_assets(s: &Session) -> Vec<Value> {
     s.project_assets
         .iter()
-        .map(|a| {
-            let rig = s.assets.get(&a.id).and_then(|x| x.cutout_rig.as_ref());
-            let parts = rig.map(|r| r.parts.len());
-            let tracks = rig.and_then(|r| r.effectcraft.get("tracks")).and_then(Value::as_array).map(|t| t.len());
-            let controls: Vec<&str> = rig
-                .map(|r| CONTROLS.iter().copied().filter(|c| r.control_bindings.supports(c)).collect())
-                .unwrap_or_default();
-            json!({"id": a.id, "name": a.name, "kind": a.kind, "path": a.path, "parts": parts, "tracks": tracks, "controls": controls, "animatable": rig.is_some_and(|r| r.parts.len() >= 2)})
-        })
+        .map(|a| json!({"id": a.id, "name": a.name, "kind": a.kind, "path": a.path}))
         .collect()
 }
 
@@ -580,20 +566,7 @@ pub fn cmd_project_search(s: &mut Session, params: &Value) -> Result<Value> {
                         .contains(&q_lower)
                 })
         })
-        .map(|a| {
-            let parts: Vec<String> = s
-                .assets
-                .get(&a.id)
-                .map(|loaded| loaded.parts.iter().map(|p| p.name.clone()).collect())
-                .unwrap_or_default();
-            json!({
-                "id": a.id,
-                "name": a.name,
-                "kind": a.kind,
-                "path": a.path,
-                "parts": parts,
-            })
-        })
+        .map(|a| json!({"id": a.id, "name": a.name, "kind": a.kind, "path": a.path}))
         .collect();
 
     let files = cmd_workshop_files(s, &json!({"filter": q}))

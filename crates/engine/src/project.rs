@@ -8,10 +8,6 @@ use crate::{EngineError, Result, Session};
 
 /// Identifies a Magic Studio project file (`.magic`, JSON).
 const PROJECT_FORMAT: &str = "magicstudio.project";
-/// A character manifest (`character.magic`); it opens as an animation project.
-const CHARACTER_FORMAT: &str = "magicstudio.character";
-/// The keys an animation owns inside a character file; the rest is the character manifest.
-const CHARACTER_ANIMATION_KEYS: [&str; 3] = ["theatre", "animation_sources", "parts"];
 
 fn saved_path(path: &Path, project: &Path) -> PathBuf {
     let parent = project.parent().unwrap_or(Path::new("."));
@@ -44,38 +40,20 @@ fn opened_path(path: &str, project: &Path) -> PathBuf {
     parent.join(raw)
 }
 
+/// The keys this code writes; anything else already in the file is kept as it is.
+const MANAGED_KEYS: [&str; 6] = ["format", "version", "name", "assets", "workshop", "mode"];
+
 /// The persisted project state, shared by Save and unsaved-change detection.
 pub fn project_document(s: &Session) -> Value {
     let Some(path) = &s.project_path else {
         return Value::Null;
     };
-    if s.character_file {
-        return character_document(s);
-    }
     let name = path
         .file_stem()
         .and_then(|n| n.to_str())
         .unwrap_or("Untitled");
-    // Loaded assets save their current part states; unloaded ones keep what was saved before.
-    let assets: Vec<crate::ProjectAsset> = s
-        .project_assets
-        .iter()
-        .map(|entry| {
-            let mut entry = entry.clone();
-            if let Some(loaded) = s.assets.get(&entry.id) {
-                entry.parts = loaded.parts.clone();
-            }
-            entry
-        })
-        .collect();
-    let mut doc = json!({"format": PROJECT_FORMAT, "version": 1, "name": name, "assets": assets,
+    let mut doc = json!({"format": PROJECT_FORMAT, "version": 1, "name": name, "assets": s.project_assets,
         "workshop": {"audio": s.song_audio, "draft_approved": s.draft_approved, "target": s.video_target, "video_project": s.video_project_path}});
-    if let Some(state) = &s.theatre_state {
-        doc["theatre"] = state.clone();
-    }
-    if !s.animation_sources.is_empty() {
-        doc["animation_sources"] = json!(s.animation_sources);
-    }
     if let Some(mode) = &s.project_mode {
         doc["mode"] = json!(mode);
     }
@@ -83,38 +61,24 @@ pub fn project_document(s: &Session) -> Value {
     doc
 }
 
-/// The animation state a character file carries: Theatre motion, native sources and part states.
-fn character_document(s: &Session) -> Value {
-    let mut doc = json!({"format": CHARACTER_FORMAT});
-    if let Some(state) = &s.theatre_state {
-        doc["theatre"] = state.clone();
-    }
-    if !s.animation_sources.is_empty() {
-        doc["animation_sources"] = json!(s.animation_sources);
-    }
-    if let Some(entry) = s.project_assets.first() {
-        let parts = s.assets.get(&entry.id).map_or(&entry.parts, |a| &a.parts);
-        if !parts.is_empty() {
-            doc["parts"] = json!(parts);
+/// The file on disk with this session's managed keys replaced.
+fn merged_document(s: &Session, path: &Path) -> Value {
+    let current = project_document(s);
+    let mut doc = read_project_document(path)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}));
+    for key in MANAGED_KEYS {
+        match current.get(key) {
+            Some(value) => doc[key] = value.clone(),
+            None => {
+                if let Some(map) = doc.as_object_mut() {
+                    map.remove(key);
+                }
+            }
         }
     }
     doc
-}
-
-/// The character manifest as it is on disk, with the animation's keys replaced.
-fn character_file_document(s: &Session, path: &Path) -> Result<Value> {
-    let mut doc = read_project_document(path)?;
-    let current = character_document(s);
-    let manifest = doc
-        .as_object_mut()
-        .ok_or_else(|| EngineError::InvalidParams("character file is not a JSON object".into()))?;
-    for key in CHARACTER_ANIMATION_KEYS {
-        match current.get(key) {
-            Some(value) => manifest.insert(key.into(), value.clone()),
-            None => manifest.remove(key),
-        };
-    }
-    Ok(doc)
 }
 
 fn normalize_connections(doc: &mut Value, project: &Path) {
@@ -136,16 +100,9 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
         normalize_connections(&mut saved, path);
     }
     let current = project_document(s);
-    [
-        "assets",
-        "workshop",
-        "theatre",
-        "animation_sources",
-        "mode",
-        "parts",
-    ]
-    .iter()
-    .any(|key| saved[*key] != current[*key])
+    ["assets", "workshop", "mode"]
+        .iter()
+        .any(|key| saved[*key] != current[*key])
 }
 
 /// Writes the open project's asset connections to its `.magic` file.
@@ -153,11 +110,7 @@ pub fn write_project_file(s: &Session) -> Result<()> {
     let Some(path) = &s.project_path else {
         return Ok(());
     };
-    let doc = if s.character_file {
-        character_file_document(s, path)?
-    } else {
-        project_document(s)
-    };
+    let doc = merged_document(s, path);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -256,7 +209,6 @@ fn reset_for_project(s: &mut Session, path: PathBuf, assets: Vec<crate::ProjectA
         cwd: s.cwd.clone(),
         record_user_state: s.record_user_state,
         agent_selection: s.agent_selection.clone(),
-        blender_available: s.blender_available,
         project_assets: assets,
         project_path: Some(path),
         project_owner: owner,
@@ -532,19 +484,10 @@ fn apply_opened_state(
     assets: Vec<crate::ProjectAsset>,
     owner: Option<std::sync::Arc<std::fs::File>>,
 ) -> Result<()> {
-    let animation_sources = serde_json::from_value(
-        doc.get("animation_sources")
-            .filter(|v| !v.is_null())
-            .cloned()
-            .unwrap_or_else(|| json!({})),
-    )
-    .map_err(|e| EngineError::InvalidParams(format!("invalid animation sources: {e}")))?;
     reset_for_project(s, path.to_path_buf(), assets);
     if let Some(owner) = owner {
         s.project_owner = Some(owner);
     }
-    s.theatre_state = doc.get("theatre").filter(|state| !state.is_null()).cloned();
-    s.animation_sources = animation_sources;
     s.project_mode = project_mode(doc)?;
     s.song_audio = doc
         .pointer("/workshop/audio")
@@ -577,9 +520,6 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         None
     };
     let doc = read_project_document(&path)?;
-    if doc.get("format").and_then(Value::as_str) == Some(CHARACTER_FORMAT) {
-        return open_character_file(s, &path, &doc, owner, params);
-    }
     if doc.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
         return Err(EngineError::InvalidParams(format!(
             "{} is not a Magic Studio project",
@@ -607,64 +547,6 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
         "missing": missing,
         "workshop": workshop,
         "next_steps": workshop["next_steps"],
-    }))
-}
-
-/// The character's id: its manifest id, else its folder name.
-fn character_id(path: &Path, doc: &Value) -> String {
-    let folder = path
-        .parent()
-        .and_then(Path::file_name)
-        .and_then(|n| n.to_str());
-    doc["id"]
-        .as_str()
-        .filter(|v| !v.trim().is_empty())
-        .or(folder)
-        .unwrap_or("character")
-        .to_string()
-}
-
-/// A character file opens as an animation project whose one asset is the character itself.
-fn open_character_file(
-    s: &mut Session,
-    path: &Path,
-    doc: &Value,
-    owner: Option<std::sync::Arc<std::fs::File>>,
-    params: &Value,
-) -> Result<Value> {
-    let id = character_id(path, doc);
-    let name = doc["name"]
-        .as_str()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or(&id)
-        .to_string();
-    let parts = serde_json::from_value(doc.get("parts").cloned().unwrap_or_else(|| json!([])))
-        .map_err(|e| EngineError::InvalidParams(format!("invalid character part states: {e}")))?;
-    let entry = crate::ProjectAsset {
-        id: id.clone(),
-        name: name.clone(),
-        preset: None,
-        path: Some(path.to_path_buf()),
-        kind: "auto".into(),
-        parts,
-    };
-    apply_opened_state(s, path, doc, vec![entry], owner)?;
-    s.project_mode = Some("animation".into());
-    s.character_file = true;
-    let mut warnings = recent_warning(s, path, params["record_recent"] != false);
-    if let Err(error) = cmd_project_load_asset(s, &json!({"id": id})) {
-        warnings.push(json!(format!("{name} did not load: {error}")));
-    }
-    Ok(json!({
-        "ok": true,
-        "project": path,
-        "name": name,
-        "mode": s.project_mode,
-        "character_file": true,
-        "warnings": warnings,
-        "assets": s.project_assets,
-        "active_asset": s.active_asset,
-        "missing": [],
     }))
 }
 
@@ -719,10 +601,26 @@ fn claim_save_target(target: &Path) -> Result<std::sync::Arc<std::fs::File>> {
     Ok(std::sync::Arc::new(file))
 }
 
+/// Refuse to act when `expected_project` names a different project than the selected one.
+fn project_guard(s: &Session, p: &Value) -> Result<()> {
+    let selected = s
+        .project_path
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Select the intended project".into()))?
+        .canonicalize()?;
+    let expected = project_file_path(s, &json!({"path": p["expected_project"]}))?.canonicalize()?;
+    if selected != expected {
+        return Err(EngineError::InvalidParams(
+            "expected_project differs from selected project".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Save the open project (or save-as when `path` is given).
 pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     if params.get("expected_project").is_some() {
-        crate::motion_authoring::project_guard(s, params)?;
+        project_guard(s, params)?;
     }
     if s.project_path.is_none() {
         return Err(EngineError::InvalidParams(
@@ -744,11 +642,6 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
 
 /// Save to a new file and select it; a failed write keeps the original project selected.
 fn save_as(s: &mut Session, target: PathBuf) -> Result<Value> {
-    if s.character_file {
-        return Err(EngineError::InvalidParams(
-            "Save As does not copy a character: its images and rigs live in its folder. Copy the character folder instead.".into(),
-        ));
-    }
     let file = claim_save_target(&target)?;
     let target = std::fs::canonicalize(target)?;
     let previous_path = s.project_path.replace(target);
@@ -767,7 +660,6 @@ pub fn cmd_project_close(s: &mut Session, _: &Value) -> Result<Value> {
         cwd: s.cwd.clone(),
         record_user_state: s.record_user_state,
         agent_selection: s.agent_selection.clone(),
-        blender_available: s.blender_available,
         ..Session::default()
     };
     Ok(json!({"ok": true}))
@@ -996,31 +888,6 @@ fn copy_asset_file(folder: &Path, files: &Path, source: &Path) -> Result<PathBuf
     Ok(copy)
 }
 
-fn matte_new_asset(
-    s: &mut Session,
-    params: &Value,
-    kind: &str,
-    stored: &mut Option<PathBuf>,
-) -> Result<Value> {
-    // Character/image import prepares the cutout before registration. Background plates,
-    // manifests, and already transparent artwork retain their supplied pixels.
-    let mut matting = Value::Null;
-    if params["remove_background"].as_bool().unwrap_or(true)
-        && params.get("background").is_none()
-        && matches!(kind, "image" | "auto" | "character")
-        && let Some(source) = stored.as_ref()
-        && let Ok(image) = image::ImageReader::open(source)
-            .and_then(|r| r.with_guessed_format())
-            .map_err(EngineError::from)
-            .and_then(|r| r.decode().map_err(EngineError::from))
-        && !image.to_rgba8().pixels().any(|p| p[3] < 255)
-    {
-        matting = crate::magic_design::matte_image(s, source, params)?;
-        *stored = matting["image"].as_str().map(PathBuf::from);
-    }
-    Ok(matting)
-}
-
 fn reuse_existing_asset(
     s: &mut Session,
     path: &Option<PathBuf>,
@@ -1083,19 +950,17 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     if let (Some((folder, files)), Some(source)) = (&copy_into, &path) {
         stored = Some(copy_asset_file(folder, files, source)?);
     }
-    let matting = matte_new_asset(s, params, &kind, &mut stored)?;
     s.project_assets.push(crate::ProjectAsset {
         id: id.clone(),
         name,
         preset: None,
         path: stored.clone(),
         kind,
-        parts: Vec::new(),
     });
     load_and_save_asset(s, params, &id, load)?;
     Ok(
         json!({"ok": true, "asset_id": id, "loaded": load, "assets": s.project_assets,
-        "copied_to": copy_into.is_some().then_some(&stored),"matting":matting}),
+        "copied_to": copy_into.is_some().then_some(&stored)}),
     )
 }
 
@@ -1145,218 +1010,44 @@ pub fn cmd_project_update_asset(s: &mut Session, params: &Value) -> Result<Value
     cmd_project_list_assets(s, params)
 }
 
-fn manifest_path_for(path: &Path) -> PathBuf {
-    if path.is_dir() {
-        let char_magic = path.join("character.magic");
-        if char_magic.is_file() {
-            char_magic
-        } else {
-            path.join("manifest.json")
-        }
-    } else {
-        path.to_path_buf()
-    }
-}
-
-fn is_rig_manifest(raw: &Value, kind: &str) -> bool {
-    kind == "cutout_rig"
-        || raw.get("rig_type").is_some()
-        || (raw.get("layers").is_some() && raw.get("canvas").is_some())
-}
-
-/// The rig for the character's active angle, else its `rig.json`; `None` before it is rigged.
-fn character_rig_path(raw: &Value, proj_root: &Path, char_dir: &Path) -> Option<PathBuf> {
-    let angle = raw["active_angle"]
-        .as_str()
-        .unwrap_or("three_quarter_right");
-    [
-        format!("/angles/{angle}/rig"),
-        format!("/rigs/{angle}"),
-        "/rigs/active".into(),
-    ]
-    .iter()
-    .find_map(|pointer| raw.pointer(pointer).and_then(Value::as_str))
-    .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
-    .or_else(|| Some(char_dir.join("rig.json")).filter(|p| p.is_file()))
-}
-
-fn stage_character_magic(
-    staged: &mut Session,
-    entry: &crate::ProjectAsset,
-    raw: &Value,
-    manifest_path: &Path,
-) -> Result<()> {
-    let char_dir = manifest_path.parent().unwrap_or(Path::new("."));
-    let proj_root = staged
-        .project_path
-        .as_deref()
-        .and_then(Path::parent)
-        .unwrap_or(char_dir);
-    let Some(rig_path) = character_rig_path(raw, proj_root, char_dir) else {
-        // A character with no rig yet is its reference image, ready to break apart.
-        let reference = raw["reference"]
-            .as_str()
-            .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
-            .filter(|p| p.is_file())
-            .ok_or_else(|| {
-                EngineError::InvalidParams(
-                    "character has neither a rig nor a reference image".into(),
-                )
-            })?;
-        return stage_plain_image(staged, entry, &reference);
+/// Read an image's size; an app document (`.pcraft`, `.ecproj`, ...) is registered as a file only.
+fn loaded_asset(entry: &crate::ProjectAsset, path: &Path) -> Result<crate::Asset> {
+    let mut asset = crate::Asset {
+        id: entry.id.clone(),
+        path: path.to_path_buf(),
+        ..Default::default()
     };
-    let mut plan = crate::session::LoadedCutoutRigPlan::load_from_path(&rig_path)?;
-    let rig_base = rig_path.parent().unwrap_or(char_dir);
-    if plan.source_image.as_os_str().is_empty() {
-        plan.source_image = rig_base.to_path_buf();
-    } else if !plan.source_image.is_absolute() {
-        let source = plan.source_image.to_string_lossy().into_owned();
-        let found = crate::character::resolve_character_path(&source, proj_root, char_dir);
-        if found.is_file() {
-            plan.source_image = found;
-        }
-    }
-    plan.resolve_paths(rig_base);
-    let image = image::open(&plan.source_image)?;
-    let mut asset = staged.assets.remove(&entry.id).unwrap_or_default();
-    asset.id = entry.id.clone();
-    asset.path = plan.source_image.clone();
-    asset.width = image.width();
-    asset.height = image.height();
-    asset.has_alpha = image.color().has_alpha();
-    asset.attached_asset_sheet = raw
-        .pointer("/sheets/poses")
-        .and_then(Value::as_str)
-        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
-        .filter(|p| p.is_file())
-        .or_else(|| plan.cutout_asset_sheet.clone());
-    asset.attached_turnaround_sheet = raw
-        .pointer("/sheets/turnaround")
-        .and_then(Value::as_str)
-        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
-        .filter(|p| p.is_file());
-    asset.cutout_rig = Some(plan);
-    staged.assets.insert(entry.id.clone(), asset);
-    Ok(())
-}
-
-fn stage_cutout_plan(
-    staged: &mut Session,
-    entry: &crate::ProjectAsset,
-    manifest_path: &Path,
-) -> Result<()> {
-    let mut plan = crate::session::LoadedCutoutRigPlan::load_from_path(manifest_path)?;
-    let base = manifest_path.parent().unwrap_or(Path::new("."));
-    if plan.source_image.as_os_str().is_empty() {
-        plan.source_image = base.to_path_buf();
-    }
-    plan.resolve_paths(base);
-    let image = image::open(&plan.source_image)?;
-    let mut asset = staged.assets.remove(&entry.id).unwrap_or_default();
-    asset.id = entry.id.clone();
-    asset.path = plan.source_image.clone();
-    asset.width = image.width();
-    asset.height = image.height();
-    asset.has_alpha = image.color().has_alpha();
-    asset.attached_asset_sheet = plan.cutout_asset_sheet.clone();
-    asset.cutout_rig = Some(plan);
-    staged.assets.insert(entry.id.clone(), asset);
-    Ok(())
-}
-
-fn stage_plain_image(staged: &mut Session, entry: &crate::ProjectAsset, path: &Path) -> Result<()> {
-    let image = image::open(path)?;
-    let mut asset = staged.assets.remove(&entry.id).unwrap_or_default();
-    asset.id = entry.id.clone();
-    asset.path = path.to_path_buf();
-    if let Ok(bytes) = std::fs::read(path.with_extension("matte.json"))
-        && let Ok(receipt) = serde_json::from_slice::<Value>(&bytes)
+    if let Ok(reader) = image::ImageReader::open(path).and_then(|r| r.with_guessed_format())
+        && reader.format().is_some()
     {
-        asset.raw_original_path = receipt["source_image"].as_str().map(PathBuf::from);
+        let image = reader.decode()?;
+        asset.width = image.width();
+        asset.height = image.height();
+        asset.has_alpha = image.color().has_alpha();
+    } else if !path.exists() {
+        return Err(EngineError::InvalidParams(format!(
+            "project asset file is missing: {}",
+            path.display()
+        )));
     }
-    asset.width = image.width();
-    asset.height = image.height();
-    asset.has_alpha = image.color().has_alpha();
-    match entry.kind.as_str() {
-        "poses" => asset.attached_asset_sheet = Some(path.to_path_buf()),
-        "turnaround" => asset.attached_turnaround_sheet = Some(path.to_path_buf()),
-        _ => {}
-    }
-    staged.assets.insert(entry.id.clone(), asset);
-    Ok(())
+    Ok(asset)
 }
 
-fn stage_path_asset(staged: &mut Session, entry: &crate::ProjectAsset, path: &Path) -> Result<()> {
-    let manifest_path = manifest_path_for(path);
-    if manifest_path
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("json") || e.eq_ignore_ascii_case("magic"))
-    {
-        let raw: Value = serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)
-            .map_err(|e| EngineError::InvalidParams(format!("invalid asset JSON: {e}")))?;
-        if raw.get("format").and_then(Value::as_str) == Some("magicstudio.character") {
-            stage_character_magic(staged, entry, &raw, &manifest_path)?;
-        } else if is_rig_manifest(&raw, &entry.kind) {
-            stage_cutout_plan(staged, entry, &manifest_path)?;
-        } else {
-            if raw.get("frames").and_then(Value::as_array).is_none() {
-                return Err(EngineError::InvalidParams(
-                    "expected a pose/turnaround manifest or cutout rig plan".into(),
-                ));
-            }
-            crate::magic_design::cmd_asset_load_manifest(
-                staged,
-                &json!({"asset": entry.id, "manifest": manifest_path}),
-            )?;
-        }
-    } else {
-        stage_plain_image(staged, entry, path)?;
-    }
-    Ok(())
-}
-
-/// Load a connected project asset into the session (staged so failures preserve the previous asset).
+/// Load a connected project asset into the session; a failure leaves the previous asset active.
 pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> {
     let entry = s.project_assets[project_index(s, params)?].clone();
     let reload = params
         .get("reload")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if s.assets.contains_key(&entry.id) && !reload {
-        s.active_asset = Some(entry.id.clone());
-        return Ok(json!({"ok": true, "asset_id": entry.id}));
+    if !s.assets.contains_key(&entry.id) || reload {
+        let path = entry.path.as_ref().ok_or_else(|| {
+            EngineError::InvalidParams(format!("project asset '{}' has no file path", entry.id))
+        })?;
+        let asset = loaded_asset(&entry, path)?;
+        s.assets.insert(entry.id.clone(), asset);
     }
-    let first_load = !s.assets.contains_key(&entry.id);
-    // Failed decoding/reloading must leave the previous active asset and its rig intact.
-    let theatre_state = s.theatre_state.take();
-    let last_result = s.last_result.take();
-    let mut staged = s.clone();
-    s.theatre_state = theatre_state;
-    s.last_result = last_result;
-    if let Some(path) = &entry.path {
-        stage_path_asset(&mut staged, &entry, path)?;
-    } else {
-        return Err(EngineError::InvalidParams(format!(
-            "project asset '{}' has no file path",
-            entry.id
-        )));
-    }
-    staged.active_asset = Some(entry.id.clone());
-    if let Some(asset) = staged.current_asset_mut() {
-        asset.sync_parts_from_manifests();
-        // A reload keeps the session's part states; a first load restores the saved ones.
-        if first_load {
-            for saved in &entry.parts {
-                if let Some(part) = asset.parts.iter_mut().find(|p| p.name == saved.name) {
-                    (part.visible, part.solo, part.verified) =
-                        (saved.visible, saved.solo, saved.verified);
-                }
-            }
-        }
-    }
-    staged.theatre_state = s.theatre_state.take();
-    staged.last_result = s.last_result.take();
-    *s = staged;
+    s.active_asset = Some(entry.id.clone());
     Ok(json!({"ok": true, "asset_id": entry.id}))
 }
 

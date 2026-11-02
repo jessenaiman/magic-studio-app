@@ -813,9 +813,9 @@ fn launch_codex(
     args: &[String],
     timeout: u64,
     receipt: &Path,
-) -> Result<crate::sheets::AgentRun> {
+) -> Result<crate::agent_run::AgentRun> {
     let codex_bin = crate::workspace::resolve_tool("codex");
-    crate::sheets::run_image_agent(&codex_bin, args, dir, timeout).map_err(|e| {
+    crate::agent_run::run_image_agent(&codex_bin, args, dir, timeout).map_err(|e| {
         invalid(&format!(
             "stage=launch_codex; executable={codex_bin}; cwd={}; {e}. Run `command -v codex` and `codex exec --help`; inspect {}",
             dir.display(),
@@ -824,7 +824,7 @@ fn launch_codex(
     })
 }
 
-fn check_codex_run(run: &crate::sheets::AgentRun, receipt: &Path) -> Result<()> {
+fn check_codex_run(run: &crate::agent_run::AgentRun, receipt: &Path) -> Result<()> {
     if !run.succeeded() && !run.stopped_after_image {
         return Err(EngineError::ExternalTool(
             "codex".into(),

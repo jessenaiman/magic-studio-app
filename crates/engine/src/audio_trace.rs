@@ -76,7 +76,7 @@ fn version_args(tool: &str) -> Vec<String> {
 
 fn version_probe(tool: &str, cwd: &Path) -> Value {
     let version_args = version_args(tool);
-    match crate::sheets::run_agent(tool, &version_args, cwd, 5) {
+    match crate::agent_run::run_agent(tool, &version_args, cwd, 5) {
         Ok(run) => {
             json!({"argv":version_args,"exit_code":run.code,"timed_out":run.timed_out,
                 "output":if run.succeeded(){run.stdout.lines().next().map(str::to_owned)}else{None}})

@@ -358,7 +358,6 @@ mod tests {
                 kind: "image".into(),
                 path: Some("map.png".into()),
                 preset: None,
-                parts: Vec::new(),
             },
             crate::ProjectAsset {
                 id: "kitchen".into(),
@@ -366,7 +365,6 @@ mod tests {
                 kind: "image".into(),
                 path: Some("kitchen.png".into()),
                 preset: None,
-                parts: Vec::new(),
             },
         ];
         let board = json!({
