@@ -52,7 +52,7 @@ class ImagePromptController {
   draftFor(project) {
     let draft = this.drafts.get(project);
     if (!draft) {
-      draft = { prompt: '', model: 'gpt-6-luna', busy: false, result: null, error: '', startedAt: null, target: null, candidateTarget: null, timer: null };
+      draft = { prompt: '', model: '', busy: false, result: null, error: '', startedAt: null, target: null, candidateTarget: null, timer: null };
       this.drafts.set(project, draft);
     }
     return draft;
@@ -98,7 +98,8 @@ class ImagePromptController {
     generate.disabled = true;
     updateStatus();
     draft.timer = setInterval(updateStatus, 250);
-    const submitted: {prompt: any, model: any, quality: string, references?: any} = { prompt: draft.prompt, model: draft.model, quality: 'auto' };
+    const submitted: {prompt: any, model?: string, quality: string, references?: any} = { prompt: draft.prompt, quality: 'auto' };
+    if (draft.model.trim()) submitted.model = draft.model.trim();
     if (captured) submitted.references = captured.references;
     try {
       const result = await invoke('engine_command', { id: 'image.generate', params: submitted });
@@ -112,13 +113,13 @@ class ImagePromptController {
   }
 
   createModelInput(draft, updateCommand) {
-    const model = el('input', { id: 'image-model', value: draft.model, list: 'image-model-options', 'aria-label': 'Scribbles artwork model', title: 'Selected Codex model; pixel dimensions are determined by its native image tool' });
+    const model = el('input', { id: 'image-model', value: draft.model, placeholder: 'Codex subscription default', 'aria-label': 'Scribbles artwork model', title: 'Optional model override; leave blank to use your Codex subscription / settings.json default' });
     model.addEventListener('input', () => {
       draft.model = model.value;
       updateCommand();
       if (!draft.busy && !draft.result && !draft.error) {
         const hdr = document.getElementById?.('magic-image-toggle');
-        if (hdr) hdr.title = `Scribbles · Artwork · ${draft.model}`;
+        if (hdr) hdr.title = draft.model.trim() ? `Scribbles · Artwork · ${draft.model.trim()}` : 'Scribbles · Artwork';
       }
     });
     return model;
@@ -132,13 +133,14 @@ class ImagePromptController {
     const command = el('code', { id: 'image-command' });
     const updateCommand = () => {
       command.textContent = magicCommandText('image.generate', {
-        prompt: draft.prompt, model: draft.model, quality: 'auto',
+        prompt: draft.prompt,
+        ...(draft.model.trim() ? { model: draft.model.trim() } : {}),
+        quality: 'auto',
         ...(draft.target?.references ? { references: draft.target.references } : {}),
       }, project);
     };
     prompt.addEventListener('input', () => { draft.prompt = prompt.value; updateCommand(); });
     const model = this.createModelInput(draft, updateCommand);
-    const models = el('datalist', { id: 'image-model-options' }, el('option', { value: 'gpt-6-luna' }), el('option', { value: 'gpt-6-sol' }));
     updateCommand();
     const elapsed = () => Math.max(0, Math.floor((performance.now() - draft.startedAt) / 1000));
     const targetLabel = this.targetLabel(draft);
@@ -151,7 +153,7 @@ class ImagePromptController {
       try { await navigator.clipboard.writeText(command.textContent); toast('Image command copied · nothing executed'); }
       catch { toast('Clipboard unavailable · select the command text'); }
     } }, 'Copy command');
-    const settings = el('div', { id: 'image-settings' }, el('label', { for: 'image-model' }, 'Model'), model, models,
+    const settings = el('div', { id: 'image-settings' }, el('label', { for: 'image-model' }, 'Model'), model,
       el('details', {}, el('summary', {}, 'CLI command'), command, copy));
     settings.hidden = $('gaffer-config-toggle')?.getAttribute('aria-expanded') !== 'true';
     const body = [el('label', { for: 'image-prompt' }, 'Prompt'), prompt, status, generate, settings, ...this.resultElements(draft)];

@@ -197,7 +197,7 @@ class AnalyticsViewController {
   }
 }
 
-const mayhem = new AnalyticsViewController();
+const mayhemView = new AnalyticsViewController();
 
 function mayhemOverview(d) {
   const comp = d.complexity || {}, usage = d.usage || {};
@@ -264,8 +264,8 @@ function mayhemCommands(d) {
   const catalog = d.commands;
   if (!catalog?.commands) return [el('p', {class: 'panel-empty', 'data-look': 'inline'}, 'Command metadata unavailable. Refresh to read it.')];
   const input = el('input', {id: 'analytics-command-search', class: 'field report-search', type: 'search', placeholder: 'Find a command or feature',
-    'aria-label': 'Find current command', value: mayhem.commandFilter,
-    oninput: (event) => { mayhem.commandFilter = event.target.value; mayhemCommandRows(catalog.commands); }});
+    'aria-label': 'Find current command', value: mayhemView.commandFilter,
+    oninput: (event) => { mayhemView.commandFilter = event.target.value; mayhemCommandRows(catalog.commands); }});
   const section = new ReportSection({title: `Commands · ${catalog.commands.length}`, note: 'From the shared engine command.list. Run with magic-cli exec ID key=value.'},
     input, el('div', {id: 'analytics-command-list', class: 'report-body'}));
   queueMicrotask(() => mayhemCommandRows(catalog.commands));
@@ -275,7 +275,7 @@ function mayhemCommands(d) {
 function mayhemCommandRows(commands) {
   const root = $('analytics-command-list');
   if (!root) return;
-  const filter = mayhem.commandFilter.toLowerCase();
+  const filter = mayhemView.commandFilter.toLowerCase();
   const groups = new Map();
   for (const command of commands.filter((c) => `${c.id} ${c.label} ${c.params}`.toLowerCase().includes(filter))) {
     const key = command.menu?.[0] || command.id.split('.')[0];
@@ -291,9 +291,9 @@ function mayhemCommandRows(commands) {
 }
 
 function mayhemArchitecture() {
-  const selected = MAYHEM_DIAGRAMS.find((item) => item.id === mayhem.diagram) || MAYHEM_DIAGRAMS[0];
+  const selected = MAYHEM_DIAGRAMS.find((item) => item.id === mayhemView.diagram) || MAYHEM_DIAGRAMS[0];
   const picker = el('select', {id: 'analytics-diagram-select', class: 'field', 'aria-label': 'Architecture reference',
-    onchange: (event) => { mayhem.diagram = event.target.value; mayhem.renderSurface(); }},
+    onchange: (event) => { mayhemView.diagram = event.target.value; mayhemView.renderSurface(); }},
     ...MAYHEM_DIAGRAMS.map((item) => el('option', {value: item.id}, item.title)));
   picker.value = selected.id;
   return [new ReportSection({title: 'How the work fits together', actions: [picker],
@@ -305,7 +305,7 @@ function mayhemArchitecture() {
 const MAYHEM_RENDER = {overview: mayhemOverview, code: mayhemCode, usage: mayhemUsage, tools: mayhemTools,
   commands: mayhemCommands, backstage: () => [], architecture: mayhemArchitecture};
 
-async function renderAnalytics(scan = false) { return mayhem.render(scan); }
-function mayhemMount() { mayhem.mount(); }
-function analyticsRenderSurface() { mayhem.renderSurface(); }
-function mayhemHealthIndicator() { mayhem.healthIndicator(); }
+async function renderAnalytics(scan = false) { return mayhemView.render(scan); }
+function mayhemMount() { mayhemView.mount(); }
+function analyticsRenderSurface() { mayhemView.renderSurface(); }
+function mayhemHealthIndicator() { mayhemView.healthIndicator(); }

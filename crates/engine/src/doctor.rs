@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use crate::workspace::resolve_craft_cli;
+use crate::workspace::resolve_tool;
 use crate::{Result, Session};
 
 pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
@@ -34,18 +34,20 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
 
     let tools: Vec<Value> = [
         "magic-cli",
+        "codex",
         "hyperframes",
         "photocraft-cli",
+        "vectorcraft-cli",
         "effectcraft-cli",
         "filmcraft-cli",
+        "deckcraft-cli",
         "pdfcraft-cli",
-        "cli-anything-blender",
         "ffmpeg",
         "ffprobe",
     ]
     .iter()
     .map(|name| {
-        let resolved = resolve_craft_cli(name);
+        let resolved = resolve_tool(name);
         let found = Path::new(&resolved).is_file() || which_in_path(&resolved);
         json!({ "tool": name, "resolved": resolved, "available": found })
     })

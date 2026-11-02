@@ -516,53 +516,6 @@ fn validate_scene_source(p: &Value) -> Result<()> {
     Ok(())
 }
 
-/// A plan file the job carries: its resolved path, bytes and parsed contents.
-fn read_plan(s: &Session, p: &Value, key: &str) -> Result<(PathBuf, Vec<u8>, Value)> {
-    let text = p[key]
-        .as_str()
-        .ok_or_else(|| invalid("A plan path is required"))?;
-    let path = crate::workspace::resolve_workspace_path(s, text).canonicalize()?;
-    let bytes = read_bytes(&path)?;
-    let plan: Value = serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-    Ok((path, bytes, plan))
-}
-
-fn volume_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
-    let (path, bytes, plan) = read_plan(s, p, "volume_plan")?;
-    if plan["slug"] != p["character"] || !p["character"].is_string() {
-        return Err(invalid(
-            "Volume construction requires character matching slug",
-        ));
-    }
-    let track = p["track"]
-        .as_str()
-        .ok_or_else(|| invalid("Choose turntable or an authored skeleton track"))?;
-    if track != "turntable" && !plan["skeleton"]["tracks"][track].is_array() {
-        return Err(invalid("Choose turntable or an authored skeleton track"));
-    }
-    request["volume_plan"] =
-        json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-    request["duration"] = json!(bounded(p, "duration", 4, 1, 600)?);
-    request["voxel_resolution"] = json!(bounded(p, "voxel_resolution", 144, 16, 256)?);
-    Ok(())
-}
-
-fn rig_plan_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
-    let (path, bytes, plan) = read_plan(s, p, "rig_plan")?;
-    if plan["character_id"] != p["character"] || !p["character"].is_string() {
-        return Err(invalid("character must match the rig plan's character_id"));
-    }
-    if !p["track"].is_string() || !plan["pose_library"]["poses"].is_object() {
-        return Err(invalid(
-            "Choose a track and include the authored pose_library in the rig plan",
-        ));
-    }
-    request["rig_plan"] =
-        json!({"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),"data":plan});
-    request["duration"] = json!(bounded(p, "duration", 3, 1, 600)?);
-    Ok(())
-}
-
 fn blend_request(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
     let text = p["blend"]
         .as_str()
@@ -598,7 +551,6 @@ fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()>
     }
     request["asset"] = serde_json::to_value(entry(s, p)?).map_err(|e| invalid(e.to_string()))?;
     request["motion"] = json!({"character":p["character"],"track":p["track"],"fps":p["fps"].as_f64().unwrap_or(30.0)});
-    // Use the rig's authored rate unless explicitly overridden.
     if p.get("fps").is_none()
         && let Some(motion) = request["motion"].as_object_mut()
     {
@@ -607,8 +559,14 @@ fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()>
     let exe = std::env::current_exe()?;
     let executable = [exe.with_file_name("magic-cli")]
         .into_iter()
-        .find(|p| p.is_file())
-        .ok_or_else(|| invalid("Install magic beside Magic Studio to prepare legacy animations"))?;
+        .find(|cand| cand.is_file())
+        .or_else(|| {
+            let resolved = PathBuf::from(crate::workspace::resolve_tool("magic-cli"));
+            resolved.is_file().then_some(resolved)
+        })
+        .ok_or_else(|| {
+            invalid("Install magic-cli beside Magic Studio to prepare legacy animations")
+        })?;
     request["magic_cli"] = json!(executable);
     Ok(())
 }
@@ -616,10 +574,10 @@ fn legacy_request(s: &mut Session, p: &Value, request: &mut Value) -> Result<()>
 pub fn cmd_start_scene_job(s: &mut Session, p: &Value) -> Result<Value> {
     let mut request = scene_request(s, p)?;
     validate_scene_source(p)?;
-    if p["volume_plan"].is_string() {
-        volume_plan_request(s, p, &mut request)?;
-    } else if p["rig_plan"].is_string() {
-        rig_plan_request(s, p, &mut request)?;
+    if p["volume_plan"].is_string() || p["rig_plan"].is_string() {
+        return Err(invalid(
+            "Legacy Blender volume/skeleton generation was retired; render 2D motion with export.layered_motion (effectcraft-cli) or pass an existing .blend file",
+        ));
     } else if p["blend"].is_string() {
         blend_request(s, p, &mut request)?;
     } else {
@@ -677,38 +635,156 @@ fn write_job_records(
     )
 }
 
-/// The worker script, plus the pipeline modules a rig or volume plan runs beside it.
-fn write_worker_payloads(dir: &Path, request: &Value) -> Result<()> {
-    fs::write(
-        dir.join("worker.py"),
-        include_str!("../../../pipeline/animation_job_worker.py"),
-    )?;
-    if request["rig_plan"].is_object() {
-        fs::create_dir_all(dir.join("pipeline"))?;
-        fs::write(dir.join("pipeline/__init__.py"), "")?;
-        fs::write(
-            dir.join("pipeline/rig_motion.py"),
-            include_str!("../../../pipeline/rig_motion.py"),
-        )?;
-        fs::write(
-            dir.join("pipeline/build_cutout_skeleton.py"),
-            include_str!("../../../pipeline/build_cutout_skeleton.py"),
-        )?;
-    }
-    if request["volume_plan"].is_object() {
-        fs::write(
-            dir.join("volume_reconstruction.py"),
-            include_str!("../../../pipeline/volume_reconstruction.py"),
-        )?;
-        fs::write(
-            dir.join("build_volume_scene.py"),
-            include_str!("../../../pipeline/build_volume_scene.py"),
-        )?;
-        fs::write(
-            dir.join("bind_volume_skeleton.py"),
-            include_str!("../../../pipeline/bind_volume_skeleton.py"),
-        )?;
-    }
+const BLENDER_SCENE_WORKER_PY: &str = r#"import hashlib, json, math, os, resource, shutil, subprocess, sys, time
+from pathlib import Path
+
+def write_json(path, value):
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(value, indent=2))
+    tmp.replace(path)
+
+def sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest()
+
+def service_metrics(unit):
+    props = ["Description","InvocationID","ActiveState","Result","ExecMainStatus",
+             "MemoryCurrent","MemoryPeak","MemoryMax","MemorySwapCurrent","MemorySwapMax",
+             "CPUUsageNSec","ExecMainStartTimestamp"]
+    res = subprocess.run(["systemctl","--user","show",unit,"--property=" + ",".join(props),"--timestamp=unix"],
+                         capture_output=True, text=True, check=True)
+    return dict(line.split("=", 1) for line in res.stdout.splitlines() if "=" in line)
+
+def job_metadata(request_path, request, properties):
+    job = request_path.parent
+    path = job / "job.json"
+    meta = json.loads(path.read_text())
+    if properties.get("Description") != request["job"] or properties.get("InvocationID") != os.environ.get("INVOCATION_ID"):
+        raise RuntimeError("Refusing metadata from another job or invocation")
+    raw_start = properties.get("ExecMainStartTimestamp", "")
+    try:
+        started_at = str(int(float(raw_start[1:]) * 1000)) if raw_start.startswith("@") and float(raw_start[1:]) > 0 else None
+    except (ValueError, OverflowError):
+        started_at = None
+    marker = job / "cancel-requested"
+    cancel = json.loads(marker.read_text()) if marker.exists() else {}
+    meta.update(limits=request.get("limits"), submitted_at=request.get("submitted_at"), started_at=started_at,
+                cancellation_requested_at=cancel.get("cancellation_requested_at", cancel.get("updated_at")),
+                invocation_id=properties.get("InvocationID"))
+    write_json(path, meta)
+    return meta
+
+def finalize(request_path):
+    request = json.loads(request_path.read_text())
+    job = request_path.parent
+    props = service_metrics(request["unit"])
+    invocation = os.environ.get("INVOCATION_ID")
+    if props.get("Description") != request["job"] or props.get("InvocationID") != invocation:
+        raise RuntimeError("Refusing telemetry from another job or invocation")
+    meta = job_metadata(request_path, request, props)
+    result_path = job / "rendered.json"
+    result = json.loads(result_path.read_text()) if result_path.exists() else {}
+    reason = os.environ.get("SERVICE_RESULT", props.get("Result"))
+    cancelled = (job / "cancel-requested").exists()
+    state = "cancelled" if cancelled else ("completed" if reason == "success" and result.get("state") == "completed" else "failed")
+    metrics = {}
+    for field, key in [("memory_current_bytes","MemoryCurrent"),("memory_peak_bytes","MemoryPeak"),
+                       ("memory_max_bytes","MemoryMax"),("swap_current_bytes","MemorySwapCurrent"),
+                       ("swap_max_bytes","MemorySwapMax"),("cpu_usage_ns","CPUUsageNSec")]:
+        v = props.get(key, "")
+        metrics[field] = int(v) if v.isdigit() and int(v) != 2**64 - 1 else None
+    progress_path = job / "progress.json"
+    progress = json.loads(progress_path.read_text()) if progress_path.exists() else {}
+    exec_status = props.get("ExecMainStatus", "")
+    term = "cancel" if cancelled else ("oom" if reason == "oom-kill" else ("timeout" if reason == "timeout" else (None if state == "completed" else "failure")))
+    result.update(backend=request.get("backend","blender"), job=request["job"], job_id=request["job"], project=request["project"],
+                  unit=request["unit"], invocation_id=invocation, updated_at=str(time.time_ns() // 1_000_000), state=state,
+                  limits=meta["limits"], submitted_at=meta["submitted_at"], started_at=meta["started_at"],
+                  cancellation_requested_at=meta["cancellation_requested_at"], phase=progress.get("state"),
+                  frames_completed=progress.get("completed"), frames_total=progress.get("total"), telemetry=metrics,
+                  service_result=reason, exec_main_status=int(exec_status) if exec_status.isdigit() else None,
+                  exit_code=os.environ.get("EXIT_CODE"), exit_status=os.environ.get("EXIT_STATUS"), termination_reason=term)
+    write_json(job / "result.json", result)
+
+def registration(scene):
+    prov = json.loads(scene.get("magicstudio_provenance", "{}"))
+    if prov.get("registration_space") == "render_pixels":
+        return [0, 0, *prov["canvas"]]
+    cam = scene.camera
+    if cam is None or cam.data.type != "ORTHO":
+        raise RuntimeError("Only orthographic saved scenes have canvas registration")
+    pts = [cam.matrix_world @ v for v in cam.data.view_frame(scene=scene)]
+    return [min(p.x for p in pts), -max(p.y for p in pts), max(p.x for p in pts), -min(p.y for p in pts)]
+
+def main():
+    import bpy
+    request_path = Path(sys.argv[sys.argv.index("--") + 1]).resolve()
+    job = request_path.parent
+    request = json.loads(request_path.read_text())
+    write_json(job / "invocation.json", {"invocation_id": os.environ.get("INVOCATION_ID")})
+    try:
+        job_metadata(request_path, request, service_metrics(request["unit"]))
+        if not request.get("blend"):
+            raise RuntimeError("Direct Blender job requires an existing .blend file; use export.layered_motion for 2D rigs")
+        write_json(job / "progress.json", {"state": "loading"})
+        frozen = job / "source.blend"
+        shutil.copyfile(request["blend"], frozen)
+        source_sha = sha256(frozen)
+        bpy.ops.wm.open_mainfile(filepath=str(frozen))
+        scene = bpy.context.scene
+        prov_text = scene.get("magicstudio_provenance")
+        if not prov_text:
+            raise RuntimeError("Saved scene has no frozen Magic Studio provenance")
+        prov = json.loads(prov_text)
+        scene.render.engine = "CYCLES"
+        scene.cycles.device = "CPU"
+        scene.render.threads_mode = "FIXED"
+        scene.render.threads = 2
+        orig = (scene.render.resolution_x, scene.render.resolution_y)
+        scene.render.resolution_x = max(1, int(orig[0] * request["resolution_percent"] / 100))
+        scene.render.resolution_y = max(1, int(orig[1] * request["resolution_percent"] / 100))
+        scene.render.resolution_percentage = 100
+        scene.render.image_settings.file_format = "PNG"
+        scene.render.image_settings.color_mode = "RGBA"
+        scene.render.film_transparent = True
+        scene.frame_set(scene.frame_start)
+        world_rect = registration(scene)
+        bpy.ops.wm.save_as_mainfile(filepath=str(job / "animation.blend"))
+        frames = job / "frames"
+        frames.mkdir()
+        start = scene.frame_start
+        end = min(scene.frame_end, start + request["max_frames"] - 1)
+        for frame in range(start, end + 1):
+            scene.frame_set(frame)
+            scene.render.filepath = str(frames / f"{frame:06d}.png")
+            bpy.ops.render.render(write_still=True)
+            write_json(job / "progress.json", {"state": "rendering", "completed": frame - start + 1, "total": end - start + 1})
+        write_json(job / "progress.json", {"state": "encoding", "completed": end - start + 1, "total": end - start + 1})
+        clip = job / "preview.webm"
+        fps = scene.render.fps / scene.render.fps_base
+        subprocess.run(["ffmpeg","-v","error","-nostdin","-framerate",str(fps),"-start_number",str(start),
+                        "-i",str(frames / "%06d.png"),"-frames:v",str(end - start + 1),"-c:v","libvpx-vp9",
+                        "-pix_fmt","yuva420p","-threads","2","-b:v","0","-crf","24","-auto-alt-ref","0",str(clip)], check=True)
+        write_json(job / "rendered.json", dict(prov, state="completed", blend=str(job / "animation.blend"), frames=str(frames),
+                   clip=str(clip), first_frame=start, last_frame=end, fps=fps, clip_seconds=(end - start + 1) / fps,
+                   world_rect=world_rect, width=scene.render.resolution_x, height=scene.render.resolution_y,
+                   source_blend=request.get("blend"), source_blend_sha256=source_sha, clip_sha256=sha256(clip),
+                   partial=end < scene.frame_end, blender_version=bpy.app.version_string,
+                   worker_peak_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
+    except Exception as error:
+        write_json(job / "rendered.json", {"state": "failed", "error": str(error)})
+        raise
+
+if __name__ == "__main__":
+    if "--finalize" in sys.argv:
+        finalize(Path(sys.argv[sys.argv.index("--finalize") + 1]))
+    else:
+        main()
+"#;
+
+/// Write the self-contained Blender background scene renderer script into the job directory.
+fn write_worker_payloads(dir: &Path, _request: &Value) -> Result<()> {
+    fs::write(dir.join("worker.py"), BLENDER_SCENE_WORKER_PY)?;
     Ok(())
 }
 
@@ -721,7 +797,9 @@ fn worker_command(backend: &str, worker: &Path, request_path: &Path) -> Result<V
     Ok(vec![
         crate::workspace::find_executable(
             &std::env::var("BLENDER_BIN").unwrap_or_else(|_| "blender".into()),
-        )?.to_string_lossy().into_owned(),
+        )?
+        .to_string_lossy()
+        .into_owned(),
         "--background".into(),
         "--factory-startup".into(),
         "--disable-autoexec".into(),

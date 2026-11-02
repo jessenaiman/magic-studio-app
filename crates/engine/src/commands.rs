@@ -4,10 +4,8 @@
 //! Command handlers live in focused modules by job (declared in `lib.rs`):
 //!   - `workspace` — path/CLI resolution
 //!   - `parts` — part visibility/solo/review
-//!   - `turnaround` — turnaround accuracy + 2D preview
-//!   - `magic_design` — asset intake, sheet preparation, manifest loading, agent prompt
-//!   - `rig` — 4-dir mesh build + GLB/OBJ writers
-//!   - `exports` — Blender/FilmCraft/cutout MP4/layered motion/validate
+//!   - `magic_design` — asset preparation, manifest loading, agent prompt
+//!   - `exports` — FilmCraft/EffectCraft/Blender scene exports
 //!   - `image_cmds` — break apart / puppet warp / color to alpha / content-aware fill
 //!   - `vision` — in-memory pixel analysis
 //!   - `project` — .magic lifecycle + connect/load/remove/update assets
@@ -23,12 +21,11 @@ use serde_json::Value;
 use crate::{EngineError, Result, Session};
 
 // Re-export the public engine surface that other crates address via `crate::commands::*`.
-pub use crate::magic_design::decontaminate_sprite_rgba;
 pub use crate::project::write_project_file;
 pub use crate::vision::{analyze_rgba_image, analyze_viewport_region};
 pub use crate::workspace::{
-    asset_id_for_import, image_batch_args,
-    resolve_craft_cli, resolve_workspace_path, sanitize_asset_id, workspace_root,
+    asset_id_for_import, image_batch_args, resolve_tool, resolve_workspace_path, sanitize_asset_id,
+    workspace_root,
 };
 
 pub struct CommandSpec {
@@ -93,7 +90,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "motion.clips"
         | "motion.sample"
         | "motion.theatre.read"
-        | "validate.motion"
         | "animation.sources"
         | "animation.status"
         | "animation.list"

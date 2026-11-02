@@ -8,11 +8,7 @@ use crate::agent::{
     cmd_agent_session,
 };
 use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
-use crate::exports::{
-    cmd_render_scene_source, cmd_export_character_iteration,
-    cmd_import_video_sequence, cmd_export_layered_motion,
-    cmd_scene_farm_school_lineup, cmd_validate_motion,
-};
+use crate::exports::{cmd_export_layered_motion, cmd_render_scene_source};
 use crate::image_cmds::{
     cmd_image_break_apart, cmd_image_color_to_alpha, cmd_image_content_aware_fill,
     cmd_image_image_size, cmd_image_puppet_warp, cmd_image_register_frame,
@@ -20,7 +16,6 @@ use crate::image_cmds::{
 use crate::magic_design::{
     cmd_asset_build_cutout_rig, cmd_asset_cut_sheet, cmd_asset_extract_background,
     cmd_asset_load_manifest, cmd_asset_make_transparent, cmd_export_agent_prompt,
-    cmd_intake_compare_reference, cmd_intake_three_question, cmd_intake_validate,
 };
 use crate::parts::{cmd_part_set_state, cmd_part_show_all};
 use crate::project::{
@@ -28,10 +23,8 @@ use crate::project::{
     cmd_project_new, cmd_project_open, cmd_project_remove_asset, cmd_project_save,
     cmd_project_update_asset,
 };
-use crate::rig::cmd_mesh_build_4dir;
 use crate::sequence::cmd_sequence_render;
 use crate::sheets::cmd_assets_agent_sheets;
-use crate::turnaround::{cmd_anim_preview_2d, cmd_turnaround_optimize_accuracy};
 use crate::vision::cmd_vision_analyze;
 use crate::workshop::{
     cmd_assets_assess, cmd_assets_fixlist, cmd_assets_fixlist_add, cmd_assets_request_sheet,
@@ -45,7 +38,6 @@ use crate::workshop::{
 };
 
 // ---------- CommandSpec + registry ----------
-
 
 const fn is_long_running_id(id: &str) -> bool {
     matches!(
@@ -63,19 +55,12 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"sequence.render"
             | b"animation.source.render"
             | b"video.init"
-            | b"intake.validate"
-            | b"intake.three_question"
             | b"asset.make_transparent"
             | b"asset.extract_background"
             | b"animation.prepare"
             | b"asset.cut_sheet"
-            | b"turnaround.optimize_accuracy"
-            | b"mesh.build_4dir"
-            | b"export.edit_project"
             | b"export.scene_render"
-            | b"export.character_iteration"
             | b"export.layered_motion"
-            | b"validate.motion"
             | b"audio.analyze"
             | b"workshop.build_storyboard"
             | b"workshop.split_panels"
@@ -110,7 +95,6 @@ macro_rules! query {
         }
     };
 }
-
 
 pub fn build() -> Vec<CommandSpec> {
     let mut specs = Vec::new();
@@ -902,7 +886,7 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
             "Connect Project Asset",
             ["Project Assets"],
             None,
-            "{\"path\":\"image_or_manifest\",\"preset\":\"alternative_to_path\",\"name\":\"optional\",\"id\":\"optional\",\"kind\":\"auto|image|poses|turnaround|cutout_rig\",\"character\":\"name (outside image -> assets/characters/<name>/parts/)\",\"background\":\"name (outside image -> assets/backgrounds/<name>/)\",\"image\":\"name (outside image -> assets/images/<name>/)\",\"remove_background\":true,\"backend\":\"auto|rembg|photocraft\",\"model\":\"optional matting model\"}",
+            "{\"path\":\"image_or_manifest\",\"name\":\"optional\",\"id\":\"optional\",\"kind\":\"auto|image|poses|turnaround|cutout_rig\",\"character\":\"name (outside image -> assets/characters/<name>/parts/)\",\"background\":\"name (outside image -> assets/backgrounds/<name>/)\",\"image\":\"name (outside image -> assets/images/<name>/)\",\"remove_background\":true}",
             always,
             cmd_project_add_asset
         ),
@@ -938,7 +922,7 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
             "Make Transparent",
             ["Rig & Matting"],
             None,
-            "{\"asset\":\"optional id\",\"source\":\"optional reference image\",\"attach\":true,\"reuse_alpha\":false,\"backend\":\"auto|rembg|photocraft\",\"model\":\"optional\",\"rect\":\"optional [x,y,w,h]\",\"keep_polygons\":[\"optional polygons restoring thin details\"]}",
+            "{\"asset\":\"optional id\",\"source\":\"optional reference image\",\"attach\":true,\"reuse_alpha\":false,\"rect\":\"optional [x,y,w,h]\"}",
             has_asset,
             cmd_asset_make_transparent
         ),
@@ -956,10 +940,10 @@ fn specs_asset_and_rig() -> Vec<CommandSpec> {
             "Prepare reviewed artwork for animation",
             ["Rig & Matting"],
             None,
-            "{\"asset\":\"optional asset id\",\"stage\":\"optional: skeleton = AssetFurnace makes and rigs a 3D model first; review its skeleton before parts are cut\"}",
+            "{\"asset\":\"optional asset id\"}",
             has_asset,
             cmd_asset_build_cutout_rig
-        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering. stage=skeleton first asks AssetFurnace (ASSETFURNACE_HOME) for a rigged 3D model and saves it with its skeleton beside the character.",
+        ).help("Slice reviewed artwork with PhotoCraft and trace its parts with VectorCraft, then choose an action in Animation before rendering.",
                "magic-cli --project /absolute/Project.magic animation prepare asset=babel"),
         cmd!(
             "rig.from_sheet",
@@ -1019,15 +1003,6 @@ fn specs_image_and_sequence() -> Vec<CommandSpec> {
             "{\"name\":\"sequence\",\"canvas\":[1080,1080],\"fps\":30,\"duration\":4.0,\"background\":\"#101820|null\",\"layers\":[{\"id\":\"title\",\"file\":\"path.png\",\"center\":[540,540],\"scale\":100,\"entry\":{\"kind\":\"fade|rise|drop|left|right|zoom_in|zoom_out|turn\",\"duration\":0.6,\"delay\":0.0,\"ease\":\"linear|smooth|in|out\"},\"exit\":{\"kind\":\"fade\",\"duration\":0.5,\"delay\":3.4}}],\"stills\":0,\"video\":true}",
             always,
             cmd_sequence_render
-        ),
-        cmd!(
-            "validate.motion",
-            "Validate Motion Clip",
-            ["Export"],
-            None,
-            "{\"video\":\"clip.webm\",\"frames\":0,\"fps\":30,\"loop\":false,\"reference\":\"optional_image\",\"spec\":\"optional_spec\"}",
-            always,
-            cmd_validate_motion
         ),
         cmd!(
             "export.layered_motion",
@@ -1251,7 +1226,7 @@ fn specs_assets_and_sheets() -> Vec<CommandSpec> {
             "Generate Image (Codex)",
             ["Project Assets"],
             None,
-            "{\"prompt\":\"image description\",\"model\":\"gpt-6-luna (default; selected Codex model, not pixel resolution)\",\"quality\":\"auto (only verified option)\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
+            "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from settings.json / MAGICSTUDIO_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
             always,
             crate::image_generation::generate
         ),
@@ -1593,33 +1568,6 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
             always,
             cmd_audio_analyze
         ),
-        cmd!(
-            "intake.validate",
-            "Validate Image Intake",
-            ["File", "Import"],
-            None,
-            "{\"image\": \"path\", \"asset\": \"optional_id\", \"slot\": \"auto|original|asset_sheet|turnaround_sheet\", \"attach_to_active\": false, \"auto_cut\": false, \"tolerance\": 25, \"use_ocr\": false}",
-            always,
-            cmd_intake_validate
-        ),
-        cmd!(
-            "intake.three_question",
-            "Three-Question Intake",
-            ["File", "Intake"],
-            None,
-            "{\"image\":\"optional_path\",\"q1\":\"motion\",\"q2\":\"parts_csv\",\"q3\":\"target\",\"archetype\":\"optional\",\"verb\":\"optional\"}",
-            has_asset,
-            cmd_intake_three_question
-        ),
-        cmd!(
-            "intake.compare_reference",
-            "Compare Reference vs Import (OCR + Rotation)",
-            ["File", "Intake"],
-            None,
-            "{\"slot\":\"all|original|asset_sheet|turnaround\",\"yaw\":0.0}",
-            has_asset,
-            cmd_intake_compare_reference
-        ),
     ]
 }
 
@@ -1679,8 +1627,8 @@ fn specs_part_and_manifest() -> Vec<CommandSpec> {
             "Cut Sheet (PhotoCraft)",
             ["Edit"],
             None,
-            "{\"asset\": \"optional_id\", \"out_dir\": \"optional_dir\", \"kind\": \"auto\", \"layout\": \"optional_layout.json\"}",
-            has_asset,
+            "{\"asset\": \"optional_id\", \"source\": \"optional_sheet.png\", \"out_dir\": \"optional_dir\", \"kind\": \"auto\", \"layout\": \"optional_layout.json\"}",
+            always,
             cmd_asset_cut_sheet
         ),
         cmd!(
@@ -1688,7 +1636,7 @@ fn specs_part_and_manifest() -> Vec<CommandSpec> {
             "Load Asset Manifest",
             ["File", "Open Manifest"],
             None,
-            "{\"preset\": \"hopper|whiskers|puddles|jenny|rusty\", \"manifest\": \"optional_path\"}",
+            "{\"manifest\": \"path/to/manifest.json\", \"asset\": \"optional_id\"}",
             always,
             cmd_asset_load_manifest
         ),
@@ -1701,46 +1649,16 @@ fn specs_part_and_manifest() -> Vec<CommandSpec> {
             always,
             cmd_part_set_state
         ),
-        cmd!(
-            "turnaround.optimize_accuracy",
-            "Optimize Turnaround Accuracy",
-            ["Turnaround"],
-            None,
-            "{\"asset\": \"optional_id\", \"turnaround_dir\": \"path\", \"poses_dir\": \"path\", \"out_dir\": \"path\"}",
-            always,
-            cmd_turnaround_optimize_accuracy
-        ),
     ]
 }
 
 fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
     vec![
-        cmd!(
-            "anim.preview_2d",
-            "Preview 2D Animation",
-            ["Animation"],
-            None,
-            "{\"mode\": \"idle|walk|run|jump|wave|static\"}",
-            always,
-            cmd_anim_preview_2d
-        ),
-        cmd!(
-            "mesh.build_4dir",
-            "Build Silhouette Mesh Approximation",
-            ["Mesh"],
-            None,
-            "{\"character\":\"loaded asset id\",\"output\":\"optional .glb path\",\"mesh_res\":32,\"inflation_depth_pct\":58,\"relief_detail_pct\":44,\"proj_blend_pct\":65,\"bump_intensity\":35}",
-            always,
-            cmd_mesh_build_4dir
-        ),
-        cmd!(
-            "export.edit_project",
-            "Export FilmCraft",
-            ["File", "Export"],
-            None,
-            "{\"media\": \"path.mp4\", \"output\": \"path.fcproj\", \"frame_out\": \"path.png\"}",
-            always,
-            cmd_import_video_sequence
+        query!(
+            "validate.motion",
+            "Validate 2.5D Puppet & Deform Motion Clip",
+            "{\"spec\":\"rig.json or rig_manifest.json\",\"frames\":[\"optional rendered frame PNGs\"]}",
+            crate::motion_qa::cmd_validate_motion
         ),
         cmd!(
             "export.scene_render",
@@ -1750,24 +1668,6 @@ fn specs_export_and_diagnostics() -> Vec<CommandSpec> {
             "{\"expected_project\":\"selected .magic\",\"id\":\"registered Blender source id\",\"expected_revision\":1,\"options\":{\"max_frames\":90,\"resolution_percent\":50}}",
             always,
             cmd_render_scene_source
-        ),
-        cmd!(
-            "export.character_iteration",
-            "Export 2D Layers + 6-Action Track",
-            ["File", "Export"],
-            None,
-            "{\"character\": \"hopper|whiskers|puddles|jenny|rusty|miss_hayley|old_mac|all\", \"out_root\": \"exports/design_share\"}",
-            always,
-            cmd_export_character_iteration
-        ),
-        cmd!(
-            "scene.farm_school_lineup",
-            "Export Farm School Character Lineup Scene (Blender)",
-            ["File", "Export"],
-            None,
-            "{\"out_dir\": \"exports/farm_school_milestone\", \"character\": \"optional_single_char\"}",
-            always,
-            cmd_scene_farm_school_lineup
         ),
         query!(
             "vision.analyze",

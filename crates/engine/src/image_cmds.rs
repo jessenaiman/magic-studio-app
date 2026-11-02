@@ -10,7 +10,7 @@ pub(crate) mod medium;
 pub use medium::cmd_image_apply_medium;
 
 use crate::workspace::{
-    image_batch_args, resolve_craft_cli, resolve_workspace_path, run_tool_in, workspace_root,
+    image_batch_args, resolve_tool, resolve_workspace_path, run_tool_in, workspace_root,
 };
 
 fn register_pair(value: &Value) -> Result<[f64; 2]> {
@@ -332,7 +332,7 @@ pub fn cmd_image_break_apart(s: &mut Session, params: &Value) -> Result<Value> {
     let regions = break_apart_regions(params)?;
     let parts: Vec<String> = regions.keys().cloned().collect();
 
-    let bin = resolve_craft_cli("photocraft-cli");
+    let bin = resolve_tool("photocraft-cli");
 
     let mut produced_parts: Vec<Value> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
@@ -442,20 +442,24 @@ fn seed_root_motion(
     jump_motion: &mut serde_json::Map<String, Value>,
 ) {
     rest_motion.insert(id.to_string(), json!({
-        "position": [{"kind": "oscillate", "axis": 1, "amplitude": 4.0, "hz": 0.5, "phase": 0.0}],
-        "rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 1.2, "hz": 0.5, "phase": 0.25}]
+        "position": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, [0.0, 0.0]], [1.0, [0.0, -3.5]], [2.0, [0.0, 0.0]]]}],
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0]]}]
     }));
+    // Contact (0.0, 0.5, 1.0) -> Down (0.125, 0.625) -> Passing (0.25, 0.75) -> Up (0.375, 0.875)
     walk_motion.insert(id.to_string(), json!({
-        "position": [{"kind": "oscillate", "axis": 1, "amplitude": 6.0, "hz": 2.0, "phase": 0.0}],
-        "rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 2.5, "hz": 1.0, "phase": 0.0}]
+        "position": [{"kind": "keys", "ease": "bezier", "keys": [
+            [0.0, [0.0, 0.0]], [0.125, [0.0, 10.0]], [0.25, [0.0, -2.0]], [0.375, [0.0, -8.0]],
+            [0.5, [0.0, 0.0]], [0.625, [0.0, 10.0]], [0.75, [0.0, -2.0]], [0.875, [0.0, -8.0]], [1.0, [0.0, 0.0]]
+        ]}],
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, -2.0], [0.25, 0.0], [0.5, 2.0], [0.75, 0.0], [1.0, -2.0]]}]
     }));
     wave_motion.insert(id.to_string(), json!({
-        "position": [{"kind": "oscillate", "axis": 1, "amplitude": 3.0, "hz": 0.75, "phase": 0.0}],
-        "rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 1.8, "hz": 0.75, "phase": 0.15}]
+        "position": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, [0.0, 0.0]], [1.0, [0.0, -2.5]], [2.0, [0.0, 0.0]]]}],
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [1.0, 1.5], [2.0, 0.0]]}]
     }));
     jump_motion.insert(id.to_string(), json!({
-        "position": [{"kind": "oscillate", "axis": 1, "amplitude": 22.0, "hz": 1.0, "phase": 0.0}],
-        "rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 3.5, "hz": 1.0, "phase": 0.2}]
+        "position": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, [0.0, 0.0]], [0.2, [0.0, 14.0]], [0.5, [0.0, -28.0]], [0.8, [0.0, 10.0]], [1.0, [0.0, 0.0]]]}],
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.2, 4.0], [0.5, -3.0], [1.0, 0.0]]}]
     }));
 }
 
@@ -466,24 +470,26 @@ fn seed_head_motion(
     wave_motion: &mut serde_json::Map<String, Value>,
     jump_motion: &mut serde_json::Map<String, Value>,
 ) {
-    rest_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 1.8, "hz": 0.5, "phase": 0.15}]}));
-    walk_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 3.0, "hz": 1.0, "phase": 0.2}]}));
-    wave_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 4.5, "hz": 1.2, "phase": 0.1}]}));
-    jump_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 5.0, "hz": 1.0, "phase": 0.25}]}));
+    rest_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [1.1, 1.8], [2.0, 0.0]]}]}));
+    walk_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 2.5], [0.3, -2.5], [0.55, 2.5], [0.8, -2.5], [1.0, 2.5]]}]}));
+    wave_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.5, 4.5], [1.5, -3.0], [2.0, 0.0]]}]}));
+    jump_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.25, 5.0], [0.55, -4.0], [1.0, 0.0]]}]}));
 }
 
 fn seed_secondary_motion(
     id: &str,
-    phase: f64,
+    lag: f64,
     rest_motion: &mut serde_json::Map<String, Value>,
     walk_motion: &mut serde_json::Map<String, Value>,
     wave_motion: &mut serde_json::Map<String, Value>,
     jump_motion: &mut serde_json::Map<String, Value>,
 ) {
-    rest_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 3.5, "hz": 0.5, "phase": phase}]}));
-    walk_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 9.0, "hz": 1.0, "phase": phase}]}));
-    wave_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 6.5, "hz": 1.2, "phase": phase}]}));
-    jump_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 12.0, "hz": 1.0, "phase": phase}]}));
+    let t1 = (0.25 + lag).clamp(0.1, 0.45);
+    let t2 = (0.75 + lag).clamp(0.55, 0.95);
+    rest_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [1.0 + lag, 3.5], [2.0, 0.0]]}]}));
+    walk_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, -7.0], [t1, 8.0], [0.5, -7.0], [t2, 8.0], [1.0, -7.0]]}]}));
+    wave_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.6 + lag, 6.0], [1.4 + lag, -5.0], [2.0, 0.0]]}]}));
+    jump_motion.insert(id.to_string(), json!({"rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.3 + lag, 11.0], [0.65 + lag, -9.0], [1.0, 0.0]]}]}));
 }
 
 fn seed_arm_motion(
@@ -493,12 +499,20 @@ fn seed_arm_motion(
     wave_motion: &mut serde_json::Map<String, Value>,
     jump_motion: &mut serde_json::Map<String, Value>,
 ) {
-    let phase = if is_left { 0.0 } else { 0.5 };
-    walk_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 16.0, "hz": 1.0, "phase": phase}]}));
+    let sign = if is_left { 1.0 } else { -1.0 };
+    walk_motion.insert(id.to_string(), json!({
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [
+            [0.0, -20.0 * sign], [0.25, 0.0], [0.5, 20.0 * sign], [0.75, 0.0], [1.0, -20.0 * sign]
+        ]}]
+    }));
     if is_left {
-        wave_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 26.0, "hz": 1.8, "phase": 0.0}]}));
+        wave_motion.insert(id.to_string(), json!({
+            "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, -35.0], [0.5, 25.0], [1.0, -35.0], [1.5, 25.0], [2.0, -35.0]]}]
+        }));
     }
-    jump_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 22.0, "hz": 1.0, "phase": 0.1}]}));
+    jump_motion.insert(id.to_string(), json!({
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.2, 18.0 * sign], [0.5, -28.0 * sign], [1.0, 0.0]]}]
+    }));
 }
 
 fn seed_leg_motion(
@@ -507,9 +521,32 @@ fn seed_leg_motion(
     walk_motion: &mut serde_json::Map<String, Value>,
     jump_motion: &mut serde_json::Map<String, Value>,
 ) {
-    let phase = if is_left { 0.5 } else { 0.0 };
-    walk_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 18.0, "hz": 1.0, "phase": phase}]}));
-    jump_motion.insert(id.to_string(), json!({"rotation": [{"kind": "oscillate", "axis": 0, "amplitude": 14.0, "hz": 1.0, "phase": 0.0}]}));
+    // Ground-locked stance phase (Y=0.0 across contact->passing) + lifted passing arc
+    let walk_keys = if is_left {
+        json!([
+            [0.0, [24.0, 0.0]],
+            [0.5, [-24.0, 0.0]],
+            [0.75, [0.0, -14.0]],
+            [1.0, [24.0, 0.0]]
+        ])
+    } else {
+        json!([
+            [0.0, [-24.0, 0.0]],
+            [0.25, [0.0, -14.0]],
+            [0.5, [24.0, 0.0]],
+            [1.0, [-24.0, 0.0]]
+        ])
+    };
+    let rot_sign = if is_left { 1.0 } else { -1.0 };
+    walk_motion.insert(id.to_string(), json!({
+        "position": [{"kind": "keys", "ease": "linear", "keys": walk_keys}],
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [
+            [0.0, 16.0 * rot_sign], [0.25, 0.0], [0.5, -16.0 * rot_sign], [0.75, 8.0 * rot_sign], [1.0, 16.0 * rot_sign]
+        ]}]
+    }));
+    jump_motion.insert(id.to_string(), json!({
+        "rotation": [{"kind": "keys", "ease": "bezier", "keys": [[0.0, 0.0], [0.2, 14.0 * rot_sign], [0.5, -12.0 * rot_sign], [1.0, 0.0]]}]
+    }));
 }
 
 fn seed_part_motion(
@@ -589,28 +626,32 @@ fn write_parts_rig(
     }
 
     let tracks = vec![
-        json!({"id": "rest", "label": "Rest · gentle bob", "duration": 4, "loop": true, "motion": rest_motion}),
-        json!({"id": "walk", "label": "Walk · stride cycle", "duration": 3, "loop": true, "motion": walk_motion}),
-        json!({"id": "wave", "label": "Wave · greeting", "duration": 3, "loop": true, "motion": wave_motion}),
-        json!({"id": "jump", "label": "Jump · hop", "duration": 2, "loop": true, "motion": jump_motion}),
+        json!({"id": "rest", "label": "Rest · keyframed pose", "duration": 2.0, "loop": true, "motion": rest_motion}),
+        json!({"id": "walk", "label": "Walk · Contact-Down-Passing-Up", "duration": 1.0, "loop": true, "motion": walk_motion}),
+        json!({"id": "wave", "label": "Wave · greeting", "duration": 2.0, "loop": true, "motion": wave_motion}),
+        json!({"id": "jump", "label": "Jump · hop", "duration": 1.0, "loop": true, "motion": jump_motion}),
     ];
-    let rig = json!({"rig_type": "layered_motion", "character_id": asset_id, "canvas": [canvas.0, canvas.1], "fps": 30, "tracks": tracks,
+    let rig = json!({"rig_type": "layered_motion", "character_id": asset_id, "canvas": [canvas.0, canvas.1], "fps": 24, "tracks": tracks,
         "layers": layers.iter().map(|(id, file, pivot, _)| match joint(id) {
-            Some(j) => json!({"id": id, "file": file, "pivot": j["pivot"], "parent": j["parent"]}),
-            None => json!({"id": id, "file": file, "pivot": pivot, "parent": if *id == root { Value::Null } else { json!(root) }}),
+            Some(j) => json!({
+                "id": id,
+                "file": file,
+                "pivot": j["pivot"],
+                "rest_tail": j.get("rest_tail").cloned().unwrap_or_else(|| json!([pivot[0], pivot[1] + 40.0])),
+                "hinge_radius_px": j.get("hinge_radius_px").cloned().unwrap_or(json!(12)),
+                "parent": j["parent"]
+            }),
+            None => json!({"id": id, "file": file, "pivot": pivot, "rest_tail": [pivot[0], pivot[1] + 40.0], "parent": if *id == root { Value::Null } else { json!(root) }}),
         }).collect::<Vec<_>>()});
     let path = out_dir.join("rig.json");
-    std::fs::write(
-        &path,
-        serde_json::to_vec_pretty(&rig).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
-    )?;
+    let manifest_path = out_dir.join("rig_manifest.json");
+    let encoded =
+        serde_json::to_vec_pretty(&rig).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    std::fs::write(&path, &encoded)?;
+    std::fs::write(&manifest_path, &encoded)?;
     Ok(path)
 }
 
-/// A rig sheet (either from `image.generate rig_parts=...` with adjacent `generation.json`, or an existing
-/// user sheet with explicit `parts=[{id, parent, pivot}]`) becomes a layered rig: `pipeline/rig_from_sheet.py`
-/// cuts the cells, places each part where it sits on the assembled asset and finds the joints; `rig.json` is then
-/// written with initial timed 2D tracks (`rest`, `walk`, `wave`, `jump`). Connect it with `project.add_asset kind=cutout_rig`.
 fn rig_sheet_path(s: &Session, p: &Value) -> Result<(String, std::path::PathBuf)> {
     let sheet_ref = p["sheet"]
         .as_str()
@@ -638,162 +679,213 @@ fn rig_sheet_path(s: &Session, p: &Value) -> Result<(String, std::path::PathBuf)
     Ok((sheet_ref.to_string(), sheet))
 }
 
-fn rig_parts_arg(args: &mut Vec<String>, parts: Option<&Value>) -> Result<()> {
-    if let Some(parts) = parts {
-        if !parts.as_array().is_some_and(|a| {
-            (2..=15).contains(&a.len())
-                && a.iter().all(|item| {
-                    item.get("id")
-                        .and_then(Value::as_str)
-                        .is_some_and(|id| !id.is_empty())
-                })
-        }) {
-            return Err(EngineError::InvalidParams(
-                "parts must be an array of 2 to 15 part objects with non-empty `id`".into(),
-            ));
-        }
-        args.extend(["--parts".into(), parts.to_string()]);
-    }
-    Ok(())
+fn resolve_rig_sheet_parts<'a>(
+    p: &'a Value,
+    receipt: &'a Value,
+    sheet: &std::path::Path,
+) -> Result<&'a Vec<Value>> {
+    p.get("parts")
+        .or_else(|| p.get("rig_parts"))
+        .filter(|v| !v.is_null())
+        .or_else(|| receipt.pointer("/rig_sheet/parts"))
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| {
+            EngineError::InvalidParams(format!(
+                "{} has no adjacent generation.json with rig_sheet.parts; pass `parts=[{{\"id\":...,\"parent\":...,\"pivot\":[u,v]}}]`",
+                sheet.display()
+            ))
+        })
 }
 
-fn rig_reference_arg(args: &mut Vec<String>, s: &Session, p: &Value) -> Result<()> {
-    if let Some(ref_raw) = p["reference"].as_str().filter(|v| !v.is_empty()) {
-        let ref_path = resolve_workspace_path(s, ref_raw);
-        if !ref_path.is_file() {
-            return Err(EngineError::InvalidParams(format!(
-                "reference image not found: {}",
-                ref_path.display()
-            )));
-        }
-        args.extend([
-            "--reference".into(),
-            ref_path.to_string_lossy().into_owned(),
-        ]);
-    }
-    Ok(())
+fn rig_sheet_grid(
+    sheet: &std::path::Path,
+    receipt: &Value,
+    part_count: usize,
+) -> Result<(u32, u32, u32, u32)> {
+    let (sheet_w, sheet_h) = image::image_dimensions(sheet)?;
+    let total_cells = part_count + 1;
+    let cols = receipt
+        .pointer("/rig_sheet/columns")
+        .and_then(Value::as_u64)
+        .map(|c| c as u32)
+        .unwrap_or_else(|| (total_cells as f64).sqrt().ceil() as u32)
+        .max(1);
+    let rows = receipt
+        .pointer("/rig_sheet/rows")
+        .and_then(Value::as_u64)
+        .map(|r| r as u32)
+        .unwrap_or_else(|| (total_cells as u32).div_ceil(cols))
+        .max(1);
+    Ok((cols, rows, sheet_w / cols, sheet_h / rows))
 }
 
-fn rig_pivots_arg(args: &mut Vec<String>, p: &Value) -> Result<()> {
-    if let Some(pivots) = p.get("pivots").filter(|v| !v.is_null()) {
-        if !pivots.as_object().is_some_and(|m| {
-            m.values().all(|v| {
-                v.as_array().is_some_and(|a| {
-                    a.len() == 2
-                        && a.iter()
-                            .all(|n| n.as_f64().is_some_and(|n| (0.0..=1.0).contains(&n)))
-                })
-            })
-        }) {
-            return Err(EngineError::InvalidParams(
-                "pivots maps part ids to [u, v] inside the part, each 0 to 1".into(),
-            ));
-        }
-        args.extend(["--pivots".into(), pivots.to_string()]);
-    }
-    Ok(())
-}
-
-fn rig_places_arg(args: &mut Vec<String>, p: &Value) -> Result<()> {
-    if let Some(places) = p.get("places").filter(|v| !v.is_null()) {
-        if !places.as_object().is_some_and(|m| {
-            m.values().all(|v| {
-                v.as_array().is_some_and(|a| {
-                    a.len() == 2 && a.iter().all(|n| n.as_f64().is_some_and(f64::is_finite))
-                })
-            })
-        }) {
-            return Err(EngineError::InvalidParams(
-                "places maps part ids to [cx, cy], the part's centre in canvas pixels".into(),
-            ));
-        }
-        args.extend(["--places".into(), places.to_string()]);
-    }
-    Ok(())
-}
-
-fn rig_order_arg(args: &mut Vec<String>, p: &Value) -> Result<()> {
-    if let Some(order) = p.get("order").filter(|v| !v.is_null()) {
-        if !order
-            .as_array()
-            .is_some_and(|a| a.iter().all(Value::is_string))
-        {
-            return Err(EngineError::InvalidParams(
-                "order lists part ids back to front".into(),
-            ));
-        }
-        args.extend(["--order".into(), order.to_string()]);
-    }
-    Ok(())
-}
-
-fn rig_sheet_args(
-    s: &Session,
-    p: &Value,
-    script: &std::path::Path,
+#[allow(clippy::too_many_arguments)]
+fn extract_and_rig_sheet_part(
+    root: &std::path::Path,
+    pc_bin: &str,
+    vc_bin: &str,
     sheet: &std::path::Path,
     out_dir: &std::path::Path,
-    receipt: &std::path::Path,
-    explicit_parts: Option<&Value>,
-) -> Result<Vec<String>> {
-    let mut args = vec![
-        script.to_string_lossy().into_owned(),
-        "--sheet".into(),
-        sheet.to_string_lossy().into_owned(),
-        "--out-dir".into(),
-        out_dir.to_string_lossy().into_owned(),
-    ];
-    if receipt.is_file() {
-        args.extend(["--receipt".into(), receipt.to_string_lossy().into_owned()]);
-    }
-    rig_parts_arg(&mut args, explicit_parts)?;
-    rig_reference_arg(&mut args, s, p)?;
-    rig_pivots_arg(&mut args, p)?;
-    rig_places_arg(&mut args, p)?;
-    rig_order_arg(&mut args, p)?;
-    Ok(args)
+    p: &Value,
+    part: &Value,
+    idx: usize,
+    cols: u32,
+    cell_w: u32,
+    cell_h: u32,
+) -> Result<(Value, Value)> {
+    let part_id = part["id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            EngineError::InvalidParams("Each part in `parts` needs a non-empty `id`".into())
+        })?;
+    let cell_idx = (idx + 1) as u32;
+    let (cx, cy) = ((cell_idx % cols) * cell_w, (cell_idx / cols) * cell_h);
+    let part_png = out_dir.join(format!("{part_id}.png"));
+    let pcraft_path = out_dir.join(format!("{part_id}.pcraft"));
+    let part_svg = out_dir.join(format!("{part_id}.svg"));
+
+    let pc_out = run_tool_in(
+        root,
+        pc_bin,
+        &[
+            "run".into(),
+            sheet.to_string_lossy().into_owned(),
+            "--cmd".into(),
+            "image.crop".into(),
+            "--params".into(),
+            json!({"x": cx, "y": cy, "width": cell_w, "height": cell_h, "deleteCroppedPixels": true}).to_string(),
+            "--cmd".into(),
+            "layer.removeBackground".into(),
+            "--params".into(),
+            "{\"refine\":true}".into(),
+            "--cmd".into(),
+            "layer.matting.colorDecontaminate".into(),
+            "--params".into(),
+            "{\"amount\":100,\"radius\":4}".into(),
+            "--out".into(),
+            part_png.to_string_lossy().into_owned(),
+        ],
+    )?;
+    let vc_out = run_tool_in(
+        root,
+        vc_bin,
+        &[
+            "run".into(),
+            "--in".into(),
+            part_png.to_string_lossy().into_owned(),
+            "--cmd".into(),
+            "select.all".into(),
+            "--cmd".into(),
+            "imageTrace.makeAndExpand".into(),
+            "--params".into(),
+            "{\"preset\":\"16 Colors\",\"enhanced\":true,\"params\":{\"ignoreWhite\":true}}".into(),
+            "--cmd".into(),
+            "object.puppetWarp.pins".into(),
+            "--params".into(),
+            "{}".into(),
+            "--export".into(),
+            part_svg.to_string_lossy().into_owned(),
+        ],
+    )?;
+    let pivot_px = resolve_sheet_part_pivot(p, part, part_id, &pc_out, &vc_out, [cell_w, cell_h]);
+    let hinge_r = crate::magic_design::cutout_rig::extend_circular_hinge_cap(
+        root,
+        &part_png,
+        pivot_px,
+        (cell_w.min(cell_h) as f64) * 0.25,
+        &pcraft_path,
+    )?;
+    Ok((
+        json!(part_id),
+        json!({
+            "id": part_id,
+            "parent": part.get("parent").cloned().unwrap_or(Value::Null),
+            "pivot": pivot_px,
+            "rest_tail": [pivot_px[0], (pivot_px[1] + cell_h as f64 * 0.3).min(cell_h as f64 - 4.0)],
+            "hinge_radius_px": hinge_r,
+            "pcraft": pcraft_path,
+            "file": part_png,
+            "svg": part_svg,
+        }),
+    ))
 }
 
-fn finish_sheet_rig(out_dir: &std::path::Path, name: &str, stdout: &str) -> Result<Value> {
-    let mut placement: Value = stdout
+fn resolve_sheet_part_pivot(
+    p: &Value,
+    part: &Value,
+    part_id: &str,
+    pc_out: &str,
+    vc_out: &str,
+    cell: [u32; 2],
+) -> [f64; 2] {
+    let center = [cell[0] as f64 / 2.0, cell[1] as f64 / 2.0];
+    let explicit_uv = p
+        .get("pivots")
+        .and_then(|pv| pv.get(part_id))
+        .or_else(|| part.get("pivot"))
+        .and_then(Value::as_array)
+        .filter(|a| a.len() == 2)
+        .and_then(|a| Some([a[0].as_f64()?, a[1].as_f64()?]));
+    let cell_bounds = pc_out
         .lines()
-        .rev()
-        .find_map(|line| serde_json::from_str(line).ok())
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|v| v["command"].as_str() == Some("layer.removeBackground"))
+        .and_then(|v| v["result"]["bounds"].as_array().cloned())
+        .filter(|b| b.len() == 4);
+    if let Some(uv) = explicit_uv {
+        if let Some(b) = cell_bounds {
+            let bx = b[0].as_f64().unwrap_or(0.0);
+            let by = b[1].as_f64().unwrap_or(0.0);
+            let bw = b[2].as_f64().unwrap_or(cell[0] as f64);
+            let bh = b[3].as_f64().unwrap_or(cell[1] as f64);
+            return [bx + bw * uv[0], by + bh * uv[1]];
+        }
+        return [cell[0] as f64 * uv[0], cell[1] as f64 * uv[1]];
+    }
+    vc_out
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|v| v["command"].as_str() == Some("object.puppetWarp.pins"))
+        .and_then(|v| {
+            v["result"]["pins"]
+                .as_array()
+                .and_then(|a| a.first())
+                .cloned()
+        })
+        .and_then(|pt| Some([pt.get(0)?.as_f64()?, pt.get(1)?.as_f64()?]))
+        .unwrap_or(center)
+}
+
+fn require_reviewed_rig_sheet(s: &Session, sheet_ref: &str, sheet: &std::path::Path) -> Result<()> {
+    let review_asset = s
+        .project_assets
+        .iter()
+        .find(|a| a.id == sheet_ref || a.path.as_ref() == Some(&sheet.to_path_buf()))
+        .map(|a| a.id.as_str())
         .ok_or_else(|| {
-            EngineError::CommandFailed(
-                "rig.from_sheet".into(),
-                "rig_from_sheet.py returned no result".into(),
+            EngineError::InvalidParams(
+                "Register the complete sheet as a project asset and review it before building a rig"
+                    .into(),
             )
         })?;
-    let order = placement["order"].as_array().cloned().unwrap_or_default();
-    let joints = placement["parts"].as_array().cloned().unwrap_or_default();
-    let rig = write_parts_rig(out_dir, name, &order, Some(&joints))?;
-    placement["command"] = json!("rig.from_sheet");
-    placement["rig"] = json!(rig);
-    placement["next"] = json!(format!(
-        "project.add_asset path={} kind=cutout_rig id={name} name={name}",
-        rig.display()
-    ));
-    Ok(placement)
+    crate::sheets::require_sheet_review(s, review_asset, sheet)
+}
+
+fn read_adjacent_generation_receipt(sheet: &std::path::Path) -> Value {
+    let receipt_path = sheet.with_file_name("generation.json");
+    std::fs::read(&receipt_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null)
 }
 
 pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
-    let invalid = |message: String| EngineError::InvalidParams(message);
     let (sheet_ref, sheet) = rig_sheet_path(s, p)?;
-    let review_asset = s.project_assets.iter().find(|a| a.id == sheet_ref || a.path.as_ref() == Some(&sheet))
-        .map(|a|a.id.as_str()).ok_or_else(||invalid("Register the complete sheet as a project asset and review it before building a rig".into()))?;
-    crate::sheets::require_sheet_review(s, review_asset, &sheet)?;
-    let receipt = sheet.with_file_name("generation.json");
-    let explicit_parts = p
-        .get("parts")
-        .or_else(|| p.get("rig_parts"))
-        .filter(|v| !v.is_null());
-    if !receipt.is_file() && explicit_parts.is_none() {
-        return Err(invalid(format!(
-            "{} has no adjacent generation.json; pass `parts=[{{\"id\":...,\"parent\":...,\"pivot\":[u,v]}}]` for an existing user sheet, or generate one with `image.generate rig_parts=...`",
-            sheet.display()
-        )));
-    }
+    require_reviewed_rig_sheet(s, &sheet_ref, &sheet)?;
+    let receipt = read_adjacent_generation_receipt(&sheet);
+    let parts_val = resolve_rig_sheet_parts(p, &receipt, &sheet)?;
     let name = crate::workspace::sanitize_asset_id(p["name"].as_str().unwrap_or("rig"));
     let out_dir = match p["out_dir"].as_str() {
         Some(dir) => resolve_workspace_path(s, dir),
@@ -802,198 +894,39 @@ pub fn cmd_rig_from_sheet(s: &mut Session, p: &Value) -> Result<Value> {
             .join(&name)
             .join("rig"),
     };
+    std::fs::create_dir_all(&out_dir)?;
+
+    let (cols, _, cell_w, cell_h) = rig_sheet_grid(&sheet, &receipt, parts_val.len())?;
     let root = workspace_root(s);
-    let script = root.join("pipeline/rig_from_sheet.py");
-    let args = rig_sheet_args(s, p, &script, &sheet, &out_dir, &receipt, explicit_parts)?;
-    let stdout = run_tool_in(&root, "python3", &args)?;
-    finish_sheet_rig(&out_dir, &name, &stdout)
-}
+    let pc_bin = resolve_tool("photocraft-cli");
+    let vc_bin = resolve_tool("vectorcraft-cli");
 
-fn recut_at(at_val: &Value) -> Result<String> {
-    if let Some(s_at) = at_val.as_str() {
-        Ok(s_at.to_string())
-    } else if let Some(arr) = at_val.as_array().filter(|a| a.len() == 2) {
-        Ok(format!(
-            "{},{}",
-            arr[0].as_f64().unwrap_or(0.0) as i64,
-            arr[1].as_f64().unwrap_or(0.0) as i64
-        ))
-    } else {
-        Err(EngineError::InvalidParams(
-            "`at` must be [x, y] or \"x,y\"".into(),
-        ))
+    let mut order: Vec<Value> = Vec::new();
+    let mut joints: Vec<Value> = Vec::new();
+    for (idx, part) in parts_val.iter().enumerate() {
+        let (part_id_val, joint_val) = extract_and_rig_sheet_part(
+            &root, &pc_bin, &vc_bin, &sheet, &out_dir, p, part, idx, cols, cell_w, cell_h,
+        )?;
+        order.push(part_id_val);
+        joints.push(joint_val);
     }
-}
+    if let Some(explicit_order) = p.get("order").and_then(Value::as_array)
+        && !explicit_order.is_empty()
+    {
+        order = explicit_order.clone();
+    }
 
-fn recut_targets(
-    s: &Session,
-    p: &Value,
-) -> Result<(
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::path::PathBuf,
-    String,
-)> {
-    let source_raw = p["source"]
-        .as_str()
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| {
-            EngineError::InvalidParams("part.recut needs source=<clean source PNG>".into())
-        })?;
-    let part_raw = p["part"]
-        .as_str()
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| {
-            EngineError::InvalidParams("part.recut needs part=<existing part PNG>".into())
-        })?;
-    let out_raw = p["out"].as_str().filter(|v| !v.is_empty()).ok_or_else(|| {
-        EngineError::InvalidParams("part.recut needs out=<output part PNG>".into())
-    })?;
-    let at_val = p
-        .get("at")
-        .ok_or_else(|| EngineError::InvalidParams("part.recut needs at=[x,y] or \"x,y\"".into()))?;
-    let at = recut_at(at_val)?;
-    let source = resolve_workspace_path(s, source_raw);
-    let part = resolve_workspace_path(s, part_raw);
-    let out = resolve_workspace_path(s, out_raw);
-    if !source.is_file() {
-        return Err(EngineError::InvalidParams(format!(
-            "source PNG not found: {}",
-            source.display()
-        )));
-    }
-    if !part.is_file() {
-        return Err(EngineError::InvalidParams(format!(
-            "part PNG not found: {}",
-            part.display()
-        )));
-    }
-    Ok((source, part, out, at))
-}
-
-fn recut_script_args(
-    script: &std::path::Path,
-    source: &std::path::Path,
-    part: &std::path::Path,
-    out: &std::path::Path,
-    at: &str,
-    p: &Value,
-) -> Vec<String> {
-    let mut args = vec![
-        script.to_string_lossy().into_owned(),
-        "--source".into(),
-        source.to_string_lossy().into_owned(),
-        "--part".into(),
-        part.to_string_lossy().into_owned(),
-        "--at".into(),
-        at.to_string(),
-        "--out".into(),
-        out.to_string_lossy().into_owned(),
-    ];
-    if let Some(scale) = p["scale"].as_f64() {
-        args.extend(["--scale".into(), scale.to_string()]);
-    }
-    if let Some(expand) = p["expand"].as_i64() {
-        args.extend(["--expand".into(), expand.to_string()]);
-    }
-    if let Some(smooth) = p["smooth"].as_i64() {
-        args.extend(["--smooth".into(), smooth.to_string()]);
-    }
-    if let Some(behind) = p["behind"].as_array() {
-        for item in behind {
-            if let Some(spec) = item.as_str().filter(|v| !v.is_empty()) {
-                args.extend(["--behind".into(), spec.to_string()]);
-            }
-        }
-    }
-    args
-}
-
-/// Surgical PhotoCraft recut of a single rigged part from its clean source art (`pipeline/recut_part.py`).
-pub fn cmd_part_recut(s: &mut Session, p: &Value) -> Result<Value> {
-    let (source, part, out, at) = recut_targets(s, p)?;
-    let root = workspace_root(s);
-    let script = root.join("pipeline/recut_part.py");
-    let args = recut_script_args(&script, &source, &part, &out, &at, p);
-    let stdout = run_tool_in(&root, "python3", &args)?;
-    let mut res: Value = stdout
-        .lines()
-        .rev()
-        .find_map(|line| serde_json::from_str(line).ok())
-        .ok_or_else(|| {
-            EngineError::CommandFailed("part.recut".into(), "recut_part.py returned no JSON".into())
-        })?;
-    res["command"] = json!("part.recut");
-    Ok(res)
-}
-
-/// Normalize a non-standard turnaround or action pose sheet (`pipeline/step_sheet_normalizer.py`):
-/// detects panels, resizes cells via PhotoCraft, labels via Hybrid OCR + silhouette heuristic fallback,
-/// reorders into canonical slots, and expands directional walk_right/walk_left slots.
-pub fn cmd_sheet_normalize(s: &mut Session, p: &Value) -> Result<Value> {
-    let invalid = |msg: String| EngineError::InvalidParams(msg);
-    let source_raw = p["source"]
-        .as_str()
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| invalid("sheet.normalize needs source=<sheet PNG/JPEG path>".into()))?;
-    let source = resolve_workspace_path(s, source_raw);
-    if !source.is_file() {
-        return Err(invalid(format!(
-            "sheet source not found: {}",
-            source.display()
-        )));
-    }
-    let character =
-        crate::workspace::sanitize_asset_id(p["character"].as_str().unwrap_or("character"));
-    let kind = p["kind"].as_str().unwrap_or("auto");
-    let out_dir = match p["out_dir"].as_str().filter(|v| !v.is_empty()) {
-        Some(dir) => resolve_workspace_path(s, dir),
-        None => workspace_root(s)
-            .join("exports/pose_and_parts")
-            .join(format!("{character}_{kind}_normalized")),
-    };
-    let root = workspace_root(s);
-    let script = root.join("pipeline/step_sheet_normalizer.py");
-    let mut args = vec![
-        script.to_string_lossy().into_owned(),
-        "--source".into(),
-        source.to_string_lossy().into_owned(),
-        "--out-dir".into(),
-        out_dir.to_string_lossy().into_owned(),
-        "--kind".into(),
-        kind.into(),
-        "--character".into(),
-        character,
-    ];
-    if let Some(cw) = p["cell_width"].as_i64() {
-        args.extend(["--cell-width".into(), cw.to_string()]);
-    }
-    if let Some(ch) = p["cell_height"].as_i64() {
-        args.extend(["--cell-height".into(), ch.to_string()]);
-    }
-    if p["expand_directions"].as_bool() == Some(false) {
-        args.push("--no-expand-directions".into());
-    }
-    if let Some(tol) = p["tolerance"].as_i64() {
-        args.extend(["--tolerance".into(), tol.to_string()]);
-    }
-    let stdout = run_tool_in(&root, "python3", &args)?;
-    let mut res: Value = serde_json::from_str(&stdout)
-        .or_else(|_| {
-            stdout
-                .lines()
-                .rev()
-                .find_map(|line| serde_json::from_str(line).ok())
-                .ok_or(())
-        })
-        .map_err(|_| {
-            EngineError::CommandFailed(
-                "sheet.normalize".into(),
-                "step_sheet_normalizer.py returned invalid JSON".into(),
-            )
-        })?;
-    res["command"] = json!("sheet.normalize");
-    Ok(res)
+    let rig = write_parts_rig(&out_dir, &name, &order, Some(&joints))?;
+    Ok(json!({
+        "ok": true,
+        "command": "rig.from_sheet",
+        "rig": rig,
+        "rig_manifest": out_dir.join("rig_manifest.json"),
+        "canvas": [cell_w, cell_h],
+        "order": order,
+        "parts": joints,
+        "next": format!("project.add_asset path={} kind=cutout_rig id={name} name={name}", rig.display()),
+    }))
 }
 
 /// Warp the active asset's source with explicit src/dst pins via PhotoCraft puppet warp.
@@ -1034,7 +967,7 @@ pub fn cmd_image_puppet_warp(s: &mut Session, params: &Value) -> Result<Value> {
         &out_path.to_string_lossy(),
     );
 
-    let bin = resolve_craft_cli("photocraft-cli");
+    let bin = resolve_tool("photocraft-cli");
     run_tool_in(&root, &bin, &args)?;
 
     let (w, h) = if out_path.is_file() {
@@ -1096,7 +1029,7 @@ pub fn cmd_image_color_to_alpha(s: &mut Session, params: &Value) -> Result<Value
         &out_path.to_string_lossy(),
     );
 
-    let bin = resolve_craft_cli("photocraft-cli");
+    let bin = resolve_tool("photocraft-cli");
     run_tool_in(&root, &bin, &args)?;
 
     let (w, h) = if out_path.is_file() {
@@ -1176,7 +1109,7 @@ pub fn cmd_image_content_aware_fill(s: &mut Session, params: &Value) -> Result<V
         out_path.to_string_lossy().into_owned(),
     ]);
 
-    let bin = resolve_craft_cli("photocraft-cli");
+    let bin = resolve_tool("photocraft-cli");
     run_tool_in(&root, &bin, &args)?;
 
     let (w, h) = if out_path.is_file() {
@@ -1258,7 +1191,7 @@ pub fn cmd_image_image_size(s: &mut Session, params: &Value) -> Result<Value> {
         Some(&body),
         &out_path.to_string_lossy(),
     );
-    let bin = resolve_craft_cli("photocraft-cli");
+    let bin = resolve_tool("photocraft-cli");
     run_tool_in(&root, &bin, &args)?;
     let (w, h) = if out_path.is_file() {
         image::image_dimensions(&out_path).unwrap_or((0, 0))

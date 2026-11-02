@@ -1,4 +1,4 @@
-//! Image generation providers: native Codex, OpenRouter images, and the Grok CLI.
+//! Image generation via the user's Codex subscription (`codex exec`) or configured `settings.json` / env endpoint.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -13,31 +13,8 @@ fn invalid(message: &str) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
-/// Where an image request goes. Each provider names its own models and reports its own receipt.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Provider {
-    /// The native Codex image_gen tool, reached through `codex exec`.
-    Codex,
-    /// OpenRouter's images endpoint, billed per image.
-    OpenRouter,
-    /// The Grok CLI, driven headlessly.
-    Grok,
-}
-
-impl Provider {
-    pub fn id(self) -> &'static str {
-        match self {
-            Provider::Codex => "codex",
-            Provider::OpenRouter => "openrouter",
-            Provider::Grok => "grok",
-        }
-    }
-}
-
-const OPENROUTER_ENDPOINT: &str = "https://openrouter.ai/api/v1/images/generations";
 const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-/// Standard base64 (RFC 4648) with padding. Kept here so the engine gains no dependency.
 fn base64_encode(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
@@ -74,7 +51,7 @@ fn base64_decode(text: &str) -> Result<Vec<u8>> {
         let value = BASE64
             .iter()
             .position(|c| *c as char == ch)
-            .ok_or_else(|| invalid("OpenRouter returned image data that is not base64"))?
+            .ok_or_else(|| invalid("Configured image endpoint returned data that is not base64"))?
             as u32;
         buffer = (buffer << 6) | value;
         bits += 6;
@@ -86,18 +63,67 @@ fn base64_decode(text: &str) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn provider_of(p: &Value) -> Result<Provider> {
-    match p.get("provider").and_then(Value::as_str).unwrap_or("codex") {
-        "codex" => Ok(Provider::Codex),
-        "openrouter" => Ok(Provider::OpenRouter),
-        "grok" => Ok(Provider::Grok),
-        other => Err(invalid(&format!(
-            "provider must be codex, openrouter or grok; got `{other}`. No image job started."
-        ))),
-    }
+#[derive(Clone, Debug)]
+struct ImageConfig {
+    provider: String,
+    model: Option<String>,
+    endpoint: Option<String>,
+    api_key_env: Option<String>,
 }
 
-fn validate(p: &Value, provider: Provider) -> Result<(&str, String, u64)> {
+fn nonempty_str(v: Option<&Value>) -> Option<String> {
+    v.and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+}
+
+/// Resolve image generation configuration from request params, environment variables, and
+/// `~/.config/magicstudio/settings.json` (`image` object). Defaults to `codex` subscription.
+fn resolve_config(p: &Value) -> Result<ImageConfig> {
+    let settings = crate::project_settings::stored_settings();
+    let img_settings = &settings["image"];
+    let provider = nonempty_str(p.get("provider"))
+        .or_else(|| env_nonempty("MAGICSTUDIO_IMAGE_PROVIDER"))
+        .or_else(|| nonempty_str(img_settings.get("provider")))
+        .unwrap_or_else(|| "codex".into());
+    if !matches!(provider.as_str(), "codex" | "http") {
+        return Err(invalid(&format!(
+            "image provider must be `codex` (subscription default) or `http` (configured in settings.json / MAGICSTUDIO_IMAGE_ENDPOINT); got `{provider}`"
+        )));
+    }
+    let model = nonempty_str(p.get("model"))
+        .or_else(|| env_nonempty("MAGICSTUDIO_IMAGE_MODEL"))
+        .or_else(|| nonempty_str(img_settings.get("model")));
+    if let Some(ref m) = model {
+        let ok = m.len() <= 160
+            && m.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'/' | b':')
+            });
+        if !ok {
+            return Err(invalid("Invalid model identifier"));
+        }
+    }
+    let endpoint = env_nonempty("MAGICSTUDIO_IMAGE_ENDPOINT")
+        .or_else(|| nonempty_str(img_settings.get("endpoint")));
+    let api_key_env = env_nonempty("MAGICSTUDIO_IMAGE_API_KEY_ENV")
+        .or_else(|| nonempty_str(img_settings.get("api_key_env")));
+    Ok(ImageConfig {
+        provider,
+        model,
+        endpoint,
+        api_key_env,
+    })
+}
+
+fn validate<'a>(p: &'a Value, cfg: &ImageConfig) -> Result<(&'a str, u64)> {
     let prompt = p["prompt"]
         .as_str()
         .map(str::trim)
@@ -106,43 +132,15 @@ fn validate(p: &Value, provider: Provider) -> Result<(&str, String, u64)> {
     if prompt.len() > 16_000 {
         return Err(invalid("Image prompt exceeds 16000 bytes"));
     }
-    let default_model = match provider {
-        Provider::Codex => "gpt-6-luna",
-        Provider::OpenRouter => "google/gemini-3.1-flash-lite-image",
-        Provider::Grok => "grok-imagine-image-2.0",
-    };
-    let model = p["model"].as_str().unwrap_or(default_model).to_string();
-    // Codex names a bare installed model; OpenRouter and Grok name a vendor-qualified model.
-    let allowed = |b: u8| {
-        b.is_ascii_alphanumeric()
-            || matches!(b, b'-' | b'.' | b'_')
-            || (provider != Provider::Codex && matches!(b, b'/' | b':'))
-    };
-    if model.is_empty() || model.len() > 160 || !model.bytes().all(allowed) {
-        return Err(invalid(&format!(
-            "model must be an installed model ID for provider={} (e.g. {default_model})",
-            provider.id()
-        )));
-    }
     let quality = p.get("quality").and_then(Value::as_str).unwrap_or("auto");
-    match provider {
-        Provider::Codex => {
-            if quality != "auto" || p.get("size").is_some() || p.get("resolution").is_some() {
-                return Err(invalid(
-                    "Native Codex image quality/resolution controls are not verified. Use quality=auto; model selection does not guarantee pixel dimensions. Actual PNG dimensions are returned.",
-                ));
-            }
+    if cfg.provider == "codex" {
+        if quality != "auto" || p.get("size").is_some() || p.get("resolution").is_some() {
+            return Err(invalid(
+                "Native Codex image quality/resolution controls are tool-managed. Use quality=auto; actual PNG dimensions are returned.",
+            ));
         }
-        _ => {
-            if !["auto", "low", "medium", "high"].contains(&quality) {
-                return Err(invalid("quality must be auto, low, medium or high"));
-            }
-            if p.get("size").is_some() {
-                return Err(invalid(
-                    "size is not verified; use resolution=<tier> or read the returned PNG dimensions",
-                ));
-            }
-        }
+    } else if !["auto", "low", "medium", "high"].contains(&quality) {
+        return Err(invalid("quality must be auto, low, medium or high"));
     }
     let timeout = p
         .get("timeout_s")
@@ -153,7 +151,7 @@ fn validate(p: &Value, provider: Provider) -> Result<(&str, String, u64)> {
         })
         .transpose()?
         .unwrap_or(300);
-    Ok((prompt, model, timeout))
+    Ok((prompt, timeout))
 }
 
 pub(crate) fn native_image_success(stderr: &str) -> bool {
@@ -169,13 +167,11 @@ pub(crate) fn native_image_success(stderr: &str) -> bool {
 
 fn io_failure(stage: &str, path: &Path, error: impl std::fmt::Display) -> EngineError {
     invalid(&format!(
-        "image.generate stage={stage}; path={}; error={error}. Inspect this path and the request generation.json; no image retry or provider substitution was performed.",
+        "image.generate stage={stage}; path={}; error={error}. Inspect this path and generation.json; no retry was performed.",
         path.display()
     ))
 }
 
-// Codex CLI stages native image bytes separately from its JSONL text stream. Correlate the
-// current run's public event/log IDs only; never scan images or read conversation history.
 fn staged_image(stdout: &str, stderr: &str) -> Result<(PathBuf, usize)> {
     fn component(value: &str) -> bool {
         !value.is_empty()
@@ -209,18 +205,21 @@ fn staged_image(stdout: &str, stderr: &str) -> Result<(PathBuf, usize)> {
     }
     if threads.len() != 1 || calls.is_empty() {
         return Err(invalid(
-            "Cannot resolve native staged image: expected one current thread ID and a successful built-in image call ID. Inspect events.jsonl and stderr.log; no image retry was performed.",
+            "Cannot resolve native staged image: expected one thread ID and a successful built-in image call ID. Inspect events.jsonl and stderr.log.",
         ));
     }
-    let thread = threads.first().ok_or_else(|| {
-        invalid("Cannot resolve native staged image: current thread ID is missing")
-    })?;
-    let call = calls.first().ok_or_else(|| {
-        invalid("Cannot resolve native staged image: successful built-in image call ID is missing")
-    })?;
-    let home = std::env::var_os("CODEX_HOME").map(PathBuf::from)
+    let thread = threads
+        .first()
+        .ok_or_else(|| invalid("Missing current thread ID"))?;
+    let call = calls
+        .first()
+        .ok_or_else(|| invalid("Missing image call ID"))?;
+    let home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")))
-        .ok_or_else(|| invalid("Cannot locate Codex staged image: CODEX_HOME and HOME are unset; inspect the existing Codex launcher environment"))?;
+        .ok_or_else(|| {
+            invalid("Cannot locate Codex staged image: CODEX_HOME and HOME are unset")
+        })?;
     Ok((
         home.join("generated_images")
             .join(thread)
@@ -245,16 +244,13 @@ fn validated_png(path: &Path) -> Result<(u32, u32, String)> {
     let (w, h) = image::image_dimensions(path)
         .map_err(|e| invalid(&format!("Cannot read generated PNG dimensions: {e}")))?;
     if w == 0 || h == 0 || u64::from(w) * u64::from(h) > 16_777_216 {
-        return Err(invalid(
-            "Generated PNG has unsupported dimensions; it was not attached",
-        ));
+        return Err(invalid("Generated PNG has unsupported dimensions"));
     }
     image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
         .map_err(|e| invalid(&format!("Generated PNG failed full decode: {e}")))?;
     Ok((w, h, format!("{:x}", Sha256::digest(&bytes))))
 }
 
-// Resolve only explicitly supplied project images; never make the worker search for references.
 fn references(root: &Path, p: &Value) -> Result<Vec<Value>> {
     let Some(value) = p.get("references") else {
         return Ok(Vec::new());
@@ -282,7 +278,6 @@ fn references(root: &Path, p: &Value) -> Result<Vec<Value>> {
     Ok(result)
 }
 
-/// A registered image asset becomes the first reference of the request.
 fn with_reference_asset(s: &Session, p: &Value, request: &mut Value) -> Result<()> {
     let Some(value) = p.get("reference_asset") else {
         return Ok(());
@@ -311,7 +306,6 @@ fn with_reference_asset(s: &Session, p: &Value, request: &mut Value) -> Result<(
     Ok(())
 }
 
-/// The first reference is the registered asset, so the result can name it.
 fn tag_reference_asset(p: &Value, refs: &mut [Value]) {
     if let Some(first) = refs
         .first_mut()
@@ -321,7 +315,6 @@ fn tag_reference_asset(p: &Value, refs: &mut [Value]) {
     }
 }
 
-/// Two to eight ordered pose descriptions, which need a reference image to pose.
 fn parse_poses(p: &Value, refs: &[Value]) -> Result<Vec<String>> {
     let Some(value) = p.get("poses") else {
         return Ok(Vec::new());
@@ -364,7 +357,6 @@ fn character_context(s: &Session, p: &Value) -> Result<Option<Value>> {
     ))
 }
 
-/// The saved storyboard mapping, checked to contain the scene this request names.
 fn scene_context(root: &Path, p: &Value) -> Result<Option<(u64, Value)>> {
     let Some(value) = p.get("scene") else {
         return Ok(None);
@@ -420,24 +412,7 @@ fn request_context(
     Ok((refs, poses, context))
 }
 
-/// A rig sheet request (`rig_parts`): the template's prompt for the assembled asset plus one cell per part,
-/// and the sheet layout rig.from_sheet cuts by. The template lives in pipeline/templates/rig_sheet_spec.json.
-fn rig_sheet(s: &Session, p: &Value, has_references: bool) -> Result<Option<(String, Value)>> {
-    let Some(value) = p.get("rig_parts") else {
-        return Ok(None);
-    };
-    let parts = value
-        .as_array()
-        .filter(|v| (2..=15).contains(&v.len()))
-        .ok_or_else(|| invalid("rig_parts must list 2 to 15 parts, back to front"))?;
-    if !has_references {
-        return Err(invalid(
-            "A rig sheet needs reference_asset or references; no image job started",
-        ));
-    }
-    if p.get("poses").is_some() {
-        return Err(invalid("Pass poses or rig_parts, not both"));
-    }
+fn validate_rig_part_ids(parts: &[Value]) -> Result<Vec<&str>> {
     let mut ids = Vec::new();
     for part in parts {
         let id = part["id"]
@@ -461,6 +436,10 @@ fn rig_sheet(s: &Session, p: &Value, has_references: bool) -> Result<Option<(Str
         }
         ids.push(id);
     }
+    Ok(ids)
+}
+
+fn validate_rig_part_links(parts: &[Value], ids: &[&str]) -> Result<()> {
     for part in parts {
         if let Some(parent) = part.get("parent").filter(|v| !v.is_null())
             && !parent
@@ -484,6 +463,27 @@ fn rig_sheet(s: &Session, p: &Value, has_references: bool) -> Result<Option<(Str
             }
         }
     }
+    Ok(())
+}
+
+fn rig_sheet(s: &Session, p: &Value, has_references: bool) -> Result<Option<(String, Value)>> {
+    let Some(value) = p.get("rig_parts") else {
+        return Ok(None);
+    };
+    let parts = value
+        .as_array()
+        .filter(|v| (2..=15).contains(&v.len()))
+        .ok_or_else(|| invalid("rig_parts must list 2 to 15 parts, back to front"))?;
+    if !has_references {
+        return Err(invalid(
+            "A rig sheet needs reference_asset or references; no image job started",
+        ));
+    }
+    if p.get("poses").is_some() {
+        return Err(invalid("Pass poses or rig_parts, not both"));
+    }
+    let ids = validate_rig_part_ids(parts)?;
+    validate_rig_part_links(parts, &ids)?;
     let template_path =
         crate::workspace::workspace_root(s).join("pipeline/templates/rig_sheet_spec.json");
     let template: Value = serde_json::from_slice(
@@ -519,7 +519,6 @@ fn rig_sheet(s: &Session, p: &Value, has_references: bool) -> Result<Option<(Str
     )))
 }
 
-/// Everything a provider needs, resolved once from the request.
 struct Prepared {
     project: PathBuf,
     references: Vec<Value>,
@@ -533,7 +532,6 @@ struct Prepared {
     prompt_file: PathBuf,
 }
 
-/// The instruction text handed to whichever provider runs the job.
 fn effective_prompt_text(
     prompt: &str,
     poses: &[String],
@@ -553,15 +551,15 @@ fn effective_prompt_text(
         Show one complete character per occupied cell, at matching scale and baseline. Preserve the reference's identity, \
         proportions, materials, palette and markings. Target a square 2048px sheet; actual tool dimensions may differ. \
         Leave at least 64px outer clearance and 48px gutters at the target size. No labels, text, borders, motion blur, \
-        overlapping figures or clipped fins/limbs. Describe volume through the requested viewpoints; do not merely squeeze \
-        or mirror the side view. These are ordered pose drawings, not an already rigged or animated result.",
+        overlapping figures or clipped fins/limbs.",
         serde_json::to_string(poses).map_err(|e| invalid(&e.to_string()))?
     ))
 }
 
 fn prepare(s: &mut Session, p: &Value, prompt: &str) -> Result<Prepared> {
-    let project = s.project_path.clone().ok_or_else(|| invalid(
-        "Open/attach a project before image.generate, or pass project=<existing .magic> through the CLI"))?;
+    let project = s.project_path.clone().ok_or_else(|| {
+        invalid("Open/attach a project before image.generate, or pass project=<existing .magic> through the CLI")
+    })?;
     let root = project
         .parent()
         .ok_or_else(|| invalid("Project has no parent directory"))?
@@ -604,71 +602,58 @@ fn prepare(s: &mut Session, p: &Value, prompt: &str) -> Result<Prepared> {
     })
 }
 
-/// The result every provider returns, so the Scribbles and the asset registry see one shape.
-fn attached_result(
-    s: &mut Session,
-    p: &Value,
-    prepared: &Prepared,
-    model: &str,
-    provider: Provider,
-    tool: &str,
-    extra: Value,
-) -> Result<Value> {
-    let (width, height, sha256) = validated_png(&prepared.out)?;
-    let attached = s.execute(
-        "project.add_asset",
-        json!({"path":prepared.out,"kind":"image","remove_background":false,
-        "name":p["name"].as_str().unwrap_or("Generated image"), "load":false}),
-    )?;
-    let mut result = json!({"ok":true, "project":prepared.project,"image":prepared.out,"width":width,"height":height,
-        "sha256":sha256,"asset_id":attached["asset_id"], "references":prepared.references,"poses":prepared.poses,
-        "animation_context":prepared.context,"provider":provider.id(),"agent_model":model,"image_model":model,
-        "quality":p.get("quality").and_then(Value::as_str).unwrap_or("auto"),
-        "receipt":prepared.receipt,"prompt_file":prepared.prompt_file,
-        "status":"draft; needs visual review","tool":tool});
-    if let (Some(map), Some(extra)) = (result.as_object_mut(), extra.as_object()) {
-        for (key, value) in extra {
-            map.insert(key.clone(), value.clone());
-        }
-    }
-    Ok(result)
+fn write_bytes(path: &Path, bytes: &[u8], stage: &str) -> Result<()> {
+    fs::write(path, bytes).map_err(|e| io_failure(stage, path, e))
 }
 
-fn generate_with_provider(
-    s: &mut Session,
-    p: &Value,
-    provider: Provider,
-    prompt: &str,
-    model: &str,
-    timeout: u64,
-) -> Result<Value> {
-    let prepared = prepare(s, p, prompt)?;
-    match provider {
-        Provider::OpenRouter => generate_via_openrouter(s, p, prepared, model, timeout),
-        Provider::Grok => generate_via_grok(s, p, prepared, model, timeout),
-        Provider::Codex => Err(invalid(
-            "the native Codex provider runs through its own path",
-        )),
-    }
+fn write_json_file(path: &Path, value: &Value, stage: &str) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(|e| invalid(&e.to_string()))?;
+    write_bytes(path, &bytes, stage)
 }
 
-/// OpenRouter's images endpoint. References travel as base64 data URLs in `input_references`.
-fn generate_via_openrouter(
+fn copy_native(staged: &Path, out: &Path) -> Result<()> {
+    let bytes = fs::read(staged).map_err(|e| io_failure("read_generated_image", staged, e))?;
+    let mut target = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out)
+        .map_err(|e| io_failure("create_project_png", out, e))?;
+    target
+        .write_all(&bytes)
+        .map_err(|e| io_failure("write_generated_png", out, e))
+}
+
+/// Optional HTTP image endpoint configured strictly via `settings.json` / environment variables.
+fn generate_via_configured_http(
     s: &mut Session,
     p: &Value,
+    cfg: &ImageConfig,
     prepared: Prepared,
-    model: &str,
     timeout: u64,
 ) -> Result<Value> {
-    let key = std::env::var("OPENROUTER_API_KEY").map_err(|_| invalid(
-        "OpenRouter image generation needs OPENROUTER_API_KEY in the environment. No image job started."))?;
-    let mut request = json!({"model":model,"prompt":prepared.effective_prompt,"output_format":"png","n":1,
-        "quality":p.get("quality").and_then(Value::as_str).unwrap_or("auto")});
+    let endpoint = cfg.endpoint.as_deref().ok_or_else(|| {
+        invalid("HTTP image provider requires `image.endpoint` in settings.json or MAGICSTUDIO_IMAGE_ENDPOINT")
+    })?;
+    let key_env = cfg.api_key_env.as_deref().ok_or_else(|| {
+        invalid("HTTP image provider requires `image.api_key_env` in settings.json or MAGICSTUDIO_IMAGE_API_KEY_ENV")
+    })?;
+    let key = std::env::var(key_env).map_err(|_| {
+        invalid(&format!(
+            "Configured API key environment variable `{key_env}` is not set"
+        ))
+    })?;
+    let model = cfg.model.as_deref().ok_or_else(|| {
+        invalid("HTTP image provider requires `model` in params, MAGICSTUDIO_IMAGE_MODEL, or settings.json")
+    })?;
+    let mut request = json!({
+        "model": model,
+        "prompt": prepared.effective_prompt,
+        "output_format": "png",
+        "n": 1,
+        "quality": p.get("quality").and_then(Value::as_str).unwrap_or("auto")
+    });
     if p["transparent_background"] == true {
         request["background"] = json!("transparent");
-    }
-    if let Some(resolution) = p.get("resolution") {
-        request["resolution"] = resolution.clone();
     }
     if !prepared.references.is_empty() {
         let mut inputs = Vec::new();
@@ -685,333 +670,79 @@ fn generate_via_openrouter(
         }
         request["input_references"] = json!(inputs);
     }
-    let body = prepared.dir.join("openrouter-request.json");
-    fs::write(
-        &body,
-        serde_json::to_vec_pretty(&request).map_err(|e| invalid(&e.to_string()))?,
-    )
-    .map_err(|e| io_failure("write_request_body", &body, e))?;
-    fs::write(&prepared.prompt_file, &prepared.effective_prompt)
-        .map_err(|e| io_failure("write_prompt", &prepared.prompt_file, e))?;
-    let response = prepared.dir.join("openrouter-response.json");
-    let args = vec![
-        "--fail".to_string(),
-        "--silent".to_string(),
-        "--show-error".to_string(),
-        "--max-time".to_string(),
-        (timeout + 60).to_string(),
-        "--proto".to_string(),
-        "=https".to_string(),
-        "-X".to_string(),
-        "POST".to_string(),
-        "-H".to_string(),
-        format!("Authorization: Bearer {key}"),
-        "-H".to_string(),
-        "Content-Type: application/json".to_string(),
-        "--data-binary".to_string(),
-        format!("@{}", body.to_string_lossy()),
-        "-o".to_string(),
-        response.to_string_lossy().into_owned(),
-        OPENROUTER_ENDPOINT.to_string(),
-    ];
-    let mut record = json!({"format":"magicstudio.image-generation","provider":"openrouter","project":prepared.project,
-        "prompt":prompt_text(&prepared),"effective_prompt":prepared.effective_prompt,"poses":prepared.poses,
-        "animation_context":prepared.context,"references":prepared.references,
-        "transparent_background":p["transparent_background"],"model":model,
-        "quality":p.get("quality").and_then(Value::as_str).unwrap_or("auto"),
-        "executable":"curl","endpoint":OPENROUTER_ENDPOINT,"request":body,"image":prepared.out,
-        "prompt_file":prepared.prompt_file,"timeout_s":timeout,"status":"started",
-        "manual":"curl -X POST https://openrouter.ai/api/v1/images/generations"});
-    fs::write(
-        &prepared.receipt,
-        serde_json::to_vec_pretty(&record).map_err(|e| invalid(&e.to_string()))?,
-    )
-    .map_err(|e| io_failure("write_request_receipt", &prepared.receipt, e))?;
+    let body = prepared.dir.join("http-request.json");
+    write_json_file(&body, &request, "write_request_body")?;
+    write_bytes(
+        &prepared.prompt_file,
+        prepared.effective_prompt.as_bytes(),
+        "write_prompt",
+    )?;
+    let response = prepared.dir.join("http-response.json");
     let run = Command::new("curl")
-        .args(&args)
+        .args([
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            &(timeout + 60).to_string(),
+            "--proto",
+            "=https",
+            "-X",
+            "POST",
+            "-H",
+            &format!("Authorization: Bearer {key}"),
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            &format!("@{}", body.to_string_lossy()),
+            "-o",
+            &response.to_string_lossy(),
+            endpoint,
+        ])
         .output()
         .map_err(|e| EngineError::ExternalTool("curl".into(), e.to_string()))?;
-    fs::write(prepared.dir.join("openrouter-stderr.log"), &run.stderr).map_err(|e| {
-        io_failure(
-            "write_provider_log",
-            &prepared.dir.join("openrouter-stderr.log"),
-            e,
-        )
-    })?;
     if !run.status.success() {
         let detail = String::from_utf8_lossy(&run.stderr).trim().to_string();
-        record["status"] = json!("failed; request retained");
-        record["error"] = json!(detail.clone());
-        fs::write(
-            &prepared.receipt,
-            serde_json::to_vec_pretty(&record).map_err(|e| invalid(&e.to_string()))?,
-        )
-        .map_err(|e| io_failure("write_request_receipt", &prepared.receipt, e))?;
         return Err(invalid(&format!(
-            "OpenRouter image request failed (exit {:?}): {detail}. Request retained at {}",
-            run.status.code(),
-            prepared.receipt.display()
+            "Configured HTTP image request failed (exit {:?}): {detail}",
+            run.status.code()
         )));
     }
     let parsed: Value = serde_json::from_slice(
         &fs::read(&response).map_err(|e| io_failure("read_provider_response", &response, e))?,
     )
-    .map_err(|e| invalid(&format!("Cannot read the OpenRouter response: {e}")))?;
-    if let Some(error) = parsed.get("error") {
-        record["status"] = json!("failed; request retained");
-        record["error"] = error.clone();
-        fs::write(
-            &prepared.receipt,
-            serde_json::to_vec_pretty(&record).map_err(|e| invalid(&e.to_string()))?,
-        )
-        .map_err(|e| io_failure("write_request_receipt", &prepared.receipt, e))?;
-        return Err(invalid(&format!(
-            "OpenRouter rejected the image request: {error}"
-        )));
-    }
-    let item = parsed["data"]
+    .map_err(|e| invalid(&format!("Cannot read image response JSON: {e}")))?;
+    let encoded = parsed["data"]
         .as_array()
         .and_then(|items| items.first())
-        .ok_or_else(|| invalid("OpenRouter returned no image data"))?;
-    let bytes = match item.get("b64_json").and_then(Value::as_str) {
-        Some(encoded) => base64_decode(encoded)?,
-        None => {
-            let url = item["url"].as_str().ok_or_else(|| {
-                invalid("OpenRouter returned neither b64_json nor url for the generated image")
-            })?;
-            let downloaded = prepared.dir.join("openrouter-image.png");
-            let fetch = Command::new("curl")
-                .args([
-                    "--fail",
-                    "--silent",
-                    "--show-error",
-                    "--max-time",
-                    "180",
-                    "--proto",
-                    "=https",
-                    "-o",
-                    &downloaded.to_string_lossy(),
-                    url,
-                ])
-                .output()
-                .map_err(|e| EngineError::ExternalTool("curl".into(), e.to_string()))?;
-            if !fetch.status.success() {
-                return Err(invalid(
-                    "OpenRouter returned an image URL that could not be downloaded",
-                ));
-            }
-            fs::read(&downloaded)
-                .map_err(|e| io_failure("read_downloaded_image", &downloaded, e))?
-        }
-    };
-    let mut target = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&prepared.out)
-        .map_err(|e| io_failure("create_project_png", &prepared.out, e))?;
-    target
-        .write_all(&bytes)
-        .map_err(|e| io_failure("write_generated_png", &prepared.out, e))?;
-    let usage = parsed.get("usage").cloned().unwrap_or(Value::Null);
-    let result = attached_result(
-        s,
-        p,
-        &prepared,
-        model,
-        Provider::OpenRouter,
-        "openrouter.images",
-        json!({"usage":usage,"provider_receipt_verified":true,"native_image_call_count":1,
-            "openrouter_response":response,"openrouter_request":body,"native_tool_receipt_verified":false}),
-    )?;
-    record["status"] = json!("generated_and_attached; needs visual review");
-    record["result"] = result.clone();
-    fs::write(
-        &prepared.receipt,
-        serde_json::to_vec_pretty(&record).map_err(|e| invalid(&e.to_string()))?,
-    )
-    .map_err(|e| io_failure("write_request_receipt", &prepared.receipt, e))?;
+        .and_then(|item| item["b64_json"].as_str())
+        .ok_or_else(|| invalid("Configured image endpoint returned no b64_json image data"))?;
+    let bytes = base64_decode(encoded)?;
+    write_bytes(&prepared.out, &bytes, "write_generated_png")?;
+    let imported = import_native_image(s, p, &prepared.out)?;
+    let result = json!({
+        "ok": true,
+        "project": prepared.project,
+        "image": prepared.out,
+        "width": imported.width,
+        "height": imported.height,
+        "sha256": imported.sha256,
+        "asset_id": imported.asset_id,
+        "references": prepared.references,
+        "poses": prepared.poses,
+        "animation_context": prepared.context,
+        "provider": "http",
+        "agent_model": model,
+        "image_model": model,
+        "quality": p.get("quality").and_then(Value::as_str).unwrap_or("auto"),
+        "receipt": prepared.receipt,
+        "prompt_file": prepared.prompt_file,
+        "status": "draft; needs visual review",
+        "tool": "http.images",
+        "native_tool_receipt_verified": false
+    });
+    write_json_file(&prepared.receipt, &result, "write_request_receipt")?;
     Ok(result)
-}
-
-/// Grok is an agent CLI like Codex: run it headlessly with the same instruction, then import
-/// the image it produced. The staged file is found from what the agent reported.
-fn write_bytes(path: &Path, bytes: &[u8], stage: &str) -> Result<()> {
-    fs::write(path, bytes).map_err(|e| io_failure(stage, path, e))
-}
-
-fn write_json_file(path: &Path, value: &Value, stage: &str) -> Result<()> {
-    let bytes = serde_json::to_vec_pretty(value).map_err(|e| invalid(&e.to_string()))?;
-    write_bytes(path, &bytes, stage)
-}
-
-fn grok_instruction(prepared: &Prepared) -> String {
-    format!(
-        "Generate one raster image from the description below using your image \
-        generation tool. Save the finished PNG in the working directory and report its path. \
-        Do not redraw backgrounds or unrelated content. Description: {}",
-        prepared.effective_prompt
-    )
-}
-
-/// The instruction plus one inline image block per reference.
-fn grok_blocks(prepared: &Prepared) -> Result<Vec<Value>> {
-    let mut blocks = vec![json!({"type":"text","text":grok_instruction(prepared)})];
-    for reference in &prepared.references {
-        let path = reference["path"]
-            .as_str()
-            .ok_or_else(|| invalid("Invalid resolved reference path"))?;
-        let bytes = fs::read(path).map_err(|e| io_failure("read_reference", Path::new(path), e))?;
-        blocks.push(json!({"type":"image_url","image_url":{"url":format!("data:image/png;base64,{}", base64_encode(&bytes))}}));
-    }
-    Ok(blocks)
-}
-
-fn grok_args(prepared: &Prepared, instruction: &str, prompt_json: &Path) -> Vec<String> {
-    vec![
-        "-p".to_string(),
-        instruction.to_string(),
-        "--prompt-json".to_string(),
-        prompt_json.to_string_lossy().into_owned(),
-        "--output-format".to_string(),
-        "json".to_string(),
-        "--cwd".to_string(),
-        prepared.dir.to_string_lossy().into_owned(),
-    ]
-}
-
-fn grok_record(prepared: &Prepared, model: &str, args: &[String], timeout: u64) -> Value {
-    json!({"format":"magicstudio.image-generation","provider":"grok","project":prepared.project,
-        "prompt":prompt_text(prepared),"effective_prompt":prepared.effective_prompt,"poses":prepared.poses,
-        "animation_context":prepared.context,"references":prepared.references,"model":model,
-        "executable":"grok","argv":args,"image":prepared.out,"prompt_file":prepared.prompt_file,
-        "timeout_s":timeout,"status":"started","manual":"grok --help"})
-}
-
-/// Copy the agent's staged PNG into the project, never over an existing file.
-fn copy_native(staged: &Path, out: &Path) -> Result<()> {
-    let bytes = fs::read(staged).map_err(|e| io_failure("read_generated_image", staged, e))?;
-    let mut target = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(out)
-        .map_err(|e| io_failure("create_project_png", out, e))?;
-    target
-        .write_all(&bytes)
-        .map_err(|e| io_failure("write_generated_png", out, e))
-}
-
-/// Grok is an agent CLI like Codex: run it headlessly with the same instruction, then import
-/// the image it produced. The staged file is found from what the agent reported.
-fn generate_via_grok(
-    s: &mut Session,
-    p: &Value,
-    prepared: Prepared,
-    model: &str,
-    timeout: u64,
-) -> Result<Value> {
-    let instruction = grok_instruction(&prepared);
-    let blocks = grok_blocks(&prepared)?;
-    let prompt_json = prepared.dir.join("grok-prompt.json");
-    fs::write(
-        &prompt_json,
-        serde_json::to_vec(&blocks).map_err(|e| invalid(&e.to_string()))?,
-    )
-    .map_err(|e| io_failure("write_prompt_blocks", &prompt_json, e))?;
-    write_bytes(
-        &prepared.prompt_file,
-        instruction.as_bytes(),
-        "write_prompt",
-    )?;
-    let args = grok_args(&prepared, &instruction, &prompt_json);
-    let mut record = grok_record(&prepared, model, &args, timeout);
-    write_json_file(&prepared.receipt, &record, "write_request_receipt")?;
-    let run = crate::sheets::run_agent("grok", &args, &prepared.dir, timeout).map_err(|e| {
-        invalid(&format!(
-            "stage=launch_grok; executable=grok (PATH); {e}. Run `grok --help`; inspect {}",
-            prepared.receipt.display()
-        ))
-    })?;
-    write_bytes(
-        &prepared.dir.join("grok-events.jsonl"),
-        run.stdout.as_bytes(),
-        "write_events",
-    )?;
-    write_bytes(
-        &prepared.dir.join("grok-stderr.log"),
-        run.stderr.as_bytes(),
-        "write_provider_log",
-    )?;
-    record["exit_code"] = json!(run.code);
-    record["timed_out"] = json!(run.timed_out);
-    let staged = staged_agent_image(&run.stdout, &run.stderr, &prepared.dir).ok_or_else(|| invalid(
-        &format!("Grok did not report a generated image file. Its output was retained; inspect {} and {}. No substitute was used.",
-            prepared.dir.join("grok-events.jsonl").display(), prepared.dir.join("grok-stderr.log").display())))?;
-    record["native_staged_image"] = json!(staged);
-    copy_native(&staged, &prepared.out)?;
-    let result = attached_result(
-        s,
-        p,
-        &prepared,
-        model,
-        Provider::Grok,
-        "grok.image",
-        json!({"native_staged_image":staged,"native_image_call_count":1,"provider_receipt_verified":false,
-            "native_tool_receipt_verified":false}),
-    )?;
-    record["status"] = json!("generated_and_attached; needs visual review");
-    record["result"] = result.clone();
-    write_json_file(&prepared.receipt, &record, "write_request_receipt")?;
-    Ok(result)
-}
-
-/// The prompt as the caller wrote it, for the receipt.
-fn prompt_text(prepared: &Prepared) -> String {
-    prepared.effective_prompt.clone()
-}
-
-/// Image paths an agent printed, without quotes or punctuation around them.
-fn image_tokens(text: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    for token in text.split(|c: char| {
-        c.is_whitespace() || c == '"' || c == '\'' || c == ',' || c == '(' || c == ')'
-    }) {
-        let token = token.trim_start_matches('.').trim();
-        let lower = token.to_ascii_lowercase();
-        if (lower.ends_with(".png") || lower.ends_with(".webp"))
-            && !tokens.iter().any(|t| t == token)
-        {
-            tokens.push(token.to_owned());
-        }
-    }
-    tokens
-}
-
-/// The first reported candidate that exists, as given or relative to the job directory.
-fn reported_image(candidates: &[String], dir: &Path) -> Option<PathBuf> {
-    for candidate in candidates {
-        let path = PathBuf::from(candidate);
-        if path.is_file() {
-            return Some(path);
-        }
-        let local = dir.join(candidate);
-        if local.is_file() {
-            return Some(local);
-        }
-    }
-    None
-}
-
-/// Find the image an agent reported: a path it printed that exists on disk.
-fn staged_agent_image(stdout: &str, stderr: &str, dir: &Path) -> Option<PathBuf> {
-    let mut candidates: Vec<String> = Vec::new();
-    for text in [stdout, stderr] {
-        for token in image_tokens(text) {
-            if !candidates.contains(&token) {
-                candidates.push(token);
-            }
-        }
-    }
-    reported_image(&candidates, dir)
 }
 
 fn codex_instruction(effective_prompt: &str) -> Result<String> {
@@ -1027,31 +758,34 @@ fn codex_instruction(effective_prompt: &str) -> Result<String> {
     ))
 }
 
-/// The native agent argv: options first, then one `--image` per reference, then the prompt.
+/// Build `codex exec` argv using the user's Codex subscription config (no `--ignore-user-config`,
+/// and `--model` only when explicitly requested or configured in `settings.json` / env).
 fn codex_args(
     dir: &Path,
-    model: &str,
+    model: Option<&str>,
     instruction: &str,
     references: &[Value],
     p: &Value,
 ) -> Result<Vec<String>> {
     let mut args = vec![
         "exec".into(),
-        "--ignore-user-config".into(),
         "--ephemeral".into(),
         "--skip-git-repo-check".into(),
         "--sandbox".into(),
         "workspace-write".into(),
         "--cd".into(),
         dir.to_string_lossy().into_owned(),
-        "--model".into(),
-        model.to_string(),
+    ];
+    if let Some(m) = model {
+        args.extend(["--model".into(), m.to_string()]);
+    }
+    args.extend([
         "--config".into(),
         "model_reasoning_effort=\"low\"".into(),
         "--json".into(),
         "--output-last-message".into(),
         dir.join("last-message.txt").to_string_lossy().into_owned(),
-    ];
+    ]);
     for reference in references {
         args.extend([
             "--image".into(),
@@ -1061,19 +795,17 @@ fn codex_args(
                 .into(),
         ]);
     }
-    // --image accepts multiple values; terminate options before the positional prompt.
     args.push("--".into());
-    args.push(format!("{instruction}\nAttached references (in order): {}. Inspect these images before the single image edit. {}",
+    args.push(format!(
+        "{instruction}\nAttached references (in order): {}. Inspect these images before the single image edit. {}",
         serde_json::to_string(references).map_err(|e| invalid(&e.to_string()))?,
-        if p["transparent_background"] == true { "Request transparent_background=true from the native image tool; retain subject texture, silhouette and attachment point." } else { "Preserve reference transparency unless the description explicitly requests a change." }));
+        if p["transparent_background"] == true {
+            "Request transparent_background=true from the native image tool; retain subject texture, silhouette and attachment point."
+        } else {
+            "Preserve reference transparency unless the description explicitly requests a change."
+        }
+    ));
     Ok(args)
-}
-
-fn write_prompt(args: &[String], prompt_file: &Path) -> Result<()> {
-    let prompt = args
-        .last()
-        .ok_or_else(|| invalid("Missing native image instruction"))?;
-    write_bytes(prompt_file, prompt.as_bytes(), "write_prompt")
 }
 
 fn launch_codex(
@@ -1082,44 +814,16 @@ fn launch_codex(
     timeout: u64,
     receipt: &Path,
 ) -> Result<crate::sheets::AgentRun> {
-    crate::sheets::run_image_agent("codex", args, dir, timeout).map_err(|e| {
+    let codex_bin = crate::workspace::resolve_tool("codex");
+    crate::sheets::run_image_agent(&codex_bin, args, dir, timeout).map_err(|e| {
         invalid(&format!(
-            "stage=launch_codex; executable=codex (PATH); cwd={}; {e}. Run `command -v codex` and `codex exec --help` in the same environment; inspect {}",
+            "stage=launch_codex; executable={codex_bin}; cwd={}; {e}. Run `command -v codex` and `codex exec --help`; inspect {}",
             dir.display(),
             receipt.display()
         ))
     })
 }
 
-fn write_agent_logs(dir: &Path, run: &crate::sheets::AgentRun) -> Result<()> {
-    write_bytes(
-        &dir.join("events.jsonl"),
-        run.stdout.as_bytes(),
-        "write_events",
-    )?;
-    write_bytes(
-        &dir.join("stderr.log"),
-        run.stderr.as_bytes(),
-        "write_tool_log",
-    )
-}
-
-/// The agent argv for this request, with its prompt already written beside the receipt.
-fn codex_request(
-    dir: &Path,
-    model: &str,
-    effective_prompt: &str,
-    references: &[Value],
-    p: &Value,
-    prompt_file: &Path,
-) -> Result<Vec<String>> {
-    let instruction = codex_instruction(effective_prompt)?;
-    let args = codex_args(dir, model, &instruction, references, p)?;
-    write_prompt(&args, prompt_file)?;
-    Ok(args)
-}
-
-/// A run that did neither succeed nor stop after producing its image is a failure.
 fn check_codex_run(run: &crate::sheets::AgentRun, receipt: &Path) -> Result<()> {
     if !run.succeeded() && !run.stopped_after_image {
         return Err(EngineError::ExternalTool(
@@ -1135,13 +839,12 @@ fn check_codex_run(run: &crate::sheets::AgentRun, receipt: &Path) -> Result<()> 
     }
     if !native_image_success(&run.stderr) {
         return Err(invalid(
-            "No successful built-in image_gen.imagegen receipt in Codex stderr. Output retained but not attached; inspect generation.json/stderr.log. No substitute was used.",
+            "No successful built-in image_gen.imagegen receipt in Codex stderr. Output retained; inspect generation.json and stderr.log.",
         ));
     }
     Ok(())
 }
 
-/// What importing a native image produced, once it is a project asset.
 struct ImportedImage {
     width: u32,
     height: u32,
@@ -1149,20 +852,17 @@ struct ImportedImage {
     asset_id: Value,
 }
 
-/// Import the receipt-correlated native bytes, never a model-authored or claimed file.
-fn import_native_image(
-    s: &mut Session,
-    p: &Value,
-    staged: &Path,
-    out: &Path,
-) -> Result<ImportedImage> {
-    validated_png(staged)?;
-    copy_native(staged, out)?;
+fn import_native_image(s: &mut Session, p: &Value, out: &Path) -> Result<ImportedImage> {
     let (width, height, sha256) = validated_png(out)?;
     let attached = s.execute(
         "project.add_asset",
-        json!({"path":out,"kind":"image","remove_background":false,
-            "name":p["name"].as_str().unwrap_or("Generated image"), "load":false}),
+        json!({
+            "path": out,
+            "kind": "image",
+            "remove_background": false,
+            "name": p["name"].as_str().unwrap_or("Generated image"),
+            "load": false
+        }),
     )?;
     Ok(ImportedImage {
         width,
@@ -1172,7 +872,6 @@ fn import_native_image(
     })
 }
 
-/// Record how the job ended and hand back its outcome with the receipt path in the error.
 fn finish(outcome: Result<Value>, mut record: Value, receipt: &Path) -> Result<Value> {
     match &outcome {
         Ok(value) => {
@@ -1185,63 +884,112 @@ fn finish(outcome: Result<Value>, mut record: Value, receipt: &Path) -> Result<V
         }
     }
     write_json_file(receipt, &record, "write_request_receipt")?;
-    outcome.map_err(|error| invalid(&format!("{error}; request receipt: {}. Read generation.json and stderr.log before retrying this command.", receipt.display())))
+    outcome.map_err(|error| {
+        invalid(&format!(
+            "{error}; request receipt: {}. Read generation.json and stderr.log before retrying.",
+            receipt.display()
+        ))
+    })
+}
+
+fn execute_codex_run(
+    s: &mut Session,
+    p: &Value,
+    cfg: &ImageConfig,
+    prepared: &Prepared,
+    args: &[String],
+    timeout: u64,
+    record: &mut Value,
+) -> Result<Value> {
+    let run = launch_codex(&prepared.dir, args, timeout, &prepared.receipt)?;
+    write_bytes(
+        &prepared.dir.join("events.jsonl"),
+        run.stdout.as_bytes(),
+        "write_events",
+    )?;
+    write_bytes(
+        &prepared.dir.join("stderr.log"),
+        run.stderr.as_bytes(),
+        "write_tool_log",
+    )?;
+    record["exit_code"] = json!(run.code);
+    record["timed_out"] = json!(run.timed_out);
+    record["agent_stopped_after_native_image"] = json!(run.stopped_after_image);
+    check_codex_run(&run, &prepared.receipt)?;
+    let (staged, call_count) = staged_image(&run.stdout, &run.stderr)?;
+    record["native_staged_image"] = json!(staged);
+    record["native_image_call_count"] = json!(call_count);
+    validated_png(&staged)?;
+    copy_native(&staged, &prepared.out)?;
+    let imported = import_native_image(s, p, &prepared.out)?;
+    Ok(json!({
+        "ok": true,
+        "project": prepared.project,
+        "image": prepared.out,
+        "width": imported.width,
+        "height": imported.height,
+        "sha256": imported.sha256,
+        "asset_id": imported.asset_id,
+        "references": prepared.references,
+        "poses": prepared.poses,
+        "animation_context": prepared.context,
+        "provider": "codex",
+        "agent_model": cfg.model,
+        "image_model": null,
+        "quality": "auto",
+        "receipt": prepared.receipt,
+        "prompt_file": prepared.prompt_file,
+        "status": "draft; needs visual review",
+        "tool": "image_gen.imagegen",
+        "native_tool_receipt_verified": true,
+        "native_image_call_count": call_count,
+        "native_staged_image": staged,
+        "agent_stopped_after_native_image": run.stopped_after_image
+    }))
 }
 
 pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
-    let provider = provider_of(p)?;
-    let (prompt, model, timeout) = validate(p, provider)?;
-    if provider != Provider::Codex {
-        return generate_with_provider(s, p, provider, prompt, &model, timeout);
+    let cfg = resolve_config(p)?;
+    let (prompt, timeout) = validate(p, &cfg)?;
+    let prepared = prepare(s, p, prompt)?;
+    if cfg.provider == "http" {
+        return generate_via_configured_http(s, p, &cfg, prepared, timeout);
     }
-    let Prepared {
-        project,
-        references,
-        poses,
-        context,
-        rig_layout,
-        effective_prompt,
-        dir,
-        out,
-        receipt,
-        prompt_file,
-    } = prepare(s, p, prompt)?;
-    let args = codex_request(
-        &dir,
-        &model,
-        &effective_prompt,
-        &references,
+    let instruction = codex_instruction(&prepared.effective_prompt)?;
+    let args = codex_args(
+        &prepared.dir,
+        cfg.model.as_deref(),
+        &instruction,
+        &prepared.references,
         p,
-        &prompt_file,
     )?;
-    let mut record = json!({"format":"magicstudio.image-generation", "project":project,
-        "prompt":prompt, "effective_prompt":effective_prompt, "poses":poses, "animation_context":context,
-        "rig_sheet":rig_layout,
-        "references":references, "transparent_background":p["transparent_background"], "agent_model":model, "image_model":"unknown; not reported by native tool",
-        "quality":"auto", "resolution":"tool-controlled; measured after generation",
-        "executable":"codex", "argv":args, "timeout_s":timeout, "status":"started",
-        "manual":"codex exec --help", "image":out, "prompt_file":prompt_file});
-    write_json_file(&receipt, &record, "write_request_receipt")?;
-    let outcome = (|| -> Result<Value> {
-        let run = launch_codex(&dir, &args, timeout, &receipt)?;
-        write_agent_logs(&dir, &run)?;
-        record["exit_code"] = json!(run.code);
-        record["timed_out"] = json!(run.timed_out);
-        record["agent_stopped_after_native_image"] = json!(run.stopped_after_image);
-        check_codex_run(&run, &receipt)?;
-        // The staged bytes are evidence even when a later step fails, so record them first.
-        let (staged, call_count) = staged_image(&run.stdout, &run.stderr)?;
-        record["native_staged_image"] = json!(staged);
-        record["native_image_call_count"] = json!(call_count);
-        let imported = import_native_image(s, p, &staged, &out)?;
-        Ok(
-            json!({"ok":true, "project":project,"image":out,"width":imported.width,"height":imported.height,
-            "sha256":imported.sha256,"asset_id":imported.asset_id, "references":references, "poses":poses,
-            "animation_context":context, "agent_model":model,
-            "image_model":null,"quality":"auto","receipt":receipt,"prompt_file":prompt_file,"status":"draft; needs visual review",
-            "tool":"image_gen.imagegen", "native_tool_receipt_verified":true,"native_image_call_count":call_count,
-            "native_staged_image":staged,"agent_stopped_after_native_image":run.stopped_after_image}),
-        )
-    })();
-    finish(outcome, record, &receipt)
+    if let Some(last) = args.last() {
+        write_bytes(&prepared.prompt_file, last.as_bytes(), "write_prompt")?;
+    }
+    let mut record = json!({
+        "format": "magicstudio.image-generation",
+        "provider": "codex",
+        "project": prepared.project,
+        "prompt": prompt,
+        "effective_prompt": prepared.effective_prompt,
+        "poses": prepared.poses,
+        "animation_context": prepared.context,
+        "rig_sheet": prepared.rig_layout,
+        "references": prepared.references,
+        "transparent_background": p["transparent_background"],
+        "agent_model": cfg.model,
+        "image_model": "subscription-default",
+        "quality": "auto",
+        "resolution": "tool-controlled; measured after generation",
+        "executable": "codex",
+        "argv": args,
+        "timeout_s": timeout,
+        "status": "started",
+        "manual": "codex exec --help",
+        "image": prepared.out,
+        "prompt_file": prepared.prompt_file
+    });
+    write_json_file(&prepared.receipt, &record, "write_request_receipt")?;
+    let outcome = execute_codex_run(s, p, &cfg, &prepared, &args, timeout, &mut record);
+    finish(outcome, record, &prepared.receipt)
 }

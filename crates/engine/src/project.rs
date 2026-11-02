@@ -136,9 +136,16 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
         normalize_connections(&mut saved, path);
     }
     let current = project_document(s);
-    ["assets", "workshop", "theatre", "animation_sources", "mode", "parts"]
-        .iter()
-        .any(|key| saved[*key] != current[*key])
+    [
+        "assets",
+        "workshop",
+        "theatre",
+        "animation_sources",
+        "mode",
+        "parts",
+    ]
+    .iter()
+    .any(|key| saved[*key] != current[*key])
 }
 
 /// Writes the open project's asset connections to its `.magic` file.
@@ -605,7 +612,10 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
 
 /// The character's id: its manifest id, else its folder name.
 fn character_id(path: &Path, doc: &Value) -> String {
-    let folder = path.parent().and_then(Path::file_name).and_then(|n| n.to_str());
+    let folder = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|n| n.to_str());
     doc["id"]
         .as_str()
         .filter(|v| !v.trim().is_empty())
@@ -623,7 +633,11 @@ fn open_character_file(
     params: &Value,
 ) -> Result<Value> {
     let id = character_id(path, doc);
-    let name = doc["name"].as_str().filter(|v| !v.trim().is_empty()).unwrap_or(&id).to_string();
+    let name = doc["name"]
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or(&id)
+        .to_string();
     let parts = serde_json::from_value(doc.get("parts").cloned().unwrap_or_else(|| json!([])))
         .map_err(|e| EngineError::InvalidParams(format!("invalid character part states: {e}")))?;
     let entry = crate::ProjectAsset {
@@ -788,7 +802,6 @@ fn ensure_asset_project(s: &mut Session, params: &Value) -> Result<()> {
 }
 
 struct AssetRequest {
-    preset: Option<String>,
     path: Option<PathBuf>,
     kind: String,
     name: String,
@@ -799,23 +812,13 @@ struct AssetRequest {
 }
 
 fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
-    let preset = params
-        .get("preset")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
     let path = params
         .get("path")
         .or_else(|| params.get("manifest"))
         .and_then(Value::as_str)
-        .map(|p| super::workspace::resolve_workspace_path(s, p));
-    if preset.is_some() == path.is_some() {
-        return Err(EngineError::InvalidParams(
-            "provide exactly one of 'path' or 'preset'".into(),
-        ));
-    }
-    if let Some(path) = &path
-        && !path.exists()
-    {
+        .map(|p| super::workspace::resolve_workspace_path(s, p))
+        .ok_or_else(|| EngineError::InvalidParams("missing 'path' parameter".into()))?;
+    if !path.exists() {
         return Err(EngineError::InvalidParams(format!(
             "asset path does not exist: {}",
             path.display()
@@ -836,9 +839,9 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
             "kind must be auto, image, poses, turnaround, cutout_rig, or character".into(),
         ));
     }
-    let stem = preset
-        .as_deref()
-        .or_else(|| path.as_ref()?.file_stem()?.to_str())
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
         .unwrap_or("asset")
         .to_owned();
     let name = params
@@ -857,8 +860,7 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
         .and_then(Value::as_str)
         .and_then(super::workspace::try_sanitize_asset_id);
     Ok(AssetRequest {
-        preset,
-        path,
+        path: Some(path),
         kind: kind.to_owned(),
         name,
         stem,
@@ -1022,7 +1024,6 @@ fn matte_new_asset(
 fn reuse_existing_asset(
     s: &mut Session,
     path: &Option<PathBuf>,
-    preset: &Option<String>,
     load: bool,
     if_not_exists: bool,
 ) -> Result<Option<Value>> {
@@ -1032,7 +1033,7 @@ fn reuse_existing_asset(
     let Some(existing_id) = s
         .project_assets
         .iter()
-        .find(|a| (path.is_some() && a.path == *path) || (preset.is_some() && a.preset == *preset))
+        .find(|a| path.is_some() && a.path == *path)
         .map(|a| a.id.clone())
     else {
         return Ok(None);
@@ -1055,11 +1056,10 @@ fn load_and_save_asset(s: &mut Session, params: &Value, id: &str, load: bool) ->
     Ok(())
 }
 
-/// Connect an asset (by path or preset) to the open project.
+/// Connect an asset by path to the open project.
 pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     ensure_asset_project(s, params)?;
     let AssetRequest {
-        preset,
         path,
         kind,
         name,
@@ -1068,7 +1068,7 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
         if_not_exists,
         explicit_id,
     } = asset_request(s, params)?;
-    if let Some(reused) = reuse_existing_asset(s, &path, &preset, load, if_not_exists)? {
+    if let Some(reused) = reuse_existing_asset(s, &path, load, if_not_exists)? {
         return Ok(reused);
     }
     let base_id = explicit_id
@@ -1087,7 +1087,7 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     s.project_assets.push(crate::ProjectAsset {
         id: id.clone(),
         name,
-        preset,
+        preset: None,
         path: stored.clone(),
         kind,
         parts: Vec::new(),
@@ -1164,45 +1164,20 @@ fn is_rig_manifest(raw: &Value, kind: &str) -> bool {
         || (raw.get("layers").is_some() && raw.get("canvas").is_some())
 }
 
-fn stage_preset_asset(
-    staged: &mut Session,
-    s: &Session,
-    entry: &crate::ProjectAsset,
-) -> Result<()> {
-    let preset = entry.preset.as_deref().unwrap_or_default();
-    let mut loader = Session {
-        cwd: s.cwd.clone(),
-        record_user_state: s.record_user_state,
-        agent_selection: s.agent_selection.clone(),
-        ..Session::default()
-    };
-    crate::magic_design::cmd_asset_load_manifest(&mut loader, &json!({"preset": preset}))?;
-    let loaded_id = loader
-        .active_asset
-        .clone()
-        .ok_or_else(|| EngineError::InvalidParams("preset did not load an asset".into()))?;
-    let mut asset = loader
-        .assets
-        .remove(&loaded_id)
-        .ok_or_else(|| EngineError::InvalidParams("preset asset missing".into()))?;
-    if let Some(previous) = staged.assets.get(&entry.id)
-        && asset.cutout_rig.is_none()
-    {
-        asset.cutout_rig = previous.cutout_rig.clone();
-    }
-    asset.id = entry.id.clone();
-    staged.assets.insert(entry.id.clone(), asset);
-    Ok(())
-}
-
 /// The rig for the character's active angle, else its `rig.json`; `None` before it is rigged.
 fn character_rig_path(raw: &Value, proj_root: &Path, char_dir: &Path) -> Option<PathBuf> {
-    let angle = raw["active_angle"].as_str().unwrap_or("three_quarter_right");
-    [format!("/angles/{angle}/rig"), format!("/rigs/{angle}"), "/rigs/active".into()]
-        .iter()
-        .find_map(|pointer| raw.pointer(pointer).and_then(Value::as_str))
-        .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
-        .or_else(|| Some(char_dir.join("rig.json")).filter(|p| p.is_file()))
+    let angle = raw["active_angle"]
+        .as_str()
+        .unwrap_or("three_quarter_right");
+    [
+        format!("/angles/{angle}/rig"),
+        format!("/rigs/{angle}"),
+        "/rigs/active".into(),
+    ]
+    .iter()
+    .find_map(|pointer| raw.pointer(pointer).and_then(Value::as_str))
+    .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
+    .or_else(|| Some(char_dir.join("rig.json")).filter(|p| p.is_file()))
 }
 
 fn stage_character_magic(
@@ -1223,7 +1198,11 @@ fn stage_character_magic(
             .as_str()
             .map(|rel| crate::character::resolve_character_path(rel, proj_root, char_dir))
             .filter(|p| p.is_file())
-            .ok_or_else(|| EngineError::InvalidParams("character has neither a rig nor a reference image".into()))?;
+            .ok_or_else(|| {
+                EngineError::InvalidParams(
+                    "character has neither a rig nor a reference image".into(),
+                )
+            })?;
         return stage_plain_image(staged, entry, &reference);
     };
     let mut plan = crate::session::LoadedCutoutRigPlan::load_from_path(&rig_path)?;
@@ -1354,10 +1333,13 @@ pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> 
     let mut staged = s.clone();
     s.theatre_state = theatre_state;
     s.last_result = last_result;
-    if entry.preset.is_some() {
-        stage_preset_asset(&mut staged, s, &entry)?;
-    } else if let Some(path) = &entry.path {
+    if let Some(path) = &entry.path {
         stage_path_asset(&mut staged, &entry, path)?;
+    } else {
+        return Err(EngineError::InvalidParams(format!(
+            "project asset '{}' has no file path",
+            entry.id
+        )));
     }
     staged.active_asset = Some(entry.id.clone());
     if let Some(asset) = staged.current_asset_mut() {

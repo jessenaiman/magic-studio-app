@@ -1,9 +1,9 @@
-//! Workspace & external Craft CLI resolution.
+//! Workspace and external CLI tool resolution.
 //!
-//! Resolves the source checkout or installed runtime, the installed Craft
-//! CLIs (`photocraft-cli`, `effectcraft-cli`, `filmcraft-cli`), builds exact
-//! CLI argument vectors, and runs subprocess tools. Pure path logic: no session
-//! state is mutated here.
+//! Resolves the source checkout or installed runtime, installed CLI executables
+//! on `PATH` / `~/.local/bin` (with system settings and environment overrides),
+//! builds exact CLI argument vectors, and runs subprocess tools. Pure path logic:
+//! no session state is mutated here.
 
 use std::path::{Path, PathBuf};
 
@@ -74,10 +74,13 @@ pub(crate) fn find_executable(name: &str) -> Result<PathBuf> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            path.metadata().is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
+            path.metadata()
+                .is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
         }
         #[cfg(not(unix))]
-        { true }
+        {
+            true
+        }
     };
     let path = Path::new(name);
     let found = if path.components().count() > 1 {
@@ -91,43 +94,39 @@ pub(crate) fn find_executable(name: &str) -> Result<PathBuf> {
     };
     found
         .and_then(|path| std::path::absolute(path).ok())
-        .ok_or_else(|| EngineError::ExternalTool(name.into(), "executable not found on PATH".into()))
+        .ok_or_else(|| {
+            EngineError::ExternalTool(name.into(), "executable not found on PATH".into())
+        })
 }
 
-/// Resolve an installed Craft CLI using an explicit `<TOOL_NAME>` environment override,
-/// then the ArtCraft inventory under the user's data directory, then PATH.
-pub fn resolve_craft_cli(name: &str) -> String {
-    std::env::var(name.to_uppercase().replace('-', "_"))
-        .ok()
-        .filter(|p| !p.is_empty())
-        .or_else(|| resolve_installed_cli(name))
-        .unwrap_or_else(|| name.to_string())
-}
-
-fn resolve_installed_cli(name: &str) -> Option<String> {
-    let is_cli = name.ends_with("-cli");
-    let app = name.strip_suffix("-cli").unwrap_or(name);
-    let data_home = user_data_dir()?;
-    let installed_path = data_home.join("artcraft-launcher/installed.json");
-    let text = std::fs::read_to_string(installed_path).ok()?;
-    let parsed: Value = serde_json::from_str(&text).ok()?;
-    let app_entry = &parsed["apps"][app];
-    if !is_cli && let Some(appimage) = app_entry["path"].as_str() {
-        let p = Path::new(appimage);
-        if p.is_file() {
-            return Some(p.to_string_lossy().into_owned());
+/// Resolve an installed tool executable from `<TOOL_NAME>` env override,
+/// `~/.config/magicstudio/settings.json` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
+pub fn resolve_tool(name: &str) -> String {
+    if let Ok(env_val) = std::env::var(name.to_uppercase().replace('-', "_")) {
+        let trimmed = env_val.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
         }
     }
-    let ver = app_entry["version"].as_str()?;
-    let cli_name = format!("{app}-cli");
-    let extracted = data_home
-        .join(app)
-        .join(ver)
-        .join(&cli_name);
-    if extracted.is_file() {
-        return Some(extracted.to_string_lossy().into_owned());
+    let stored = crate::project_settings::stored_settings();
+    if let Some(cfg_val) = stored
+        .pointer(&format!("/tools/{name}"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return cfg_val.to_string();
     }
-    None
+    if let Ok(found) = find_executable(name) {
+        return found.to_string_lossy().into_owned();
+    }
+    if let Some(local_bin) = std::env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join(".local/bin").join(name))
+        .filter(|p| p.is_file())
+    {
+        return local_bin.to_string_lossy().into_owned();
+    }
+    name.to_string()
 }
 
 /// Build the exact CLI argument vector for `photocraft-cli run <input> --cmd <id> [--params <json>] --out <output>`.
@@ -186,8 +185,8 @@ pub(crate) fn acquire_tool_slot() -> ToolSlotGuard {
 /// Run an external command-line tool in `cwd`, capturing stdout as a String.
 pub(crate) fn run_tool_in(cwd: &Path, tool: &str, args: &[String]) -> Result<String> {
     let _slot = acquire_tool_slot();
-    let executable = if tool.ends_with("-cli") && !tool.contains('/') {
-        resolve_craft_cli(tool)
+    let executable = if !tool.contains('/') {
+        resolve_tool(tool)
     } else {
         tool.to_string()
     };
@@ -211,15 +210,6 @@ pub(crate) fn run_tool_in(cwd: &Path, tool: &str, args: &[String]) -> Result<Str
             format!("exit {:?}: {detail}", output.status.code()),
         ))
     }
-}
-
-/// Run an existing pipeline module directly and require its JSON result.
-pub(crate) fn run_python_json(s: &crate::Session, module: &str, args: &[String]) -> Result<Value> {
-    let mut command = vec!["-m".to_owned(), module.to_owned()];
-    command.extend_from_slice(args);
-    let stdout = run_tool_in(&workspace_root(s), "python3", &command)?;
-    serde_json::from_str(&stdout)
-        .map_err(|error| EngineError::ExternalTool(module.into(), format!("invalid JSON: {error}")))
 }
 
 /// Audio file extensions recognized by the workshop.
