@@ -23,10 +23,10 @@ embedded debug server, browser-only fallback or paid driver is installed.
 
 Local owner preparation, only when ready to run an approved workflow:
 
-1. Build **this checkout**: `cargo build -p magicstudio-shell` (Rust/toolchain and
+1. Build **this checkout**: `cargo build -p magic-studio` (Rust/toolchain and
    platform Tauri build dependencies required). Rebuild after source changes;
    never substitute an old installed native binary. The runner fixes the backend
-   override and WDIO application to this repository's `target/debug/magicstudio-shell`.
+   override and WDIO application to this repository's `target/debug/magic-studio`.
 2. Install `agent-harness` editable into the Python environment whose installed
    `magic-cli` is on PATH. The launcher checks that console script's interpreter
    resolves `cli_anything.magic.magic_cli` to this checkout before any workflow.
@@ -36,7 +36,7 @@ Local owner preparation, only when ready to run an approved workflow:
    (`webkit2gtk-driver` on Debian/Ubuntu, providing `WebKitWebDriver`). Have a
    headed desktop session for human review; `xvfb-run` is for unattended CI, not
    Jesse's observation/approval.
-4. In `apps/magicstudio-shell/acceptance`, run `npm ci --ignore-scripts`,
+4. In `apps/src-tauri/acceptance`, run `npm ci --ignore-scripts`,
    `npm run check`, then **`npm test`**. Empty approval inventory exits **2**, prints
    **pending / zero coverage**, and lists missing native prerequisites. It is not
    a green test run. Do not bypass the launcher by invoking WDIO directly.

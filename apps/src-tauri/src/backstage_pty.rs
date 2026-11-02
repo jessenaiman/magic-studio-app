@@ -113,7 +113,7 @@ pub fn start(
         .with_file_name("backstage");
     if !executable.is_file() {
         return Err(format!(
-            "Backstage companion missing: {}. Build with cargo build -p backstage -p magicstudio-shell and launch that shell.",
+            "Backstage companion missing: {}. Build with cargo build -p backstage -p magic-studio and launch that shell.",
             executable.display()
         ));
     }

@@ -2159,22 +2159,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "magicstudio-engine"
-version = "0.1.0"
-dependencies = [
- "glam",
- "image",
- "log",
- "rustix",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.21",
- "ureq",
-]
-
-[[package]]
-name = "magicstudio-shell"
+name = "magic-studio"
 version = "0.1.0"
 dependencies = [
  "cairo-rs",
@@ -2187,6 +2172,21 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "webkit2gtk",
+]
+
+[[package]]
+name = "magicstudio-engine"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "image",
+ "log",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "ureq",
 ]
 
 [[package]]

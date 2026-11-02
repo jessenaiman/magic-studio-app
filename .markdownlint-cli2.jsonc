@@ -1,7 +1,8 @@
 {
   "config": {
     "default": false,
-    "MD013": true
+    // Skill prose is written one paragraph per line; line length is not enforced.
+    "MD013": false
   },
   "globs": [
     ".agents/skills/magic-*/**/*.md",

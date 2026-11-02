@@ -1,13 +1,13 @@
 ---
-name: magicstudio-shell-ui
-description: Use before building or changing any screen of the Magic Studio Tauri shell (apps/magicstudio-shell/ui). The shell's design system — calm dark surfaces, teal primary actions with restrained functional section accents, icons over words with tooltips, cards that lift on hover, expanding blocks, one primary action per place — with its tokens, components, motion, layout and the live verify loop.
+name: magic-studio-ui
+description: Use before building or changing any screen of the Magic Studio Tauri shell (apps/src-tauri/ui). The shell's design system — calm dark surfaces, teal primary actions with restrained functional section accents, icons over words with tooltips, cards that lift on hover, expanding blocks, one primary action per place — with its tokens, components, motion, layout and the live verify loop.
 ---
 
 # Magic Studio shell UI
 
 The shell is a creative tool for one person working with an agent. Every screen answers: **what is this,
 what's its state, what's the one next step.** Everything else waits behind a hover, a tooltip or a click.
-Source of truth: `apps/magicstudio-shell/ui/style.css` (tokens on `:root`). Reuse its classes; add a
+Source of truth: `apps/src-tauri/ui/style.css` (tokens on `:root`). Reuse its classes; add a
 token before you add a color.
 
 ## Research before a new screen
@@ -16,7 +16,7 @@ Read [research.md](research.md): official tool references, the proposed Animatio
 agent integration work and the 76-finding prevention ledger. Distinguish proposals from approved
 requirements. Present a new screen's layout and behavior and wait for user approval before building.
 
-The app's permanent agent instructions are `apps/magicstudio-shell/agent.md`. Keep that document
+The app's permanent agent instructions are `apps/src-tauri/agent.md`. Keep that document
 focused on the current app's design, technical ownership, tools and verification.
 
 ## Principles
@@ -151,7 +151,7 @@ Upgrade only touched dependencies to latest stable releases and record versions;
 ## Verify loop (every visible change)
 
 ```
-cargo build -p magicstudio-shell          # ui/ is embedded: rebuild after edits
+cargo build -p magic-studio          # ui/ is embedded: rebuild after edits
 magic [<project.magic>]
 magic-cli project open path=<project.magic>
 magic-cli exec ui.look [region=<id|css>] [click=<id|label>] output=<project>/.agent/look.png

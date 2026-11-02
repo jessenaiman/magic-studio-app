@@ -24,11 +24,11 @@ for (const name of ['tauri-driver', 'WebKitWebDriver']) {
   try { executable(name); } catch (error) { blocked.push(error.message); }
 }
 try {
-  const binary = realpathSync(join(repo, 'target/debug/magicstudio-shell'));
-  if (binary !== join(repo, 'target/debug/magicstudio-shell')) throw new Error('Native binary must be built in this checkout, not a symlink to an installed app');
+  const binary = realpathSync(join(repo, 'target/debug/magic-studio'));
+  if (binary !== join(repo, 'target/debug/magic-studio')) throw new Error('Native binary must be built in this checkout, not a symlink to an installed app');
   accessSync(binary, constants.X_OK);
-  process.env.MAGICSTUDIO_SHELL_BIN = binary;
-} catch { blocked.push('Missing repository target/debug/magicstudio-shell: build this checkout with cargo build -p magicstudio-shell'); }
+  process.env.MAGIC_STUDIO_BIN = binary;
+} catch { blocked.push('Missing repository target/debug/magic-studio: build this checkout with cargo build -p magic-studio'); }
 try {
   const cli = executable('magic-cli');
   const shebang = readFileSync(cli, 'utf8').split('\n')[0];

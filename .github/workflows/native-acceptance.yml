@@ -34,7 +34,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build this checkout and isolate installed CLI
         run: |
-          cargo build -p magicstudio-shell
+          cargo build -p magic-studio
           cli_env=$(mktemp -d "$RUNNER_TEMP/magic-acceptance-cli-XXXXXX")
           echo "MAGIC_ACCEPTANCE_CLI_ENV=$cli_env" >> "$GITHUB_ENV"
           python3 -m venv "$cli_env"

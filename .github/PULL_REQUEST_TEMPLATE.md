@@ -25,8 +25,8 @@ Closes #
 ## Checklist
 
 - [ ] The change is focused on a single logical concern.
-- [ ] I recorded applicable native source checks (including shell JS syntax and `node apps/magicstudio-shell/scripts/ui-lint.mjs --report`) and any unavailable prerequisites.
-- [ ] Native behavioral coverage uses only human-approved workflows through `apps/magicstudio-shell/acceptance`; pending approval or unavailable runs are not reported as passes.
+- [ ] I recorded applicable native source checks (including shell JS syntax and `node apps/src-tauri/scripts/ui-lint.mjs --report`) and any unavailable prerequisites.
+- [ ] Native behavioral coverage uses only human-approved workflows through `apps/src-tauri/acceptance`; pending approval or unavailable runs are not reported as passes.
 - [ ] I updated docs/README if behavior or usage changed.
 - [ ] No unrelated files (build artifacts, local config) are included in the diff.
 

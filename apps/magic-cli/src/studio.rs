@@ -26,7 +26,7 @@ fn executable(path: &Path) -> bool {
 /// The native app binary: an explicit override, the one installed beside this CLI, the
 /// user install, then PATH.
 pub fn shell_binary() -> Result<PathBuf, String> {
-    if let Some(path) = std::env::var_os("MAGICSTUDIO_SHELL_BIN").map(PathBuf::from)
+    if let Some(path) = std::env::var_os("MAGIC_STUDIO_BIN").map(PathBuf::from)
         && path.is_file()
     {
         return Ok(path);
@@ -34,17 +34,17 @@ pub fn shell_binary() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let beside = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join("magicstudio-shell")));
+        .and_then(|p| p.parent().map(|d| d.join("magic-studio")));
     let candidates = [
         beside,
         home.as_ref()
-            .map(|h| h.join(".local/share/magic-studio/bin/magicstudio-shell")),
+            .map(|h| h.join(".local/share/magic-studio/bin/magic-studio")),
         home.as_ref()
-            .map(|h| h.join(".local/bin/magicstudio-shell")),
+            .map(|h| h.join(".local/bin/magic-studio")),
     ];
     let path_hit = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
-            .map(|d| d.join("magicstudio-shell"))
+            .map(|d| d.join("magic-studio"))
             .find(|p| executable(p))
     });
     candidates
@@ -53,7 +53,7 @@ pub fn shell_binary() -> Result<PathBuf, String> {
         .find(|p| executable(p))
         .or(path_hit)
         .ok_or_else(|| {
-            "Magic Studio (`magicstudio-shell`) is not installed or built. Build it with:\n  CARGO_BUILD_JOBS=1 cargo build -p magicstudio-shell".into()
+            "Magic Studio (`magic-studio`) is not installed or built. Build it with:\n  CARGO_BUILD_JOBS=1 cargo build -p magic-studio".into()
         })
 }
 

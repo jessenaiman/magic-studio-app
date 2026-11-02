@@ -6,7 +6,7 @@ live app, act through its tools, show the result, and leave work reversible and 
 
 ## Learn and observe before acting
 
-1. Read `.agents/skills/magicstudio-shell-ui/SKILL.md` from the repository root. Learn its
+1. Read `.agents/skills/magic-studio-ui/SKILL.md` from the repository root. Learn its
    visual and interaction contracts; distinguish approved requirements from proposed designs.
 2. Read the relevant ArtCraft, Magic Studio, layered-motion, rigging and QA skills named by the
    task. Discover command contracts with the CLI; never invent an operation.
@@ -17,7 +17,7 @@ live app, act through its tools, show the result, and leave work reversible and 
 
 ## One application, one live session
 
-Application: `apps/magicstudio-shell` in the current Magic Studio checkout.
+Application: `apps/src-tauri` in the current Magic Studio checkout.
 Read [the command contract](../../agent-harness/MAGIC.md). The UI, CLI and MCP adapters
 share the Rust command registry and the window's engine session. New/Open and project
 workflow controls enter the guarded native dispatch directly; do not add a CLI subprocess loop.
@@ -86,7 +86,7 @@ Work only on assigned files and coordinate ownership before editing. Read the re
 guidelines. Preserve unrelated changes. Use the existing model unless asked to switch; if Codex is
 chosen, the user permits Sol 6.1 only. Learn and observe regardless of model strength.
 
-Build `cargo build -p magicstudio-shell` after UI edits (assets are embedded). Before restarting the shared shell,
+Build `cargo build -p magic-studio` after UI edits (assets are embedded). Before restarting the shared shell,
 inspect pending/dirty state and preserve unsaved edits. After every visible change run
 `magic-cli --project /absolute/Project.magic ui look` and inspect the PNG. With a project open, captures
 default to `<project>/.agent/looks/`. Keep project outputs inside the project.

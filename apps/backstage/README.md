@@ -15,8 +15,8 @@ cargo run -p backstage
 ```
 
 On Linux, desktop Mayhem also has an explicit **Launch Backstage** terminal control. Build
-`cargo build -p magicstudio-shell -p backstage` and launch
-`target/debug/magicstudio-shell` from the intended repository directory. The
+`cargo build -p magic-studio -p backstage` and launch
+`target/debug/magic-studio` from the intended repository directory. The
 companion must sit beside the shell executable; no PATH or shell command is used.
 Mayhem navigation preserves one live session; q, Stop, or desktop exit ends it.
 Launch failures remain inline. The standalone command above remains supported.

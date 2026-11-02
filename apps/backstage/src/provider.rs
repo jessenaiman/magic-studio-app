@@ -168,7 +168,7 @@ fn spawn_grouped(
 #[cfg(target_os = "linux")]
 fn format_failure(status: std::process::ExitStatus, stderr: &[u8]) -> String {
     let detail = crate::data::clean(&String::from_utf8_lossy(stderr));
-    let missing_backend = detail.contains("magicstudio-shell")
+    let missing_backend = detail.contains("magic-studio")
         && (detail.contains("not found")
             || detail.contains("Could not find")
             || detail.contains("not installed"));

@@ -7,7 +7,7 @@ Original authorship and licensing are recorded in
 
 ## Desktop application
 
-The Tauri shell in `apps/magicstudio-shell/` embeds four creative areas:
+The Tauri shell in `apps/src-tauri/` embeds four creative areas:
 Storyboard, Animation, Lyrics, and Studio. Studio targets HyperFrames. The
 Rust engine owns project data, command validation, and motion evaluation.
 The shell UI, `magic-cli`, and MCP use that shared command registry; there is no
@@ -15,7 +15,7 @@ second Python implementation of project persistence or UI command behavior.
 
 | Contract | Source |
 |---|---|
-| Current app behavior and agent interaction | `apps/magicstudio-shell/agent.md` |
+| Current app behavior and agent interaction | `apps/src-tauri/agent.md` |
 | Command IDs and typed parameters | `crates/engine/src/commands.rs` |
 | CLI/MCP routing and ownership | `agent-harness/MAGIC.md` |
 | Installed app and source installation | `agent-harness/cli_anything/magic/README.md` |

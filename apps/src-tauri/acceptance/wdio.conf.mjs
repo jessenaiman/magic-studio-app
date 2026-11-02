@@ -7,9 +7,9 @@ export const config = {
   runner: 'local',
   specs: approvals.map(({ spec }) => join(here, spec)),
   maxInstances: 1,
-  capabilities: [{ browserName: 'wry', 'tauri:options': { application: process.env.MAGICSTUDIO_SHELL_BIN } }],
+  capabilities: [{ browserName: 'wry', 'tauri:options': { application: process.env.MAGIC_STUDIO_BIN } }],
   services: [['@wdio/tauri-service', {
-    appBinaryPath: process.env.MAGICSTUDIO_SHELL_BIN,
+    appBinaryPath: process.env.MAGIC_STUDIO_BIN,
     // Pinned service 1.5.1 source normalizes deprecated 'official' to 'external'.
     driverProvider: 'external',
     autoInstallTauriDriver: false,

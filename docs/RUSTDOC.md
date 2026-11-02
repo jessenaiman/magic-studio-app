@@ -41,7 +41,7 @@ In the already prepared [native development environment](../agent-harness/cli_an
 cargo doc --workspace --no-deps --locked
 ```
 
-This adds `magicstudio_shell/index.html`, including the shell's binary-private
+This adds `magic_studio/index.html`, including the shell's binary-private
 implementation. It requires the shell's locked dependencies, build script, and
 platform Tauri prerequisites. Do not claim shell coverage if that command fails.
 To additionally inspect engine internals, append `--document-private-items` to

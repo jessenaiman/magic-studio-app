@@ -1,6 +1,6 @@
 [package]
-name = "magicstudio-shell"
-description = "Magic Studio desktop shell: the project view in a webview, with video studios (HyperFrames, Remotion) as tabs"
+name = "magic-studio"
+description = "Magic Studio desktop app: the project view in a webview, with video studios (HyperFrames, Remotion) as tabs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
