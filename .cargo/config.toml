@@ -1,0 +1,3 @@
+[alias]
+# Repository tasks written in Rust: `cargo xtask install [--profile release] [--prefix DIR]`.
+xtask = "run --quiet --package xtask --"
