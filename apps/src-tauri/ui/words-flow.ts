@@ -200,6 +200,19 @@ class WordsFlowController {
     return group;
   }
 
+  appendCueArrows(view: any, svg: SVGElement, box: DOMRect, frames: any[], lines: any[]) {
+    const scale = parseFloat(getComputedStyle(view).getPropertyValue("--song-s")) || 18;
+    const graphics = wordsPanel.read?.graphics || [];
+    for (const frame of frames) {
+      const cue = graphics.find((c: any) => c.id === frame.dataset.cueId);
+      if (!cue) continue;
+      for (const line of lines) {
+        const node = this.arrowNode(view, box, scale, cue, frame, line);
+        if (node) svg.appendChild(node);
+      }
+    }
+  }
+
   arrows(view: any) {
     view.querySelector(":scope > svg.words-arrows")?.remove();
     if (wordsPanel.links.hidden) return;
@@ -209,15 +222,7 @@ class WordsFlowController {
     svg.setAttribute("class", `words-arrows${wordsPanel.links.pulse ? " blending" : ""}${wordsPanel.links.front ? " front" : ""}`);
     svg.setAttribute("role", "group"); svg.setAttribute("aria-label", "Lyric and drawing connections");
     svg.style.setProperty("--arrows-width", `${view.scrollWidth}px`); svg.style.setProperty("--arrows-height", `${view.scrollHeight}px`);
-    const scale = parseFloat(getComputedStyle(view).getPropertyValue("--song-s")) || 18;
-    for (const frame of frames) {
-      const cue = (wordsPanel.read?.graphics || []).find((c: any) => c.id === frame.dataset.cueId);
-      if (!cue) continue;
-      for (const line of lines) {
-        const node = this.arrowNode(view, box, scale, cue, frame, line);
-        if (node) svg.appendChild(node);
-      }
-    }
+    this.appendCueArrows(view, svg, box, frames, lines);
     if (wordsPanel.mode === "timing") {
       const stageTether = this.buildStageTetherGroup(view, box);
       if (stageTether) svg.appendChild(stageTether);

@@ -352,7 +352,7 @@ function wordsPlay() { return wordsTimelineController.play(); }
 function wordsSetChipVars(chip: any, font: string, weight: any, italic: any, color: string, scale: any) {
   return wordsTimelineController.setChipVars(chip, font, weight, italic, color, scale);
 }
-function wordsApplyItemChipStyle(chip: any, anim: any, it: any) { return wordsTimelineController.applyItemChipStyle(chip, anim, it); }
+function wordsApplyItemChipStyle(chip: any, anim: any, it: any, wordId = "") { return wordsTimelineController.applyItemChipStyle(chip, anim, it, wordId); }
 function wordsApplyKineticChipStyle(chip: any, kin: any, wordId: string) { return wordsTimelineController.applyKineticChipStyle(chip, kin, wordId); }
 function wordsApplyChipStyle(chip: any, anim: any, w: any, it: any) { return wordsTimelineController.applyChipStyle(chip, anim, w, it); }
 function wordsTogglePickedWord(w: any, sameLine: boolean) { return wordsTimelineController.togglePickedWord(w, sameLine); }
@@ -549,7 +549,7 @@ class WordsTimelineController {
     const stageModes = el("div", { class: "lyric-stage-modes" },
       el("button", {
         class: "lyric-mode-pill active", title: "Drag, scale & tilt word tokens directly on the 16:9 stage",
-        onclick: () => { const lid = wordsPanel.line || wordsLines(anim)[0]?.id; if (lid) this.splitLineTokens(anim, lid); }
+        onclick: () => { const lid = wordsPanel.line || wordsLines(anim)[0]?.id; if (lid) wordsDesignController.splitLineTokens(anim, lid); }
       }, "✥ Kinetic Motion"),
       el("button", {
         class: "lyric-mode-pill warp", title: "Cycle spatial trajectory choreography across the stage",
@@ -558,7 +558,7 @@ class WordsTimelineController {
           if (!lid) return;
           const order = ["cascade", "scatter", "poster", "stack", "plain"];
           wordsPanel.choreoIdx = ((wordsPanel.choreoIdx || 0) + 1) % order.length;
-          wordsPanel.designs.set(lid, this.layout(anim, lid, order[wordsPanel.choreoIdx]));
+          wordsPanel.designs.set(lid, wordsDesignController.layout(anim, lid, order[wordsPanel.choreoIdx]));
           wordsRender();
         }
       }, "⤴ Warp Path"));

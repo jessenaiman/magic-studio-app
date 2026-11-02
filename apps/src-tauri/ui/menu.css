@@ -1,12 +1,12 @@
 #application-settings {
-  color: var(--text); background: var(--bg); border: 1px solid var(--line);
-  border-radius: 8px; padding: 20px; width: min(560px, calc(100vw - 48px));
-  max-height: calc(100vh - 48px); overflow: auto;
+  color: var(--text); background: var(--bg); border: var(--size-1) solid var(--line);
+  border-radius: var(--radius); padding: var(--size-20); width: min(var(--size-560), calc(100vw - var(--size-48)));
+  max-height: calc(100vh - var(--size-48)); overflow: auto;
 }
-#application-settings::backdrop { background: #0009; }
-#application-settings h2 { margin: 0; font-size: 18px; }
-#application-settings form { display: grid; gap: 14px; margin-top: 16px; }
-#application-settings label { display: grid; gap: 8px; }
+#application-settings::backdrop { background: var(--alpha-09); }
+#application-settings h2 { margin: 0; font-size: var(--text-xl); }
+#application-settings form { display: grid; gap: var(--size-14); margin-top: var(--space-4); }
+#application-settings label { display: grid; gap: var(--space-2); }
 #application-settings input { width: 100%; box-sizing: border-box; }
 #application-settings-status { overflow-wrap: anywhere; }
 
