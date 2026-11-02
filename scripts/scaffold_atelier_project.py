@@ -47,41 +47,14 @@ def write(path: Path, content: str) -> None:
     print(f"  wrote          {path.relative_to(Path.cwd())}")
 
 
-def scaffold(slug: str, comp_id: str, root: Path) -> Path:
-    proj = root / "projects" / slug
-    (proj / "artifacts").mkdir(parents=True, exist_ok=True)
-    for sub in ("assets/audio", "assets/music", "assets/footage", "public", "renders"):
-        (proj / sub).mkdir(parents=True, exist_ok=True)
-
-    # --- index.tsx -------------------------------------------------------
-    write(proj / "index.tsx", """\
+INDEX_TSX_TEMPLATE = """\
 import { registerRoot } from "remotion";
 import { Root } from "./Root";
 
 registerRoot(Root);
-""")
+"""
 
-    # --- Root.tsx --------------------------------------------------------
-    write(proj / "Root.tsx", f"""\
-import {{ Composition }} from "remotion";
-import {{ Scene, calculateMetadata, SceneProps }} from "./Composition";
-
-export const Root: React.FC = () => (
-  <Composition
-    id="{comp_id}"
-    component={{Scene}}
-    durationInFrames={{30 * 30}}
-    fps={{30}}
-    width={{1920}}
-    height={{1080}}
-    defaultProps={{ {{ /* fill from artifacts/props.json at render time */ }} as SceneProps }}
-    calculateMetadata={{calculateMetadata}}
-  />
-);
-""")
-
-    # --- Composition.tsx (EMPTY scene; no creative content) --------------
-    write(proj / "Composition.tsx", """\
+COMPOSITION_TSX_TEMPLATE = """\
 import React from "react";
 import { AbsoluteFill, CalculateMetadataFunction } from "remotion";
 
@@ -119,10 +92,18 @@ export const calculateMetadata: CalculateMetadataFunction<SceneProps> = async ({
   width: 1920,
   height: 1080,
 });
-""")
+"""
 
-    # --- art-direction.md (the divergence engine — fill BEFORE authoring) ---
-    write(proj / "art-direction.md", f"""\
+PROPS_TEMPLATE_JSON = """\
+{
+  "// note": "Fill from your build pipeline. Put narration.mp3 / music.mp3 etc.",
+  "// note2": "in ./public/ so Remotion staticFile() can resolve them."
+}
+"""
+
+
+def _art_direction_template(slug: str) -> str:
+    return f"""\
 # Art Direction — {slug}
 
 > Fill this in BEFORE writing any scene code. It is the divergence engine: the
@@ -157,19 +138,12 @@ If this slot is blank, the video will look like every other.
 ## Anti-references
 What this should NOT look like — including any prior video you've made.
 Naming them keeps you from drifting into them.
-""")
+"""
 
-    # --- props template ------------------------------------------------------
-    write(proj / "artifacts" / "props.template.json", """\
-{
-  "// note": "Fill from your build pipeline. Put narration.mp3 / music.mp3 etc.",
-  "// note2": "in ./public/ so Remotion staticFile() can resolve them."
-}
-""")
 
-    # --- README -------------------------------------------------------------
+def _readme_template(slug: str, comp_id: str) -> str:
     rel_proj = f"projects/{slug}"
-    write(proj / "README.md", f"""\
+    return f"""\
 # {slug} — atelier (bespoke) composition
 
 Hand-authored Remotion composition. Source of truth lives here under
@@ -204,8 +178,37 @@ VideoCompose().execute({{
   }}
 }})
 ```
-""")
+"""
 
+
+def scaffold(slug: str, comp_id: str, root: Path) -> Path:
+    proj = root / "projects" / slug
+    (proj / "artifacts").mkdir(parents=True, exist_ok=True)
+    for sub in ("assets/audio", "assets/music", "assets/footage", "public", "renders"):
+        (proj / sub).mkdir(parents=True, exist_ok=True)
+
+    write(proj / "index.tsx", INDEX_TSX_TEMPLATE)
+    write(proj / "Root.tsx", f"""\
+import {{ Composition }} from "remotion";
+import {{ Scene, calculateMetadata, SceneProps }} from "./Composition";
+
+export const Root: React.FC = () => (
+  <Composition
+    id="{comp_id}"
+    component={{Scene}}
+    durationInFrames={{30 * 30}}
+    fps={{30}}
+    width={{1920}}
+    height={{1080}}
+    defaultProps={{ {{ /* fill from artifacts/props.json at render time */ }} as SceneProps }}
+    calculateMetadata={{calculateMetadata}}
+  />
+);
+""")
+    write(proj / "Composition.tsx", COMPOSITION_TSX_TEMPLATE)
+    write(proj / "art-direction.md", _art_direction_template(slug))
+    write(proj / "artifacts" / "props.template.json", PROPS_TEMPLATE_JSON)
+    write(proj / "README.md", _readme_template(slug, comp_id))
     return proj
 
 

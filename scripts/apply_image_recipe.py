@@ -13,6 +13,26 @@ import subprocess
 import sys
 
 
+def _validate_recipe_steps(recipe_path: Path) -> list[dict]:
+    steps = json.loads(recipe_path.read_text())
+    if not isinstance(steps, list) or not steps:
+        raise ValueError('Recipe must contain at least one explicit command')
+    for step in steps:
+        if not isinstance(step, dict) or not isinstance(step.get('command'), str) or not isinstance(step.get('params', {}), dict):
+            raise ValueError('Every step needs a command string and params object')
+    return steps
+
+
+def _check_photocraft_stdout(stdout: str) -> None:
+    for line in stdout.splitlines():
+        if not line.startswith('{'):
+            continue
+        row = json.loads(line)
+        payload = row.get('result')
+        if row.get('error') or (isinstance(payload, dict) and payload.get('ok') is False):
+            raise RuntimeError(f"PhotoCraft operation failed: {row.get('command')}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -21,12 +41,7 @@ def main():
     args = parser.parse_args()
     try:
         source = args.source.resolve(strict=True)
-        steps = json.loads(args.recipe.read_text())
-        if not isinstance(steps, list) or not steps:
-            raise ValueError('Recipe must contain at least one explicit command')
-        for step in steps:
-            if not isinstance(step, dict) or not isinstance(step.get('command'), str) or not isinstance(step.get('params', {}), dict):
-                raise ValueError('Every step needs a command string and params object')
+        steps = _validate_recipe_steps(args.recipe)
         binary = os.environ.get('PHOTOCRAFT_CLI') or shutil.which('photocraft-cli')
         if not binary:
             raise ValueError('PhotoCraft CLI not found; set PHOTOCRAFT_CLI or install via artcraft-launcher')
@@ -42,12 +57,7 @@ def main():
         (args.out_dir / 'stderr.txt').write_text(result.stderr)
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or 'PhotoCraft command failed')
-        for line in result.stdout.splitlines():
-            if line.startswith('{'):
-                row = json.loads(line)
-                payload = row.get('result')
-                if row.get('error') or (isinstance(payload, dict) and payload.get('ok') is False):
-                    raise RuntimeError(f"PhotoCraft operation failed: {row.get('command')}")
+        _check_photocraft_stdout(result.stdout)
         png = args.out_dir / 'asset.png'
         result = subprocess.run([binary, 'convert', str(project), str(png)], capture_output=True, text=True, timeout=120)
         if result.returncode or not png.is_file():

@@ -37,47 +37,44 @@ def capture_slug(project_id: str, stage: str | None, status: str | None) -> str:
     return slug or "capture"
 
 
+def _fingerprint_scene_card(card: dict[str, Any]) -> dict[str, Any]:
+    visual = card.get("visual") or {}
+    return {
+        "id": card.get("id"),
+        "generating": bool(card.get("generating")),
+        "generating_tool": card.get("generating_tool"),
+        "visual": {
+            "path": visual.get("path"),
+            "exists": visual.get("exists"),
+            "type": visual.get("type"),
+        },
+        "takes": [take.get("path") for take in (card.get("takes") or [])],
+        "audio": [asset.get("path") for asset in (card.get("audio") or [])],
+    }
+
+
+def _fingerprint_stage(stage: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": stage.get("name"),
+        "status": stage.get("status"),
+        "gate_skipped": stage.get("gate_skipped"),
+        "versions": stage.get("versions"),
+        "partial_progress": stage.get("partial_progress"),
+    }
+
+
 def state_fingerprint(state: dict[str, Any]) -> str:
-    """Hashable representation of board-visible state.
-
-    Intentionally ignores mtime-ish noise such as last_activity while keeping
-    the pieces that should trigger a capture: stage transitions, generating
-    flags, scene visual changes, costs, renders, and event count/tail.
-    """
-    scenes = []
+    """Hashable representation of board-visible state."""
     storyboard = state.get("storyboard") or {}
-    for card in storyboard.get("scenes") or []:
-        visual = card.get("visual") or {}
-        scenes.append({
-            "id": card.get("id"),
-            "generating": bool(card.get("generating")),
-            "generating_tool": card.get("generating_tool"),
-            "visual": {
-                "path": visual.get("path"),
-                "exists": visual.get("exists"),
-                "type": visual.get("type"),
-            },
-            "takes": [take.get("path") for take in (card.get("takes") or [])],
-            "audio": [asset.get("path") for asset in (card.get("audio") or [])],
-        })
-
+    scenes = [_fingerprint_scene_card(card) for card in (storyboard.get("scenes") or [])]
     media = state.get("media") or {}
     events = state.get("events") or []
     visible = {
-        "stages": [
-            {
-                "name": stage.get("name"),
-                "status": stage.get("status"),
-                "gate_skipped": stage.get("gate_skipped"),
-                "versions": stage.get("versions"),
-                "partial_progress": stage.get("partial_progress"),
-            }
-            for stage in state.get("stages") or []
-        ],
+        "stages": [_fingerprint_stage(s) for s in (state.get("stages") or [])],
         "scenes": scenes,
         "cost": state.get("cost"),
-        "renders": [r.get("path") for r in media.get("renders") or []],
-        "snapshots": [s.get("path") for s in media.get("snapshots") or []],
+        "renders": [r.get("path") for r in (media.get("renders") or [])],
+        "snapshots": [s.get("path") for s in (media.get("snapshots") or [])],
         "event_count": len(events),
         "event_tail": events[-3:],
     }
@@ -130,6 +127,31 @@ def capture_project(base_url: str, capture_dir: Path, project_id: str, seq: int,
     )
 
 
+def _poll_single_project(
+    project_id: str,
+    base_url: str,
+    capture_dir: Path,
+    fingerprints: dict[str, str],
+    seq: int,
+    no_screenshots: bool,
+) -> tuple[bool, int]:
+    try:
+        state = fetch_json(base_url, f"/api/project/{project_id}/state")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"[watch] {project_id}: state fetch failed: {exc}", file=sys.stderr)
+        return False, seq
+    fp = state_fingerprint(state)
+    if fingerprints.get(project_id) == fp:
+        return False, seq
+    fingerprints[project_id] = fp
+    seq += 1
+    stage, status = active_stage(state)
+    print(f"[watch] change {project_id}: {stage or 'unknown'} -> {status or 'unknown'}")
+    if not no_screenshots:
+        capture_project(base_url, capture_dir, project_id, seq, state)
+    return True, seq
+
+
 def watch(
     projects: list[str],
     *,
@@ -146,21 +168,10 @@ def watch(
     while True:
         changed = False
         for project_id in projects:
-            try:
-                state = fetch_json(base_url, f"/api/project/{project_id}/state")
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-                print(f"[watch] {project_id}: state fetch failed: {exc}", file=sys.stderr)
-                continue
-            fp = state_fingerprint(state)
-            if fingerprints.get(project_id) == fp:
-                continue
-            fingerprints[project_id] = fp
-            changed = True
-            seq += 1
-            stage, status = active_stage(state)
-            print(f"[watch] change {project_id}: {stage or 'unknown'} -> {status or 'unknown'}")
-            if not no_screenshots:
-                capture_project(base_url, capture_dir, project_id, seq, state)
+            did_change, seq = _poll_single_project(
+                project_id, base_url, capture_dir, fingerprints, seq, no_screenshots
+            )
+            changed = changed or did_change
         if once:
             return 0
         if not changed:

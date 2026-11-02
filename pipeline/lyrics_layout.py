@@ -118,76 +118,39 @@ def groups(recipe, words):
     return [(ws, look(recipe, hero or recipe["base"]), hero) for ws, hero, _ in out]
 
 
-def design(recipe, words, band):
-    W, H = recipe.get("frame", [1920, 1080])
-    margin = recipe.get("margin", 110)
-    song = recipe.get("font")
-    placed = groups(recipe, words)
-    text = lambda ws: " ".join(w["text"] for w in ws)
+def _fit_row(row, W, margin, song):
+    def total(scale):
+        ws = [
+            width(" ".join(w["text"] for w in g), {**lk, "size": lk["size"] * scale}, song)
+            for g, lk, _ in row
+        ]
+        gaps = [
+            GAP * max(a[1]["size"], b[1]["size"]) * scale
+            for a, b in zip(row, row[1:])
+        ]
+        return ws, gaps
 
-    def fit(row):
-        def total(scale):
-            ws = [
-                width(text(g), {**lk, "size": lk["size"] * scale}, song)
-                for g, lk, _ in row
-            ]
-            gaps = [
-                GAP * max(a[1]["size"], b[1]["size"]) * scale
-                for a, b in zip(row, row[1:])
-            ]
-            return ws, gaps
+    scale = 1.0
+    while sum(map(sum, total(scale))) > W - 2 * margin:
+        scale *= 0.96
+    return scale, total(scale)
 
-        scale = 1.0
-        while sum(map(sum, total(scale))) > W - 2 * margin:
-            scale *= 0.96
-        return scale, total(scale)
 
-    scale, _ = fit(placed)
-    rows = [placed]
-    if scale < 0.85 and len(placed) > 1:  # two rows, split where the widths balance
-        full = [width(text(g), lk, song) for g, lk, _ in placed]
-        cut = min(
-            range(1, len(placed)), key=lambda k: abs(sum(full[:k]) - sum(full[k:]))
-        )
-        rows = [placed[:cut], placed[cut:]]
-    baselines = BANDS[band][len(rows) - 1]
-    items, boxes = [], []
-    for baseline, row in zip(baselines, rows):
-        scale, (ws, gaps) = fit(row)
-        x = (W - sum(ws) - sum(gaps)) / 2
-        for k, ((g, lk, hero), w) in enumerate(zip(row, ws)):
-            size = round(lk["size"] * scale)
-            top = baseline - size * 0.92
-            items.append(
-                {
-                    **lk,
-                    "size": size,
-                    "word_ids": [w_["word_id"] for w_ in g],
-                    "x": round(x),
-                    "y": round(top),
-                    "rotate": 0,
-                    "accent": g[-1]["word_id"] if lk["motion"] != "quiet" else None,
-                }
-            )
-            boxes.append((x, top, w, size, g[-1], hero))
-            x += w + (gaps[k] if k < len(gaps) else 0)
-    draws = []
+def _build_hero_stroke_draw(boxes, items, words, W, H):
     for i, (x, top, w, size, last, hero) in enumerate(boxes):
-        if not hero or not hero.get("stroke") or draws:
-            continue  # one stroke per line, from its first hero that has one
+        if not hero or not hero.get("stroke"):
+            continue
         box, d, length = STROKES[hero["stroke"]]
         vb = [float(n) for n in box.split()]
-        if hero["stroke"] == "down":  # beside the word, at its height
+        if hero["stroke"] == "down":
             dh = size * 1.2
             dw = dh * vb[2] / vb[3]
             sx, sy = min(x + w + 24, W - dw - 20), top + size * 0.1
-        else:  # under the word
+        else:
             dw = max(w, 160)
             dh = dw * vb[3] / vb[2]
             sx, sy = x + (w - dw) / 2, top + size * 1.08
-        sung = [
-            w["start"] for w in words if w.get("start") is not None
-        ]  # a printed word the singer left out has no time
+        sung = [w_["start"] for w_ in words if w_.get("start") is not None]
         start = (
             max(
                 0.0,
@@ -200,7 +163,7 @@ def design(recipe, words, band):
             if sung
             else 0.0
         )
-        draws.append(
+        return [
             {
                 "name": hero["stroke"].capitalize(),
                 "view_box": box,
@@ -218,8 +181,50 @@ def design(recipe, words, band):
                     }
                 ],
             }
+        ]
+    return []
+
+
+def design(recipe, words, band):
+    W, H = recipe.get("frame", [1920, 1080])
+    margin = recipe.get("margin", 110)
+    song = recipe.get("font")
+    placed = groups(recipe, words)
+    text = lambda ws: " ".join(w["text"] for w in ws)
+
+    scale, _ = _fit_row(placed, W, margin, song)
+    rows = [placed]
+    if scale < 0.85 and len(placed) > 1:
+        full = [width(text(g), lk, song) for g, lk, _ in placed]
+        cut = min(
+            range(1, len(placed)), key=lambda k: abs(sum(full[:k]) - sum(full[k:]))
         )
-    return {"items": items, "draws": draws}
+        rows = [placed[:cut], placed[cut:]]
+    baselines = BANDS[band][len(rows) - 1]
+    items, boxes = [], []
+    for baseline, row in zip(baselines, rows):
+        scale, (ws, gaps) = _fit_row(row, W, margin, song)
+        x = (W - sum(ws) - sum(gaps)) / 2
+        for k, ((g, lk, hero), w) in enumerate(zip(row, ws)):
+            size = round(lk["size"] * scale)
+            top = baseline - size * 0.92
+            items.append(
+                {
+                    **lk,
+                    "size": size,
+                    "word_ids": [w_["word_id"] for w_ in g],
+                    "x": round(x),
+                    "y": round(top),
+                    "rotate": 0,
+                    "accent": g[-1]["word_id"] if lk["motion"] != "quiet" else None,
+                }
+            )
+            boxes.append((x, top, w, size, g[-1], hero))
+            x += w + (gaps[k] if k < len(gaps) else 0)
+    return {
+        "items": items,
+        "draws": _build_hero_stroke_draw(boxes, items, words, W, H),
+    }
 
 
 def designs(recipe, animations):
