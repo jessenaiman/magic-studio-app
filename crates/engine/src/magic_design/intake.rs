@@ -59,7 +59,7 @@ pub fn cmd_intake_validate(s: &mut Session, params: &Value) -> Result<Value> {
         "valid_turnaround": classification.valid, "status": classification.status,
         "width": image.width, "height": image.height, "has_alpha": true,
         "sheet_kind": classification.status, "validation": validation,
-        "jev_comparison": null, "auto_cut": auto_cut,
+        "auto_cut": auto_cut,
     }))
 }
 

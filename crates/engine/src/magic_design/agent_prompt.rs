@@ -141,7 +141,7 @@ impl AgentPrompt<'_> {
                 "Telemetry without loaded measurement evidence",
                 json!({
                     "leg_swing":null, "arm_raise":null, "joint_angle_limits":null,
-                    "topology_parity":null, "rig_bone_count":null, "Jev_QA":null
+                    "topology_parity":null, "rig_bone_count":null
                 }),
             ),
         ];
