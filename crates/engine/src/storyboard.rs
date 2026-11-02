@@ -27,6 +27,37 @@ pub(crate) fn resolve_storyboard_template(s: &Session, raw: &str) -> Result<Path
     Ok(template)
 }
 
+/// The template's content fingerprint, recorded on every board so a stale board is visible.
+pub(crate) fn template_sha256(template: &std::path::Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    std::fs::read(template)
+        .ok()
+        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+}
+
+/// Why the active board does not come from the current DeckCraft template, if it does not.
+pub(crate) fn template_problem(s: &Session, board: &Value) -> Option<String> {
+    if board.get("deck").is_none_or(Value::is_null) {
+        return None;
+    }
+    let used = board["template"].as_str().unwrap_or("unknown");
+    if used != "deckcraft" {
+        return Some(format!(
+            "Storyboard was built from the retired '{used}' template; rebuild it (workshop.build_storyboard)"
+        ));
+    }
+    let current = resolve_storyboard_template(s, DEFAULT_STORYBOARD_TEMPLATE)
+        .ok()
+        .and_then(|t| template_sha256(&t));
+    if current.is_none() || board["template_sha256"].as_str() != current.as_deref() {
+        return Some(
+            "Storyboard was built from an older DeckCraft template; rebuild it (workshop.build_storyboard)"
+                .into(),
+        );
+    }
+    None
+}
+
 /// A scene's packet sections, in the order they print.
 pub(crate) const SCENE_SECTIONS: &[(&str, &str)] = &[
     ("skills", "Skills"),
@@ -981,7 +1012,7 @@ fn init_empty_template_board(s: &mut Session, dir: &Path, active: &Path) -> Resu
         .filter(|v| v.extension().is_some_and(|e| e == "png"))
         .collect::<Vec<_>>();
     previews.sort();
-    let board = json!({"ok":true,"project":s.project_path,"deck":deck,"pdf":pdf,"template_file":template,"manifest":out.join("manifest.json"),"empty_template":true,"template_required":false,"previews":previews,"page_size":info["slideSize"],"page_plan":[],"scene_count":0,"first_scene_page":previews.len()+1,"links":[],"design":{"placements":[],"dirty":false}});
+    let board = json!({"ok":true,"project":s.project_path,"deck":deck,"pdf":pdf,"template":"deckcraft","template_file":template,"template_sha256":template_sha256(std::path::Path::new(template)),"manifest":out.join("manifest.json"),"empty_template":true,"template_required":false,"previews":previews,"page_size":info["slideSize"],"page_plan":[],"scene_count":0,"first_scene_page":previews.len()+1,"links":[],"design":{"placements":[],"dirty":false}});
     std::fs::write(out.join("manifest.json"), board.to_string())?;
     std::fs::write(active, board.to_string())?;
     Ok(board)

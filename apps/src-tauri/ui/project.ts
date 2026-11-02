@@ -44,8 +44,9 @@ class ProjectView {
 
   block(id: string, icon: string, title: string, meta: string, done: boolean, body: any, blockState?: any, action?: any) {
     const open = state.open === id;
-    const dot = window.companionBoxes.dot(done ? "ready" : "needs-attention", "", id);
-    dot.title = done ? "Ready" : "Needs work";
+    const failed = blockState === "failed";
+    const dot = window.companionBoxes.dot(failed ? "failed" : done ? "ready" : "needs-attention", "", id);
+    dot.title = failed ? "Failed · rebuild required" : done ? "Ready" : "Needs work";
     const head = el("button", {
       class: "panel-head", id: `block-${id}`, "aria-label": title, "aria-expanded": String(open), title: `${title}${meta ? ` · ${meta}` : ""}`,
       onclick: () => {
@@ -59,7 +60,7 @@ class ProjectView {
       el("span", { class: "title" }, title),
       el("span", { class: "meta" }, meta || ""),
       el("span", { class: "chev", html: ICONS.chev }));
-    if (window.companionBoxes) window.companionBoxes.readiness(id, { state: blockState, reason: done ? "Ready" : "Needs work" });
+    if (window.companionBoxes) window.companionBoxes.readiness(id, { state: blockState, reason: failed ? "Failed · rebuild required" : done ? "Ready" : "Needs work" });
     return el("section", { box: id, class: `block${open ? " open" : ""}`, "data-state": blockState, "data-block": id, "data-box-id": id },
       action ? el("div", { class: "block-headrow" }, head, action) : head,
       el("div", { class: "block-body" }, el("div", {}, el("div", { class: "block-inner" }, body))));
@@ -181,7 +182,7 @@ class ProjectView {
       ...missing.map((item: any) => el('button', { 'aria-label': `Edit page ${item.page} ${item.field}`, onclick: () => showPage(item.page - 1) }, `Page ${item.page} · ${item.field}`)),
       ...this.buildStoryboardSceneControls(scenes, scene, contents),
       saveBtn];
-    return this.block('storyboard', ICONS.animate, 'Storyboard', content?.state === 'ready' ? 'Content filled' : 'Needs work', this.ready('storyboard'), body, this.prerequisite('storyboard').state);
+    return this.block('storyboard', ICONS.animate, 'Storyboard', content?.state === 'failed' ? 'Wrong template · rebuild' : content?.state === 'ready' ? 'Content filled' : 'Needs work', this.ready('storyboard'), body, this.prerequisite('storyboard').state);
   }
 
   renderBlocks() {

@@ -1337,6 +1337,7 @@ fn finalize_mapping_and_write_inputs(
         .is_some_and(|arr| !arr.is_empty());
     mapping["needs_correction"] = json!(has_unmapped);
     mapping["template_file"] = json!(template);
+    mapping["template_sha256"] = json!(crate::storyboard::template_sha256(template));
     mapping["line_mapping"] = json!(
         groups
             .iter()
@@ -1560,6 +1561,7 @@ fn populate_board_result(
     result["mapping"] = mapping.clone();
     result["template"] = json!("deckcraft");
     result["template_file"] = json!(template);
+    result["template_sha256"] = json!(crate::storyboard::template_sha256(template));
     result["scene_map"] = json!(args.scene_map);
     result["scene_targets"] = json!(packets.iter().map(|p| p["id"].clone()).collect::<Vec<_>>());
     result["scene_count"] = json!(packets.len());

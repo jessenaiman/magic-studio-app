@@ -48,6 +48,10 @@ pub fn inspect(s: &mut Session, _: &Value) -> Result<Value> {
     doc["pdf"] = board["pdf"].clone();
     doc["text_fields"] = native_fields(s, &board)?;
     doc["readiness"] = content_readiness(&doc);
+    if let Some(reason) = crate::storyboard::template_problem(s, &board) {
+        doc["readiness"]["state"] = json!("failed");
+        doc["readiness"]["reason"] = json!(reason);
+    }
     use sha2::{Digest, Sha256};
     let revision=format!("{:x}",Sha256::digest(json!({"pdf":doc["pdf"],"fields":doc["text_fields"],"placements":doc["placements"],"audio":s.song_audio}).to_string().as_bytes()));
     let permit =
