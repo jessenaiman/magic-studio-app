@@ -23,7 +23,6 @@ class FeedbackController {
       .filter((n: any) => n.isContentEditable ? !!n.textContent.trim() : n.type === 'checkbox' || n.type === 'radio' ? n.checked !== n.defaultChecked : n.value !== n.defaultValue)
       .map((n: any) => n.id || n.tagName.toLowerCase());
     if (typeof storyboardController !== 'undefined') {
-      changed.push(...storyboardController.textDrafts.keys());
       if (state.data?.design?.dirty === true) changed.push('storyboard-design');
     }
     if (typeof animationReview !== 'undefined' && animationReview.dirty) changed.push('animation-review');

@@ -216,7 +216,7 @@ class AppFooterController {
 
   renderSaveState(): void {
     const motionUnsaved = this.isMotionUnsaved();
-    const unsaved = motionUnsaved || state.data?.design?.dirty === true || storyboardController.textDrafts.size > 0;
+    const unsaved = motionUnsaved || state.data?.design?.dirty === true;
     const { tone, label } = this.saveStatus(unsaved);
     $('footer-save-state').replaceChildren(window.companionBoxes.dot(tone, '', 'footer-save-state'), label);
     $('footer-save-state').title = this.saveStateTitle(motionUnsaved, unsaved);
@@ -534,7 +534,6 @@ class AppShellController {
     animationReset();
     songStop();
     transcriptReaderClose();
-    storyboardController.textDrafts.clear();
     projectView.error = null;
     state.storyboardScene = null;
     state.storyboardUndo = null;

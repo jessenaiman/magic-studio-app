@@ -3,7 +3,6 @@
 class StoryboardViewController {
   savePromise: Promise<any> | null = null;
   selectedPlacement: string | null = null;
-  textDrafts = new Map();
 
   renderRail() { $('storyboard-rail')?.replaceChildren(this.buildStoryboardBlock()); }
 
@@ -42,6 +41,9 @@ class StoryboardViewController {
   }
 
   buildStoryboardBlock() {
+    if (state.data?.storyboard?.native_preview) {
+      return el('button', { id: 'storyboard-edit-deck', onclick: () => openPath(state.data.storyboard.deck) }, 'Edit text in DeckCraft');
+    }
     const template = state.data?.storyboard_template?.path || state.data?.storyboard?.template_file;
     const sb = state.data?.storyboard, content = state.data?.design?.readiness, missing = content?.missing_fields || [];
     const contents = state.data?.storyboard_contents, scenes = contents?.chapters || [], scene = this.scene();
@@ -50,7 +52,7 @@ class StoryboardViewController {
     const draftBtn = sb?.exists && content?.state !== 'ready' ? el('button', { id: 'storyboard-draft-override', 'data-commands': 'workshop.approve_draft', title: 'Allow Animation and Lyrics for this draft while keeping missing details visible', onclick: () => projectView.command('workshop.approve_draft', { approved: !state.data?.design?.progression?.draft_override, allow_incomplete: true }).catch((error: any) => toast(String(error))) }, state.data?.design?.progression?.draft_override ? 'Turn off draft access' : 'Proceed with this draft') : null;
     const scenesBtn = sb?.deck && sb.empty_template && projectView.ready('transcript') ? el('button', { id: 'storyboard-create-scenes', 'data-commands': 'storyboard.init', onclick: () => projectView.command('storyboard.init').catch((error: any) => toast(String(error))) }, 'Create scene pages from timing') : null;
     const overviewBtn = sb?.previews?.length ? el('button', { id: 'storyboard-overview', onclick: () => showPage(0) }, sb.page_titles?.[0] || 'First page') : null;
-    const saveBtn = sb?.deck ? el('button', { id: 'storyboard-save', disabled: !state.data?.design?.dirty && !this.textDrafts.size, 'data-commands': 'storyboard.save_version', onclick: () => saveStoryboard().catch((error: any) => toast(String(error))) }, 'Save new version') : null;
+    const saveBtn = sb?.deck ? el('button', { id: 'storyboard-save', disabled: !state.data?.design?.dirty, 'data-commands': 'storyboard.save_version', onclick: () => saveStoryboard().catch((error: any) => toast(String(error))) }, 'Save new version') : null;
     const body = [
       el('div', { class: 'field-row' }, createBtn, el('button', { id: 'storyboard-template-open', class: 'icon', disabled: !template, 'aria-label': 'Edit storyboard template', title: template || 'Magic Studio storyboard template', html: $('sb-open-deck').innerHTML, onclick: () => invoke('open_path', { path: template }) })),
       statusEl,
@@ -63,7 +65,7 @@ class StoryboardViewController {
       }, 'Discuss with Fidget'),
       el('button', { id: 'storyboard-check', 'data-commands': 'storyboard.design', onclick: () => projectView.command('storyboard.design').catch((error: any) => toast(String(error))) }, 'Check storyboard details'),
       draftBtn, scenesBtn, overviewBtn,
-      el('p', { class: 'why' }, `${sb?.previews?.length || 0} pages · ${(sb?.page_size || []).join(' × ')} · Edit text on the page; drag assets onto it.`),
+      el('p', { class: 'why' }, `${sb?.previews?.length || 0} pages · ${(sb?.page_size || []).join(' × ')} · Edit text in DeckCraft. Drag assets onto the page.`),
       ...missing.map((item: any) => el('button', { 'aria-label': `Edit page ${item.page} ${item.field}`, onclick: () => showPage(item.page - 1) }, `Page ${item.page} · ${item.field}`)),
       ...this.buildStoryboardSceneControls(scenes, scene, contents),
       saveBtn];
@@ -78,6 +80,10 @@ class StoryboardViewController {
     cards.replaceChildren();
     delete cards.dataset.document;
     $("sb-page").textContent = "Storyboard";
+    if (state.data?.storyboard?.error) {
+      cards.append(el('p', { role: 'alert' }, state.data.storyboard.error));
+      return;
+    }
     cards.append(el('div', { id: 'sb-empty', class: 'panel-empty project-setup' },
       el('strong', {}, 'No storyboard yet'),
       el('p', {}, 'Create a DeckCraft storyboard for this project.'),
@@ -174,7 +180,7 @@ class StoryboardViewController {
       page.style.setProperty("--ar", `${size[0]}/${size[1]}`);
       page.append(el("img", { src: convertFileSrc(path), alt: `Storyboard page ${i + 1}`, loading: "lazy" }));
       this.appendPageLinks(page, sb, i, size);
-      this.bindPageDropTarget(page, i, size);
+      if (!sb.native_preview) this.bindPageDropTarget(page, i, size);
       wrap.append(page);
     });
     this.bindWrapScroll(wrap, chips, pages.length);
@@ -192,6 +198,7 @@ class StoryboardViewController {
     const cards = $("sb-cards");
     $("sb-empty")?.remove();
     for (const id of ["sb-prev", "sb-next", "sb-open-deck", "sb-save-version"]) $(id).disabled = !pages.length;
+    $("sb-open-deck").disabled = !sb?.deck;
     if (!pages.length) {
       this.renderEmpty(cards);
       return;
@@ -199,8 +206,8 @@ class StoryboardViewController {
     state.page = Math.max(0, Math.min(state.page, pages.length - 1));
     this.renderChips(sb, pages, chips);
     this.renderDocumentSheets(cards, sb, pages, chips);
-    this.renderText();
-    this.renderPlacements();
+    if (sb.native_preview) $("sb-save-version").hidden = true;
+    else this.renderPlacements();
   }
 
   showPage(n: number) {
@@ -212,98 +219,19 @@ class StoryboardViewController {
     $(`sb-sheet-${state.page}`)?.scrollIntoView({ block: "start", behavior: "instant" });
   }
 
-  ensureTextFieldNode(id: string, field: any, page: any) {
-    let node = $(id);
-    if (node) return node;
-    const label = field.field.replaceAll("_", " ");
-    node = el("textarea", {
-      id, class: "sb-text", title: `Edit ${label} · saved when you finish typing`,
-      "aria-label": `Scene ${field.scene || "page " + field.page} ${label}`,
-      "data-commands": "storyboard.edit", spellcheck: "true",
-    });
-    node.addEventListener("input", () => {
-      if (node.value === node.defaultValue) this.textDrafts.delete(id);
-      else this.textDrafts.set(id, { page: field.page, field: field.field, value: node.value });
-      updateAppFooter();
-    });
-    node.addEventListener("change", () => this.save().catch((error) => toast(String(error))));
-    page.append(node);
-    return node;
-  }
-
-  styleTextFieldNode(node: any, field: any, size: [number, number]) {
-    const [x, y, w, h] = field.rect;
-    const put = (k: string, v: string) => node.style.setProperty(k, v);
-    const height = field.name ? h : Math.max(h, 50);
-    const fontSize = field.name ? (field.font_size || 12) : (field.field === "lyrics" ? 27 : 21);
-    put("--x", `${x / size[0] * 100}%`);
-    put("--y", `${y / size[1] * 100}%`);
-    put("--w", `${w / size[0] * 100}%`);
-    put("--h", `${height / size[1] * 100}%`);
-    put("--font", `${fontSize / size[0] * 100}cqw`);
-    if (field.name) {
-      node.dataset.named = "";
-      put("--pad", `${2 / size[0] * 100}cqw`);
-      put("--field-fill", field.fill);
-      put("--field-ink", field.text_color);
-    }
-  }
-
-  renderText() {
-    const size = this.pageSize();
-    const kept = new Set<string>();
-    for (const field of state.data?.design?.text_fields || []) {
-      const page = $(`sb-sheet-${field.page - 1}`);
-      if (!page) continue;
-      const id = `sb-text-${field.page}-${field.id}`;
-      kept.add(id);
-      const node = this.ensureTextFieldNode(id, field, page);
-      const draft = this.textDrafts.get(id);
-      if (!draft) node.value = node.defaultValue = field.value || "";
-      else if (node.value !== draft.value) node.value = draft.value;
-      this.styleTextFieldNode(node, field, size);
-    }
-    document.querySelectorAll(".sb-text").forEach((node: any) => { if (!kept.has(node.id)) node.remove(); });
-  }
-
   updateSaveControls() {
-    const disabled = projectView.pending > 0 || Boolean(state.data?.design?.error) || (!state.data?.design?.dirty && !this.textDrafts.size);
+    const disabled = projectView.pending > 0 || Boolean(state.data?.design?.error) || (!state.data?.design?.dirty);
     for (const id of ["sb-save-version", "storyboard-save"]) if ($(id)) $(id).disabled = disabled;
   }
 
   save() {
     if (this.savePromise) return this.savePromise;
-    const project = state.project;
-    this.savePromise = (async () => {
-      let result;
-      do { result = await this.persist(); }
-      while (state.project === project && this.textDrafts.size);
-      return result;
-    })().finally(() => {
+    const params = state.data?.storyboard?.draft ? { draft: state.data.storyboard.manifest } : {};
+    this.savePromise = designCommand("storyboard.save_version", params).finally(() => {
       this.savePromise = null;
       this.updateSaveControls();
     });
     return this.savePromise;
-  }
-
-  async persist() {
-    const project = state.project;
-    if (state.data?.design?.error) {
-      throw new Error(`Cannot save until the editable storyboard is readable: ${state.data.design.error}`);
-    }
-    const edits = [...this.textDrafts.entries()];
-    for (const [, edit] of edits) await designCommand("storyboard.edit", { ...edit, save: false });
-    const params = state.data?.storyboard?.draft ? { draft: state.data.storyboard.manifest } : {};
-    const result = await designCommand("storyboard.save_version", params);
-    if (state.project !== project) return result;
-    for (const [id, edit] of edits) {
-      if (this.textDrafts.get(id)?.value === edit.value) this.textDrafts.delete(id);
-    }
-    this.renderText();
-    renderBlocks();
-    updateAppFooter();
-    toast("Storyboard saved");
-    return result;
   }
 
   scaleFactor(hx: number, hy: number, dx: number, dy: number, w: number, h: number) {
@@ -421,10 +349,8 @@ const storyboardController = new StoryboardViewController();
 function renderStoryboard() { storyboardController.render(); }
 function showPage(n: number) { storyboardController.showPage(n); }
 function storyboardPageSize() { return storyboardController.pageSize(); }
-function renderStoryboardText() { storyboardController.renderText(); }
 function updateStoryboardSaveControls() { storyboardController.updateSaveControls(); }
 function saveStoryboard() { return storyboardController.save(); }
-async function persistStoryboard() { return storyboardController.persist(); }
 function renderDesignPlacements() { storyboardController.renderPlacements(); }
 
 $("sb-save-version").addEventListener("click", () => saveStoryboard().catch((error) => toast(String(error))));

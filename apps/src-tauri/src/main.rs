@@ -101,6 +101,34 @@ impl Engine {
 
 /// The open project's workshop state and storyboard.
 pub fn state_of(s: &mut Session) -> Result<Value, String> {
+    let mut state = workshop_state(s)?;
+    let Some(dir) = s.project_path.as_deref().and_then(std::path::Path::parent) else {
+        return Ok(state);
+    };
+    let manifest = dir.join("storyboard/movie-board.json");
+    if manifest.is_file() {
+        let board = std::fs::File::open(&manifest)
+            .and_then(|file| serde_json::from_reader::<_, Value>(file).map_err(std::io::Error::from));
+        let board = match board {
+            Ok(board) => board,
+            Err(error) => {
+                state["storyboard"] = json!({"error":format!("{}: {error}", manifest.display())});
+                return Ok(state);
+            }
+        };
+        if let Some(deck) = board["deck"].as_str() {
+            let deck = dir.join(deck);
+            if deck.is_file() && deck.extension().is_some_and(|ext| ext == "deckcraft") {
+                state["storyboard"] = json!({"native_preview":true, "deck":deck,
+                    "previews":board["previews"], "page_titles":board["page_titles"],
+                    "page_size":board["page_size"], "layout":{"links":board["links"]}});
+            }
+        }
+    }
+    Ok(state)
+}
+
+fn workshop_state(s: &mut Session) -> Result<Value, String> {
     let status = s
         .execute("workshop.status", json!({}))
         .map_err(|e| e.to_string())?;
@@ -836,11 +864,16 @@ fn percent_decode(s: &str) -> String {
 /// Opens a file with the desktop's default app (one click from any file link).
 #[tauri::command]
 fn open_path(path: String) -> Result<(), String> {
-    std::process::Command::new("xdg-open")
+    let app = if std::path::Path::new(&path).extension().is_some_and(|e| e == "deckcraft") {
+        "deckcraft"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(app)
         .arg(&path)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("xdg-open {path}: {e}"))
+        .map_err(|e| format!("{app} {path}: {e}"))
 }
 
 /// Height of the project view's top bar (logical px).
