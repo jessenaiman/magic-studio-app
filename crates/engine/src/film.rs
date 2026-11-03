@@ -27,8 +27,22 @@ fn film(s: &Session) -> Result<Film> {
         .as_ref()
         .and_then(|p| p.file_stem())
         .map_or("Film".into(), |n| n.to_string_lossy().into_owned());
-    let project = dir.join("film").join(format!("{name}.fcproj"));
+    // The song's one film: the .magic's linked video project when it is a FilmCraft project.
+    let project = s
+        .video_project_path
+        .clone()
+        .filter(|p| p.extension().is_some_and(|e| e == "fcproj"))
+        .unwrap_or_else(|| dir.join("film").join(format!("{name}.fcproj")));
     Ok(Film { dir, name, project })
+}
+
+/// Record `project` as the song's one film in the .magic, so every step uses the same one.
+pub(crate) fn link(s: &mut Session, project: &Path) -> Result<()> {
+    if s.video_project_path.as_deref() == Some(project) {
+        return Ok(());
+    }
+    s.video_project_path = Some(project.to_path_buf());
+    crate::project::write_project_file(s)
 }
 
 impl Film {
@@ -63,6 +77,11 @@ fn path_arg(p: &Path) -> String {
 }
 
 /// The same timeline Studio opens and exports. Checking the file starts no external process.
+/// The song's one film (see `film`).
+pub(crate) fn film_path(s: &Session) -> Result<PathBuf> {
+    Ok(film(s)?.project)
+}
+
 pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
@@ -221,6 +240,7 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
             "width": p["width"].as_u64().unwrap_or(1920), "height": p["height"].as_u64().unwrap_or(1080),
             "fps": p["fps"].as_f64().unwrap_or(30.0)}});
         crate::assembly::run(&f.dir, &f.project, true, &[sequence])?;
+        link(s, &f.project)?;
     }
     let project = f.require()?.to_path_buf();
     let imported = crate::assembly::run(

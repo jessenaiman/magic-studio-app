@@ -82,6 +82,7 @@ pub mod lyrics;
 pub(crate) mod lyrics_layout;
 mod mayhem;
 pub mod native_app;
+pub mod song_timing;
 pub mod panels;
 pub mod project;
 pub mod project_settings;
