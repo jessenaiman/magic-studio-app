@@ -266,25 +266,14 @@ class AnimationViewController {
       id: 'motion-toggle-3d', class: 'ghost', title: 'Toggle 2D Konva stage / 3D Three.js WebGL viewport',
       'aria-label': 'Toggle 3D viewport', 'aria-pressed': String(Boolean(motion.viewport3d)),
       onclick: async () => {
-        motion.viewport3d = !motion.viewport3d;
-        toggle3dBtn.setAttribute('aria-pressed', String(motion.viewport3d));
-        const c2d = $('motion-canvas'), c3d = $('motion-canvas-3d');
-        if (c2d) c2d.hidden = motion.viewport3d;
-        if (c3d) {
-          c3d.hidden = !motion.viewport3d;
-          if (motion.viewport3d) {
-            tripo3DStage.mount(c3d);
-            const glb = motion.meta?.tripo_3d?.primary_glb;
-            if (glb) await tripo3DStage.loadGlb(glb);
-            const dur = tripo3DStage.duration || motion.meta?.tripo_3d?.clips?.[0]?.duration || 8;
-            motion.rest = false;
-            motion.track = motion.meta?.tripo_3d?.clips?.[0]?.id || '3d_motion';
-            motion.sample = { duration: dur, loop: true, fps: 24, frames: [], start: 0 };
-            if ($('motion-scrub')) $('motion-scrub').max = dur;
-          } else {
-            tripo3DStage.dispose();
-          }
+        await this.show3D(!motion.viewport3d);
+        if (motion.viewport3d) {
+          const clip = motion.meta?.tripo_3d?.clips?.[0];
+          const dur = tripo3DStage.duration || clip?.duration || 8;
+          Object.assign(motion, { rest: false, track: clip?.id || '3d_motion', sample: { duration: dur, loop: true, fps: 24, frames: [], start: 0 } });
+          if ($('motion-scrub')) $('motion-scrub').max = dur;
         }
+        this.renderControls();
         animationDraw();
       },
     }, '3D View');
@@ -355,6 +344,19 @@ class AnimationViewController {
     })));
   }
 
+  /** Show the 3D viewport, mounted with the character's model (or `glb`), or the 2D stage. */
+  async show3D(on: boolean, glb: string = motion.meta?.tripo_3d?.primary_glb) {
+    motion.viewport3d = on;
+    $('motion-toggle-3d')?.setAttribute('aria-pressed', String(on));
+    const c2d = $('motion-canvas'), c3d = $('motion-canvas-3d');
+    if (c2d) c2d.hidden = on;
+    if (!c3d) return;
+    c3d.hidden = !on;
+    if (!on) { tripo3DStage.dispose(); return; }
+    if (!tripo3DStage.renderer) tripo3DStage.mount(c3d);
+    if (glb) await tripo3DStage.loadGlb(glb);
+  }
+
   async applyMetadata(meta: any) {
     const images = await this.loadImages(meta);
     Object.assign(motion, { meta, images, sample: null });
@@ -375,17 +377,13 @@ class AnimationViewController {
       const meta = characterMeta(await motionCommand('character.meta', { character }), motion.view);
       if (request !== motion.request || project !== state.project) return;
       Object.assign(motion, { meta, images: [], loading: false, sample: null, rest: true, track: '' });
-      if (motion.viewport3d && !meta.tripo_3d?.available) {
-        motion.viewport3d = false;
-        $('motion-toggle-3d')?.setAttribute('aria-pressed', 'false');
-        const c3d = $('motion-canvas-3d');
-        if (c3d) c3d.hidden = true;
-        if (typeof tripo3DStage !== 'undefined') tripo3DStage.dispose();
-      }
+      // A model-only character (no drawn view) opens in 3D; one without a model leaves it.
+      if (motion.viewport3d && !meta.tripo_3d?.available) await this.show3D(false);
+      else if (!motion.viewport3d && modelActionPlayer.available() && !meta.views.length) await this.show3D(true);
       if (!meta.layers.some((part: any) => part.id === motion.selected)) motion.selected = null;
       $('motion-stage-status')?.remove();
       const canvas = $('motion-canvas');
-      if (canvas) canvas.hidden = false;
+      if (canvas) canvas.hidden = motion.viewport3d;
       this.renderControls();
       await this.sample();
     } catch (error) {
@@ -469,21 +467,21 @@ class AnimationViewController {
   async pickActionTrack(action: string, overrides: any = {}, play = true) {
     if (!theatreCanLeave() || Object.keys(overrides).length > 1) return;
     motion.previewLoop = null;
-    await characterPlayAction(action, play);
+    await characterActionPlayer().play(action, play);
   }
 
   buildActionsGrid(meta: any) {
     return el('div', { class: 'motion-actions-grid' },
       CHARACTER_ACTIONS.map((t) => {
-        const view = characterActionView(t.action);
+        const player = characterActionPlayer();
         const button = el('button', {
           id: `motion-action-${t.button}`, class: 'motion-action', 'aria-label': t.label,
           html: `<svg viewBox="0 0 24 24" aria-hidden="true">${MOTION_ICONS[t.button] || MOTION_ICONS.play}</svg><span class="motion-action-word">${t.label}</span>`,
           'aria-pressed': String(!motion.rest && motion.track === t.action),
-          title: view ? `${t.label} · ${t.action.replaceAll('_', ' ')} keyed in EffectCraft (${view} view)` : `${t.label} needs the ${meta.actions.find((a: any) => a.id === t.action)?.views?.join(' or ')} view rigged`,
+          title: player.describe(t.label, t.action),
           onclick: () => this.pickActionTrack(t.action),
         });
-        button.disabled = !view;
+        button.disabled = !player.canPlay(t.action);
         return button;
       }),
       el('button', {

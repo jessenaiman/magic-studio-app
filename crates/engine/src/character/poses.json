@@ -1,10 +1,11 @@
 {
   "skeleton": "plush-9",
-  "about": "Key poses for the shared plush skeleton. Times are seconds within one cycle. rotation and position are offsets from the part's rest pose (degrees; [dx, dy] pixels at the drawing's size); scale is absolute [x%, y%]. Parts: root (null), torso, head, ear_L, ear_R, arm_L, arm_R, leg_L, leg_R, tail. _L/_R are the character's own left/right. Walk follows contact (0, 0.5), down (0.125, 0.625), passing (0.25, 0.75) and up (0.375, 0.875); ears and tail trail their parent by about two frames.",
+  "about": "Key poses for the shared plush skeleton. Times are seconds within one cycle. rotation and position are offsets from the part's rest pose (degrees; [dx, dy] pixels at the drawing's size); scale is absolute [x%, y%]. Parts: root (null), torso, head, ear_L, ear_R, arm_L, arm_R, leg_L, leg_R, tail. _L/_R are the character's own left/right. Walk follows contact (0, 0.5), down (0.125, 0.625), passing (0.25, 0.75) and up (0.375, 0.875); ears and tail trail their parent by about two frames. model: the clip names a rigged 3D model (Tripo/Mixamo, Quaternius) may use for the action, first match plays, a '<Name>_' prefix also matches; yaw is the facing in degrees, 0 toward the camera.",
   "parts": ["torso", "head", "ear_L", "ear_R", "arm_L", "arm_R", "leg_L", "leg_R", "tail"],
   "actions": {
     "idle": {
       "views": ["front", "back", "side"],
+      "model": {"clips": ["idle", "Idle", "Swim"], "yaw": 0},
       "duration": 2.0,
       "loop": true,
       "keys": {
@@ -17,6 +18,7 @@
     },
     "walk_down": {
       "views": ["front"],
+      "model": {"clips": ["walk", "Walk", "Swim"], "yaw": 0},
       "duration": 1.0,
       "loop": true,
       "keys": {
@@ -36,12 +38,14 @@
     },
     "walk_up": {
       "views": ["back"],
+      "model": {"clips": ["walk", "Walk", "Swim"], "yaw": 180},
       "duration": 1.0,
       "loop": true,
       "same_as": "walk_down"
     },
     "walk_right": {
       "views": ["side"],
+      "model": {"clips": ["walk", "Walk", "Swim"], "yaw": 90},
       "duration": 1.0,
       "loop": true,
       "keys": {
@@ -66,6 +70,7 @@
     },
     "walk_left": {
       "views": ["side"],
+      "model": {"clips": ["walk", "Walk", "Swim"], "yaw": -90},
       "duration": 1.0,
       "loop": true,
       "same_as": "walk_right",
@@ -73,6 +78,7 @@
     },
     "jump": {
       "views": ["front", "back", "side"],
+      "model": {"clips": ["jump", "Jump"], "yaw": 0},
       "duration": 1.0,
       "loop": false,
       "keys": {
@@ -91,6 +97,7 @@
     },
     "turn": {
       "views": ["front", "back", "side"],
+      "model": {"clips": ["turn", "Turning"], "yaw": 0},
       "duration": 1.2,
       "loop": true,
       "keys": {
@@ -104,6 +111,7 @@
     },
     "wave": {
       "views": ["front", "side"],
+      "model": {"clips": ["wave_goodbye_01", "wave_goodbye_02", "wave", "Waving"], "yaw": 0},
       "duration": 2.0,
       "loop": true,
       "keys": {

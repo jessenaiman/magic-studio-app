@@ -167,14 +167,22 @@ pub fn cmd_character_action(s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
-/// The actions the pose table offers, and the views each one is drawn for.
-pub fn cmd_character_actions(_: &mut Session, _: &Value) -> Result<Value> {
-    let table: Value = serde_json::from_str(POSES).map_err(|e| bad(e.to_string()))?;
-    let actions: Vec<Value> = table["actions"]
+/// Each action of the pose table as the panels list it: the drawn views it plays in, its
+/// cycle, and the clips a rigged 3D model may play for it (`model`).
+pub(crate) fn action_summaries(table: &Value) -> Vec<Value> {
+    table["actions"]
         .as_object()
         .into_iter()
         .flatten()
-        .map(|(id, a)| json!({"id": id, "views": a["views"], "duration": a["duration"], "loop": a["loop"]}))
-        .collect();
-    Ok(json!({"ok": true, "skeleton": table["skeleton"], "actions": actions}))
+        .map(|(id, a)| {
+            json!({"id": id, "views": a["views"], "duration": a["duration"], "loop": a["loop"],
+            "model": a["model"]})
+        })
+        .collect()
+}
+
+/// The actions the pose table offers, and the views each one is drawn for.
+pub fn cmd_character_actions(_: &mut Session, _: &Value) -> Result<Value> {
+    let table: Value = serde_json::from_str(POSES).map_err(|e| bad(e.to_string()))?;
+    Ok(json!({"ok": true, "skeleton": table["skeleton"], "actions": action_summaries(&table)}))
 }

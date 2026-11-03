@@ -202,35 +202,34 @@ fn pick_primary_glb(manifest: &Value, glb_files: &[PathBuf]) -> Option<PathBuf> 
         })
         .or_else(|| glb_files.first().cloned())
 }
-fn glb_joint_count(path: &Path) -> u64 {
-    let Ok(bytes) = std::fs::read(path) else {
-        return 0;
-    };
-    let count_from_doc = |doc: &Value| -> u64 {
-        doc["skins"]
-            .as_array()
-            .map(|skins| {
-                skins
-                    .iter()
-                    .filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64))
-                    .max()
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0)
-    };
+/// The glTF JSON of a `.glb` (its first chunk) or a `.gltf` file.
+fn gltf_document(path: &Path) -> Option<Value> {
+    let bytes = std::fs::read(path).ok()?;
     if bytes.len() >= 20 && &bytes[0..4] == b"glTF" {
         let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
-        if &bytes[16..20] == b"JSON"
-            && bytes.len() >= 20 + chunk_len
-            && let Ok(doc) = serde_json::from_slice::<Value>(&bytes[20..20 + chunk_len])
-        {
-            return count_from_doc(&doc);
+        if &bytes[16..20] == b"JSON" && bytes.len() >= 20 + chunk_len {
+            return serde_json::from_slice(&bytes[20..20 + chunk_len]).ok();
         }
     }
-    if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
-        return count_from_doc(&doc);
-    }
-    0
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Joints of the model's largest skin.
+fn glb_joint_count(doc: &Value) -> u64 {
+    doc["skins"]
+        .as_array()
+        .and_then(|skins| skins.iter().filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64)).max())
+        .unwrap_or(0)
+}
+
+/// Names of the animation clips stored in the model.
+fn glb_clip_names(doc: &Value) -> Vec<String> {
+    doc["animations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a["name"].as_str().map(str::to_string))
+        .collect()
 }
 
 /// Inspect 3D models, rigged FBX/GLB files, Blender scenes, split `.anim.json` clips,
@@ -254,7 +253,9 @@ pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
     );
     let manifest = read_json_optional(&canonical.join("tripo.json")).unwrap_or_else(|| json!({}));
     let primary_glb = pick_primary_glb(&manifest, &glb_files);
-    let glb_joints = primary_glb.as_deref().map(glb_joint_count).unwrap_or(0);
+    let model_doc = primary_glb.as_deref().and_then(gltf_document);
+    let glb_joints = model_doc.as_ref().map(glb_joint_count).unwrap_or(0);
+    let model_clips = model_doc.as_ref().map(glb_clip_names).unwrap_or_default();
     let bone_count = import_meta["bones"].as_u64().unwrap_or(0).max(glb_joints);
     let rigged = bone_count > 0;
     let has_3d = primary_glb.is_some() || !fbx_files.is_empty() || !blend_files.is_empty();
@@ -268,6 +269,7 @@ pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
         "zip_archives": zip_files,
         "video_previews": video_previews,
         "clips": anim_clips,
+        "model_clips": model_clips,
         "rigged": rigged,
         "bone_count": bone_count,
         "rig_type": manifest["rig_type"].as_str().unwrap_or("biped"),
@@ -561,7 +563,7 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         "spec": (rig_type == "biped").then_some(skeleton_preset),
         "credits": 20,
     });
-    let model_joints = model_path.as_deref().map(glb_joint_count).unwrap_or(0);
+    let model_joints = model_path.as_deref().and_then(gltf_document).map(|d| glb_joint_count(&d)).unwrap_or(0);
     let bone_count = current["bone_count"]
         .as_u64()
         .unwrap_or(0)

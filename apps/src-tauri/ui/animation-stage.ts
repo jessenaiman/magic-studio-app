@@ -238,7 +238,7 @@ class AnimationStageController {
     if (motion.mode === 'composite') { seqPlay(); return; }
     if (motion.playing) { this.pause(); return; }
     if (motion.rest || !motion.sample) {
-      await characterPlayAction(motion.track || 'idle', true);
+      await characterActionPlayer().play(motion.track || 'idle', true);
       return;
     }
     if (!motion.sample) return;
