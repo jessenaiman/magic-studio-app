@@ -741,6 +741,73 @@ fn save_attachment(request: tauri::ipc::Request<'_>) -> Result<String, String> {
     Ok(out.to_string_lossy().into_owned())
 }
 
+/// Save a baked review clip under the open project, using raw IPC for the GLB bytes.
+#[tauri::command]
+fn save_animation_export(
+    engine: tauri::State<Engine>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let header = |key: &str| {
+        request
+            .headers()
+            .get(key)
+            .and_then(|v| v.to_str().ok())
+            .map(percent_decode)
+            .ok_or_else(|| format!("Missing {key}"))
+    };
+    let project = header("x-project")?;
+    let character = header("x-character")?;
+    let clip = header("x-clip")?;
+    let revision: u64 = header("x-revision")?
+        .parse()
+        .map_err(|_| "Invalid revision")?;
+    let session = engine.0.lock().map_err(|e| e.to_string())?;
+    if session.project_path.as_deref().and_then(|p| p.to_str()) != Some(project.as_str()) {
+        return Err("Project changed; export cancelled".into());
+    }
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Expected GLB bytes".into());
+    };
+    if bytes.len() < 20 || bytes.len() > 256 * 1024 * 1024 || &bytes[0..4] != b"glTF" {
+        return Err("Invalid or oversized GLB".into());
+    }
+    let review: Value = serde_json::from_slice(
+        &std::fs::read(project_dir(&project)?.join("animation-review.json"))
+            .map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    if !review["revisions"].as_array().is_some_and(|a| {
+        a.iter()
+            .any(|r| r["id"] == revision && r["character"] == character && r["clip"] == clip)
+    }) {
+        return Err("Save this revision before exporting".into());
+    }
+    let safe = |s: &str| {
+        s.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>()
+    };
+    let folder = project_dir(&project)?
+        .join("exports/animations")
+        .join(safe(&character));
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let out = folder.join(format!("{}-r{}.glb", safe(&clip), revision));
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&out)
+        .map_err(|e| format!("{}: {e}", out.display()))?;
+    file.write_all(bytes).map_err(|e| e.to_string())?;
+    Ok(out.to_string_lossy().into_owned())
+}
+
 /// Header values are ASCII; the file name arrives URI-encoded.
 fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
@@ -1039,6 +1106,7 @@ fn main() {
             snapshot,
             open_path,
             save_attachment,
+            save_animation_export,
             desktop_commands::desktop_reply,
             studio_show,
             studio_hide,

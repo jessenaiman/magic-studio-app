@@ -293,7 +293,7 @@ const magicTheatre = new TheatreController();
 function theatreFeedback() { return magicTheatre.feedback(); }
 function theatreEvent(stage: string, detail: Record<string, any> = {}) { magicTheatre.emitEvent(stage, detail); }
 function theatreRequireSaved() { magicTheatre.requireSaved(); }
-function theatreCanLeave() { return magicTheatre.canLeave(); }
+function theatreCanLeave() { return (!animationReview.active || animationReview.canLeave()) && magicTheatre.canLeave(); }
 async function theatreGuardIdentityChange(project: string) { return magicTheatre.guardIdentityChange(project); }
 function theatreMount(container: any) { magicTheatre.mount(container); }
 function theatreSetView(view: string) { magicTheatre.setView(view); }

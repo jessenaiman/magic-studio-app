@@ -56,6 +56,7 @@ fn main() {
 fn theatre_bundle() {
     let sources = [
         "frontend/theatre-frame.ts",
+        "frontend/rig-review-stage.ts",
         "frontend/stage-canvas.ts",
         "frontend/backstage-terminal.ts",
         "frontend/project-id.ts",
@@ -69,13 +70,15 @@ fn theatre_bundle() {
     }
     let modified = |path: &str| std::fs::metadata(path).and_then(|m| m.modified()).ok();
     let bundle = modified("ui/vendor/theatre.bundle.js");
-    if bundle.is_some()
+    if modified("ui/vendor/rig-review.bundle.js").is_some()
+        && bundle.is_some()
         && modified("ui/vendor/konva.bundle.js").is_some()
         && modified("ui/vendor/backstage/backstage-terminal.js").is_some()
         && modified("ui/vendor/mayhem-charts.bundle.js").is_some()
         && modified("ui/vendor/mayhem-scatter.bundle.js").is_some()
         && sources.iter().all(|s| {
-            modified(s) <= modified("ui/vendor/backstage/backstage-terminal.js")
+            modified(s) <= modified("ui/vendor/rig-review.bundle.js")
+                && modified(s) <= modified("ui/vendor/backstage/backstage-terminal.js")
                 && modified(s) <= bundle
                 && modified(s) <= modified("ui/vendor/mayhem-charts.bundle.js")
                 && modified(s) <= modified("ui/vendor/mayhem-scatter.bundle.js")

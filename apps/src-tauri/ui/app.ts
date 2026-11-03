@@ -427,6 +427,7 @@ class AppShellController {
 
   cleanupPreviousView(nextView: string) {
     if (typeof animationPause === "function") animationPause();
+    if (nextView !== 'animation') animationReview.dispose();
     if (nextView !== 'animation' && typeof animationJobsDispose === 'function') animationJobsDispose();
     if (nextView !== 'animation' && typeof tripo3DStage !== 'undefined') tripo3DStage.dispose();
   }

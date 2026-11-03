@@ -26,6 +26,7 @@ class FeedbackController {
       changed.push(...storyboardController.textDrafts.keys());
       if (state.data?.design?.dirty === true) changed.push('storyboard-design');
     }
+    if (typeof animationReview !== 'undefined' && animationReview.dirty) changed.push('animation-review');
     if (typeof theatreFeedback === 'function' && theatreFeedback().live_edits === 'needs_save') changed.push('theatre-motion');
     return changed;
   }

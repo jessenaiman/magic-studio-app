@@ -218,7 +218,12 @@ fn gltf_document(path: &Path) -> Option<Value> {
 fn glb_joint_count(doc: &Value) -> u64 {
     doc["skins"]
         .as_array()
-        .and_then(|skins| skins.iter().filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64)).max())
+        .and_then(|skins| {
+            skins
+                .iter()
+                .filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64))
+                .max()
+        })
         .unwrap_or(0)
 }
 
@@ -568,7 +573,11 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         "spec": (rig_type == "biped").then_some(skeleton_preset),
         "credits": 20,
     });
-    let model_joints = model_path.as_deref().and_then(gltf_document).map(|d| glb_joint_count(&d)).unwrap_or(0);
+    let model_joints = model_path
+        .as_deref()
+        .and_then(gltf_document)
+        .map(|d| glb_joint_count(&d))
+        .unwrap_or(0);
     let bone_count = current["bone_count"]
         .as_u64()
         .unwrap_or(0)

@@ -9,6 +9,7 @@ mod action;
 mod cut;
 mod mark;
 mod meta;
+pub mod review;
 mod rig;
 mod shot;
 mod sprite;
@@ -145,10 +146,23 @@ pub(crate) fn point(value: &Value) -> Option<[f64; 2]> {
 /// List characters and which app files each view has.
 pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
     let project_dir = crate::workshop::project_dir(s)?;
+    let cast: Vec<String> = s
+        .project_path
+        .as_ref()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|d| d["animation_cast"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
     let root = project_dir.join("assets/characters");
     let mut out = Vec::new();
     for entry in std::fs::read_dir(&root).into_iter().flatten().flatten() {
         let id = entry.file_name().to_string_lossy().into_owned();
+        if !cast.is_empty() && !cast.contains(&id) {
+            continue;
+        }
         let views: Vec<Value> = ["front", "side", "back"]
             .iter()
             .filter(|v| entry.path().join(v).is_dir())

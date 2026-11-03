@@ -92,6 +92,7 @@ class MotionStateController {
 
   reset() {
     theatreRequireSaved();
+    animationReview.dispose();
     this.remember();
     animationJobsDispose();
     animationPause();
@@ -107,7 +108,7 @@ class MotionStateController {
 
 const motion: Record<string, any> = new MotionStateController();
 
-function animationFeedback() { return motion.feedback(); }
+function animationFeedback() { return animationReview.active ? animationReview.feedback() : motion.feedback(); }
 function animationRemember() { motion.remember(); }
 
 function clampSessionNumber(v: any, key: string, fallback: number, min: number, max: number): number {
@@ -204,7 +205,15 @@ class AnimationViewController {
     await setView('animation');
   }
 
-  async open() {
+  async open(artworkOnly = false) {
+    if (!artworkOnly) {
+      const catalog = await motionCommand('character.list');
+      if ((catalog.characters || []).some((c: any) => c.tripo_3d?.available)) {
+        await animationReview.open();
+        return;
+      }
+    }
+    $('view-animation').classList.remove('rig-review');
     motion.mode = 'subject';
     if (motion.project === state.project && motion.meta) { animationDraw(); return; }
     theatreRequireSaved();
@@ -280,6 +289,7 @@ class AnimationViewController {
     return new PanelHeader({
       id: 'motion-stagebar', titleId: 'motion-caption', title: 'Loading artwork…',
       actions: [
+        el('button', { id: 'motion-full-review', class: 'ghost', onclick: () => animationReview.open() }, 'Full review'),
         toggle3dBtn, penBtn, pathVisBtn, grid,
         motionButton('motion-fit', 'Fit artwork', 'fit', () => { motion.fit = true; motion.zoom = 1; animationDraw(); }),
         el('button', { id: 'motion-actual', title: 'Actual size · 100%', 'aria-label': 'Actual size', onclick: () => { motion.fit = false; motion.zoom = 1; animationDraw(); } }, '1:1'),

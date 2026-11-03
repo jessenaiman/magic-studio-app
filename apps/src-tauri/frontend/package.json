@@ -1,11 +1,12 @@
 {
   "private": true,
   "scripts": {
-    "build": "bun run build:theatre && bun run build:konva && bun run build:backstage && bun run build:analytics",
+    "build": "bun run build:theatre && bun run build:konva && bun run build:backstage && bun run build:analytics && bun run build:review",
     "build:theatre": "bun build theatre-frame.ts --target browser --format iife --banner 'var __require;' --outfile ../ui/vendor/theatre.bundle.js",
     "build:backstage": "bun build backstage-terminal.ts --target browser --format iife --outdir ../ui/vendor/backstage && cp node_modules/@xterm/xterm/LICENSE ../ui/vendor/backstage/xterm-LICENSE && cp node_modules/@xterm/addon-fit/LICENSE ../ui/vendor/backstage/addon-fit-LICENSE",
     "build:konva": "bun build stage-canvas.ts --target browser --format iife --outfile ../ui/vendor/konva.bundle.js && cp node_modules/konva/LICENSE ../ui/vendor/konva-LICENSE",
-    "build:analytics": "bun build analytics-charts.ts --target browser --format iife --minify --outfile ../ui/vendor/mayhem-charts.bundle.js && bun build analytics-scatter.ts --target browser --format iife --minify --outfile ../ui/vendor/mayhem-scatter.bundle.js && cp node_modules/echarts/LICENSE ../ui/vendor/echarts-LICENSE && cp node_modules/echarts/NOTICE ../ui/vendor/echarts-NOTICE && cp node_modules/echarts/licenses/LICENSE-d3 ../ui/vendor/echarts-d3-LICENSE && cp node_modules/zrender/LICENSE ../ui/vendor/zrender-LICENSE && cp node_modules/three/LICENSE ../ui/vendor/three-LICENSE"
+    "build:analytics": "bun build analytics-charts.ts --target browser --format iife --minify --outfile ../ui/vendor/mayhem-charts.bundle.js && bun build analytics-scatter.ts --target browser --format iife --minify --outfile ../ui/vendor/mayhem-scatter.bundle.js && cp node_modules/echarts/LICENSE ../ui/vendor/echarts-LICENSE && cp node_modules/echarts/NOTICE ../ui/vendor/echarts-NOTICE && cp node_modules/echarts/licenses/LICENSE-d3 ../ui/vendor/echarts-d3-LICENSE && cp node_modules/zrender/LICENSE ../ui/vendor/zrender-LICENSE && cp node_modules/three/LICENSE ../ui/vendor/three-LICENSE",
+    "build:review": "bun build rig-review-stage.ts --target browser --format iife --outfile ../ui/vendor/rig-review.bundle.js"
   },
   "dependencies": {
     "@theatre/core": "0.7.0",

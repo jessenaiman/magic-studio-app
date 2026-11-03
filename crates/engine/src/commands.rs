@@ -72,6 +72,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "storyboard.toc"
         | "storyboard.template"
         | "storyboard.doctor"
+        | "animation.review"
         | "character.list"
         | "character.actions"
         | "song.lyrics"

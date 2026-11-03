@@ -1189,6 +1189,21 @@ fn specs_character() -> Vec<CommandSpec> {
             crate::character::cmd_character_sprite
         ),
         query!(
+            "animation.review",
+            "Animation Review Models and Saved Revisions",
+            "{}",
+            crate::character::review::cmd_review
+        ),
+        cmd!(
+            "animation.save_revision",
+            "Save Animation Revision",
+            ["Animation"],
+            None,
+            r#"{"expected_project":"absolute .magic path","expected_revision":0,"character":"id","clip":"clip name","parent":null,"draft":{"trim_start":0,"trim_end":1,"speed":1,"loop":false,"in_place":true,"keys":[],"issues":[],"notes":"","status":"needs-visual-review"}}"#,
+            always,
+            crate::character::review::cmd_save_revision
+        ),
+        query!(
             "character.meta",
             "Character Views, Parts and Actions",
             "{\"character\":\"id\"}",
