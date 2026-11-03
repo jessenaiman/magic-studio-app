@@ -46,7 +46,7 @@
 .may-inline-trend figcaption { color:var(--muted); }
 .may-bars { display:grid; gap:.35rem; }
 .may-bars>div { display:grid; grid-template-columns:minmax(8rem,1fr) 2fr 2rem; align-items:center; gap:.5rem; }
-.may-bars progress { width:100%; accent-color:var(--danger); height:.5rem; }
+.may-bars progress { width:100%; accent-color:var(--danger); height:.5rem; appearance:none; border:0; border-radius:var(--radius-sm); background:var(--bg);}
 .may-dashboard { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.7rem; padding:1rem; max-width:76rem; }
 .may-dashboard .may-head,.may-dashboard .may-p03 { grid-column:1/-1; }
 .may-dashboard .may-head h1 { margin:0; }
@@ -63,7 +63,6 @@
 .may-agent small {grid-column:1/-1;}
 .may-bars div {grid-template-columns:minmax(0,1.4fr) 1fr 2ch;}
 .may-bars span {white-space:nowrap;text-overflow:ellipsis;overflow:hidden;}
-.may-bars progress {appearance:none; border:0; border-radius:var(--radius-sm); background:var(--bg);}
 .may-bars progress::-webkit-progress-bar {background:var(--bg);}
 .may-bars progress::-webkit-progress-value {background:var(--danger);border-radius:var(--radius-sm);}
 .may-dashboard .may-trend {height:8rem;}
