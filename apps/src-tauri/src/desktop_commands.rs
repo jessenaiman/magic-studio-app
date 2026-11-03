@@ -333,27 +333,8 @@ fn engine_command(
     if result.is_object() {
         result["_ui_engine_revision"] = json!(revision);
     }
-    // This command came directly from the UI. Its awaiting handler renders once;
-    // refreshing here would call Open while that same transition is still in flight.
-    if ui_project_request {
-        return Ok(result);
-    }
-    // The page shows the change (and follows a project opened or created from outside).
-    let project = app
-        .state::<Engine>()
-        .with(None, |s| Ok(s.project_path.clone()))?;
-    page(
-        app,
-        "refresh",
-        &[
-            &json!(id),
-            &json!(project),
-            &json!(revision),
-            &result,
-            &json!(request_id),
-            params,
-        ],
-    )?;
+    // No page("refresh") via eval(): the page self-refreshes on _ui_engine_revision
+    // from the TS invoke() wrapper. Rust no longer reaches into the DOM to re-render.
     Ok(result)
 }
 

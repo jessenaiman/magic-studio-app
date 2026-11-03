@@ -35,6 +35,17 @@ async function invoke(command: string, params?: any, options?: any) {
   try {
     const result = await nativeInvoke(command, params, options);
     noteTransportSuccess(command, params, companion, result);
+    // Self-refresh on engine revision: Rust no longer calls page("refresh") via eval().
+    // The page watches _ui_engine_revision and re-renders itself, mirroring what the
+    // Rust shell used to do through the DOM bridge.
+    if (
+      command === 'engine_command'
+      && result?._ui_engine_revision
+      && params?.id
+      && window.magicUI
+    ) {
+      void window.magicUI.refresh(params.id, state.project, result._ui_engine_revision, result);
+    }
     return result;
   } catch (error) {
     if (companion) window.uiRegistry?.event({...companion, phase: 'error', error: String(error)});
