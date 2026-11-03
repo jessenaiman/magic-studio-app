@@ -110,7 +110,7 @@ class AnalyticsViewController {
     try {
       await mayhemBundle('mayhem-charts');
       if (node.isConnected && state.view === 'analytics')
-        this.chart = (window as any).magicMayhemCharts.mount(node, rows, 'line', 'var(--accent)', 'lines');
+        this.chart = (window as any).magicMayhemCharts.mount(node, rows, 'line', getComputedStyle(node).getPropertyValue('--accent').trim(), 'lines');
     } catch (e) { node.textContent = String(e); }
   }
 
@@ -157,7 +157,7 @@ class AnalyticsViewController {
     const scanButton=el('button',{id:'mayhem-search',class:'may-search',disabled:this.loading,
       'data-signal':this.loading?'yellow':violations?'red':'green',onclick:()=>this.render(true)},
       this.loading?'Scanning…':violations ? `Scan again · ${violations} violations` : 'Search for violations');
-    const part=(n:string,name:string,...body:any[])=>el('section',{class:'may-part'},
+    const part=(n:string,name:string,...body:any[])=>el('section',{class:'may-part may-p'+n},
       el('h2',{},el('small',{},n),name),...body);
     const nums=el('div',{class:'may-numbers'},...(d.metrics || []).map(m=>el('div',{},
       el('span',{},m.label),el('strong',{},m.current?.toLocaleString() ?? '—'),
@@ -165,10 +165,18 @@ class AnalyticsViewController {
     const traces=(items:any[],format:(row:any)=>string)=>el('ul',{class:'may-list'},
       ...items.map(row=>el('li',{},format(row))));
     const offenders=[...(functions || []),...files];
+    const bars=el('div',{class:'may-bars',id:'mayhem-violation-bars','aria-label':'Highest function complexity'});
+    const cap=e.rules?.max_function_ccn;
+    for (const f of (functions || []).filter(row=>row.ccn>cap).slice(0,5)) {
+      bars.append(el('div',{title:f.file+':'+f.start_line},
+        el('span',{},f.name),el('progress',{value:f.ccn,max:Math.max(functions[0].ccn,cap)}),
+        el('b',{},String(f.ccn))));
+    }
     const finding=(f:any)=> f.name ? `${f.name} · ${f.file}:${f.start_line} · CCN ${f.ccn}, ${f.nloc} code lines` :
       `${f.file} · ${f.lines} lines`;
     const cli=e.cli_scope, count=cli?.functions||0, usage=e.cli_events||[];
     const hierarchy=el('details',{class:'may-more'},el('summary',{id:'mayhem-command-tree'},'Explore magic-cli commands'));
+    hierarchy.open=true;
     hierarchy.ontoggle=async()=>{
       if (!hierarchy.open) {this.tree?.dispose();this.tree=null;hierarchy.querySelector('.may-tree')?.remove();return;}
       const node=el('div',{class:'may-tree','aria-label':'Command groups and registered commands'});hierarchy.append(node);
@@ -198,25 +206,25 @@ class AnalyticsViewController {
       el('p',{},`Source: Lizard. Retained tool traces: ${checks || 'none'}. Each tool reports at its own scan time.`),
       el('code',{},'magic-cli audit --tool lizard --tool eslint --tool stylelint'),
       ...own.map(r=>el('p',{},`${r.tool} · ${r.file}:${r.line || 1} · ${r.evidence.message || finding(r.evidence)}`)));
-    const content=el('div',{class:'may-summary','data-signal':sig},
+    const content=el('div',{class:'may-summary may-dashboard','data-signal':sig},
       el('header',{class:'may-head'},el('div',{},el('small',{},'MAYHEM  /  RULE 01'),el('h1',{},'Am I good?')),actions),
       part('01','Is Mayhem trustworthy?',el('strong',{},trust),el('small',{class:'may-stamp'},stamp),
-        el('p',{},'Could a maintained package replace this logic? ', review ? [review.verdict,review.finding,review.reviewer,review.evidence].join(' · '):'Outside review pending.'),
+        el('p',{class:'may-review-label'},'Package review · ', review ? [review.verdict,review.finding,review.reviewer,review.evidence].join(' · '):'Awaiting an outside reviewer.'),
         d.snapshot?el('button',{class:'ghost',onclick:async()=>{try{await navigator.clipboard.writeText(brief);toast('Review brief copied');}catch(err){toast(String(err));}}},'Copy review brief'):null,selfReport),
+
       part('02','Where are my agents?',Array.isArray(agents) && agents.length ?
-        traces(agents,a=>`${a.agent} · ${a.agent_status||'status unknown'} · ${a.cwd||'location unknown'} · ${a.pane_id||''}`):
+        el('div',{class:'may-agents'},...agents.map(a=>el('div',{class:'may-agent',title:a.cwd||''},el('b',{},a.agent),el('span',{},a.agent_status||'Unknown'),el('small',{},[a.cwd?.split('/').pop(),a.pane_id].filter(Boolean).join(' / '))))):
         el('p',{},Array.isArray(agents)?'Herdr reports no agents.':'Agent inventory unavailable.')),
-      part('03','God functions and oversized files',scanButton,el('strong',{},indicator,' ',title),el('p',{},d.reason),nums,
-        traces(offenders.slice(0,3),finding),offenders.length>3?el('details',{},el('summary',{},'All violations'),traces(offenders,finding)):null,
-        measured?null:el('p',{},'Run a source scan for the full list.'),el('details',{},el('summary',{},'Source line history'),trend)),
+      part('03','God functions and oversized files',el('div',{class:'may-scan-line'},scanButton,el('small',{},d.reason)),nums,
+        el('div',{class:'may-plots'},el('figure',{},el('figcaption',{},'Most complex functions · CCN'),bars),el('figure',{},el('figcaption',{},'Source lines · recent scans'),trend)),offenders.length?el('details',{},el('summary',{},'All violations'),traces(offenders,finding)):null,
+        measured?null:el('p',{},'Run a source scan for the full list.'),el('details',{},el('summary',{},'Measurement details'),el('small',{},stamp))),
       part('04','magic-cli',el('p',{},count?`${Math.round(100*cli.within_limits/count)}% of measured CLI functions meet the branching and length limits · ${cli.within_limits}/${count} · ${cli.source_lines} source lines`:'CLI size and standards coverage need a scan.'),
         el('p',{},usage.length?`Observed CLI call: ${usage[usage.length-1].command}`:'No CLI use observed in the retained events for this context.'),hierarchy),
       part('05','Scanner findings',el('p',{class:'muted'},'Open a trace for the rule, file and scanner output. Confirm the behavior before choosing a fix.'),...scanners),advanced,terminal);
     $('view-analytics').replaceChildren(content);
     const nav = $('mayhem-health');
     if (nav) { nav.textContent = title; nav.parentElement.dataset.health = sig; }
-    const historyBox=trend.parentElement as HTMLDetailsElement;
-    historyBox.ontoggle=()=>{if(historyBox.open && !this.chart) void this.trend(trend,d.history || []);};
+    void this.trend(trend,d.history || []);
   }
 }
 const mayhemView = new AnalyticsViewController();

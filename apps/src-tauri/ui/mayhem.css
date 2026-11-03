@@ -42,3 +42,29 @@
 .may-tool pre {max-height:18rem;overflow:auto;white-space:pre-wrap;}
 .may-tree {height:34rem;width:100%;min-width:0;}
 .may-part summary {cursor:pointer;color:var(--muted);}
+.may-inline-trend { margin:.5rem 0; padding:.5rem 1rem; background:var(--surface); border-radius:var(--radius); }
+.may-inline-trend figcaption { color:var(--muted); }
+.may-bars { display:grid; gap:.35rem; }
+.may-bars>div { display:grid; grid-template-columns:minmax(8rem,1fr) 2fr 2rem; align-items:center; gap:.5rem; }
+.may-bars progress { width:100%; accent-color:var(--danger); height:.5rem; }
+.may-dashboard { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.7rem; padding:1rem; max-width:76rem; }
+.may-dashboard .may-head,.may-dashboard .may-p03 { grid-column:1/-1; }
+.may-dashboard .may-head h1 { margin:0; }
+.may-dashboard .may-part { min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:.8rem 1rem; }
+.may-dashboard .may-part h2 { font-size:var(--text-md); margin:0 0 .6rem; }
+.may-dashboard .may-head { padding:.4rem .2rem; }
+.may-dashboard .may-numbers { border-block:1px solid var(--line); padding:.6rem 0; margin:.7rem 0; }
+.may-dashboard .may-plots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem; }
+.may-plots figure { margin:0; min-width:0; }
+.may-plots figcaption { color:var(--muted); margin-bottom:.3rem; }
+.may-scan-line,.may-agents { display:flex; align-items:center; flex-wrap:wrap;gap:.5rem; }
+.may-agent {display:grid;grid-template-columns:1fr auto;gap:.3rem 1rem;border-left:3px solid var(--accent);background:var(--bg);padding:.5rem .8rem;}
+.may-agent span,.may-agent small,.may-scan-line small {color:var(--muted);}
+.may-agent small {grid-column:1/-1;}
+.may-bars div {grid-template-columns:minmax(0,1.4fr) 1fr 2ch;}
+.may-bars span {white-space:nowrap;text-overflow:ellipsis;overflow:hidden;}
+.may-bars progress {appearance:none; border:0; border-radius:var(--radius-sm); background:var(--bg);}
+.may-bars progress::-webkit-progress-bar {background:var(--bg);}
+.may-bars progress::-webkit-progress-value {background:var(--danger);border-radius:var(--radius-sm);}
+.may-dashboard .may-trend {height:8rem;}
+@media(max-width:680px){.may-dashboard,.may-dashboard .may-plots{grid-template-columns:1fr;}}
