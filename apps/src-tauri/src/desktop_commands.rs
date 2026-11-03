@@ -370,12 +370,9 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
     {
         return Ok(result);
     }
-    if matches!(
-        id,
-        "project.open" | "project.new" | "project.close" | "project.intake" | "app.quit"
-    ) {
-        eval(app, "await acFeedback.report(); return true;")?;
-    }
+    // ui.* commands and engine commands update feedback state themselves
+    // (command_finished in Rust; acFeedback.report in TS). No pre-command
+    // JS injection needed here.
     if let Some(result) = ui_command(app, id, params, &none) {
         return result;
     }
