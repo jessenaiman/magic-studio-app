@@ -1063,6 +1063,7 @@ pub fn cmd_video_server_start(s: &mut Session, params: &Value) -> Result<Value> 
         ));
     }
     let mut status = workshop_status(s)?;
+    status["video_server"] = json!({"running":true,"url":native["studioUrl"],"target":"hyperframes"});
     status["native_preview"] = native;
     Ok(status)
 }

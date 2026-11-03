@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use crate::{EngineError, Result, Session};
 
 use crate::storyboard::{SceneDoc, clock, panel_spans, read_scene_doc, scene_doc_path, scenes};
-use crate::video_target::{target_project_chip, target_project_path, video_server_info};
+use crate::video_target::{target_project_chip, target_project_path};
 use crate::workspace::{has_extension, run_tool_in, workspace_root};
 
 // Re-export storyboard, video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
@@ -498,7 +498,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         "complete": complete,
         "video_target": target,
         "targets": targets,
-        "video_server": video_server_info(&dir, target),
+        "film_timeline": crate::film::timeline_file(s)?,
         "asset_files": assets.iter().map(|p| file_chip(p)).collect::<Vec<_>>(),
         "studio": {"name": studio_info.name, "intent": studio_info.intent, "source": studio_info.source},
         "video_project_path": effective_video_project,

@@ -62,6 +62,11 @@ fn path_arg(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
+/// The same timeline Studio opens and exports. Checking the file starts no external process.
+pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
+    Ok(file_info(&film(s)?.project))
+}
+
 /// Export the active sequence with FilmCraft; `scale` and `quality` make a quick draft.
 fn export_with(f: &Film, out: &Path, draft: bool) -> Result<()> {
     if let Some(dir) = out.parent() {

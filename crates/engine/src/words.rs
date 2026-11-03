@@ -450,7 +450,7 @@ fn detect_design_overlaps(html: &str, sections: &[Value]) -> Vec<Value> {
     overlaps
 }
 
-pub fn cmd_words_studio_track(s: &mut Session, _: &Value) -> Result<Value> {
+pub fn cmd_words_studio_track(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let path = dir.join("hyperframes/index.html");
     let html = fs::read_to_string(&path)
@@ -493,8 +493,10 @@ pub fn cmd_words_studio_track(s: &mut Session, _: &Value) -> Result<Value> {
         .filter(|(_, u)| !**u)
         .map(|((id, ..), _)| id.as_str())
         .collect();
+    let preview_url = (params["preview_status"] == true)
+        .then(|| crate::video_target::video_server_info(&dir, "hyperframes")["url"].clone());
     Ok(
-        json!({"source":path,"clip_count":clips.len(),"sections":sections,"overlaps":overlaps,"unmatched":unmatched}),
+        json!({"source":path,"preview_url":preview_url,"clip_count":clips.len(),"sections":sections,"overlaps":overlaps,"unmatched":unmatched}),
     )
 }
 

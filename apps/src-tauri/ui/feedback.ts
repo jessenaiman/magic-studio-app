@@ -32,7 +32,7 @@ class FeedbackController {
 
   paneRendered(): boolean {
     if (typeof state === 'undefined') return false;
-    const view = state.view === 'studio' && typeof serverUrl === 'function' && serverUrl() ? 'project' : state.view;
+    const view = state.view;
     const pane = document.querySelector(state.project || state.creating ? '#view-' + view : '#view-home');
     return !!pane && pane.getBoundingClientRect().width > 0 && pane.getBoundingClientRect().height > 0 && getComputedStyle(pane).display !== 'none' && pane.textContent.trim().length > 0;
   }
