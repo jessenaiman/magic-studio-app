@@ -202,6 +202,32 @@ fn pick_primary_glb(manifest: &Value, glb_files: &[PathBuf]) -> Option<PathBuf> 
         })
         .or_else(|| glb_files.first().cloned())
 }
+fn glb_joint_count(path: &Path) -> u64 {
+    let Ok(bytes) = std::fs::read(path) else {
+        return 0;
+    };
+    if bytes.len() < 20 || &bytes[0..4] != b"glTF" {
+        return 0;
+    }
+    let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+    if &bytes[16..20] != b"JSON" || bytes.len() < 20 + chunk_len {
+        return 0;
+    }
+    let Ok(doc) = serde_json::from_slice::<Value>(&bytes[20..20 + chunk_len]) else {
+        return 0;
+    };
+    doc["skins"]
+        .as_array()
+        .map(|skins| {
+            skins
+                .iter()
+                .filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64))
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+}
+
 
 /// Inspect 3D models, rigged FBX/GLB files, Blender scenes, split `.anim.json` clips,
 /// and breakout sheets for one character across canonical and companion 3D folders.
@@ -224,14 +250,9 @@ pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
     );
     let manifest = read_json_optional(&canonical.join("tripo.json")).unwrap_or_else(|| json!({}));
     let primary_glb = pick_primary_glb(&manifest, &glb_files);
-    let has_skeleton = !fbx_files.is_empty()
-        || import_meta["bones"].as_u64().unwrap_or(0) > 0
-        || primary_glb
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.contains("rigid-case") || n.contains("rigged"));
-    let rigged = has_skeleton;
+    let glb_joints = primary_glb.as_deref().map(glb_joint_count).unwrap_or(0);
+    let bone_count = import_meta["bones"].as_u64().unwrap_or(0).max(glb_joints);
+    let rigged = bone_count > 0;
     let has_3d = primary_glb.is_some() || !fbx_files.is_empty() || !blend_files.is_empty();
     json!({
         "available": has_3d,
@@ -244,6 +265,7 @@ pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
         "video_previews": video_previews,
         "clips": anim_clips,
         "rigged": rigged,
+        "bone_count": bone_count,
         "rig_type": manifest["rig_type"].as_str().unwrap_or("biped"),
         "skeleton_preset": manifest["skeleton_preset"].as_str().unwrap_or("mixamo"),
         "animate_in_place": manifest["animate_in_place"].as_bool().unwrap_or(true),
@@ -535,12 +557,15 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         "spec": (rig_type == "biped").then_some(skeleton_preset),
         "credits": 20,
     });
-    let verified_skeleton = current["rigged"].as_bool() == Some(true);
+    let model_joints = model_path.as_deref().map(glb_joint_count).unwrap_or(0);
+    let bone_count = current["bone_count"].as_u64().unwrap_or(0).max(model_joints);
+    let verified_skeleton = bone_count > 0;
     let manifest_path = dir.join("tripo.json");
     let mut manifest =
         read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
     manifest["character"] = json!(id);
     manifest["rigged"] = json!(verified_skeleton && riggable);
+    manifest["bone_count"] = json!(bone_count);
     manifest["precheck_passed"] = json!(riggable);
     manifest["rig_type"] = json!(rig_type);
     manifest["skeleton_preset"] = json!(skeleton_preset);
@@ -555,6 +580,7 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         "ok": true,
         "character": id,
         "rigged": verified_skeleton && riggable,
+        "bone_count": bone_count,
         "precheck_passed": riggable,
         "rigging_execution": if verified_skeleton {
             "verified_local_skeleton"
@@ -812,6 +838,15 @@ fn first_or_param_path(
                 .map(PathBuf::from)
         })
 }
+fn clip_specific_glb(clips_dir: &Path, id: &str, clip_id: &str, rig_type: &str) -> Option<PathBuf> {
+    let candidates = [
+        clips_dir.join(format!("{id}-preset_{rig_type}_{clip_id}.glb")),
+        clips_dir.join(format!("{id}-{clip_id}.glb")),
+        clips_dir.join(format!("{clip_id}.glb")),
+    ];
+    candidates.into_iter().find(|p| p.is_file())
+}
+
 
 /// `character.tripo.animate`: Author a split `.anim.json` clip and EffectCraft 3D comp.
 pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
@@ -833,7 +868,12 @@ pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
     std::fs::create_dir_all(&clips_dir)?;
 
     let fbx_path = first_or_param_path(s, &project_dir, p, "fbx", &current["fbx_files"]);
-    let glb_path = first_or_param_path(s, &project_dir, p, "glb", &current["primary_glb"]);
+    let glb_path = p["glb"]
+        .as_str()
+        .filter(|v| !v.is_empty())
+        .map(|v| resolve_project_path(s, &project_dir, v))
+        .or_else(|| clip_specific_glb(&clips_dir, &id, &spec.id, rig_type))
+        .or_else(|| first_or_param_path(s, &project_dir, p, "glb", &current["primary_glb"]));
     let blend_path = first_or_param_path(s, &project_dir, p, "blend", &current["blend_files"]);
     let preview_path =
         first_or_param_path(s, &project_dir, p, "preview", &current["video_previews"]);
