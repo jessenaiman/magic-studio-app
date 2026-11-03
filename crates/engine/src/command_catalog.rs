@@ -61,7 +61,6 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"character.tripo.breakout"
             | b"character.tripo.rig"
             | b"character.tripo.animate"
-            | b"character.animation.review"
     )
 }
 
@@ -1134,12 +1133,19 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
 
 fn specs_diagnostics() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "app.analytics",
-            "Analytics: Saved Code Measurements & Status",
-            "{\"scan\": false}",
-            cmd_app_analytics
-        ),
+        CommandSpec {
+            id: "app.analytics",
+            label: "Analytics: Saved Measurements & Explicit Jev Judgment",
+            menu: &[],
+            shortcut: None,
+            params: "{\"scan\":false,\"judge\":false}",
+            help: "Read analytics and the saved Jev report without rerunning judgments. scan=true explicitly measures code; judge=true separately sends bounded sequential batches of the existing native snapshot to installed Jev and persists target/analytics/jev.json. No scans or automatic fixes during judgment.",
+            example: "magic-cli app analytics judge=true",
+            enabled: always,
+            run: cmd_app_analytics,
+            journal: false,
+            long_running: true,
+        },
         query!(
             "app.doctor",
             "Doctor: CLI Availability and Video Server Metadata",
@@ -1307,15 +1313,6 @@ fn specs_character() -> Vec<CommandSpec> {
             "{\"character\":\"id\",\"preset\":\"optional preset name (e.g. wave_goodbye_01, idle, walk, bow)\",\"prompt\":\"optional AI text-to-motion prompt\",\"stages\":[{\"name\":\"Start\",\"prompt\":\"action\",\"duration_seconds\":2,\"waypoints\":[[0,0],[0,0]]}],\"name\":\"optional clip name\",\"rig_type\":\"biped\",\"animate_in_place\":true,\"fbx_preset\":\"blender|3dsmax|maya|unreal|unity\",\"format\":\"fbx|glb\",\"texture_size\":\"2K\",\"glb\":\"optional .glb\",\"fbx\":\"optional .fbx\",\"blend\":\"optional .blend\",\"preview\":\"optional .mp4\"}",
             always,
             crate::character::cmd_tripo_animate
-        ),
-        cmd!(
-            "character.animation.review",
-            "Review 2D-to-3D Animation Across Types, Actions, and Motions via ArtCraft Suite",
-            ["Animation"],
-            None,
-            "{\"character\":\"toasty\",\"project_dir\":\"optional project path\",\"render_test_frames\":false,\"output_dir\":\"optional renders/review path\"}",
-            always,
-            crate::character::cmd_character_animation_review
         ),
     ]
 }
