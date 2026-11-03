@@ -10,6 +10,12 @@ assume:
 - The suite, one line per app: [`.agents/skills/artcraft-suite/SKILL.md`](.agents/skills/artcraft-suite/SKILL.md)
 - Engine behavior on this checkout: the command registry in `crates/engine/src/commands.rs`
 
+Use this checkout as the application source. The maintained Magic skill is
+[`apps/magic-cli/SKILL.md`](apps/magic-cli/SKILL.md); read it here rather than
+assuming a globally installed skill describes this app. Discover installed
+tools through the version-independent CLI names on PATH. Do not substitute
+commands or pipeline scripts from another checkout.
+
 ## Workflow
 
 - Operate the installed app through `magic` / `magic-cli`. Discover commands
