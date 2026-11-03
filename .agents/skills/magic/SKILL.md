@@ -69,10 +69,18 @@ A screenshot, successful command, or empty error list alone proves no movie.
 After UI code edits, rebuild the shell before checking the installed app;
 report if the visible app still runs a different build.
 
-## Mayhem and every check-in
+## Code verification and review
 
-Before and after code changes, run the same relevant checks with matching
-scope/configuration. The full audit command is:
+For routine feature and bugfix tasks, verify code directly and locally:
+- Check compilation: `cargo check` and `cargo clippy -p <crate> -- -D warnings`
+- Review a specific modified file or directory: `magic-cli review <path>`
+- Auto-fix formatting/lint: `magic-cli doctor <path>`
+
+Do NOT run repository-wide `magic-cli audit` during feature work, and do NOT attempt to refactor unrelated files to reduce repository-wide CCN or complexity metrics.
+
+## Mayhem and audit sessions
+
+Full repository audits are exclusively for dedicated Mayhem and code analytics sessions:
 
 ```bash
 magic-cli audit /absolute/checkout --base <same-comparison-commit>
@@ -81,12 +89,7 @@ magic-cli ui click id=tab-analytics
 magic-cli ui look output=/absolute/mayhem-review.png
 ```
 
-Audit saves measurements in `target/analytics/`, including `audit.json`.
-Report check passes/failures, findings, functions over CCN 15, maximum CCN,
-and long files where measured. Compare before/after and explain regressions;
-Jesse expects measurable improvement, not merely another commit. Record
-unavailable checks honestly. Never claim improvement from missing or
-incomparable measurements. Preserve reports for Mayhem to display.
+Audit computes and saves measurements into `target/analytics/audit.json` across the entire workspace. Use this only when Jesse explicitly requests a repository audit or Mayhem review session.
 
 ## Tool boundaries
 

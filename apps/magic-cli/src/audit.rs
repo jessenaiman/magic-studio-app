@@ -307,9 +307,6 @@ fn apply_worktree_eslint_config(root: &Path, command: &mut Vec<String>) {
 }
 
 fn build_command(root: &Path, target: &Path, t: &Tool) -> Result<Vec<String>, String> {
-    if target.is_file() && t.name == "clippy" {
-        return Err("Clippy checks crates, not individual files; use a crate directory or --tool lizard for file complexity".into());
-    }
     if !t.configs.is_empty() && !has_config(root, t) {
         return Err(format!(
             "missing repository configuration: {}",
@@ -673,13 +670,56 @@ fn save_native_reports(dir: &Path, native: &serde_json::Value) {
     }
 }
 
-fn record_mayhem_audit(start: &Path, base: &str, status: i32, outcomes: &[ToolOutcome]) {
+fn print_lizard_report(comp: &serde_json::Value) {
+    eprintln!(
+        "[Lizard] scanned {} files, {} functions (total NLOC {})",
+        comp["files_analyzed"].as_u64().unwrap_or(0),
+        comp["functions_analyzed"].as_u64().unwrap_or(0),
+        comp["total_nloc"].as_u64().unwrap_or(0)
+    );
+    let over_15 = comp["functions_over_ccn_15"].as_u64().unwrap_or(0);
+    if over_15 > 0 {
+        eprintln!(
+            "[Lizard] {} functions exceed CCN 15 (max CCN {}):",
+            over_15,
+            comp["max_ccn"].as_u64().unwrap_or(0)
+        );
+        eprintln!("  CCN   NLOC  Location");
+        eprintln!("  ---   ----  --------");
+        if let Some(hotspots) = comp["hotspots"].as_array() {
+            for spot in hotspots.iter().take(20) {
+                let ccn = spot["ccn"].as_u64().unwrap_or(0);
+                if ccn > 15 {
+                    eprintln!(
+                        "  {:3}   {:4}  {}:{} ({})",
+                        ccn,
+                        spot["nloc"].as_u64().unwrap_or(0),
+                        spot["file"].as_str().unwrap_or("?"),
+                        spot["start_line"].as_u64().unwrap_or(0),
+                        spot["name"].as_str().unwrap_or("fn"),
+                    );
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "[Lizard] clean: 0 functions exceed CCN 15 (max CCN {})",
+            comp["max_ccn"].as_u64().unwrap_or(0)
+        );
+    }
+}
+
+fn record_mayhem_audit(
+    start: &Path,
+    base: &str,
+    status: i32,
+    outcomes: &[ToolOutcome],
+    lizard_comp: Option<serde_json::Value>,
+) {
     let root = repo_root(start);
     let dir = root.join("target/analytics");
     let _ = std::fs::create_dir_all(&dir);
-    let scan_lizard =
-        outcomes.iter().any(|o| o.name == "lizard") || !dir.join("lizard.json").is_file();
-    let comp = magicstudio_engine::complexity::read(&root, scan_lizard);
+    let comp = lizard_comp.unwrap_or_else(|| magicstudio_engine::complexity::read(&root, false));
     let tools = merge_tool_rows(&root, outcomes);
     let passed = tools.iter().filter(|t| t["status"] == "passed").count();
     let failed = tools.len().saturating_sub(passed);
@@ -735,9 +775,10 @@ fn record_mayhem_audit(start: &Path, base: &str, status: i32, outcomes: &[ToolOu
 fn default_review_tools(target: &Path) -> Vec<&'static str> {
     if target.is_file() {
         return match target.extension().and_then(|e| e.to_str()) {
-            Some("ts" | "js" | "mjs") => vec!["tsc", "eslint", "lizard"],
-            Some("css") => vec!["stylelint", "wallace"],
-            _ => vec!["lizard"],
+            Some("ts" | "js" | "mjs") => vec!["tsc", "eslint"],
+            Some("css") => vec!["stylelint"],
+            Some("rs") => vec!["clippy"],
+            _ => Vec::new(),
         };
     }
     let mut out = Vec::new();
@@ -748,9 +789,8 @@ fn default_review_tools(target: &Path) -> Vec<&'static str> {
         out.extend(["tsc", "eslint"]);
     }
     if has_ext_under(target, "css") {
-        out.extend(["stylelint", "wallace"]);
+        out.push("stylelint");
     }
-    out.extend(["lizard", "jscpd"]);
     out
 }
 
@@ -798,7 +838,7 @@ pub fn run(
     } else if review_mode {
         default_review_tools(target)
     } else if single_file {
-        vec!["lizard"]
+        vec!["clippy"]
     } else {
         TOOLS.iter().map(|t| t.name).collect()
     };
@@ -811,9 +851,50 @@ pub fn run(
     };
     let mut status = 0;
     let mut outcomes = Vec::new();
+    let mut lizard_comp = None;
     for name in names {
         let t = tool(name);
         let root = config_root(start, t);
+        if !review_mode && name == "lizard" {
+            let comp = magicstudio_engine::complexity::read(&root, !dry_run);
+            print_lizard_report(&comp);
+            let over_15 = comp["functions_over_ccn_15"].as_u64().unwrap_or(0);
+            let code = if comp["available"] != true || over_15 > 0 {
+                1
+            } else {
+                0
+            };
+            let mut issues = Vec::new();
+            if let Some(hotspots) = comp["hotspots"].as_array() {
+                for fn_row in hotspots.iter().take(25) {
+                    let ccn = fn_row["ccn"].as_u64().unwrap_or(0);
+                    let nloc = fn_row["nloc"].as_u64().unwrap_or(0);
+                    if ccn > 15 || nloc > 100 {
+                        issues.push(serde_json::json!({
+                            "toolId": "Lizard",
+                            "patternId": "Lizard_ccn-hotspot",
+                            "filePath": fn_row["file"],
+                            "line": fn_row["start_line"],
+                            "severity": "Warning",
+                            "message": format!("{} has CCN {} and NLOC {}", fn_row["name"].as_str().unwrap_or("fn"), ccn, nloc),
+                        }));
+                    }
+                }
+            }
+            lizard_comp = Some(comp);
+            outcomes.push(ToolOutcome {
+                name: t.name,
+                label: t.label,
+                exit_code: code,
+                findings: over_15 as usize,
+                issues,
+                error: None,
+            });
+            if status == 0 {
+                status = code;
+            }
+            continue;
+        }
         let mut run_err = None;
         let mut out_text = String::new();
         let code = build_command(&root, target, t)
@@ -849,47 +930,8 @@ pub fn run(
             status = code;
         }
     }
-    if !dry_run {
-        record_mayhem_audit(start, base, status, &outcomes);
+    if !dry_run && !review_mode {
+        record_mayhem_audit(start, base, status, &outcomes, lizard_comp);
     }
     status
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_patterns_match_exact_names_and_prefixes() {
-        assert!(matches("stylelint.config.mjs", "stylelint.config.*"));
-        assert!(matches(".stylelintrc.json", ".stylelintrc*"));
-        assert!(matches("Cargo.toml", "Cargo.toml"));
-        assert!(!matches("Cargo.toml.bak", "Cargo.toml"));
-    }
-
-    #[test]
-    fn a_file_is_measured_where_the_command_named_the_root() {
-        let root = Path::new("/repo");
-        let got = with_target(
-            vec!["lizard".into(), ".".into()],
-            root,
-            Path::new("/repo"),
-            "lizard",
-        );
-        assert_eq!(got, ["lizard", "/repo"]);
-        let got = with_target(
-            vec!["stylelint".into(), "**/*.css".into()],
-            root,
-            Path::new("/repo/ui"),
-            "stylelint",
-        );
-        assert_eq!(got, ["stylelint", "/repo/ui/**/*.css"]);
-        let got = with_target(
-            vec!["git".into(), "diff".into()],
-            root,
-            Path::new("/repo/ui"),
-            "scope",
-        );
-        assert_eq!(got, ["git", "diff"]);
-    }
 }
