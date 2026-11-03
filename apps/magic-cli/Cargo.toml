@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+default-run = "magic-cli"
 
 [lints]
 workspace = true
@@ -12,6 +13,10 @@ workspace = true
 [[bin]]
 name = "magic-cli"
 path = "src/main.rs"
+
+[[bin]]
+name = "craft-animation-review"
+path = "src/bin/craft_animation_review.rs"
 
 [dependencies]
 magicstudio-engine = { workspace = true }

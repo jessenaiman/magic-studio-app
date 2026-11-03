@@ -220,10 +220,11 @@ fn glb_joint_count(path: &Path) -> u64 {
     };
     if bytes.len() >= 20 && &bytes[0..4] == b"glTF" {
         let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
-        if &bytes[16..20] == b"JSON" && bytes.len() >= 20 + chunk_len {
-            if let Ok(doc) = serde_json::from_slice::<Value>(&bytes[20..20 + chunk_len]) {
-                return count_from_doc(&doc);
-            }
+        if &bytes[16..20] == b"JSON"
+            && bytes.len() >= 20 + chunk_len
+            && let Ok(doc) = serde_json::from_slice::<Value>(&bytes[20..20 + chunk_len])
+        {
+            return count_from_doc(&doc);
         }
     }
     if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
@@ -231,7 +232,6 @@ fn glb_joint_count(path: &Path) -> u64 {
     }
     0
 }
-
 
 /// Inspect 3D models, rigged FBX/GLB files, Blender scenes, split `.anim.json` clips,
 /// and breakout sheets for one character across canonical and companion 3D folders.
@@ -455,7 +455,7 @@ pub fn cmd_tripo_breakout(s: &mut Session, p: &Value) -> Result<Value> {
     }))
 }
 
-fn validate_rig_options<'a>(p: &'a Value) -> Result<(&'a str, &'a str, &'a str, u64)> {
+fn validate_rig_options(p: &Value) -> Result<(&str, &str, &str, u64)> {
     let rig_type = p["rig_type"].as_str().unwrap_or("biped");
     if ![
         "biped",
@@ -562,7 +562,10 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         "credits": 20,
     });
     let model_joints = model_path.as_deref().map(glb_joint_count).unwrap_or(0);
-    let bone_count = current["bone_count"].as_u64().unwrap_or(0).max(model_joints);
+    let bone_count = current["bone_count"]
+        .as_u64()
+        .unwrap_or(0)
+        .max(model_joints);
     let verified_skeleton = bone_count > 0;
     let manifest_path = dir.join("tripo.json");
     let mut manifest =
@@ -858,7 +861,6 @@ fn clip_specific_glb(clips_dir: &Path, id: &str, clip_id: &str, rig_type: &str) 
     ];
     candidates.into_iter().find(|p| p.is_file())
 }
-
 
 /// `character.tripo.animate`: Author a split `.anim.json` clip and EffectCraft 3D comp.
 pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {

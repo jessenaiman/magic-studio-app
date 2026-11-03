@@ -92,6 +92,21 @@ enum Cmd {
         #[arg(long, default_value = "HEAD")]
         base: String,
     },
+    /// Review 2D-to-3D animation across types, actions, and motions using ArtCraft suite CLIs.
+    ReviewAnimation {
+        /// Project directory containing character assets and motion comps
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Character identifier (defaults to toasty)
+        #[arg(long, default_value = "toasty")]
+        character: String,
+        /// Live render key motion frames using effectcraft-cli
+        #[arg(long)]
+        render_frames: bool,
+        /// Custom output directory for test renders
+        #[arg(long)]
+        render_dir: Option<PathBuf>,
+    },
     /// Select a desktop window; list inspects responsive windows without rebinding.
     Studio {
         #[command(subcommand)]
@@ -364,7 +379,11 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
         Cmd::Studio { action } => run_studio(s, action, dry)?,
         Cmd::Session { action } => run_session(s, action)?,
         Cmd::Registry(tokens) => run_registry(s, &tokens, dry)?,
-        Cmd::Mcp | Cmd::Doctor { .. } | Cmd::Audit { .. } | Cmd::Review { .. } => {
+        Cmd::Mcp
+        | Cmd::Doctor { .. }
+        | Cmd::Audit { .. }
+        | Cmd::Review { .. }
+        | Cmd::ReviewAnimation { .. } => {
             unreachable!("handled before a session is loaded")
         }
     }
@@ -387,6 +406,47 @@ fn run(cli: Cli) -> Result<(), String> {
             let target =
                 std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
             std::process::exit(audit::run(&target, tools, cli.dry_run, base, true));
+        }
+        Some(Cmd::ReviewAnimation {
+            path,
+            character,
+            render_frames,
+            render_dir,
+        }) => {
+            let target = match std::fs::canonicalize(path) {
+                Ok(p) => p,
+                Err(_) => path.clone(),
+            };
+            let out_dir = render_dir
+                .clone()
+                .unwrap_or_else(|| target.join("renders/review"));
+            let ctx = magicstudio_engine::character::review::ReviewContext {
+                project_dir: target,
+                character_id: character.clone(),
+                render_test_frames: *render_frames,
+                output_render_dir: out_dir,
+            };
+            let pipeline = magicstudio_engine::character::review::AnimationReviewPipeline::new();
+            let report = match pipeline.execute(&ctx) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Error executing animation review: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if cli.json {
+                match serde_json::to_string_pretty(&report) {
+                    Ok(j) => println!("{j}"),
+                    Err(e) => eprintln!("Serialization error: {e}"),
+                }
+            } else {
+                print!("{}", pipeline.format_terminal(&report));
+            }
+            if report.overall_verdict == magicstudio_engine::character::review::ReviewVerdict::Fail
+            {
+                std::process::exit(1);
+            }
+            std::process::exit(0);
         }
         _ => {}
     }
