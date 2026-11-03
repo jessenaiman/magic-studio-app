@@ -1,10 +1,18 @@
 //! UI project operations enter the same guarded dispatch as CLI and MCP.
 //! The correlated dispatch reply is rendered by the initiating UI handler, without recursive Open.
+//!
+//! Reasoning for the Pending slot: multiple agents (CLI, MCP, herdr panes) can issue
+//! project.open/new/intake simultaneously. The Mutex serializes them so one transition
+//! completes before another starts, and the _ui_dispatch_token lets the initiating
+//! caller match its own reply. This is coordination, not a claim the design is optimal.
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use tauri::Manager;
 
 #[derive(Default)]
+/// One in-flight project transition at a time. Serializes concurrent project.open/new/intake
+/// from multiple agents so transitions don't interleave. The token lets the caller match
+/// its own reply.
 pub struct Pending(Mutex<Option<(String, String)>>);
 
 struct Request<'a>(&'a Pending);
@@ -16,6 +24,8 @@ impl Drop for Request<'_> {
     }
 }
 
+/// Returns true when `id`/`params` match the in-flight project transition, meaning
+/// this call is the UI's own follow-up to a transition it started (not a new agent request).
 pub fn is_ui_request(app: &tauri::AppHandle, id: &str, params: &Value) -> bool {
     app.state::<Pending>().0.lock().ok().is_some_and(|pending| {
         pending.as_ref().is_some_and(|(command, token)| {
