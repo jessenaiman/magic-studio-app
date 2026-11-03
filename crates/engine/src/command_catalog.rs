@@ -39,6 +39,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.frame"
             | b"video.export"
             | b"video.preview"
+            | b"scribbles.generate"
             | b"scribbles.new"
             | b"scribbles.image"
             | b"scribbles.sheet"
@@ -1238,6 +1239,21 @@ fn specs_character() -> Vec<CommandSpec> {
 /// Scribbles: structured drawing requests, one template per kind of animation asset.
 fn specs_scribbles() -> Vec<CommandSpec> {
     vec![
+        query!(
+            "fidget.prepare",
+            "Prepare Final Drawing Prompt and References (Fidget)",
+            r#"{"kind":"new|image|sheet|poses|actions|custom (default custom)","prompt":"character or drawing","reference":"image path or array","notes":"optional","action":"walk|run|jump|wave|turn","provider":"optional","model":"optional","character":"optional id","project":"optional .magic","name":"optional","timeout_s":900}"#,
+            crate::fidget::cmd_fidget_prepare
+        ),
+        cmd!(
+            "scribbles.generate",
+            "Generate Final Drawing (Scribbles)",
+            ["Scribbles"],
+            None,
+            r#"{"prompt":"final drawing instructions (unchanged)","references":["optional project PNG paths; max 5"],"provider":"optional; settings scribbles.provider or image provider","model":"optional; settings scribbles.model or gpt-6-luna","project":"optional .magic","character":"optional id","transparent_background":true,"timeout_s":900,"name":"optional","fidget":"optional preparation metadata"}"#,
+            always,
+            crate::scribbles::cmd_scribbles_generate
+        ),
         query!(
             "scribbles.templates",
             "Scribbles Templates",

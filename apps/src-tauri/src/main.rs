@@ -155,7 +155,7 @@ async fn execute_engine_command(
     let long = magicstudio_engine::find_command(&id).is_some_and(|c| c.long_running);
     // Image generation attaches an asset and saves the project. Keep that mutation serialized;
     // merging an old background snapshot could overwrite concurrent asset edits.
-    if !long || id == "image.generate" {
+    if !long || id == "image.generate" || id.starts_with("scribbles.") {
         return tauri::async_runtime::spawn_blocking(move || {
             app.state::<Engine>()
                 .with(None, |s| s.execute(&id, params).map_err(|e| e.to_string()))
