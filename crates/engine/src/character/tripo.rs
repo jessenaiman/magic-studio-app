@@ -241,6 +241,7 @@ pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
     let glb_files = collect_unique_ext(&dirs, &["glb", "gltf"], 3);
     let fbx_files = collect_unique_ext(&dirs, &["fbx"], 3);
     let blend_files = collect_unique_ext(&dirs, &["blend"], 3);
+    let tcraft_files = collect_unique_ext(&dirs, &["tcraft"], 3);
     let zip_files = collect_unique_ext(&dirs, &["zip"], 2);
     let video_previews = collect_unique_ext(&dirs, &["mp4", "webm", "mov"], 2);
     let (mut anim_clips, import_meta, repair_meta, multistage_meta) = scan_json_metadata(&dirs);
@@ -265,6 +266,7 @@ pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
         "glb_files": glb_files,
         "fbx_files": fbx_files,
         "blend_files": blend_files,
+        "tcraft_files": tcraft_files,
         "zip_archives": zip_files,
         "video_previews": video_previews,
         "clips": anim_clips,
@@ -507,9 +509,11 @@ fn build_precheck_value(
 ) -> (bool, Value) {
     let observed_faces = p["face_count"]
         .as_u64()
+        .or_else(|| tc_report["mesh"]["triangles"].as_u64())
         .or_else(|| tc_report["triangles"].as_u64())
         .or_else(|| current["import_summary"]["faces"].as_u64())
         .unwrap_or(10_000);
+    let observed_vertices = tc_report["mesh"]["vertices"].as_u64();
     let within_limit = observed_faces <= max_faces;
     let fallback = if !within_limit {
         Some("retopologize")
@@ -526,6 +530,7 @@ fn build_precheck_value(
             "model_version": "v3.0-20260909",
             "topology": topology,
             "face_count": observed_faces,
+            "vertex_count": observed_vertices,
             "face_limit": max_faces,
             "within_polygon_limit": within_limit,
             "t_pose_ready": t_pose_ready,

@@ -1,7 +1,7 @@
 // Mayhem: code, usage and tool reports. Saved measurements are read on entry;
 // scanning is an explicit action, never a timer. Report pieces come from report.js.
 const MAYHEM_SECTIONS = [['overview', 'Overview'], ['code', 'Code'], ['usage', 'Usage'], ['tools', 'Tools'],
-  ['commands', 'Commands'], ['backstage', 'Backstage'], ['architecture', 'Architecture']];
+  ['commands', 'Commands'], ['backstage', 'Backstage'], ['architecture', 'Architecture'], ['scatter', 'Complexity lab']];
 // Existing Archify references, not live system models.
 const MAYHEM_DIAGRAMS = [
   {id: 'magic-cli', file: 'magic-cli-architecture.html', title: 'Magic CLI & Studio architecture', source: 'Rust magic-cli · unified live Studio & headless engine routing', revision: null},
@@ -71,13 +71,13 @@ function mayhemAuditChecks(audit: any = {}) {
 function mayhemHistory(comp: any = {}) {
   const rows = [...(comp.history || [])].reverse().slice(0, 10);
   return new ReportTable({rows, empty: 'Run magic-cli audit to append revision snapshots.', columns: [
-    {label: 'When', value: (row) => mayhemTime(row.timestamp)},
-    {label: 'Revision', value: (row) => el('code', {}, row.revision || '—')},
-    {label: 'Functions', value: (row) => row.functions, numeric: true},
-    {label: 'Over CCN 15', value: (row) => row.over_15, numeric: true},
+    {label: 'When', value: (row) => mayhemTime(row.measured_at_unix_secs)},
+    {label: 'Revision', value: (row) => el('code', {}, row.source_revision || '—')},
+    {label: 'Functions', value: (row) => row.functions_analyzed, numeric: true},
+    {label: 'Over CCN 15', value: (row) => row.functions_over_ccn_15, numeric: true},
     {label: 'Max CCN', value: (row) => row.max_ccn, numeric: true},
-    {label: 'Source lines', value: (row) => row.lines, numeric: true, compact: true},
-    {label: 'Long files', value: (row) => row.long_files ?? 0, numeric: true},
+    {label: 'Source lines', value: (row) => row.total_source_lines, numeric: true, compact: true},
+    {label: 'Long files', value: (row) => row.long_files_count ?? null, numeric: true},
   ]}).element;
 }
 
@@ -162,6 +162,128 @@ function mayhemHealthWarnings(d: any): string[] {
   if (comp.last_error || comp.cache_error) warnings.push('scan error recorded');
   return warnings;
 }
+type MayhemChartRow = {label: string; value: number};
+type MayhemScatterRow = {label: string; ccn: number; nloc: number};
+type MayhemResource = {dispose(): void};
+type MayhemJevItem = {id: string; source: string; evidence: unknown; choice: string; confidence: number | null; needs_review: boolean; error?: string};
+type MayhemJevReport = {available?: boolean; state?: string; measured_at_unix_secs?: number; rubric?: Record<string, unknown>;
+  counts?: {total: number; excluded: number; truncated: number; failed: number; by_label: Record<string, number>};
+  items?: MayhemJevItem[]; error?: string};
+type MayhemChartSource = {complexity?: {available?: boolean; languages?: {lang: string; label?: string; lines?: number}[];
+  history?: {measured_at_unix_secs?: number; max_ccn?: number}[]};
+  usage?: {available?: boolean; agents?: {name?: string; id?: string; today_tokens?: number}[]};
+  audit?: {available?: boolean; tools?: {label?: string; tool?: string; findings?: number}[]}};
+
+function mayhemNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
+
+function mayhemChartSeries(d: MayhemChartSource) {
+  const comp = d.complexity || {}, usage = d.usage || {}, audit = d.audit || {};
+  return {
+    languages: comp.available ? (comp.languages || []).filter(row => mayhemNumber(row.lines))
+      .map(row => ({label: row.label || MAYHEM_LANG_LABELS[row.lang] || row.lang, value: row.lines})) : [],
+    usage: usage.available ? (usage.agents || []).filter(row => mayhemNumber(row.today_tokens))
+      .map(row => ({label: row.name || row.id || 'Unnamed agent', value: row.today_tokens})) : [],
+    history: comp.available ? (comp.history || []).filter(row => mayhemNumber(row.measured_at_unix_secs) && mayhemNumber(row.max_ccn))
+      .map(row => ({label: mayhemTime(row.measured_at_unix_secs), value: row.max_ccn})) : [],
+    checks: audit.available ? (audit.tools || []).filter(row => mayhemNumber(row.findings))
+      .map(row => ({label: row.label || row.tool || 'Unnamed check', value: row.findings})) : [],
+  };
+}
+
+function mayhemScatterRows(comp: {available?: boolean; hotspots?: {name?: string; file?: string; start_line?: number; ccn?: number; nloc?: number}[]}): MayhemScatterRow[] {
+  return comp.available ? (comp.hotspots || []).filter(row => mayhemNumber(row.ccn) && mayhemNumber(row.nloc))
+    .map(row => ({label: `${row.name || 'Unnamed'} · ${row.file || '?'}:${row.start_line ?? '?'}`, ccn: row.ccn, nloc: row.nloc})) : [];
+}
+
+const mayhemBundles = new Map<string, Promise<void>>();
+function mayhemBundle(file: string): Promise<void> {
+  // This WebKit UI targets ES2023, before Promise.withResolvers.
+  if (!mayhemBundles.has(file)) mayhemBundles.set(file, new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `vendor/${file}.bundle.js`;
+    script.onload = () => resolve();
+    script.onerror = () => { script.remove(); mayhemBundles.delete(file); reject(new Error(`Could not load ${file}. Rebuild frontend bundles.`)); };
+    document.head.append(script);
+  }));
+  return mayhemBundles.get(file);
+}
+
+function mayhemEvidence(title: string, value: unknown) {
+  return el('details', {class: 'mayhem-evidence'}, el('summary', {}, title),
+    el('pre', {}, JSON.stringify(value ?? null, null, 2)));
+}
+
+function mayhemChart(title: string, rows: MayhemChartRow[], note: string, unit: string, tone: string, kind = 'bar') {
+  const chart = el('div', {class: 'mayhem-chart', role: 'img', 'aria-label': `${title} · ${unit}`});
+  chart.style.setProperty('--mayhem-chart-rows', String(kind === 'bar' ? rows.length : 0));
+  const fallback = el('details', {class: 'mayhem-evidence'}, el('summary', {}, `Exact values · ${rows.length} measurements`),
+    new ReportTable({rows, columns: [{label: 'Source', value: row => row.label}, {label: unit, value: row => row.value, numeric: true}]}).element);
+  const body = rows.length ? chart : el('p', {class: 'mayhem-empty'}, 'No saved measurements for this chart. Unknown is not zero.');
+  if (rows.length) {
+    const epoch = mayhemView.epoch;
+    queueMicrotask(async () => {
+      try {
+        await mayhemBundle('mayhem-charts');
+        if (epoch !== mayhemView.epoch || !chart.isConnected || !mayhemView.visible()) return;
+        const api = window['magicMayhemCharts'] as {mount(node: HTMLElement, rows: MayhemChartRow[], kind: string, color: string, unit: string): MayhemResource};
+        const color = getComputedStyle(chart).getPropertyValue(tone).trim();
+        mayhemView.resources.push(api.mount(chart, rows, kind, color, unit));
+      } catch (error) {
+        if (!chart.isConnected || epoch !== mayhemView.epoch) return;
+        chart.classList.add('mayhem-empty');
+        chart.textContent = `Chart unavailable: ${String(error)}. Exact saved values remain below.`;
+        fallback.open = true;
+      }
+    });
+  }
+  return new ReportSection({title, note}, body, fallback).element;
+}
+
+function mayhemJevTable(items: MayhemJevItem[]) {
+  return new ReportTable({rows: items, empty: 'No recorded items.', columns: [
+    {label: 'Unit', value: row => el('code', {}, row.id)},
+    {label: 'Source', value: row => row.source},
+    {label: 'Jev choice', value: row => row.choice || 'No choice'},
+    {label: 'Probability', value: row => row.confidence, text: row => mayhemNumber(row.confidence) ? `${reportValue(row.confidence * 100)}%` : 'Unknown', numeric: true},
+    {label: 'Review', value: row => row.error || (row.needs_review ? 'Needs human review' : 'Not escalated')},
+    {label: 'Evidence', value: row => mayhemEvidence('Inspect native evidence', row.evidence)},
+  ]}).element;
+}
+
+function mayhemJev(report: MayhemJevReport = {}) {
+  const hasReport = Boolean(report.available || report.measured_at_unix_secs);
+  const counts = hasReport ? report.counts : undefined, items = report.items || [], running = mayhemView.judging;
+  const escalation = items.filter(item => item.needs_review || item.error);
+  const partition = report.rubric?.partition;
+  const cap = partition && typeof partition === 'object' && 'max_batch_items' in partition && mayhemNumber(partition.max_batch_items) ? partition.max_batch_items : null;
+  const step = (n: string, title: string, summary: string, ...body: HTMLElement[]) =>
+    el('section', {class: 'mayhem-step'}, el('span', {class: 'mayhem-step-number'}, n),
+      el('div', {}, el('h3', {}, title), el('p', {}, summary), ...body));
+  const status = running ? 'Running Jev on saved evidence. No staged progress is inferred.'
+    : mayhemView.judgeError ? `Run failed: ${mayhemView.judgeError}. Previous report remains below.`
+    : `${report.state || 'Not run'}${hasReport ? ` · saved ${mayhemTime(report.measured_at_unix_secs)}` : ''}${report.error ? ` · ${report.error}` : ''}`;
+  const button = el('button', {class: 'start', disabled: running || mayhemView.loading,
+    'data-commands': 'app.analytics', onclick: () => mayhemView.runJev(),
+    title: 'Run Jev once on saved native evidence only; does not scan code or execute audit tools'}, running ? 'Running Jev…' : 'Run Jev');
+  return new ReportSection({title: 'From measurements to decisions', note: 'Native tools measure. Jev judges. A person approves the work.', actions: [button]},
+    el('p', {class: 'mayhem-jev-status', role: 'status', 'aria-live': 'polite'}, status),
+    el('div', {class: 'mayhem-steps'},
+      step('01', 'Decide', 'Fixed choices: actionable · observe · insufficient. Rubric is frozen by the backend for each run.',
+        mayhemEvidence('Frozen rubric · exact recorded contract', report.rubric || 'Run Jev to record the backend rubric.')),
+      step('02', 'Partition', counts ? `${counts.total} candidate units · ${counts.excluded} excluded · ${counts.truncated} evidence clipped · ${items.length} submitted${cap === null ? '' : ` · ${cap} per batch`}.`
+        : `Existing native evidence only. One evidence record per unit${cap === null ? '; backend batch size not yet available' : `; ${cap} per batch`}. Exclusion policy below.`,
+        mayhemEvidence('Unit, exclusion and cap policy', partition || 'Backend partition policy unavailable.')),
+      step('03', 'Judge', counts ? `${items.length} item results · ${counts.failed} failed. Probabilities come from Jev, not a score invented by Mayhem.`
+        : 'No judgment yet. Run Jev explicitly; browsing this page never starts inference.',
+        el('details', {class: 'mayhem-evidence'}, el('summary', {}, 'Batch results and native evidence'), mayhemJevTable(items))),
+      step('04', 'Escalate', hasReport ? `${escalation.length} items require review or have a recorded error. Nothing is automatically repaired.`
+        : 'Low-confidence choices and errors remain visible for human review.',
+        el('details', {class: 'mayhem-evidence'}, el('summary', {}, 'Escalation queue'), mayhemJevTable(escalation))),
+      step('05', 'Report', counts ? Object.entries(counts.by_label || {}).map(([label, count]) => `${label}: ${count}`).join(' · ') || 'No successful choices recorded.'
+        : 'No saved Jev summary. Native measurements below remain available.',
+        mayhemEvidence('Full saved Jev report', report))),
+  ).element;
+}
 
 class AnalyticsViewController {
   commandFilter = '';
@@ -170,14 +292,48 @@ class AnalyticsViewController {
   error: string | null = null;
   loading = false;
   section = 'overview';
+  judging = false;
+  judgeError: string | null = null;
+  epoch = 0;
+  resources: MayhemResource[] = [];
+  webgl = false;
+
+  visible() { return !document.hidden && $('view-analytics')?.classList.contains('active'); }
+
+  disposeVisuals() {
+    this.epoch++;
+    for (const resource of this.resources.splice(0)) resource.dispose();
+  }
+
+  async runJev() {
+    if (this.judging || this.loading) return;
+    this.judging = true;
+    this.judgeError = null;
+    $('analytics-refresh').disabled = true;
+    $('analytics-scan').disabled = true;
+    this.renderSurface();
+    try {
+      const result = await invoke('engine_command', {id: 'app.analytics', params: {judge: true}});
+      if (!result?.jev || typeof result.jev !== 'object') throw new Error('Backend returned no Jev report.');
+      this.data = {...(this.data || {}), jev: result.jev};
+    } catch (error) {
+      this.judgeError = String(error);
+    } finally {
+      this.judging = false;
+      $('analytics-refresh').disabled = false;
+      $('analytics-scan').disabled = false;
+      this.renderSurface();
+    }
+  }
 
   async render(scan = false) {
-    if (!$('view-analytics') || this.loading) return;
+    if (!$('view-analytics') || this.loading || this.judging) return;
     this.mount();
     this.loading = true;
     this.error = null;
     $('analytics-refresh').disabled = true;
     $('analytics-scan').disabled = true;
+    this.renderSurface();
     $('analytics-message').textContent = scan ? 'Running Lizard on local source…' : 'Reading saved scan and recorded usage…';
     try {
       this.data = await invoke('engine_command', {id: 'app.analytics', params: {scan}});
@@ -194,7 +350,18 @@ class AnalyticsViewController {
 
   mount() {
     if ($('analytics-layout')) return;
-    const tabs = el('nav', {class: 'segmented', id: 'mayhem-sections', role: 'tablist', 'aria-label': 'Mayhem sections'},
+    const tabs = el('nav', {class: 'segmented', id: 'mayhem-sections', role: 'tablist', 'aria-label': 'Mayhem sections',
+      onkeydown: (event: KeyboardEvent) => {
+        const index = MAYHEM_SECTIONS.findIndex(([id]) => id === this.section);
+        const next = event.key === 'ArrowRight' ? (index + 1) % MAYHEM_SECTIONS.length
+          : event.key === 'ArrowLeft' ? (index + MAYHEM_SECTIONS.length - 1) % MAYHEM_SECTIONS.length
+          : event.key === 'Home' ? 0 : event.key === 'End' ? MAYHEM_SECTIONS.length - 1 : -1;
+        if (next < 0) return;
+        event.preventDefault();
+        this.section = MAYHEM_SECTIONS[next][0];
+        this.renderSurface();
+        $(`analytics-nav-${this.section}`).focus();
+      }},
       ...MAYHEM_SECTIONS.map(([id, label]) => el('button', {id: `analytics-nav-${id}`, role: 'tab',
         onclick: () => { this.section = id; this.renderSurface(); }}, label)));
     const actions = el('div', {class: 'report-actions'},
@@ -207,19 +374,33 @@ class AnalyticsViewController {
     const backstage = el('div', {class: 'report-surface', id: 'analytics-backstage'}, window.magicBackstageTerminal.mount());
     $('view-analytics').replaceChildren(el('div', {class: 'report-page', id: 'analytics-layout'},
       head, el('div', {class: 'report-scroll'}, surface, backstage)));
+    const visibility = () => {
+      this.disposeVisuals();
+      this.webgl = false;
+      if (this.visible()) this.renderSurface();
+    };
+    new MutationObserver(visibility).observe($('view-analytics'), {attributes: true, attributeFilter: ['class', 'hidden', 'style']});
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('pagehide', () => { this.disposeVisuals(); this.webgl = false; });
   }
 
   renderSurface() {
     const surface = $('analytics-surface');
     if (!surface) return;
+    this.disposeVisuals();
+    if (this.section !== 'scatter') this.webgl = false;
     const d = this.data || {};
     const backstage = this.section === 'backstage';
     $('analytics-backstage').hidden = !backstage;
     surface.hidden = backstage;
     if (backstage) window.dispatchEvent(new Event('backstage-visible'));
-    for (const [id] of MAYHEM_SECTIONS) $(`analytics-nav-${id}`).setAttribute('aria-selected', String(id === this.section));
+    for (const [id] of MAYHEM_SECTIONS) {
+      $(`analytics-nav-${id}`).setAttribute('aria-selected', String(id === this.section));
+      $(`analytics-nav-${id}`).tabIndex = id === this.section ? 0 : -1;
+    }
     $('analytics-message').textContent = this.error
       ? `Could not refresh: ${this.error}. Previous results, if any, remain below.`
+      : this.loading ? 'Reading native measurements…'
       : `Read ${mayhemTime(d.sampled_at_unix_secs)} · no background scans or polling`;
     surface.replaceChildren(...MAYHEM_RENDER[this.section](d));
   }
@@ -238,17 +419,28 @@ const mayhemView = new AnalyticsViewController();
 
 function mayhemOverview(d) {
   const comp = d.complexity || {}, usage = d.usage || {}, audit = d.audit || {};
-  const auditNote = audit.available
-    ? `Saved magic-cli audit · ${mayhemTime(audit.measured_at_unix_secs)} · rev ${audit.source_revision || '—'}`
-    : 'Run magic-cli audit or magic-cli review to populate.';
+  const series = mayhemChartSeries(d);
+  const largestFirst = (rows: MayhemChartRow[]) => [...rows].sort((a, b) => b.value - a.value);
   return [
+    el('div', {class: 'mayhem-overview-intro'},
+      el('div', {}, el('span', {class: 'mayhem-eyebrow'}, 'Engineering observatory'),
+        el('h2', {}, 'Measure first. Choose what matters.'),
+        el('p', {}, 'Saved source measurements, recorded local usage and explicit Jev decisions. Missing evidence stays unknown.')),
+      el('span', {class: 'mayhem-source-badge'}, 'SVG charts · WebGL off')),
     mayhemStats(...mayhemCodeStats(comp).slice(0, 2), mayhemAuditStat(audit), mayhemUsageStats(usage)[0], mayhemToolStat(d.tools)),
-    new ReportSection({title: 'Audit & review checks', note: auditNote}, mayhemAuditChecks(audit)).element,
-    mayhemRuntimeErrors(d.runtime_errors),
-    new ReportSection({title: 'Language & web stack breakdown', note: 'Color-coded by language: Desktop UI uses HTML + TypeScript + CSS; Remotion uses TSX.'}, mayhemLanguageBreakdown(comp)).element,
-    el('div', {class: 'report-columns'},
-      new ReportSection({title: 'Complexity hotspots', note: mayhemCoverage(comp)}, mayhemHotspots(comp, 6)).element,
-      new ReportSection({title: 'Usage today', note: 'Recorded by local agent tools · not billing'}, mayhemAgents(usage, true)).element),
+    mayhemJev(d.jev),
+    el('div', {class: 'mayhem-chart-grid'},
+      mayhemChart('Source footprint', largestFirst(series.languages), mayhemCoverage(comp) || 'No saved language measurements.', 'source lines', '--accent'),
+      mayhemChart('Recorded usage today', largestFirst(series.usage), 'Local agent records · tokens, not billing · missing agents omitted', 'tokens', '--motion-blue'),
+      mayhemChart('Peak complexity over time', series.history, 'Saved revision snapshots · max function CCN, not an overall health score', 'max CCN', '--depth-gold', 'line'),
+      mayhemChart('Saved audit finding counts', largestFirst(series.checks), 'Legacy audit report counts, not independently verified native findings. See architecture review.', 'reported findings', '--pose-purple')),
+    el('details', {class: 'mayhem-evidence mayhem-raw'},
+      el('summary', {}, 'Inspect saved native evidence · detailed sections remain available above'),
+      new ReportSection({title: 'Audit & review checks', note: 'Saved report only. Executable presence and exit status are not workflow health.'}, mayhemAuditChecks(audit)).element,
+      mayhemRuntimeErrors(d.runtime_errors),
+      new ReportSection({title: 'Language evidence', note: mayhemCoverage(comp)}, mayhemLanguageBreakdown(comp)).element,
+      new ReportSection({title: 'Saved hotspots', note: 'Retained hotspot subset, not a complete function distribution.'}, mayhemHotspots(comp, 25)).element,
+      mayhemEvidence('Complete analytics response', d)),
   ];
 }
 
@@ -351,14 +543,58 @@ function mayhemArchitecture() {
     onchange: (event) => { mayhemView.diagram = event.target.value; mayhemView.renderSurface(); }},
     ...MAYHEM_DIAGRAMS.map((item) => el('option', {value: item.id}, item.title)));
   picker.value = selected.id;
-  return [new ReportSection({title: 'How the work fits together', actions: [picker],
-    note: `Saved Archify reference, not a live model · ${selected.source}${selected.revision ? ` · revision ${selected.revision}` : ''}`},
-  el('iframe', {id: 'analytics-diagram-frame', class: 'report-frame', title: selected.title,
-    src: `analytics-diagrams/${selected.file}?theme=dark&embed=1`, sandbox: 'allow-scripts'})).element];
+  return [
+    el('details', {class: 'mayhem-evidence mayhem-architecture-review'},
+      el('summary', {}, 'Audit architecture review · source review, not live telemetry'),
+      el('p', {}, 'Recommendation: native structured outputs → saved evidence with per-tool provenance → explicit Jev judgment → reviewed actions. Simplify the existing audit path rather than add bespoke collectors.'),
+      el('ul', {},
+        el('li', {}, el('code', {}, 'audit.rs::build_native_report'), ' assigns the Lizard file count to every tool’s filesAnalyzed and converts a failed check to one generic finding. Those fields are not native tool measurements.'),
+        el('li', {}, el('code', {}, 'record_mayhem_audit'), ' can rerun Lizard while recording an audit, coupling report persistence to another scan.'),
+        el('li', {}, el('code', {}, 'complexity::read_history'), ' now keeps saved history reads side-effect free. Only explicit collection persists new history.')),
+      el('p', {}, 'This is a static architecture review, not a workflow-health assessment. The audit CLI reporting rewrite remains a redesign recommendation.')),
+    new ReportSection({title: 'How the work fits together', actions: [picker],
+      note: `Saved Archify reference, not a live model · ${selected.source}${selected.revision ? ` · revision ${selected.revision}` : ''}`},
+    el('iframe', {id: 'analytics-diagram-frame', class: 'report-frame', title: selected.title,
+      src: `analytics-diagrams/${selected.file}?theme=dark&embed=1`, sandbox: 'allow-scripts'})).element,
+  ];
+}
+
+function mayhemScatter(d) {
+  const rows = mayhemScatterRows(d.complexity || {});
+  const canvas = el('div', {class: 'mayhem-scatter', 'aria-label': 'Optional WebGL complexity scatter'});
+  const button = el('button', {class: 'ghost', 'aria-pressed': String(mayhemView.webgl), disabled: !rows.length,
+    onclick: () => { mayhemView.webgl = !mayhemView.webgl; mayhemView.renderSurface(); }},
+    mayhemView.webgl ? 'Disable WebGL · release GPU' : 'Enable WebGL scatter');
+  if (mayhemView.webgl && rows.length) {
+    canvas.textContent = 'Loading optional renderer…';
+    const epoch = mayhemView.epoch;
+    queueMicrotask(async () => {
+      try {
+        await mayhemBundle('mayhem-scatter');
+        if (epoch !== mayhemView.epoch || mayhemView.section !== 'scatter' || !mayhemView.webgl || !mayhemView.visible() || !canvas.isConnected) return;
+        canvas.replaceChildren();
+        const api = window['magicMayhemScatter'] as {mount(node: HTMLElement, rows: MayhemScatterRow[]): MayhemResource};
+        mayhemView.resources.push(api.mount(canvas, rows));
+      } catch (error) {
+        if (!canvas.isConnected || epoch !== mayhemView.epoch) return;
+        canvas.textContent = `WebGL unavailable: ${String(error)}. Exact saved evidence is available below.`;
+      }
+    });
+  } else {
+    canvas.append(el('p', {class: 'mayhem-empty'}, rows.length
+      ? 'GPU is off. Enable explicitly to plot saved hotspots by NLOC and CCN. No animation loop.'
+      : 'No saved hotspots with both CCN and NLOC. Run an explicit code scan to collect measurements.'));
+  }
+  return [new ReportSection({title: 'Complexity lab', note: 'Optional static WebGL view. Only retained hotspots are plotted, not a complete function distribution. Leaving or hiding this view releases GPU resources; returning requires opt-in again.', actions: [button]},
+    canvas, el('details', {class: 'mayhem-evidence'}, el('summary', {}, `Exact scatter evidence · ${rows.length} hotspots`),
+      new ReportTable({rows, empty: 'No saved hotspot coordinates.', columns: [
+        {label: 'Function · source', value: row => row.label}, {label: 'NLOC →', value: row => row.nloc, numeric: true},
+        {label: 'CCN ↑', value: row => row.ccn, numeric: true},
+      ]}).element)).element];
 }
 
 const MAYHEM_RENDER = {overview: mayhemOverview, code: mayhemCode, usage: mayhemUsage, tools: mayhemTools,
-  commands: mayhemCommands, backstage: () => [], architecture: mayhemArchitecture};
+  commands: mayhemCommands, backstage: () => [], architecture: mayhemArchitecture, scatter: mayhemScatter};
 
 async function renderAnalytics(scan = false) { return mayhemView.render(scan); }
 function mayhemMount() { mayhemView.mount(); }

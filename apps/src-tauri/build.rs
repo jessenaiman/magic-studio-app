@@ -59,6 +59,8 @@ fn theatre_bundle() {
         "frontend/stage-canvas.ts",
         "frontend/backstage-terminal.ts",
         "frontend/project-id.ts",
+        "frontend/analytics-charts.ts",
+        "frontend/analytics-scatter.ts",
         "frontend/package.json",
         "frontend/bun.lock",
     ];
@@ -70,9 +72,13 @@ fn theatre_bundle() {
     if bundle.is_some()
         && modified("ui/vendor/konva.bundle.js").is_some()
         && modified("ui/vendor/backstage/backstage-terminal.js").is_some()
+        && modified("ui/vendor/mayhem-charts.bundle.js").is_some()
+        && modified("ui/vendor/mayhem-scatter.bundle.js").is_some()
         && sources.iter().all(|s| {
             modified(s) <= modified("ui/vendor/backstage/backstage-terminal.js")
                 && modified(s) <= bundle
+                && modified(s) <= modified("ui/vendor/mayhem-charts.bundle.js")
+                && modified(s) <= modified("ui/vendor/mayhem-scatter.bundle.js")
         })
     {
         return;
@@ -92,6 +98,7 @@ fn theatre_bundle() {
     if !std::path::Path::new("frontend/node_modules/@theatre/studio").exists()
         || !std::path::Path::new("frontend/node_modules/@xterm/xterm").exists()
         || !std::path::Path::new("frontend/node_modules/konva").exists()
+        || !std::path::Path::new("frontend/node_modules/echarts").exists()
     {
         bun(&["install"]);
     }

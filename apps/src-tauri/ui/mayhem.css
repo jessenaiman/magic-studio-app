@@ -3,3 +3,40 @@
 .backstage-status { margin: 0; padding: var(--space-3) var(--space-3) var(--space-2); color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .backstage-terminal { height: clamp(var(--size-300), 60vh, var(--size-700)); min-width: 0; margin: 0 var(--space-3) var(--space-3); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--bg); }
 .backstage-terminal .xterm { height: 100%; }
+
+/* Native observations and model judgments use separate surfaces. All plots are
+   SVG unless the user explicitly enables the isolated complexity lab. */
+.mayhem-overview-intro { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); padding:var(--space-3) var(--space-1); }
+.mayhem-overview-intro h2 { margin:var(--space-2) 0; font-size:var(--text-xl); font-weight:600; letter-spacing:-.02em; }
+.mayhem-overview-intro p { color:var(--muted); margin:0; max-width:70ch; line-height:1.6; }
+.mayhem-eyebrow { color:var(--accent); font-size:var(--text-xs); letter-spacing:.12em; text-transform:uppercase; }
+.mayhem-source-badge { flex:none; color:var(--muted); border:thin solid var(--line); border-radius:var(--radius); padding:var(--space-2) var(--space-3); font-size:var(--text-xs); }
+.mayhem-chart-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-3); }
+.mayhem-chart-grid > .panel { min-width:0; }
+.mayhem-chart { height:max(var(--size-270),calc(var(--mayhem-chart-rows,0) * var(--size-26) + var(--size-60))); min-width:0; width:100%; }
+.mayhem-empty { display:grid; place-content:center; min-height:var(--size-170); color:var(--muted); text-align:center; line-height:1.6; padding:var(--space-3); }
+.mayhem-evidence { min-width:0; font-size:var(--text-sm); color:var(--muted); }
+.mayhem-evidence > summary { cursor:pointer; padding:var(--space-2) 0; line-height:1.5; overflow-wrap:anywhere; }
+.mayhem-evidence > summary:hover { color:var(--accent); }
+.mayhem-evidence > summary:focus-visible { outline:thin solid var(--accent); outline-offset:var(--space-1); border-radius:var(--radius-sm); }
+.mayhem-evidence pre { max-height:var(--size-400); overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:var(--space-3); border:thin solid var(--line); border-radius:var(--radius-sm); background:var(--bg); color:var(--text); font:var(--text-xs)/1.6 ui-monospace,monospace; }
+.mayhem-evidence > table { width:100%; }
+.mayhem-evidence:has(> table) { overflow-x:auto; }
+.mayhem-raw,.mayhem-architecture-review { padding:var(--space-2) var(--space-3); border:thin solid var(--line); border-radius:var(--radius); background:var(--surface); }
+.mayhem-raw > .report-section { margin-top:var(--space-3); }
+.mayhem-architecture-review p,.mayhem-architecture-review li { line-height:1.7; overflow-wrap:anywhere; }
+.mayhem-steps { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:var(--space-3); align-items:start; }
+.mayhem-step { min-width:0; display:flex; gap:var(--space-2); border-top:thin solid var(--line); padding-top:var(--space-3); }
+.mayhem-step > div { min-width:0; flex:1; }
+.mayhem-step-number { color:var(--accent); font:var(--text-xs)/1.8 ui-monospace,monospace; }
+.mayhem-step h3 { margin:0 0 var(--space-2); font-size:var(--text-md); color:var(--text); font-weight:600; }
+.mayhem-step p { margin:0 0 var(--space-2); color:var(--muted); font-size:var(--text-sm); line-height:1.6; }
+.mayhem-step:has(details[open]) { grid-column:1 / -1; }
+.mayhem-jev-status { margin:0 0 var(--space-3); padding:var(--space-2) var(--space-3); border-left:var(--size-2) solid var(--accent); background:var(--surface-2); color:var(--muted); line-height:1.6; overflow-wrap:anywhere; }
+.mayhem-scatter { height:var(--size-360); width:100%; min-width:0; display:flex; flex-direction:column; border:thin solid var(--line); border-radius:var(--radius-sm); background:var(--bg); overflow:hidden; }
+.mayhem-scatter canvas { display:block; width:100%; min-height:0; flex:1; }
+.mayhem-chart-note { margin:0; padding:var(--space-2); color:var(--muted); font-size:var(--text-xs); }
+#mayhem-sections { overflow-x:auto; }
+#mayhem-sections button { flex:none; white-space:nowrap; }
+@media (max-width:75em) { .mayhem-steps { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media (max-width:50em) { .mayhem-chart-grid { grid-template-columns:minmax(0,1fr); } .mayhem-steps { grid-template-columns:minmax(0,1fr); } .mayhem-overview-intro { align-items:flex-start; flex-direction:column; } }

@@ -178,7 +178,6 @@ fn read_history(root: &Path, fallback: &Value) -> Vec<Value> {
         .unwrap_or_default();
     if entries.is_empty() && fallback["available"] == true {
         let entry = history_entry(root, fallback);
-        let _ = append_history_line(&path, &entry);
         entries.push(entry);
     }
     let len = entries.len();
@@ -716,4 +715,33 @@ fn measure(root: &Path) -> Value {
         "total_source_lines": total_lines,
         "scan_failures": scan_failures,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_history_read_does_not_create_an_archive() {
+        let root = std::env::temp_dir().join(format!(
+            "mayhem-history-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let fallback = json!({"available": true, "source_revision": "saved-revision",
+            "functions_analyzed": 12, "functions_over_ccn_15": 2});
+        let history = read_history(&root, &fallback);
+        let wrote_archive = root.join("target").exists();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(history[0]["source_revision"], "saved-revision");
+        assert_eq!(history[0]["functions_over_ccn_15"], 2);
+        assert!(
+            !wrote_archive,
+            "reading saved history must not create an archive"
+        );
+    }
 }
