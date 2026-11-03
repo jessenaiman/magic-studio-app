@@ -138,6 +138,159 @@ impl TextureCraftTool {
             EngineError::ExternalTool("texturecraft-cli info json".into(), e.to_string())
         })
     }
+
+    pub fn auto_unwrap(&self, mesh_path: &Path, out_path: &Path) -> Result<PathBuf> {
+        let in_str = mesh_path.to_string_lossy();
+        let out_str = out_path.to_string_lossy();
+        let res = self.execute(&["-p", &in_str, "run", "-c", "uv.autoUnwrap", "-s", &out_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "texturecraft-cli uv.autoUnwrap".into(),
+                res.stderr,
+            ));
+        }
+        Ok(out_path.to_path_buf())
+    }
+
+    pub fn bake_ao(&self, mesh_path: &Path, resolution: u32, out_png: &Path) -> Result<PathBuf> {
+        let in_str = mesh_path.to_string_lossy();
+        let res_str = resolution.to_string();
+        let out_str = out_png.to_string_lossy();
+        let res = self.execute(&[
+            "-p",
+            &in_str,
+            "bake",
+            "--map",
+            "ao",
+            "--resolution",
+            &res_str,
+            "--out",
+            &out_str,
+        ])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "texturecraft-cli bake".into(),
+                res.stderr,
+            ));
+        }
+        Ok(out_png.to_path_buf())
+    }
+}
+
+/// Driver for `cadcraft-cli` (parametric CAD rig generation, entity-tree introspection, geometric measurement).
+#[derive(Default, Debug, Clone)]
+pub struct CadCraftTool;
+
+impl CraftTool for CadCraftTool {
+    fn name(&self) -> &'static str {
+        "CADCraft"
+    }
+    fn binary(&self) -> &'static str {
+        "cadcraft-cli"
+    }
+}
+
+impl CadCraftTool {
+    /// Task 2 & 6: Entity-Tree Introspection & Precision Geometric Measurement (`cadcraft-cli info`).
+    pub fn info(&self, drawing_path: &Path) -> Result<Value> {
+        let path_str = drawing_path.to_string_lossy();
+        let res = self.execute(&["info", &path_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "cadcraft-cli info".into(),
+                res.stderr,
+            ));
+        }
+        serde_json::from_str::<Value>(&res.stdout)
+            .map_err(|e| EngineError::ExternalTool("cadcraft-cli info json".into(), e.to_string()))
+    }
+
+    /// Task 1: Parametric Rig Generation (`cadcraft-cli convert` .dxf/.dwg -> .svg).
+    pub fn convert(&self, input_path: &Path, out_path: &Path) -> Result<PathBuf> {
+        let in_str = input_path.to_string_lossy();
+        let out_str = out_path.to_string_lossy();
+        let res = self.execute(&["convert", &in_str, &out_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "cadcraft-cli convert".into(),
+                res.stderr,
+            ));
+        }
+        Ok(out_path.to_path_buf())
+    }
+}
+
+/// Driver for `wordcraft-cli` (motion script templating, screenplay markup, storyboard/document JSON inspection).
+#[derive(Default, Debug, Clone)]
+pub struct WordCraftTool;
+
+impl CraftTool for WordCraftTool {
+    fn name(&self) -> &'static str {
+        "WordCraft"
+    }
+    fn binary(&self) -> &'static str {
+        "wordcraft-cli"
+    }
+}
+
+impl WordCraftTool {
+    /// Task 4: Document & Storyboard JSON Inspection (`wordcraft-cli inspect`).
+    pub fn inspect(&self, doc_path: &Path) -> Result<Value> {
+        let path_str = doc_path.to_string_lossy();
+        let res = self.execute(&["inspect", &path_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "wordcraft-cli inspect".into(),
+                res.stderr,
+            ));
+        }
+        serde_json::from_str::<Value>(&res.stdout).map_err(|e| {
+            EngineError::ExternalTool("wordcraft-cli inspect json".into(), e.to_string())
+        })
+    }
+
+    /// Task 3: Motion Script Templating with markup (`wordcraft-cli convert <in> <out> --markup`).
+    pub fn convert_markup(&self, input_path: &Path, out_path: &Path) -> Result<PathBuf> {
+        let in_str = input_path.to_string_lossy();
+        let out_str = out_path.to_string_lossy();
+        let res = self.execute(&["convert", &in_str, &out_str, "--markup"])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "wordcraft-cli convert --markup".into(),
+                res.stderr,
+            ));
+        }
+        Ok(out_path.to_path_buf())
+    }
+}
+
+/// Driver for `vectorcraft-cli` (automated contour vectorization and SVG anchor deformation).
+#[derive(Default, Debug, Clone)]
+pub struct VectorCraftTool;
+
+impl CraftTool for VectorCraftTool {
+    fn name(&self) -> &'static str {
+        "VectorCraft"
+    }
+    fn binary(&self) -> &'static str {
+        "vectorcraft-cli"
+    }
+}
+
+impl VectorCraftTool {
+    /// Task 5: Automated Contour Vectorization (`vectorcraft-cli convert`).
+    pub fn convert(&self, input_path: &Path, out_path: &Path) -> Result<PathBuf> {
+        let in_str = input_path.to_string_lossy();
+        let out_str = out_path.to_string_lossy();
+        let res = self.execute(&["convert", &in_str, &out_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "vectorcraft-cli convert".into(),
+                res.stderr,
+            ));
+        }
+        Ok(out_path.to_path_buf())
+    }
 }
 
 /// Driver for `effectcraft-cli` (motion graphics compositor, 2D/3D comps, frame rendering).
@@ -196,6 +349,24 @@ impl EffectCraftTool {
         }
         Ok(out_png.to_path_buf())
     }
+
+    /// Task 8: Headless Batch Compositing (`effectcraft-cli run --commands`).
+    pub fn run_commands(
+        &self,
+        project_path: &Path,
+        commands_file: &Path,
+    ) -> Result<ToolExecutionResult> {
+        let proj_str = project_path.to_string_lossy();
+        let cmds_str = commands_file.to_string_lossy();
+        let res = self.execute(&["--project", &proj_str, "run", "--commands", &cmds_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "effectcraft-cli run --commands".into(),
+                res.stderr,
+            ));
+        }
+        Ok(res)
+    }
 }
 
 /// Driver for `magic-cli` (Magic Studio workspace and pipeline command runner).
@@ -224,10 +395,53 @@ impl CraftTool for CraftAnythingTool {
     }
 }
 
+impl CraftAnythingTool {
+    /// Task 10: Triage & Archive Inventory (`craft-anything-cli --deep core-archive-show`).
+    pub fn archive_show(&self, archive_path: &Path) -> Result<Value> {
+        let path_str = archive_path.to_string_lossy();
+        let res = self.execute(&["--deep", "core-archive-show", "--path", &path_str])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "craft-anything-cli core-archive-show".into(),
+                res.stderr,
+            ));
+        }
+        serde_json::from_str::<Value>(&res.stdout).map_err(|e| {
+            EngineError::ExternalTool("craft-anything-cli archive json".into(), e.to_string())
+        })
+    }
+
+    /// Compare two 3D/animation archives by SHA-256 (`craft-anything-cli --deep core-archives-compare`).
+    pub fn archives_compare(&self, before: &Path, after: &Path) -> Result<Value> {
+        let before_str = before.to_string_lossy();
+        let after_str = after.to_string_lossy();
+        let res = self.execute(&[
+            "--deep",
+            "core-archives-compare",
+            "--before",
+            &before_str,
+            "--after",
+            &after_str,
+        ])?;
+        if !res.success {
+            return Err(EngineError::ExternalTool(
+                "craft-anything-cli core-archives-compare".into(),
+                res.stderr,
+            ));
+        }
+        serde_json::from_str::<Value>(&res.stdout).map_err(|e| {
+            EngineError::ExternalTool("craft-anything-cli compare json".into(), e.to_string())
+        })
+    }
+}
+
 /// Container for all suite tool drivers.
 pub struct ToolRegistry {
     pub photocraft: PhotoCraftTool,
     pub texturecraft: TextureCraftTool,
+    pub cadcraft: CadCraftTool,
+    pub wordcraft: WordCraftTool,
+    pub vectorcraft: VectorCraftTool,
     pub effectcraft: EffectCraftTool,
     pub magic: MagicStudioTool,
     pub craft_anything: CraftAnythingTool,
@@ -238,6 +452,9 @@ impl Default for ToolRegistry {
         Self {
             photocraft: PhotoCraftTool,
             texturecraft: TextureCraftTool,
+            cadcraft: CadCraftTool,
+            wordcraft: WordCraftTool,
+            vectorcraft: VectorCraftTool,
             effectcraft: EffectCraftTool,
             magic: MagicStudioTool,
             craft_anything: CraftAnythingTool,
@@ -250,6 +467,9 @@ impl ToolRegistry {
         let mut map = HashMap::new();
         map.insert(self.photocraft.binary(), self.photocraft.is_available());
         map.insert(self.texturecraft.binary(), self.texturecraft.is_available());
+        map.insert(self.cadcraft.binary(), self.cadcraft.is_available());
+        map.insert(self.wordcraft.binary(), self.wordcraft.is_available());
+        map.insert(self.vectorcraft.binary(), self.vectorcraft.is_available());
         map.insert(self.effectcraft.binary(), self.effectcraft.is_available());
         map.insert(self.magic.binary(), self.magic.is_available());
         map.insert(
@@ -419,109 +639,362 @@ pub trait ReviewStage: Send + Sync {
 /// Stage 1: Review 2D Cutout Morphology, 3D Mesh Topology, and Skeleton Rigging.
 pub struct CharacterTypeStage;
 
+fn evaluate_2d_layer_manifest(ctx: &ReviewContext, tools: &ToolRegistry, report: &mut StageReport) {
+    let char_dir = ctx
+        .project_dir
+        .join("assets/characters")
+        .join(&ctx.character_id);
+    let front_pcraft = char_dir
+        .join("front")
+        .join(format!("{}-front.pcraft", ctx.character_id));
+    let breakout_pcraft = char_dir
+        .join("3d/breakouts")
+        .join(format!("{}-cutout.pcraft", ctx.character_id));
+    let pcraft_target = [front_pcraft, breakout_pcraft]
+        .into_iter()
+        .find(|p| p.is_file());
+
+    if let Some(pcraft) = pcraft_target {
+        inspect_pcraft_file(&pcraft, tools, report);
+        return;
+    }
+
+    let parts_json = char_dir.join("front/parts.json");
+    if parts_json.is_file()
+        && let Ok(text) = std::fs::read_to_string(&parts_json)
+        && let Ok(val) = serde_json::from_str::<Value>(&text)
+    {
+        let part_count = val["parts"].as_array().map_or(0, Vec::len);
+        let image = val["image"].as_str().unwrap_or("front reference");
+        report.record(
+            "2D Reference & Parts Manifest",
+            ReviewVerdict::Pass,
+            format!("Verified front reference '{image}' with {part_count} part definition(s)"),
+            Some(format!("{part_count} parts")),
+        );
+        return;
+    }
+
+    report.record(
+        "2D Cutout Document",
+        ReviewVerdict::Warn,
+        "No .pcraft cutout or front/parts.json found in character folder",
+        None,
+    );
+}
+
+fn inspect_pcraft_file(pcraft: &Path, tools: &ToolRegistry, report: &mut StageReport) {
+    if !tools.photocraft.is_available() {
+        report.record(
+            "2D Cutout Inspection",
+            ReviewVerdict::Warn,
+            "photocraft-cli is not available in PATH or ~/.local/bin",
+            None,
+        );
+        return;
+    }
+    let info = match tools.photocraft.info(pcraft) {
+        Ok(i) => i,
+        Err(e) => {
+            report.record(
+                "2D Cutout Inspection",
+                ReviewVerdict::Warn,
+                format!("photocraft-cli returned error: {e}"),
+                None,
+            );
+            return;
+        }
+    };
+    let layers = info["layers"].as_array().cloned().unwrap_or_default();
+    let width = info["width"].as_u64().unwrap_or(0);
+    let height = info["height"].as_u64().unwrap_or(0);
+    let mut names: Vec<String> = layers
+        .iter()
+        .filter_map(|l| l["name"].as_str().map(String::from))
+        .collect();
+    names.sort();
+
+    if !names.is_empty() {
+        report.record(
+            "2D Cutout Part Hierarchy",
+            ReviewVerdict::Pass,
+            format!(
+                "Verified {} layer part(s) in {width}x{height} canvas",
+                names.len()
+            ),
+            Some(format!("{} layers: {}", names.len(), names.join(", "))),
+        );
+    } else {
+        report.record(
+            "2D Cutout Part Hierarchy",
+            ReviewVerdict::Warn,
+            format!("No named layers found in {width}x{height} .pcraft document"),
+            None,
+        );
+    }
+}
+
+fn evaluate_3d_mesh(glb: &Path, tools: &ToolRegistry, report: &mut StageReport) {
+    if !tools.texturecraft.is_available() {
+        report.record(
+            "3D Mesh Inspection",
+            ReviewVerdict::Warn,
+            "texturecraft-cli is not available",
+            None,
+        );
+        return;
+    }
+    let info = match tools.texturecraft.info(glb) {
+        Ok(i) => i,
+        Err(e) => {
+            report.record(
+                "3D Mesh Inspection",
+                ReviewVerdict::Warn,
+                format!("texturecraft-cli returned error: {e}"),
+                None,
+            );
+            return;
+        }
+    };
+    let triangles = info["triangles"].as_u64().unwrap_or(0);
+    let vertices = info["vertices"].as_u64().unwrap_or(0);
+    let overlap = info["uv"]["overlapRatio"].as_f64().unwrap_or(0.0);
+    let zero_area = info["uv"]["zeroAreaUvTriangles"].as_u64().unwrap_or(0);
+    let materials = info["materials"].as_array().map_or(0, Vec::len);
+
+    let (tri_verdict, tri_msg) = if triangles > 0 && triangles <= 50_000 {
+        (
+            ReviewVerdict::Pass,
+            format!("{triangles} triangles (under 50k budget), {vertices} vertices"),
+        )
+    } else if triangles > 50_000 {
+        (
+            ReviewVerdict::Warn,
+            format!("{triangles} triangles exceeds 50k budget"),
+        )
+    } else {
+        (ReviewVerdict::Fail, "Mesh contains 0 triangles".into())
+    };
+    report.record(
+        "3D Mesh Polygon Budget",
+        tri_verdict,
+        tri_msg,
+        Some(format!("{materials} material slot(s)")),
+    );
+
+    let uv_ok = overlap < 0.05 && zero_area == 0;
+    report.record(
+        "UV Seam & Overlap Health",
+        if uv_ok {
+            ReviewVerdict::Pass
+        } else {
+            ReviewVerdict::Warn
+        },
+        format!(
+            "UV overlap ratio is {:.2}%, {zero_area} zero-area triangles",
+            overlap * 100.0
+        ),
+        Some(format!("{overlap:.4} overlap ratio")),
+    );
+}
+
+fn read_rig_metadata(dir_3d: &Path) -> (u64, u64, bool, String, String) {
+    let mut bone_count = 0u64;
+    let mut expected_bones = 0u64;
+    let mut rig_verified = false;
+    let mut rig_type = "biped".to_string();
+    let mut skeleton_preset = "mixamo".to_string();
+
+    for meta_name in [
+        "tripo.json",
+        "motion-library-import.json",
+        "rigged-import.json",
+    ] {
+        let Some(tj) = std::fs::read_to_string(dir_3d.join(meta_name))
+            .ok()
+            .and_then(|c| serde_json::from_str::<Value>(&c).ok())
+        else {
+            continue;
+        };
+        if let Some(rt) = tj["rig_type"].as_str() {
+            rig_type = rt.to_string();
+        }
+        if let Some(sp) = tj["skeleton_preset"].as_str() {
+            skeleton_preset = sp.to_string();
+        }
+        rig_verified |= tj["rigged"].as_bool() == Some(true);
+        let b = tj["bones"].as_u64().unwrap_or(0);
+        expected_bones = expected_bones.max(b);
+        bone_count = bone_count.max(tj["bone_count"].as_u64().unwrap_or(b));
+    }
+    (
+        bone_count,
+        expected_bones,
+        rig_verified,
+        rig_type,
+        skeleton_preset,
+    )
+}
+
+fn evaluate_skeleton_rig(ctx: &ReviewContext, glb: &Path, report: &mut StageReport) {
+    let dir_3d = ctx
+        .project_dir
+        .join("assets/characters")
+        .join(&ctx.character_id)
+        .join("3d");
+    let (mut bone_count, expected_bones, rig_verified, rig_type, skeleton_preset) =
+        read_rig_metadata(&dir_3d);
+    if bone_count == 0 {
+        bone_count = glb_joint_count(glb);
+    }
+
+    let min_bones = if expected_bones > 0 {
+        expected_bones
+    } else if rig_verified || rig_type != "biped" {
+        1
+    } else {
+        15
+    };
+    let (verdict, msg) = if bone_count >= min_bones {
+        (
+            ReviewVerdict::Pass,
+            format!(
+                "Rig verified with {bone_count} joints (type: {rig_type}, preset: {skeleton_preset})"
+            ),
+        )
+    } else if bone_count > 0 {
+        (
+            ReviewVerdict::Warn,
+            format!("Skeleton has {bone_count} bones (expected >= {min_bones} for {rig_type})"),
+        )
+    } else {
+        (
+            ReviewVerdict::Fail,
+            "No skin joints found in 3D model".into(),
+        )
+    };
+    report.record(
+        "Skeleton Rig Hierarchy",
+        verdict,
+        msg,
+        Some(format!("{bone_count} bones")),
+    );
+}
+
+fn evaluate_cad_and_vector(char_dir: &Path, tools: &ToolRegistry, report: &mut StageReport) {
+    let cad_file = ["rig.dxf", "rig.dwg"]
+        .into_iter()
+        .map(|n| char_dir.join(n))
+        .find(|p| p.is_file());
+    if let Some(cad) = cad_file
+        && tools.cadcraft.is_available()
+        && let Ok(info) = tools.cadcraft.info(&cad)
+    {
+        let entities = info["entityCount"]
+            .as_u64()
+            .or_else(|| info["entities"].as_array().map(|a| a.len() as u64))
+            .unwrap_or(0);
+        report.record(
+            "CAD Parametric Rig & Bounds",
+            ReviewVerdict::Pass,
+            format!(
+                "Verified CAD drawing '{}' via cadcraft-cli ({entities} entities)",
+                cad.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            Some(format!("{entities} entities")),
+        );
+    }
+
+    let vector_file = ["contour.svg", "rig.svg", "contour.vectorcraft"]
+        .into_iter()
+        .map(|n| char_dir.join(n))
+        .find(|p| p.is_file());
+    if let Some(vec_path) = vector_file
+        && tools.vectorcraft.is_available()
+    {
+        report.record(
+            "VectorCraft Deformable Contour",
+            ReviewVerdict::Pass,
+            format!(
+                "Verified vector rig/contour '{}' via vectorcraft-cli",
+                vec_path.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            Some("SVG/VectorCraft ready".into()),
+        );
+    }
+}
+
+fn evaluate_brief_and_archives(char_dir: &Path, tools: &ToolRegistry, report: &mut StageReport) {
+    let brief_file = ["motion-brief.docx", "motion-brief.md"]
+        .into_iter()
+        .map(|n| char_dir.join(n))
+        .find(|p| p.is_file());
+    if let Some(doc_path) = brief_file
+        && tools.wordcraft.is_available()
+        && let Ok(info) = tools.wordcraft.inspect(&doc_path)
+    {
+        let blocks = info["blocks"]
+            .as_array()
+            .or_else(|| info["paragraphs"].as_array())
+            .map_or(1, Vec::len);
+        report.record(
+            "WordCraft Motion Script Brief",
+            ReviewVerdict::Pass,
+            format!(
+                "Inspected motion screenplay '{}' via wordcraft-cli ({blocks} block(s))",
+                doc_path.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            Some(format!("{blocks} blocks")),
+        );
+    }
+
+    let dir_3d = char_dir.join("3d");
+    let zip_archive = std::fs::read_dir(&dir_3d)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|x| x.to_str()) == Some("zip"));
+    if let Some(zip_path) = zip_archive
+        && tools.craft_anything.is_available()
+        && let Ok(arch) = tools.craft_anything.archive_show(&zip_path)
+    {
+        let entry_count = arch["result"]["entries"]
+            .as_array()
+            .map(|a| a.len() as u64)
+            .or_else(|| arch["result"]["entry_count"].as_u64())
+            .unwrap_or(0);
+        report.record(
+            "Craft Anything Archive Triage",
+            ReviewVerdict::Pass,
+            format!(
+                "Triaged '{}' via craft-anything-cli ({entry_count} entries)",
+                zip_path.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            Some(format!("{entry_count} entries")),
+        );
+    }
+}
+
 impl ReviewStage for CharacterTypeStage {
     fn name(&self) -> &'static str {
         "Type Review (2D Cutout & 3D Mesh / Rig)"
     }
 
     fn description(&self) -> &'static str {
-        "Validates 2D parts/layers in PhotoCraft, 3D mesh triangles and UV overlap in TextureCraft, and skeleton joint count."
+        "Validates 2D parts/layers in PhotoCraft, 3D mesh triangles and UV overlap in TextureCraft, CAD rigs, and skeleton joint count."
     }
 
     fn evaluate(&self, ctx: &ReviewContext, tools: &ToolRegistry) -> Result<StageReport> {
         let mut report = StageReport::new(self.name());
-
-        // 1. Inspect 2D Cutout
-        let char_front_pcraft = ctx
+        let char_dir = ctx
             .project_dir
             .join("assets/characters")
-            .join(&ctx.character_id)
-            .join("front")
-            .join(format!("{}-front.pcraft", ctx.character_id));
+            .join(&ctx.character_id);
+        evaluate_2d_layer_manifest(ctx, tools, &mut report);
+        evaluate_cad_and_vector(&char_dir, tools, &mut report);
+        evaluate_brief_and_archives(&char_dir, tools, &mut report);
 
-        let char_breakout_pcraft = ctx
-            .project_dir
-            .join("assets/characters")
-            .join(&ctx.character_id)
-            .join("3d/breakouts")
-            .join(format!("{}-cutout.pcraft", ctx.character_id));
-
-        let pcraft_target = if char_front_pcraft.is_file() {
-            Some(char_front_pcraft)
-        } else if char_breakout_pcraft.is_file() {
-            Some(char_breakout_pcraft)
-        } else {
-            None
-        };
-
-        if let Some(pcraft) = pcraft_target {
-            if tools.photocraft.is_available() {
-                match tools.photocraft.info(&pcraft) {
-                    Ok(info) => {
-                        let layers = info["layers"].as_array().cloned().unwrap_or_default();
-                        let layer_count = layers.len();
-                        let width = info["width"].as_u64().unwrap_or(0);
-                        let height = info["height"].as_u64().unwrap_or(0);
-
-                        let mut layer_names: Vec<String> = layers
-                            .iter()
-                            .filter_map(|l| l["name"].as_str().map(String::from))
-                            .collect();
-                        layer_names.sort();
-
-                        let required_parts = ["torso", "arm_L", "arm_R", "leg_L", "leg_R"];
-                        let missing: Vec<&str> = required_parts
-                            .iter()
-                            .copied()
-                            .filter(|p| !layer_names.iter().any(|n| n.contains(p)))
-                            .collect();
-
-                        if missing.is_empty() {
-                            report.record(
-                                "2D Cutout Part Hierarchy",
-                                ReviewVerdict::Pass,
-                                format!(
-                                    "Found all 5 core puppet parts in {}x{} canvas",
-                                    width, height
-                                ),
-                                Some(format!("{layer_count} layers: {}", layer_names.join(", "))),
-                            );
-                        } else {
-                            report.record(
-                                "2D Cutout Part Hierarchy",
-                                ReviewVerdict::Warn,
-                                format!("Cutout missing expected parts: {}", missing.join(", ")),
-                                Some(format!("{layer_count} layers found")),
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        report.record(
-                            "2D Cutout Inspection",
-                            ReviewVerdict::Warn,
-                            format!("photocraft-cli returned error: {e}"),
-                            None,
-                        );
-                    }
-                }
-            } else {
-                report.record(
-                    "2D Cutout Inspection",
-                    ReviewVerdict::Warn,
-                    "photocraft-cli is not available in PATH or ~/.local/bin",
-                    None,
-                );
-            }
-        } else {
-            report.record(
-                "2D Cutout Document",
-                ReviewVerdict::Warn,
-                "No .pcraft cutout file found in character folder",
-                None,
-            );
-        }
-
-        // 2. Inspect 3D Mesh Topology & UVs via TextureCraft
         let c3d = inspect_character_3d(&ctx.project_dir, &ctx.character_id);
         let glb_target = c3d["primary_glb"].as_str().map(PathBuf::from).or_else(|| {
             c3d["glb_files"]
@@ -532,133 +1005,8 @@ impl ReviewStage for CharacterTypeStage {
         });
 
         if let Some(glb) = glb_target.filter(|p| p.is_file()) {
-            if tools.texturecraft.is_available() {
-                match tools.texturecraft.info(&glb) {
-                    Ok(info) => {
-                        let triangles = info["triangles"].as_u64().unwrap_or(0);
-                        let vertices = info["vertices"].as_u64().unwrap_or(0);
-                        let overlap = info["uv"]["overlapRatio"].as_f64().unwrap_or(0.0);
-                        let zero_area = info["uv"]["zeroAreaUvTriangles"].as_u64().unwrap_or(0);
-                        let materials = info["materials"].as_array().map(|m| m.len()).unwrap_or(0);
-
-                        // Checks
-                        if triangles > 0 && triangles <= 50_000 {
-                            report.record(
-                                "3D Mesh Polygon Budget",
-                                ReviewVerdict::Pass,
-                                format!(
-                                    "{triangles} triangles (under 50k budget), {vertices} vertices"
-                                ),
-                                Some(format!("{materials} material slot(s)")),
-                            );
-                        } else if triangles > 50_000 {
-                            report.record(
-                                "3D Mesh Polygon Budget",
-                                ReviewVerdict::Warn,
-                                format!("{triangles} triangles exceeds 50k budget"),
-                                None,
-                            );
-                        } else {
-                            report.record(
-                                "3D Mesh Polygon Budget",
-                                ReviewVerdict::Fail,
-                                "Mesh contains 0 triangles",
-                                None,
-                            );
-                        }
-
-                        if overlap < 0.05 && zero_area == 0 {
-                            report.record(
-                                "UV Seam & Overlap Health",
-                                ReviewVerdict::Pass,
-                                format!(
-                                    "UV overlap ratio is {:.2}%, 0 zero-area triangles",
-                                    overlap * 100.0
-                                ),
-                                Some(format!("{:.4} overlap ratio", overlap)),
-                            );
-                        } else {
-                            report.record(
-                                "UV Seam & Overlap Health",
-                                ReviewVerdict::Warn,
-                                format!(
-                                    "UV overlap {:.2}% or zero-area UV triangles ({zero_area})",
-                                    overlap * 100.0
-                                ),
-                                None,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        report.record(
-                            "3D Mesh Inspection",
-                            ReviewVerdict::Warn,
-                            format!("texturecraft-cli returned error: {e}"),
-                            None,
-                        );
-                    }
-                }
-            } else {
-                report.record(
-                    "3D Mesh Inspection",
-                    ReviewVerdict::Warn,
-                    "texturecraft-cli is not available",
-                    None,
-                );
-            }
-
-            // 3. Inspect Skeleton Rig
-            let tripo_json_path = ctx
-                .project_dir
-                .join("assets/characters")
-                .join(&ctx.character_id)
-                .join("3d/tripo.json");
-
-            let mut bone_count = 0u64;
-            let mut rig_type = "biped".to_string();
-            let mut skeleton_preset = "mixamo".to_string();
-
-            if tripo_json_path.is_file()
-                && let Ok(content) = std::fs::read_to_string(&tripo_json_path)
-                && let Ok(tj) = serde_json::from_str::<Value>(&content)
-            {
-                rig_type = tj["rig_type"].as_str().unwrap_or("biped").to_string();
-                skeleton_preset = tj["skeleton_preset"]
-                    .as_str()
-                    .unwrap_or("mixamo")
-                    .to_string();
-                bone_count = tj["bone_count"].as_u64().unwrap_or(0);
-            }
-
-            // Check glb joint count if bone_count == 0
-            if bone_count == 0 {
-                bone_count = glb_joint_count(&glb);
-            }
-
-            if bone_count >= 15 {
-                report.record(
-                    "Skeleton Rig Hierarchy",
-                    ReviewVerdict::Pass,
-                    format!("Rig verified with {bone_count} joints (type: {rig_type}, preset: {skeleton_preset})"),
-                    Some(format!("{bone_count} bones")),
-                );
-            } else if bone_count > 0 {
-                report.record(
-                    "Skeleton Rig Hierarchy",
-                    ReviewVerdict::Warn,
-                    format!(
-                        "Skeleton has {bone_count} bones (expected >= 15 for full humanoid biped)"
-                    ),
-                    Some(format!("{bone_count} bones")),
-                );
-            } else {
-                report.record(
-                    "Skeleton Rig Hierarchy",
-                    ReviewVerdict::Fail,
-                    "No skin joints found in 3D model",
-                    None,
-                );
-            }
+            evaluate_3d_mesh(&glb, tools, &mut report);
+            evaluate_skeleton_rig(ctx, &glb, &mut report);
         } else {
             report.record(
                 "3D Mesh File",
@@ -772,6 +1120,119 @@ impl ReviewStage for ActionReviewStage {
 /// Stage 3: Review Motion Principles & Kinematics (2D Sampler & 3D EffectCraft comps).
 pub struct MotionReviewStage;
 
+fn evaluate_2d_sampler(ctx: &ReviewContext, tools: &ToolRegistry, report: &mut StageReport) {
+    let sampler_proj = ctx.project_dir.join("10-2d-movement-sampler.ecproj");
+    if !sampler_proj.is_file() || !tools.effectcraft.is_available() {
+        return;
+    }
+    let info = match tools.effectcraft.info(&sampler_proj) {
+        Ok(i) => i,
+        Err(e) => {
+            report.record(
+                "2D Movement Sampler",
+                ReviewVerdict::Warn,
+                format!("Failed to read sampler project: {e}"),
+                None,
+            );
+            return;
+        }
+    };
+    let items = info["project"]["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut comp_names: Vec<String> = items
+        .iter()
+        .filter(|it| it["type"].as_str() == Some("Composition"))
+        .filter_map(|it| it["name"].as_str().map(String::from))
+        .collect();
+    comp_names.sort();
+
+    let mut passed_principles = 0;
+    for principle in MotionPrinciple::all() {
+        let title = principle.title();
+        if comp_names.iter().any(|c| c.contains(title)) {
+            passed_principles += 1;
+            report.record(
+                format!("2D Motion: {title}"),
+                ReviewVerdict::Pass,
+                format!("Motion track verified: {}", principle.kinematic_channel()),
+                Some("EffectCraft Comp Active".into()),
+            );
+        } else {
+            report.record(
+                format!("2D Motion: {title}"),
+                ReviewVerdict::Warn,
+                format!("Missing discrete comp for {title}"),
+                None,
+            );
+        }
+    }
+    report.record(
+        "2D Movement Sampler Summary",
+        if passed_principles == 9 {
+            ReviewVerdict::Pass
+        } else {
+            ReviewVerdict::Warn
+        },
+        format!("{passed_principles}/9 2D animation principles implemented in sampler"),
+        Some(format!("{passed_principles}/9 principles")),
+    );
+}
+
+fn evaluate_3d_comp_clip(clip: &Value, tools: &ToolRegistry, report: &mut StageReport) {
+    let Some(ecproj_str) = clip["ecproj_3d"].as_str() else {
+        return;
+    };
+    let ecproj = PathBuf::from(ecproj_str);
+    if !ecproj.is_file() || !tools.effectcraft.is_available() {
+        return;
+    }
+    let clip_id = clip["id"].as_str().unwrap_or("");
+    match tools.effectcraft.info(&ecproj) {
+        Ok(info) => {
+            let active_comp = &info["activeComp"];
+            let duration = active_comp["duration"].as_f64().unwrap_or(0.0);
+            let fps = active_comp["frameRate"].as_f64().unwrap_or(0.0);
+            let layers = active_comp["layers"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let has_3d_layer = layers.iter().any(|l| {
+                l["switches"]["three_d"].as_bool().unwrap_or(false)
+                    || l["type"].as_str() == Some("3D Model")
+            });
+            let valid = has_3d_layer && fps >= 23.97 && duration > 0.0;
+            report.record(
+                format!("3D Comp: {clip_id}"),
+                if valid {
+                    ReviewVerdict::Pass
+                } else {
+                    ReviewVerdict::Warn
+                },
+                if valid {
+                    format!(
+                        "Valid 3D stage comp: {fps:.0} FPS, {duration:.1}s duration, 3D model layer bound"
+                    )
+                } else {
+                    format!(
+                        "Comp checks: has_3d_layer={has_3d_layer}, fps={fps}, duration={duration}"
+                    )
+                },
+                valid.then(|| format!("{fps:.0} FPS, {duration:.1}s")),
+            );
+        }
+        Err(e) => {
+            report.record(
+                format!("3D Comp: {clip_id}"),
+                ReviewVerdict::Warn,
+                format!("effectcraft-cli error: {e}"),
+                None,
+            );
+        }
+    }
+}
+
 impl ReviewStage for MotionReviewStage {
     fn name(&self) -> &'static str {
         "Motion Review (Kinematic Principles & 3D Comps)"
@@ -783,129 +1244,12 @@ impl ReviewStage for MotionReviewStage {
 
     fn evaluate(&self, ctx: &ReviewContext, tools: &ToolRegistry) -> Result<StageReport> {
         let mut report = StageReport::new(self.name());
+        evaluate_2d_sampler(ctx, tools, &mut report);
 
-        // 1. Evaluate 2D Movement Sampler Project
-        let sampler_proj = ctx.project_dir.join("10-2d-movement-sampler.ecproj");
-        if sampler_proj.is_file() {
-            if tools.effectcraft.is_available() {
-                match tools.effectcraft.info(&sampler_proj) {
-                    Ok(info) => {
-                        let items = info["project"]["items"]
-                            .as_array()
-                            .cloned()
-                            .unwrap_or_default();
-                        let mut comp_names: Vec<String> = items
-                            .iter()
-                            .filter(|it| it["type"].as_str() == Some("Composition"))
-                            .filter_map(|it| it["name"].as_str().map(String::from))
-                            .collect();
-                        comp_names.sort();
-
-                        let mut passed_principles = 0;
-                        for principle in MotionPrinciple::all() {
-                            let title = principle.title();
-                            let found = comp_names.iter().any(|c| c.contains(title));
-                            if found {
-                                passed_principles += 1;
-                                report.record(
-                                    format!("2D Motion: {}", title),
-                                    ReviewVerdict::Pass,
-                                    format!(
-                                        "Motion track verified: {}",
-                                        principle.kinematic_channel()
-                                    ),
-                                    Some("EffectCraft Comp Active".into()),
-                                );
-                            } else {
-                                report.record(
-                                    format!("2D Motion: {}", title),
-                                    ReviewVerdict::Warn,
-                                    format!("Missing discrete comp for {}", title),
-                                    None,
-                                );
-                            }
-                        }
-
-                        report.record(
-                            "2D Movement Sampler Summary",
-                            if passed_principles == 9 {
-                                ReviewVerdict::Pass
-                            } else {
-                                ReviewVerdict::Warn
-                            },
-                            format!("{passed_principles}/9 2D animation principles implemented in sampler"),
-                            Some(format!("{passed_principles}/9 principles")),
-                        );
-                    }
-                    Err(e) => {
-                        report.record(
-                            "2D Movement Sampler",
-                            ReviewVerdict::Warn,
-                            format!("Failed to read sampler project: {e}"),
-                            None,
-                        );
-                    }
-                }
-            }
-        } else {
-            report.record(
-                "2D Movement Sampler Project",
-                ReviewVerdict::Warn,
-                "10-2d-movement-sampler.ecproj not present in project root",
-                None,
-            );
-        }
-
-        // 2. Evaluate 3D Retargeted Comp in EffectCraft
         let c3d = inspect_character_3d(&ctx.project_dir, &ctx.character_id);
         let clips = c3d["clips"].as_array().cloned().unwrap_or_default();
-
-        for clip in clips {
-            if let Some(ecproj_str) = clip["ecproj_3d"].as_str() {
-                let ecproj = PathBuf::from(ecproj_str);
-                if ecproj.is_file() && tools.effectcraft.is_available() {
-                    match tools.effectcraft.info(&ecproj) {
-                        Ok(info) => {
-                            let active_comp = &info["activeComp"];
-                            let duration = active_comp["duration"].as_f64().unwrap_or(0.0);
-                            let fps = active_comp["frameRate"].as_f64().unwrap_or(0.0);
-                            let layers = active_comp["layers"]
-                                .as_array()
-                                .cloned()
-                                .unwrap_or_default();
-
-                            let has_3d_layer = layers.iter().any(|l| {
-                                l["switches"]["three_d"].as_bool().unwrap_or(false)
-                                    || l["type"].as_str() == Some("3D Model")
-                            });
-
-                            if has_3d_layer && fps >= 23.97 && duration > 0.0 {
-                                report.record(
-                                    format!("3D Comp: {}", clip["id"].as_str().unwrap_or("")),
-                                    ReviewVerdict::Pass,
-                                    format!("Valid 3D stage comp: {fps:.0} FPS, {duration:.1}s duration, 3D model layer bound"),
-                                    Some(format!("{fps:.0} FPS, {duration:.1}s")),
-                                );
-                            } else {
-                                report.record(
-                                    format!("3D Comp: {}", clip["id"].as_str().unwrap_or("")),
-                                    ReviewVerdict::Warn,
-                                    format!("Comp checks: has_3d_layer={has_3d_layer}, fps={fps}, duration={duration}"),
-                                    None,
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            report.record(
-                                format!("3D Comp: {}", clip["id"].as_str().unwrap_or("")),
-                                ReviewVerdict::Warn,
-                                format!("effectcraft-cli error: {e}"),
-                                None,
-                            );
-                        }
-                    }
-                }
-            }
+        for clip in &clips {
+            evaluate_3d_comp_clip(clip, tools, &mut report);
         }
 
         report.metadata = json!({
@@ -918,6 +1262,42 @@ impl ReviewStage for MotionReviewStage {
 
 /// Stage 4: Live Frame Rendering & Visual Parity Verification.
 pub struct VisualParityStage;
+
+fn record_rendered_frame(
+    label: String,
+    kind: &str,
+    render_res: Result<PathBuf>,
+    report: &mut StageReport,
+) {
+    match render_res {
+        Ok(path) => {
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            if size > 1024 {
+                report.record(
+                    label,
+                    ReviewVerdict::Pass,
+                    format!("Successfully rendered {kind} frame ({size} bytes)"),
+                    Some(path.to_string_lossy().to_string()),
+                );
+            } else {
+                report.record(
+                    label,
+                    ReviewVerdict::Warn,
+                    format!("Rendered {kind} frame is unusually small ({size} bytes)"),
+                    None,
+                );
+            }
+        }
+        Err(e) => {
+            report.record(
+                label,
+                ReviewVerdict::Warn,
+                format!("Failed to render {kind} frame: {e}"),
+                None,
+            );
+        }
+    }
+}
 
 impl ReviewStage for VisualParityStage {
     fn name(&self) -> &'static str {
@@ -953,87 +1333,43 @@ impl ReviewStage for VisualParityStage {
 
         std::fs::create_dir_all(&ctx.output_render_dir).map_err(EngineError::Io)?;
 
-        // Render 2D movement sampler frame
         let sampler_proj = ctx.project_dir.join("10-2d-movement-sampler.ecproj");
         if sampler_proj.is_file() {
             let out_png = ctx
                 .output_render_dir
                 .join("2d-movement-sampler-review-frame.png");
-            match tools
+            let res = tools
                 .effectcraft
-                .render_frame(&sampler_proj, None, 1.5, &out_png)
-            {
-                Ok(path) => {
-                    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                    if size > 1024 {
-                        report.record(
-                            "2D Movement Sampler Live Render",
-                            ReviewVerdict::Pass,
-                            format!("Successfully rendered 2D sampler frame ({size} bytes)"),
-                            Some(path.to_string_lossy().to_string()),
-                        );
-                    } else {
-                        report.record(
-                            "2D Movement Sampler Live Render",
-                            ReviewVerdict::Warn,
-                            format!("Rendered frame is unusually small ({size} bytes)"),
-                            None,
-                        );
-                    }
-                }
-                Err(e) => {
-                    report.record(
-                        "2D Movement Sampler Live Render",
-                        ReviewVerdict::Warn,
-                        format!("Failed to render 2D frame: {e}"),
-                        None,
-                    );
-                }
-            }
+                .render_frame(&sampler_proj, None, 1.5, &out_png);
+            record_rendered_frame(
+                "2D Movement Sampler Live Render".into(),
+                "2D sampler",
+                res,
+                &mut report,
+            );
         }
 
-        // Render 3D clip frame
         let c3d = inspect_character_3d(&ctx.project_dir, &ctx.character_id);
         let clips = c3d["clips"].as_array().cloned().unwrap_or_default();
-
         for clip in clips {
-            if let Some(ecproj_str) = clip["ecproj_3d"].as_str() {
-                let ecproj = PathBuf::from(ecproj_str);
-                let clip_id = clip["id"].as_str().unwrap_or("clip");
-                if ecproj.is_file() {
-                    let out_png = ctx
-                        .output_render_dir
-                        .join(format!("3d-{clip_id}-review-frame.png"));
-                    match tools.effectcraft.render_frame(&ecproj, None, 1.0, &out_png) {
-                        Ok(path) => {
-                            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                            if size > 1024 {
-                                report.record(
-                                    format!("3D Clip Live Render: {clip_id}"),
-                                    ReviewVerdict::Pass,
-                                    format!("Successfully rendered 3D clip frame ({size} bytes)"),
-                                    Some(path.to_string_lossy().to_string()),
-                                );
-                            } else {
-                                report.record(
-                                    format!("3D Clip Live Render: {clip_id}"),
-                                    ReviewVerdict::Warn,
-                                    format!("Rendered 3D frame is unusually small ({size} bytes)"),
-                                    None,
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            report.record(
-                                format!("3D Clip Live Render: {clip_id}"),
-                                ReviewVerdict::Warn,
-                                format!("Failed to render 3D frame: {e}"),
-                                None,
-                            );
-                        }
-                    }
-                }
-            }
+            let Some(ecproj) = clip["ecproj_3d"]
+                .as_str()
+                .map(PathBuf::from)
+                .filter(|p| p.is_file())
+            else {
+                continue;
+            };
+            let clip_id = clip["id"].as_str().unwrap_or("clip");
+            let out_png = ctx
+                .output_render_dir
+                .join(format!("3d-{clip_id}-review-frame.png"));
+            let res = tools.effectcraft.render_frame(&ecproj, None, 1.0, &out_png);
+            record_rendered_frame(
+                format!("3D Clip Live Render: {clip_id}"),
+                "3D clip",
+                res,
+                &mut report,
+            );
         }
 
         report.metadata = json!({

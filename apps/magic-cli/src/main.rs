@@ -390,6 +390,45 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn run_review_animation(
+    path: &std::path::Path,
+    character: &str,
+    render_frames: bool,
+    render_dir: Option<&PathBuf>,
+    json_out: bool,
+) -> ! {
+    let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let out_dir = render_dir
+        .cloned()
+        .unwrap_or_else(|| target.join("renders/review"));
+    let ctx = magicstudio_engine::character::review::ReviewContext {
+        project_dir: target,
+        character_id: character.to_owned(),
+        render_test_frames: render_frames,
+        output_render_dir: out_dir,
+    };
+    let pipeline = magicstudio_engine::character::review::AnimationReviewPipeline::new();
+    let report = match pipeline.execute(&ctx) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error executing animation review: {e}");
+            std::process::exit(1);
+        }
+    };
+    if json_out {
+        match serde_json::to_string_pretty(&report) {
+            Ok(j) => println!("{j}"),
+            Err(e) => eprintln!("Serialization error: {e}"),
+        }
+    } else {
+        print!("{}", pipeline.format_terminal(&report));
+    }
+    let code = i32::from(
+        report.overall_verdict == magicstudio_engine::character::review::ReviewVerdict::Fail,
+    );
+    std::process::exit(code);
+}
+
 fn run(cli: Cli) -> Result<(), String> {
     match &cli.command {
         Some(Cmd::Doctor { path }) => {
@@ -412,42 +451,13 @@ fn run(cli: Cli) -> Result<(), String> {
             character,
             render_frames,
             render_dir,
-        }) => {
-            let target = match std::fs::canonicalize(path) {
-                Ok(p) => p,
-                Err(_) => path.clone(),
-            };
-            let out_dir = render_dir
-                .clone()
-                .unwrap_or_else(|| target.join("renders/review"));
-            let ctx = magicstudio_engine::character::review::ReviewContext {
-                project_dir: target,
-                character_id: character.clone(),
-                render_test_frames: *render_frames,
-                output_render_dir: out_dir,
-            };
-            let pipeline = magicstudio_engine::character::review::AnimationReviewPipeline::new();
-            let report = match pipeline.execute(&ctx) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Error executing animation review: {e}");
-                    std::process::exit(1);
-                }
-            };
-            if cli.json {
-                match serde_json::to_string_pretty(&report) {
-                    Ok(j) => println!("{j}"),
-                    Err(e) => eprintln!("Serialization error: {e}"),
-                }
-            } else {
-                print!("{}", pipeline.format_terminal(&report));
-            }
-            if report.overall_verdict == magicstudio_engine::character::review::ReviewVerdict::Fail
-            {
-                std::process::exit(1);
-            }
-            std::process::exit(0);
-        }
+        }) => run_review_animation(
+            path,
+            character,
+            *render_frames,
+            render_dir.as_ref(),
+            cli.json,
+        ),
         _ => {}
     }
     let mcp = matches!(cli.command, Some(Cmd::Mcp));

@@ -19,7 +19,11 @@ class ProjectView {
     const scenes = this.state.data?.storyboard_contents?.chapters || [];
     return scenes.find((scene: any) => scene.page === this.state.page + 1) || scenes.find((scene: any) => scene.target === this.state.storyboardScene) || scenes[0];
   }
-  render() { renderTarget(); renderBlocks(); renderStoryboard(); }
+  render() {
+    renderTarget();
+    renderBlocks();
+    if (this.state.view === 'storyboard' || this.state.view === 'design') renderStoryboard();
+  }
   command(id: string, params: Record<string, any> = {}) {
     const project = this.state.project;
     const run = async () => {
@@ -71,15 +75,15 @@ class ProjectView {
       el('div', { class: 'project-setup-sheet' }, el('span', { class: 'project-setup-art', html: ICONS.animate }),
         el('span', { class: 'project-setup-line' }), el('div', { class: 'project-setup-fields' }, ...Array.from({ length: 4 }, () => el('span')))));
     const steps = el('ol', { class: 'project-setup-steps', 'aria-label': 'Project workflow' },
-      ...[['song', 'Recording'], ['lyrics', 'Lyrics'], ['animate', 'Storyboard']].map(([icon, label]) =>
+      ...[['song', 'Recording'], ['lyrics', 'Lyrics'], ['animate', 'Animate']].map(([icon, label]) =>
         el('li', {}, el('span', { class: 'ico', html: ICONS[icon], 'aria-hidden': 'true' }), el('span', {}, label))));
     return el('div', { id: 'sb-empty', class: 'panel-empty project-setup' }, preview,
-      el('strong', {}, creating ? 'Start with your song' : 'Your storyboard'),
-      el('p', {}, creating ? 'Add a recording in the Song panel.' : 'One editable DeckCraft template.'), steps,
+      el('strong', {}, creating ? 'Start with your song' : 'Project workspace'),
+      el('p', {}, creating ? 'Add a recording in the Song panel.' : 'Add audio, lyrics, or 2D/3D/CAD assets to animate directly.'), steps,
       creating ? null : el('button', {
-        id: 'sb-create-storyboard', class: 'start', 'data-commands': 'storyboard.init',
-        onclick: () => this.command('storyboard.init', { empty: true }).catch((error: any) => toast(String(error)))
-      }, 'Create storyboard'));
+        id: 'sb-add-asset', class: 'start',
+        onclick: (event: any) => this.importAsset(event)
+      }, 'Add asset'));
   }
 
   appendNotices(box: any) {
@@ -199,10 +203,11 @@ class ProjectView {
       onclick: () => { state.blocksCollapsed = !state.blocksCollapsed; box.classList.toggle('collapsed', state.blocksCollapsed); this.renderBlocks(); }
     },
       el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 9l6 6 6-6"/><path d="M18 3H6c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM6 13l6-6-6-6zM12 15l-6 6 6 6z"/></svg>' })));
-    box.append(this.buildSongBlock(), this.buildStoryboardBlock());
+    box.append(this.buildSongBlock());
+    if (state.view === 'storyboard') box.append(this.buildStoryboardBlock());
     const assets = state.data?.assets?.assets || [], assetFiles = s.asset_files || [];
     const filesDetails = assetFiles.length ? el('details', {}, el('summary', {}, `Project files (${assetFiles.length})`), ...assetFiles.map(fileButton)) : null;
-    const assetsHint = state.data?.design?.progression?.allowed ? 'Click an asset to animate it, or drag it onto a storyboard page.' : 'Drag assets onto the storyboard where you choose. Complete the storyboard details or proceed with a draft before animation.';
+    const assetsHint = 'Click any asset to open and animate it directly in the Animation stage.';
     const assetsBody = [el('button', { id: 'asset-import', class: 'start', onclick: (event: any) => this.importAsset(event) }, 'Add asset'), projectAssetGrid(assets, { prefix: 'asset' }), el('p', { class: 'why' }, assetsHint), filesDetails];
     box.append(this.block('assets', ICONS.animate, 'Assets', `${assets.length} assets`, this.ready('assets'), assetsBody, this.prerequisite('assets').state));
     box.append(this.block('animate', ICONS.animate, 'Animate', `${assets.length} objects`, this.ready('animate'),

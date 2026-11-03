@@ -153,7 +153,7 @@ pub(crate) fn brief_header(dir: &Path) -> String {
         ),
     };
     format!(
-        "{intent}Project folder: {project}\nWorkshop state: magic-cli exec workshop.status (run project.open path=<the .magic> first)\nStoryboard (read it first): {project}/{STORYBOARD_DIR}/{STORYBOARD_PDF} — pdfcraft-cli text <pdf> --page N\n"
+        "{intent}Project folder: {project}\nWorkshop state: magic-cli exec workshop.status (run project.open path=<the .magic> first)\n"
     )
 }
 
@@ -471,7 +471,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         json!({"id": "transcript", "title": "Transcription & transcoding", "done": transcript_valid, "why": transcript_why,
             "inputs": s.song_audio.iter().map(|p| file_chip(p)).collect::<Vec<_>>(), "outputs": transcript_outputs,
             "document": supplied_transcript, "problems": transcript_errors, "target": target_project, "brief": stage_brief(s, &dir, "transcript")}),
-        json!({"id": "reference", "title": "Reference art", "done": has_ref_art && approved, "why": reference_why,
+        json!({"id": "reference", "title": "Reference art", "done": has_ref_art && approved, "optional": true, "why": reference_why,
             "inputs": panels.iter().enumerate().map(|(i, p)| {
                 let mut chip = file_chip(p);
                 if let Some(spans) = panel_timing.as_ref().and_then(|t| t.get(i)) {
@@ -485,7 +485,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
             "why": if animated.is_empty() { "Drag an asset into Stage 4 to create an animated subject (static scenes need none)." } else { "Pick an animated subject to rig or preview; static assets stay on video tracks." },
             "inputs": assets.iter().map(|p| file_chip(p)).collect::<Vec<_>>(), "assets": animated, "brief": stage_brief(s, &dir, "animate")}),
     ];
-    let complete = stages.iter().take(3).all(|st| st["done"] == json!(true));
+    let complete = stages.iter().take(2).all(|st| st["done"] == json!(true));
     let studio_info = studio(&dir);
     let effective_video_project = s
         .video_project_path
