@@ -128,6 +128,7 @@ class AppFooterController {
 
   async go(id: string) {
     if (id === 'studio') return setView('studio');
+    if (id === 'storyboard') return setView('storyboard');
     if (state.view !== 'project' && await setView('project') === false) return;
     state.open = SONG_SECTIONS.includes(id) ? 'song' : id;
     state.blocksCollapsed = false;
@@ -204,7 +205,7 @@ class AppFooterController {
 
   renderSaveState(): void {
     const motionUnsaved = this.isMotionUnsaved();
-    const unsaved = motionUnsaved || state.data?.design?.dirty === true || projectView.textDrafts.size > 0;
+    const unsaved = motionUnsaved || state.data?.design?.dirty === true || storyboardController.textDrafts.size > 0;
     const { tone, label } = this.saveStatus(unsaved);
     $('footer-save-state').replaceChildren(window.companionBoxes.dot(tone, '', 'footer-save-state'), label);
     $('footer-save-state').title = this.saveStateTitle(motionUnsaved, unsaved);
@@ -382,6 +383,7 @@ const SONG_SECTIONS = ['lyrics', 'transcript'];
 
 // What each workspace does when it opens. Wrapped in arrows: the views load after this file.
 const WORKSPACE_OPENERS: Record<string, () => unknown> = {
+  storyboard: () => renderStoryboard(),
   animation: () => animationOpen(),
   design: () => wordsOpen(),
   skills: () => { if (typeof renderResources === "function") renderResources(); },
@@ -445,13 +447,6 @@ class AppShellController {
     if (action && feedbackSnapshot().rendered && acFeedback.errors.length === errors) {
       await acFeedback.report(null, null, { stage: "ui_navigation_applied", ...action, view: state.view });
     }
-  }
-
-  updateStoryboardAccess() {
-    window.workspaceNavigation?.readiness(
-      state.data?.design?.progression?.allowed === true || state.animateOnly === true,
-      state.data?.design?.progression?.reason,
-    );
   }
 
   serverUrl() {
@@ -527,7 +522,7 @@ class AppShellController {
     animationReset();
     songStop();
     transcriptReaderClose();
-    projectView.textDrafts.clear();
+    storyboardController.textDrafts.clear();
     projectView.error = null;
     state.storyboardScene = null;
     state.storyboardUndo = null;
@@ -576,7 +571,6 @@ function placeInk() { appShell.placeInk(); }
 async function showStudio() { return appShell.showStudio(); }
 async function openWorkspace(view: string): Promise<void> { return appShell.openWorkspace(view); }
 async function setView(view: string, action?: any) { return appShell.setView(view, action); }
-function updateStoryboardAccess() { appShell.updateStoryboardAccess(); }
 function serverUrl() { return appShell.serverUrl(); }
 function videoProject() { return appShell.videoProject(); }
 function renderTarget() { appShell.renderTarget(); }
