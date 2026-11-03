@@ -104,6 +104,7 @@ pub fn build() -> Vec<CommandSpec> {
         specs_character,
         specs_scribbles,
         specs_film,
+        specs_storyboard,
         specs_diagnostics,
     ] {
         specs.extend(section());
@@ -1301,6 +1302,29 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 }
 
 /// The film in FilmCraft: watch a preview in Studio, check frames, export, or edit in FilmCraft.
+fn specs_storyboard() -> Vec<CommandSpec> {
+    vec![
+        cmd!(
+            "storyboard.create",
+            "Create Storyboard (DeckCraft)",
+            ["Storyboard"],
+            None,
+            "{\"plan\":\"scene plan .json: overview, sequence and handoff cards and scenes [{lines:[first,last] of the transcript lines, fields, images}]\"}",
+            always,
+            crate::storyboard::cmd_storyboard_create
+        ),
+        cmd!(
+            "storyboard.render",
+            "Draw Storyboard Pages (DeckCraft)",
+            ["Storyboard"],
+            None,
+            "{}",
+            always,
+            crate::storyboard::cmd_storyboard_render
+        ),
+    ]
+}
+
 fn specs_film() -> Vec<CommandSpec> {
     vec![
         cmd!(

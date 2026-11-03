@@ -117,7 +117,9 @@ pub fn state_of(s: &mut Session) -> Result<Value, String> {
             if deck.is_file() && deck.extension().is_some_and(|ext| ext == "deckcraft") {
                 state["storyboard"] = json!({"native_preview":true, "deck":deck,
                     "previews":board["previews"], "page_titles":board["page_titles"],
-                    "page_cues":board["page_plan"].as_array().into_iter().flatten().map(|p| &p["group"]["lyric_lines"]).collect::<Vec<_>>(),
+                    "page_cues":if board["page_cues"].is_array() { board["page_cues"].clone() } else {
+                        json!(board["page_plan"].as_array().into_iter().flatten().map(|p| &p["group"]["lyric_lines"]).collect::<Vec<_>>())
+                    },
                     "page_size":board["page_size"], "layout":{"links":board["links"]}});
             }
         }
