@@ -69,11 +69,20 @@
           </div>
         </form>
     </section>
-    <section class="view active" id="view-project" aria-label="Storyboard workspace">
+    <section class="view active" id="view-project" aria-label="Project workspace">
       <div class="project-body">
         <!-- Left rail: collapsible blocks (song workflow) -->
         <aside class="blocks" id="blocks" aria-label="Song workflow"></aside>
 
+        <section class="project-contents" id="project-contents" aria-label="Project contents"></section>
+      </div>
+
+
+    </section>
+
+    <section class="view" id="view-storyboard" aria-label="Storyboard workspace">
+      <div class="project-body">
+        <aside class="blocks" id="storyboard-rail" aria-label="Storyboard"></aside>
         <!-- Main: storyboard title cards -->
         <section class="storyboard" aria-label="Storyboard">
           <div class="panel-head" data-look="bar">
@@ -91,8 +100,6 @@
           </div>
         </section>
       </div>
-
-
     </section>
 
     <section class="view" id="view-animation" aria-label="Animation workspace"></section>
