@@ -224,18 +224,28 @@ class Tripo3DStage {
         this.scene.add(this.skeletonHelper);
         this.animations = Array.isArray(gltf.animations) ? gltf.animations : [];
         this.mixer = new THREE.AnimationMixer(this.modelRoot);
-        if (this.animations.length > 0) {
-          this.activeAction = this.mixer.clipAction(this.animations[0]);
-          this.activeAction.play();
-          this.duration = this.animations[0].duration || 2;
-        } else {
-          this.duration = 0;
-        }
+        this.duration = 0;
+        if (this.animations.length > 0) this.playClip([this.animations[0].name], 0);
         this.applyWireframe(this.wireframe);
         this.frameModel(this.modelRoot);
         resolve(true);
       }, undefined, () => resolve(false));
     });
+  }
+
+  /** Play the first of `candidates` the model has (see modelClipMatch), facing `yaw` degrees.
+   * Returns the clip's duration, or null when the model has none of them. */
+  playClip(candidates: string[], yaw: number): number | null {
+    if (!this.mixer || !this.modelRoot) return null;
+    const name = modelClipMatch(this.animations.map((clip: any) => clip.name), candidates);
+    const clip = this.animations.find((c: any) => c.name === name);
+    if (!clip) return null;
+    this.mixer.stopAllAction();
+    this.activeAction = this.mixer.clipAction(clip);
+    this.activeAction.play();
+    this.duration = clip.duration || 1;
+    this.modelRoot.rotation.y = THREE.MathUtils.degToRad(yaw || 0);
+    return this.duration;
   }
 
   setSkeletonVisible(show: boolean) {

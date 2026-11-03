@@ -48,12 +48,7 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     let table: Value = serde_json::from_str(POSES).map_err(|e| bad(e.to_string()))?;
-    let actions: Vec<Value> = table["actions"]
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(id, a)| json!({"id": id, "views": a["views"], "duration": a["duration"], "loop": a["loop"]}))
-        .collect();
+    let actions = super::action::action_summaries(&table);
     let project_dir = crate::workshop::project_dir(s)?;
     let char_id = p["character"]
         .as_str()

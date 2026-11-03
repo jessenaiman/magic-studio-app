@@ -51,33 +51,92 @@ function characterMeta(raw: Record<string, any>, wanted?: string) {
   };
 }
 
-/** Which drawn view an action plays in, given what has been rigged. */
-function characterActionView(action: string) {
-  const entry = motion.meta?.actions?.find((a: any) => a.id === action);
-  const rigged = (motion.meta?.views || []).filter((v: any) => v.rigged).map((v: any) => v.view);
-  return (entry?.views || []).find((v: string) => rigged.includes(v)) || null;
+/** The first candidate clip name a model has. Case is ignored, Blender's `Armature|` prefix and
+ * `.001` suffix are dropped, and `<Name>_walk` (Quaternius `TRex_Walk`) matches `walk`. */
+function modelClipMatch(available: string[], candidates: string[]) {
+  const bare = (name: string) => name.split('|').pop()!.replace(/\.\d+$/, '').toLowerCase();
+  for (const want of candidates.map(bare)) {
+    const hit = available.find((name) => bare(name) === want) || available.find((name) => bare(name).endsWith(`_${want}`));
+    if (hit) return hit;
+  }
+  return null;
 }
 
-/** Key the action into the rig (once), render its frames with EffectCraft, then play them. */
-async function characterPlayAction(action: string, play = true) {
-  const view = characterActionView(action);
-  if (!view) { toast(`Draw, mark and rig the ${motion.meta?.actions?.find((a: any) => a.id === action)?.views?.join(' or ') || 'needed'} view first`); return; }
-  animationPause();
-  motion.stageHeader.rename(`${motion.character} · keying ${action.replaceAll('_', ' ')} in EffectCraft…`);
-  try {
-    const keyed = await motionCommand('character.action', { character: motion.character, view, action });
-    const render = await motionCommand('character.render', { character: motion.character, view, start: keyed.start, end: keyed.end, fps: CHARACTER_FPS });
-    await characterStage.preload(render.frames);
-    Object.assign(motion, {
-      track: action, rest: false, time: 0, view,
-      sample: { duration: keyed.end - keyed.start, loop: keyed.loop === true, fps: CHARACTER_FPS, frames: render.frames, start: keyed.start },
-    });
+/** The pose-table entry for an action. */
+function characterAction(action: string) { return motion.meta?.actions?.find((a: any) => a.id === action); }
+
+/** Plays an Action button's action on the open character. */
+abstract class ActionPlayer {
+  abstract canPlay(action: string): boolean;
+  /** Tooltip: what playing the action does, or what is still missing. */
+  abstract describe(label: string, action: string): string;
+  abstract play(action: string, play: boolean): Promise<void>;
+
+  /** Switch the panels to the clip just loaded, then optionally start it. */
+  protected async show(action: string, sample: Record<string, any>, play: boolean) {
+    Object.assign(motion, { track: action, rest: false, time: 0, sample });
     acFeedback.report(null, null, { stage: 'clip_switched', clip: action });
-    $('motion-scrub').max = motion.sample.duration;
+    $('motion-scrub').max = sample.duration;
     animationControls();
     animationDraw();
     if (play) await animationPlay();
-  } catch (error) { toast(String(error)); motion.stageHeader.rename(`${motion.character} · ${error}`); }
+  }
+}
+
+/** A drawn view rigged in EffectCraft: the action is keyed into the rig and rendered to frames. */
+class DrawnActionPlayer extends ActionPlayer {
+  /** Which drawn view an action plays in, given what has been rigged. */
+  view(action: string) {
+    const rigged = (motion.meta?.views || []).filter((v: any) => v.rigged).map((v: any) => v.view);
+    return (characterAction(action)?.views || []).find((v: string) => rigged.includes(v)) || null;
+  }
+  canPlay(action: string) { return Boolean(this.view(action)); }
+  describe(label: string, action: string) {
+    const view = this.view(action);
+    return view ? `${label} · ${action.replaceAll('_', ' ')} keyed in EffectCraft (${view} view)` : `${label} needs the ${characterAction(action)?.views?.join(' or ')} view rigged`;
+  }
+  async play(action: string, play: boolean) {
+    const view = this.view(action);
+    if (!view) { toast(`Draw, mark and rig the ${characterAction(action)?.views?.join(' or ') || 'needed'} view first`); return; }
+    animationPause();
+    motion.stageHeader.rename(`${motion.character} · keying ${action.replaceAll('_', ' ')} in EffectCraft…`);
+    try {
+      const keyed = await motionCommand('character.action', { character: motion.character, view, action });
+      const render = await motionCommand('character.render', { character: motion.character, view, start: keyed.start, end: keyed.end, fps: CHARACTER_FPS });
+      await characterStage.preload(render.frames);
+      motion.view = view;
+      await this.show(action, { duration: keyed.end - keyed.start, loop: keyed.loop === true, fps: CHARACTER_FPS, frames: render.frames, start: keyed.start }, play);
+    } catch (error) { toast(String(error)); motion.stageHeader.rename(`${motion.character} · ${error}`); }
+  }
+}
+
+/** A rigged 3D model (Tripo/Mixamo, Quaternius): the action plays the model's own clip. */
+class ModelActionPlayer extends ActionPlayer {
+  available() { const t3d = motion.meta?.tripo_3d; return Boolean(t3d?.rigged && t3d?.primary_glb); }
+  clip(action: string) { return modelClipMatch(motion.meta?.tripo_3d?.model_clips || [], characterAction(action)?.model?.clips || []); }
+  canPlay(action: string) { return this.available() && Boolean(this.clip(action)); }
+  describe(label: string, action: string) {
+    const clip = this.clip(action);
+    return clip ? `${label} · plays the model's "${clip}" clip` : `${label} · this model has no ${(characterAction(action)?.model?.clips || []).join(' / ')} clip`;
+  }
+  async play(action: string, play: boolean) {
+    animationPause();
+    await animationView.show3D(true);
+    const model = characterAction(action)?.model || {};
+    const duration = tripo3DStage.playClip(model.clips || [], model.yaw || 0);
+    if (duration === null) { toast(`${motion.character} has no clip for ${action.replaceAll('_', ' ')}`); return; }
+    await this.show(action, { duration, loop: characterAction(action)?.loop !== false, fps: CHARACTER_FPS, frames: [], start: 0 }, play);
+  }
+}
+
+const drawnActionPlayer = new DrawnActionPlayer();
+const modelActionPlayer = new ModelActionPlayer();
+
+/** The 3D model plays the buttons when it is rigged and either the 3D view is open or no drawn
+ * view is rigged; otherwise the EffectCraft-rigged drawing does. */
+function characterActionPlayer(): ActionPlayer {
+  const drawnRigged = (motion.meta?.views || []).some((v: any) => v.rigged);
+  return modelActionPlayer.available() && (motion.viewport3d || !drawnRigged) ? modelActionPlayer : drawnActionPlayer;
 }
 
 /** Rest: the drawing itself, with its marks when it has not been rigged yet. */
@@ -257,11 +316,7 @@ function characterTripoRigAndAnimControls(busy: (label: string, run: () => Promi
       el('button', {
         class: 'ghost', title: 'Preview 3D clip in viewport',
         onclick: async () => {
-          motion.viewport3d = true;
-          const c2d = $('motion-canvas'), c3d = $('motion-canvas-3d');
-          if (c2d) c2d.hidden = true;
-          if (c3d) { c3d.hidden = false; if (!tripo3DStage.renderer) tripo3DStage.mount(c3d); }
-          if (c.glb) await tripo3DStage.loadGlb(c.glb);
+          await animationView.show3D(true, c.glb);
           const dur = tripo3DStage.duration || c.duration || 8;
           motion.rest = false;
           motion.track = c.id || '3d_motion';

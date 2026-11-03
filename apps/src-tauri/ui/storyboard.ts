@@ -3,6 +3,72 @@
 class StoryboardViewController {
   savePromise: Promise<any> | null = null;
   selectedPlacement: string | null = null;
+  textDrafts = new Map();
+
+  renderRail() { $('storyboard-rail')?.replaceChildren(this.buildStoryboardBlock()); }
+
+  scene() {
+    const scenes = state.data?.storyboard_contents?.chapters || [];
+    return scenes.find((scene: any) => scene.page === state.page + 1) || scenes.find((scene: any) => scene.target === state.storyboardScene) || scenes[0];
+  }
+
+  buildStoryboardSceneControls(scenes: any[], scene: any, contents: any) {
+    if (!scenes.length) return [];
+    const scenePicker = el('select', { id: 'storyboard-scene', 'aria-label': 'Storyboard scene', onchange: (event: any) => { state.storyboardScene = event.target.value; const selected = scenes.find((s: any) => s.target === state.storyboardScene); if (selected) showPage(selected.page - 1); this.renderRail(); } },
+      ...scenes.map((s: any) => el('option', { value: s.target, selected: s.target === scene?.target }, `${s.scene} · ${s.title}`)));
+    const wordPicker = el('select', { id: 'storyboard-word', 'aria-label': 'Recorded word at the scene cut' },
+      ...scenes.filter((s: any) => Math.abs(s.scene - (scene?.scene || 1)) <= 1).flatMap((s: any) => s.words || []).map((w: any) => el('option', { value: w.id, selected: w.id === scene?.words?.[1]?.id }, `${Number(w.start).toFixed(2)} · ${w.text}`)));
+    const sceneAction = (id: string, label: string, command: string, params: () => Record<string, any>, disabled = false) => el('button', {
+      id, disabled: disabled || !scene, 'data-commands': command, onclick: async () => {
+        try {
+          const result = await projectView.command(command, { scene: scene.target, expected_revision: contents.revision, ...params(), word: wordPicker.value });
+          if (result.previous_version) state.storyboardUndo = result.previous_version;
+          toast('Storyboard saved · lyric timing unchanged'); this.renderRail();
+        } catch (error) { toast(String(error)); }
+      }
+    }, label);
+    const undoBtn = el('button', {
+      id: 'storyboard-undo', disabled: !state.storyboardUndo, 'data-commands': 'storyboard.update', onclick: async () => {
+        try { await projectView.command('storyboard.update', { restore: state.storyboardUndo, expected_revision: contents.revision }); state.storyboardUndo = null; this.renderRail(); toast('Previous storyboard restored'); } catch (error) { toast(String(error)); }
+      }
+    }, 'Undo scene change');
+    return [el('p', { class: 'why' }, `${scenes.length} scenes · Timing from this project’s recorded words.`), scenePicker, wordPicker,
+      sceneAction('storyboard-add', 'Add scene before word', 'storyboard.create', () => ({}), (scene?.words?.length || 0) < 2),
+      sceneAction('storyboard-trim-start', 'Start scene at word', 'storyboard.update', () => ({ edge: 'start' }), scene?.scene === 1),
+      sceneAction('storyboard-trim-end', 'End scene at word', 'storyboard.update', () => ({ edge: 'end' }), scene?.scene === scenes.length),
+      sceneAction('storyboard-delete', 'Combine with previous', 'storyboard.delete', () => ({ into: 'previous' }), scene?.scene === 1),
+      sceneAction('storyboard-delete-next', 'Combine with next', 'storyboard.delete', () => ({ into: 'next' }), scene?.scene === scenes.length),
+      undoBtn];
+  }
+
+  buildStoryboardBlock() {
+    const template = state.data?.storyboard_template?.path || state.data?.storyboard?.template_file;
+    const sb = state.data?.storyboard, content = state.data?.design?.readiness, missing = content?.missing_fields || [];
+    const contents = state.data?.storyboard_contents, scenes = contents?.chapters || [], scene = this.scene();
+    const createBtn = !sb?.deck ? el('button', { id: 'storyboard-create', class: 'ghost', 'data-commands': 'storyboard.init', onclick: () => projectView.command('storyboard.init', { empty: true }).catch((error: any) => toast(String(error))) }, 'Create storyboard') : null;
+    const statusEl = sb?.deck ? el('p', { class: 'why', role: 'status' }, content?.reason || 'Storyboard needs review') : null;
+    const draftBtn = sb?.exists && content?.state !== 'ready' ? el('button', { id: 'storyboard-draft-override', 'data-commands': 'workshop.approve_draft', title: 'Allow Animation and Lyrics for this draft while keeping missing details visible', onclick: () => projectView.command('workshop.approve_draft', { approved: !state.data?.design?.progression?.draft_override, allow_incomplete: true }).catch((error: any) => toast(String(error))) }, state.data?.design?.progression?.draft_override ? 'Turn off draft access' : 'Proceed with this draft') : null;
+    const scenesBtn = sb?.deck && sb.empty_template && projectView.ready('transcript') ? el('button', { id: 'storyboard-create-scenes', 'data-commands': 'storyboard.init', onclick: () => projectView.command('storyboard.init').catch((error: any) => toast(String(error))) }, 'Create scene pages from timing') : null;
+    const overviewBtn = sb?.previews?.length ? el('button', { id: 'storyboard-overview', onclick: () => showPage(0) }, sb.page_titles?.[0] || 'First page') : null;
+    const saveBtn = sb?.deck ? el('button', { id: 'storyboard-save', disabled: !state.data?.design?.dirty && !this.textDrafts.size, 'data-commands': 'storyboard.save_version', onclick: () => saveStoryboard().catch((error: any) => toast(String(error))) }, 'Save new version') : null;
+    const body = [
+      el('div', { class: 'field-row' }, createBtn, el('button', { id: 'storyboard-template-open', class: 'icon', disabled: !template, 'aria-label': 'Edit storyboard template', title: template || 'Magic Studio storyboard template', html: $('sb-open-deck').innerHTML, onclick: () => invoke('open_path', { path: template }) })),
+      statusEl,
+      el('button', {
+        id: 'storyboard-discuss', 'data-drawer-toggle': 'sproket', title: 'Open Fidget to discuss the missing storyboard details', onclick: async () => {
+          const input = $('agent-input');
+          if (!input.value.trim()) input.value = 'Help me develop this storyboard. Read center.status creative_followup and the existing project assets. Ask me about the missing creative details before proposing placements or generating artwork.';
+          input.focus();
+        }
+      }, 'Discuss with Fidget'),
+      el('button', { id: 'storyboard-check', 'data-commands': 'storyboard.design', onclick: () => projectView.command('storyboard.design').catch((error: any) => toast(String(error))) }, 'Check storyboard details'),
+      draftBtn, scenesBtn, overviewBtn,
+      el('p', { class: 'why' }, `${sb?.previews?.length || 0} pages · ${(sb?.page_size || []).join(' × ')} · Edit text on the page; drag assets onto it.`),
+      ...missing.map((item: any) => el('button', { 'aria-label': `Edit page ${item.page} ${item.field}`, onclick: () => showPage(item.page - 1) }, `Page ${item.page} · ${item.field}`)),
+      ...this.buildStoryboardSceneControls(scenes, scene, contents),
+      saveBtn];
+    return projectView.block('storyboard', ICONS.animate, 'Storyboard', content?.state === 'failed' ? 'Wrong template · rebuild' : content?.state === 'ready' ? 'Content filled' : 'Needs work', projectView.ready('storyboard'), body, projectView.prerequisite('storyboard').state, null, () => this.renderRail());
+  }
 
   pageSize(): [number, number] {
     return state.data?.storyboard?.page_size || state.data?.storyboard?.layout?.page_size || [960, 540];
@@ -12,7 +78,10 @@ class StoryboardViewController {
     cards.replaceChildren();
     delete cards.dataset.document;
     $("sb-page").textContent = "Storyboard";
-    cards.append(projectSetupCard());
+    cards.append(el('div', { id: 'sb-empty', class: 'panel-empty project-setup' },
+      el('strong', {}, 'No storyboard yet'),
+      el('p', {}, 'Create a DeckCraft storyboard for this project.'),
+      el('button', { id: 'sb-empty-create', class: 'start', onclick: () => projectView.command('storyboard.init', { empty: true }).catch((error: any) => toast(String(error))) }, 'Create storyboard')));
   }
 
   renderChips(sb: any, pages: string[], chips: any) {
@@ -113,6 +182,7 @@ class StoryboardViewController {
   }
 
   render() {
+    this.renderRail();
     updateAppFooter();
     const sb = state.data?.storyboard;
     document.body.classList.toggle("movie-document", Boolean(sb?.deck));
@@ -152,8 +222,8 @@ class StoryboardViewController {
       "data-commands": "storyboard.edit", spellcheck: "true",
     });
     node.addEventListener("input", () => {
-      if (node.value === node.defaultValue) projectView.textDrafts.delete(id);
-      else projectView.textDrafts.set(id, { page: field.page, field: field.field, value: node.value });
+      if (node.value === node.defaultValue) this.textDrafts.delete(id);
+      else this.textDrafts.set(id, { page: field.page, field: field.field, value: node.value });
       updateAppFooter();
     });
     node.addEventListener("change", () => this.save().catch((error) => toast(String(error))));
@@ -188,7 +258,7 @@ class StoryboardViewController {
       const id = `sb-text-${field.page}-${field.id}`;
       kept.add(id);
       const node = this.ensureTextFieldNode(id, field, page);
-      const draft = projectView.textDrafts.get(id);
+      const draft = this.textDrafts.get(id);
       if (!draft) node.value = node.defaultValue = field.value || "";
       else if (node.value !== draft.value) node.value = draft.value;
       this.styleTextFieldNode(node, field, size);
@@ -197,7 +267,7 @@ class StoryboardViewController {
   }
 
   updateSaveControls() {
-    const disabled = projectView.pending > 0 || Boolean(state.data?.design?.error) || (!state.data?.design?.dirty && !projectView.textDrafts.size);
+    const disabled = projectView.pending > 0 || Boolean(state.data?.design?.error) || (!state.data?.design?.dirty && !this.textDrafts.size);
     for (const id of ["sb-save-version", "storyboard-save"]) if ($(id)) $(id).disabled = disabled;
   }
 
@@ -207,7 +277,7 @@ class StoryboardViewController {
     this.savePromise = (async () => {
       let result;
       do { result = await this.persist(); }
-      while (state.project === project && projectView.textDrafts.size);
+      while (state.project === project && this.textDrafts.size);
       return result;
     })().finally(() => {
       this.savePromise = null;
@@ -221,13 +291,13 @@ class StoryboardViewController {
     if (state.data?.design?.error) {
       throw new Error(`Cannot save until the editable storyboard is readable: ${state.data.design.error}`);
     }
-    const edits = [...projectView.textDrafts.entries()];
+    const edits = [...this.textDrafts.entries()];
     for (const [, edit] of edits) await designCommand("storyboard.edit", { ...edit, save: false });
     const params = state.data?.storyboard?.draft ? { draft: state.data.storyboard.manifest } : {};
     const result = await designCommand("storyboard.save_version", params);
     if (state.project !== project) return result;
     for (const [id, edit] of edits) {
-      if (projectView.textDrafts.get(id)?.value === edit.value) projectView.textDrafts.delete(id);
+      if (this.textDrafts.get(id)?.value === edit.value) this.textDrafts.delete(id);
     }
     this.renderText();
     renderBlocks();
@@ -362,7 +432,7 @@ $("sb-prev").addEventListener("click", () => showPage(state.page - 1));
 $("sb-next").addEventListener("click", () => showPage(state.page + 1));
 $("sb-open-deck").addEventListener("click", () => state.data?.storyboard?.deck && openPath(state.data.storyboard.deck));
 window.addEventListener("keydown", (e: KeyboardEvent) => {
-  if (state.view !== "project" || (e.target as HTMLElement)?.closest("input, textarea")) return;
+  if (state.view !== "storyboard" || (e.target as HTMLElement)?.closest("input, textarea")) return;
   if (e.key === "ArrowRight") showPage(state.page + 1);
   if (e.key === "ArrowLeft") showPage(state.page - 1);
 });

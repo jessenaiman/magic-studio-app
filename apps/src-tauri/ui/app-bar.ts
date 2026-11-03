@@ -2,7 +2,8 @@
 interface WorkspaceView { id: string; label: string; description: string; health?: boolean }
 
 const WORKSPACE_VIEWS: WorkspaceView[] = [
-  {id:'project', label:'Storyboard', description:'Plan your song and storyboard'},
+  {id:'project', label:'Project', description:'Everything in this project'},
+  {id:'storyboard', label:'Storyboard', description:'Plan scenes in DeckCraft'},
   {id:'animation', label:'Animation', description:'Animate objects and polish their motion'},
   {id:'design', label:'Lyrics', description:'Design lettering and motion timed to the lyrics'},
   {id:'studio', label:'Studio', description:'Assemble and preview your film'},
@@ -54,8 +55,7 @@ class WorkspaceNavigation {
       const button = this.buttons.find(item => item.dataset.view === view.id);
       // Navigation stays available; the engine still owns operation prerequisites.
       button.disabled = false;
-      button.title = ['animation','design'].includes(view.id) && !allowed && reason
-        ? `${view.description} · Storyboard: ${reason}` : view.description;
+      button.title = view.description;
     }
   }
   onKey(event) {
