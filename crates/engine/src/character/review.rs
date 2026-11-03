@@ -33,7 +33,7 @@ pub fn cmd_review(s: &mut Session, _: &Value) -> Result<Value> {
         Some(json!({"id":c["id"],"name":name,"path":file,"rigged":m["rigged"],"clips":m["model_clips"],"version":std::fs::metadata(file).ok().and_then(|m|m.modified().ok()).and_then(|t|t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d|d.as_millis().to_string()),"qa_status":"needs-visual-review"}))
     }).collect();
     Ok(
-        json!({"ok":true,"project":s.project_path,"directory":dir,"models":models,"review":read(s)?,"file":path(s)?}),
+        json!({"ok":true,"project":s.project_path,"directory":dir,"models":models,"review":read(s)?,"motion_options":motion_options(),"file":path(s)?}),
     )
 }
 
@@ -51,7 +51,7 @@ pub fn cmd_save_revision(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let id = p["character"]
         .as_str()
-        .filter(|v| !v.is_empty() && crate::workspace::sanitize_asset_id(v) == *v)
+        .filter(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
         .ok_or_else(|| bad("Invalid character"))?;
     let model = tripo::inspect_character_3d(&crate::workshop::project_dir(s)?, id);
     let file = model["primary_glb"]
@@ -109,7 +109,7 @@ pub fn cmd_save_revision(s: &mut Session, p: &Value) -> Result<Value> {
             && v.iter().all(|i| {
                 i["time"]
                     .as_f64()
-                    .is_some_and(|n| n.is_finite() && n >= 0. && n <= 3600.)
+                    .is_some_and(|n| n.is_finite() && (0. ..=3600.).contains(&n))
                     && i["text"]
                         .as_str()
                         .is_some_and(|t| !t.trim().is_empty() && t.len() <= 4000)
@@ -122,7 +122,10 @@ pub fn cmd_save_revision(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let revision = doc["revision"].as_u64().unwrap_or(0) + 1;
     let entry = json!({"id":revision,"character":id,"clip":clip,"created_unix_ms":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"source_sha256":fingerprint(std::path::Path::new(file))?,"parent":p["parent"],"draft":d});
-    doc["revisions"].as_array_mut().unwrap().push(entry.clone());
+    doc["revisions"]
+        .as_array_mut()
+        .ok_or_else(|| bad("Invalid revision list"))?
+        .push(entry.clone());
     doc["revision"] = json!(revision);
     let out = path(s)?;
     let tmp = out.with_extension("json.tmp");
@@ -138,4 +141,95 @@ fn number(p: &Value, key: &str, min: f64, max: f64) -> Result<f64> {
         .as_f64()
         .filter(|v| v.is_finite() && *v >= min && *v <= max)
         .ok_or_else(|| bad(format!("{key} must be between {min} and {max}")))
+}
+
+// The engine owns option definitions and CLI recipes; Scribbles only displays them.
+fn motion_options() -> Value {
+    json!([
+        {"id":"baseline","label":"Keep baseline motion","description":"Use the selected GLB clip unchanged in EffectCraft.","load":"One character. Project preparation only; no rendering."},
+        {"id":"paced","label":"Gentler pacing","description":"Play the existing clip at 85% speed; does not change skin weights or collision poses.","load":"One character. Project preparation only; no rendering."}
+    ])
+}
+pub fn cmd_motion_options(_: &mut Session, _: &Value) -> Result<Value> {
+    Ok(
+        json!({"ok":true,"options":motion_options(),"scope":"single-subject","render":"explicit separate command","baseline":"source GLBs are preserved"}),
+    )
+}
+
+pub fn cmd_prepare_motion(s: &mut Session, p: &Value) -> Result<Value> {
+    let dir = crate::workshop::project_dir(s)?;
+    let character = p["character"]
+        .as_str()
+        .filter(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
+        .ok_or_else(|| bad("Choose one character"))?;
+    let clip = p["clip"]
+        .as_str()
+        .ok_or_else(|| bad("Choose one animation"))?;
+    let option = p["option"].as_str().unwrap_or("baseline");
+    if !matches!(option, "baseline" | "paced") {
+        return Err(bad("Unknown motion option"));
+    }
+    let model = tripo::inspect_character_3d(&dir, character);
+    let source = model["primary_glb"]
+        .as_str()
+        .ok_or_else(|| bad("Character needs a GLB"))?;
+    let clips = model["model_clips"]
+        .as_array()
+        .ok_or_else(|| bad("Character has no animation clips"))?;
+    let index = clips
+        .iter()
+        .position(|v| v.as_str() == Some(clip))
+        .ok_or_else(|| bad("This character does not have that clip"))?;
+    let fingerprint = fingerprint(std::path::Path::new(source))?;
+    let safe_clip = crate::workspace::sanitize_asset_id(clip);
+    let duration = p["duration"].as_f64().unwrap_or(3.).clamp(0.1, 30.);
+    let folder = dir.join("animation-options").join(character).join(format!(
+        "{}-{}-{}-{:.3}s-v2",
+        safe_clip,
+        option,
+        &fingerprint[..10],
+        duration
+    ));
+    std::fs::create_dir_all(&folder)?;
+    let project = folder.join("motion.ecproj");
+    if project.exists() {
+        return Ok(
+            json!({"ok":true,"reused":true,"project":project,"script":folder.join("effectcraft.json"),"option":option,"source_sha256":fingerprint,"rendered":false}),
+        );
+    }
+    let steps = json!([
+        {"id":"comp.new","params":{"name":format!("{character} / {clip} / {option}"),"width":1280,"height":720,"frameRate":30,"duration":duration,"renderer":"advanced3D","background":"#20332a"}},
+        {"id":"layer.newModel","params":{"path":source,"name":"Character"}},
+        {"id":"prop.set","params":{"layer":"Character","path":"transform/position","value":[640,648,0]}},
+        {"id":"prop.set","params":{"layer":"Character","path":"transform/scale","value":[140,140,140]}},
+        {"id":"prop.set","params":{"layer":"Character","path":"geometryOptions/animation","value":index+1}},
+        {"id":"prop.set","params":{"layer":"Character","path":"geometryOptions/loopAnimation","value":true}},
+        {"id":"prop.set","params":{"layer":"Character","path":"geometryOptions/animationSpeed","value":if option=="paced" {85}else{100}}}
+    ]);
+    let script = folder.join("effectcraft.json");
+    std::fs::write(
+        &script,
+        serde_json::to_vec_pretty(&steps).map_err(|e| bad(e.to_string()))?,
+    )?;
+    let result = crate::workspace::run_tool_in(
+        &dir,
+        "effectcraft-cli",
+        &[
+            "--empty".into(),
+            "run".into(),
+            "--commands".into(),
+            script.to_string_lossy().into_owned(),
+            "--save-as".into(),
+            project.to_string_lossy().into_owned(),
+            "--json".into(),
+        ],
+    )?;
+    let manifest = json!({"character":character,"clip":clip,"option":option,"source":source,"source_sha256":fingerprint,"script":script,"project":project,"rendered":false,"status":"ready-for-preview","resource_policy":"one subject; no render during preparation","filmcraft_handoff":"Render a chosen short clip from this EffectCraft project, then import the result into FilmCraft; source rig remains unchanged"});
+    std::fs::write(
+        folder.join("option.json"),
+        serde_json::to_vec_pretty(&manifest).map_err(|e| bad(e.to_string()))?,
+    )?;
+    Ok(
+        json!({"ok":true,"project":project,"script":script,"option":option,"source_sha256":fingerprint,"rendered":false,"effectcraft":result}),
+    )
 }

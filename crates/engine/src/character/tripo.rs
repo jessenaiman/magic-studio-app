@@ -304,43 +304,6 @@ pub fn cmd_tripo_catalog(_: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "catalog": cat}))
 }
 
-fn run_photocraft_cutout(breakout_dir: &Path, id: &str, src: &Path) -> Value {
-    let out_pcraft = breakout_dir.join(format!("{id}-cutout.pcraft"));
-    let out_png = breakout_dir.join(format!("{id}-cutout.png"));
-    let layers_dir = breakout_dir.join(format!("{id}-split-layers"));
-    let _ = std::fs::create_dir_all(&layers_dir);
-    let args = vec![
-        "run".into(),
-        super::path_arg(src),
-        "--cmd".into(),
-        "layer.removeBackground".into(),
-        "--cmd".into(),
-        "file.export.layersToFiles".into(),
-        "--params".into(),
-        json!({"dir": layers_dir, "format": "png", "prefix": id, "trim": true}).to_string(),
-        "--cmd".into(),
-        "file.saveACopy".into(),
-        "--params".into(),
-        json!({"path": out_png, "overwrite": true}).to_string(),
-        "--out".into(),
-        super::path_arg(&out_pcraft),
-    ];
-    match crate::workspace::run_tool_in(breakout_dir, "photocraft-cli", &args) {
-        Ok(_) => {
-            let exported = collect_files_with_ext(&layers_dir, &["png"], 1);
-            json!({
-                "tool": "photocraft-cli",
-                "status": "executed_local_cutout_and_trimmed_layers",
-                "pcraft": out_pcraft,
-                "png": out_png,
-                "layers_dir": layers_dir,
-                "exported_layers": exported,
-            })
-        }
-        Err(e) => json!({"tool": "photocraft-cli", "status": "failed", "error": e.to_string()}),
-    }
-}
-
 fn template_provider_meta(provider: &str, tpl: &Value) -> (&'static str, Value) {
     match provider {
         "google_flow" => (
@@ -400,7 +363,45 @@ fn build_breakout_record(
     }
     if let Some(op) = matched_op {
         let craft_cli = match (kind, reference.as_deref()) {
-            ("split_image", Some(src)) => run_photocraft_cutout(breakout_dir, id, src),
+            ("split_image", Some(src)) => {
+                let out_pcraft = breakout_dir.join(format!("{id}-cutout.pcraft"));
+                let out_png = breakout_dir.join(format!("{id}-cutout.png"));
+                let layers_dir = breakout_dir.join(format!("{id}-split-layers"));
+                let _ = std::fs::create_dir_all(&layers_dir);
+                let args = vec![
+                    "run".into(),
+                    super::path_arg(src),
+                    "--cmd".into(),
+                    "layer.removeBackground".into(),
+                    "--cmd".into(),
+                    "file.export.layersToFiles".into(),
+                    "--params".into(),
+                    json!({"dir": layers_dir, "format": "png", "prefix": id, "trim": true})
+                        .to_string(),
+                    "--cmd".into(),
+                    "file.saveACopy".into(),
+                    "--params".into(),
+                    json!({"path": out_png, "overwrite": true}).to_string(),
+                    "--out".into(),
+                    super::path_arg(&out_pcraft),
+                ];
+                match crate::workspace::run_tool_in(breakout_dir, "photocraft-cli", &args) {
+                    Ok(_) => {
+                        let exported = collect_files_with_ext(&layers_dir, &["png"], 1);
+                        json!({
+                            "tool": "photocraft-cli",
+                            "status": "executed_local_cutout_and_trimmed_layers",
+                            "pcraft": out_pcraft,
+                            "png": out_png,
+                            "layers_dir": layers_dir,
+                            "exported_layers": exported,
+                        })
+                    }
+                    Err(e) => {
+                        json!({"tool": "photocraft-cli", "status": "failed", "error": e.to_string()})
+                    }
+                }
+            }
             _ => Value::Null,
         };
         return Ok(json!({

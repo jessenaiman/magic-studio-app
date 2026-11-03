@@ -17,8 +17,14 @@ use std::path::PathBuf;
 ///
 /// Open an existing project window:
 ///   magic-cli studio open /absolute/Song.magic
-/// Read its storyboard through the shared engine:
-///   magic-cli --project /absolute/Song.magic storyboard read
+/// Start an unfinished project with a source walkthrough:
+///   magic-cli --project /absolute/Song.magic storyboard toc
+///   magic-cli --project /absolute/Song.magic storyboard doctor
+///   magic-cli --project /absolute/Song.magic storyboard read page=1
+///   magic-cli --project /absolute/Song.magic storyboard read scene=2
+/// Confirm the recording, lyrics, liner notes, intended scene plan and song meaning
+/// with the director before authoring. A successful read only identifies what is loaded.
+/// If scene counts disagree, establish which existing plan is authoritative first.
 ///
 /// Any registry command also works as `magic-cli <domain> <verb> key=value ...`
 /// (underscores may be written as hyphens) or `magic-cli <domain.verb> ...`.

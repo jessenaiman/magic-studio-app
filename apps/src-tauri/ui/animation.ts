@@ -205,15 +205,7 @@ class AnimationViewController {
     await setView('animation');
   }
 
-  async open(artworkOnly = false) {
-    if (!artworkOnly) {
-      const catalog = await motionCommand('character.list');
-      if ((catalog.characters || []).some((c: any) => c.tripo_3d?.available)) {
-        await animationReview.open();
-        return;
-      }
-    }
-    $('view-animation').classList.remove('rig-review');
+  async open() {
     motion.mode = 'subject';
     if (motion.project === state.project && motion.meta) { animationDraw(); return; }
     theatreRequireSaved();
@@ -289,7 +281,7 @@ class AnimationViewController {
     return new PanelHeader({
       id: 'motion-stagebar', titleId: 'motion-caption', title: 'Loading artwork…',
       actions: [
-        el('button', { id: 'motion-full-review', class: 'ghost', onclick: () => animationReview.open() }, 'Full review'),
+        el('button', { id: 'motion-full-review', class: 'ghost', onclick: () => openScribbles() }, 'Drawing / motion review'),
         toggle3dBtn, penBtn, pathVisBtn, grid,
         motionButton('motion-fit', 'Fit artwork', 'fit', () => { motion.fit = true; motion.zoom = 1; animationDraw(); }),
         el('button', { id: 'motion-actual', title: 'Actual size · 100%', 'aria-label': 'Actual size', onclick: () => { motion.fit = false; motion.zoom = 1; animationDraw(); } }, '1:1'),
@@ -389,7 +381,7 @@ class AnimationViewController {
       Object.assign(motion, { meta, images: [], loading: false, sample: null, rest: true, track: '' });
       // A model-only character (no drawn view) opens in 3D; one without a model leaves it.
       if (motion.viewport3d && !meta.tripo_3d?.available) await this.show3D(false);
-      else if (!motion.viewport3d && modelActionPlayer.available() && !meta.views.length) await this.show3D(true);
+      else if (meta.tripo_3d?.primary_glb && (motion.viewport3d || !meta.views.length)) await this.show3D(true);
       if (!meta.layers.some((part: any) => part.id === motion.selected)) motion.selected = null;
       $('motion-stage-status')?.remove();
       const canvas = $('motion-canvas');

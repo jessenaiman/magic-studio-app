@@ -1,5 +1,6 @@
 // Native Animation workspace: full-timeline inspection and reversible skeletal corrections.
 class AnimationReviewController {
+  prepared:any=null;
   active=false; project:string|null=null; stage:any=null; data:any=null;
   character=''; clip='idle'; time=0; playing=false; raf=0; draft:any=null;
   dirty=false; parent:number|null=null; saving=false; generation=0; compare=false;
@@ -7,26 +8,26 @@ class AnimationReviewController {
   feedback(){return {active:this.active,character:this.character,clip:this.clip,time:this.time,playing:this.playing,dirty:this.dirty,revision:this.parent,status:this.draft?.status,corrections:this.draft?.keys?.length,issues:this.draft?.issues?.length};}
   canLeave(){if(!this.dirty&&!this.saving)return true;toast(this.saving?'Wait for the revision to finish saving':'Save or discard your animation revision before leaving');return false;}
   dispose(){this.pause();this.generation++;this.stage?.dispose();this.stage=null;this.active=false;}
-  async open(){
+  async open(host:HTMLElement){
     if(!theatreCanLeave())return;
-    this.dispose();animationPause();tripo3DStage.dispose();motion.resizeObserver?.disconnect();
+    this.dispose();animationPause();
     this.active=true;this.project=state.project;const generation=this.generation;
-    const view=$('view-animation');view.classList.add('rig-review');view.replaceChildren(el('p',{class:'muted'},'Loading animation review…'));
+    const view=host;view.replaceChildren(el('p',{class:'muted'},'Loading animation review…'));
     try{
       this.data=await motionCommand('animation.review');if(generation!==this.generation||this.project!==state.project)return;
       if(!this.data.models.length){view.replaceChildren(el('p',{},'This project has no GLB characters.'),el('button',{onclick:()=>this.back()},'Back to artwork'));return;}
       if(!this.data.models.some((m:any)=>m.id===this.character))this.character=this.data.models[0].id;
-      this.shell();this.stage=new (window as any).RigReviewStage($('review-canvas'));
+      this.shell(host);this.stage=new (window as any).RigReviewStage($('review-canvas'));
       await this.stage.load(this.data.models.map((m:any)=>({...m,url:String(convertFileSrc(m.path))+'?v='+m.version})));
       if(generation!==this.generation)return;
       const names=[...new Set(this.data.models.flatMap((m:any)=>m.clips))] as string[];
       $('review-clip').replaceChildren(...names.map(n=>el('option',{value:n},n)));
       if(!names.includes(this.clip))this.clip=names.includes('idle')?'idle':names[0]||'';
       $('review-clip').value=this.clip;this.loadDraft();
-    }catch(e){if(generation===this.generation){$('review-status').textContent=String(e);toast(String(e));}}
+    }catch(e){if(generation===this.generation){if($('review-status'))$('review-status').textContent=String(e);toast(String(e));}}
   }
-  back(){if(!this.canLeave())return;this.dispose();$('view-animation').classList.remove('rig-review');motion.project=null;animationView.open(true);}
-  shell(){
+  back(){if(!this.canLeave())return;scribblesDialog.setMode(false);}
+  shell(host:HTMLElement){
     const select=(id:string,label:string,options:any[],change:any)=>el('label',{},label,el('select',{id,'aria-label':label,onchange:change},options));
     const modelOptions=this.data.models.map((m:any)=>el('option',{value:m.id},m.name+(m.rigged?'':' · needs rigging')));
     const target=select('review-character','Character',modelOptions,(e:any)=>{if(!this.canLeave()){e.target.value=this.character;return;}this.pause();this.character=e.target.value;this.loadDraft();});
@@ -34,7 +35,7 @@ class AnimationReviewController {
     const focus=select('review-focus','View',[el('option',{value:'all'},'All characters'),...this.data.models.map((m:any)=>el('option',{value:m.id},m.name))],(e:any)=>{this.stage.focus=e.target.value;this.labels();this.draw();});
     const zoom=select('review-zoom','Zoom',[.75,1,1.5,2,3].map(v=>el('option',{value:v},`${v}×`)),(e:any)=>{this.stage.zoom=Number(e.target.value);this.draw();});
     const toggle=(id:string,label:string,key:string,value=false)=>el('label',{class:'review-check'},el('input',{id,type:'checkbox',checked:value,onchange:(e:any)=>{this.stage[key]=e.target.checked;this.draw();}}),label);
-    const header=el('div',{class:'review-toolbar'},el('strong',{},'Full animation review'),target,clips,focus,zoom,toggle('review-skeleton','Skeleton','skeleton'),toggle('review-wireframe','Wireframe','wireframe'),toggle('review-grid','Grid','grid',true),el('button',{class:'ghost',id:'review-back',onclick:()=>this.back()},'Artwork tools'));
+    const header=el('div',{class:'review-toolbar'},el('strong',{},'Full animation review'),target,clips,focus,zoom,toggle('review-skeleton','Skeleton','skeleton'),toggle('review-wireframe','Wireframe','wireframe'),toggle('review-grid','Grid','grid',true),null);
     const time=el('input',{id:'review-time',type:'number',min:0,step:1/30,value:0,'aria-label':'Source time',onchange:(e:any)=>this.seek(Number(e.target.value))});
     const transport=el('div',{class:'review-transport'},
       el('button',{id:'review-start',onclick:()=>this.seek(this.draft.trim_start)},'Start'),
@@ -42,8 +43,8 @@ class AnimationReviewController {
       el('button',{id:'review-play',onclick:()=>this.play()},'Play full clip'),
       el('button',{id:'review-next',onclick:()=>this.seek(this.time+1/30),'aria-label':'Next frame'},'+1 frame'),
       el('input',{id:'review-scrub',type:'range',min:0,max:1,step:1/30,value:0,'aria-label':'Animation timeline',oninput:(e:any)=>this.seek(Number(e.target.value))}),time,el('output',{id:'review-readout'},'0 / 0 s'));
-    const sidebar=el('aside',{class:'review-inspector',id:'review-inspector','aria-label':'Animation revisions'});
-    $('view-animation').replaceChildren(header,el('div',{class:'review-workspace'},el('section',{class:'review-stage'},el('div',{id:'review-canvas','aria-label':'Front and side character previews'}),el('div',{id:'review-labels','aria-hidden':'true'})),sidebar),transport,el('div',{class:'review-status',id:'review-status',role:'status'},'Loading models…'));
+    const sidebar=el('aside',{class:'panel-fields review-inspector',id:'review-inspector','aria-label':'Animation revisions'});
+    host.replaceChildren(header,el('div',{class:'artwork-review-layout'},el('section',{class:'review-stage'},el('div',{id:'review-canvas','aria-label':'Front and side character previews'}),el('div',{id:'review-labels','aria-hidden':'true'})),sidebar),transport,el('div',{class:'review-status',id:'review-status',role:'status'},'Loading models…'));
     $('review-character').value=this.character;$('review-zoom').value='1';
   }
   latest(id:string){return [...this.data.review.revisions].reverse().find((r:any)=>r.character===id&&r.clip===this.clip);}
@@ -84,11 +85,22 @@ class AnimationReviewController {
     const notes=el('textarea',{id:'review-notes',rows:3,'aria-label':'Revision notes',oninput:(e:any)=>{d.notes=e.target.value;this.changed();}});notes.value=d.notes;
     const approval=el('select',{id:'review-approval','aria-label':'Visual review status',onchange:(e:any)=>{d.status=e.target.value;this.dirty=true;this.draw();}},...['needs-visual-review','issues-found','approved'].map(v=>el('option',{value:v},v.replaceAll('-',' '))));approval.value=d.status;
     const section=(title:string,...body:any[])=>el('section',{class:'review-section'},el('h3',{},title),...body);
+    const choices=this.data.motion_options||[];
+    const option=el('select',{id:'review-motion-option','aria-label':'EffectCraft motion option'},...choices.map((o:any)=>el('option',{value:o.id},o.label)));
+    const detail=el('p',{class:'muted'});
+    const describe=()=>{const o=choices.find((v:any)=>v.id===option.value);detail.textContent=o?`${o.description} ${o.load}`:'';};option.onchange=describe;describe();
+    const prepare=el('button',{id:'review-prepare-motion',disabled:!hasClip,onclick:async()=>{
+      prepare.disabled=true;
+      try{this.prepared=await motionCommand('animation.prepare_motion',{character:this.character,clip:this.clip,option:option.value,duration:Math.min(4,d.trim_end-d.trim_start)});result.replaceChildren(fileButton({path:this.prepared.project,name:'Open saved EffectCraft option'}));toast('One-character EffectCraft option saved · no rendering started');}
+      catch(e){toast(String(e));}finally{prepare.disabled=false;}
+    }},'Prepare one character');
+    const result=el('div',{});
     $('review-inspector').replaceChildren(
       section('Revision',el('p',{class:'muted'},hasClip?'Changes apply to this character and clip.':'This character has no selected clip. Rigging or animation is still needed.'),history,el('div',{class:'review-actions'},save,discard),approval),
       section('Timing',start,end,speed,check('review-loop','Loop preview','loop'),check('review-in-place','Keep preview in place','in_place'),compare),
       section('Bone corrections',bone,angle('x'),angle('y'),angle('z'),addKey,el('small',{class:'muted'},'Offsets blend between correction keys and hold at the ends. Add zero-angle keys before and after a local fix.'),keys),
       section('Issues',issue,addIssue,issues),section('Notes',notes),
+      section('EffectCraft motion options',option,detail,prepare,result),
       section('Export',el('button',{id:'review-export',disabled:!hasClip,onclick:()=>this.export()},'Export revised GLB'),el('small',{class:'muted'},'Exports this clip at 30 fps with timing and bone corrections baked in. In-place is a preview aid; root motion is preserved.')));
   }
   labels(){
@@ -105,6 +117,7 @@ class AnimationReviewController {
     $('review-time').value=this.time.toFixed(3);$('review-scrub').value=String(this.time);
     $('review-readout').textContent=`${this.time.toFixed(3)} / ${this.stage.duration().toFixed(3)} s · frame ${Math.round(this.time*30)}`;
     $('review-status').textContent=`${this.dirty?'Unsaved changes':this.parent?'Saved revision '+this.parent:'Original / unsaved draft'} · ${this.draft.status.replaceAll('-',' ')} · ${this.playing?'PLAYING':this.time>=this.draft.trim_end?'COMPLETE':'PAUSED'}${this.compare?' · Original pose comparison':''}`;
+    document.querySelectorAll('#scribbles-rig-review input,#scribbles-rig-review textarea').forEach((n:any)=>{if(n.type==='checkbox')n.defaultChecked=n.checked;else n.defaultValue=n.value;});
   }
   seek(time:number){this.pause();if(!Number.isFinite(time))return;this.time=Math.max(0,Math.min(this.stage.duration(),time));this.draw();}
   pause(){this.playing=false;cancelAnimationFrame(this.raf);if($('review-play'))$('review-play').textContent='Play full clip';}

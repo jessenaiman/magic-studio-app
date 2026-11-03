@@ -60,6 +60,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"character.set"
             | b"character.tripo.breakout"
             | b"character.tripo.rig"
+            | b"animation.prepare_motion"
             | b"character.tripo.animate"
     )
 }
@@ -1188,6 +1189,23 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::character::cmd_character_sprite
         ),
+        query!(
+            "animation.motion_options",
+            "Single-Subject EffectCraft Motion Options",
+            "{}",
+            crate::character::review::cmd_motion_options
+        ),
+        cmd!(
+            "animation.prepare_motion",
+            "Prepare One Character in EffectCraft",
+            ["Animation"],
+            None,
+            r#"{"character":"id","clip":"exact GLB clip","option":"baseline|paced","duration":3}"#,
+            always,
+            crate::character::review::cmd_prepare_motion
+        ),
+        query!("motion.theatre.read","Read project timeline",r#"{"expected_project":"path"}"#,crate::project::theatre_state),
+        cmd!("motion.theatre.save","Save project timeline",[],None,r#"{"expected_project":"path","state":{}}"#,always,crate::project::save_theatre_state),
         query!(
             "animation.review",
             "Animation Review Models and Saved Revisions",

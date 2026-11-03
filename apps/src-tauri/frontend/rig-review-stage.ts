@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 type Correction = {bone:string;time:number;rotation:number[]};
@@ -123,3 +124,6 @@ class RigReviewStage {
   dispose(){this.disposed=true;this.observer.disconnect();for(const a of this.actors){a.mixer.stopAllAction();this.release(a.model);a.helper.dispose();a.floor.geometry.dispose();a.floor.material.dispose();}this.renderer.dispose();this.host.replaceChildren();}
 }
 (window as any).RigReviewStage=RigReviewStage;
+
+// The existing Animation viewport and Scribbles share the same Three.js runtime.
+(window as any).THREE={...T,GLTFLoader,OrbitControls};

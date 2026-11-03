@@ -5,8 +5,11 @@ class ScribblesDialog {
   root: any = null;
   templates: any = null;
   busy = false;
+  drawingLayout:any=null; rigHost:any=null; rigMode=false; character:string|null=null;
 
-  async open(character: string | null, reference: string | null) {
+  async open(character: string | null, reference: string | null, review = false) {
+    this.character=character;
+    if(this.root?.open){if(!animationReview.canLeave())return;this.root.close();}
     this.templates = this.templates || await motionCommand('scribbles.templates');
     const kinds = this.templates.kinds;
     const kind = el('select', { id: 'scribbles-kind', 'aria-label': 'Kind of drawing' },
@@ -20,6 +23,7 @@ class ScribblesDialog {
     const layout = el('p', { id: 'scribbles-layout', class: 'muted' });
     const sent = el('textarea', { id: 'scribbles-sent-prompt', class: 'field', rows: 8, readonly: true, 'aria-label': 'Prompt sent to Scribbles' });
     const image = el('img', { id: 'scribbles-image', alt: 'Scribbles drawing' });
+    if(reference)image.src=String(convertFileSrc(reference));
     const status = el('p', { id: 'scribbles-status', class: 'muted', role: 'status' }, 'Choose a kind, then Draw.');
     const actionField = new InspectorField('Action', action).node;
     const describe = () => {
@@ -48,22 +52,34 @@ class ScribblesDialog {
         } catch (error) { status.textContent = String(error); }
         finally { this.busy = false; draw.disabled = false; }
       } }, 'Draw');
-    const close = el('button', { id: 'scribbles-close', class: 'ghost', onclick: () => this.root.close() }, 'Close');
+    const close = el('button', { id: 'scribbles-close', class: 'ghost', onclick: () => {if(animationReview.canLeave())this.root.close();} }, 'Close');
     const fields = el('div', { class: 'panel-fields' },
       new InspectorField('Kind', kind).node, actionField, new InspectorField('Reference image', ref).node,
       new InspectorField('Character / drawing', prompt).node, new InspectorField('Notes', notes).node,
       layout, link, draw, el('details', {}, el('summary', {}, 'Prompt sent to Scribbles'), sent));
+    this.drawingLayout=el('div', { class: 'artwork-review-layout' }, el('div', { class: 'artwork-review-canvas' }, image), fields);
+    this.rigHost=el('div',{id:'scribbles-rig-review',hidden:true});
+    const mode=el('button',{id:'scribbles-review-3d',class:'ghost',onclick:()=>this.setMode(!this.rigMode)},'3D animation review');
     this.root = el('dialog', { id: 'scribbles-dialog', class: 'editor-dialog artwork-review', 'aria-label': 'Scribbles' },
-      new PanelHeader({ id: 'scribbles-head', title: 'Scribbles', actions: [close] }).element,
-      el('div', { class: 'artwork-review-layout' }, el('div', { class: 'artwork-review-canvas' }, image), fields), status);
-    this.root.addEventListener('cancel', (event: Event) => { if (this.busy) event.preventDefault(); });
-    this.root.addEventListener('close', () => this.root.remove());
+      new PanelHeader({ id: 'scribbles-head', title: 'Scribbles', actions: [mode, close] }).element,
+      this.drawingLayout, this.rigHost, status);
+    this.root.addEventListener('cancel', (event: Event) => { if (this.busy || !animationReview.canLeave()) event.preventDefault(); });
+    this.root.addEventListener('close', () => {animationReview.dispose();this.rigMode=false;this.root.remove();});
     document.body.append(this.root);
     this.root.showModal();
+    if(review)await this.setMode(true);
+  }
+  async setMode(review:boolean) {
+    if(!animationReview.canLeave())return;
+    this.rigMode=review;this.drawingLayout.hidden=review;this.rigHost.hidden=!review;
+    $('scribbles-status').hidden=review;
+    $('scribbles-review-3d').textContent=review?'Drawing / sheets':'3D animation review';
+    if(review){animationReview.character=this.character||animationReview.character;await animationReview.open(this.rigHost);}
+    else animationReview.dispose();
   }
 }
 
 const scribblesDialog = new ScribblesDialog();
-function openScribbles(character: string | null = motion.character, reference: string | null = motion.meta?.view?.drawing || null) {
-  return scribblesDialog.open(character, reference).catch((error: any) => toast(String(error)));
+function openScribbles(character: string | null = motion.character, reference: string | null = motion.meta?.view?.drawing || null, review = false) {
+  return scribblesDialog.open(character, reference, review).catch((error: any) => toast(String(error)));
 }

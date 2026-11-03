@@ -520,6 +520,9 @@ fn align_imported_sections(
             ev.push(json!({
                 "status": "unassessed",
                 "reason": "Supplied scene plan and storyboard scene counts differ",
+                "source_plan": plan,
+                "source_plan_entries": scenes.len(),
+                "loaded_storyboard_entries": packets.len(),
             }));
         }
         return Vec::new();

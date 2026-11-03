@@ -39,7 +39,7 @@ function characterMeta(raw: Record<string, any>, wanted?: string) {
     ['Parts and joints marked (Scribbles)', Boolean(view?.marked)],
     ['Parts cut into layers (PhotoCraft)', Boolean(view?.cut)],
     ['Puppet rigged (EffectCraft)', Boolean(view?.rigged)],
-    ['3D mesh & rig ready (Tripo / TextureCraft / Blender)', Boolean(tripo3d?.available && tripo3d?.rigged)],
+    ['3D mesh & rig ready (3D model)', Boolean(tripo3d?.available && tripo3d?.rigged)],
   ];
   return {
     raw, view, views: raw.views || [], actions: raw.actions || [], tripo_3d: tripo3d,
@@ -194,8 +194,8 @@ function characterPreparePanel() {
   openPc.disabled = !view?.cut;
   openBl.disabled = !(motion.meta?.tripo_3d?.blend_files?.length > 0);
   const scribbles = el('button', { id: 'character-scribbles', class: 'ghost', 'data-commands': 'scribbles.templates', onclick: () => openScribbles() }, 'Scribbles…');
-  const tripoBreakout = characterTripoBreakoutControls(busy);
-  const tripoRigAnim = characterTripoRigAndAnimControls(busy);
+  const tripoBreakout = characterPartsControls(busy);
+  const tripoRigAnim = characterRigMotionControls(busy);
   return el('div', { class: 'panel-fields', id: 'character-prepare' },
     scribbles, new InspectorField('View', viewPicker).node, mark, save, cutRig, status,
     el('div', { class: 'motion-path-actions' }, openPc, openEc, openBl),
@@ -231,8 +231,8 @@ const TRIPO_PRESETS_QUICK: Array<[string, string]> = [
   ['turn', 'Turn'],
 ];
 
-function characterTripoBreakoutControls(busy: (label: string, run: () => Promise<unknown>) => Promise<void>) {
-  const kindSelect = el('select', { id: 'tripo-breakout-kind', 'aria-label': 'Tripo breakout kind' },
+function characterPartsControls(busy: (label: string, run: () => Promise<unknown>) => Promise<void>) {
+  const kindSelect = el('select', { id: 'tripo-breakout-kind', 'aria-label': 'character parts operation kind' },
     ...TRIPO_BREAKOUT_KINDS.map(([val, label]) => el('option', { value: val }, label)));
   const granularitySelect = el('select', { id: 'tripo-segment-granularity', 'aria-label': '3D segmentation granularity' },
     ...['low', 'medium', 'high'].map((g) => el('option', { value: g }, `${g} granularity`)));
@@ -240,7 +240,7 @@ function characterTripoBreakoutControls(busy: (label: string, run: () => Promise
   const runBreakoutBtn = el('button', {
     id: 'tripo-breakout-run', class: 'ghost', 'data-commands': 'character.tripo.breakout',
     title: 'Run post-image breakout (Template, PhotoCraft Cutout, Multiview or 3D Segmentation)',
-    onclick: () => busy(`Running Tripo breakout (${kindSelect.value})…`, () => motionCommand('character.tripo.breakout', {
+    onclick: () => busy(`Running character parts operation (${kindSelect.value})…`, () => motionCommand('character.tripo.breakout', {
       character: motion.character,
       kind: kindSelect.value,
       granularity: granularitySelect.value,
@@ -248,31 +248,31 @@ function characterTripoBreakoutControls(busy: (label: string, run: () => Promise
     })),
   }, 'Run Breakout Step');
   return el('div', { class: 'seq-side-block', id: 'tripo-breakout-panel' },
-    el('strong', {}, 'Tripo Breakout & Parts'),
+    el('strong', {}, 'Character parts'),
     new InspectorField('Breakout', kindSelect).node,
     new InspectorField('Parts', granularitySelect).node,
     runBreakoutBtn);
 }
 
-function characterTripoRigAndAnimControls(busy: (label: string, run: () => Promise<unknown>) => Promise<void>) {
+function characterRigMotionControls(busy: (label: string, run: () => Promise<unknown>) => Promise<void>) {
   const t3d = motion.meta?.tripo_3d || {};
-  const rigTypeSelect = el('select', { id: 'tripo-rig-type', 'aria-label': 'Tripo rig type' },
+  const rigTypeSelect = el('select', { id: 'tripo-rig-type', 'aria-label': 'skeleton type' },
     ...['biped', 'quadruped', 'hexapod', 'octopod', 'avian', 'serpentine', 'aquatic', 'others'].map((r) => el('option', { value: r }, r)));
   rigTypeSelect.value = t3d.rig_type || 'biped';
-  const skelSelect = el('select', { id: 'tripo-skeleton-preset', 'aria-label': 'Tripo skeleton preset' },
+  const skelSelect = el('select', { id: 'tripo-skeleton-preset', 'aria-label': 'Character skeleton preset' },
     ...[['mixamo', 'Mixamo'], ['actorcore', 'ActorCore'], ['unreal', 'UE5 Mannequin'], ['vrm', 'VRM 1.0 Humanoid'], ['unity', 'Unity Humanoid']].map(([v, l]) => el('option', { value: v }, l)));
   skelSelect.value = t3d.skeleton_preset || 'mixamo';
   const rigBtn = el('button', {
     id: 'tripo-rig-run', class: 'ghost', 'data-commands': 'character.tripo.rig',
-    title: 'Run Tripo Pre-Rig Check (TextureCraft mesh/UV check) and configure 3D Auto-Rigging',
-    onclick: () => busy('Checking 3D mesh in TextureCraft & configuring Tripo rig…', () => motionCommand('character.tripo.rig', {
+    title: 'Run mesh preflight (TextureCraft mesh/UV check) and configure 3D Auto-Rigging',
+    onclick: () => busy('Checking 3D mesh in TextureCraft & configuring skeleton…', () => motionCommand('character.tripo.rig', {
       character: motion.character,
       rig_type: rigTypeSelect.value,
       skeleton_preset: skelSelect.value,
     })),
   }, 'Pre-Rig Check & Auto-Rig 3D');
 
-  const presetSelect = el('select', { id: 'tripo-preset-select', 'aria-label': 'Tripo animation preset' },
+  const presetSelect = el('select', { id: 'tripo-preset-select', 'aria-label': 'Motion preset' },
     ...TRIPO_PRESETS_QUICK.map(([v, l]) => el('option', { value: v }, l)));
   const fbxPresetSelect = el('select', { id: 'tripo-fbx-preset', 'aria-label': 'FBX export preset' },
     ...['blender', '3dsmax', 'maya', 'unreal', 'unity'].map((p) => el('option', { value: p }, p)));
@@ -295,11 +295,11 @@ function characterTripoRigAndAnimControls(busy: (label: string, run: () => Promi
   }) as HTMLInputElement;
   const applyMultiStageBtn = el('button', {
     id: 'tripo-multistage-run', class: 'ghost', 'data-commands': 'character.tripo.animate',
-    title: 'Author Tripo Multi-Stage Motion clip (.anim.json + EffectCraft 3D comp)',
+    title: 'Author motion sequence clip (.anim.json + EffectCraft 3D comp)',
     onclick: () => {
       const parts = (stagePrompt.value || 'wave').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 5);
       const stages = parts.map((p, idx) => ({ name: idx === 0 ? 'Start' : String.fromCharCode(64 + idx), prompt: p, duration_seconds: 3, waypoints: [[0, 0], [0, 0]] }));
-      return busy('Saving Tripo Multi-Stage Motion clip…', () => motionCommand('character.tripo.animate', {
+      return busy('Saving motion sequence clip…', () => motionCommand('character.tripo.animate', {
         character: motion.character,
         name: parts.join('_').slice(0, 32),
         stages,
@@ -310,6 +310,19 @@ function characterTripoRigAndAnimControls(busy: (label: string, run: () => Promi
     },
   }, 'Author Multi-Stage Motion');
 
+  const embedded = el('select', { id:'tripo-embedded-clip', 'aria-label':'Embedded animation' },
+    ...(t3d.model_clips || []).map((name:string) => el('option',{value:name},name)));
+  const preview = el('button',{class:'ghost',disabled:!t3d.model_clips?.length,onclick:async()=>{
+    if(!theatreCanLeave())return;
+    animationPause();
+    await animationView.show3D(true,t3d.primary_glb);
+    const duration=tripo3DStage.playClip([embedded.value],0);
+    if(duration===null){toast('Could not load the selected clip');return;}
+    Object.assign(motion,{track:embedded.value,time:0,rest:false,sample:{duration,loop:true,fps:30,frames:[],start:0}});
+    $('motion-scrub').max=duration;
+    animationDraw();
+    await animationPlay();
+  }},'Play on animation canvas');
   const clipsList = el('div', { class: 'tripo-clip-list', id: 'tripo-clip-list' },
     ...(t3d.clips || []).map((c: Record<string, any>) => el('div', { class: 'tripo-clip-row' },
       el('span', {}, `${c.name} (${c.duration || 0}s · ${c.source || '3d'})`),
@@ -327,7 +340,7 @@ function characterTripoRigAndAnimControls(busy: (label: string, run: () => Promi
       }, '3D View'))));
 
   return el('div', { class: 'seq-side-block', id: 'tripo-rig-anim-panel' },
-    el('strong', {}, `Tripo 3D Rig & Motion (${t3d.available ? `${t3d.import_summary?.bones || 65} bones` : 'no mesh'})`),
+    el('strong', {}, `Skeleton and motion (${t3d.available ? `${t3d.bone_count || 0} bones` : 'no mesh'})`),
     new InspectorField('Rig Type', rigTypeSelect).node,
     new InspectorField('Skeleton', skelSelect).node,
     rigBtn,
@@ -336,7 +349,7 @@ function characterTripoRigAndAnimControls(busy: (label: string, run: () => Promi
     applyPresetBtn,
     new InspectorField('Multi-Stage', stagePrompt).node,
     applyMultiStageBtn,
-    clipsList);
+    new InspectorField('Embedded animation',embedded).node,preview,clipsList);
 }
 
 /** Save a clip the film can use: ProRes 4444 with transparency, rendered by EffectCraft. */

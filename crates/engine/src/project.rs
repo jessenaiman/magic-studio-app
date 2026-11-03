@@ -1092,3 +1092,20 @@ pub fn cmd_project_attach(s: &mut Session, p: &Value) -> Result<Value> {
     value["attachment"] = json!("read-only disk metadata; Studio unchanged");
     Ok(value)
 }
+
+pub fn theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
+    let path=s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    if params["expected_project"].as_str()!=path.to_str(){return Err(EngineError::InvalidParams("Project changed".into()));}
+    let doc=read_project_document(path)?;
+    Ok(json!({"state":doc["theatre"],"status":if doc["theatre"].is_object(){"saved"}else{"empty"}}))
+}
+pub fn save_theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
+    theatre_state(s,params)?;
+    if !params["state"]["sheetsById"].is_object(){return Err(EngineError::InvalidParams("Invalid Theatre snapshot".into()));}
+    let path=s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    let mut doc=read_project_document(path)?;
+    doc["theatre"]=params["state"].clone();
+    let bytes=serde_json::to_vec_pretty(&doc).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
+    write_preserving_lease(path,&bytes)?;
+    Ok(json!({"saved":true,"project":path}))
+}
