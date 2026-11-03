@@ -974,6 +974,13 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
 
 fn specs_diagnostics() -> Vec<CommandSpec> {
     vec![
+        query!("mayhem.evidence", "Mayhem · Inspect agents, CLI and scan evidence", "{\"self\":false}", crate::mayhem::evidence),
+        CommandSpec {
+            id: "mayhem.scan", label: "Mayhem · Scan source", menu: &["Mayhem"], shortcut: None,
+            params: "{}", help: "Run Lizard over the app and save a complete source measurement.",
+            example: "magic-cli mayhem scan", enabled: always, run: crate::mayhem::scan,
+            journal: false, long_running: true,
+        },
         cmd!(
             "resources.workflow",
             "Shared Creation Loop",

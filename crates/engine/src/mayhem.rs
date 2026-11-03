@@ -51,25 +51,16 @@ pub fn score(s: &mut Session, _: &Value) -> Result<Value> {
         .filter(|v| v["snapshot"] == key(&scan));
     let revision_changed =
         crate::complexity::source_revision(&root).as_deref() != scan["source_revision"].as_str();
-    let peak = scan["max_ccn"].as_u64();
-    let cap = limits["max_function_ccn"].as_u64();
-    let longest = &scan["longest_files"][0];
-    let file_cap = limits["max_file_lines"].as_u64();
-    let (signal, reason) = if let Some((n, limit)) = peak.zip(cap).filter(|(n, limit)| n > limit) {
-        (
-            "red",
-            format!("Peak complexity {n} exceeds the configured limit of {limit}."),
-        )
-    } else if let Some((n, limit)) = longest["lines"]
-        .as_u64()
-        .zip(file_cap)
-        .filter(|(n, limit)| n > limit)
-    {
+    let violations = scan["critical_functions"]
+        .as_array()
+        .zip(scan["oversized_files"].as_array())
+        .map(|(functions, files)| functions.len() + files.len());
+    let (signal, reason) = if violations.is_some_and(|count| count > 0) {
         (
             "red",
             format!(
-                "{} has {n} lines. The configured limit is {limit}.",
-                longest["file"]
+                "{} code-limit violations in the saved scan.",
+                violations.unwrap_or_default()
             ),
         )
     } else if review.as_ref().is_some_and(|r| r["verdict"] == "violation") {
@@ -78,8 +69,8 @@ pub fn score(s: &mut Session, _: &Value) -> Result<Value> {
             "An outside review identified a violation of Rule #1.".into(),
         )
     } else if !scan["scan_failures"].as_array().is_some_and(Vec::is_empty)
-        || peak.zip(cap).is_none()
-        || longest["lines"].as_u64().zip(file_cap).is_none()
+        || violations.is_none()
+        || scan["limits"] != limits
     {
         (
             "yellow",
@@ -147,7 +138,8 @@ pub fn review(s: &mut Session, p: &Value) -> Result<Value> {
 
 pub fn scan(s: &mut Session, _: &Value) -> Result<Value> {
     let measured = crate::complexity::read(&analytics_source_root(s), true);
-    if measured["available"] != true
+    if measured["state"] == "partial"
+        || measured["available"] != true
         || measured["last_error"].is_string()
         || measured["cache_error"].is_string()
     {
@@ -159,8 +151,62 @@ pub fn scan(s: &mut Session, _: &Value) -> Result<Value> {
     score(s, &Value::Null)
 }
 
+/// Limit the self-review to the measurement, audit and dashboard implementations.
+fn own_file(root: &Path, path: &Value) -> bool {
+    let file = Path::new(path.as_str().unwrap_or_default());
+    let file = file.strip_prefix(root).unwrap_or(file);
+    matches!(
+        file.to_str(),
+        Some(
+            "crates/engine/src/mayhem.rs"
+                | "crates/engine/src/complexity.rs"
+                | "crates/engine/src/doctor.rs"
+                | "apps/magic-cli/src/audit.rs"
+                | "apps/backstage/src/mayhem.rs"
+                | "apps/src-tauri/ui/analytics.ts"
+                | "apps/src-tauri/ui/mayhem.css"
+                | "apps/src-tauri/frontend/analytics-charts.ts"
+        )
+    )
+}
+
+fn self_audit(root: &Path, scan: &Value, audit: &Value) -> Value {
+    let mut findings = Vec::new();
+    for kind in ["critical_functions", "oversized_files"] {
+        for row in scan[kind]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|r| own_file(root, &r["file"]))
+        {
+            findings.push(
+                json!({"tool":"lizard","file":row["file"],"line":row["start_line"],"evidence":row}),
+            );
+        }
+    }
+    let mut measured = Vec::new();
+    for tool in audit["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|t| t["issues"].is_array() && t["status"] != "not_run" && t["tool"] != "lizard")
+    {
+        measured
+            .push(json!({"tool":tool["tool"],"time":tool["measured_at"],"status":tool["status"]}));
+        for issue in tool["issues"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|i| own_file(root, &i["filePath"]))
+        {
+            findings.push(json!({"tool":tool["tool"],"file":issue["filePath"],"line":issue["line"],"evidence":issue}));
+        }
+    }
+    json!({"findings":findings,"scanner_reports":measured,"source_measured":scan["critical_functions"].is_array()})
+}
+
 /// Dashboard evidence is separate so the terminal score never enumerates agents or commands.
-pub fn evidence(s: &mut Session, _: &Value) -> Result<Value> {
+pub fn evidence(s: &mut Session, params: &Value) -> Result<Value> {
     let root = analytics_source_root(s);
     let scan = snapshot(&root).unwrap_or_default();
     let audit = fs::read(root.join("target/analytics/audit.json"))
@@ -168,6 +214,12 @@ pub fn evidence(s: &mut Session, _: &Value) -> Result<Value> {
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
         .filter(|a| a["source_root"].as_str() == root.to_str())
         .unwrap_or_default();
+    let own = self_audit(&root, &scan, &audit);
+    if params["self"] == true {
+        return Ok(
+            json!({"snapshot":key(&scan),"measured_at":scan["measured_at_unix_secs"],"self_audit":own}),
+        );
+    }
     let log = crate::activity::events(s, &json!({"limit":192}))?;
     let cli_events: Vec<_> = log["events"]
         .as_array()
@@ -181,7 +233,7 @@ pub fn evidence(s: &mut Session, _: &Value) -> Result<Value> {
         .map(|c| json!({"id":c.id,"label":c.label,"params":c.params}))
         .collect();
     Ok(
-        json!({"agents":crate::doctor::agent_locations(),"rules":scan["limits"],
+        json!({"self_audit":own,"agents":crate::doctor::agent_locations(),"rules":scan["limits"],
         "critical_functions":scan["critical_functions"],"oversized_files":scan["oversized_files"],
         "cli_scope":scan["cli_scope"],"cli_events":cli_events,"commands":commands,
         "scanners":audit["tools"],"audit_revision":audit["source_revision"],"root":root}),

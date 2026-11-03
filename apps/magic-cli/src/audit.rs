@@ -829,6 +829,23 @@ pub fn doctor(target: &Path, dry_run: bool) -> i32 {
 
 /// Run the selected tools with inherited output; the first nonzero status, else 0. Setup
 /// errors report 2 and the remaining tools still run.
+fn lizard_outcome(t: &Tool, scan: &serde_json::Value) -> ToolOutcome {
+    let mut issues = Vec::new();
+    for (group, rule) in [("critical_functions","function-limits"),("oversized_files","file-length")] {
+        for row in scan[group].as_array().into_iter().flatten() {
+            let message = if group=="oversized_files" {
+                format!("{} source lines",row["lines"])
+            } else {format!("{}: CCN {}, {} code lines",row["name"].as_str().unwrap_or("?"),row["ccn"],row["nloc"])};
+            issues.push(serde_json::json!({"toolId":"Lizard","patternId":rule,"filePath":row["file"],
+                "line":row["start_line"],"severity":"Warning","message":message}));
+        }
+    }
+    let incomplete = scan["available"]!=true || scan["state"]=="partial" || scan["last_error"].is_string() || !scan["critical_functions"].is_array();
+    ToolOutcome { name:t.name, label:t.label, exit_code:i32::from(incomplete || !issues.is_empty()),
+        findings:issues.len(), issues, trace:format!("Lizard · limits {} · scan failures {}",scan["limits"],scan["scan_failures"]),
+        error:incomplete.then(||"Incomplete source measurement".to_string()) }
+}
+
 pub fn run(
     target: &Path,
     selected: &[String],
@@ -862,39 +879,10 @@ pub fn run(
         if !review_mode && name == "lizard" {
             let comp = magicstudio_engine::complexity::read(&root, !dry_run);
             print_lizard_report(&comp);
-            let over_15 = comp["functions_over_ccn_15"].as_u64().unwrap_or(0);
-            let code = if comp["available"] != true || over_15 > 0 {
-                1
-            } else {
-                0
-            };
-            let mut issues = Vec::new();
-            if let Some(hotspots) = comp["hotspots"].as_array() {
-                for fn_row in hotspots.iter().take(25) {
-                    let ccn = fn_row["ccn"].as_u64().unwrap_or(0);
-                    let nloc = fn_row["nloc"].as_u64().unwrap_or(0);
-                    if ccn > 15 || nloc > 100 {
-                        issues.push(serde_json::json!({
-                            "toolId": "Lizard",
-                            "patternId": "Lizard_ccn-hotspot",
-                            "filePath": fn_row["file"],
-                            "line": fn_row["start_line"],
-                            "severity": "Warning",
-                            "message": format!("{} has CCN {} and NLOC {}", fn_row["name"].as_str().unwrap_or("fn"), ccn, nloc),
-                        }));
-                    }
-                }
-            }
+            let outcome = lizard_outcome(t, &comp);
+            let code = outcome.exit_code;
             lizard_comp = Some(comp);
-            outcomes.push(ToolOutcome {
-                name: t.name,
-                label: t.label,
-                exit_code: code,
-                findings: over_15 as usize,
-                trace: "Lizard source scan; see critical function records".into(),
-                issues,
-                error: None,
-            });
+            outcomes.push(outcome);
             if status == 0 {
                 status = code;
             }

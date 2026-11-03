@@ -168,7 +168,7 @@ class AnalyticsViewController {
     const finding=(f:any)=> f.name ? `${f.name} · ${f.file}:${f.start_line} · CCN ${f.ccn}, ${f.nloc} code lines` :
       `${f.file} · ${f.lines} lines`;
     const cli=e.cli_scope, count=cli?.functions||0, usage=e.cli_events||[];
-    const hierarchy=el('details',{class:'may-more'},el('summary',{},'Explore magic-cli commands'));
+    const hierarchy=el('details',{class:'may-more'},el('summary',{id:'mayhem-command-tree'},'Explore magic-cli commands'));
     hierarchy.ontoggle=async()=>{
       if (!hierarchy.open) {this.tree?.dispose();this.tree=null;hierarchy.querySelector('.may-tree')?.remove();return;}
       const node=el('div',{class:'may-tree','aria-label':'Command groups and registered commands'});hierarchy.append(node);
@@ -191,11 +191,18 @@ class AnalyticsViewController {
           el('pre',{},t?.trace || t?.error || 'Raw output was not retained for this run.')));
     });
     const trust=d.snapshot ? d.revision_changed?'Earlier revision':d.working_tree_modified?'Working-tree snapshot':'Recorded revision':'Unmeasured';
+    const self=e.self_audit || {}, own=self.findings || [];
+    const checks=(self.scanner_reports || []).map(r=>r.tool).join(', ');
+    const selfReport=el('details',{class:'may-more',id:'mayhem-self-audit'},
+      el('summary',{id:'mayhem-own-findings'},self.source_measured ? `Mayhem’s own code · ${own.length} recorded findings` : 'Mayhem’s own code · scan required'),
+      el('p',{},`Source: Lizard. Retained tool traces: ${checks || 'none'}. Each tool reports at its own scan time.`),
+      el('code',{},'magic-cli audit --tool lizard --tool eslint --tool stylelint'),
+      ...own.map(r=>el('p',{},`${r.tool} · ${r.file}:${r.line || 1} · ${r.evidence.message || finding(r.evidence)}`)));
     const content=el('div',{class:'may-summary','data-signal':sig},
       el('header',{class:'may-head'},el('div',{},el('small',{},'MAYHEM  /  RULE 01'),el('h1',{},'Am I good?')),actions),
       part('01','Is Mayhem trustworthy?',el('strong',{},trust),el('small',{class:'may-stamp'},stamp),
         el('p',{},'Could a maintained package replace this logic? ', review ? [review.verdict,review.finding,review.reviewer,review.evidence].join(' · '):'Outside review pending.'),
-        d.snapshot?el('button',{class:'ghost',onclick:async()=>{try{await navigator.clipboard.writeText(brief);toast('Review brief copied');}catch(err){toast(String(err));}}},'Copy review brief'):null),
+        d.snapshot?el('button',{class:'ghost',onclick:async()=>{try{await navigator.clipboard.writeText(brief);toast('Review brief copied');}catch(err){toast(String(err));}}},'Copy review brief'):null,selfReport),
       part('02','Where are my agents?',Array.isArray(agents) && agents.length ?
         traces(agents,a=>`${a.agent} · ${a.agent_status||'status unknown'} · ${a.cwd||'location unknown'} · ${a.pane_id||''}`):
         el('p',{},Array.isArray(agents)?'Herdr reports no agents.':'Agent inventory unavailable.')),
@@ -204,7 +211,7 @@ class AnalyticsViewController {
         measured?null:el('p',{},'Run a source scan for the full list.'),el('details',{},el('summary',{},'Source line history'),trend)),
       part('04','magic-cli',el('p',{},count?`${Math.round(100*cli.within_limits/count)}% of measured CLI functions meet the branching and length limits · ${cli.within_limits}/${count} · ${cli.source_lines} source lines`:'CLI size and standards coverage need a scan.'),
         el('p',{},usage.length?`Observed CLI call: ${usage[usage.length-1].command}`:'No CLI use observed in the retained events for this context.'),hierarchy),
-      part('05','Scanner findings',...scanners),advanced,terminal);
+      part('05','Scanner findings',el('p',{class:'muted'},'Open a trace for the rule, file and scanner output. Confirm the behavior before choosing a fix.'),...scanners),advanced,terminal);
     $('view-analytics').replaceChildren(content);
     const nav = $('mayhem-health');
     if (nav) { nav.textContent = title; nav.parentElement.dataset.health = sig; }
