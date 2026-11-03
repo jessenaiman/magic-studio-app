@@ -420,6 +420,9 @@ class AppShellController {
     const errors = acFeedback.errors.length;
     if (view === "split") view = "studio";
     if (!this.canLeaveCurrentView(view)) return false;
+    if (view !== state.view) {
+      try { await invoke("leave_view"); } catch (error) { toast(String(error)); }
+    }
     this.cleanupPreviousView(view);
     state.view = view;
     window.workspaceNavigation?.select(view);

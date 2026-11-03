@@ -842,22 +842,35 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Opens a file with the desktop's default app (one click from any file link).
+/// Opens a file from a link: a `.deckcraft` in DeckCraft for the open view (saved with the
+/// project and closed on leaving it), anything else with the desktop's default app.
 #[tauri::command]
-fn open_path(path: String) -> Result<(), String> {
-    let app = if std::path::Path::new(&path)
-        .extension()
-        .is_some_and(|e| e == "deckcraft")
-    {
-        "deckcraft"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(app)
+fn open_path(engine: tauri::State<Engine>, path: String) -> Result<(), String> {
+    let file = std::path::Path::new(&path);
+    if file.extension().is_some_and(|e| e == "deckcraft") {
+        return engine.with(None, |s| {
+            magicstudio_engine::native_app::open(
+                s,
+                &magicstudio_engine::native_app::DECKCRAFT,
+                file,
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        });
+    }
+    std::process::Command::new("xdg-open")
         .arg(&path)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("{app} {path}: {e}"))
+        .map_err(|e| format!("xdg-open {path}: {e}"))
+}
+
+/// Leaving a view: each app document it opened saves and closes through the app's CLI.
+#[tauri::command]
+fn leave_view(engine: tauri::State<Engine>) -> Result<Value, String> {
+    engine.with(None, |s| {
+        Ok(json!(magicstudio_engine::native_app::close_all(s)))
+    })
 }
 
 /// Height of the project view's top bar (logical px).
@@ -1122,6 +1135,7 @@ fn main() {
             agent_config_save,
             snapshot,
             open_path,
+            leave_view,
             save_attachment,
             save_animation_export,
             desktop_commands::desktop_reply,

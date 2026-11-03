@@ -382,6 +382,10 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
             )));
         }
     };
+    // EffectCraft is saved and closed with the view; PhotoCraft opens as a plain app.
+    if app == "effectcraft" {
+        return crate::native_app::open(s, &crate::native_app::EFFECTCRAFT, &file);
+    }
     let exe = crate::workspace::resolve_tool(app);
     std::process::Command::new(&exe)
         .arg(&file)

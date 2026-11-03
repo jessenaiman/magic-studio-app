@@ -151,15 +151,9 @@ pub fn cmd_video_frame(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_video_open(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
     let project = f.require()?.to_path_buf();
-    let exe = crate::workspace::resolve_tool("filmcraft");
-    std::process::Command::new(&exe)
-        .arg(&project)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| EngineError::ExternalTool("filmcraft".into(), e.to_string()))?;
-    Ok(json!({"ok": true, "app": exe, "timeline": project}))
+    let mut opened = crate::native_app::open(s, &crate::native_app::FILMCRAFT, &project)?;
+    opened["timeline"] = json!(project);
+    Ok(opened)
 }
 
 /// FilmCraft's time unit: ticks per second.
