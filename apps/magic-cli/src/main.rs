@@ -7,13 +7,13 @@ mod project;
 mod session;
 mod studio;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, CommandFactory, Subcommand};
 use serde_json::{Value, json};
 use session::Session;
 use std::io::BufRead;
 use std::path::PathBuf;
 
-/// Operate installed Magic Studio: projects, storyboard, and the desktop app.
+/// Operate Magic Studio and discover the ArtCraft suite: projects, storyboard, and the desktop app.
 ///
 /// Open an existing project window:
 ///   magic-cli studio open /absolute/Song.magic
@@ -23,6 +23,9 @@ use std::path::PathBuf;
 /// Any registry command also works as `magic-cli <domain> <verb> key=value ...`
 /// (underscores may be written as hyphens) or `magic-cli <domain.verb> ...`.
 /// Use key=value arguments or --params JSON. `magic-cli commands [FILTER]` lists IDs.
+///
+/// `magic-cli apps` lists installed ArtCraft apps (PhotoCraft, EffectCraft, FilmCraft, etc.).
+/// Each app ships its own `<app>-cli` with `--help` and `commands`.
 #[derive(Parser)]
 #[command(name = "magic-cli", version, verbatim_doc_comment)]
 struct Cli {
@@ -102,6 +105,8 @@ enum Cmd {
         #[command(subcommand)]
         action: SessionCmd,
     },
+    /// List installed ArtCraft apps and their CLIs for tool discovery.
+    Apps,
     #[command(external_subcommand)]
     Registry(Vec<String>),
 }
@@ -364,6 +369,9 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
         Cmd::Studio { action } => run_studio(s, action, dry)?,
         Cmd::Session { action } => run_session(s, action)?,
         Cmd::Registry(tokens) => run_registry(s, &tokens, dry)?,
+        Cmd::Apps => {
+            print_installed_apps();
+        }
         Cmd::Mcp | Cmd::Doctor { .. } | Cmd::Audit { .. } | Cmd::Review { .. } => {
             unreachable!("handled before a session is loaded")
         }
@@ -444,10 +452,73 @@ fn fix_routes(error: &str) -> String {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    // Intercept --help / -h to append the dynamic installed-apps listing.
+    // Clap handles --help itself and exits before run(), so we print help
+    // ourselves, then list installed ArtCraft apps for tool discovery.
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        Cli::command().print_long_help().unwrap();
+        println!();
+        print_installed_apps();
+        std::process::exit(0);
+    }
     let cli = Cli::parse();
     if let Err(error) = run(cli) {
         eprintln!("magic-cli: {error}\n\n{}", fix_routes(&error));
         std::process::exit(1);
+    }
+}
+
+/// Discover installed ArtCraft apps by scanning ~/.local/bin/*-cli symlinks.
+/// Falls back gracefully if the directory is missing; no hardcoded app list.
+fn print_installed_apps() {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let bin_dir = std::path::Path::new(&home).join(".local/bin");
+    let Ok(entries) = std::fs::read_dir(&bin_dir) else {
+        return;
+    };
+
+    let mut apps: Vec<(String, std::path::PathBuf)> = entries
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with("-cli") && name != "magic-cli" {
+                let app = name.strip_suffix("-cli")?.to_string();
+                Some((app, e.path()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    apps.sort_by(|a, b| a.0.cmp(&b.0));
+
+    if apps.is_empty() {
+        return;
+    }
+
+    println!("Installed ArtCraft apps:");
+    for (app, path) in apps {
+        let target = path.read_link().ok();
+        let display = target
+            .as_deref()
+            .and_then(|t| t.file_name().and_then(|n| n.to_str()))
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| path.display().to_string());
+        // Extract version from path like .../photocraft/0.19.0/photocraft-cli
+        let version = target
+            .as_deref()
+            .and_then(|t| {
+                t.components()
+                    .rev()
+                    .nth(1)
+                    .and_then(|c| c.as_os_str().to_str())
+            })
+            .unwrap_or("-");
+        println!("  {app:<16} {version}  →  {display}");
     }
 }
 
