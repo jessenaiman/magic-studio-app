@@ -206,26 +206,30 @@ fn glb_joint_count(path: &Path) -> u64 {
     let Ok(bytes) = std::fs::read(path) else {
         return 0;
     };
-    if bytes.len() < 20 || &bytes[0..4] != b"glTF" {
-        return 0;
-    }
-    let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
-    if &bytes[16..20] != b"JSON" || bytes.len() < 20 + chunk_len {
-        return 0;
-    }
-    let Ok(doc) = serde_json::from_slice::<Value>(&bytes[20..20 + chunk_len]) else {
-        return 0;
+    let count_from_doc = |doc: &Value| -> u64 {
+        doc["skins"]
+            .as_array()
+            .map(|skins| {
+                skins
+                    .iter()
+                    .filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64))
+                    .max()
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0)
     };
-    doc["skins"]
-        .as_array()
-        .map(|skins| {
-            skins
-                .iter()
-                .filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64))
-                .max()
-                .unwrap_or(0)
-        })
-        .unwrap_or(0)
+    if bytes.len() >= 20 && &bytes[0..4] == b"glTF" {
+        let chunk_len = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+        if &bytes[16..20] == b"JSON" && bytes.len() >= 20 + chunk_len {
+            if let Ok(doc) = serde_json::from_slice::<Value>(&bytes[20..20 + chunk_len]) {
+                return count_from_doc(&doc);
+            }
+        }
+    }
+    if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
+        return count_from_doc(&doc);
+    }
+    0
 }
 
 
@@ -739,12 +743,20 @@ fn build_clip_spec(p: &Value, rig_type: &str) -> Result<ClipSpec> {
             }),
         });
     }
-    let preset_name = p["preset"].as_str().unwrap_or("wave_goodbye_01");
     let catalog = catalog_json()?;
     let presets = catalog
         .pointer(&format!("/animation/presets/{rig_type}"))
         .and_then(Value::as_array)
         .ok_or_else(|| bad(format!("no presets for rig_type={rig_type}")))?;
+    let default_preset = if rig_type == "biped" {
+        "wave_goodbye_01"
+    } else {
+        presets
+            .first()
+            .and_then(|item| item["name"].as_str())
+            .unwrap_or("walk")
+    };
+    let preset_name = p["preset"].as_str().unwrap_or(default_preset);
     let found = presets
         .iter()
         .find(|item| item["name"].as_str() == Some(preset_name))
@@ -989,5 +1001,42 @@ mod tests {
             json!({"prompt": "wave", "duration_seconds": 2, "waypoints": [[0.0, 0.0], [1.0, 0.0]]}),
         ];
         assert!(validate_multistage_segments(&broken).is_err());
+    }
+
+    #[test]
+    fn glb_joint_count_handles_binary_and_ascii_gltf() {
+        let dir = std::env::temp_dir().join(format!("magic_tripo_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let ascii_path = dir.join("char.gltf");
+        std::fs::write(
+            &ascii_path,
+            json!({"skins": [{"joints": [0, 1, 2, 3, 4]}]}).to_string(),
+        )
+        .unwrap();
+        assert_eq!(glb_joint_count(&ascii_path), 5);
+
+        // Binary GLB mock container
+        let bin_path = dir.join("char.glb");
+        let json_bytes = json!({"skins": [{"joints": [10, 11, 12]}]})
+            .to_string()
+            .into_bytes();
+        let mut glb_data = Vec::new();
+        glb_data.extend_from_slice(b"glTF");
+        glb_data.extend_from_slice(&2u32.to_le_bytes()); // version 2
+        let total_len = (20 + json_bytes.len()) as u32;
+        glb_data.extend_from_slice(&total_len.to_le_bytes());
+        glb_data.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+        glb_data.extend_from_slice(b"JSON");
+        glb_data.extend_from_slice(&json_bytes);
+        std::fs::write(&bin_path, glb_data).unwrap();
+        assert_eq!(glb_joint_count(&bin_path), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn non_biped_preset_defaults_to_first_available_preset() {
+        let spec = build_clip_spec(&json!({}), "quadruped").unwrap();
+        assert_eq!(spec.id, "walk");
+        assert_eq!(spec.source, "preset");
     }
 }

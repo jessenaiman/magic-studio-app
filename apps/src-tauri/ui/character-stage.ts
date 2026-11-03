@@ -265,7 +265,20 @@ class Tripo3DStage {
   clearModel() {
     if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
     if (this.skeletonHelper && this.scene) { this.scene.remove(this.skeletonHelper); this.skeletonHelper = null; }
-    if (this.modelRoot && this.scene) { this.scene.remove(this.modelRoot); this.modelRoot = null; }
+    if (this.modelRoot) {
+      this.modelRoot.traverse((node: any) => {
+        if (node.geometry) node.geometry.dispose?.();
+        if (node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          for (const m of mats) {
+            m.map?.dispose?.();
+            m.dispose?.();
+          }
+        }
+      });
+      if (this.scene) this.scene.remove(this.modelRoot);
+      this.modelRoot = null;
+    }
     this.animations = [];
     this.activeAction = null;
     this.loadedUrl = '';
@@ -276,10 +289,14 @@ class Tripo3DStage {
     this.clearModel();
     this.controls?.dispose?.();
     this.controls = null;
+    if (this.renderer?.domElement?.parentElement) {
+      this.renderer.domElement.parentElement.replaceChildren();
+    }
     this.renderer?.dispose?.();
     this.renderer = null;
     this.scene = null;
     this.camera = null;
+    this.host = null;
   }
 }
 

@@ -236,6 +236,16 @@
       "label": "Canvas",
       "indicator": "hidden"
     },
+    "motion-canvas-3d": {
+      "component": "tripo-3d-viewport",
+      "label": "3D Canvas",
+      "indicator": "hidden"
+    },
+    "motion-toggle-3d": {
+      "component": "ghost",
+      "label": "Toggle 3D View",
+      "indicator": "hidden"
+    },
     "magic-image-tools": {
       "component": "panel-body",
       "label": "Artwork tools",

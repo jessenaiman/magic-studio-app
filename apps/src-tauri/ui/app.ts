@@ -426,6 +426,7 @@ class AppShellController {
   cleanupPreviousView(nextView: string) {
     if (typeof animationPause === "function") animationPause();
     if (nextView !== 'animation' && typeof animationJobsDispose === 'function') animationJobsDispose();
+    if (nextView !== 'animation' && typeof tripo3DStage !== 'undefined') tripo3DStage.dispose();
   }
 
   async setView(view: string, action?: any) {

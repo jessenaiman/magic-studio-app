@@ -319,6 +319,7 @@ class AnimationViewController {
 
   buildShell() {
     theatreRequireSaved();
+    if (typeof tripo3DStage !== 'undefined') tripo3DStage.dispose();
     const view = $('view-animation');
     view.replaceChildren();
     const assets = el('aside', { id: 'motion-asset-browser', 'aria-label': 'Animation assets' });
@@ -374,6 +375,13 @@ class AnimationViewController {
       const meta = characterMeta(await motionCommand('character.meta', { character }), motion.view);
       if (request !== motion.request || project !== state.project) return;
       Object.assign(motion, { meta, images: [], loading: false, sample: null, rest: true, track: '' });
+      if (motion.viewport3d && !meta.tripo_3d?.available) {
+        motion.viewport3d = false;
+        $('motion-toggle-3d')?.setAttribute('aria-pressed', 'false');
+        const c3d = $('motion-canvas-3d');
+        if (c3d) c3d.hidden = true;
+        if (typeof tripo3DStage !== 'undefined') tripo3DStage.dispose();
+      }
       if (!meta.layers.some((part: any) => part.id === motion.selected)) motion.selected = null;
       $('motion-stage-status')?.remove();
       const canvas = $('motion-canvas');
