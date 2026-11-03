@@ -58,6 +58,9 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"character.sprite"
             | b"character.shot"
             | b"character.set"
+            | b"character.tripo.breakout"
+            | b"character.tripo.rig"
+            | b"character.tripo.animate"
     )
 }
 
@@ -1267,9 +1270,42 @@ fn specs_character() -> Vec<CommandSpec> {
         ),
         query!(
             "character.open",
-            "Open in EffectCraft or PhotoCraft",
-            "{\"character\":\"id\",\"view\":\"front|back|side\",\"app\":\"effectcraft|photocraft\"}",
+            "Open in EffectCraft, PhotoCraft or Blender",
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"app\":\"effectcraft|photocraft|blender\"}",
             crate::character::cmd_character_open
+        ),
+        query!(
+            "character.tripo.catalog",
+            "Tripo 3D Breakout Templates, Rig Specs and 101 Animation Presets",
+            "{\"category\":\"optional basic|interactive|scene_specific|emotional|combat\"}",
+            crate::character::cmd_tripo_catalog
+        ),
+        cmd!(
+            "character.tripo.breakout",
+            "Tripo Post-Image Breakout (Template, Auto-Split Cutout, Multiview or 3D Segmentation)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"kind\":\"character_extraction|asset_extraction|t_pose|character_completion|head_extraction|3d_enhance|split_image|multiview_images|upscale_image|ai_segmentation|mesh_completion\",\"provider\":\"tripo|google_flow|codex_luna\",\"reference\":\"optional source image\",\"prompt\":\"optional prompt\",\"granularity\":\"low|medium|high\",\"completion_mode\":\"quick_cap|ai_completion\"}",
+            always,
+            crate::character::cmd_tripo_breakout
+        ),
+        cmd!(
+            "character.tripo.rig",
+            "Tripo 3D Pre-Rig Check and Auto-Rigging Setup",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"rig_type\":\"biped|quadruped|hexapod|octopod|avian|serpentine|aquatic|others\",\"skeleton_preset\":\"mixamo|actorcore|unreal|vrm|unity\",\"topology\":\"quad|triangle\",\"face_count\":10000,\"t_pose_ready\":true,\"model\":\"optional .glb path\"}",
+            always,
+            crate::character::cmd_tripo_rig
+        ),
+        cmd!(
+            "character.tripo.animate",
+            "Tripo 3D Retarget Preset or Multi-Stage Motion (.glb + .anim/.fbx)",
+            ["Animation"],
+            None,
+            "{\"character\":\"id\",\"preset\":\"optional preset name (e.g. wave_goodbye_01, idle, walk, bow)\",\"prompt\":\"optional AI text-to-motion prompt\",\"stages\":[{\"name\":\"Start\",\"prompt\":\"action\",\"duration_seconds\":2,\"waypoints\":[[0,0],[0,0]]}],\"name\":\"optional clip name\",\"rig_type\":\"biped\",\"animate_in_place\":true,\"fbx_preset\":\"blender|3dsmax|maya|unreal|unity\",\"format\":\"fbx|glb\",\"texture_size\":\"2K\",\"glb\":\"optional .glb\",\"fbx\":\"optional .fbx\",\"blend\":\"optional .blend\",\"preview\":\"optional .mp4\"}",
+            always,
+            crate::character::cmd_tripo_animate
         ),
     ]
 }

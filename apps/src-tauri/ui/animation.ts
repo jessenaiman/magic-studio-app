@@ -42,6 +42,7 @@ class MotionStateController {
   pathUndo: string | null = null;
   pathLayer: string | null = null;
   previewLoop: boolean | null = null;
+  viewport3d = false;
   [key: string]: any;
 
   feedback() {
@@ -261,10 +262,36 @@ class AnimationViewController {
       $('motion-path-visible').setAttribute('aria-pressed', String(motion.pathVisible));
       animationDraw();
     });
+    const toggle3dBtn = el('button', {
+      id: 'motion-toggle-3d', class: 'ghost', title: 'Toggle 2D Konva stage / 3D Three.js WebGL viewport',
+      'aria-label': 'Toggle 3D viewport', 'aria-pressed': String(Boolean(motion.viewport3d)),
+      onclick: async () => {
+        motion.viewport3d = !motion.viewport3d;
+        toggle3dBtn.setAttribute('aria-pressed', String(motion.viewport3d));
+        const c2d = $('motion-canvas'), c3d = $('motion-canvas-3d');
+        if (c2d) c2d.hidden = motion.viewport3d;
+        if (c3d) {
+          c3d.hidden = !motion.viewport3d;
+          if (motion.viewport3d) {
+            tripo3DStage.mount(c3d);
+            const glb = motion.meta?.tripo_3d?.primary_glb;
+            if (glb) await tripo3DStage.loadGlb(glb);
+            const dur = tripo3DStage.duration || motion.meta?.tripo_3d?.clips?.[0]?.duration || 8;
+            motion.rest = false;
+            motion.track = motion.meta?.tripo_3d?.clips?.[0]?.id || '3d_motion';
+            motion.sample = { duration: dur, loop: true, fps: 24, frames: [], start: 0 };
+            if ($('motion-scrub')) $('motion-scrub').max = dur;
+          } else {
+            tripo3DStage.dispose();
+          }
+        }
+        animationDraw();
+      },
+    }, '3D View');
     return new PanelHeader({
       id: 'motion-stagebar', titleId: 'motion-caption', title: 'Loading artwork…',
       actions: [
-        penBtn, pathVisBtn, grid,
+        toggle3dBtn, penBtn, pathVisBtn, grid,
         motionButton('motion-fit', 'Fit artwork', 'fit', () => { motion.fit = true; motion.zoom = 1; animationDraw(); }),
         el('button', { id: 'motion-actual', title: 'Actual size · 100%', 'aria-label': 'Actual size', onclick: () => { motion.fit = false; motion.zoom = 1; animationDraw(); } }, '1:1'),
         motionButton('motion-minus', 'Zoom out', 'minus', () => { motion.zoom /= 1.2; animationDraw(); }),
@@ -296,7 +323,9 @@ class AnimationViewController {
     view.replaceChildren();
     const assets = el('aside', { id: 'motion-asset-browser', 'aria-label': 'Animation assets' });
     const inspector = el('aside', { id: 'motion-inspector', 'aria-label': 'Animation controls' });
-    const stage = el('div', { class: 'motion-stage', id: 'motion-stage' }, el('div', { id: 'motion-canvas', 'aria-label': 'Character animation canvas', tabindex: 0 }));
+    const stage = el('div', { class: 'motion-stage', id: 'motion-stage' },
+      el('div', { id: 'motion-canvas', 'aria-label': 'Character animation canvas', tabindex: 0 }),
+      el('div', { id: 'motion-canvas-3d', class: 'tripo-3d-viewport', 'aria-label': '3D character viewport', hidden: '' }));
     const toolbar = this.buildStageToolbar();
     motion.stageHeader = toolbar;
     const transport = this.buildTransportBar();
@@ -309,7 +338,7 @@ class AnimationViewController {
     }
     motion.resizeObserver?.disconnect();
     characterStage.mount($('motion-canvas'));
-    motion.resizeObserver = new ResizeObserver(() => { characterStage.fit(); animationDraw(); });
+    motion.resizeObserver = new ResizeObserver(() => { characterStage.fit(); tripo3DStage.fit(); animationDraw(); });
     motion.resizeObserver.observe(stage);
     $('motion-canvas').addEventListener('click', () => { if (!motion.pen) $('motion-layers')?.setAttribute('open', ''); });
     setupPathPen($('motion-canvas'));

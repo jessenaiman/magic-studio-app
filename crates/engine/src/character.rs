@@ -12,7 +12,7 @@ mod meta;
 mod rig;
 mod shot;
 mod sprite;
-
+pub mod tripo;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ pub use meta::{cmd_character_meta, cmd_character_save_marks};
 pub use rig::cmd_character_rig;
 pub use shot::cmd_character_shot;
 pub use sprite::cmd_character_sprite;
-
+pub use tripo::{cmd_tripo_animate, cmd_tripo_breakout, cmd_tripo_catalog, cmd_tripo_rig};
 /// The shared skeleton and its key poses, applied to every character.
 pub(crate) const POSES: &str = include_str!("character/poses.json");
 
@@ -144,7 +144,8 @@ pub(crate) fn point(value: &Value) -> Option<[f64; 2]> {
 
 /// List characters and which app files each view has.
 pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
-    let root = crate::workshop::project_dir(s)?.join("assets/characters");
+    let project_dir = crate::workshop::project_dir(s)?;
+    let root = project_dir.join("assets/characters");
     let mut out = Vec::new();
     for entry in std::fs::read_dir(&root).into_iter().flatten().flatten() {
         let id = entry.file_name().to_string_lossy().into_owned();
@@ -162,8 +163,9 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
                     "psd": has("psd"), "ecproj": has("ecproj")})
             })
             .collect();
-        if !views.is_empty() {
-            out.push(json!({"id": id, "views": views}));
+        let tripo_3d = tripo::inspect_character_3d(&project_dir, &id);
+        if !views.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
+            out.push(json!({"id": id, "views": views, "tripo_3d": tripo_3d}));
         }
     }
     Ok(json!({"ok": true, "characters": out}))
@@ -341,12 +343,15 @@ pub fn cmd_character_set(s: &mut Session, p: &Value) -> Result<Value> {
 /// Open the character's document in the app that owns it, for edits Studio does not offer.
 pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
     let view = View::from_params(s, p)?;
+    if p["app"].as_str() == Some("blender") {
+        return tripo::open_in_blender(s, &view.id);
+    }
     let (app, file) = match p["app"].as_str().unwrap_or("effectcraft") {
         "effectcraft" => ("effectcraft", view.require("ecproj", "character.rig")?),
         "photocraft" => ("photocraft", view.require("psd", "character.cut")?),
         other => {
             return Err(bad(format!(
-                "app must be effectcraft or photocraft, not {other}"
+                "app must be effectcraft, photocraft or blender, not {other}"
             )));
         }
     };

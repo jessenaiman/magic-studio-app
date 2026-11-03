@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "captured_from": "https://studio.tripo3d.ai/ (Craft Anything project tripo-animation.cany)",
+  "evidence_ids": [
+    "ev_ee12485e6912e6f47a28cd43bb5fb7777fd6193699b19ae51efc06c0b921fda0",
+    "ev_f06a5c2e0cdee69d8a1a4d59ff97de1c9a37c37fa78fe3ad7e46812ae5c8e801",
+    "ev_3dc76163a53271d1097ae95e960ef67a5b89f97c9c7d91a4b4ab309559c066a0"
+  ],
+  "breakout_templates": [
+    {
+      "id": "character_extraction",
+      "template_id": "bb53bb16-05b2-46f5-96fd-ce4e078e3a49",
+      "category": "multi_subject",
+      "title": "Character Extraction",
+      "description": "Extract Character elements into separate assets for 3D generation.",
+      "recommended_model": "gemini_3.1_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "asset_extraction",
+      "template_id": "1f8c5d14-b82c-4a1c-8be0-dd1eb3e517bf",
+      "category": "multi_subject",
+      "title": "Asset Extraction",
+      "description": "Extract scene elements into separate assets for 3D generation.",
+      "recommended_model": "gemini_3.1_flash_image_preview",
+      "recommended_ratio": "16:9"
+    },
+    {
+      "id": "t_pose",
+      "template_id": "df794819-9d0d-483f-a932-f701828402ab",
+      "category": "normal",
+      "title": "T Pose",
+      "description": "Convert character to standard T-pose for rigging and animation.",
+      "recommended_model": "gemini_2.5_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "character_completion",
+      "template_id": "2ef4957e-c5cc-48b1-90ed-7bdc445ab163",
+      "category": "normal",
+      "title": "Character Completion",
+      "description": "Complete missing parts to restore a full character.",
+      "recommended_model": "gemini_2.5_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "head_extraction",
+      "template_id": "18202605-e7bd-4e00-86ff-d97243b32e8b",
+      "category": "normal",
+      "title": "Head Extraction",
+      "description": "Extract the head to enhance facial detail for high-fidelity 3D generation.",
+      "recommended_model": "gemini_2.5_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "3d_enhance",
+      "template_id": "129eaf59-0635-49e9-8c64-ab9e928bf90f",
+      "category": "normal",
+      "title": "3D Enhance",
+      "description": "Enhance 3D structure and detail (2D to 3D).",
+      "recommended_model": "gemini_2.5_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "figure",
+      "template_id": "a89ef415-ddfb-4b6c-b85a-9fb2b727b3a1",
+      "category": "normal",
+      "title": "Figure",
+      "description": "Convert your photo into a stylized figure character.",
+      "recommended_model": "gemini_3.1_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "variants",
+      "template_id": "275bd22c-0600-4876-a6ce-8a8f45c346d9",
+      "category": "multi_subject",
+      "title": "Variants",
+      "description": "Generate multiple consistent variations based on the original input.",
+      "recommended_model": "gemini_3.1_flash_image_preview",
+      "recommended_ratio": "1:1"
+    },
+    {
+      "id": "print_clay",
+      "template_id": "234e6fa7-e290-4817-8c26-eead6df3fafa",
+      "category": "normal",
+      "title": "Print Clay",
+      "description": "Convert to high-contrast clay for 3D printing.",
+      "recommended_model": "gemini_3.1_flash_image_preview",
+      "recommended_ratio": "1:1"
+    }
+  ],
+  "breakout_operations": [
+    {
+      "id": "split_image",
+      "endpoint": "/v2/studio/image/split",
+      "label": "Auto-Split Cutout",
+      "description": "Isolate and cut out individual subjects/parts from a generated or uploaded sheet into transparent WebP cutouts."
+    },
+    {
+      "id": "multiview_images",
+      "endpoint": "/v2/studio/image/gen_multiview",
+      "label": "Generate Multi Views",
+      "views": ["front", "left", "back", "right"],
+      "description": "Synthesize 4 consistent orthographic views (front, left, back, right) from a single cutout image for 3D reconstruction."
+    },
+    {
+      "id": "upscale_image",
+      "endpoint": "/v2/studio/image/upscale",
+      "label": "4K Upscale",
+      "credits": 10,
+      "description": "Upscale reference or cutout image to 4K before 3D generation."
+    },
+    {
+      "id": "ai_segmentation",
+      "endpoint": "/v2/studio/operation/ai_segmentation",
+      "label": "3D AI Segmentation",
+      "credits": 40,
+      "levels": ["low", "medium", "high"],
+      "model_version": "v2.0-20260430",
+      "description": "Segment a 3D mesh into named anatomical/costume sub-meshes."
+    },
+    {
+      "id": "mesh_completion",
+      "endpoint": "/v2/studio/operation/ai_completion",
+      "label": "Fill Parts",
+      "modes": ["quick_cap", "ai_completion"],
+      "credits": 5,
+      "description": "Automatically cap or AI-complete internal geometry of segmented 3D parts."
+    }
+  ],
+  "rigging": {
+    "precheck_endpoint": "/v2/studio/operation/pre_rig_check",
+    "rig_endpoint": "/v2/studio/operation/rigging_model",
+    "model_version": "v3.0-20260909",
+    "credits": 20,
+    "polygon_limits": {
+      "quad": 50000,
+      "triangle": 80000
+    },
+    "rig_types": [
+      "biped",
+      "quadruped",
+      "hexapod",
+      "octopod",
+      "avian",
+      "serpentine",
+      "aquatic",
+      "others"
+    ],
+    "skeleton_presets": [
+      { "id": "mixamo", "label": "Mixamo" },
+      { "id": "actorcore", "label": "ActorCore" },
+      { "id": "unreal", "label": "UE5 Mannequin" },
+      { "id": "vrm", "label": "VRM 1.0 Humanoid" },
+      { "id": "unity", "label": "Unity Humanoid Compatible" }
+    ]
+  },
+  "animation": {
+    "retarget_endpoint": "/v2/studio/operation/retarget_model",
+    "remove_retarget_endpoint": "/v2/studio/operation/remove_retarget",
+    "motion_generate_endpoint": "/v2/studio/motion/generate",
+    "categories": [
+      "basic",
+      "interactive",
+      "scene_specific",
+      "emotional",
+      "combat"
+    ],
+    "multi_stage_constraints": {
+      "min_segments": 1,
+      "max_segments": 5,
+      "min_duration_seconds": 1,
+      "max_duration_seconds": 10,
+      "max_prompt_chars": 1000,
+      "credits": 20
+    },
+    "presets": {
+      "biped": [
+        { "name": "afraid", "category": "emotional", "action_type": "Fear" },
+        { "name": "agree", "category": "interactive", "action_type": "Social" },
+        { "name": "angry_01", "category": "emotional", "action_type": "Anger" },
+        { "name": "angry_02", "category": "emotional", "action_type": "Anger" },
+        { "name": "angry_03", "category": "emotional", "action_type": "Anger" },
+        { "name": "basketball_shot", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "bow", "category": "interactive", "action_type": "Social" },
+        { "name": "box_01", "category": "combat", "action_type": "Strike" },
+        { "name": "box_02", "category": "combat", "action_type": "Strike" },
+        { "name": "box_03", "category": "combat", "action_type": "Strike" },
+        { "name": "cast_a_spell", "category": "scene_specific", "action_type": "Magic" },
+        { "name": "cheer", "category": "emotional", "action_type": "Joy" },
+        { "name": "chop", "category": "scene_specific", "action_type": "Work Activities" },
+        { "name": "clap", "category": "emotional", "action_type": "Joy" },
+        { "name": "climb", "category": "scene_specific", "action_type": "Climb & Ride" },
+        { "name": "complain_01", "category": "emotional", "action_type": "Anger" },
+        { "name": "complain_02", "category": "emotional", "action_type": "Anger" },
+        { "name": "crossover_dribble", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "cry", "category": "emotional", "action_type": "Sadness" },
+        { "name": "dance_01", "category": "scene_specific", "action_type": "Dance" },
+        { "name": "dance_02", "category": "scene_specific", "action_type": "Dance" },
+        { "name": "dance_03", "category": "scene_specific", "action_type": "Dance" },
+        { "name": "dance_04", "category": "scene_specific", "action_type": "Dance" },
+        { "name": "dance_05", "category": "scene_specific", "action_type": "Dance" },
+        { "name": "dance_06", "category": "scene_specific", "action_type": "Dance" },
+        { "name": "defeat_02", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "defeat_03", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "depressed", "category": "emotional", "action_type": "Sadness" },
+        { "name": "dig", "category": "scene_specific", "action_type": "Work Activities" },
+        { "name": "dive", "category": "scene_specific", "action_type": "Acrobatics" },
+        { "name": "dribble", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "fall", "category": "scene_specific", "action_type": "Accident" },
+        { "name": "fire", "category": "combat", "action_type": "Ranged" },
+        { "name": "flee_01", "category": "emotional", "action_type": "Fear" },
+        { "name": "flee_02", "category": "emotional", "action_type": "Fear" },
+        { "name": "flip", "category": "scene_specific", "action_type": "Acrobatics" },
+        { "name": "fold_arms", "category": "basic", "action_type": "Idle" },
+        { "name": "football_catch", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "football_save", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "football_pass", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "freaky", "category": "basic", "action_type": "Body Movement" },
+        { "name": "frightened", "category": "emotional", "action_type": "Fear" },
+        { "name": "front_kick_01", "category": "combat", "action_type": "Strike" },
+        { "name": "front_kick_02", "category": "combat", "action_type": "Strike" },
+        { "name": "frustrated_01", "category": "emotional", "action_type": "Anger" },
+        { "name": "frustrated_02", "category": "emotional", "action_type": "Anger" },
+        { "name": "greet_01", "category": "interactive", "action_type": "Social" },
+        { "name": "greet_02", "category": "interactive", "action_type": "Social" },
+        { "name": "greet_03", "category": "interactive", "action_type": "Social" },
+        { "name": "greet_04", "category": "interactive", "action_type": "Social" },
+        { "name": "heart_pose", "category": "interactive", "action_type": "Social" },
+        { "name": "hit_to_body_01", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "hit_to_body_02", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "hit_to_head", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "hit_to_side", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "hit_to_stomach", "category": "combat", "action_type": "Hit Reactions" },
+        { "name": "hug", "category": "interactive", "action_type": "Social" },
+        { "name": "idle", "category": "basic", "action_type": "Idle" },
+        { "name": "jump_down", "category": "basic", "action_type": "Jump" },
+        { "name": "jump", "category": "basic", "action_type": "Jump" },
+        { "name": "jump_rope_01", "category": "scene_specific", "action_type": "Fitness" },
+        { "name": "jump_rope_02", "category": "scene_specific", "action_type": "Fitness" },
+        { "name": "laugh_01", "category": "emotional", "action_type": "Joy" },
+        { "name": "laugh_02", "category": "emotional", "action_type": "Joy" },
+        { "name": "lift_heavy", "category": "interactive", "action_type": "Object Interaction" },
+        { "name": "look_around", "category": "basic", "action_type": "Body Movement" },
+        { "name": "make_a_call_01", "category": "interactive", "action_type": "Social" },
+        { "name": "make_a_call_02", "category": "interactive", "action_type": "Social" },
+        { "name": "pitch_baseball", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "play_mobile_game", "category": "interactive", "action_type": "Leisure" },
+        { "name": "play_video_game", "category": "interactive", "action_type": "Leisure" },
+        { "name": "press-up", "category": "scene_specific", "action_type": "Fitness" },
+        { "name": "run_upstairs", "category": "basic", "action_type": "Run" },
+        { "name": "run", "category": "basic", "action_type": "Run" },
+        { "name": "scared_01", "category": "emotional", "action_type": "Fear" },
+        { "name": "scared_02", "category": "emotional", "action_type": "Fear" },
+        { "name": "scratch", "category": "basic", "action_type": "Body Movement" },
+        { "name": "shoot", "category": "combat", "action_type": "Ranged" },
+        { "name": "shovel", "category": "scene_specific", "action_type": "Work Activities" },
+        { "name": "sing_01", "category": "scene_specific", "action_type": "Play Music" },
+        { "name": "sing_02", "category": "scene_specific", "action_type": "Play Music" },
+        { "name": "sing_03", "category": "scene_specific", "action_type": "Play Music" },
+        { "name": "sing_04", "category": "scene_specific", "action_type": "Play Music" },
+        { "name": "sit", "category": "basic", "action_type": "Sit & Lie" },
+        { "name": "slash", "category": "scene_specific", "action_type": "Work Activities" },
+        { "name": "sob", "category": "emotional", "action_type": "Sadness" },
+        { "name": "standing_relax", "category": "basic", "action_type": "Idle" },
+        { "name": "surf", "category": "scene_specific", "action_type": "Water Activities" },
+        { "name": "swagger", "category": "emotional", "action_type": "Attitude" },
+        { "name": "swim", "category": "scene_specific", "action_type": "Water Activities" },
+        { "name": "turn", "category": "basic", "action_type": "Turn" },
+        { "name": "volleyball", "category": "scene_specific", "action_type": "Ball Sports" },
+        { "name": "wait", "category": "basic", "action_type": "Idle" },
+        { "name": "walk", "category": "basic", "action_type": "Walk" },
+        { "name": "warm_up", "category": "scene_specific", "action_type": "Fitness" },
+        { "name": "wave_goodbye_01", "category": "interactive", "action_type": "Social" },
+        { "name": "wave_goodbye_02", "category": "interactive", "action_type": "Social" }
+      ],
+      "quadruped": [{ "name": "walk", "category": "basic", "action_type": "Walk" }],
+      "hexapod": [{ "name": "walk", "category": "basic", "action_type": "Walk" }],
+      "octopod": [{ "name": "walk", "category": "basic", "action_type": "Walk" }],
+      "aquatic": [{ "name": "march", "category": "basic", "action_type": "Walk" }],
+      "serpentine": [{ "name": "march", "category": "basic", "action_type": "Walk" }]
+    }
+  },
+  "export": {
+    "endpoint": "/v2/studio/operation/export",
+    "formats": ["glb", "fbx", "obj", "stl"],
+    "fbx_presets": ["blender", "3dsmax", "maya", "unreal", "unity"],
+    "texture_sizes": ["512", "1K", "2K", "4K", "8K"],
+    "options": {
+      "animate_in_place": true,
+      "with_animation": true,
+      "enable_bake_animation": false,
+      "pack_uv": false,
+      "export_orientation": "-y",
+      "texture_packaging": "zip"
+    }
+  },
+  "providers": {
+    "draft_image": {
+      "id": "codex_luna",
+      "model": "gpt-6-luna",
+      "command": "scribbles.new | scribbles.image | image.generate",
+      "purpose": "Low-cost draft starting character images and turnaround/pose sheets"
+    },
+    "google_flow": {
+      "id": "google_ultra_flow",
+      "url": "https://flow.google.com/",
+      "tier": "ULTRA",
+      "relay_endpoint": "http://127.0.0.1:9224",
+      "image_models": [
+        {
+          "id": "nano_banana_2_1",
+          "label": "Nano Banana 2.1",
+          "credits": 0,
+          "ratios": ["16:9", "4:3", "1:1", "3:4", "9:16"],
+          "batch_counts": [1, 2, 3, 4]
+        }
+      ],
+      "video_models": [
+        { "id": "omni_1_1_flash", "label": "Omni 1.1 Flash", "credits": 24 },
+        { "id": "veo_3_1_lite", "label": "Veo 3.1 - Lite", "credits": 20 },
+        { "id": "veo_3_1_fast", "label": "Veo 3.1 - Fast", "credits": 20 },
+        { "id": "veo_3_1_quality", "label": "Veo 3.1 - Quality", "credits": 100 }
+      ],
+      "video_modes": ["Frames", "Ingredients"],
+      "video_resolutions": ["360p", "720p"],
+      "video_durations_seconds": [4, 6, 8, 10]
+    }
+  }
+}

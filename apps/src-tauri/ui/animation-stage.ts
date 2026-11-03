@@ -205,7 +205,8 @@ class AnimationStageController {
   seek(time: number) {
     if (!Number.isFinite(time)) return;
     this.pause();
-    motion.time = Math.max(0, Math.min(motion.sample?.duration || 0, time));
+    const maxDur = motion.viewport3d ? (tripo3DStage.duration || motion.sample?.duration || 8) : (motion.sample?.duration || 0);
+    motion.time = Math.max(0, Math.min(maxDur, time));
     this.draw();
     animationRemember();
   }
@@ -286,6 +287,12 @@ class AnimationStageController {
     if (motion.mode === 'composite') { seqDraw(); return; }
     const meta = motion.meta;
     if (!meta) return;
+    if (motion.viewport3d) {
+      tripo3DStage.fit();
+      tripo3DStage.seek(motion.time);
+      this.syncReadouts(meta);
+      return;
+    }
     characterStage.setSize(meta.view?.size);
     characterStage.fit();
     const sample = motion.sample;

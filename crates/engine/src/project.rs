@@ -733,11 +733,13 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
         "turnaround",
         "cutout_rig",
         "character",
+        "model_3d",
+        "anim_3d",
     ]
     .contains(&kind)
     {
         return Err(EngineError::InvalidParams(
-            "kind must be auto, image, poses, turnaround, cutout_rig, or character".into(),
+            "kind must be auto, image, poses, turnaround, cutout_rig, character, model_3d, or anim_3d".into(),
         ));
     }
     let stem = path

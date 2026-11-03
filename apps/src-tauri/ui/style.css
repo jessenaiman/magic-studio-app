@@ -1121,3 +1121,13 @@ svg.lyric-flow-arrows .lyric-flow-dot { fill: var(--depth-gold); stroke: var(--b
 .artwork-review-canvas { height:min(70vh,var(--size-620)); overflow:auto; min-width:0; }
 .artwork-review-canvas img { display:block; width:calc(var(--review-width,100%) * var(--review-zoom,1)); max-width:none; height:auto; margin:auto; }
 @media(max-width:47.5em) { .artwork-review-layout { grid-template-columns:minmax(0,1fr); } .artwork-review-canvas { height:45vh; } }
+
+/* Tripo 3D WebGL viewport and 2D/3D animation setup panels. */
+.tripo-3d-viewport { width:100%; height:100%; position:absolute; inset:0; overflow:hidden; }
+.tripo-3d-viewport canvas { display:block; width:100%; height:100%; outline:none; }
+.tripo-preset-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--size-4); max-height:var(--size-180); overflow-y:auto; padding:var(--size-2); scrollbar-width:thin; }
+.tripo-stage-list { display:flex; flex-direction:column; gap:var(--size-6); }
+.tripo-stage-row { display:grid; grid-template-columns:minmax(0,1fr) var(--size-64); gap:var(--size-4); align-items:center; }
+.tripo-clip-list { display:flex; flex-direction:column; gap:var(--size-4); }
+.tripo-clip-row { display:flex; align-items:center; justify-content:space-between; gap:var(--size-6); padding:var(--size-4) var(--size-6); border:var(--size-1) solid var(--line); border-radius:var(--size-6); background:var(--surface-2); font-size:var(--text-xs); }
+.tripo-clip-row.active { border-color:var(--accent); color:var(--text); }
