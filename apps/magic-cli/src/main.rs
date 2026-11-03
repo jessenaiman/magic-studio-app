@@ -7,24 +7,22 @@ mod project;
 mod session;
 mod studio;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use session::Session;
 use std::io::BufRead;
 use std::path::PathBuf;
 
-/// Operate Magic Studio and discover the ArtCraft suite: projects, storyboard, and the desktop app.
+/// Operate Magic Studio and discover the ArtCraft suite: projects, animation, and the desktop app.
 ///
 /// Open an existing project window:
 ///   magic-cli studio open /absolute/Song.magic
-/// Start an unfinished project with a source walkthrough:
-///   magic-cli --project /absolute/Song.magic storyboard toc
-///   magic-cli --project /absolute/Song.magic storyboard doctor
-///   magic-cli --project /absolute/Song.magic storyboard read page=1
-///   magic-cli --project /absolute/Song.magic storyboard read scene=2
-/// Confirm the recording, lyrics, liner notes, intended scene plan and song meaning
-/// with the director before authoring. A successful read only identifies what is loaded.
-/// If scene counts disagree, establish which existing plan is authoritative first.
+/// Open Animation only (creates an animation study when the file is new):
+///   magic-cli studio animate /absolute/Character.magic
+/// Inspect a project before authoring:
+///   magic-cli --project /absolute/Song.magic workshop status
+/// Confirm the recording, lyrics, liner notes and song meaning with the director
+/// before authoring. A successful read only identifies what is loaded.
 ///
 /// Any registry command also works as `magic-cli <domain> <verb> key=value ...`
 /// (underscores may be written as hyphens) or `magic-cli <domain.verb> ...`.
@@ -117,7 +115,20 @@ enum Cmd {
 #[derive(Subcommand)]
 enum StudioCmd {
     /// Open/focus PROJECT, an existing .magic file; omit it for a blank window.
-    Open { project: Option<String> },
+    Open {
+        // Its own id: sharing `project` with the global --project would also select it.
+        #[arg(id = "studio_project", value_name = "PROJECT")]
+        project: Option<String>,
+    },
+    /// Open PROJECT in Animation only: no song, storyboard, lyrics or film tabs.
+    ///
+    /// A missing PROJECT is created as an animation study (`project.new mode=animation`).
+    /// A song project opens with only its Animation workspace. A window already serving
+    /// the project is focused and switched to Animation only.
+    Animate {
+        #[arg(id = "studio_project", value_name = "PROJECT")]
+        project: String,
+    },
     /// List responsive windows without changing the current selection.
     List,
     /// List HyperFrames preview servers and which have no open Studio window.
@@ -303,7 +314,14 @@ fn run_registry(s: &mut Session, tokens: &[String], dry: bool) -> Result<(), Str
         Ok((id, _, true)) => emit(&registry_help(&id)),
         Ok((id, rest, false)) => {
             let (args, raw) = split_params(&rest)?;
-            emit(&run_one(s, &id, parse_params(&args, raw.as_deref())?, dry)?);
+            let params = parse_params(&args, raw.as_deref())?;
+            let numbered = id == "resources.workflow" && params["steps"] == true && !dry;
+            let value = run_one(s, &id, params, dry)?;
+            if numbered {
+                for (i, step) in value["steps"].as_array().into_iter().flatten().enumerate() {
+                    println!("{}. {}", i+1, step.as_str().unwrap_or_default());
+                }
+            } else { emit(&value); }
         }
         Err(listing) if listing.contains("commands from the application registry") => {
             println!("{listing}");
@@ -317,6 +335,10 @@ fn run_studio(s: &mut Session, action: StudioCmd, dry: bool) -> Result<(), Strin
     match action {
         StudioCmd::Open { project } if dry => emit(&json!({"dry_run": true, "project": project})),
         StudioCmd::Open { project } => emit(&s.open_studio(project.as_deref())?),
+        StudioCmd::Animate { project } if dry => {
+            emit(&json!({"dry_run": true, "project": project, "animation_only": true}))
+        }
+        StudioCmd::Animate { project } => emit(&s.open_animation(&project)?),
         StudioCmd::List => emit(&studio::discover()),
         StudioCmd::Previews { stop_orphans } => {
             let mut report = studio::previews();

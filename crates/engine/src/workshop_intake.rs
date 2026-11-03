@@ -415,18 +415,11 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
 
 /// Approve or unapprove the workshop draft.
 pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
+    project_dir(s)?;
     let approved = params
         .get("approved")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let has_board = dir.join(STORYBOARD_DIR).join(STORYBOARD_PDF).is_file()
-        || dir.join("storyboard/movie-board.json").is_file();
-    if approved && !has_board {
-        return Err(EngineError::InvalidParams(
-            "build the storyboard first (workshop.build_storyboard)".into(),
-        ));
-    }
     s.draft_approved = approved;
     crate::project::write_project_file(s)?;
     workshop_status(s)

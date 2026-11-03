@@ -198,7 +198,6 @@ class MenuBarController {
 
   async commitProjectSave(project, saveAs, path) {
     if(state.project!==project)throw Error('The open project changed; save was not submitted');
-    if(state.data?.design?.dirty)await saveStoryboard();
     if(state.project!==project)throw Error('The open project changed; save was not submitted');
     if(saveAs && typeof theatreGuardIdentityChange==='function')await theatreGuardIdentityChange(project);
     await designCommand('project.save',{expected_project:project,...(saveAs?{path}:{})});

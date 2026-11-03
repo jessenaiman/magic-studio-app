@@ -34,20 +34,22 @@ use tauri::{
 
 /// The command line, for the project view on load: project and studio URL, plus `--view <project|studio>`
 /// and `--open <song|lyrics|transcript|animate|agent>` to start on a given tab and block (or with the agent open).
+/// `--animation` shows only the Animation workspace, whatever the project's mode.
 fn launch_options() -> Value {
     let (mut positional, mut view, mut open, mut character) = (Vec::new(), None, None, None);
-    let mut new_project = false;
+    let (mut new_project, mut animation_only) = (false, false);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--new" => new_project = true,
+            "--animation" => animation_only = true,
             "--character" => character = args.next(),
             "--view" => view = args.next(),
             "--open" => open = args.next(),
             _ => positional.push(a),
         }
     }
-    json!({"project": positional.first(), "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "character": character})
+    json!({"project": positional.first(), "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "character": character, "animation_only": animation_only})
 }
 
 pub fn studio_identity() -> Value {
@@ -99,7 +101,7 @@ impl Engine {
     }
 }
 
-/// The open project's workshop state and storyboard.
+/// The open project's workshop state, assets and monitoring.
 pub fn state_of(s: &mut Session) -> Result<Value, String> {
     let mut state = workshop_state(s)?;
     let Some(dir) = s.project_path.as_deref().and_then(std::path::Path::parent) else {
@@ -107,20 +109,15 @@ pub fn state_of(s: &mut Session) -> Result<Value, String> {
     };
     let manifest = dir.join("storyboard/movie-board.json");
     if manifest.is_file() {
-        let board = std::fs::File::open(&manifest)
-            .and_then(|file| serde_json::from_reader::<_, Value>(file).map_err(std::io::Error::from));
-        let board = match board {
-            Ok(board) => board,
-            Err(error) => {
-                state["storyboard"] = json!({"error":format!("{}: {error}", manifest.display())});
-                return Ok(state);
-            }
-        };
+        let bytes = std::fs::read(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+        let board: Value =
+            serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", manifest.display()))?;
         if let Some(deck) = board["deck"].as_str() {
             let deck = dir.join(deck);
             if deck.is_file() && deck.extension().is_some_and(|ext| ext == "deckcraft") {
                 state["storyboard"] = json!({"native_preview":true, "deck":deck,
                     "previews":board["previews"], "page_titles":board["page_titles"],
+                    "page_cues":board["page_plan"].as_array().into_iter().flatten().map(|p| &p["group"]["lyric_lines"]).collect::<Vec<_>>(),
                     "page_size":board["page_size"], "layout":{"links":board["links"]}});
             }
         }
@@ -132,32 +129,16 @@ fn workshop_state(s: &mut Session) -> Result<Value, String> {
     let status = s
         .execute("workshop.status", json!({}))
         .map_err(|e| e.to_string())?;
-    let storyboard = s
-        .execute("workshop.storyboard", json!({}))
-        .unwrap_or(Value::Null);
     let assets = s
         .execute("project.list_assets", json!({}))
         .map_err(|e| e.to_string())?;
-    let design = match s.execute("storyboard.design", json!({})) {
-        Ok(design) => design,
-        Err(error) => json!({"placements":[],"text_fields":[],"error":error.to_string(),
-            "readiness":{"state":"failed","reason":format!("Cannot read the editable storyboard: {error}")}}),
-    };
     let monitoring = s
         .execute("center.status", json!({}))
         .map_err(|e| e.to_string())?;
-    let storyboard_contents = s
-        .execute("storyboard.read", json!({}))
-        .unwrap_or(Value::Null);
-    let storyboard_template = s
-        .execute("storyboard.template", json!({}))
-        .map_err(|e| e.to_string())?;
-    Ok(
-        json!({"storyboard_template":storyboard_template,"storyboard_contents":storyboard_contents,"status": status, "storyboard": storyboard,"assets":assets,"design":design,"monitoring":monitoring}),
-    )
+    Ok(json!({"status": status, "assets": assets, "monitoring": monitoring}))
 }
 
-/// The project's workshop state and storyboard, straight from the engine.
+/// The project's workshop state, straight from the engine.
 #[tauri::command]
 fn project_state(engine: tauri::State<Engine>, path: String) -> Result<Value, String> {
     engine.with(Some(&path), state_of)
@@ -864,7 +845,10 @@ fn percent_decode(s: &str) -> String {
 /// Opens a file with the desktop's default app (one click from any file link).
 #[tauri::command]
 fn open_path(path: String) -> Result<(), String> {
-    let app = if std::path::Path::new(&path).extension().is_some_and(|e| e == "deckcraft") {
+    let app = if std::path::Path::new(&path)
+        .extension()
+        .is_some_and(|e| e == "deckcraft")
+    {
         "deckcraft"
     } else {
         "xdg-open"

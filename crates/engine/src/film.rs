@@ -218,6 +218,16 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
         .ok_or_else(|| bad("clip=<rendered .mov or .mp4> is required"))?;
     let from = p["from"].as_f64().unwrap_or(0.0).max(0.0);
     let track = p["track"].as_str().unwrap_or("V2");
+    // An animation study has no song to assemble from, so its first clip starts the film.
+    if s.project_mode.is_some() && !f.project.is_file() {
+        if let Some(folder) = f.project.parent() {
+            std::fs::create_dir_all(folder)?;
+        }
+        let sequence = json!({"id": "file.newSequence", "params": {"name": f.name,
+            "width": p["width"].as_u64().unwrap_or(1920), "height": p["height"].as_u64().unwrap_or(1080),
+            "fps": p["fps"].as_f64().unwrap_or(30.0)}});
+        crate::assembly::run(&f.dir, &f.project, true, &[sequence])?;
+    }
     let project = f.require()?.to_path_buf();
     let imported = crate::assembly::run(
         &f.dir,

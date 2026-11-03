@@ -69,7 +69,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
     }))
 }
 
-fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
+pub(crate) fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
     let is_checkout =
         |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/src-tauri/Cargo.toml").is_file();
     if is_checkout(&s.cwd) {
@@ -499,16 +499,22 @@ fn read_open_github_issues(root: &Path, force_refresh: bool) -> Vec<Value> {
 }
 
 fn read_herdr_agents() -> Vec<Value> {
+    agent_locations().unwrap_or_default()
+}
+
+pub(crate) fn agent_locations() -> Option<Vec<Value>> {
     let Ok(out) = std::process::Command::new("herdr")
         .args(["agent", "list"])
         .output()
     else {
-        return Vec::new();
+        return None;
     };
+    if !out.status.success() {
+        return None;
+    }
     serde_json::from_slice::<Value>(&out.stdout)
         .ok()
         .and_then(|v| v["result"]["agents"].as_array().cloned())
-        .unwrap_or_default()
 }
 
 fn contains_word(haystack: &str, needle: &str) -> bool {

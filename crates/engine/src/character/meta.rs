@@ -54,7 +54,7 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
         .as_str()
         .map(crate::workspace::sanitize_asset_id)
         .unwrap_or_default();
-    let tripo_3d = super::tripo::inspect_character_3d(&project_dir, &char_id);
+    let tripo_3d = super::tripo::inspect_character_3d(s, &project_dir, &char_id);
     Ok(
         json!({"ok": true, "character": p["character"], "skeleton": table["skeleton"],
         "views": views, "actions": actions, "tripo_3d": tripo_3d}),

@@ -532,6 +532,7 @@ struct ToolOutcome {
     label: &'static str,
     exit_code: i32,
     findings: usize,
+    trace: String,
     issues: Vec<serde_json::Value>,
     error: Option<String>,
 }
@@ -573,6 +574,9 @@ fn merge_tool_rows(root: &Path, outcomes: &[ToolOutcome]) -> Vec<serde_json::Val
                 "ok": status == "passed",
                 "exit_code": o.exit_code,
                 "findings": o.findings,
+                "issues": o.issues,
+                "trace": o.trace,
+                "measured_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
                 "status": status,
                 "note": o.error.as_deref().unwrap_or(status),
                 "error": o.error,
@@ -887,6 +891,7 @@ pub fn run(
                 label: t.label,
                 exit_code: code,
                 findings: over_15 as usize,
+                trace: "Lizard source scan; see critical function records".into(),
                 issues,
                 error: None,
             });
@@ -923,6 +928,7 @@ pub fn run(
             label: t.label,
             exit_code: code,
             findings,
+            trace: out_text.lines().filter(|l|!l.trim().is_empty()).take(120).collect::<Vec<_>>().join("\n"),
             issues,
             error: run_err,
         });

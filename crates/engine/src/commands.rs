@@ -5,7 +5,6 @@
 //!   - `workspace` — path/CLI resolution
 //!   - `project` — .magic lifecycle + connect/load/remove/update assets
 //!   - `workshop` — workshop/storyboard/video/assets/audio + search
-//!   - `storyboard`, `storyboard_crud`, `storyboard_design` — storyboard authoring
 //!   - `lyrics`, `words`, `lettering` — timed words and kinetic typography
 //!   - `video_target`, `assembly` — HyperFrames preview/render and FilmCraft assembly
 //!
@@ -55,23 +54,19 @@ impl CommandSpec {
 
 pub fn is_read_only_command(id: &str, params: &Value) -> bool {
     match id {
+        "resources.workflow" => params.get("field").is_none(),
         "project.catalog" => params.get("forget").is_none_or(Value::is_null),
         "project.attach"
         | "backstage.observe"
         | "backstage.changes"
+        | "mayhem.evidence"
+        | "mayhem.score"
         | "app.errors"
         | "project.identity"
         | "project.list_assets"
         | "project.search"
         | "workshop.status"
         | "workshop.files"
-        | "workshop.storyboard"
-        | "storyboard.read"
-        | "storyboard.design"
-        | "storyboard.backgrounds"
-        | "storyboard.toc"
-        | "storyboard.template"
-        | "storyboard.doctor"
         | "animation.motion_options"
         | "animation.review"
         | "character.list"

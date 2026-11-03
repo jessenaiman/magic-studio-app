@@ -1,0 +1,357 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "The Creator's Loop — A Movie Is a Song Video to Polish",
+    "subtitle": "Your view: the 80% is cheap, the 20% is the product — a revision is a save, and drift is loud",
+    "quality_profile": "showcase",
+    "output": ".archify/workflow-creator-view-20261027/creator-view.html"
+  },
+  "lanes": [
+    {
+      "id": "client",
+      "label": "Client"
+    },
+    {
+      "id": "creator",
+      "label": "Creator"
+    },
+    {
+      "id": "studio",
+      "label": "Magic Studio"
+    },
+    {
+      "id": "core",
+      "label": "HyperFrames"
+    },
+    {
+      "id": "truth",
+      "label": "Truth"
+    }
+  ],
+  "mainPath": [
+    "client",
+    "ms",
+    "moment",
+    "panel",
+    "adjust",
+    "save",
+    "sync",
+    "deliver"
+  ],
+  "nodes": [
+    {
+      "id": "client",
+      "lane": "client",
+      "col": 0,
+      "type": "external",
+      "label": "Client",
+      "height": 44
+    },
+    {
+      "id": "deliver",
+      "lane": "client",
+      "col": 5,
+      "type": "external",
+      "label": "Delivered Revision",
+      "height": 44,
+      "width": 132
+    },
+    {
+      "id": "moment",
+      "lane": "creator",
+      "col": 3,
+      "type": "frontend",
+      "label": "Pinpoint the Moment",
+      "height": 52,
+      "yOffset": -90,
+      "width": 139
+    },
+    {
+      "id": "panel",
+      "lane": "creator",
+      "col": 3,
+      "type": "frontend",
+      "label": "Load Tracks or a Verse",
+      "height": 52,
+      "yOffset": 0,
+      "width": 160
+    },
+    {
+      "id": "adjust",
+      "lane": "creator",
+      "col": 3,
+      "type": "frontend",
+      "label": "Nudge → See It Again",
+      "height": 52,
+      "yOffset": 90,
+      "width": 146
+    },
+    {
+      "id": "ms",
+      "lane": "studio",
+      "col": 1,
+      "type": "backend",
+      "label": "Magic Studio",
+      "height": 44
+    },
+    {
+      "id": "build",
+      "lane": "core",
+      "col": 0,
+      "type": "backend",
+      "label": "Cheap 80% Build",
+      "height": 44,
+      "width": 112
+    },
+    {
+      "id": "hf",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "HyperFrames Core",
+      "height": 44,
+      "width": 119
+    },
+    {
+      "id": "save",
+      "lane": "core",
+      "col": 4,
+      "type": "backend",
+      "label": "Save = the Edit",
+      "height": 44,
+      "width": 108
+    },
+    {
+      "id": "deck",
+      "lane": "truth",
+      "col": 0,
+      "type": "database",
+      "label": "Storyboard Deck",
+      "height": 44,
+      "width": 112
+    },
+    {
+      "id": "sync",
+      "lane": "truth",
+      "col": 5,
+      "type": "security",
+      "label": "Drift Check",
+      "height": 44
+    }
+  ],
+  "edges": [
+    {
+      "id": "client-ms",
+      "from": "client",
+      "to": "ms",
+      "label": "change request",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ms-moment",
+      "from": "ms",
+      "to": "moment",
+      "label": "open the moment",
+      "variant": "emphasis"
+    },
+    {
+      "id": "moment-panel",
+      "from": "moment",
+      "to": "panel",
+      "variant": "emphasis"
+    },
+    {
+      "id": "panel-adjust",
+      "from": "panel",
+      "to": "adjust",
+      "variant": "emphasis"
+    },
+    {
+      "id": "adjust-again",
+      "from": "adjust",
+      "to": "panel",
+      "label": "keep crafting",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "adjust-save",
+      "from": "adjust",
+      "to": "save",
+      "label": "done moving",
+      "variant": "emphasis"
+    },
+    {
+      "id": "save-sync",
+      "from": "save",
+      "to": "sync",
+      "label": "composition updated",
+      "variant": "default"
+    },
+    {
+      "id": "sync-deliver",
+      "from": "sync",
+      "to": "deliver",
+      "label": "ship it",
+      "variant": "emphasis"
+    },
+    {
+      "id": "deck-sync",
+      "from": "deck",
+      "to": "sync",
+      "label": "compare",
+      "variant": "dashed"
+    },
+    {
+      "id": "sync-deck-stale",
+      "from": "sync",
+      "to": "deck",
+      "label": "flag stale deck",
+      "variant": "security",
+      "role": "return"
+    },
+    {
+      "id": "build-hf",
+      "from": "build",
+      "to": "hf",
+      "label": "prebuilt song video",
+      "variant": "dashed"
+    },
+    {
+      "id": "ms-hf",
+      "from": "ms",
+      "to": "hf",
+      "label": "wraps",
+      "variant": "default"
+    },
+    {
+      "id": "hf-save",
+      "from": "hf",
+      "to": "save",
+      "label": "timeline + scene",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The economics you named",
+      "items": [
+        "The storyboard deck already cost a lot of tokens",
+        "Clients pay for video revisions, not deck updates",
+        "Unpaid deck changes accumulate until storyboard and video drift",
+        "Reconciling drift later is the time sink"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "The treasure",
+      "items": [
+        "The 80% is precondition; the 20% is the product",
+        "Subjects load with their exact tracks; verses load their kinetic text",
+        "A save command is an edit — no tool-hopping, no re-declaring concepts",
+        "The creative act never leaves your hand"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Node detail (moved from the boxes)",
+      "items": [
+        "Client: pays for video revisions",
+        "Pinpoint the Moment: the frame that needs it",
+        "Load Tracks or a Verse: exact tracks · only the needed options",
+        "Nudge → See It Again: move small details · clean artifacts · the 20%",
+        "Magic Studio: wrapper — project book · skills · panels",
+        "Cheap 80% Build: song → composition",
+        "HyperFrames Core: composition · timeline · render",
+        "Save = the Edit: lands in the composition",
+        "Storyboard Deck: already paid for in tokens",
+        "Drift Check: deck vs video — loudly, never silent rot",
+        "Delivered Revision: seconds, not jobs"
+      ]
+    }
+  ],
+  "production": [
+    {
+      "id": "source",
+      "label": "Upload audio",
+      "view": "Project · Song",
+      "command": "magic-cli workshop set-audio path=\"<recording>\"",
+      "pipeline": "Link the complete recording and the artist’s original lyric sheet. The current audio intake also initializes the HyperFrames project.",
+      "verify": "Play the linked recording and open the artist’s document."
+    },
+    {
+      "id": "timing",
+      "label": "Verify transcription against the artist’s lyrics",
+      "view": "Project · Song → Lyrics",
+      "command": "magic-cli audio analyze analyze_beats=true\nmagic-cli song lyrics\nmagic-cli words align",
+      "pipeline": "Transcribe the full recording with beats. Keep line numbers for fingerplays and sung verse/chorus order for songs. Use the artist’s wording for discrepancies.",
+      "verify": "Listen through the recording against the artist’s sheet. Resolve transcription warnings, missing lines and timing problems before continuing."
+    },
+    {
+      "id": "board",
+      "label": "Complete the storyboard",
+      "view": "Storyboard → DeckCraft",
+      "command": "magic-cli ui click id=tab-storyboard\nmagic-cli ui click id=sb-open-deck",
+      "pipeline": "Open the project’s existing deck in DeckCraft. Fill the section cues, shots, staging, continuity and links to editable artwork. The open action requires a saved deck.",
+      "verify": "Reopen the saved deck. Check every section and follow its asset links."
+    },
+    {
+      "id": "rough",
+      "label": "Generate the full rough video",
+      "view": "Studio · Assemble",
+      "command": "magic-cli video assemble export=false\nmagic-cli video open",
+      "pipeline": "Build a full-length FilmCraft cut from the storyboard and recording. Place the transitions in FilmCraft; broad movement is enough for this pass.",
+      "verify": "Play from the opening to the end. Check picture coverage, section changes and transitions against the song."
+    },
+    {
+      "id": "text",
+      "label": "Create animated text",
+      "view": "Lyrics",
+      "command": "magic-cli words read\nmagic-cli words letter",
+      "pipeline": "Design the lettering in Lyrics, attach it to the verified word timings and render the lettering track.",
+      "verify": "Watch a sung phrase and its repeat. Confirm that the correct words appear, are readable and clear on cue."
+    },
+    {
+      "id": "verbs",
+      "label": "Create motion graphics for verbs and actions",
+      "view": "Lyrics · word actions",
+      "command": "magic-cli words save --help\nmagic-cli words compose animation_id=<phrase>",
+      "pipeline": "Choose the learning verb in each phrase. Use a repeatable graphic cue, such as a curved arrow for ‘turn’, and time it to the word.",
+      "verify": "Play the cue with the recording. A viewer should be able to identify and imitate the action."
+    },
+    {
+      "id": "motion",
+      "label": "Create the character animation",
+      "view": "Animation",
+      "command": "magic-cli animation review\nmagic-cli animation prepare-motion character=<id> clip=<clip> option=baseline",
+      "pipeline": "1. Reuse an animated model and clip. 2. If needed, skin a suitable base body type. 3. Generate from a 2D reference only when neither exists. The commands shown review and prepare existing clips; skinning and generation require an asset-authoring step.",
+      "verify": "Watch each chosen motion all the way through on its character. Check silhouette, hands, contacts and collisions."
+    },
+    {
+      "id": "save",
+      "label": "Save the project and update FilmCraft",
+      "view": "Project · Save → Studio",
+      "command": "magic-cli project save\nmagic-cli video timeline",
+      "pipeline": "Save the .magic project and bring revised shots and lettering into the designated .fcproj. Today project.save saves Magic only. Update and save the existing cut in FilmCraft; rebuilding a hand-edited timeline needs a deliberate decision.",
+      "verify": "Reopen the designated FilmCraft project and confirm the revised picture, lettering and audio tracks are there."
+    },
+    {
+      "id": "review",
+      "label": "Review the cut or return to editing",
+      "view": "Studio · Preview",
+      "command": "magic-cli video preview",
+      "pipeline": "Play the whole cut with sound. Return to the relevant storyboard, lettering, motion or timeline step for corrections, then save and preview again.",
+      "verify": "Check timing, legibility, actions and continuity. Export only when the cut is approved."
+    },
+    {
+      "id": "delivery",
+      "label": "Export for final review",
+      "view": "Studio · Export",
+      "command": "magic-cli video export",
+      "pipeline": "Render the approved FilmCraft timeline to the delivery file.",
+      "verify": "Open the exported file outside Studio and review it from beginning to end with sound."
+    }
+  ]
+}

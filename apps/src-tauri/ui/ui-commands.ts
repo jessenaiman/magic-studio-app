@@ -231,6 +231,15 @@ class UiCommandController {
       return {refreshed:false,command:id,engine_succeeded:true,refresh_error:message,ack_engine_revision:null};
     }
   }
+
+  // Show only the Animation workspace from now on, as a window launched with --animation does.
+  async animationOnly() {
+    state.launchAnimationOnly = true;
+    state.animateOnly = true;
+    document.body.classList.add("animation-mode");
+    if (state.project && state.view !== "animation") await setView("animation");
+    return { animation_only: true, view: state.view };
+  }
 }
 
 const uiCommandController = new UiCommandController();

@@ -239,10 +239,29 @@ fn glb_clip_names(doc: &Value) -> Vec<String> {
 
 /// Inspect 3D models, rigged FBX/GLB files, Blender scenes, split `.anim.json` clips,
 /// and breakout sheets for one character across canonical and companion 3D folders.
-pub(crate) fn inspect_character_3d(project_dir: &Path, id: &str) -> Value {
+/// The 3D model the project registered for `id` where it lives (`model_3d`; asset ids use
+/// `_` where character ids may use `-`), so shared models need no copy in the project.
+fn registered_model(s: &Session, id: &str) -> Option<PathBuf> {
+    let id = id.replace('-', "_");
+    s.project_assets
+        .iter()
+        .filter(|a| a.kind == "model_3d" && a.id.replace('-', "_") == id)
+        .find_map(|a| a.path.clone().filter(|p| p.is_file()))
+}
+
+/// What 3D files the character has: the registered model's folder first, then the project's.
+pub(crate) fn inspect_character_3d(s: &Session, project_dir: &Path, id: &str) -> Value {
     let canonical = character_3d_dir(project_dir, id);
-    let dirs = candidate_3d_dirs(project_dir, id);
-    let glb_files = collect_unique_ext(&dirs, &["glb", "gltf"], 3);
+    let mut dirs = candidate_3d_dirs(project_dir, id);
+    let registered = registered_model(s, id);
+    if let Some(folder) = registered.as_deref().and_then(Path::parent) {
+        dirs.insert(0, folder.to_path_buf());
+    }
+    let mut glb_files = collect_unique_ext(&dirs, &["glb", "gltf"], 3);
+    if let Some(model) = registered.filter(|m| has_matching_ext(m, &["glb", "gltf"])) {
+        glb_files.retain(|f| *f != model);
+        glb_files.insert(0, model);
+    }
     let fbx_files = collect_unique_ext(&dirs, &["fbx"], 3);
     let blend_files = collect_unique_ext(&dirs, &["blend"], 3);
     let tcraft_files = collect_unique_ext(&dirs, &["tcraft"], 3);
@@ -554,7 +573,7 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
     let id = character_id(p)?;
     let (rig_type, skeleton_preset, topology, max_faces) = validate_rig_options(p)?;
     let project_dir = crate::workshop::project_dir(s)?;
-    let current = inspect_character_3d(&project_dir, &id);
+    let current = inspect_character_3d(s, &project_dir, &id);
     let t_pose_ready = p["t_pose_ready"].as_bool().unwrap_or(true);
     let dir = character_3d_dir(&project_dir, &id);
     std::fs::create_dir_all(&dir)?;
@@ -883,7 +902,7 @@ fn clip_specific_glb(clips_dir: &Path, id: &str, clip_id: &str, rig_type: &str) 
 pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
     let id = character_id(p)?;
     let project_dir = crate::workshop::project_dir(s)?;
-    let current = inspect_character_3d(&project_dir, &id);
+    let current = inspect_character_3d(s, &project_dir, &id);
     let rig_type = p["rig_type"]
         .as_str()
         .or_else(|| current["rig_type"].as_str())
@@ -975,7 +994,7 @@ pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
 /// `character.open` helper for `app="blender"`: open the character's `.blend` file in Blender.
 pub(crate) fn open_in_blender(s: &Session, id: &str) -> Result<Value> {
     let project_dir = crate::workshop::project_dir(s)?;
-    let info = inspect_character_3d(&project_dir, id);
+    let info = inspect_character_3d(s, &project_dir, id);
     let blend = info["blend_files"]
         .as_array()
         .and_then(|a| a.first())

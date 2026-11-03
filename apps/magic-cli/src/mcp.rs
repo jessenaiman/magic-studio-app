@@ -31,6 +31,9 @@ pub struct OpenArgs {
     /// An existing .magic file or project folder; omit for a blank window.
     #[serde(default)]
     pub project: Option<String>,
+    /// Show Animation only; a missing project is created as an animation study.
+    #[serde(default)]
+    pub animation_only: bool,
 }
 
 #[derive(Clone)]
@@ -51,14 +54,15 @@ fn failure(error: String) -> CallToolResult {
 }
 
 /// Run blocking engine or socket work off the async runtime, holding the session lock.
+/// A command that panics fails its call; the server keeps serving.
 async fn blocking<T: Send + 'static>(
     session: &Arc<Mutex<Session>>,
-    work: impl FnOnce(&mut Session) -> T + Send + 'static,
-) -> T {
+    work: impl FnOnce(&mut Session) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
     let mut guard = session.clone().lock_owned().await;
     tokio::task::spawn_blocking(move || work(&mut guard))
         .await
-        .expect("session task panicked")
+        .unwrap_or_else(|e| Err(format!("Magic command failed unexpectedly: {e}")))
 }
 
 #[tool_router]
@@ -84,13 +88,16 @@ impl MagicMcp {
         let mut params = Value::Object(args.params.unwrap_or_default());
         params["_origin"] = json!("MCP");
         let look = args.id == "ui.look" && !dry && params["_dry_run"] != true;
-        let folder = std::env::temp_dir().join(format!(
-            "magic-look-{}-{}",
-            std::process::id(),
-            rand_suffix()
-        ));
-        if look && params["output"].is_null() {
-            if let Err(e) = std::fs::create_dir_all(&folder) {
+        // Only a ui.look without an output needs a temporary picture folder.
+        let folder = (look && params["output"].is_null()).then(|| {
+            std::env::temp_dir().join(format!(
+                "magic-look-{}-{}",
+                std::process::id(),
+                rand_suffix()
+            ))
+        });
+        if let Some(folder) = &folder {
+            if let Err(e) = std::fs::create_dir_all(folder) {
                 return failure(format!("{}: {e}", folder.display()));
             }
             params["output"] = json!(folder.join("window.png"));
@@ -111,17 +118,27 @@ impl MagicMcp {
             },
             Ok(v) => text(&v),
         };
-        let _ = std::fs::remove_dir_all(&folder);
+        if let Some(folder) = folder {
+            let _ = std::fs::remove_dir_all(folder);
+        }
         out
     }
 
-    #[tool(description = "Open/focus a Magic project window and bind this session.")]
+    #[tool(
+        description = "Open/focus a Magic project window and bind this session. animation_only shows only the Animation workspace and requires project."
+    )]
     async fn studio_open(&self, Parameters(args): Parameters<OpenArgs>) -> CallToolResult {
         if self.dry_run {
-            return text(&json!({"dry_run": true, "project": args.project}));
+            return text(
+                &json!({"dry_run": true, "project": args.project, "animation_only": args.animation_only}),
+            );
         }
         match blocking(&self.session, move |s| {
-            s.open_studio(args.project.as_deref())
+            match (args.animation_only, args.project) {
+                (true, Some(project)) => s.open_animation(&project),
+                (true, None) => Err("animation_only needs a project path".into()),
+                (false, project) => s.open_studio(project.as_deref()),
+            }
         })
         .await
         {

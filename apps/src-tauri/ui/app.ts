@@ -225,7 +225,6 @@ class AppFooterController {
   render(): void {
     if (!$('app-footer')) return;
     this.renderStages();
-    updateStoryboardSaveControls();
     const context = this.contextText();
     $('footer-context').textContent = context;
     $('footer-context').title = context;
@@ -462,6 +461,7 @@ class AppShellController {
       motion.explicitCharacter = true;
     }
     this.renderInstanceIdentity(start.identity);
+    state.launchAnimationOnly = start.animation_only === true;
     if (start.new_project) return beginNewProject();
     if (!start.project) return showHome();
     await this.openProject(start.project, start);
@@ -498,8 +498,10 @@ class AppShellController {
     if (!path) throw new Error('Project command did not return its canonical location');
     state.data = opened;
     state.projectReceipt = opened;
-    state.animateOnly = opened.mode === "animation";
-    document.body.classList.toggle("animation-mode", opened.mode === "animation");
+    // An animation study, or a window launched with --animation, shows Animation only.
+    const animateOnly = opened.mode === "animation" || state.launchAnimationOnly === true;
+    state.animateOnly = animateOnly;
+    document.body.classList.toggle("animation-mode", animateOnly);
     this.resetProjectTransientState(path);
     state.project = path;
     state.lyrics = null;
@@ -513,7 +515,7 @@ class AppShellController {
     this.renderFilmTarget();
     renderBlocks();
     renderStoryboard();
-    await this.setView(start.view || (opened.mode === "animation" ? "animation" : "project"));
+    await this.setView(animateOnly ? "animation" : start.view || "project");
     window.workshopDrawers?.close(false);
     await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
   }

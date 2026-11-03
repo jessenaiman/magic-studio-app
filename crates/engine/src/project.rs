@@ -367,13 +367,6 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
             Err(e) => steps.push(json!({"command": "audio.analyze", "status": "failed", "error": e.to_string()})),
         }
     }
-    if !super::workshop::transcript_files(dir).is_empty()
-        && !dir.join("storyboard/movie-board.json").is_file()
-        && params["prepare_only"] != true
-        && super::storyboard::cmd_storyboard_init(s, &json!({})).is_ok()
-    {
-        steps.push(json!({"command": "storyboard.init", "status": "complete"}));
-    }
     steps
 }
 
@@ -1094,18 +1087,31 @@ pub fn cmd_project_attach(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub fn theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
-    let path=s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
-    if params["expected_project"].as_str()!=path.to_str(){return Err(EngineError::InvalidParams("Project changed".into()));}
-    let doc=read_project_document(path)?;
+    let path = s
+        .project_path
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    if params["expected_project"].as_str() != path.to_str() {
+        return Err(EngineError::InvalidParams("Project changed".into()));
+    }
+    let doc = read_project_document(path)?;
     Ok(json!({"state":doc["theatre"],"status":if doc["theatre"].is_object(){"saved"}else{"empty"}}))
 }
 pub fn save_theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
-    theatre_state(s,params)?;
-    if !params["state"]["sheetsById"].is_object(){return Err(EngineError::InvalidParams("Invalid Theatre snapshot".into()));}
-    let path=s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
-    let mut doc=read_project_document(path)?;
-    doc["theatre"]=params["state"].clone();
-    let bytes=serde_json::to_vec_pretty(&doc).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
-    write_preserving_lease(path,&bytes)?;
+    theatre_state(s, params)?;
+    if !params["state"]["sheetsById"].is_object() {
+        return Err(EngineError::InvalidParams(
+            "Invalid Theatre snapshot".into(),
+        ));
+    }
+    let path = s
+        .project_path
+        .as_ref()
+        .ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    let mut doc = read_project_document(path)?;
+    doc["theatre"] = params["state"].clone();
+    let bytes =
+        serde_json::to_vec_pretty(&doc).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    write_preserving_lease(path, &bytes)?;
     Ok(json!({"saved":true,"project":path}))
 }
