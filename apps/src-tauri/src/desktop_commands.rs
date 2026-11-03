@@ -138,53 +138,8 @@ fn dry_run_reply(id: &str, params: &Value) -> Option<Value> {
     }))
 }
 
-/// The page commands: each forwards its parameters to one UI page script.
-fn page_command(
-    app: &AppHandle,
-    id: &str,
-    params: &Value,
-    none: &Value,
-) -> Option<Result<Value, String>> {
-    let result = match id {
-        "ui.menu" => page(app, "menu", &[params]),
-        "ui.controls" => page(app, "controls", &[params]),
-        "ui.attention" => page(app, "attention", &[params]),
-        "ui.components" => page(app, "components", &[params]),
-        "ui.unconfigured" => page(app, "unconfigured", &[]),
-        "ui.state" => page(app, "state", &[]),
-        "ui.elements" => page(app, "elements", &[params.get("region").unwrap_or(none)]),
-        "ui.click" => page(
-            app,
-            "click",
-            &[
-                params.get("id").or(params.get("target")).unwrap_or(none),
-                params.get("instance").unwrap_or(none),
-                params.get("files").unwrap_or(none),
-            ],
-        ),
-        "ui.drag" => page(app, "drag", &[params]),
-        "ui.set" => page(
-            app,
-            "set",
-            &[
-                params.get("id").or(params.get("target")).unwrap_or(none),
-                params.get("value").unwrap_or(none),
-                params.get("instance").unwrap_or(none),
-            ],
-        ),
-        "ui.key" => page(
-            app,
-            "key",
-            &[
-                params.get("key").unwrap_or(none),
-                params.get("id").unwrap_or(none),
-                params.get("instance").unwrap_or(none),
-            ],
-        ),
-        _ => return None,
-    };
-    Some(result)
-}
+/// page_command and action_command merged into ui_command below.
+/// All ui.* commands dispatch through one match instead of two parallel functions.
 
 /// One call: click (optional), wait for the page to settle, picture the region, report the
 /// app state and the clickable ids inside it.
@@ -279,14 +234,53 @@ fn screenshot_command(app: &AppHandle, params: &Value) -> Result<Value, String> 
     Ok(json!({"output": out}))
 }
 
-/// The window and application commands that do not go through the engine.
-fn action_command(
+/// All ui.* commands dispatch through one match. Some forward to magicUI.* in the page
+/// (via page()/eval), others are handled directly in Rust. One match replaces the old
+/// page_command/action_command split.
+fn ui_command(
     app: &AppHandle,
     id: &str,
     params: &Value,
     none: &Value,
 ) -> Option<Result<Value, String>> {
     let result = match id {
+        // ---- forwarded to magicUI.* in the page via eval/page ----------------------
+        "ui.menu" => page(app, "menu", &[params]),
+        "ui.controls" => page(app, "controls", &[params]),
+        "ui.attention" => page(app, "attention", &[params]),
+        "ui.components" => page(app, "components", &[params]),
+        "ui.unconfigured" => page(app, "unconfigured", &[]),
+        "ui.state" => page(app, "state", &[]),
+        "ui.elements" => page(app, "elements", &[params.get("region").unwrap_or(none)]),
+        "ui.click" => page(
+            app,
+            "click",
+            &[
+                params.get("id").or(params.get("target")).unwrap_or(none),
+                params.get("instance").unwrap_or(none),
+                params.get("files").unwrap_or(none),
+            ],
+        ),
+        "ui.drag" => page(app, "drag", &[params]),
+        "ui.set" => page(
+            app,
+            "set",
+            &[
+                params.get("id").or(params.get("target")).unwrap_or(none),
+                params.get("value").unwrap_or(none),
+                params.get("instance").unwrap_or(none),
+            ],
+        ),
+        "ui.key" => page(
+            app,
+            "key",
+            &[
+                params.get("key").unwrap_or(none),
+                params.get("id").unwrap_or(none),
+                params.get("instance").unwrap_or(none),
+            ],
+        ),
+        // ---- handled directly in Rust (no JS round-trip) ---------------------------
         "ui.text_edit" => text_edit_command(app, params),
         "ui.eval" => eval_command(app, params),
         "ui.feedback" => crate::feedback::snapshot(app),
@@ -382,10 +376,7 @@ pub(crate) fn handle(app: &AppHandle, id: &str, params: &Value) -> Result<Value,
     ) {
         eval(app, "await acFeedback.report(); return true;")?;
     }
-    if let Some(result) = page_command(app, id, params, &none) {
-        return result;
-    }
-    if let Some(result) = action_command(app, id, params, &none) {
+    if let Some(result) = ui_command(app, id, params, &none) {
         return result;
     }
     engine_command(app, id, params, ui_project_request)
