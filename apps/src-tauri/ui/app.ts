@@ -421,7 +421,7 @@ class AppShellController {
     if (view === "split") view = "studio";
     if (!this.canLeaveCurrentView(view)) return false;
     if (view !== state.view) {
-      try { await invoke("leave_view"); } catch (error) { toast(String(error)); }
+      try { await invoke("close_documents"); } catch (error) { toast(String(error)); }
     }
     this.cleanupPreviousView(view);
     state.view = view;

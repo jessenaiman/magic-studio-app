@@ -865,9 +865,10 @@ fn open_path(engine: tauri::State<Engine>, path: String) -> Result<(), String> {
         .map_err(|e| format!("xdg-open {path}: {e}"))
 }
 
-/// Leaving a view: each app document it opened saves and closes through the app's CLI.
+/// Leaving a view, or Close apps opened by Magic: each app document this window opened saves and
+/// closes through the app's CLI. Apps opened any other way are not touched.
 #[tauri::command]
-fn leave_view(engine: tauri::State<Engine>) -> Result<Value, String> {
+fn close_documents(engine: tauri::State<Engine>) -> Result<Value, String> {
     engine.with(None, |s| {
         Ok(json!(magicstudio_engine::native_app::close_all(s)))
     })
@@ -1135,7 +1136,7 @@ fn main() {
             agent_config_save,
             snapshot,
             open_path,
-            leave_view,
+            close_documents,
             save_attachment,
             save_animation_export,
             desktop_commands::desktop_reply,

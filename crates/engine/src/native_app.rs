@@ -127,8 +127,9 @@ impl OpenDocument {
         self.cli(self.app.bridge(self.port, "file.save"))
     }
 
-    /// Save, then quit the app through its CLI (or end the process Magic started).
-    pub fn close(mut self) -> Result<()> {
+    /// Save, then quit the app through its CLI (or end the process Magic started). A refused
+    /// save leaves the app open with its work.
+    pub fn close(&mut self) -> Result<()> {
         self.save()?;
         match self.app.quit(self.port) {
             Some(quit) => self.cli(quit)?,
@@ -140,8 +141,6 @@ impl OpenDocument {
                 }
             }
         }
-        // Reap it once it has gone, so it does not linger as a zombie.
-        std::thread::spawn(move || self.child.wait());
         Ok(())
     }
 
@@ -215,17 +214,24 @@ pub fn save_all(s: &mut Session) -> Vec<Value> {
         .collect()
 }
 
-/// Save and close every app this session opened (leaving a view).
+/// Save and close every app this session opened (leaving a view, or Close apps opened by
+/// Magic). One whose save or quit fails stays open and listed, so the next close reaches it.
 pub fn close_all(s: &mut Session) -> Vec<Value> {
     s.open_documents.retain_mut(OpenDocument::running);
-    std::mem::take(&mut s.open_documents)
-        .into_iter()
-        .map(|d| {
-            let summary = d.summary();
-            match d.close() {
-                Ok(()) => json!({"closed": true, "document": summary}),
-                Err(e) => json!({"closed": false, "document": summary, "error": e.to_string()}),
+    let mut report = Vec::new();
+    for mut document in std::mem::take(&mut s.open_documents) {
+        let summary = document.summary();
+        match document.close() {
+            Ok(()) => {
+                report.push(json!({"closed": true, "document": summary}));
+                // Reap it once it has gone, so it does not linger as a zombie.
+                std::thread::spawn(move || document.child.wait());
             }
-        })
-        .collect()
+            Err(e) => {
+                report.push(json!({"closed": false, "document": summary, "error": e.to_string()}));
+                s.open_documents.push(document);
+            }
+        }
+    }
+    report
 }
