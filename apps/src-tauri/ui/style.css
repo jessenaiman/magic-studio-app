@@ -651,14 +651,6 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .objects .object .label { overflow-wrap:anywhere; }
 
 
-/* Native storyboard text boxes: unchanged preview until the existing field receives focus. */
-.sb-text { position:absolute; left:var(--x); top:var(--y); width:var(--w); height:var(--h); font-size:var(--font); z-index:2; margin:0; padding:0; border:0; border-radius:0;
- resize:none; background:transparent; color:transparent; font-family:"DejaVu Sans",sans-serif;
- line-height:1.2; box-shadow:none; outline:none; }
-.sb-text[data-named] { font-family:Helvetica,Arial,sans-serif; padding:var(--pad); box-sizing:border-box; }
-.sb-text:hover { outline:var(--size-1) dashed var(--focus-outline); }
-.sb-text:focus { outline:var(--size-1) solid var(--focus-outline); background:var(--field-fill,var(--field-fill)); color:var(--field-ink,var(--field-ink)); }
-
 /* Animation / timeline focus: selected-part controls live in Expression & pose; the bar stays hidden. */
 .motion-part-bar, .motion-part-bar[hidden] { display:none !important; }
 .anim-part-inspector { display:grid; gap:var(--size-8); }
@@ -1132,3 +1124,32 @@ svg.lyric-flow-arrows .lyric-flow-dot { fill: var(--depth-gold); stroke: var(--b
 .tripo-clip-list { display:flex; flex-direction:column; gap:var(--size-4); }
 .tripo-clip-row { display:flex; align-items:center; justify-content:space-between; gap:var(--size-6); padding:var(--size-4) var(--size-6); border:var(--size-1) solid var(--line); border-radius:var(--size-6); background:var(--surface-2); font-size:var(--text-xs); }
 .tripo-clip-row.active { border-color:var(--accent); color:var(--text); }
+
+/* One shared workflow, with controls revealed on focus. */
+#view-skills.active { display:block; overflow:auto; }
+#workflow-guide { max-width:78rem; margin:auto; padding:clamp(1rem,3vw,2.5rem); }
+#workflow-guide header { border-bottom:1px solid var(--line); padding-bottom:1rem; }
+#workflow-guide h1 { font-size:clamp(1.7rem,4vw,3rem); margin:.25em 0; }
+#workflow-guide header>small:first-child,.workflow-number { color:var(--accent); }
+.workflow-columns { display:grid; grid-template-columns:minmax(0,3fr) minmax(15rem,2fr); gap:1.25rem; align-items:start; }
+.workflow-columns h2 { font-size:1rem; }
+.workflow-stages { padding:0; list-style:none; }
+.workflow-stages>li { display:grid; grid-template-columns:2rem minmax(0,1fr); padding:.55rem 0; border-top:1px solid var(--line); }
+.workflow-number { padding-top:.3rem; font-variant-numeric:tabular-nums; }
+.workflow-field { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:1.7rem; background:transparent; color:var(--text); border:1px solid transparent; padding:.2rem; font:inherit; }
+.workflow-field:hover,.workflow-field:focus { border-color:var(--line); background:var(--surface); }
+.workflow-field[aria-invalid=true] { border-color:var(--amber); }
+.wf-label { font-weight:bold; }
+.wf-command,.workflow-columns aside { font-family:monospace; }
+.workflow-columns aside { margin-top:1rem; border:1px solid var(--line); border-radius:var(--radius); padding:.85rem 1rem; }
+.workflow-columns aside li { padding:.3em 0; }
+.workflow-columns aside code { color:var(--accent); overflow-wrap:anywhere; }
+#workflow-guide summary { cursor:pointer; color:var(--muted); }
+.workflow-details label { display:block; margin:.65rem 0; }
+.workflow-details small { color:var(--muted); }
+.workflow-revision label { display:grid; grid-template-columns:2rem 1fr; align-items:center; }
+@media(max-width:720px){.workflow-columns{grid-template-columns:1fr;}}
+#storyboard-rail nav { display:grid; gap:2px; margin:.7rem 0; }
+#storyboard-rail nav button { text-align:left; padding:.45rem .6rem; }
+#storyboard-rail [aria-current=page] { border-color:var(--accent);color:var(--accent); }
+#storyboard-rail section { border-top:1px solid var(--line);padding:.75rem .5rem; }

@@ -755,6 +755,6 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
         json!({"ok":true,"target":"hyperframes","ran":ran,"analysis_attempt":trace.data,
         "provenance_receipt":dir.join("transcript-provenance.json"),"words":word_count,
         "files":{"audio":audio,"transcript":transcript,"captions":srt,"audio_analysis":hf.join("audio-analysis.json"),"beats_dir":hf.join("beats")},"music_analysis":analysis,
-        "next":["Review the words against the recording (`words.plan`), then initialize/build scene pages (`storyboard.init` / `workshop.build_storyboard`)"]}),
+        "next":["Review the words against the recording (`words.plan`), then add reference art (`project.add_asset`)"]}),
     )
 }

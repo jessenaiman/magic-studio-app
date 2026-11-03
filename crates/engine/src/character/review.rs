@@ -51,9 +51,13 @@ pub fn cmd_save_revision(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let id = p["character"]
         .as_str()
-        .filter(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
+        .filter(|v| {
+            !v.is_empty()
+                && v.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+        })
         .ok_or_else(|| bad("Invalid character"))?;
-    let model = tripo::inspect_character_3d(&crate::workshop::project_dir(s)?, id);
+    let model = tripo::inspect_character_3d(s, &crate::workshop::project_dir(s)?, id);
     let file = model["primary_glb"]
         .as_str()
         .ok_or_else(|| bad("Character has no GLB"))?;
@@ -160,7 +164,11 @@ pub fn cmd_prepare_motion(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let character = p["character"]
         .as_str()
-        .filter(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_')))
+        .filter(|v| {
+            !v.is_empty()
+                && v.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+        })
         .ok_or_else(|| bad("Choose one character"))?;
     let clip = p["clip"]
         .as_str()
@@ -169,7 +177,7 @@ pub fn cmd_prepare_motion(s: &mut Session, p: &Value) -> Result<Value> {
     if !matches!(option, "baseline" | "paced") {
         return Err(bad("Unknown motion option"));
     }
-    let model = tripo::inspect_character_3d(&dir, character);
+    let model = tripo::inspect_character_3d(s, &dir, character);
     let source = model["primary_glb"]
         .as_str()
         .ok_or_else(|| bad("Character needs a GLB"))?;

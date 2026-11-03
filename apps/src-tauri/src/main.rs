@@ -34,20 +34,22 @@ use tauri::{
 
 /// The command line, for the project view on load: project and studio URL, plus `--view <project|studio>`
 /// and `--open <song|lyrics|transcript|animate|agent>` to start on a given tab and block (or with the agent open).
+/// `--animation` shows only the Animation workspace, whatever the project's mode.
 fn launch_options() -> Value {
     let (mut positional, mut view, mut open, mut character) = (Vec::new(), None, None, None);
-    let mut new_project = false;
+    let (mut new_project, mut animation_only) = (false, false);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--new" => new_project = true,
+            "--animation" => animation_only = true,
             "--character" => character = args.next(),
             "--view" => view = args.next(),
             "--open" => open = args.next(),
             _ => positional.push(a),
         }
     }
-    json!({"project": positional.first(), "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "character": character})
+    json!({"project": positional.first(), "studio": positional.get(1), "view": view, "open": open, "new_project":new_project, "character": character, "animation_only": animation_only})
 }
 
 pub fn studio_identity() -> Value {
@@ -99,37 +101,46 @@ impl Engine {
     }
 }
 
-/// The open project's workshop state and storyboard.
+/// The open project's workshop state, assets and monitoring.
 pub fn state_of(s: &mut Session) -> Result<Value, String> {
+    let mut state = workshop_state(s)?;
+    let Some(dir) = s.project_path.as_deref().and_then(std::path::Path::parent) else {
+        return Ok(state);
+    };
+    let manifest = dir.join("storyboard/movie-board.json");
+    if manifest.is_file() {
+        let bytes = std::fs::read(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+        let board: Value =
+            serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", manifest.display()))?;
+        if let Some(deck) = board["deck"].as_str() {
+            let deck = dir.join(deck);
+            if deck.is_file() && deck.extension().is_some_and(|ext| ext == "deckcraft") {
+                state["storyboard"] = json!({"native_preview":true, "deck":deck,
+                    "previews":board["previews"], "page_titles":board["page_titles"],
+                    "page_cues":if board["page_cues"].is_array() { board["page_cues"].clone() } else {
+                        json!(board["page_plan"].as_array().into_iter().flatten().map(|p| &p["group"]["lyric_lines"]).collect::<Vec<_>>())
+                    },
+                    "page_size":board["page_size"], "layout":{"links":board["links"]}});
+            }
+        }
+    }
+    Ok(state)
+}
+
+fn workshop_state(s: &mut Session) -> Result<Value, String> {
     let status = s
         .execute("workshop.status", json!({}))
         .map_err(|e| e.to_string())?;
-    let storyboard = s
-        .execute("workshop.storyboard", json!({}))
-        .unwrap_or(Value::Null);
     let assets = s
         .execute("project.list_assets", json!({}))
         .map_err(|e| e.to_string())?;
-    let design = match s.execute("storyboard.design", json!({})) {
-        Ok(design) => design,
-        Err(error) => json!({"placements":[],"text_fields":[],"error":error.to_string(),
-            "readiness":{"state":"failed","reason":format!("Cannot read the editable storyboard: {error}")}}),
-    };
     let monitoring = s
         .execute("center.status", json!({}))
         .map_err(|e| e.to_string())?;
-    let storyboard_contents = s
-        .execute("storyboard.read", json!({}))
-        .unwrap_or(Value::Null);
-    let storyboard_template = s
-        .execute("storyboard.template", json!({}))
-        .map_err(|e| e.to_string())?;
-    Ok(
-        json!({"storyboard_template":storyboard_template,"storyboard_contents":storyboard_contents,"status": status, "storyboard": storyboard,"assets":assets,"design":design,"monitoring":monitoring}),
-    )
+    Ok(json!({"status": status, "assets": assets, "monitoring": monitoring}))
 }
 
-/// The project's workshop state and storyboard, straight from the engine.
+/// The project's workshop state, straight from the engine.
 #[tauri::command]
 fn project_state(engine: tauri::State<Engine>, path: String) -> Result<Value, String> {
     engine.with(Some(&path), state_of)
@@ -833,14 +844,36 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Opens a file with the desktop's default app (one click from any file link).
+/// Opens a file from a link: a `.deckcraft` in DeckCraft for the open view (saved with the
+/// project and closed on leaving it), anything else with the desktop's default app.
 #[tauri::command]
-fn open_path(path: String) -> Result<(), String> {
+fn open_path(engine: tauri::State<Engine>, path: String) -> Result<(), String> {
+    let file = std::path::Path::new(&path);
+    if file.extension().is_some_and(|e| e == "deckcraft") {
+        return engine.with(None, |s| {
+            magicstudio_engine::native_app::open(
+                s,
+                &magicstudio_engine::native_app::DECKCRAFT,
+                file,
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+        });
+    }
     std::process::Command::new("xdg-open")
         .arg(&path)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("xdg-open {path}: {e}"))
+}
+
+/// Leaving a view, or Close apps opened by Magic: each app document this window opened saves and
+/// closes through the app's CLI. Apps opened any other way are not touched.
+#[tauri::command]
+fn close_documents(engine: tauri::State<Engine>) -> Result<Value, String> {
+    engine.with(None, |s| {
+        Ok(json!(magicstudio_engine::native_app::close_all(s)))
+    })
 }
 
 /// Height of the project view's top bar (logical px).
@@ -1105,6 +1138,7 @@ fn main() {
             agent_config_save,
             snapshot,
             open_path,
+            close_documents,
             save_attachment,
             save_animation_export,
             desktop_commands::desktop_reply,

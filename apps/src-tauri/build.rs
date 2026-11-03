@@ -61,7 +61,6 @@ fn theatre_bundle() {
         "frontend/backstage-terminal.ts",
         "frontend/project-id.ts",
         "frontend/analytics-charts.ts",
-        "frontend/analytics-scatter.ts",
         "frontend/package.json",
         "frontend/bun.lock",
     ];
@@ -75,13 +74,11 @@ fn theatre_bundle() {
         && modified("ui/vendor/konva.bundle.js").is_some()
         && modified("ui/vendor/backstage/backstage-terminal.js").is_some()
         && modified("ui/vendor/mayhem-charts.bundle.js").is_some()
-        && modified("ui/vendor/mayhem-scatter.bundle.js").is_some()
         && sources.iter().all(|s| {
             modified(s) <= modified("ui/vendor/rig-review.bundle.js")
                 && modified(s) <= modified("ui/vendor/backstage/backstage-terminal.js")
                 && modified(s) <= bundle
                 && modified(s) <= modified("ui/vendor/mayhem-charts.bundle.js")
-                && modified(s) <= modified("ui/vendor/mayhem-scatter.bundle.js")
         })
     {
         return;

@@ -186,7 +186,7 @@ class MenuBarController {
     const wasInert=document.body.inert;
     try {
       // Freeze user editing until identity has changed or the request has failed. The native
-      // file picker remains usable; blur first commits the currently focused storyboard field.
+      // file picker remains usable; finish editing the focused input first.
       if(saveAs){document.body.inert=true;document.activeElement?.blur();}
       const path=saveAs ? await dialog.save({title:'Save Project As',defaultPath:project,
         filters:[{name:'Magic Studio project',extensions:['magic']}]}) : null;
@@ -198,7 +198,6 @@ class MenuBarController {
 
   async commitProjectSave(project, saveAs, path) {
     if(state.project!==project)throw Error('The open project changed; save was not submitted');
-    if(storyboardController.textDrafts.size || state.data?.design?.dirty)await saveStoryboard();
     if(state.project!==project)throw Error('The open project changed; save was not submitted');
     if(saveAs && typeof theatreGuardIdentityChange==='function')await theatreGuardIdentityChange(project);
     await designCommand('project.save',{expected_project:project,...(saveAs?{path}:{})});

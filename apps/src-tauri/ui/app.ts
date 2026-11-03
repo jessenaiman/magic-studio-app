@@ -132,7 +132,7 @@ class AppFooterController {
   queued = false;
 
   stageState(id: string) {
-    if (id === 'studio') return serverUrl() ? 'ok' : videoProject() ? 'warn' : 'idle';
+    if (id === 'studio') return state.data?.status?.film_timeline?.exists ? 'ok' : 'warn';
     const seen = projectView.prerequisite(id).state;
     return seen === 'ready' ? 'ok' : seen ? 'warn' : 'idle';
   }
@@ -168,8 +168,8 @@ class AppFooterController {
   }
 
   studioText(): string {
-    const project = videoProject();
-    return project ? `Video project: ${project}` : 'No video project yet';
+    const timeline = state.data?.status?.film_timeline;
+    return timeline?.exists ? timeline.path : 'No final FilmCraft timeline linked';
   }
 
   contextText(): string {
@@ -216,29 +216,20 @@ class AppFooterController {
 
   renderSaveState(): void {
     const motionUnsaved = this.isMotionUnsaved();
-    const unsaved = motionUnsaved || state.data?.design?.dirty === true || storyboardController.textDrafts.size > 0;
+    const unsaved = motionUnsaved || state.data?.design?.dirty === true;
     const { tone, label } = this.saveStatus(unsaved);
     $('footer-save-state').replaceChildren(window.companionBoxes.dot(tone, '', 'footer-save-state'), label);
     $('footer-save-state').title = this.saveStateTitle(motionUnsaved, unsaved);
   }
 
-  renderServer(): void {
-    const url = serverUrl();
-    $('footer-server').replaceChildren(
-      window.companionBoxes.dot(url ? 'ready' : 'idle', '', 'target'),
-      url ? `Studio · ${url.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : 'Studio off',
-    );
-  }
-
   render(): void {
     if (!$('app-footer')) return;
     this.renderStages();
-    updateStoryboardSaveControls();
     const context = this.contextText();
     $('footer-context').textContent = context;
     $('footer-context').title = context;
     this.renderSaveState();
-    this.renderServer();
+    appShell.renderFilmTarget();
   }
 }
 
@@ -254,7 +245,6 @@ function updateAppFooter(): void { appFooter.scheduleUpdate(); }
 function renderFooterStages(): void { appFooter.renderStages(); }
 function saveStatus(unsaved: boolean): { tone: string; label: string } { return appFooter.saveStatus(unsaved); }
 function renderFooterSaveState(): void { appFooter.renderSaveState(); }
-function renderFooterServer(): void { appFooter.renderServer(); }
 function renderAppFooter(): void { appFooter.render(); }
 // Theatre's own listener (theatre.js) updates its revisions first; render after it.
 window.addEventListener('message', (event) => { if (event.data?.magicTheatre && event.data.type !== 'values') setTimeout(updateAppFooter); });
@@ -407,26 +397,9 @@ class AppShellController {
     window.workspaceNavigation?.select(state.view);
   }
 
-  async showStudio() {
-    const url = this.serverUrl();
-    $("studio-empty").classList.toggle("show", !url);
-    if (!url) return;
-    try { await invoke("studio_show", { url, mode: state.view }); }
-    catch (e) { toast(String(e)); throw e; }
-  }
-
   async openWorkspace(view: string): Promise<void> {
-    const open = WORKSPACE_OPENERS[view];
-    if (open) { await invoke("studio_hide"); await open(); return; }
-    if (view !== "project" && this.serverUrl()) {
-      await new Promise(requestAnimationFrame);
-      await this.showStudio();
-      return;
-    }
     await invoke("studio_hide");
-    if (view === "project") return;
-    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-studio"));
-    $("studio-empty").classList.add("show");
+    await WORKSPACE_OPENERS[view]?.();
   }
 
   canLeaveCurrentView(nextView: string): boolean {
@@ -447,6 +420,9 @@ class AppShellController {
     const errors = acFeedback.errors.length;
     if (view === "split") view = "studio";
     if (!this.canLeaveCurrentView(view)) return false;
+    if (view !== state.view) {
+      try { await invoke("close_documents"); } catch (error) { toast(String(error)); }
+    }
     this.cleanupPreviousView(view);
     state.view = view;
     window.workspaceNavigation?.select(view);
@@ -461,46 +437,15 @@ class AppShellController {
     }
   }
 
-  serverUrl() {
-    const server = state.data?.status?.video_server || {};
-    return server.running === true ? server.url : null;
-  }
-
-  videoProject() {
-    const s = state.data?.status;
-    return s?.video_project_path || s?.video_project || null;
-  }
-
-  renderTarget() {
-    const s = state.data?.status;
-    if (!s) return;
-    const url = this.serverUrl();
-    const project = this.videoProject();
-    $("target-name").textContent = `${s.video_target}${url ? " · " + url.replace(/^https?:\/\//, "").replace(/\/$/, "") : " · off"}`;
-    const serverDot = window.companionBoxes.dot(url ? "ready" : "idle", "", "target");
-    serverDot.id = "server-dot";
-    $("server-dot").replaceWith(serverDot);
-    updateAppFooter();
-    const statusLine = url ? `Studio running at ${url} · click to stop` : "Studio off · click to start";
-    const projectLine = project ? `Video project: ${project}` : "No video project yet · starting the studio creates it";
-    $("target").title = `${statusLine}\n${projectLine}`;
-  }
-
-  async toggleServer() {
-    if (!state.project) return;
-    const on = !this.serverUrl();
-    const startingDot = window.companionBoxes.dot("working", "pulse", "target");
-    startingDot.id = "server-dot";
-    $("server-dot").replaceWith(startingDot);
-    try {
-      if (on && state.data?.status?.video_target && !state.data.status.video_project_path) {
-        await designCommand("video.init", {});
-      }
-      await designCommand(on ? "video.server_start" : "video.server_stop");
-      toast(on ? "Studio started" : "Studio stopped");
-    } catch (e) { toast(String(e)); }
-    this.renderTarget();
-    if (["studio", "split"].includes(state.view)) (this.serverUrl() ? this.showStudio() : this.setView(state.view));
+  renderFilmTarget() {
+    const timeline = state.data?.status?.film_timeline;
+    const label = timeline?.exists ? "FilmCraft timeline" : "FilmCraft timeline missing";
+    for (const id of ["target", "footer-server"]) {
+      const button = $(id);
+      button.disabled = !state.project;
+      button.title = timeline?.path || "Open the Film workspace";
+      button.replaceChildren(window.companionBoxes.dot(timeline?.exists ? "ready" : "idle", "", "target"), label);
+    }
   }
 
   renderInstanceIdentity(identity: any = {}) {
@@ -519,6 +464,7 @@ class AppShellController {
       motion.explicitCharacter = true;
     }
     this.renderInstanceIdentity(start.identity);
+    state.launchAnimationOnly = start.animation_only === true;
     if (start.new_project) return beginNewProject();
     if (!start.project) return showHome();
     await this.openProject(start.project, start);
@@ -534,7 +480,6 @@ class AppShellController {
     animationReset();
     songStop();
     transcriptReaderClose();
-    storyboardController.textDrafts.clear();
     projectView.error = null;
     state.storyboardScene = null;
     state.storyboardUndo = null;
@@ -556,8 +501,10 @@ class AppShellController {
     if (!path) throw new Error('Project command did not return its canonical location');
     state.data = opened;
     state.projectReceipt = opened;
-    state.animateOnly = opened.mode === "animation";
-    document.body.classList.toggle("animation-mode", opened.mode === "animation");
+    // An animation study, or a window launched with --animation, shows Animation only.
+    const animateOnly = opened.mode === "animation" || state.launchAnimationOnly === true;
+    state.animateOnly = animateOnly;
+    document.body.classList.toggle("animation-mode", animateOnly);
     this.resetProjectTransientState(path);
     state.project = path;
     state.lyrics = null;
@@ -568,10 +515,10 @@ class AppShellController {
     state.open = SONG_SECTIONS.includes(startOpen) ? "song" : startOpen;
     document.body.classList.remove("at-home");
     this.updateWindowProjectTitle(path, opened.name);
-    this.renderTarget();
+    this.renderFilmTarget();
     renderBlocks();
     renderStoryboard();
-    await this.setView(start.view || (opened.mode === "animation" ? "animation" : "project"));
+    await this.setView(animateOnly ? "animation" : start.view || "project");
     window.workshopDrawers?.close(false);
     await acFeedback.acknowledge(state.data?._ui_engine_revision, path);
   }
@@ -580,25 +527,21 @@ class AppShellController {
 const appShell = new AppShellController();
 
 function placeInk() { appShell.placeInk(); }
-async function showStudio() { return appShell.showStudio(); }
 async function openWorkspace(view: string): Promise<void> { return appShell.openWorkspace(view); }
 async function setView(view: string, action?: any) { return appShell.setView(view, action); }
-function serverUrl() { return appShell.serverUrl(); }
-function videoProject() { return appShell.videoProject(); }
-function renderTarget() { appShell.renderTarget(); }
-async function toggleServer() { return appShell.toggleServer(); }
+function serverUrl() { return wordsPanel.studio?.preview_url || null; }
+function renderTarget() { appShell.renderFilmTarget(); }
 async function load() { return appShell.load(); }
 async function openProject(path: string, start: any = {}) { return appShell.openProject(path, start); }
 async function applyOpenedProject(opened: any, start: any = {}) { return appShell.applyOpenedProject(opened, start); }
 
-$("target").addEventListener("click", toggleServer);
-$("footer-server").addEventListener("click", toggleServer);
+$("target").addEventListener("click", () => setView("studio"));
+$("footer-server").addEventListener("click", () => setView("studio"));
 $("footer-instance").addEventListener("click", async () => {
   if (!state.project) { toast("Open a project to copy its command"); return; }
   try { await navigator.clipboard.writeText(magicCommandText("ui.feedback")); toast("Copied project feedback command"); }
   catch { toast("Could not copy the project command"); }
 });
-$("studio-start").addEventListener("click", toggleServer);
 window.addEventListener("resize", placeInk);
 placeInk();
 window.addEventListener('DOMContentLoaded', () => load().catch((e) => {

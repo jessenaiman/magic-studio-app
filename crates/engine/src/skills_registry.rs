@@ -83,10 +83,6 @@ const TASKS: &[(&str, &str)] = &[
     ("choose-audio", include_str!("../manual/choose-audio.md")),
     ("timing-skill", include_str!("../manual/timing-skill.md")),
     ("import-timing", include_str!("../manual/import-timing.md")),
-    (
-        "native-storyboard",
-        include_str!("../manual/native-storyboard.md"),
-    ),
     ("prepare-art", include_str!("../manual/prepare-art.md")),
     ("author-motion", include_str!("../manual/author-motion.md")),
     (
@@ -714,7 +710,6 @@ fn diagram_ids(kind: &str) -> Result<Vec<&'static str>> {
             "choose-audio",
             "timing-skill",
             "import-timing",
-            "native-storyboard",
             "prepare-art",
             "author-motion",
             "review-release",

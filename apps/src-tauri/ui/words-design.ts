@@ -84,7 +84,7 @@ class WordsDesignController {
   async bootstrapStudio(studio: any) {
     if (studio?.sections?.length) return studio;
     await wordsCommand("words.track").catch(() => {});
-    return wordsCommand("words.studio_track").catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") }));
+    return wordsCommand("words.studio_track", { preview_status: true }).catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") }));
   }
 
   async open() {
@@ -95,7 +95,7 @@ class WordsDesignController {
       const [read, align, rawStudio, backgrounds] = await Promise.all([
         wordsCommand("words.read"),
         wordsCommand("words.align"),
-        wordsCommand("words.studio_track").catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") })),
+        wordsCommand("words.studio_track", { preview_status: true }).catch((error: any) => ({ error: String(error).replace(/^.*?: /, "") })),
         wordsCommand("storyboard.backgrounds").catch((error: any) => ({ images: [], error: String(error).replace(/^.*?: /, "") })),
       ]);
       const studio = await this.bootstrapStudio(rawStudio);

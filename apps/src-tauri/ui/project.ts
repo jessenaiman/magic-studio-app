@@ -148,6 +148,8 @@ class ProjectView {
     box.append(this.block('assets', ICONS.animate, 'Assets', `${assets.length} assets`, this.ready('assets'), assetsBody, this.prerequisite('assets').state));
     box.append(this.block('animate', ICONS.animate, 'Animate', `${assets.length} objects`, this.ready('animate'),
       el('p', { class: 'why' }, 'Choose an asset above to animate it.'), this.prerequisite('animate').state));
+    box.append(el('button', { id: 'project-close-apps', class: 'ghost', onclick: () => closeAppsOpenedByMagic() },
+      'Close apps opened by Magic'));
     if (typeof imagePromptBlock === 'function') $('magic-image-tools')?.replaceChildren(imagePromptBlock());
     if (state.view === 'design' && typeof wordsStatusRefresh === 'function') wordsStatusRefresh();
   }
@@ -166,6 +168,18 @@ class ProjectView {
 const projectView = new ProjectView(state);
 (window as any).ProjectView = ProjectView;
 (window as any).projectView = projectView;
+/** Save and close the app documents this window opened; one that refuses stays open and is named. */
+async function closeAppsOpenedByMagic() {
+  try {
+    const report: any[] = await invoke("close_documents");
+    const name = (r: any) => String(r.document?.file || '').split('/').pop();
+    const refused = report.filter((r) => !r.closed);
+    if (!report.length) toast('No apps opened by Magic are open');
+    else if (refused.length) toast(`Still open: ${refused.map((r) => `${name(r)} (${r.error})`).join('; ')}`);
+    else toast(`Saved and closed ${report.map(name).join(', ')}`);
+  } catch (error) { toast(String(error)); }
+}
+
 function designCommand(id: string, params: Record<string, any> = {}) { return projectView.command(id, params); }
 function block(id: string, icon: string, title: string, meta: string, done: boolean, body: any, blockState?: any, action?: any) {
   return projectView.block(id, icon, title, meta, done, body, blockState, action);

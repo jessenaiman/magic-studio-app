@@ -40,7 +40,8 @@ pub fn eval(app: &AppHandle, body: &str) -> Result<Value, String> {
     view.eval(format!(
         "(async () => {{ {body} }})().then(v => {}, e => {})",
         reply("{ok: true, value: v ?? null}"),
-        reply("{ok: false, error: String((e && e.stack) || e)}")
+        // WebKit stacks omit the message, so send both.
+        reply("{ok: false, error: e && e.stack ? `${e}\\n${e.stack}` : String(e)}")
     ))
     .map_err(|e| e.to_string())?;
     let v = rx
@@ -222,10 +223,15 @@ fn eval_command(app: &AppHandle, params: &Value) -> Result<Value, String> {
     eval(app, params["js"].as_str().ok_or("ui.eval needs js")?)
 }
 
-fn focus_command(app: &AppHandle) -> Result<Value, String> {
+/// Bring the window forward; `animation_only` also switches it to the Animation workspace alone.
+fn focus_command(app: &AppHandle, params: &Value) -> Result<Value, String> {
     let window = app.get_window("main").ok_or("Studio window unavailable")?;
     window.set_focus().map_err(|e| e.to_string())?;
-    Ok(json!({"ok":true,"focused":true,"reused_session":true}))
+    let mut reply = json!({"ok":true,"focused":true,"reused_session":true});
+    if params["animation_only"] == true {
+        reply["animation_only"] = page(app, "animationOnly", &[])?;
+    }
+    Ok(reply)
 }
 
 fn screenshot_command(app: &AppHandle, params: &Value) -> Result<Value, String> {
@@ -284,7 +290,7 @@ fn ui_command(
         "ui.text_edit" => text_edit_command(app, params),
         "ui.eval" => eval_command(app, params),
         "ui.feedback" => crate::feedback::snapshot(app),
-        "ui.focus" => focus_command(app),
+        "ui.focus" => focus_command(app, params),
         "ui.screenshot" => screenshot_command(app, params),
         "ui.look" => look_command(app, params, none),
         "app.quit" => quit_command(app, id, params),
@@ -300,12 +306,6 @@ fn engine_command(
     params: &Value,
     ui_project_request: bool,
 ) -> Result<Value, String> {
-    if id == "project.save" {
-        eval(
-            app,
-            "if (typeof saveStoryboard === 'function' && (projectView.textDrafts.size || state.data?.design?.dirty)) await saveStoryboard(); return true;",
-        )?;
-    }
     crate::feedback::guard(app, id, ui_project_request)?;
     let mut supplied = params.clone();
     if supplied.is_object() && supplied.get("_origin").is_none() {

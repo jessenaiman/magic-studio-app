@@ -22,10 +22,6 @@ class FeedbackController {
       .filter((n: any) => n.getBoundingClientRect().width && n.getBoundingClientRect().height && !n.closest('#agent-log') && n.id !== 'motion-scrub')
       .filter((n: any) => n.isContentEditable ? !!n.textContent.trim() : n.type === 'checkbox' || n.type === 'radio' ? n.checked !== n.defaultChecked : n.value !== n.defaultValue)
       .map((n: any) => n.id || n.tagName.toLowerCase());
-    if (typeof storyboardController !== 'undefined') {
-      changed.push(...storyboardController.textDrafts.keys());
-      if (state.data?.design?.dirty === true) changed.push('storyboard-design');
-    }
     if (typeof animationReview !== 'undefined' && animationReview.dirty) changed.push('animation-review');
     if (typeof theatreFeedback === 'function' && theatreFeedback().live_edits === 'needs_save') changed.push('theatre-motion');
     return changed;
@@ -33,7 +29,7 @@ class FeedbackController {
 
   paneRendered(): boolean {
     if (typeof state === 'undefined') return false;
-    const view = state.view === 'studio' && typeof serverUrl === 'function' && serverUrl() ? 'project' : state.view;
+    const view = state.view;
     const pane = document.querySelector(state.project || state.creating ? '#view-' + view : '#view-home');
     return !!pane && pane.getBoundingClientRect().width > 0 && pane.getBoundingClientRect().height > 0 && getComputedStyle(pane).display !== 'none' && pane.textContent.trim().length > 0;
   }

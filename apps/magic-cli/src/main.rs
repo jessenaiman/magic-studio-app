@@ -7,31 +7,28 @@ mod project;
 mod session;
 mod studio;
 
-use clap::{Parser, CommandFactory, Subcommand};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use session::Session;
 use std::io::BufRead;
 use std::path::PathBuf;
 
-/// Operate Magic Studio and discover the ArtCraft suite: projects, storyboard, and the desktop app.
+/// Operate Magic Studio and discover the ArtCraft suite: projects, animation, and the desktop app.
 ///
 /// Open an existing project window:
 ///   magic-cli studio open /absolute/Song.magic
-/// Start an unfinished project with a source walkthrough:
-///   magic-cli --project /absolute/Song.magic storyboard toc
-///   magic-cli --project /absolute/Song.magic storyboard doctor
-///   magic-cli --project /absolute/Song.magic storyboard read page=1
-///   magic-cli --project /absolute/Song.magic storyboard read scene=2
-/// Confirm the recording, lyrics, liner notes, intended scene plan and song meaning
-/// with the director before authoring. A successful read only identifies what is loaded.
-/// If scene counts disagree, establish which existing plan is authoritative first.
+/// Open Animation only (creates an animation study when the file is new):
+///   magic-cli studio animate /absolute/Character.magic
+/// Inspect a project before authoring:
+///   magic-cli --project /absolute/Song.magic workshop status
+/// Confirm the recording, lyrics, liner notes and song meaning with the director
+/// before authoring. A successful read only identifies what is loaded.
 ///
 /// Any registry command also works as `magic-cli <domain> <verb> key=value ...`
 /// (underscores may be written as hyphens) or `magic-cli <domain.verb> ...`.
 /// Use key=value arguments or --params JSON. `magic-cli commands [FILTER]` lists IDs.
 ///
-/// `magic-cli apps` lists installed ArtCraft apps (PhotoCraft, EffectCraft, FilmCraft, etc.).
-/// Each app ships its own `<app>-cli` with `--help` and `commands`.
+/// Call each installed app directly by its command name and read its `--help`.
 #[derive(Parser)]
 #[command(name = "magic-cli", version, verbatim_doc_comment)]
 struct Cli {
@@ -111,8 +108,6 @@ enum Cmd {
         #[command(subcommand)]
         action: SessionCmd,
     },
-    /// List installed ArtCraft apps and their CLIs for tool discovery.
-    Apps,
     #[command(external_subcommand)]
     Registry(Vec<String>),
 }
@@ -120,7 +115,20 @@ enum Cmd {
 #[derive(Subcommand)]
 enum StudioCmd {
     /// Open/focus PROJECT, an existing .magic file; omit it for a blank window.
-    Open { project: Option<String> },
+    Open {
+        // Its own id: sharing `project` with the global --project would also select it.
+        #[arg(id = "studio_project", value_name = "PROJECT")]
+        project: Option<String>,
+    },
+    /// Open PROJECT in Animation only: no song, storyboard, lyrics or film tabs.
+    ///
+    /// A missing PROJECT is created as an animation study (`project.new mode=animation`).
+    /// A song project opens with only its Animation workspace. A window already serving
+    /// the project is focused and switched to Animation only.
+    Animate {
+        #[arg(id = "studio_project", value_name = "PROJECT")]
+        project: String,
+    },
     /// List responsive windows without changing the current selection.
     List,
     /// List HyperFrames preview servers and which have no open Studio window.
@@ -306,7 +314,14 @@ fn run_registry(s: &mut Session, tokens: &[String], dry: bool) -> Result<(), Str
         Ok((id, _, true)) => emit(&registry_help(&id)),
         Ok((id, rest, false)) => {
             let (args, raw) = split_params(&rest)?;
-            emit(&run_one(s, &id, parse_params(&args, raw.as_deref())?, dry)?);
+            let params = parse_params(&args, raw.as_deref())?;
+            let numbered = id == "resources.workflow" && params["steps"] == true && !dry;
+            let value = run_one(s, &id, params, dry)?;
+            if numbered {
+                for (i, step) in value["steps"].as_array().into_iter().flatten().enumerate() {
+                    println!("{}. {}", i+1, step.as_str().unwrap_or_default());
+                }
+            } else { emit(&value); }
         }
         Err(listing) if listing.contains("commands from the application registry") => {
             println!("{listing}");
@@ -320,6 +335,10 @@ fn run_studio(s: &mut Session, action: StudioCmd, dry: bool) -> Result<(), Strin
     match action {
         StudioCmd::Open { project } if dry => emit(&json!({"dry_run": true, "project": project})),
         StudioCmd::Open { project } => emit(&s.open_studio(project.as_deref())?),
+        StudioCmd::Animate { project } if dry => {
+            emit(&json!({"dry_run": true, "project": project, "animation_only": true}))
+        }
+        StudioCmd::Animate { project } => emit(&s.open_animation(&project)?),
         StudioCmd::List => emit(&studio::discover()),
         StudioCmd::Previews { stop_orphans } => {
             let mut report = studio::previews();
@@ -375,9 +394,6 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
         Cmd::Studio { action } => run_studio(s, action, dry)?,
         Cmd::Session { action } => run_session(s, action)?,
         Cmd::Registry(tokens) => run_registry(s, &tokens, dry)?,
-        Cmd::Apps => {
-            print_installed_apps();
-        }
         Cmd::Mcp | Cmd::Doctor { .. } | Cmd::Audit { .. } | Cmd::Review { .. } => {
             unreachable!("handled before a session is loaded")
         }
@@ -458,73 +474,10 @@ fn fix_routes(error: &str) -> String {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    // Intercept --help / -h to append the dynamic installed-apps listing.
-    // Clap handles --help itself and exits before run(), so we print help
-    // ourselves, then list installed ArtCraft apps for tool discovery.
-    if args.iter().any(|a| a == "--help" || a == "-h") {
-        Cli::command().print_long_help().unwrap();
-        println!();
-        print_installed_apps();
-        std::process::exit(0);
-    }
     let cli = Cli::parse();
     if let Err(error) = run(cli) {
         eprintln!("magic-cli: {error}\n\n{}", fix_routes(&error));
         std::process::exit(1);
-    }
-}
-
-/// Discover installed ArtCraft apps by scanning ~/.local/bin/*-cli symlinks.
-/// Falls back gracefully if the directory is missing; no hardcoded app list.
-fn print_installed_apps() {
-    let home = match std::env::var("HOME") {
-        Ok(h) => h,
-        Err(_) => return,
-    };
-    let bin_dir = std::path::Path::new(&home).join(".local/bin");
-    let Ok(entries) = std::fs::read_dir(&bin_dir) else {
-        return;
-    };
-
-    let mut apps: Vec<(String, std::path::PathBuf)> = entries
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.ends_with("-cli") && name != "magic-cli" {
-                let app = name.strip_suffix("-cli")?.to_string();
-                Some((app, e.path()))
-            } else {
-                None
-            }
-        })
-        .collect();
-    apps.sort_by(|a, b| a.0.cmp(&b.0));
-
-    if apps.is_empty() {
-        return;
-    }
-
-    println!("Installed ArtCraft apps:");
-    for (app, path) in apps {
-        let target = path.read_link().ok();
-        let display = target
-            .as_deref()
-            .and_then(|t| t.file_name().and_then(|n| n.to_str()))
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| path.display().to_string());
-        // Extract version from path like .../photocraft/0.19.0/photocraft-cli
-        let version = target
-            .as_deref()
-            .and_then(|t| {
-                t.components()
-                    .rev()
-                    .nth(1)
-                    .and_then(|c| c.as_os_str().to_str())
-            })
-            .unwrap_or("-");
-        println!("  {app:<16} {version}  →  {display}");
     }
 }
 

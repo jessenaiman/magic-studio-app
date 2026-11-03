@@ -157,17 +157,30 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
         .filter_map(|v| v.as_str().map(str::to_owned))
         .collect();
     let root = project_dir.join("assets/characters");
+    // Character folders in the project, then 3D models registered where they live.
+    let mut ids: Vec<String> = std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    for asset in s.project_assets.iter().filter(|a| a.kind == "model_3d") {
+        let id = asset.id.replace('_', "-");
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&root).into_iter().flatten().flatten() {
-        let id = entry.file_name().to_string_lossy().into_owned();
+    for id in ids {
         if !cast.is_empty() && !cast.contains(&id) {
             continue;
         }
+        let folder = root.join(&id);
         let views: Vec<Value> = ["front", "side", "back"]
             .iter()
-            .filter(|v| entry.path().join(v).is_dir())
+            .filter(|v| folder.join(v).is_dir())
             .map(|v| {
-                let dir = entry.path().join(v);
+                let dir = folder.join(v);
                 let has = |ext: &str| dir.join(format!("{id}-{v}.{ext}")).is_file();
                 let drawing = std::fs::read_to_string(dir.join("parts.json"))
                     .ok()
@@ -177,7 +190,7 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
                     "psd": has("psd"), "ecproj": has("ecproj")})
             })
             .collect();
-        let tripo_3d = tripo::inspect_character_3d(&project_dir, &id);
+        let tripo_3d = tripo::inspect_character_3d(s, &project_dir, &id);
         if !views.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
             out.push(json!({"id": id, "views": views, "tripo_3d": tripo_3d}));
         }
@@ -369,6 +382,10 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
             )));
         }
     };
+    // EffectCraft is saved and closed with the view; PhotoCraft opens as a plain app.
+    if app == "effectcraft" {
+        return crate::native_app::open(s, &crate::native_app::EFFECTCRAFT, &file);
+    }
     let exe = crate::workspace::resolve_tool(app);
     std::process::Command::new(&exe)
         .arg(&file)

@@ -39,7 +39,7 @@ fn read_state(dir: &Path) -> Value {
 }
 
 /// Observe the saved project file without attaching it to this or any other session.
-/// This intentionally does not call status(): storyboard inspection may create PDFCraft files.
+/// This intentionally does not call status().
 pub fn observe_saved_project(_: &mut Session, params: &Value) -> Result<Value> {
     let allowed = ["path", "_origin", "_client", "_request_id", "_control"];
     if params
@@ -213,50 +213,26 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
         };
     }
     if p["prepare_only"] == true {
-        let mut outputs = json!({"video.init":audio_setup});
-        if problems.is_empty() {
-            let (command, params) = ("storyboard.init", json!({"empty":true}));
-            match s.execute(command, params) {
-                Ok(value) if value["ok"] != false => {
-                    steps.push(json!({"command":command,"status":"complete"}));
-                    outputs[command] = value;
-                }
-                Ok(value) => {
-                    let error = format!("{command}: {value}");
-                    steps.push(json!({"command":command,"status":"failed","error":error}));
-                    problems.push(error);
-                }
-                Err(error) => {
-                    let error = error.to_string();
-                    steps.push(json!({"command":command,"status":"failed","error":error}));
-                    problems.push(error);
-                }
-            }
-        }
+        let outputs = json!({"video.init":audio_setup});
         s.execute("project.save", json!({}))?;
         let mut next_commands = Vec::new();
         if !problems.is_empty() {
             if steps
                 .iter()
                 .any(|step| step["command"] == "workshop.set_audio" && step["status"] == "failed")
+                && let Some(audio) = p["audio"].as_str()
             {
-                if let Some(audio) = p["audio"].as_str() {
-                    next_commands.push(json!({"command":"workshop.set_audio","params":{"path":audio},"reason":"Fix the reported audio or HyperFrames error, then retry"}));
-                }
-            } else {
-                next_commands.push(json!({"command":"storyboard.init","params":{"empty":true},"reason":"Fix the reported storyboard error, then retry"}));
+                next_commands.push(json!({"command":"workshop.set_audio","params":{"path":audio},"reason":"Fix the reported audio or HyperFrames error, then retry"}));
             }
         } else {
             next_commands.extend([
-                json!({"command":"storyboard.template","params":{"path":"<your DeckCraft template or magic-studio>"},"reason":"Choose your storyboard template"}),
-                json!({"command":"storyboard.init","params":{"empty":true},"reason":"Create a storyboard from the selected template"}),
                 json!({"command":"project.add_asset","params":{"path":"<your image>"},"reason":"Add artwork to the project without placing it"}),
                 json!({"command":"workshop.import_transcript","params":{"path":"<timed transcript JSON>"},"reason":"Import timed lyrics when you have them"}),
             ]);
         }
         let result = json!({"ok":true,"project":path,"location":location,"warnings":warnings,
             "steps":steps,"problems":problems,"setup_ready":problems.is_empty(),"intake_ready":false,"prepared_only":true,
-            "storyboard":outputs["storyboard.init"],"video":outputs["video.init"],
+            "video":outputs["video.init"],
             "next_commands":next_commands,
             "creative_review":"pending; no scene structure, artwork placement or lyric choices were inferred"});
         write_state(dir, &result)?;
@@ -369,40 +345,12 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     if !valid && problems.is_empty() {
         problems.push("No valid timed transcript or linked audio. Provide audio to project.intake, or import existing timed JSON with workshop.import_transcript.".into());
     }
-    let mut storyboard = Value::Null;
-    let mut storyboard_ready = false;
-    if valid && problems.is_empty() {
-        match s.execute("storyboard.init", json!({})) {
-            Ok(board) => {
-                storyboard_ready = board["deck"]
-                    .as_str()
-                    .is_some_and(|v| Path::new(v).is_file());
-                storyboard = json!({"deck":board["deck"],"pdf":board["pdf"],"reused_existing_document":board["reused_existing_document"]});
-                if storyboard_ready {
-                    steps.push(json!({"command":"storyboard.init","status":"complete","deck":board["deck"],"reused_existing_document":board["reused_existing_document"]}));
-                } else {
-                    let error = "storyboard.init returned no existing native DeckCraft document";
-                    problems.push(error.into());
-                    steps
-                        .push(json!({"command":"storyboard.init","status":"failed","error":error}));
-                }
-            }
-            Err(e) => {
-                let error = e.to_string();
-                steps.push(json!({"command":"storyboard.init","status":"failed","error":error}));
-                problems.push(error);
-            }
-        }
-        if !storyboard_ready {
-            next_commands.push(json!({"command":"storyboard.init","params":{},"reason":"Correct the reported native document/tool failure, then retry; existing timing is preserved"}));
-        }
-    }
     if !valid && next_commands.is_empty() {
         next_commands.push(json!({"command":"workshop.import_transcript","params":{"path":"<existing timed JSON>","captions":"<optional original SRT>"},"reason":"Correct or supply timed input; no ASR fallback was attempted after a supplied-input failure"}));
     }
     let mut video = Value::Null;
     let mut video_ready = s.video_target != "hyperframes" || s.song_audio.is_none();
-    if valid && storyboard_ready && problems.is_empty() && !video_ready {
+    if valid && problems.is_empty() && !video_ready {
         match s.execute(
             "video.init",
             json!({"target":"hyperframes","resolve_video_cli":p["resolve_video_cli"]}),
@@ -422,7 +370,7 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
             next_commands.push(json!({"command":"video.init","params":{"target":"hyperframes","resolve_video_cli":p["resolve_video_cli"]},"reason":"Correct the reported native video/caption handoff failure; existing timing and deck are preserved"}));
         }
     }
-    let result = json!({"ok":true,"warnings":warnings,"location":location,"intake_ready":problems.is_empty()&&valid&&storyboard_ready&&video_ready,"video_ready":video_ready,"video":video,"storyboard_ready":storyboard_ready,"storyboard":storyboard,"studio_verified":false,"project":path,"steps":steps,"problems":problems,"received":received,"visual_review":"pending","transcript_valid":valid && !steps.iter().any(|v|v["command"]=="workshop.import_transcript"&&v["status"]=="failed"),"manual":"magic-cli commands project.intake","next_commands":next_commands,"next_command":format!("{} --project {} commands",shell_quote(&cli_program()),shell_quote(&path.to_string_lossy()))});
+    let result = json!({"ok":true,"warnings":warnings,"location":location,"intake_ready":problems.is_empty()&&valid&&video_ready,"video_ready":video_ready,"video":video,"studio_verified":false,"project":path,"steps":steps,"problems":problems,"received":received,"visual_review":"pending","transcript_valid":valid && !steps.iter().any(|v|v["command"]=="workshop.import_transcript"&&v["status"]=="failed"),"manual":"magic-cli commands project.intake","next_commands":next_commands,"next_command":format!("{} --project {} commands",shell_quote(&cli_program()),shell_quote(&path.to_string_lossy()))});
     write_state(dir, &result)?;
     s.execute("project.save", json!({}))?;
     if !keep_owner {
@@ -460,7 +408,7 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let commands:Vec<Value>=crate::command_specs().iter().map(|c|{
   let registry_reason=(c.enabled)(s).err();
-  let dependency=if c.id=="storyboard.init"||c.id=="workshop.build_storyboard" {(!valid).then(||"Requires a valid transcript; import or repair received input".to_string())}else if c.id.starts_with("workshop.")||c.id=="project.save" {s.project_path.is_none().then(||"Open or create a project first".to_string())}else{None};
+  let dependency=if c.id.starts_with("workshop.")||c.id=="project.save" {s.project_path.is_none().then(||"Open or create a project first".to_string())}else{None};
   let reason=registry_reason.or(dependency);
   json!({"id":c.id,"label":c.label,"params":c.params,"menu":c.menu,"enabled":reason.is_none(),"block_reason":reason,"long_running":c.long_running})
  }).collect();
@@ -479,34 +427,16 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
     let actions = json!([
  {"label":"Inspect / refresh","command":"center.status","enabled":true},
  {"label":"New / resume intake","command":"project.intake","enabled":true},
- {"label":"Create starting storyboard","command":"storyboard.init","enabled":valid},
- {"label":"Read storyboard contents","command":"storyboard.toc","enabled":valid},
  {"label":"Save project","command":"project.save","enabled":s.project_path.is_some()}]);
     let workshop = if dir.is_some() {
         crate::workshop::workshop_status(s)?
     } else {
         json!({})
     };
-    let design = if dir.is_some() {
-        match crate::storyboard_design::inspect(s, &json!({})) {
-            Ok(design) => design,
-            Err(error) => {
-                let reason = format!("Storyboard needs attention: {error}");
-                problems.push(json!(reason));
-                json!({"error":reason,"readiness":{"state":"failed","reason":reason},
-                    "progression":{"allowed":false,"reason":reason}})
-            }
-        }
-    } else {
-        json!({})
-    };
     let creative_followup = json!({
-        "instruction":"Review the creator's story and existing assets first. Ask for missing storyboard details. Propose links or image prompts for review; do not place artwork or generate assets without the creator choosing the action.",
-        "missing_fields":design["readiness"]["missing_fields"],
-        "progression":design["progression"],
+        "instruction":"Review the creator's story and existing assets first. Propose links or image prompts for review; do not place artwork or generate assets without the creator choosing the action.",
         "available_assets":s.project_assets,
-        "suggested_commands":[{"command":"project.list_assets"},{"command":"storyboard.read"},{"command":"storyboard.edit","input":"creator-selected page, field and text"},{"command":"storyboard.place_asset","input":"creator-selected asset, page and placement"}],
-        "creative_approval":"The creator reviews the actual storyboard; content completeness is not creative approval"});
+        "suggested_commands":[{"command":"project.list_assets"}]});
     let words = parsed.as_ref().and_then(|v| v["words"].as_array());
     let count = words.map(Vec::len).unwrap_or(0);
     let lines = parsed
@@ -532,17 +462,6 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
         .and_then(|v| v["assets"].as_array())
         .map(|v| v.iter().filter(|a| a["animatable"] == true).count())
         .unwrap_or(0);
-    let deck = design["deck"].as_str();
-    let deck_ready = if board["pdf_fields"].is_array() {
-        board["pdf"]
-            .as_str()
-            .is_some_and(|f| Path::new(f).is_file())
-            && design["text_fields"]
-                .as_array()
-                .is_some_and(|v| !v.is_empty())
-    } else {
-        deck.is_some_and(|f| Path::new(f).is_file())
-    };
     let mut native =
         json!({"state":"missing","reason":"Native HyperFrames audio/caption project not observed"});
     if let Some(dir) = dir {
@@ -617,37 +536,19 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
             !s.project_assets.is_empty(),
             "Registered source asset files exist; artistic approval separate",
         ),
-        json!({"id":"storyboard","label":"Storyboard content","state":design["readiness"]["state"],"reason":design["readiness"]["reason"],"missing_fields":design["readiness"]["missing_fields"]}),
-        item(
-            "deckcraft",
-            "Editable storyboard PDF",
-            deck_ready,
-            board["pdf"].is_string() || deck.is_some(),
-            "Saved PDF fields inspected through PDFCraft; source timing/creative approval remain separate",
-        ),
     ];
     native["id"] = json!("hyperframes");
     native["label"] = json!("HyperFrames audio + captions");
     prerequisites.push(native);
     let activity = crate::activity::events(s, &json!({"limit":192}))?;
-    let mut doctor = dir
-        .and_then(|p| fs::read(p.join(".agent/storyboard-doctor.json")).ok())
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .unwrap_or(Value::Null);
-    if doctor.is_object() {
-        doctor["stale"] = json!(
-            dir.and_then(crate::storyboard::doctor_revision)
-                .is_none_or(|r| doctor["storyboard_revision"].as_str() != Some(&r))
-        );
-    }
-    let metrics = json!({"timed_words":count,"lyric_groups":lines,"recording_duration_sec":duration,"last_word_end_sec":last_word,"registered_assets":s.project_assets.len(),"available_assets":assets,"animatable_assets":animated,"native_deck":deck,"design_dirty":design["dirty"],"server":workshop["video_server"]});
+    let metrics = json!({"timed_words":count,"lyric_groups":lines,"recording_duration_sec":duration,"last_word_end_sec":last_word,"registered_assets":s.project_assets.len(),"available_assets":assets,"animatable_assets":animated,"server":workshop["video_server"]});
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|v| v.as_micros())
         .unwrap_or(0);
     let observation = json!({"id":format!("{}-{now}",std::process::id()),"project_id":s.project_path,"command":"center.status","observed_unix_micros":now,"elapsed_ms":started.elapsed().as_millis(),"source":"shared engine inspection; not inferred from process exit or UI revision"});
     let next_commands=prerequisites.iter().filter(|v|v["state"]!="ready" && (v["id"]!="animate" || assets>0)).map(|v|{
-        let target=match v["id"].as_str(){Some("transcript"|"lyrics")=>"workshop.import_transcript",Some("deckcraft")=>"storyboard.init",Some("storyboard")=>"storyboard.edit",Some("hyperframes")=>"video.init",Some("song")=>"workshop.set_audio",_=>"project.add_asset"};
+        let target=match v["id"].as_str(){Some("transcript"|"lyrics")=>"workshop.import_transcript",Some("hyperframes")=>"video.init",Some("song")=>"workshop.set_audio",_=>"project.add_asset"};
         let label=if v["id"]=="assets"{"See asset import arguments".into()}else{format!("See {} arguments",target)};
         let reason=if v["id"]=="assets" && s.project_assets.is_empty(){json!("No reference art is registered; inspect the import command before choosing an asset.")}else{v["reason"].clone()};
         json!({"label":label,"command":"command.list","params":{"filter":target},"subject_command":target,"operation":"exec","reason":reason})
@@ -676,7 +577,7 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
         );
     }
     Ok(
-        json!({"ok":true,"creative_followup":creative_followup,"observation":observation,"prerequisites":prerequisites,"metrics":metrics,"next_commands":next_commands,"studio_acknowledgement":"unobserved; query ui.feedback separately","warnings":saved["warnings"],"project":s.project_path,"audio":s.song_audio,"target":s.video_target,"transcript":{"path":transcript,"valid":valid,"words":parsed.as_ref().and_then(|v|v["words"].as_array()).map(Vec::len)},"problems":problems,"received":saved["received"],"steps":saved["steps"],"provenance":provenance,"actions":actions,"commands":commands,"ui_mapping":mapping,"activity":activity,"storyboard_doctor":doctor,"visual_review":"pending","studio":"Not launched or switched. Attach only to the explicitly selected existing Studio window."}),
+        json!({"ok":true,"creative_followup":creative_followup,"observation":observation,"prerequisites":prerequisites,"metrics":metrics,"next_commands":next_commands,"studio_acknowledgement":"unobserved; query ui.feedback separately","warnings":saved["warnings"],"project":s.project_path,"audio":s.song_audio,"target":s.video_target,"transcript":{"path":transcript,"valid":valid,"words":parsed.as_ref().and_then(|v|v["words"].as_array()).map(Vec::len)},"problems":problems,"received":saved["received"],"steps":saved["steps"],"provenance":provenance,"actions":actions,"commands":commands,"ui_mapping":mapping,"activity":activity,"visual_review":"pending","studio":"Not launched or switched. Attach only to the explicitly selected existing Studio window."}),
     )
 }
 

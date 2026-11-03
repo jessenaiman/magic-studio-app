@@ -13,13 +13,10 @@ use crate::project::{
     cmd_project_update_asset,
 };
 use crate::workshop::{
-    cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_storyboard_approve,
-    cmd_storyboard_edit, cmd_storyboard_import_magicstudio, cmd_storyboard_init,
-    cmd_storyboard_toc, cmd_video_init, cmd_video_server_start, cmd_video_server_stop,
-    cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_build_storyboard,
-    cmd_workshop_files, cmd_workshop_import_transcript, cmd_workshop_remove,
-    cmd_workshop_set_audio, cmd_workshop_set_target, cmd_workshop_split_panels,
-    cmd_workshop_status, cmd_workshop_storyboard,
+    cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_video_init, cmd_video_server_start,
+    cmd_video_server_stop, cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files,
+    cmd_workshop_import_transcript, cmd_workshop_remove, cmd_workshop_set_audio,
+    cmd_workshop_set_target, cmd_workshop_split_panels, cmd_workshop_status,
 };
 
 // ---------- CommandSpec + registry ----------
@@ -35,7 +32,6 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.assemble"
             | b"video.init"
             | b"audio.analyze"
-            | b"workshop.build_storyboard"
             | b"workshop.split_panels"
             | b"video.snapshot"
             | b"video.render"
@@ -103,13 +99,12 @@ pub fn build() -> Vec<CommandSpec> {
         specs_words_part1,
         specs_words_part2,
         specs_agent_and_image,
-        specs_storyboard_part1,
-        specs_storyboard_part2,
         specs_workshop_and_video,
         specs_video_and_intake,
         specs_character,
         specs_scribbles,
         specs_film,
+        specs_storyboard,
         specs_diagnostics,
     ] {
         specs.extend(section());
@@ -388,7 +383,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             "Focus window",
             [],
             None,
-            "{}",
+            "{\"animation_only\":\"optional true: also show only the Animation workspace\"}",
             always,
             crate::command_center::requires_ui
         ),
@@ -805,12 +800,6 @@ fn specs_workshop_queries() -> Vec<CommandSpec> {
             cmd_workshop_files
         ),
         query!(
-            "workshop.storyboard",
-            "Storyboard Pages",
-            "{}",
-            cmd_workshop_storyboard
-        ),
-        query!(
             "project.search",
             "Search Project, Files, Storyboard & Commands",
             "{\"query\": \"search text\"}",
@@ -844,145 +833,6 @@ fn specs_agent_and_image() -> Vec<CommandSpec> {
             "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from settings.json / MAGICSTUDIO_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
             always,
             crate::image_generation::generate
-        ),
-    ]
-}
-
-fn specs_storyboard_part1() -> Vec<CommandSpec> {
-    vec![
-        cmd!(
-            "storyboard.create",
-            "Create Storyboard / Split Scene",
-            ["Storyboard"],
-            None,
-            "{\"scene\":\"optional existing scene number or ID to split\",\"word\":\"recorded word ID; new scene starts here\",\"expected_revision\":\"revision returned by storyboard.read; required for scene changes\"}",
-            always,
-            crate::storyboard_crud::create
-        ),
-        cmd!(
-            "storyboard.update",
-            "Update Storyboard",
-            ["Storyboard"],
-            None,
-            "{\"scene\":\"scene number or ID\",\"page\":\"alternative document page\",\"field\":\"native text field\",\"value\":\"text\",\"edge\":\"optional start|end: move a scene cut, without retiming lyrics\",\"word\":\"existing recorded word ID\",\"expected_revision\":\"required for grouping or restore\",\"restore\":\"optional saved manifest.json\",\"backgrounds\":[\"optional registered image IDs to assign to the Backgrounds & locations section\"]}",
-            always,
-            crate::storyboard_crud::update
-        ),
-        cmd!(
-            "storyboard.delete",
-            "Remove Scene Page / Combine Coverage",
-            ["Storyboard"],
-            None,
-            "{\"scene\":\"scene number or ID\",\"into\":\"previous|next; preserves lyric timing and coverage\",\"expected_revision\":\"revision returned by storyboard.read\"}",
-            always,
-            crate::storyboard_crud::delete
-        ),
-        cmd!(
-            "storyboard.template",
-            "Inspect Storyboard Template",
-            ["Storyboard"],
-            None,
-            "{\"path\":\"magic-studio or its canonical path; omit to inspect the only supported template\"}",
-            always,
-            crate::storyboard::cmd_storyboard_template
-        ),
-        cmd!(
-            "storyboard.init",
-            "Create Magic Studio Storyboard",
-            ["Storyboard"],
-            None,
-            "{\"empty\":false}",
-            always,
-            cmd_storyboard_init
-        ),
-        query!(
-            "storyboard.backgrounds",
-            "Storyboard Background Section Images",
-            "{}",
-            crate::storyboard_crud::backgrounds
-        ),
-        query!(
-            "storyboard.design",
-            "Inspect storyboard placements",
-            "{}",
-            crate::storyboard_design::inspect
-        ),
-        cmd!(
-            "storyboard.place_asset",
-            "Place an asset on a storyboard page",
-            ["Storyboard"],
-            None,
-            "{\"asset\":\"id\",\"page\":1,\"x\":100,\"y\":100,\"width\":160,\"placement\":\"optional existing placement id\"}",
-            always,
-            crate::storyboard_design::place
-        ),
-        cmd!(
-            "storyboard.remove_placement",
-            "Remove a draft image placement",
-            ["Storyboard"],
-            None,
-            "{\"placement\":\"placement id\"}",
-            always,
-            crate::storyboard_design::remove
-        ),
-        cmd!(
-            "storyboard.save_version",
-            "Save storyboard design as a new version",
-            ["Storyboard"],
-            None,
-            "{\"draft\":\"optional reviewed draft manifest.json\"}",
-            always,
-            crate::storyboard_design::save
-        ),
-    ]
-}
-
-fn specs_storyboard_part2() -> Vec<CommandSpec> {
-    vec![
-        query!(
-            "storyboard.toc",
-            "Storyboard Chapters",
-            "{}",
-            cmd_storyboard_toc
-        ),
-        query!(
-            "storyboard.doctor",
-            "Diagnose source section spillover (read-only, explicit only)",
-            "{}",
-            crate::storyboard::cmd_storyboard_doctor
-        ),
-        query!(
-            "storyboard.read",
-            "Read Storyboard / Scene / Page",
-            "{\"scene\":\"optional scene number or stable ID\",\"page\":\"optional page number; omitted returns the full contents\"}",
-            crate::storyboard_crud::read
-        ),
-        cmd!(
-            "storyboard.edit",
-            "Edit Storyboard Text",
-            ["Storyboard"],
-            None,
-            "{\"scene\": 1, \"field\": \"story|background.main|background.alternate|cast|action|continuity|image_prompt|animation_prompt|animated_text|drawing|lyrics (page=1 edits overview; see storyboard.design text_fields)\", \"line\": 1, \"value\": \"text\", \"save\": \"native fields: true (default) saves a version now; false keeps the edit in the draft for one storyboard.save_version\"}",
-            always,
-            cmd_storyboard_edit
-        ),
-        cmd!(
-            "storyboard.import_magicstudio",
-            "Import Scenes from an Existing Project",
-            ["Storyboard"],
-            None,
-            "{\"path\": \"existing project folder\", \"overwrite\": false}",
-            always,
-            cmd_storyboard_import_magicstudio
-        ),
-        cmd!(
-            "storyboard.approve",
-            "Approve Scene",
-            ["Storyboard"],
-            None,
-            "{\"scene\": 1, \"approved\": true}",
-            always,
-            cmd_storyboard_approve
         ),
     ]
 }
@@ -1042,15 +892,6 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             "{\"path\": \"transcript.json\", \"captions\": \"optional original SRT; without it use provisional timed-word fallback\", \"audiomap\": \"optional existing audiomap.json\", \"replace\": false, \"filmcraft_project\": \"optional .fcproj\"}",
             always,
             cmd_workshop_import_transcript
-        ),
-        cmd!(
-            "workshop.build_storyboard",
-            "Build Storyboard from Template",
-            ["Workshop"],
-            None,
-            "{\"template\":\"magic-studio (the only supported storyboard template)\",\"source\":\"optional existing project folder\",\"draft\":false,\"resume\":\"optional existing draft manifest.json\",\"transcript\":\"optional exact native source; requires draft=true\",\"allow_timing_overrun\":false,\"panels\":\"optional scene target for four chorus phrases\"}",
-            always,
-            cmd_workshop_build_storyboard
         ),
         cmd!(
             "workshop.approve_draft",
@@ -1134,6 +975,37 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
 
 fn specs_diagnostics() -> Vec<CommandSpec> {
     vec![
+        query!("mayhem.evidence", "Mayhem · Inspect agents, CLI and scan evidence", "{\"self\":false}", crate::mayhem::evidence),
+        CommandSpec {
+            id: "mayhem.scan", label: "Mayhem · Scan source", menu: &["Mayhem"], shortcut: None,
+            params: "{}", help: "Run Lizard over the app and save a complete source measurement.",
+            example: "magic-cli mayhem scan", enabled: always, run: crate::mayhem::scan,
+            journal: false, long_running: true,
+        },
+        cmd!(
+            "resources.workflow",
+            "Shared Creation Loop",
+            ["Resources"],
+            None,
+            "steps=true for terminal steps; section=production|revision; edit with id, field, previous and value",
+            always,
+            crate::creation_loop::workflow
+        ),
+        query!(
+            "mayhem.score",
+            "Mayhem · Compare saved source measurements",
+            "{}",
+            crate::mayhem::score
+        ),
+        cmd!(
+            "mayhem.review",
+            "Record an outside package review",
+            ["Mayhem"],
+            None,
+            "{\"snapshot\":\"from mayhem.score\",\"reviewer\":\"name\",\"package\":\"candidate considered\",\"verdict\":\"clear|follow_up|violation\",\"finding\":\"specific code and decision\",\"evidence\":\"file or issue\"}",
+            always,
+            crate::mayhem::review
+        ),
         CommandSpec {
             id: "app.analytics",
             label: "Analytics: Saved Measurements & Explicit Jev Judgment",
@@ -1204,8 +1076,21 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::character::review::cmd_prepare_motion
         ),
-        query!("motion.theatre.read","Read project timeline",r#"{"expected_project":"path"}"#,crate::project::theatre_state),
-        cmd!("motion.theatre.save","Save project timeline",[],None,r#"{"expected_project":"path","state":{}}"#,always,crate::project::save_theatre_state),
+        query!(
+            "motion.theatre.read",
+            "Read project timeline",
+            r#"{"expected_project":"path"}"#,
+            crate::project::theatre_state
+        ),
+        cmd!(
+            "motion.theatre.save",
+            "Save project timeline",
+            [],
+            None,
+            r#"{"expected_project":"path","state":{}}"#,
+            always,
+            crate::project::save_theatre_state
+        ),
         query!(
             "animation.review",
             "Animation Review Models and Saved Revisions",
@@ -1417,8 +1302,40 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 }
 
 /// The film in FilmCraft: watch a preview in Studio, check frames, export, or edit in FilmCraft.
+fn specs_storyboard() -> Vec<CommandSpec> {
+    vec![
+        cmd!(
+            "storyboard.create",
+            "Create Storyboard (DeckCraft)",
+            ["Storyboard"],
+            None,
+            "{\"plan\":\"scene plan .json: overview, sequence and handoff cards and scenes [{lines:[first,last] of the transcript lines, fields, images}]\"}",
+            always,
+            crate::storyboard::cmd_storyboard_create
+        ),
+        cmd!(
+            "storyboard.render",
+            "Draw Storyboard Pages (DeckCraft)",
+            ["Storyboard"],
+            None,
+            "{}",
+            always,
+            crate::storyboard::cmd_storyboard_render
+        ),
+    ]
+}
+
 fn specs_film() -> Vec<CommandSpec> {
     vec![
+        cmd!(
+            "song.timing",
+            "Song Timing and Beats into the Film (HyperFrames, FilmCraft)",
+            ["Song"],
+            None,
+            "{}",
+            always,
+            crate::song_timing::cmd_song_timing
+        ),
         query!(
             "video.film",
             "Film Timeline, Preview and Export Status",
@@ -1466,7 +1383,7 @@ fn specs_film() -> Vec<CommandSpec> {
             "Place a Clip on the Film (FilmCraft)",
             ["Studio"],
             None,
-            "{\"clip\":\"rendered .mov\",\"from\":0,\"track\":\"V2\"}",
+            "{\"clip\":\"rendered .mov\",\"from\":0,\"track\":\"V2\",\"width\":\"animation study's first clip starts the film: 1920\",\"height\":1080,\"fps\":30}",
             always,
             crate::film::cmd_video_place_clip
         ),

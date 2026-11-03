@@ -166,9 +166,18 @@ fn history_entry(root: &Path, result: &Value) -> Value {
     })
 }
 
-fn read_history(root: &Path, fallback: &Value) -> Vec<Value> {
+pub(crate) fn read_history(root: &Path, fallback: &Value) -> Vec<Value> {
     let path = root.join("target/analytics/audit-history.jsonl");
-    let mut entries: Vec<Value> = std::fs::read_to_string(&path)
+    // History grows indefinitely; the UI uses only the last twenty small JSONL entries.
+    use std::io::{Read, Seek, SeekFrom};
+    let tail = std::fs::File::open(&path).and_then(|mut f| {
+        let start = f.metadata()?.len().saturating_sub(64 * 1024);
+        f.seek(SeekFrom::Start(start))?;
+        let mut bytes = Vec::new();
+        f.read_to_end(&mut bytes)?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    });
+    let mut entries: Vec<Value> = tail
         .ok()
         .map(|text| {
             text.lines()
@@ -269,7 +278,7 @@ fn unavailable_result(
     result
 }
 
-fn save_scan(cache: &Path, result: &Value) -> std::io::Result<()> {
+pub(crate) fn save_scan(cache: &Path, result: &Value) -> std::io::Result<()> {
     let parent = cache
         .parent()
         .ok_or_else(|| std::io::Error::other("cache has no parent"))?;
@@ -330,7 +339,7 @@ pub fn read(root: &Path, scan: bool) -> Value {
     result
 }
 
-fn source_revision(root: &Path) -> Option<String> {
+pub(crate) fn source_revision(root: &Path) -> Option<String> {
     std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(root)
@@ -686,6 +695,46 @@ fn measure(root: &Path) -> Value {
             std::cmp::Reverse(row["ccn"].as_u64().unwrap_or(0)),
         )
     });
+    let limits: Value = std::fs::read(root.join("code-limits.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    let too_complex = |f: &Value| {
+        ["ccn", "nloc"]
+            .iter()
+            .zip(["max_function_ccn", "max_function_lines"])
+            .any(|(metric, limit)| {
+                f[*metric]
+                    .as_u64()
+                    .zip(limits[limit].as_u64())
+                    .is_some_and(|(value, max)| value > max)
+            })
+    };
+    let critical: Vec<_> = tally.functions.iter().filter(|f| too_complex(f)).collect();
+    let oversized: Vec<_> = file_rows
+        .iter()
+        .filter(|f| {
+            f["lines"].as_u64() > limits["max_file_lines"].as_u64()
+                && limits["max_file_lines"].is_u64()
+        })
+        .collect();
+    let cli = |f: &&Value| {
+        f["file"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("apps/magic-cli/src/"))
+    };
+    let cli_count = tally.functions.iter().filter(cli).count();
+    let cli_over = tally
+        .functions
+        .iter()
+        .filter(cli)
+        .filter(|f| too_complex(f))
+        .count();
+    let cli_lines: u64 = file_rows
+        .iter()
+        .filter(cli)
+        .filter_map(|f| f["lines"].as_u64())
+        .sum();
     let (languages, all_tracked_files) =
         build_lang_summary(root, &tally.per_file, &tally.functions, long_file_limit);
     let (longest_files, long_file_count) = long_file_rows(&file_rows, &all_tracked_files);
@@ -705,7 +754,8 @@ fn measure(root: &Path) -> Value {
         "total_code_tokens": tally.total_tokens,
         "functions_over_ccn_15": tally.over_15,
         "max_ccn": tally.max_ccn,
-        "hotspots": hotspots,
+        "hotspots": hotspots, "critical_functions":critical, "oversized_files":oversized,"limits":limits,
+        "cli_scope":{"functions":cli_count,"within_limits":cli_count-cli_over,"source_lines":cli_lines},
         "languages": languages,
         "long_file_threshold_lines": long_file_limit,
         "long_files": long_file_count,

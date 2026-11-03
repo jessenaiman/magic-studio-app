@@ -13,16 +13,10 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::storyboard::{SceneDoc, clock, panel_spans, read_scene_doc, scene_doc_path, scenes};
-use crate::video_target::{target_project_chip, target_project_path, video_server_info};
+use crate::video_target::{target_project_chip, target_project_path};
 use crate::workspace::{has_extension, run_tool_in, workspace_root};
 
-// Re-export storyboard, video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
-pub use crate::storyboard::{
-    cmd_storyboard_approve, cmd_storyboard_edit, cmd_storyboard_import_magicstudio,
-    cmd_storyboard_init, cmd_storyboard_read, cmd_storyboard_toc, cmd_workshop_build_storyboard,
-    cmd_workshop_storyboard,
-};
+// Re-export video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
 pub use crate::video_target::{
     cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start,
     cmd_video_server_stop, cmd_video_snapshot,
@@ -166,8 +160,8 @@ pub(crate) fn stage_body(s: &Session, dir: &Path, stage: &str) -> String {
             skill_hints(s, dir, &[match target { "hyperframes" => "hyperframes-cli", "filmcraft" => "filmcraft", _ => "remotion-best-practices" }])
         ),
         "reference" => format!(
-            "Stage 3 — Storyboard & scene art. Initialize and populate the DeckCraft storyboard and 16:9 scene plates (`storyboard/scene-N.md` + `assets/backgrounds/`).\n  magic-cli exec storyboard.init\n  magic-cli exec storyboard.read scene=1\n  magic-cli exec storyboard.edit scene=1 field=action value=\"...\"\n  magic-cli exec workshop.build_storyboard\n  magic-cli exec words.apply{}",
-            skill_hints(s, dir, &["storyboard"])
+            "Stage 3 — Reference art. Add 16:9 scene plates under `assets/backgrounds/`, then approve.\n  magic-cli exec project.add_asset path=<image>\n  magic-cli exec workshop.approve_draft{}",
+            skill_hints(s, dir, &[])
         ),
         _ => format!(
             "Stage 4 — Animate assets. One animated subject at a time over its background; not every asset animates.\nExport layered files for the video target ({target}); never render or encode video.{}",
@@ -402,24 +396,55 @@ fn workshop_reference_state(
         .map(PathBuf::from)
         .filter(|p| p.is_file())
         .unwrap_or_else(|| dir.join(STORYBOARD_DIR).join(STORYBOARD_PDF));
-    let scene_docs: Vec<SceneDoc> = (1..)
-        .map(|n| (n, scene_doc_path(dir, n)))
-        .take_while(|(_, p)| p.is_file())
-        .map(|(n, _)| read_scene_doc(dir, n))
-        .collect();
-    let has_ref_art = !panels.is_empty() || !scene_docs.is_empty();
-    let approved = pdf.is_file()
-        && (s.draft_approved
-            || (!scene_docs.is_empty() && scene_docs.iter().all(|d| d.status == "approved")));
-    let why = match (has_ref_art, pdf.is_file(), approved) {
-        (false, _, _) => "Initialize the storyboard (`storyboard.init`) or add scene art.",
-        (true, false, _) => "Build the storyboard PDF (`workshop.build_storyboard`).",
-        (true, true, false) => {
-            "Review the storyboard and scene plates, then approve (`workshop.approve_draft`)."
-        }
-        (true, true, true) => "Storyboard approved.",
+    let has_ref_art = !panels.is_empty();
+    let approved = has_ref_art && s.draft_approved;
+    let why = match (has_ref_art, approved) {
+        (false, _) => "Add reference art (optional).",
+        (true, false) => "Review the reference art, then approve (`workshop.approve_draft`).",
+        (true, true) => "Reference art approved.",
     };
     (pdf, has_ref_art, approved, why)
+}
+
+/// What the HyperFrames video project still needs, as warnings and next steps.
+fn diagnose_video_setup(s: &Session, dir: &Path) -> Value {
+    let mut warnings: Vec<&str> = Vec::new();
+    let mut next: Vec<&str> = Vec::new();
+    let hf = dir.join("hyperframes");
+    if !hf.join("hyperframes.json").is_file() {
+        warnings.push("HyperFrames project (hyperframes/hyperframes.json) is missing.");
+        next.push("Run `magic-cli exec workshop.set_audio path=<song.wav>` to scaffold hyperframes/ and link the song.");
+        return json!({"warnings": warnings, "next_steps": next});
+    }
+    if s.video_project_path.as_ref().is_none_or(|p| !p.exists()) {
+        warnings.push("Project file is not linked to hyperframes/hyperframes.json.");
+        next.push(
+            "Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project.",
+        );
+    }
+    if let Ok(html) = std::fs::read_to_string(hf.join("index.html"))
+        && html.contains("<audio")
+        && !html.contains("data-timeline-role=\"music\"")
+    {
+        warnings.push("hyperframes/index.html <audio> is missing data-timeline-role=\"music\" (required by `hyperframes beats`).");
+        next.push("Run `magic-cli exec audio.analyze` to tag the music track and generate beat/section analysis.");
+    }
+    if !hf.join("audio-analysis.json").is_file() {
+        warnings.push(
+            "hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed).",
+        );
+        next.push("Run `magic-cli exec audio.analyze` to generate transcript.json, transcript.srt, audio-analysis.json, and beats/.");
+    }
+    let has_beats = std::fs::read_dir(hf.join("beats"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.path().extension().is_some_and(|x| x == "json"));
+    if !has_beats {
+        warnings.push("hyperframes/beats/*.json beat grid is missing.");
+        next.push("Run `hyperframes beats hyperframes --json` or `magic-cli exec audio.analyze` to build the Studio beat grid.");
+    }
+    json!({"warnings": warnings, "next_steps": next})
 }
 
 /// Workshop status: what each stage needs, whether complete, asset riggability, server state.
@@ -437,10 +462,6 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         .unwrap_or(Value::Null);
     let (pdf, has_ref_art, approved, reference_why) =
         workshop_reference_state(s, &dir, &loaded_board, &panels);
-    let panel_timing = transcripts
-        .first()
-        .and_then(|t| transcript_document(t).ok())
-        .map(|t| panel_spans(&scenes(&t, None), panels.len()));
     let song_why = match (audio_ok, liner.is_empty()) {
         (false, _) => "Choose the song's audio.",
         (true, true) => "Song audio linked and ready (liner notes optional).",
@@ -472,13 +493,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
             "inputs": s.song_audio.iter().map(|p| file_chip(p)).collect::<Vec<_>>(), "outputs": transcript_outputs,
             "document": supplied_transcript, "problems": transcript_errors, "target": target_project, "brief": stage_brief(s, &dir, "transcript")}),
         json!({"id": "reference", "title": "Reference art", "done": has_ref_art && approved, "optional": true, "why": reference_why,
-            "inputs": panels.iter().enumerate().map(|(i, p)| {
-                let mut chip = file_chip(p);
-                if let Some(spans) = panel_timing.as_ref().and_then(|t| t.get(i)) {
-                    chip["begins"] = json!(spans.iter().map(|(a, _)| clock(*a)).collect::<Vec<_>>());
-                }
-                chip
-            }).collect::<Vec<_>>(),
+            "inputs": panels.iter().map(|p| file_chip(p)).collect::<Vec<_>>(),
             "outputs": std::iter::once(file_chip(&pdf)).chain(assets.iter().map(|p| file_chip(p))).collect::<Vec<_>>(),
             "approved": approved, "pdf": pdf, "brief": stage_brief(s, &dir, "reference")}),
         json!({"id": "animate", "title": "Animate assets", "done": !animated.is_empty(), "optional": true,
@@ -491,14 +506,14 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         .video_project_path
         .clone()
         .or_else(|| active_target_path.clone());
-    let diag = crate::storyboard::diagnose_storyboard_and_workshop(s, &dir);
+    let diag = diagnose_video_setup(s, &dir);
     Ok(json!({
         "ok": true,
         "project_dir": dir,
         "complete": complete,
         "video_target": target,
         "targets": targets,
-        "video_server": video_server_info(&dir, target),
+        "film_timeline": crate::film::timeline_file(s)?,
         "asset_files": assets.iter().map(|p| file_chip(p)).collect::<Vec<_>>(),
         "studio": {"name": studio_info.name, "intent": studio_info.intent, "source": studio_info.source},
         "video_project_path": effective_video_project,
@@ -573,18 +588,6 @@ pub fn cmd_project_search(s: &mut Session, params: &Value) -> Result<Value> {
         .and_then(|v| v.get("files").cloned())
         .unwrap_or_else(|| json!([]));
 
-    let storyboard_hits = if !q.is_empty() {
-        crate::storyboard_crud::search(s, q)
-            .ok()
-            .and_then(|v| v.get("hits").cloned())
-            .unwrap_or_else(|| json!([]))
-    } else {
-        cmd_storyboard_toc(s, &json!({}))
-            .ok()
-            .and_then(|v| v.get("chapters").cloned())
-            .unwrap_or_else(|| json!([]))
-    };
-
     Ok(json!({
         "ok": true,
         "query": q,
@@ -592,7 +595,6 @@ pub fn cmd_project_search(s: &mut Session, params: &Value) -> Result<Value> {
         "active_asset": s.active_asset,
         "subjects": subjects,
         "files": files,
-        "storyboard": storyboard_hits,
         "commands": commands,
     }))
 }

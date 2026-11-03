@@ -27,8 +27,22 @@ fn film(s: &Session) -> Result<Film> {
         .as_ref()
         .and_then(|p| p.file_stem())
         .map_or("Film".into(), |n| n.to_string_lossy().into_owned());
-    let project = dir.join("film").join(format!("{name}.fcproj"));
+    // The song's one film: the .magic's linked video project when it is a FilmCraft project.
+    let project = s
+        .video_project_path
+        .clone()
+        .filter(|p| p.extension().is_some_and(|e| e == "fcproj"))
+        .unwrap_or_else(|| dir.join("film").join(format!("{name}.fcproj")));
     Ok(Film { dir, name, project })
+}
+
+/// Record `project` as the song's one film in the .magic, so every step uses the same one.
+pub(crate) fn link(s: &mut Session, project: &Path) -> Result<()> {
+    if s.video_project_path.as_deref() == Some(project) {
+        return Ok(());
+    }
+    s.video_project_path = Some(project.to_path_buf());
+    crate::project::write_project_file(s)
 }
 
 impl Film {
@@ -60,6 +74,16 @@ fn file_info(path: &Path) -> Value {
 
 fn path_arg(p: &Path) -> String {
     p.to_string_lossy().into_owned()
+}
+
+/// The same timeline Studio opens and exports. Checking the file starts no external process.
+/// The song's one film (see `film`).
+pub(crate) fn film_path(s: &Session) -> Result<PathBuf> {
+    Ok(film(s)?.project)
+}
+
+pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
+    Ok(file_info(&film(s)?.project))
 }
 
 /// Export the active sequence with FilmCraft; `scale` and `quality` make a quick draft.
@@ -146,15 +170,9 @@ pub fn cmd_video_frame(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_video_open(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
     let project = f.require()?.to_path_buf();
-    let exe = crate::workspace::resolve_tool("filmcraft");
-    std::process::Command::new(&exe)
-        .arg(&project)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| EngineError::ExternalTool("filmcraft".into(), e.to_string()))?;
-    Ok(json!({"ok": true, "app": exe, "timeline": project}))
+    let mut opened = crate::native_app::open(s, &crate::native_app::FILMCRAFT, &project)?;
+    opened["timeline"] = json!(project);
+    Ok(opened)
 }
 
 /// FilmCraft's time unit: ticks per second.
@@ -213,6 +231,17 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
         .ok_or_else(|| bad("clip=<rendered .mov or .mp4> is required"))?;
     let from = p["from"].as_f64().unwrap_or(0.0).max(0.0);
     let track = p["track"].as_str().unwrap_or("V2");
+    // An animation study has no song to assemble from, so its first clip starts the film.
+    if s.project_mode.is_some() && !f.project.is_file() {
+        if let Some(folder) = f.project.parent() {
+            std::fs::create_dir_all(folder)?;
+        }
+        let sequence = json!({"id": "file.newSequence", "params": {"name": f.name,
+            "width": p["width"].as_u64().unwrap_or(1920), "height": p["height"].as_u64().unwrap_or(1080),
+            "fps": p["fps"].as_f64().unwrap_or(30.0)}});
+        crate::assembly::run(&f.dir, &f.project, true, &[sequence])?;
+        link(s, &f.project)?;
+    }
     let project = f.require()?.to_path_buf();
     let imported = crate::assembly::run(
         &f.dir,

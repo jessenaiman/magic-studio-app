@@ -3,6 +3,7 @@
 //! engine in this process. The binding file never touches the `.magic` project itself.
 use crate::{project, studio};
 use magicstudio_engine::headless;
+use magicstudio_engine::studio_sessions::Launch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -119,8 +120,38 @@ impl Session {
     pub fn open_studio(&mut self, raw: Option<&str>) -> Result<Value, String> {
         let target = raw.map(project::resolve).transpose()?;
         self.engine = None;
-        let live = studio::open(target.as_deref().and_then(Path::to_str))?;
+        let live = studio::open(target.as_deref().and_then(Path::to_str), &Launch::default())?;
         self.bind_window(&live)?;
+        Ok(live)
+    }
+
+    /// Open PROJECT showing Animation only, first creating it as an animation study when
+    /// the file does not exist. A window already serving it switches to Animation only.
+    pub fn open_animation(&mut self, raw: &str) -> Result<Value, String> {
+        // This caller is rebound to the new window, so never create inside a pinned one.
+        self.bind.studio_endpoint = None;
+        self.bind.studio_instance = None;
+        let created = if Path::new(raw).exists() {
+            None
+        } else {
+            Some(self.execute(
+                "project.new",
+                json!({"path": raw, "mode": "animation"}),
+                false,
+            )?)
+        };
+        let target = project::resolve(raw)?;
+        self.engine = None;
+        let launch = Launch {
+            animation_only: true,
+            ..Launch::default()
+        };
+        let mut live = studio::open(target.to_str(), &launch)?;
+        self.bind_window(&live)?;
+        live["animation_only"] = json!(true);
+        if let Some(created) = created {
+            live["created"] = created;
+        }
         Ok(live)
     }
 
@@ -330,7 +361,7 @@ impl Session {
         // Discovery and isolated observers never change the caller's target or writer.
         if matches!(
             id,
-            "command.list" | "backstage.observe" | "backstage.changes"
+            "resources.workflow" | "mayhem.scan" | "mayhem.evidence" | "mayhem.score" | "mayhem.review" | "command.list" | "backstage.observe" | "backstage.changes"
         ) {
             return headless::dispatch(
                 &mut magicstudio_engine::Session::user_session(),

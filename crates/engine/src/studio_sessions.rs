@@ -280,11 +280,19 @@ fn select(matches: &[Value]) -> Result<Option<Value>, String> {
 
 /// Shared app opening for desktop, CLI and MCP. Existing windows are never replaced.
 pub fn open(executable: &Path, project: Option<&str>) -> Result<Value, String> {
-    open_with_options(executable, project, None)
+    open_with_options(executable, project, &Launch::default())
+}
+
+/// How a new window starts: a selected character, and whether it shows Animation only.
+#[derive(Default)]
+pub struct Launch<'a> {
+    pub character: Option<&'a str>,
+    pub animation_only: bool,
 }
 
 /// Focus the window already serving this project; None when there is none to reuse.
-fn focus_existing(project: &Path) -> Result<Option<Value>, String> {
+/// An Animation-only launch switches the reused window to Animation only.
+fn focus_existing(project: &Path, launch: &Launch) -> Result<Option<Value>, String> {
     let Some(existing) = for_project(project)? else {
         return Ok(None);
     };
@@ -295,7 +303,8 @@ fn focus_existing(project: &Path) -> Result<Option<Value>, String> {
     match request(
         socket,
         "ui.focus",
-        json!({"_expected_instance":existing["instance"],"_expected_project":project}),
+        json!({"_expected_instance":existing["instance"],"_expected_project":project,
+            "animation_only":launch.animation_only}),
     ) {
         Ok(_) => Ok(Some(existing)),
         // The endpoint went away between discovery and the request: open a window instead.
@@ -317,15 +326,18 @@ fn live_executable(executable: &Path) -> PathBuf {
         .unwrap_or_else(|| executable.to_path_buf())
 }
 
-/// The window this launch asks for: character selection and an explicit project.
+/// The window this launch asks for: character selection, Animation only, and an explicit project.
 fn launch_command(
     executable: &Path,
     project: Option<&Path>,
-    character: Option<&str>,
+    launch: &Launch,
 ) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
-    if let Some(ch) = character {
+    if let Some(ch) = launch.character {
         command.args(["--character", ch]);
+    }
+    if launch.animation_only {
+        command.arg("--animation");
     }
     if let Some(path) = project {
         command.arg(path);
@@ -395,22 +407,22 @@ fn await_ready(
     ))
 }
 
-/// Open Magic Studio with an optional `--character` selection.
+/// Open Magic Studio with launch options, reusing a window already serving the project.
 pub fn open_with_options(
     executable: &Path,
     project: Option<&str>,
-    character: Option<&str>,
+    launch: &Launch,
 ) -> Result<Value, String> {
     let project = project.map(Path::new).map(canonical).transpose()?;
     if let Some(path) = &project
-        && let Some(existing) = focus_existing(path)?
+        && let Some(existing) = focus_existing(path, launch)?
     {
         return Ok(existing);
     }
     let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
     let dir = runtime.join("magicstudio-studio");
     let executable = live_executable(executable);
-    let mut command = launch_command(&executable, project.as_deref(), character);
+    let mut command = launch_command(&executable, project.as_deref(), launch);
     let mut child = command
         .spawn()
         .map_err(|e| format!("Cannot launch {}: {e}", executable.display()))?;

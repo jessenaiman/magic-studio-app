@@ -1,7 +1,7 @@
 //! Studio windows: find the app, open or reuse a window, and send it commands.
 //! Discovery, focus and the socket protocol are the engine's (`studio_sessions`); this file
 //! adds only what a caller needs: agent windows stay off the user's screen.
-use magicstudio_engine::studio_sessions;
+use magicstudio_engine::studio_sessions::{self, Launch};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -219,8 +219,11 @@ fn shell_quote(arg: &str) -> String {
 }
 
 /// Start the app unfocused on a quiet workspace, then wait for its new window.
-fn open_for_agent(hyprctl: &Path, project: Option<&str>) -> Result<Value, String> {
+fn open_for_agent(hyprctl: &Path, project: Option<&str>, launch: &Launch) -> Result<Value, String> {
     let mut argv = vec![shell_binary()?.to_string_lossy().into_owned()];
+    if launch.animation_only {
+        argv.push("--animation".into());
+    }
     match project {
         Some(p) => argv.push(p.to_owned()),
         None => argv.push("--new".into()),
@@ -260,9 +263,9 @@ fn open_for_agent(hyprctl: &Path, project: Option<&str>) -> Result<Value, String
 
 /// Open or reuse the window for `project`. A person's call brings it to the front; an
 /// agent's call reuses it silently, or opens a new one off the user's screen.
-pub fn open(project: Option<&str>) -> Result<Value, String> {
+pub fn open(project: Option<&str>, launch: &Launch) -> Result<Value, String> {
     if !agent_caller() {
-        return studio_sessions::open(&shell_binary()?, project);
+        return studio_sessions::open_with_options(&shell_binary()?, project, launch);
     }
     if let Some(p) = project
         && let Some(existing) = studio_sessions::for_project(Path::new(p))?
@@ -270,8 +273,8 @@ pub fn open(project: Option<&str>) -> Result<Value, String> {
         return Ok(existing);
     }
     match hyprctl() {
-        Some(hyprctl) => open_for_agent(&hyprctl, project),
-        None => studio_sessions::open(&shell_binary()?, project),
+        Some(hyprctl) => open_for_agent(&hyprctl, project, launch),
+        None => studio_sessions::open_with_options(&shell_binary()?, project, launch),
     }
 }
 

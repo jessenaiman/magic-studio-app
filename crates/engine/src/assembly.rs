@@ -330,10 +330,12 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
 pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let film = inputs(s, &dir, p)?;
-    let folder = dir.join("film");
-    std::fs::create_dir_all(&folder)?;
-    let project = folder.join(format!("{}.fcproj", film.name));
+    let project = crate::film::film_path(s)?;
+    if let Some(folder) = project.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
     build_film(&dir, &project, &film, p["fps"].as_f64().unwrap_or(30.0))?;
+    crate::film::link(s, &project)?;
     let exported = if p["export"] == false {
         None
     } else {

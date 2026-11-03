@@ -60,7 +60,6 @@ blender-skills/
 !.agents/skills/magic/
 !.agents/skills/magic-pr/
 !.agents/skills/magic-studio-ui/
-!.agents/skills/storyboard/
 !.agents/skills/character-rigging/
 !.agents/skills/pose-library-design/
 !.agents/skills/rust-egui-craft-ui/
@@ -203,3 +202,33 @@ apps/src-tauri/acceptance/artifacts/
 /usage.json
 /capture/
 /investigation.cany/
+
+# Magic projects, app documents and media are never source. Assets and animations live in
+# magic-studio/ (assets/, animations/); .magic projects live in ~/.magic/projects.
+*.magic
+*.fcproj
+*.ecproj
+*.pcraft
+*.deckcraft
+*.vectorcraft
+*.tcraft
+*.scraft
+*.potx
+*.pptx
+*.psd
+*.glb
+*.gltf
+*.fbx
+*.blend
+*.blend1
+*.mov
+*.mp4
+*.webm
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.steps.jsonl
+# Templates the code bundles are the exceptions.
+!/pipeline/templates/*.deckcraft
+!/references/storyboard/*.potx
