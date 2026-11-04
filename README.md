@@ -1,11 +1,5 @@
 # Magic Studio
 
-[![UI TypeScript & JS](https://img.shields.io/badge/UI_TypeScript_%26_JS-48%2F48_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/40)
-[![Tauri Desktop Shell](https://img.shields.io/badge/Tauri_Shell-8%2F8_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/42)
-[![Rust Engine Lizard](https://img.shields.io/badge/Rust_Engine_Lizard-57%2F57_files_%C2%B7_0_warnings-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/41)
-[![Cargo Clippy](https://img.shields.io/badge/cargo_clippy--D_warnings-passing-brightgreen)](https://github.com/jessenaiman/magic-studio-app/issues/40)
-[![Mayhem Analytics](https://img.shields.io/badge/Mayhem_Scan-0_Rust_%26_TS%2FJS_hotspots-brightgreen)](crates/engine/src/complexity.rs)
-
 **Songs into animated films.**
 
 Plan scenes, animate artwork, design lyrics, and compose a music video in one
@@ -75,11 +69,14 @@ must be tested separately. No candidate is approved by its feature list alone.
 Use the natural app-view proportions; keep navigation and useful controls visible.
 Give the image descriptive alt text and retain relevant artwork/song credits. -->
 
-The intended Storyboard view brings together the recording, timed lyrics,
-scene descriptions and artwork through the linked source document.
-Browse its pages in Magic and open the same file in its owning app for complete
-editing. The approved creative layout and how verses map to scene pages must
-be specified explicitly; choosing a file format does not approve a template.
+Choose **File → New Project** (`Ctrl+N`), or open an existing `.magic` project.
+In **Storyboard**, bring together the recording, timed lyrics, scene descriptions,
+and artwork. Browse the saved scene pages, then choose **Edit in DeckCraft**
+to edit and save the storyboard document. The intended Storyboard view brings
+together the recording, timed lyrics, scene descriptions and artwork through
+the linked source document; the approved creative layout and how verses map
+to scene pages must be specified explicitly — choosing a file format does not
+approve a template.
 
 ## Animation: bring artwork to life
 <!-- EDITORIAL: Insert a real Animation capture with a prepared character,

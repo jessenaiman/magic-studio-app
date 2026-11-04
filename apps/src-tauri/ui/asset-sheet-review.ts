@@ -123,7 +123,7 @@ class AssetSheetReview {
       ...(this.plan.source_prompt?[el('details',{},el('summary',{},'Original generation prompt'),el('textarea',{id:'asset-sheet-original-prompt',class:'field',rows:8,readonly:true,'aria-label':'Original generation prompt'},this.plan.source_prompt))]:[]),
       el('p',{class:'muted'},'Generate a whole sheet, review it, then prepare draft pieces. The source stays intact.'));
     this.root=el('dialog',{id:'asset-sheet-review',class:'editor-dialog artwork-review','aria-label':'Asset sheets · full source review'},
-      new PanelHeader({id:'asset-sheet-head',title:'Asset sheets',actions:[this.guideToggle,fit,actual,el('button',{id:'asset-sheet-animation-review',class:'ghost',onclick:()=>openScribbles(this.asset,this.file,true)},'Review 3D motion'),close]}).element,
+      new PanelHeader({id:'asset-sheet-head',title:'Asset sheets',actions:[this.guideToggle,fit,actual,el('button',{id:'asset-sheet-animation-review',onclick:()=>openScribbles(this.asset,this.file,true)},'Review 3D motion'),close]}).element,
       el('div',{class:'artwork-review-layout'},this.canvas,promptFields),this.status,this.controls);
     this.root.addEventListener('cancel',event=>{if(this.busy)event.preventDefault();});
     this.root.addEventListener('close',()=>{this.observer?.disconnect();this.root.remove();});

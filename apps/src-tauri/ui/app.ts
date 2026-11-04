@@ -482,8 +482,6 @@ class AppShellController {
     songStop();
     transcriptReaderClose();
     projectView.error = null;
-    state.storyboardScene = null;
-    state.storyboardUndo = null;
   }
 
   updateWindowProjectTitle(path: string, name?: string) {

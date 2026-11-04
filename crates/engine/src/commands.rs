@@ -60,7 +60,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "backstage.observe"
         | "backstage.changes"
         | "mayhem.evidence"
-        | "mayhem.score"
         | "app.errors"
         | "project.identity"
         | "project.list_assets"
@@ -97,10 +96,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         }
         "skills.diagram" => params.get("render").and_then(Value::as_bool) != Some(true),
         "agent.log" => params.get("refresh").and_then(Value::as_bool) != Some(true),
-        "app.analytics" => {
-            params.get("scan").and_then(Value::as_bool) != Some(true)
-                && params.get("judge").and_then(Value::as_bool) != Some(true)
-        }
         "app.doctor" => params.get("clean").and_then(Value::as_bool) != Some(true),
         _ => false,
     }
@@ -154,26 +149,3 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
 // ---------- command registry (every id maps to one handler above) ----------
 
 pub use crate::command_catalog::build;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn explicit_analytics_judgment_is_not_a_dry_run_safe_query() {
-        assert!(is_read_only_command("app.analytics", &json!({})));
-        assert!(is_read_only_command(
-            "app.analytics",
-            &json!({"judge":false,"scan":false})
-        ));
-        assert!(!is_read_only_command(
-            "app.analytics",
-            &json!({"judge":true})
-        ));
-        assert!(!is_read_only_command(
-            "app.analytics",
-            &json!({"scan":true})
-        ));
-    }
-}
