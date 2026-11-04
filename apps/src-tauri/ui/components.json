@@ -56,6 +56,26 @@
     "compact"
   ],
   "elements": {
+    "storyboard-edit-deck": {
+      "component": "start",
+      "label": "Edit in DeckCraft",
+      "indicator": "hidden"
+    },
+    "storyboard-page-nav": {
+      "component": "ghost",
+      "label": "Storyboard page",
+      "indicator": "hidden"
+    },
+    "storyboard-page-sheet": {
+      "component": "sb-sheet",
+      "label": "Storyboard page preview",
+      "indicator": "hidden"
+    },
+    "asset-sheet-animation-review": {
+      "component": "ghost",
+      "label": "Review 3D motion",
+      "indicator": "hidden"
+    },
     "view-home": {
       "component": "workspace",
       "label": "Home",
@@ -84,46 +104,31 @@
       "component": "workspace",
       "label": "Mayhem reports and Backstage"
     },
-    "analytics-surface": {
-      "component": "surface",
-      "label": "Analytics surface",
-      "target": "view-analytics"
-    },
     "tab-analytics": {
       "component": "control",
       "label": "Mayhem",
       "target": "view-analytics"
     },
+    "analytics-profile": {
+      "component": "field",
+      "label": "Analyzer profile",
+      "target": "view-analytics"
+    },
+    "mayhem-search": {
+      "component": "start",
+      "label": "Run analyzers",
+      "command": "mayhem.scan",
+      "target": "view-analytics"
+    },
     "analytics-refresh": {
-      "component": "control",
-      "label": "Refresh",
-      "command": "app.analytics",
-      "target": "view-analytics"
-    },
-    "analytics-scan": {
-      "component": "control",
-      "label": "Scan code",
-      "command": "app.analytics",
-      "target": "view-analytics"
-    },
-    "analytics-diagram-select": {
-      "component": "control",
-      "label": "Architecture reference",
-      "target": "view-analytics"
-    },
-    "analytics-command-search": {
-      "component": "control",
-      "label": "Find current command",
+      "component": "ghost",
+      "label": "Refresh saved results",
+      "command": "mayhem.evidence",
       "target": "view-analytics"
     },
     "blocks": {
       "component": "workspace",
       "label": "Song workflow",
-      "indicator": "hidden"
-    },
-    "sb-chips": {
-      "component": "chips",
-      "label": "Storyboard pages",
       "indicator": "hidden"
     },
     "sb-cards": {
@@ -1505,66 +1510,6 @@
       "label": "Selected Lyrics view controls",
       "indicator": "hidden"
     },
-    "storyboard-overview": {
-      "component": "ghost",
-      "label": "Story & backgrounds",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-save": {
-      "component": "ghost",
-      "label": "Save new version",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-add": {
-      "component": "ghost",
-      "label": "Add scene before word",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-trim-start": {
-      "component": "ghost",
-      "label": "Start scene at word",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-trim-end": {
-      "component": "ghost",
-      "label": "End scene at word",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-delete": {
-      "component": "ghost",
-      "label": "Combine with previous",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-delete-next": {
-      "component": "ghost",
-      "label": "Combine with next",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-undo": {
-      "component": "ghost",
-      "label": "Undo scene change",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-scene": {
-      "component": "field",
-      "label": "Storyboard scene",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-word": {
-      "component": "field",
-      "label": "Recorded word at the scene cut",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
     "motion-asset-browser": {
       "component": "motion-inspector",
       "label": "Animation assets",
@@ -1587,45 +1532,6 @@
       "label": "Transcribe this recording",
       "target": "song",
       "indicator": "hidden"
-    },
-    "storyboard-discuss": {
-      "component": "ghost",
-      "label": "Discuss storyboard with Fidget",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-check": {
-      "component": "ghost",
-      "label": "Check storyboard details",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-draft-override": {
-      "component": "ghost",
-      "label": "Proceed with this draft",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-create-scenes": {
-      "component": "start",
-      "label": "Create scene pages from timing",
-      "target": "storyboard",
-      "indicator": "hidden"
-    },
-    "storyboard-template-pick": {
-      "component": "control",
-      "label": "Choose storyboard template",
-      "target": "view-project"
-    },
-    "storyboard-template-open": {
-      "component": "control",
-      "label": "Open chosen template",
-      "target": "view-project"
-    },
-    "sb-choose-template": {
-      "component": "control",
-      "label": "Choose storyboard template",
-      "target": "view-project"
     },
     "new-form": {
       "component": "panel-body",

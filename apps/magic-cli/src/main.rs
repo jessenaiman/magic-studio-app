@@ -1,7 +1,8 @@
 //! `magic-cli`: operate Magic Studio from a terminal or an agent. Every operation is an
 //! engine registry command; this binary only chooses where it runs (the caller's window or
 //! the engine in-process) and prints JSON.
-mod audit;
+use magicstudio_engine::analyzers as audit;
+mod doctor;
 mod mcp;
 mod project;
 mod session;
@@ -72,27 +73,24 @@ enum Cmd {
         #[arg(default_value = ".")]
         path: PathBuf,
     },
-    /// Full repository report: run all installed checks and populate Mayhem UI/TUI analytics.
-    ///
-    /// Default order: cargo clippy, tsc, ESLint, Stylelint, Lizard, Wallace, jscpd,
-    /// PurgeCSS, scope. Saves measurements and violation counts to target/analytics/.
-    #[command(verbatim_doc_comment)]
+    /// Run native analyzers and retain complete output and exit statuses.
     Audit {
         #[arg(default_value = ".")]
         path: PathBuf,
-        /// Select a native tool; repeat to choose several.
-        #[arg(long = "tool", value_parser = audit_tool)]
+        #[arg(long = "tool")]
         tools: Vec<String>,
-        /// Git revision the scope is measured from.
         #[arg(long, default_value = "HEAD")]
         base: String,
+        /// Run language checks only; --tool replaces this profile.
+        #[arg(long)]
+        quick: bool,
     },
     /// Review a specific file or folder with all applicable native tools.
     Review {
         #[arg(default_value = ".")]
         path: PathBuf,
         /// Select a native tool; repeat to choose several.
-        #[arg(long = "tool", value_parser = audit_tool)]
+        #[arg(long = "tool")]
         tools: Vec<String>,
         /// Git revision the scope is measured from.
         #[arg(long, default_value = "HEAD")]
@@ -146,15 +144,6 @@ enum StudioCmd {
 enum SessionCmd {
     Status,
     Clear,
-}
-
-fn audit_tool(name: &str) -> Result<String, String> {
-    let names: Vec<&str> = audit::TOOLS.iter().map(|t| t.name).collect();
-    if names.contains(&name) {
-        Ok(name.to_owned())
-    } else {
-        Err(format!("choose from {}", names.join(", ")))
-    }
 }
 
 fn emit(value: &Value) {
@@ -319,9 +308,11 @@ fn run_registry(s: &mut Session, tokens: &[String], dry: bool) -> Result<(), Str
             let value = run_one(s, &id, params, dry)?;
             if numbered {
                 for (i, step) in value["steps"].as_array().into_iter().flatten().enumerate() {
-                    println!("{}. {}", i+1, step.as_str().unwrap_or_default());
+                    println!("{}. {}", i + 1, step.as_str().unwrap_or_default());
                 }
-            } else { emit(&value); }
+            } else {
+                emit(&value);
+            }
         }
         Err(listing) if listing.contains("commands from the application registry") => {
             println!("{listing}");
@@ -401,22 +392,66 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn run_analyzers(
+    target: &std::path::Path,
+    tools: &[String],
+    dry: bool,
+    base: &str,
+    quick: bool,
+    json_output: bool,
+) -> Result<i32, String> {
+    let report = audit::run(target, tools, dry, base, quick).map_err(|e| e.to_string())?;
+    if json_output {
+        emit(&report);
+    } else {
+        for row in report["tools"].as_array().into_iter().flatten() {
+            println!(
+                "{}: exit={} · {} · {}",
+                row["tool"], row["exit_code"], row["scope"], row["error"]
+            );
+        }
+    }
+    if !json_output {
+        println!("Reports: {}", report["artifacts"]);
+    }
+    Ok(audit::exit_code(&report))
+}
+
 fn run(cli: Cli) -> Result<(), String> {
     match &cli.command {
         Some(Cmd::Doctor { path }) => {
             let target =
                 std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            std::process::exit(audit::doctor(&target, cli.dry_run));
+            std::process::exit(doctor::run(&target, cli.dry_run));
         }
-        Some(Cmd::Audit { path, tools, base }) => {
+        Some(Cmd::Audit {
+            path,
+            tools,
+            base,
+            quick,
+        }) => {
             let target =
                 std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            std::process::exit(audit::run(&target, tools, cli.dry_run, base, false));
+            std::process::exit(run_analyzers(
+                &target,
+                tools,
+                cli.dry_run,
+                base,
+                *quick,
+                cli.json,
+            )?);
         }
         Some(Cmd::Review { path, tools, base }) => {
             let target =
                 std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            std::process::exit(audit::run(&target, tools, cli.dry_run, base, true));
+            std::process::exit(run_analyzers(
+                &target,
+                tools,
+                cli.dry_run,
+                base,
+                true,
+                cli.json,
+            )?);
         }
         _ => {}
     }

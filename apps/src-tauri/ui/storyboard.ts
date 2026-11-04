@@ -11,20 +11,20 @@ function showPage(index: number) {
   $('sb-prev').disabled = !state.page;
   $('sb-next').disabled = state.page + 1 >= pages.length;
   $('sb-open-deck').disabled = !board?.deck;
-  if (board?.deck) rail.append(el('button',{id:'storyboard-edit-deck',class:'start',onclick:open},'Edit in DeckCraft'));
+  if (board?.deck) rail.append(el('button',{id:'storyboard-edit-deck',onclick:open},'Edit in DeckCraft'));
   if (!pages.length) {
     cards.append(el('p',{class:'panel-empty'},board?.error || (board?.deck ? 'Open the deck to view its pages.' : 'No saved storyboard for this project.')));
     return;
   }
   const nav=el('nav',{'aria-label':'Storyboard contents'},...pages.map((_,i)=>el('button',{
-    id:'sb-nav-'+(i+1),'aria-current':state.page===i?'page':null,onclick:()=>showPage(i)
+    id:`sb-nav-${i+1}`,box:'storyboard-page-nav','aria-current':state.page===i?'page':null,onclick:()=>showPage(i)
   },title(i))));
   rail.append(nav);
   const cue=board.page_cues?.[state.page];
   if (cue?.length) rail.append(el('section',{'aria-label':'Selected scene lyrics'},el('strong',{},'Lyrics'),...cue.map(line=>el('p',{},line.text))));
   state.pageTitles=Object.fromEntries(pages.map((_,i)=>[i,title(i)]));
   const [width,height]=board.page_size || [1080,1600];
-  const sheet=el('div',{id:'sb-sheet-'+state.page,class:'sb-sheet'});
+  const sheet=el('div',{id:`sb-sheet-${state.page}`,box:'storyboard-page-sheet'});
   sheet.style.setProperty('--ar',`${width}/${height}`);
   sheet.append(el('img',{src:convertFileSrc(pages[state.page]),alt:title(state.page)}));
   for (const [i,link] of (board.layout?.links || []).entries()) {

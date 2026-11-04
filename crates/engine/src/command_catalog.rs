@@ -6,7 +6,7 @@ use crate::agent::{
     cmd_agent_config, cmd_agent_log, cmd_agent_models, cmd_agent_new_chat, cmd_agent_send,
     cmd_agent_session,
 };
-use crate::doctor::{cmd_app_analytics, cmd_app_doctor};
+use crate::doctor::cmd_app_doctor;
 use crate::project::{
     cmd_project_add_asset, cmd_project_close, cmd_project_list_assets, cmd_project_load_asset,
     cmd_project_new, cmd_project_open, cmd_project_remove_asset, cmd_project_save,
@@ -976,10 +976,10 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
 
 fn specs_diagnostics() -> Vec<CommandSpec> {
     vec![
-        query!("mayhem.evidence", "Mayhem · Inspect agents, CLI and scan evidence", "{\"self\":false}", crate::mayhem::evidence),
+        query!("mayhem.evidence", "Mayhem · Read saved analyzer reports and scoped Herdr activity", "{\"path\":\"optional source checkout\",\"workspace_id\":\"optional verified Herdr workspace ID\"}", crate::mayhem::evidence),
         CommandSpec {
             id: "mayhem.scan", label: "Mayhem · Scan source", menu: &["Mayhem"], shortcut: None,
-            params: "{}", help: "Run Lizard over the app and save a complete source measurement.",
+            params: "{\"path\":\"optional source file or directory\",\"quick\":false,\"tools\":[\"tsc\"],\"base\":\"HEAD\",\"dry_run\":false}", help: "Run existing native analyzers and save their complete output and actual exit statuses. Omit tools for the selected profile.",
             example: "magic-cli mayhem scan", enabled: always, run: crate::mayhem::scan,
             journal: false, long_running: true,
         },
@@ -992,34 +992,6 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
             always,
             crate::creation_loop::workflow
         ),
-        query!(
-            "mayhem.score",
-            "Mayhem · Compare saved source measurements",
-            "{}",
-            crate::mayhem::score
-        ),
-        cmd!(
-            "mayhem.review",
-            "Record an outside package review",
-            ["Mayhem"],
-            None,
-            "{\"snapshot\":\"from mayhem.score\",\"reviewer\":\"name\",\"package\":\"candidate considered\",\"verdict\":\"clear|follow_up|violation\",\"finding\":\"specific code and decision\",\"evidence\":\"file or issue\"}",
-            always,
-            crate::mayhem::review
-        ),
-        CommandSpec {
-            id: "app.analytics",
-            label: "Analytics: Saved Measurements & Explicit Jev Judgment",
-            menu: &[],
-            shortcut: None,
-            params: "{\"scan\":false,\"judge\":false}",
-            help: "Read analytics and the saved Jev report without rerunning judgments. scan=true explicitly measures code; judge=true separately sends bounded sequential batches of the existing native snapshot to installed Jev and persists target/analytics/jev.json. No scans or automatic fixes during judgment.",
-            example: "magic-cli app analytics judge=true",
-            enabled: always,
-            run: cmd_app_analytics,
-            journal: false,
-            long_running: true,
-        },
         query!(
             "app.doctor",
             "Doctor: CLI Availability and Video Server Metadata",

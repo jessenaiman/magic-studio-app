@@ -89,7 +89,7 @@ class FeedbackController {
     if (!n) return;
     const control = n.id || n.getAttribute('aria-label') || n.getAttribute('title') || n.textContent.trim().slice(0, 80) || 'unknown-control';
     const request_id = `ui-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    const navigation = n.matches('#project-details,#sb-prev,#sb-next,.sb-link,#sb-chips [role=tab],.tab[data-view]');
+    const navigation = n.matches('#project-details,#sb-prev,#sb-next,.sb-link,.tab[data-view]');
     const previous = this.action;
     const errors = this.errors.length;
     e.acAction = {

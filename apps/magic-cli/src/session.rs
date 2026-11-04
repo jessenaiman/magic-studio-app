@@ -361,15 +361,26 @@ impl Session {
         // Discovery and isolated observers never change the caller's target or writer.
         if matches!(
             id,
-            "resources.workflow" | "mayhem.scan" | "mayhem.evidence" | "mayhem.score" | "mayhem.review" | "command.list" | "backstage.observe" | "backstage.changes"
+            "resources.workflow"
+                | "mayhem.scan"
+                | "mayhem.evidence"
+                | "command.list"
+                | "backstage.observe"
+                | "backstage.changes"
         ) {
-            return headless::dispatch(
-                &mut magicstudio_engine::Session::user_session(),
-                id,
-                req,
-                dry_run,
-                false,
-            );
+            let mut observer = if id.starts_with("mayhem.") {
+                magicstudio_engine::Session {
+                    project_path: req["project"]
+                        .as_str()
+                        .map(project::resolve)
+                        .transpose()?
+                        .or_else(|| self.bind.project_path.as_ref().map(PathBuf::from)),
+                    ..Default::default()
+                }
+            } else {
+                magicstudio_engine::Session::user_session()
+            };
+            return headless::dispatch(&mut observer, id, req, dry_run, false);
         }
         let (selecting, target) = self.route(id, &mut req)?;
         let result = self.deliver(id, req, selecting, target.as_deref(), dry_run)?;

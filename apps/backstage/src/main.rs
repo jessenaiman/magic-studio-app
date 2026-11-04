@@ -1,1150 +1,747 @@
-//! Backstage: Magic Studio's separate Rust/Ratatui production and engineering observer.
-//!
-//! Workshop shows saved project references, MOPS shows PR-owned handoffs, Mayhem
-//! shows worktrees and existing native audit evidence, and Settings shows bounded
-//! observations of production paths and crew documents. Unavailable, stale, and
-//! imported observations remain labeled; they are not inferred live session state.
-//!
-//! # Read the implementation
-//!
-//! - [`App`] coordinates view state and completion events through [`Wake`].
-//! - [`provider`] bounds supported observation processes and their lifecycle.
-//! - [`project_data`] reads saved references; [`data`] observes repository files.
-//! - [`handoff`] interprets explicitly selected PR metadata without resuming agents.
-//! - [`audit`] reads supplied native report artifacts without running a checker.
-//! - [`workshop`], [`mops`], [`mayhem`], and [`ui`] render observed evidence.
-//!
-//! This is a binary implementation reference: Rustdoc includes its private items,
-//! not a stable public library API. Backstage has no engine linkage or model client.
-//! Selection/navigation does not contact agents; explicit refresh and Open actions
-//! have the read/process boundaries described in the
-//! [observer guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/backstage/README.md).
-//! See the repository's
-//! [architecture guide](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture/README.md)
-//! for its separation from the desktop shell and shared engine.
-//! Repository links track the default branch; new guides appear after this
-//! documentation change merges.
-mod audit;
-mod data;
-mod handoff;
-mod mayhem;
-mod mops;
-mod project_data;
-mod provider;
-mod ui;
-mod workshop;
+//! Backstage reads existing native analyzer reports. It never runs analyzers or edits projects.
+//! Start here: Action → input_action → update → draw. Activity uses the existing CLI adapter.
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
-        MouseEventKind,
-    },
+    event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind},
     execute,
 };
-use ratatui::layout::Rect;
-use std::{io, path::Path, process::Command};
+use ratatui::{
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Style},
+    widgets::{Block, Paragraph, Row, Table},
+};
+use serde_json::{Value, json};
+use std::{
+    fs::OpenOptions,
+    io::{self, Read},
+    path::{Path, PathBuf},
+    sync::mpsc,
+};
 
-enum Wake {
-    Shutdown,
-    MopsObserved(Box<handoff::Snapshot>),
-    AuditObserved(Result<Box<audit::Comparison>, String>),
-    Terminal(io::Result<Event>),
-    Observed(Box<data::Snapshot>, Box<project_data::ProjectSnapshot>),
-}
-
-#[cfg(unix)]
-struct ShutdownSignals {
-    handle: signal_hook::iterator::Handle,
-    thread: Option<std::thread::JoinHandle<()>>,
-}
-#[cfg(unix)]
-impl ShutdownSignals {
-    fn new(sender: std::sync::mpsc::Sender<Wake>) -> io::Result<Self> {
-        let mut signals = signal_hook::iterator::Signals::new([
-            signal_hook::consts::SIGHUP,
-            signal_hook::consts::SIGTERM,
-        ])?;
-        let handle = signals.handle();
-        let thread = std::thread::spawn(move || {
-            if signals.forever().next().is_some() {
-                let _ = sender.send(Wake::Shutdown);
-            }
-        });
-        Ok(Self {
-            handle,
-            thread: Some(thread),
-        })
-    }
-}
-#[cfg(unix)]
-impl Drop for ShutdownSignals {
-    fn drop(&mut self) {
-        self.handle.close();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum View {
-    Workshop,
-    Mayhem,
-    Mops,
-    Settings,
-}
+// One action vocabulary and one dispatcher for every keyboard and mouse control.
 #[derive(Clone, Copy)]
-enum MopsAction {
-    OpenPr,
-    OpenRole,
-    OpenWorktree,
-    CopyResume,
-    CopyFeedback,
-    ViewMayhem,
+enum Action {
+    Quit,
+    Close,
+    Select(usize),
+    Move(bool),
+    Pane(usize),
+    Scroll(bool, usize),
+    Pan(bool),
+    Details,
+    Refresh,
+}
+const PANES: [&str; 5] = ["1 Output", "2 Command", "3 Run", "4 Files", "5 Activity"];
+const BUTTONS: [(&str, Action); 3] = [
+    ("Expand/close", Action::Details),
+    ("Reread", Action::Refresh),
+    ("Quit", Action::Quit),
+];
+type Hits = Vec<(Rect, Action)>;
+enum Wake {
+    Input(io::Result<Event>),
+    Activity(Result<Value, String>),
+    Quit,
 }
 struct App {
-    clipboard_supported: bool,
-    mops: handoff::Snapshot,
-    mops_inputs: Option<handoff::Inputs>,
-    mops_selected: usize,
-    mops_rows: Vec<(Rect, usize)>,
-    mops_actions: Vec<(Rect, MopsAction)>,
-    audit_pr_context: Option<handoff::PrScope>,
-    audit: Option<audit::Comparison>,
-    audit_error: Option<String>,
-    audit_inputs: Option<audit::Inputs>,
-    audit_selected: usize,
-    audit_finding_selected: usize,
-    audit_rows: Vec<(Rect, usize)>,
-    view: View,
-    project_data: project_data::ProjectSnapshot,
-    project_selected: usize,
-    project_file_selected: usize,
-    worktree_selected: usize,
-    focus_projects: bool,
-    collapsed: [bool; 4],
-    project_rows: Vec<(Rect, usize)>,
-    project_file_rows: Vec<(Rect, usize)>,
-    worktree_rows: Vec<(Rect, usize)>,
-    group_rows: Vec<(Rect, usize)>,
-    project_buttons: Vec<(Rect, std::path::PathBuf)>,
-    tabs: Vec<(Rect, View)>,
-    data: data::Snapshot,
-    refreshing: bool,
+    path: PathBuf,
+    report: Value,
     selected: usize,
-    offset: usize,
+    pane: usize,
+    scroll: usize,
+    column: usize,
+    full: bool,
+    activity: Value,
+    reading: bool,
     message: String,
-    details: bool,
-    detail_scroll: u16,
-    outlined_controls: bool,
-    opener_result: Option<std::sync::mpsc::Receiver<String>>,
-    buttons: Vec<(Rect, usize)>,
-    rows: Vec<(Rect, usize)>,
 }
-struct ProjectSelection {
-    project: Option<std::path::PathBuf>,
-    file: Option<std::path::PathBuf>,
-    worktree: Option<std::path::PathBuf>,
-}
-impl App {
-    fn new(audit_inputs: Option<audit::Inputs>) -> Self {
-        Self {
-            clipboard_supported: std::env::var("TERM")
-                .is_ok_and(|term| !term.is_empty() && !matches!(term.as_str(), "dumb" | "linux")),
-            mops: handoff::Snapshot::default(),
-            mops_inputs: None,
-            mops_selected: 0,
-            mops_rows: vec![],
-            mops_actions: vec![],
-            audit_pr_context: None,
-            view: if audit_inputs.is_some() {
-                View::Mayhem
+
+fn input_action(app: &App, event: Event, hits: &Hits, page_rows: usize) -> Option<Action> {
+    match event {
+        Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+            KeyCode::Char('q') => Some(Action::Quit),
+            KeyCode::Esc => Some(if app.full {
+                Action::Close
             } else {
-                View::Workshop
-            },
-            audit: None,
-            audit_error: None,
-            audit_inputs,
-            audit_selected: 0,
-            audit_finding_selected: 0,
-            audit_rows: vec![],
-            project_data: project_data::ProjectSnapshot::default(),
-            project_selected: 0,
-            project_file_selected: 0,
-            worktree_selected: 0,
-            focus_projects: false,
-            collapsed: [false; 4],
-            project_rows: vec![],
-            project_file_rows: vec![],
-            worktree_rows: vec![],
-            group_rows: vec![],
-            project_buttons: vec![],
-            tabs: vec![],
-            data: data::Snapshot::read(),
-            refreshing: false,
-            selected: 0,
-            offset: 0,
-            message: String::new(),
-            details: false,
-            detail_scroll: 0,
-            opener_result: None,
-            outlined_controls: true,
-            buttons: vec![],
-            rows: vec![],
+                Action::Quit
+            }),
+            KeyCode::Enter | KeyCode::Char('d') => Some(Action::Details),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::Move(true)),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::Move(false)),
+            KeyCode::PageDown => Some(Action::Scroll(true, page_rows.max(1))),
+            KeyCode::Char(']') => Some(Action::Scroll(true, 1)),
+            KeyCode::PageUp => Some(Action::Scroll(false, page_rows.max(1))),
+            KeyCode::Char('[') => Some(Action::Scroll(false, 1)),
+            KeyCode::Right => Some(Action::Pan(true)),
+            KeyCode::Left => Some(Action::Pan(false)),
+            KeyCode::Char('r' | 'R') => Some(Action::Refresh),
+            KeyCode::Tab => Some(Action::Pane((app.pane + 1) % PANES.len())),
+            KeyCode::Char(c @ '1'..='5') => Some(Action::Pane(c as usize - '1' as usize)),
+            KeyCode::F(n @ 1..=5) => Some(Action::Pane(n as usize - 1)),
+            _ => None,
+        },
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
+            Some(Action::Scroll(true, 1))
         }
-    }
-    // Completion transitions preserve identity independently of terminal dispatch.
-    fn mops_observed(&mut self, mut snapshot: handoff::Snapshot) {
-        let number = self
-            .mops
-            .tasks
-            .get(self.mops_selected)
-            .map(|task| task.pr_number);
-        if snapshot.tasks.is_empty() && !self.mops.tasks.is_empty() && snapshot.error.is_some() {
-            snapshot.tasks = std::mem::take(&mut self.mops.tasks);
-            snapshot.source = format!(
-                "STALE: previous imported/observed metadata retained; {}",
-                snapshot.source
-            );
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
+            Some(Action::Scroll(false, 1))
         }
-        self.mops = snapshot;
-        self.mops_selected = number
-            .and_then(|number| {
-                self.mops
-                    .tasks
-                    .iter()
-                    .position(|task| task.pr_number == number)
-            })
-            .unwrap_or(0);
-        self.refreshing = false;
-        self.message = self
-            .mops
-            .error
-            .clone()
-            .unwrap_or_else(|| "PR metadata read; no harness contacted".into());
-    }
-    fn audit_observed(&mut self, result: Result<Box<audit::Comparison>, String>) {
-        self.refreshing = false;
-        if !self.audit_completion_matches(&result) {
-            return;
-        }
-        match result {
-            Ok(report) => {
-                if self.audit_tool_accepted(&report) {
-                    self.install_audit(*report);
-                }
-            }
-            Err(error) => {
-                self.audit_error = Some(error.clone());
-                self.message = error;
-            }
-        }
-    }
-    fn audit_completion_matches(
-        &mut self,
-        result: &Result<Box<audit::Comparison>, String>,
-    ) -> bool {
-        let Some(scope) = &self.audit_pr_context else {
-            return true;
-        };
-        if result.as_ref().is_ok_and(|report| {
-            scope.matches(
-                report.baseline.sha.as_deref(),
-                report.candidate.sha.as_deref(),
-            )
-        }) {
-            return true;
-        }
-        self.audit = None;
-        self.audit_error = Some(scope.markdown());
-        self.message =
-            "Discarded artifact result: it does not match the selected PR base/head".into();
-        false
-    }
-    fn audit_tool_accepted(&mut self, report: &audit::Comparison) -> bool {
-        let Some(requested) = self
-            .audit_inputs
-            .as_ref()
-            .and_then(|input| input.tool_filter.as_deref())
-        else {
-            return true;
-        };
-        if let Err(error) = report.validate_tool(requested) {
-            self.audit_error = Some(error.clone());
-            self.message = error;
-            return false;
-        }
-        true
-    }
-    fn install_audit(&mut self, report: audit::Comparison) {
-        self.audit_selected = self.preferred_audit_tool(&report);
-        self.audit_finding_selected = self
-            .audit_finding_selected
-            .min(report.finding_count(self.audit_selected).saturating_sub(1));
-        self.audit = Some(report);
-        self.audit_error = None;
-        self.message = "Native audit artifacts read; no checks run".into();
-    }
-    fn preferred_audit_tool(&self, report: &audit::Comparison) -> usize {
-        let id = self
-            .audit
-            .as_ref()
-            .and_then(|audit| audit.tool_ids().get(self.audit_selected).cloned());
-        let id = id.or_else(|| {
-            self.audit_inputs
-                .as_ref()
-                .and_then(|input| input.tool_filter.clone())
-        });
-        id.and_then(|id| report.tool_ids().iter().position(|tool| *tool == id))
-            .unwrap_or_else(|| {
-                (0..report.tool_ids().len())
-                    .find(|index| report.finding_count(*index) > 0)
-                    .unwrap_or(0)
-            })
-    }
-    fn observed(&mut self, snapshot: data::Snapshot, projects: project_data::ProjectSnapshot) {
-        let selection = self.project_selection();
-        self.project_data = projects;
-        self.restore_project_selection(selection);
-        self.settings_observed(snapshot);
-        self.refreshing = false;
-        self.message = "Passive observation complete • d details".into();
-    }
-    fn project_selection(&self) -> ProjectSelection {
-        let project = self.project_data.projects.get(self.project_selected);
-        ProjectSelection {
-            project: project.map(|project| project.identity.clone()),
-            file: project
-                .and_then(|project| project.files.get(self.project_file_selected))
-                .map(|file| file.path.clone()),
-            worktree: self
-                .project_data
-                .worktrees
-                .get(self.worktree_selected)
-                .map(|worktree| worktree.path.clone()),
-        }
-    }
-    fn restore_project_selection(&mut self, selection: ProjectSelection) {
-        self.project_selected = selection
-            .project
-            .and_then(|id| {
-                self.project_data
-                    .projects
-                    .iter()
-                    .position(|project| project.identity == id)
-            })
-            .unwrap_or(
-                self.project_selected
-                    .min(self.project_data.projects.len().saturating_sub(1)),
-            );
-        let files = self
-            .project_data
-            .projects
-            .get(self.project_selected)
-            .map(|project| project.files.as_slice())
-            .unwrap_or(&[]);
-        self.project_file_selected = selection
-            .file
-            .and_then(|id| files.iter().position(|file| file.path == id))
-            .unwrap_or(
-                self.project_file_selected
-                    .min(files.len().saturating_sub(1)),
-            );
-        self.worktree_selected = selection
-            .worktree
-            .and_then(|id| {
-                self.project_data
-                    .worktrees
-                    .iter()
-                    .position(|worktree| worktree.path == id)
-            })
-            .unwrap_or(
-                self.worktree_selected
-                    .min(self.project_data.worktrees.len().saturating_sub(1)),
-            );
-    }
-    fn settings_observed(&mut self, snapshot: data::Snapshot) {
-        let name = self
-            .data
-            .files
-            .get(self.selected)
-            .map(|file| file.name.clone());
-        self.data = snapshot;
-        self.selected = name
-            .and_then(|name| self.data.files.iter().position(|file| file.name == name))
-            .unwrap_or(self.selected.min(self.data.files.len().saturating_sub(1)));
-    }
-    fn refresh(&mut self, control: provider::Control, sender: std::sync::mpsc::Sender<Wake>) {
-        if self.refreshing {
-            self.message = "Passive observation already in progress".into();
-            return;
-        }
-        if self.view == View::Mops {
-            self.refresh_mops(control, sender);
-            return;
-        }
-        if !self.audit_scope_ready() {
-            return;
-        }
-        self.refreshing = true;
-        if let Some(inputs) = self.audit_inputs.clone() {
-            std::thread::spawn(move || {
-                let _ = sender.send(Wake::AuditObserved(inputs.load().map(Box::new)));
-            });
-            return;
-        }
-        std::thread::spawn(move || {
-            let mut snapshot = data::Snapshot::read();
-            snapshot.apply(provider::read(&control));
-            let projects = project_data::ProjectSnapshot::read(&control);
-            let _ = sender.send(Wake::Observed(Box::new(snapshot), Box::new(projects)));
-        });
-    }
-    // A PR-selected view may only load artifacts attributed to that exact base/head.
-    fn audit_scope_ready(&mut self) -> bool {
-        let Some(scope) = self
-            .audit_pr_context
-            .as_ref()
-            .filter(|_| self.view == View::Mayhem)
-        else {
-            return true;
-        };
-        if self.audit_inputs.as_ref().is_some_and(|input| {
-            scope.matches(
-                input.baseline_sha.as_deref(),
-                input.candidate_sha.as_deref(),
-            )
-        }) {
-            return true;
-        }
-        self.audit = None;
-        self.audit_error = Some(scope.markdown());
-        self.message = "No audit artifacts matching this exact PR base/head".into();
-        false
-    }
-    fn refresh_mops(&mut self, control: provider::Control, sender: std::sync::mpsc::Sender<Wake>) {
-        let Some(inputs) = self.mops_inputs.clone() else {
-            self.mops.error=Some("Configure --mops-repo OWNER/REPO and explicit --mops-pr NUMBER / --mops-pr-file PATH".into());
-            return;
-        };
-        let roles = self
-            .data
-            .files
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => hits
             .iter()
-            .filter(|f| f.group == "MagicStudio agent roles" && f.found)
-            .filter_map(|f| f.path.clone())
-            .collect::<Vec<_>>();
-        self.refreshing = true;
-        std::thread::spawn(move || {
-            let snapshot = handoff::Snapshot::read(&inputs, &roles, &control);
-            let _ = sender.send(Wake::MopsObserved(Box::new(snapshot)));
-        });
-    }
-    fn mops_action(&mut self, action: MopsAction) {
-        let Some(task) = self.mops.tasks.get(self.mops_selected) else {
-            self.message = "No selected PR handoff".into();
-            return;
-        };
-        if matches!(action, MopsAction::CopyResume | MopsAction::CopyFeedback)
-            && !self.clipboard_supported
-        {
-            self.message = "Clipboard unavailable: terminal OSC52 support required".into();
-            return;
-        }
-        match action {
-            MopsAction::OpenPr => {
-                let url = task.pr_url.clone();
-                self.open_pr_url(&url);
-            }
-            MopsAction::OpenRole => {
-                let path = task
-                    .role_path
-                    .as_ref()
-                    .filter(|_| task.role_available)
-                    .map(std::path::PathBuf::from);
-                self.open_recorded_path(
-                    path,
-                    "Role path unavailable / not verified against crew.list",
-                );
-            }
-            MopsAction::OpenWorktree => {
-                let path = task
-                    .worktree
-                    .as_ref()
-                    .filter(|_| task.worktree_available)
-                    .map(std::path::PathBuf::from);
-                self.open_recorded_path(path, "Recorded worktree unavailable");
-            }
-            MopsAction::CopyResume => {
-                self.message = copy_resume(task);
-            }
-            MopsAction::CopyFeedback => {
-                let feedback = task.feedback.join("\n");
-                if feedback.is_empty() {
-                    self.message = "No review feedback supplied".into()
-                } else {
-                    self.message = copy_text(&feedback)
-                }
-            }
-            MopsAction::ViewMayhem => {
-                let scope = task.audit_scope();
-                let message = scope.markdown();
-                self.audit_pr_context = Some(scope);
-                self.audit = None;
-                self.audit_error = Some(message);
-                self.view = View::Mayhem;
-            }
-        }
-    }
-    fn open_recorded_path(&mut self, path: Option<std::path::PathBuf>, unavailable: &str) {
-        match path {
-            Some(path) => self.launch(&path),
-            None => self.message = unavailable.into(),
-        }
-    }
-    fn open_pr_url(&mut self, url: &str) {
-        self.message = match open_url(url) {
-            Ok(receiver) => {
-                self.opener_result = Some(receiver);
-                "Browser opener requested; outcome unknown".into()
-            }
-            Err(error) => error.to_string(),
-        };
-    }
-    fn launch(&mut self, path: &Path) {
-        self.message = match open_external(path) {
-            Ok(receiver) => {
-                self.opener_result = Some(receiver);
-                "External opener started; application outcome unknown".into()
-            }
-            Err(error) => format!("External opener failed: {error}"),
-        };
-    }
-    fn open_current(&mut self, folder: bool) {
-        if self.is_audit_mayhem() {
-            self.open_audit_finding();
-            return;
-        }
-        if self.view == View::Settings {
-            self.open(if folder { usize::MAX } else { self.selected });
-            return;
-        }
-        if let Some(path) = self.current_target_path(folder) {
-            self.launch(&path);
-        } else {
-            self.message = "Unavailable: no observed accessible target".into();
-        }
-    }
-    fn is_audit_mayhem(&self) -> bool {
-        self.view == View::Mayhem
-            && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
-    }
-    fn open_audit_finding(&mut self) {
-        let path = self
-            .audit
-            .as_ref()
-            .and_then(|a| a.finding_link(self.audit_selected, self.audit_finding_selected))
-            .map(Path::to_path_buf);
-        if let Some(path) = path {
-            self.launch(&path);
-        } else {
-            self.message =
-                "Native finding source link unavailable/unverified; report remains inspectable"
-                    .into();
-        }
-    }
-    fn current_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
-        if self.view == View::Mayhem {
-            return self.mayhem_target_path();
-        }
-        self.workshop_target_path(folder)
-    }
-    fn mayhem_target_path(&self) -> Option<std::path::PathBuf> {
-        if self.focus_projects {
-            self.project_data
-                .projects
-                .get(self.project_selected)
-                .filter(|p| p.exists)
-                .map(|p| p.path.clone())
-                .or_else(|| {
-                    self.project_data
-                        .worktrees
-                        .first()
-                        .filter(|w| w.available)
-                        .map(|w| w.path.clone())
-                })
-        } else {
-            self.project_data
-                .worktrees
-                .get(self.worktree_selected)
-                .filter(|w| w.available)
-                .map(|w| w.path.clone())
-        }
-    }
-    fn workshop_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
-        let project = self.project_data.projects.get(self.project_selected)?;
-        if folder && self.focus_projects {
-            return project.exists.then(|| project.path.clone());
-        }
-        let file = project
-            .files
-            .get(self.project_file_selected)
-            .filter(|f| f.available)?;
-        if folder {
-            file.path.parent().map(Path::to_path_buf)
-        } else {
-            Some(file.path.clone())
-        }
-    }
-    fn move_selection(&mut self, down: bool) {
-        if self.view == View::Mops {
-            step_index(&mut self.mops_selected, self.mops.tasks.len(), down);
-            return;
-        }
-        if self.is_audit_mayhem() {
-            let len = self.audit.as_ref().map_or(0, |a| a.tool_ids().len());
-            step_index(&mut self.audit_selected, len, down);
-            self.audit_finding_selected = 0;
-            return;
-        }
-        self.step_primary_selection(down);
-        if self.focus_projects {
-            self.project_file_selected = 0;
-        } else if self.view == View::Workshop {
-            self.expand_selected_workshop_group();
-        }
-    }
-    fn step_primary_selection(&mut self, down: bool) {
-        let (selected, len) = if self.view == View::Settings {
-            (&mut self.selected, self.data.files.len())
-        } else if self.focus_projects {
-            (&mut self.project_selected, self.project_data.projects.len())
-        } else if self.view == View::Mayhem {
-            (
-                &mut self.worktree_selected,
-                self.project_data.worktrees.len(),
-            )
-        } else {
-            (
-                &mut self.project_file_selected,
-                self.project_data
-                    .projects
-                    .get(self.project_selected)
-                    .map_or(0, |p| p.files.len()),
-            )
-        };
-        step_index(selected, len, down);
-    }
-    fn expand_selected_workshop_group(&mut self) {
-        if let Some(file) = self
-            .project_data
-            .projects
-            .get(self.project_selected)
-            .and_then(|p| p.files.get(self.project_file_selected))
-            && let Some(group) = ["Storyboard", "Animations", "Lyrics", "Studio"]
-                .iter()
-                .position(|g| *g == file.group)
-        {
-            self.collapsed[group] = false;
-        }
-    }
-    fn open(&mut self, index: usize) {
-        if data::inspect_row(index).is_some() {
-            self.details = true;
-            self.detail_scroll = 0;
-            return;
-        }
-        if index == usize::MAX {
-            let path = self.data.projects_root.as_deref().filter(|p| p.is_dir());
-            self.message = match path {
-                Some(path) => match open_external(path) {
-                    Ok(receiver) => {
-                        self.opener_result = Some(receiver);
-                        "External folder opener started; application outcome unknown".into()
-                    }
-                    Err(e) => format!("External opener failed: {e}"),
-                },
-                None => "Project root unavailable".into(),
-            };
-            return;
-        }
-        let Some(file) = self.data.files.get(index) else {
-            return;
-        };
-        let Some(path) = file.path.as_deref().filter(|p| {
-            file.found && std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_file())
-        }) else {
-            self.message = "Unavailable: no accessible external target".into();
-            return;
-        };
-        self.message = match open_external(path) {
-            Ok(receiver) => {
-                self.opener_result = Some(receiver);
-                "External opener started; application outcome unknown".into()
-            }
-            Err(e) => format!("External opener failed: {e}"),
-        };
+            .rev()
+            .find(|(r, _)| r.contains((mouse.column, mouse.row).into()))
+            .map(|(_, a)| *a),
+        _ => None,
     }
 }
-fn open_external(path: &Path) -> io::Result<std::sync::mpsc::Receiver<String>> {
-    // Canonical absolute filesystem arguments cannot become shell commands or URL schemes.
-    let path = path.canonicalize()?;
-    spawn_opener(path.as_os_str())
+
+fn update(
+    app: &mut App,
+    action: Action,
+    control: &activity::Control,
+    sender: &mpsc::Sender<Wake>,
+) -> bool {
+    let reset = matches!(
+        action,
+        Action::Select(_) | Action::Move(_) | Action::Pane(_)
+    );
+    match action {
+        Action::Quit => return true,
+        Action::Close => app.full = false,
+        Action::Details => app.full = !app.full,
+        Action::Select(i) => app.selected = i,
+        Action::Move(down) => {
+            app.selected = if down {
+                (app.selected + 1).min(app.tools().len().saturating_sub(1))
+            } else {
+                app.selected.saturating_sub(1)
+            }
+        }
+        Action::Pane(i) => app.pane = i,
+        Action::Scroll(down, lines) => {
+            app.scroll = if down {
+                app.scroll
+                    .saturating_add(lines)
+                    .min(app.content().lines().count().saturating_sub(1))
+            } else {
+                app.scroll.saturating_sub(lines)
+            }
+        }
+        Action::Pan(right) => {
+            app.column = if right {
+                app.column.saturating_add(8)
+            } else {
+                app.column.saturating_sub(8)
+            }
+        }
+        Action::Refresh if app.pane == 4 => {
+            if !app.reading {
+                app.reading = true;
+                let control = control.clone();
+                let sender = sender.clone();
+                std::thread::spawn(move || {
+                    let _ = sender.send(Wake::Activity(activity::read(&control)));
+                });
+            }
+        }
+        Action::Refresh => match read_report(&app.path) {
+            Ok(report) => {
+                let tool = app.tool()["tool"].as_str().map(str::to_owned);
+                app.report = report;
+                app.selected = tool
+                    .and_then(|id| app.tools().iter().position(|t| t["tool"] == id))
+                    .unwrap_or(0);
+                app.scroll = 0;
+                app.column = 0;
+                app.message = "Saved report reread; no analyzers run".into();
+            }
+            Err(error) => app.message = format!("Read failed; previous report retained: {error}"),
+        },
+    }
+    if reset {
+        app.scroll = 0;
+        app.column = 0;
+    }
+    false
 }
-fn open_url(url: &str) -> io::Result<std::sync::mpsc::Receiver<String>> {
-    if !url.starts_with("https://github.com/") || url.chars().any(char::is_control) {
-        return Err(io::Error::other(
-            "Only validated GitHub HTTPS links are supported",
+
+impl App {
+    fn tools(&self) -> &[Value] {
+        self.report["tools"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+    fn tool(&self) -> &Value {
+        self.tools().get(self.selected).unwrap_or(&Value::Null)
+    }
+    fn content(&self) -> String {
+        let tool = self.tool();
+        match self.pane {
+            0 => [tool["error"].as_str(), tool["stdout"].as_str(), tool["stderr"].as_str()].into_iter().flatten()
+                .filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n"),
+            1 => pretty(&json!({"tool":tool["tool"], "cwd":tool["cwd"], "scope":tool["scope"], "executable":tool["executable"], "args":tool["args"], "exit_code":tool["exit_code"], "signal":tool["signal"], "error":tool["error"]})),
+            2 => { let mut run = self.report.clone(); if let Some(object) = run.as_object_mut() { object.remove("tools"); } pretty(&run) },
+            3 => format!("Report: {}\nArtifacts: {}\n\n{}", self.path.display(), self.report["artifacts"].as_str().unwrap_or("Unknown"),
+                tool.get("native_report").map(|v| v["contents"].as_str().map(str::to_owned).unwrap_or_else(|| pretty(v))).unwrap_or_else(|| "No additional native report file recorded for this tool. stdout/stderr files remain in the artifact directory.".into())),
+            _ => pretty(&self.activity),
+        }
+    }
+}
+fn pretty(value: &Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_default()
+}
+fn clean(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\t')
+        .collect()
+}
+fn read_report(path: &Path) -> Result<Value, String> {
+    if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Err(format!(
+            "Expected a regular report file at {}",
+            path.display()
         ));
     }
-    spawn_opener(std::ffi::OsStr::new(url))
-}
-fn copy_text(text: &str) -> String {
-    if text.len() > 65536 {
-        return "Clipboard payload exceeds64KiB; inspect full native details".into();
-    }
-    if std::env::var("TERM").is_ok_and(|t| matches!(t.as_str(), "dumb" | "linux")) {
-        return "Clipboard unavailable: terminal OSC52 support required".into();
-    }
-    use crossterm::clipboard::{ClipboardSelection, ClipboardType, CopyToClipboard};
-    match execute!(
-        io::stdout(),
-        CopyToClipboard {
-            content: text,
-            destination: ClipboardSelection(vec![ClipboardType::Clipboard])
-        }
-    ) {
-        Ok(()) => {
-            "OSC52 copy requested; terminal permission/support not verified. Nothing executed."
-                .into()
-        }
-        Err(error) => format!("Clipboard request failed: {error}"),
-    }
-}
-fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receiver<String>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
     #[cfg(target_os = "linux")]
-    let mut cmd = Command::new("xdg-open");
-    #[cfg(target_os = "macos")]
-    let mut cmd = Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        let mut c = Command::new("explorer.exe");
-        c.arg("/select,");
-        c
-    };
-    let mut child = cmd
-        .arg(target)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
-    // Reap only this explicit desktop-opener child; no scan, timer or UI blocking.
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let message = match child.wait() {
-            Ok(status) if status.success() => {
-                "External opener exited successfully; application outcome unknown".into()
-            }
-            Ok(status) => format!("External opener failed: {status}"),
-            Err(error) => format!("External opener wait failed: {error}"),
-        };
-        let _ = sender.send(message);
-    });
-    Ok(receiver)
-}
-fn copy_resume(task: &handoff::Task) -> String {
-    match task.copyable_resume() {
-        Some(command) => copy_text(command),
-        None => "No copyable recorded resume command; nothing copied or executed".into(),
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(nix::libc::O_NONBLOCK);
     }
+    let file = options
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if !file
+        .metadata()
+        .is_ok_and(|m| m.is_file() && m.len() <= 32 * 1024 * 1024)
+    {
+        return Err("Expected a regular report up to 32 MiB".into());
+    }
+    let mut bytes = Vec::new();
+    file.take(32 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 32 * 1024 * 1024 {
+        return Err("Report grew beyond 32 MiB".into());
+    }
+    let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if value["schema"] != "magic.analyzers/1" || !value["tools"].is_array() {
+        return Err(
+            "Expected an existing magic.analyzers/1 report; run magic-cli audit first".into(),
+        );
+    }
+    Ok(value)
 }
-fn print_pr_report(args: &[String], index: usize) -> io::Result<()> {
-    let number = args
-        .get(index + 1)
-        .and_then(|s| s.parse::<u64>().ok())
-        .ok_or_else(|| io::Error::other("--mayhem-pr-report requires a PR number"))?;
-    let inputs = handoff::Inputs::parse(args)
-        .map_err(io::Error::other)?
-        .ok_or_else(|| io::Error::other("PR inputs required"))?;
-    let control = provider::Control::default();
-    let _lifecycle = provider::Owner(control.clone());
-    let snapshot = handoff::Snapshot::read(&inputs, &[], &control);
-    let task = snapshot
-        .tasks
-        .iter()
-        .find(|t| t.pr_number == number)
-        .ok_or_else(|| {
-            io::Error::other(
-                snapshot
-                    .error
-                    .unwrap_or_else(|| "Requested PR unavailable".into()),
+
+// The renderer reads state and returns fresh Action targets; it never changes selection.
+fn draw(frame: &mut ratatui::Frame, app: &App) -> (Hits, usize) {
+    let mut hits = Vec::new();
+    let area = frame.area();
+    let gold = Color::Rgb(245, 186, 56);
+    let ink = Color::Rgb(24, 15, 27);
+    let ivory = Color::Rgb(242, 222, 188);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(ink).fg(ivory)),
+        area,
+    );
+    if area.width < 45 || area.height < 12 {
+        frame.render_widget(
+            Paragraph::new("Backstage • resize to 45×12 • q quits"),
+            area,
+        );
+        return (hits, 1);
+    }
+    let bands = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(3),
+        Constraint::Min(4),
+        Constraint::Length(3),
+    ])
+    .split(area);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "BACKSTAGE / NATIVE REPORTS\n{} • revision {}",
+            clean(&app.path.display().to_string()),
+            clean(app.report["revision"].as_str().unwrap_or("Unknown"))
+        ))
+        .style(Style::default().fg(gold)),
+        bands[0],
+    );
+    let tabs = Layout::horizontal([Constraint::Percentage(20); 5]).split(bands[1]);
+    for (i, title) in PANES.iter().enumerate() {
+        frame.render_widget(
+            Block::bordered()
+                .title(*title)
+                .border_style(Style::default().fg(if i == app.pane { gold } else { ivory })),
+            tabs[i],
+        );
+        hits.push((tabs[i], Action::Pane(i)));
+    }
+    let body = if app.full {
+        bands[2]
+    } else {
+        let columns = Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
+            .split(bands[2]);
+        let capacity = columns[0].height.saturating_sub(3) as usize;
+        let start = app.selected.saturating_sub(capacity / 2);
+        let rows = app
+            .tools()
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(capacity)
+            .map(|(i, tool)| {
+                let outcome = tool["exit_code"]
+                    .as_i64()
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "Unknown".into());
+                Row::new(vec![
+                    clean(tool["tool"].as_str().unwrap_or("Unknown")),
+                    outcome,
+                ])
+                .style(if i == app.selected {
+                    Style::default().fg(gold)
+                } else {
+                    Style::default().fg(ivory)
+                })
+            });
+        frame.render_widget(
+            Table::new(
+                rows,
+                [Constraint::Percentage(65), Constraint::Percentage(35)],
             )
-        })?;
-    print!("{}", task.audit_unavailable());
-    Ok(())
-}
-fn configured_app(args: &[String]) -> io::Result<App> {
-    let audit_inputs = if args.iter().any(|a| a.starts_with("--audit-")) {
-        Some(audit::Inputs::parse(args).map_err(io::Error::other)?)
-    } else {
-        None
+            .header(Row::new(["Tool", "Exit"]).style(Style::default().fg(gold)))
+            .block(Block::bordered().title("Native outcomes")),
+            columns[0],
+        );
+        for (row, i) in (start..app.tools().len().min(start + capacity)).enumerate() {
+            hits.push((
+                Rect::new(
+                    columns[0].x + 1,
+                    columns[0].y + 2 + row as u16,
+                    columns[0].width.saturating_sub(2),
+                    1,
+                ),
+                Action::Select(i),
+            ));
+        }
+        columns[1]
     };
-    let mops_inputs = handoff::Inputs::parse(args).map_err(io::Error::other)?;
-    let mut app = App::new(audit_inputs);
-    if mops_inputs.is_some() {
-        app.view = View::Mops;
-        app.mops_inputs = mops_inputs;
-    }
-    if app.audit_inputs.is_some() {
-        app.project_data.source =
-            "Audit artifact session; native project observation not requested".into();
-        app.project_data.error = Some("Launch without audit flags for project observation".into());
-        app.data.provider_detail =
-            "Audit artifact session; configuration query not requested".into();
-    }
-    Ok(app)
-}
-
-fn step_index(selected: &mut usize, len: usize, down: bool) {
-    *selected = if down {
-        selected.saturating_add(1).min(len.saturating_sub(1))
-    } else {
-        selected.saturating_sub(1)
-    };
-}
-
-/// A background observation requests an immediate redraw; it never waits for a key.
-enum UiEvent {
-    Input(Event),
-    Redraw,
-    Shutdown,
-}
-fn receive_ui_event(
-    receiver: &std::sync::mpsc::Receiver<Wake>,
-    app: &mut App,
-) -> io::Result<UiEvent> {
-    match receiver
-        .recv()
-        .map_err(|_| io::Error::other("UI event channel closed"))?
-    {
-        Wake::Shutdown => Ok(UiEvent::Shutdown),
-        Wake::Terminal(input) => input.map(UiEvent::Input),
-        Wake::MopsObserved(snapshot) => {
-            app.mops_observed(*snapshot);
-            Ok(UiEvent::Redraw)
-        }
-        Wake::AuditObserved(result) => {
-            app.audit_observed(result);
-            Ok(UiEvent::Redraw)
-        }
-        Wake::Observed(snapshot, projects) => {
-            app.observed(*snapshot, *projects);
-            Ok(UiEvent::Redraw)
-        }
-    }
-}
-
-impl App {
-    fn poll_opener_result(&mut self) {
-        // Inspect only our explicit opener result on terminal input, never on a timer.
-        if let Some(receiver) = &self.opener_result
-            && let Ok(message) = receiver.try_recv()
-        {
-            self.message = message;
-            self.opener_result = None;
-        }
-    }
-    fn handle_input(
-        &mut self,
-        input: Event,
-        control: &provider::Control,
-        sender: &std::sync::mpsc::Sender<Wake>,
-    ) -> bool {
-        match input {
-            Event::Key(k) => {
-                if k.kind == KeyEventKind::Press {
-                    return self.handle_key_press(k.code, control, sender);
-                }
-                false
-            }
-            Event::Mouse(m) => {
-                if !self.details && m.kind == MouseEventKind::Down(MouseButton::Left) {
-                    self.handle_mouse_click(ratatui::layout::Position::new(m.column, m.row));
-                }
-                false
-            }
-            _ => false,
-        }
-    }
-    fn handle_key_press(
-        &mut self,
-        code: KeyCode,
-        control: &provider::Control,
-        sender: &std::sync::mpsc::Sender<Wake>,
-    ) -> bool {
-        if let Some(quit) = self.handle_details_key(code) {
-            return quit;
-        }
-        if self.handle_navigation_key(code)
-            || self.handle_audit_key(code)
-            || self.handle_mops_key(code)
-        {
-            return false;
-        }
-        self.handle_action_key(code, control, sender)
-    }
-    fn handle_details_key(&mut self, code: KeyCode) -> Option<bool> {
-        if !self.details && !matches!(code, KeyCode::Char('d' | 'q')) {
-            return None;
-        }
-        match code {
-            KeyCode::Esc => self.details = false,
-            KeyCode::Char('d') => self.toggle_details(),
-            KeyCode::Char('q') => return Some(true),
-            KeyCode::PageDown => self.detail_scroll = self.detail_scroll.saturating_add(5),
-            KeyCode::PageUp => self.detail_scroll = self.detail_scroll.saturating_sub(5),
-            _ => {}
-        }
-        Some(false)
-    }
-    fn handle_navigation_key(&mut self, code: KeyCode) -> bool {
-        match code {
-            KeyCode::Down | KeyCode::Char('j') => self.move_selection(true),
-            KeyCode::Up | KeyCode::Char('k') => self.move_selection(false),
-            KeyCode::Char(c @ '1'..='4') => self.toggle_workshop_group(c),
-            KeyCode::Tab => self.focus_projects = !self.focus_projects,
-            KeyCode::F(1) => self.view = View::Workshop,
-            KeyCode::F(2) => self.message = "Booth is not implemented".into(),
-            KeyCode::F(3) => self.view = View::Mops,
-            KeyCode::F(4) => self.view = View::Mayhem,
-            KeyCode::F(5) => self.view = View::Settings,
-            _ => return false,
-        }
-        true
-    }
-    fn handle_audit_key(&mut self, code: KeyCode) -> bool {
-        if self.view != View::Mayhem || self.audit_inputs.is_none() {
-            return false;
-        }
-        match code {
-            KeyCode::Char('B') => self.open_audit_json(true),
-            KeyCode::Char('C') => self.open_audit_json(false),
-            KeyCode::Char('[') => {
-                self.audit_finding_selected = self.audit_finding_selected.saturating_sub(1);
-            }
-            KeyCode::Char(']') => {
-                let n = self
-                    .audit
-                    .as_ref()
-                    .map_or(0, |a| a.finding_count(self.audit_selected));
-                step_index(&mut self.audit_finding_selected, n, true);
-            }
-            _ => return false,
-        }
-        true
-    }
-    fn open_audit_json(&mut self, baseline: bool) {
-        let path = self.audit.as_ref().map(|a| {
-            if baseline {
-                a.baseline.path.clone()
-            } else {
-                a.candidate.path.clone()
-            }
-        });
-        if let Some(path) = path {
-            self.launch(&path);
-        }
-    }
-    fn handle_mops_key(&mut self, code: KeyCode) -> bool {
-        if self.view != View::Mops {
-            return false;
-        }
-        let action = match code {
-            KeyCode::Enter | KeyCode::Char('o') => MopsAction::OpenPr,
-            KeyCode::Char('c') => MopsAction::CopyResume,
-            KeyCode::Char('f') => MopsAction::CopyFeedback,
-            KeyCode::Char('p') => MopsAction::OpenWorktree,
-            KeyCode::Char('l') => MopsAction::OpenRole,
-            KeyCode::Char('m') => MopsAction::ViewMayhem,
-            _ => return false,
-        };
-        self.mops_action(action);
-        true
-    }
-    fn handle_action_key(
-        &mut self,
-        code: KeyCode,
-        control: &provider::Control,
-        sender: &std::sync::mpsc::Sender<Wake>,
-    ) -> bool {
-        match code {
-            KeyCode::Char('q') | KeyCode::Esc => return true,
-            KeyCode::Enter | KeyCode::Char('o') => self.open_current(false),
-            KeyCode::Char('p') => self.open_current(true),
-            KeyCode::Char('r') => self.refresh(control.clone(), sender.clone()),
-            KeyCode::Char('a') if self.view == View::Mayhem => {
-                self.toggle_saved_audit(control, sender);
-            }
-            _ => {}
-        }
-        false
-    }
-    fn toggle_saved_audit(
-        &mut self,
-        control: &provider::Control,
-        sender: &std::sync::mpsc::Sender<Wake>,
-    ) {
-        if self.audit_inputs.is_some() {
-            self.audit_inputs = None;
-            self.audit = None;
-            self.audit_error = None;
-            return;
-        }
-        if let Some(inputs) = audit::Inputs::from_saved_analytics() {
-            self.audit_inputs = Some(inputs);
-            self.refresh(control.clone(), sender.clone());
+    let content = app.content();
+    let visible = content
+        .lines()
+        .skip(app.scroll)
+        .take(body.height.saturating_sub(2) as usize)
+        .map(|s| clean(s).chars().skip(app.column).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    frame.render_widget(
+        Paragraph::new(if content.is_empty() {
+            "No output recorded.".into()
         } else {
-            self.message = "No saved audit report; run magic-cli audit first".into();
-        }
-    }
-    fn toggle_workshop_group(&mut self, c: char) {
-        if self.view == View::Workshop
-            && let Some(digit) = c.to_digit(10)
-        {
-            let i = (digit - 1) as usize;
-            self.collapsed[i] = !self.collapsed[i];
-        }
-    }
-    fn toggle_details(&mut self) {
-        self.details = !self.details;
-        self.detail_scroll = 0;
-    }
-    fn handle_mouse_click(&mut self, p: ratatui::layout::Position) {
-        if self.handle_overlay_or_tab_click(p) {
-            return;
-        }
-        self.handle_row_or_button_click(p);
-    }
-    fn handle_overlay_or_tab_click(&mut self, p: ratatui::layout::Position) -> bool {
-        if let Some((_, action)) = self.mops_actions.iter().find(|(r, _)| r.contains(p)) {
-            self.mops_action(*action);
-        } else if let Some((_, i)) = self.mops_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.mops_selected = *i;
-        } else if let Some((_, i)) = self.audit_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.audit_selected = *i;
-            self.audit_finding_selected = 0;
-        } else if let Some((_, view)) = self.tabs.iter().find(|(r, _)| r.contains(p)) {
-            self.view = *view;
-        } else if let Some((_, path)) = self.project_buttons.iter().find(|(r, _)| r.contains(p)) {
-            let path = path.clone();
-            self.launch(&path);
+            visible
+        })
+        .block(Block::bordered().title(format!(
+            "{} • line {}",
+            PANES[app.pane],
+            app.scroll + 1
+        ))),
+        body,
+    );
+    let footer = Layout::vertical([Constraint::Length(1); 3]).split(bands[3]);
+    frame.render_widget(
+        Paragraph::new(clean(if app.reading {
+            "Reading native Herdr activity…"
         } else {
-            return false;
-        }
-        true
+            &app.message
+        }))
+        .style(Style::default().fg(gold)),
+        footer[0],
+    );
+    frame.render_widget(
+        Paragraph::new(
+            "↑↓ tool · 1–5/Tab views · PgUp/Dn page · [/] or wheel line · ←→ pan · d expand · r reread · q quit",
+        ),
+        footer[1],
+    );
+    let buttons = Layout::horizontal([
+        Constraint::Percentage(40),
+        Constraint::Percentage(30),
+        Constraint::Percentage(30),
+    ])
+    .split(footer[2]);
+    for (rect, (label, action)) in buttons.iter().zip(BUTTONS) {
+        frame.render_widget(
+            Paragraph::new(format!("[ {label} ]")).style(Style::default().fg(gold)),
+            *rect,
+        );
+        hits.push((*rect, action));
     }
-    fn handle_row_or_button_click(&mut self, p: ratatui::layout::Position) {
-        if let Some((_, i)) = self.group_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.collapsed[*i] = !self.collapsed[*i];
-        } else if let Some((_, i)) = self.worktree_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.worktree_selected = *i;
-            self.focus_projects = false;
-        } else if let Some((_, i)) = self.project_file_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.project_file_selected = *i;
-            self.focus_projects = false;
-        } else if let Some((_, i)) = self.project_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.project_selected = *i;
-            self.project_file_selected = 0;
-            self.focus_projects = true;
-        } else if let Some((_, i)) = self.buttons.iter().find(|(r, _)| r.contains(p)) {
-            self.open(*i);
-        } else if let Some((_, i)) = self.rows.iter().find(|(r, _)| r.contains(p)) {
-            self.selected = *i;
-        }
-    }
-}
-
-fn maybe_run_cli_report(args: &[String]) -> io::Result<bool> {
-    if let Some(index) = args.iter().position(|a| a == "--mayhem-pr-report") {
-        print_pr_report(args, index)?;
-        return Ok(true);
-    }
-    if args.iter().any(|a| a == "--mayhem-report") {
-        let input = audit::Inputs::parse(args).map_err(io::Error::other)?;
-        let report = input.load().map_err(io::Error::other)?;
-        let output = match input.tool_filter.as_deref() {
-            Some(tool) => report.markdown_tool(tool).map_err(io::Error::other)?,
-            None => report.markdown(),
-        };
-        print!("{output}");
-        return Ok(true);
-    }
-    Ok(false)
-}
-fn apply_color_flag(args: &[String]) {
-    match args
-        .iter()
-        .find(|a| a.starts_with("--color="))
-        .map(String::as_str)
-    {
-        Some("--color=always") => crossterm::style::force_color_output(true),
-        Some("--color=never") => crossterm::style::force_color_output(false),
-        _ => {}
-    }
-}
-fn spawn_terminal_reader(input_sender: std::sync::mpsc::Sender<Wake>) {
-    std::thread::spawn(move || {
-        loop {
-            let input = event::read();
-            let failed = input.is_err();
-            if input_sender.send(Wake::Terminal(input)).is_err() || failed {
-                break;
-            }
-        }
-    });
-}
-fn run_event_loop(
-    terminal: &mut ratatui::DefaultTerminal,
-    app: &mut App,
-    control: &provider::Control,
-    sender: &std::sync::mpsc::Sender<Wake>,
-    receiver: &std::sync::mpsc::Receiver<Wake>,
-) -> io::Result<()> {
-    loop {
-        app.poll_opener_result();
-        terminal.draw(|f| ui::draw(f, app))?;
-        let input = match receive_ui_event(receiver, app)? {
-            UiEvent::Input(input) => input,
-            UiEvent::Redraw => continue,
-            UiEvent::Shutdown => break Ok(()),
-        };
-        if app.handle_input(input, control, sender) {
-            break Ok(());
-        }
-    }
+    (hits, body.height.saturating_sub(2) as usize)
 }
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if maybe_run_cli_report(&args)? {
+    let mut path = std::env::current_dir()?
+        .ancestors()
+        .find(|p| p.join(".git").exists())
+        .unwrap_or(Path::new("."))
+        .join("target/analytics/analyzers.json");
+    let mut plain = false;
+    let mut tool = None;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                println!(
+                    "backstage [--audit-report PATH] [--audit-tool NAME] [--mayhem-report] [--color=always|never]\nReads existing reports. 1–5 select Output, Command, Run, Files, Activity. r in Activity queries the existing native adapter; other views only reread the report."
+                );
+                return Ok(());
+            }
+            "--audit-report" | "--audit-candidate" => {
+                path = args
+                    .next()
+                    .ok_or_else(|| io::Error::other("Report path required"))?
+                    .into()
+            }
+            "--audit-tool" => {
+                tool = Some(
+                    args.next()
+                        .ok_or_else(|| io::Error::other("Tool name required"))?,
+                )
+            }
+            "--mayhem-report" => plain = true,
+            "--color=always" => crossterm::style::force_color_output(true),
+            "--color=never" => crossterm::style::force_color_output(false),
+            _ => {
+                return Err(io::Error::other(format!(
+                    "Unsupported option {arg}; use --help. Backstage now only displays native analyzer reports and scoped activity."
+                )));
+            }
+        }
+    }
+    let report = read_report(&path).map_err(io::Error::other)?;
+    let filtered = tool.is_some();
+    let selected = match tool {
+        Some(tool) => report["tools"]
+            .as_array()
+            .and_then(|tools| tools.iter().position(|t| t["tool"] == tool))
+            .ok_or_else(|| io::Error::other("Requested tool is not in this report"))?,
+        None => report["tools"]
+            .as_array()
+            .and_then(|tools| tools.iter().position(|t| t["exit_code"] != 0))
+            .unwrap_or(0),
+    };
+    if plain {
+        println!(
+            "{}",
+            pretty(if filtered {
+                &report["tools"][selected]
+            } else {
+                &report
+            })
+        );
         return Ok(());
     }
-    apply_color_flag(&args);
-    let mut app = configured_app(&args)?;
-    let mut terminal = ratatui::init();
-    execute!(io::stdout(), EnableMouseCapture)?;
-    let control = provider::Control::default();
-    let _lifecycle = provider::Owner(control.clone());
-    let (sender, receiver) = std::sync::mpsc::channel();
-    // Drop closes the signal listener after normal exit or an early UI error.
+    let mut app = App {
+        path,
+        report,
+        selected,
+        pane: 0,
+        scroll: 0,
+        column: 0,
+        full: false,
+        activity: json!({"available":false,"error":"Press r in Activity to read the native Herdr snapshot. No session has been queried."}),
+        reading: false,
+        message: "Existing report loaded; no analyzers run. Activity is explicit and read-only."
+            .into(),
+    };
+    let control = activity::Control::default();
+    let _owner = activity::Owner(control.clone());
+    let (sender, receiver) = mpsc::channel();
     #[cfg(unix)]
-    let _shutdown = ShutdownSignals::new(sender.clone())?;
-    spawn_terminal_reader(sender.clone());
-    if app.view != View::Mops {
-        app.refresh(control.clone(), sender.clone());
-    }
-    let result = run_event_loop(&mut terminal, &mut app, &control, &sender, &receiver);
+    let mut signals = signal_hook::iterator::Signals::new([
+        signal_hook::consts::SIGHUP,
+        signal_hook::consts::SIGTERM,
+    ])?;
+    #[cfg(unix)]
+    let signal_handle = signals.handle();
+    #[cfg(unix)]
+    let signal_thread = {
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            if signals.forever().next().is_some() {
+                let _ = sender.send(Wake::Quit);
+            }
+        })
+    };
+    let mut terminal = ratatui::init();
+    let result = (|| -> io::Result<()> {
+        execute!(io::stdout(), event::EnableMouseCapture)?;
+        let input = sender.clone();
+        std::thread::spawn(move || {
+            loop {
+                let event = event::read();
+                let failed = event.is_err();
+                if input.send(Wake::Input(event)).is_err() || failed {
+                    break;
+                }
+            }
+        });
+        loop {
+            let mut rendered = (Vec::new(), 1);
+            terminal.draw(|frame| rendered = draw(frame, &app))?;
+            match receiver
+                .recv()
+                .map_err(|_| io::Error::other("Event channel closed"))?
+            {
+                Wake::Quit => break Ok(()),
+                Wake::Input(event) => {
+                    if input_action(&app, event?, &rendered.0, rendered.1)
+                        .is_some_and(|action| update(&mut app, action, &control, &sender))
+                    {
+                        break Ok(());
+                    }
+                }
+                Wake::Activity(result) => {
+                    app.reading = false;
+                    app.activity =
+                        result.unwrap_or_else(|error| json!({"available":false,"error":error}));
+                    app.message =
+                        "Native activity response read; unavailable fields remain unknown".into();
+                }
+            }
+        }
+    })();
     control.cancel();
-    let cleanup = execute!(io::stdout(), DisableMouseCapture);
+    let cleanup = execute!(io::stdout(), event::DisableMouseCapture);
     ratatui::restore();
+    #[cfg(unix)]
+    {
+        signal_handle.close();
+        let _ = signal_thread.join();
+    }
     result.and(cleanup)
+}
+
+// Bounded native activity call: existing process-group cancellation and output limits.
+mod activity {
+    use serde_json::Value;
+    use std::{
+        collections::HashSet,
+        io::Read,
+        process::{Command, Stdio},
+        sync::{Arc, Mutex, mpsc},
+        time::Duration,
+    };
+    const LIMIT: u64 = 1024 * 1024;
+    const DEADLINE: Duration = Duration::from_secs(10);
+    #[derive(Default)]
+    struct State {
+        closed: bool,
+        groups: HashSet<i32>,
+    }
+    #[derive(Clone, Default)]
+    pub struct Control(Arc<Mutex<State>>);
+    pub struct Owner(pub Control);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.cancel();
+        }
+    }
+    impl Control {
+        pub fn cancel(&self) {
+            let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            state.closed = true;
+            for group in state.groups.drain() {
+                stop(group);
+            }
+        }
+    }
+    struct Group {
+        control: Control,
+        id: i32,
+    }
+    impl Group {
+        fn stop(&self) {
+            let mut state = self.control.0.lock().unwrap_or_else(|e| e.into_inner());
+            if state.groups.remove(&self.id) {
+                stop(self.id);
+            }
+        }
+    }
+    impl Drop for Group {
+        fn drop(&mut self) {
+            self.stop();
+        }
+    }
+    #[cfg(target_os = "linux")]
+    fn stop(group: i32) {
+        if group > 1 {
+            let _ = nix::sys::signal::killpg(
+                nix::unistd::Pid::from_raw(group),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    fn stop(_: i32) {}
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn read(_: &Control) -> Result<Value, String> {
+        Err("Scoped native activity observation currently supports Linux only".into())
+    }
+    #[cfg(target_os = "linux")]
+    pub fn read(control: &Control) -> Result<Value, String> {
+        use std::os::unix::fs::FileTypeExt;
+        if !std::fs::symlink_metadata("/dev/null").is_ok_and(|m| m.file_type().is_char_device()) {
+            return Err("/dev/null isolation unavailable".into());
+        }
+        let sibling = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.join("magic-cli")))
+            .filter(|p| p.is_file());
+        let mut command = Command::new(sibling.unwrap_or_else(|| "magic-cli".into()));
+        command.args([
+            "--session-file",
+            "/dev/null",
+            "exec",
+            "mayhem.evidence",
+            "--params",
+            "{\"activity_only\":true}",
+        ]);
+        let bytes = run(control, command)?;
+        let value: Value = serde_json::from_slice(&bytes)
+            .map_err(|e| format!("Invalid native activity JSON: {e}"))?;
+        value
+            .get("activity")
+            .filter(|v| v.is_object())
+            .cloned()
+            .ok_or_else(|| "Missing native activity object".into())
+    }
+    #[cfg(target_os = "linux")]
+    fn spawn_grouped(
+        control: &Control,
+        mut command: Command,
+    ) -> Result<(std::process::Child, Group), String> {
+        use std::os::unix::process::CommandExt;
+        // Hold the lifecycle lock through spawn+registration: quit cannot miss a child.
+        let mut state = control.0.lock().unwrap_or_else(|e| e.into_inner());
+        if state.closed {
+            return Err("Provider cancelled".into());
+        }
+        let child = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    "Command absent: native executable is not installed".into()
+                } else {
+                    format!("Provider launch error: {e}")
+                }
+            })?;
+        let group = i32::try_from(child.id()).map_err(|_| "Provider process id out of range")?;
+        state.groups.insert(group);
+        drop(state);
+        Ok((
+            child,
+            Group {
+                control: control.clone(),
+                id: group,
+            },
+        ))
+    }
+    #[cfg(target_os = "linux")]
+    fn format_failure(status: std::process::ExitStatus, stderr: &[u8]) -> String {
+        let detail = String::from_utf8_lossy(stderr).replace(char::is_control, " ");
+        let missing_backend = detail.contains("magic-studio")
+            && (detail.contains("not found")
+                || detail.contains("Could not find")
+                || detail.contains("not installed"));
+        let category = if missing_backend {
+            "Native backend absent"
+        } else {
+            "Provider error"
+        };
+        format!(
+            "{category}: {status}: {}",
+            detail.chars().take(1000).collect::<String>()
+        )
+    }
+    #[cfg(target_os = "linux")]
+    fn validate_output(
+        status: std::process::ExitStatus,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+    ) -> Result<Vec<u8>, String> {
+        if stdout.len() > LIMIT as usize || stderr.len() > LIMIT as usize {
+            return Err("Provider output exceeded 1 MiB bound".into());
+        }
+        if !status.success() {
+            return Err(format_failure(status, &stderr));
+        }
+        Ok(stdout)
+    }
+    #[cfg(target_os = "linux")]
+    fn run(control: &Control, command: Command) -> Result<Vec<u8>, String> {
+        let (mut child, group_guard) = spawn_grouped(control, command)?;
+        let group = group_guard.id;
+        let stdout = child.stdout.take().ok_or("Provider stdout unavailable")?;
+        let stderr = child.stderr.take().ok_or("Provider stderr unavailable")?;
+        let out = read_pipe(stdout);
+        let err = read_pipe(stderr);
+        let (tx, rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (reaped_tx, reaped_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            use nix::sys::wait::{Id, WaitPidFlag, waitid};
+            // Observe completion without reaping: the zombie leader reserves its PID/PGID
+            // until group cleanup+unregistration, so a reused unrelated group cannot be hit.
+            let observed = waitid(
+                Id::Pid(nix::unistd::Pid::from_raw(group)),
+                WaitPidFlag::WEXITED | WaitPidFlag::WNOWAIT,
+            );
+            let _ = tx.send(observed);
+            let _ = release_rx.recv();
+            let _ = reaped_tx.send(child.wait());
+        });
+        let observed = rx.recv_timeout(DEADLINE);
+        group_guard.stop();
+        let _ = release_tx.send(());
+        let reaped = reaped_rx.recv_timeout(Duration::from_secs(2));
+        let stdout = out
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| "Provider stdout cleanup deadline exceeded")??;
+        let stderr = err
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| "Provider stderr cleanup deadline exceeded")??;
+        observed
+            .map_err(|_| "Provider timeout: isolated CLI/native process group stopped")?
+            .map_err(|e| format!("Provider completion observation failed: {e}"))?;
+        let status = reaped
+            .map_err(|_| "Provider reap deadline exceeded")?
+            .map_err(|e| format!("Provider wait error: {e}"))?;
+        validate_output(status, stdout, stderr)
+    }
+
+    fn bounded(input: impl Read) -> Result<Vec<u8>, String> {
+        let mut bytes = Vec::new();
+        input
+            .take(LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("Provider pipe error: {e}"))?;
+        Ok(bytes)
+    }
+
+    fn read_pipe(input: impl Read + Send + 'static) -> mpsc::Receiver<Result<Vec<u8>, String>> {
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(bounded(input));
+        });
+        receiver
+    }
 }
