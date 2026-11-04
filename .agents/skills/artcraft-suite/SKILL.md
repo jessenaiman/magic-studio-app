@@ -1,37 +1,36 @@
 ---
 name: artcraft-suite
-description: Use when a task involves any ArtCraft app (Magic Studio, PhotoCraft, EffectCraft, FilmCraft, VectorCraft, TextureCraft, FigCraft, DesignCraft, CADCraft, DeckCraft, GridCraft, LightCraft, PdfCraft, SoundCraft, WordCraft, Craft Anything) — picking the app, driving it, or checking what it can do. Learn from the apps, not the text.
+description: Discover and use apps installed through ArtCraft Launcher, including community apps, and Magic Studio. Use for selecting an app, opening it, or checking its live commands.
 ---
 
 # ArtCraft suite
 
-Learn from the apps, not the text. Each app ships a live `--help` and a
-command catalogue; both always match the installed binary, and both correct
-you when you guess. Run them before driving an app; never trust remembered or
-written tool lists — they go stale the moment an app updates.
+Use the installed apps as the source of truth; this skill is not an app catalogue.
 
-One line per app — read the app itself:
+1. For an app the user named, resolve its version-independent terminal command
+   with `command -v <app>` / `command -v <app>-cli`. Read that CLI's `--help`,
+   then only the relevant commands or subcommand help it advertises. Do not
+   assume every app exposes the same catalogue command or CLI interface.
+2. When choosing an app or confirming installation, read the relevant entries
+   in `~/.local/share/artcraft-launcher/installed.json`. Include community apps
+   listed there, such as SolidCraft; the publisher does not exclude an app.
+   Use stable terminal commands rather than the record's versioned file paths.
+3. Magic Studio is installed separately: start with `magic-cli --help` and
+   `magic-cli commands <relevant filter>`; use `magic` to open the app when
+   requested. For project creation and storyboard behavior, read the maintained
+   `apps/magic-cli/SKILL.md` in this checkout. App discovery alone does not prove
+   a project workflow is implemented or working.
 
-- magicstudio — storyboard, animation, lyrics, and song-video studio — `magic-cli --help` + `magic-cli commands`
-- photocraft — raster image editor — `photocraft-cli --help` + `photocraft-cli commands`
-- effectcraft — motion-graphics compositor — `effectcraft-cli --help` + `effectcraft-cli commands`
-- filmcraft — NLE video editor — `filmcraft-cli --help` + `filmcraft-cli commands`
-- vectorcraft — vector illustration, incl. imageTrace raster→vector — `vectorcraft-cli --help` + `vectorcraft-cli commands`
-- texturecraft — 3D texture painting & mesh-map baking — `texturecraft-cli --help` + `texturecraft-cli commands`
-- figcraft — Figma-class UI design — `figcraft-cli --help` + `figcraft-cli commands`
-- designcraft — page layout & graphic documents — `designcraft-cli --help` + `designcraft-cli commands`
-- cadcraft — 2D/3D CAD drafting — `cadcraft-cli --help` + `cadcraft-cli commands`
-- deckcraft — presentations (.deckcraft/.pptx) — `deckcraft-cli --help` + `deckcraft-cli commands`
-- gridcraft — spreadsheets, formulas, charts — `gridcraft-cli --help` + `gridcraft-cli commands`
-- lightcraft — photo library & RAW developer — `lightcraft-cli --help` + `lightcraft-cli commands`
-- pdfcraft — PDF edit/OCR/render — `pdfcraft-cli --help` + `pdfcraft-cli tools`
-- soundcraft — multitrack audio editor — `soundcraft-cli --help` + `soundcraft-cli commands`
-- wordcraft — word processor & document conversion — `wordcraft-cli --help` + `wordcraft-cli commands`
-- craft-anything — agentic triage, investigation & rebuild — `craft-anything-cli --help` + `craft-anything-cli commands`
+Keep discovery scoped to the requested task. Do not load every app's help,
+search old source checkouts, or inventory AppImages to open a named app. Ask
+when the intended app or creative requirement is unclear. Launcher updates
+change the installed record and live help; no version list belongs in this skill.
 
-Solidcraft is third-party (`io.tangencylabs`), not part of this suite.
-
-When a new version ships, re-extract the CLI from the AppImage
-(`usr/bin/<app>-cli`) into `~/.local/share/<app>/<version>/` and repoint the
-`~/.local/bin/<app>-cli` symlink. Installed versions are recorded in
+The user installs and updates these apps through the official ArtCraft Launcher.
+Use the existing version-independent app and CLI commands on PATH. Do not pin
+versions, invoke versioned AppImage paths, extract replacement CLIs, or repoint
+installed command links. Access to an app does not authorize installation,
+reinstallation, updates, or configuration changes; those require a separate
+explicit user request. If a command fails, report the exact error and ask before
+changing the installation. Installed apps are recorded in
 `~/.local/share/artcraft-launcher/installed.json`.

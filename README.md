@@ -14,15 +14,72 @@ desktop workspace. The native app, CLI, and MCP share the same Rust engine.
 [Install](#install) · [Production guide](MAGIC-STUDIO.md) ·
 [Documentation](docs/README.md) · [Contributing](#contributing)
 
+## Document ownership and save/load contract
+
+These are product decisions for the ongoing refactor, not a claim that every
+existing screen already implements them.
+
+| Data | Authoritative file | Save owner |
+|---|---|---|
+| Magic project details, document paths and content links | `.magic` (JSON) | Magic Studio |
+| Application preferences and machine-specific settings | Separate user `settings.json` | Magic Studio settings |
+| Editable storyboard | Format decision pending DeckCraft / DesignCraft feature comparison | Selected document app |
+| Editable animations | `.ecproj` | EffectCraft |
+| The project's one linked film | `.fcproj` | FilmCraft |
+
+**The storyboard format is not yet approved.** Compare DeckCraft and DesignCraft
+for layered content, production fields, scene insertion and stable references,
+pacing, and image/audio/video use before locking one canonical format here.
+Existing `.deckcraft` files remain unchanged during this investigation. Preserve editable
+objects, grouping, order and visibility so production overlays can be hidden to
+reveal the original creative. A `.potx` is an input template, not the storyboard
+project. `.pptx` is optional interchange through DeckCraft, not a second source
+of truth. Do not silently change formats, migrate existing projects, or replace
+the source document with a flattened image or PDF.
+
+The Storyboard view follows the linked source document. Complete editing
+opens that same document in its owning app. Magic's production controls dispatch
+designer actions through `magic-cli` to the owning app. Display rendering belongs
+to the document app. DeckCraft's `file.render` has been verified to return a view
+in memory, without a Magic-managed export-file pipeline; the equivalent must
+be verified for any other candidate. DesignCraft documents an equivalent
+`ui.render` method, but it has not yet been exercised in this comparison.
+This is a rendered document view, not a
+promise to embed a full external editor. Refresh after source edits; retain
+the source artwork and editable overlays.
+
+Saving a Magic project writes only Magic-owned metadata and links. It does not
+serialize, rewrite, render, export or implicitly save another app's document.
+Native-document saves and exports are explicit actions owned by that app.
+Store project-relative links where possible so projects can be shared. Keep
+machine-specific preferences outside shared project files.
+
+Rust reads these records into typed data structures; JSON is a serialization
+choice, not a reason to combine project documents and global settings. Keep
+their schemas small and versioned. Workflow prerequisites and command results
+must be enforced by the application; Markdown instructions describe that
+workflow rather than acting as its execution engine.
+
+The format comparison must cover a production storyboard, not only a layered
+picture: editable art and overlays; image and motion prompts; locations,
+characters and asset references; verse/lyric cues; audio/video references;
+duration and timecode; and inserting or moving scenes without breaking links.
+Scene identity must remain stable when its display number or position changes.
+Confirm whether audio/video must play in the source document or may open in
+Magic/FilmCraft before selecting the canonical format. Placed-artwork internal
+layers and separate document objects/layers are different capabilities and
+must be tested separately. No candidate is approved by its feature list alone.
+
 ## Storyboard: turn a song into a scene plan
 <!-- EDITORIAL: Insert a real Storyboard capture with authored scenes and artwork.
 Use the natural app-view proportions; keep navigation and useful controls visible.
 Give the image descriptive alt text and retain relevant artwork/song credits. -->
 
-Choose **File → New Project** (`Ctrl+N`), or open an existing `.magic` project.
-In **Storyboard**, bring together the recording, timed lyrics, scene descriptions,
-and artwork. Browse the scene pages and use **Save new version** to keep the plan.
-The storyboard remains an editable DeckCraft document.
+The intended Storyboard view brings together the recording, timed lyrics,
+scene descriptions and artwork through the linked source document.
+Browse its pages in Magic and open the same file in its owning app for complete
+editing. The approved creative layout and how verses map to scene pages must
+be specified explicitly; choosing a file format does not approve a template.
 
 ## Animation: bring artwork to life
 <!-- EDITORIAL: Insert a real Animation capture with a prepared character,
