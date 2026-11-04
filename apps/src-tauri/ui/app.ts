@@ -65,18 +65,7 @@ const ICONS = {
   pause: '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>',
 };
 
-// The app's one mutable state bag. Fields below are the ones set at startup; views add the rest
-// (storyboardScene, lyrics, creating, ...) as they run, hence the open index signature.
-interface AppState {
-  project: string | null;
-  data: any;
-  page: number;
-  open: string | null;
-  view: string;
-  blocksCollapsed: boolean;
-  [key: string]: any;
-}
-let state: AppState = { project: null, data: null, page: 0, open: "song", view: "project", blocksCollapsed: false };
+
 
 function updateMagicSelection() {
   const layer = motion?.meta?.layers?.find((part) => part.id === motion.selected);
@@ -384,7 +373,6 @@ const SONG_SECTIONS = ['lyrics', 'transcript'];
 
 // What each workspace does when it opens. Wrapped in arrows: the views load after this file.
 const WORKSPACE_OPENERS: Record<string, () => unknown> = {
-  project: () => renderProjectList(),
   storyboard: () => renderStoryboard(),
   animation: () => animationOpen(),
   design: () => wordsOpen(),
