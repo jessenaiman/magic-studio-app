@@ -15,7 +15,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     app.project_rows.clear();
     app.project_file_rows.clear();
     app.worktree_rows.clear();
-    app.project_buttons.clear();
+    app.open_button = None;
     app.rows.clear();
     let area = f.area();
     f.render_widget(
@@ -101,23 +101,24 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         false,
     );
     let open = Rect::new(help.right(), help.y, 8, 1);
-    let target = if app.is_audit_mayhem() {
+    let available = if app.view == View::Mops {
+        app.mops.tasks.get(app.mops_selected).is_some()
+    } else if app.is_audit_mayhem() {
         app.audit
             .as_ref()
             .and_then(|a| a.artifact(app.audit_selected))
+            .is_some()
     } else {
-        app.current_target_path(false)
+        app.current_target_path(false).is_some()
     };
     text(
         f,
         open,
         "[ Open ]",
-        if target.is_some() { GOLD } else { MUTED },
+        if available { GOLD } else { MUTED },
         false,
     );
-    if let Some(path) = target {
-        app.project_buttons.push((open, path));
-    }
+    app.open_button = available.then_some(open);
     if app.details {
         details(f, app, area);
     }

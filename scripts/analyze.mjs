@@ -1,6 +1,6 @@
 // Native tools own findings. This runner only records commands, raw output and exit status.
 import {spawnSync} from 'node:child_process';
-import {mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, existsSync, statSync} from 'node:fs';
+import {mkdirSync, openSync, closeSync, readFileSync, writeFileSync, renameSync, existsSync, statSync, realpathSync} from 'node:fs';
 import {join, relative, extname} from 'node:path';
 
 const commands = [
@@ -14,10 +14,14 @@ const commands = [
   ['purgecss', 'purgecss -c purgecss.config.cjs'],
   ['scope', 'git diff --stat=160'],
 ];
-const {root, target = root, quick = false, tools = [], base = 'HEAD', dry_run = false} = JSON.parse(process.argv[2]);
+const {root: rootInput, target: targetInput = rootInput, quick = false, tools = [], base = 'HEAD', dry_run = false} = JSON.parse(process.argv[2]);
+const root = realpathSync(rootInput), target = realpathSync(targetInput);
 const defaults = {'.rs': ['clippy'], '.css': ['stylelint'], '.ts': ['tsc', 'eslint'], '.js': ['tsc', 'eslint'], '.mjs': ['tsc', 'eslint']};
 const selected = tools.length ? tools : quick ? defaults[extname(target)] || ['tsc', 'eslint', 'stylelint'] : commands.map(([name]) => name);
 if (selected.some(name => !commands.some(([known]) => name === known))) throw Error('Unknown analyzer selection');
+// Resolve one commit with option parsing disabled; only its verified object ID reaches diff.
+const revision = selected.includes('scope') ? spawnSync('git', ['rev-parse', '--verify', '--end-of-options', `${base}^{commit}`], {cwd: root, encoding: 'utf8'}) : null;
+if (revision && (revision.status !== 0 || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision.stdout.trim()))) throw Error(`Invalid Git base: ${revision.error?.message || revision.stderr.trim()}`);
 const folder = join(root, 'target/analytics/analyzer-runs', `${Date.now()}-${process.pid}`);
 if (!dry_run) mkdirSync(folder, {recursive: true});
 const reportFile = path => {
@@ -30,10 +34,10 @@ for (const [tool, command] of commands.filter(([name]) => selected.includes(name
   const [program, ...args] = command.split(' ');
   const directory = statSync(target).isDirectory();
   const scope = ['clippy', 'tsc', 'purgecss'].includes(tool) ? root : tool === 'wallace' && directory ? join(root, 'apps/src-tauri/ui/style.css') : target;
-  if (tool === 'scope') args.push(base, '--', target);
+  if (tool === 'scope') args.push(revision.stdout.trim(), '--', target);
   else if (tool === 'jscpd') args.push(join(folder, 'jscpd'), target);
   else if (tool === 'stylelint') args.push(directory ? join(target, '**/*.css') : target);
-  else if (tool === 'wallace') args.push(relative(root, scope));
+  else if (tool === 'wallace') args.push(`./${relative(root, scope)}`);
   else if (!['clippy', 'tsc', 'purgecss'].includes(tool)) args.push(target);
   const local = join(root, 'node_modules/.bin', program);
   const executable = existsSync(local) ? local : program;

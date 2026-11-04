@@ -126,7 +126,7 @@ struct App {
     project_rows: Vec<(Rect, usize)>,
     project_file_rows: Vec<(Rect, usize)>,
     worktree_rows: Vec<(Rect, usize)>,
-    project_buttons: Vec<(Rect, std::path::PathBuf)>,
+    open_button: Option<Rect>,
     tabs: Vec<(Rect, View)>,
     data: data::Snapshot,
     refreshing: bool,
@@ -173,7 +173,7 @@ impl App {
             project_rows: vec![],
             project_file_rows: vec![],
             worktree_rows: vec![],
-            project_buttons: vec![],
+            open_button: None,
             tabs: vec![],
             data: data::Snapshot::read(),
             refreshing: false,
@@ -514,6 +514,14 @@ impl App {
         };
     }
     fn open_current(&mut self, folder: bool) {
+        if self.view == View::Mops {
+            self.mops_action(if folder {
+                MopsAction::OpenWorktree
+            } else {
+                MopsAction::OpenPr
+            });
+            return;
+        }
         if self.is_audit_mayhem() {
             self.open_audit_artifact();
             return;
@@ -544,10 +552,18 @@ impl App {
         }
     }
     fn current_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
-        if self.view == View::Mayhem {
-            return self.mayhem_target_path();
+        match self.view {
+            View::Workshop => self.workshop_target_path(folder),
+            View::Mayhem => self.mayhem_target_path(),
+            View::Settings => self
+                .data
+                .files
+                .get(self.selected)
+                .filter(|file| file.found)
+                .and_then(|file| file.path.clone())
+                .filter(|p| p.is_file()),
+            View::Mops => None,
         }
-        self.workshop_target_path(folder)
     }
     fn mayhem_target_path(&self) -> Option<std::path::PathBuf> {
         if self.focus_projects {
@@ -1020,6 +1036,9 @@ impl App {
         self.detail_scroll = 0;
     }
     fn handle_mouse_click(&mut self, p: ratatui::layout::Position) {
+        if self.details {
+            return;
+        }
         if self.handle_overlay_or_tab_click(p) {
             return;
         }
@@ -1035,9 +1054,8 @@ impl App {
             self.audit_scroll = 0;
         } else if let Some((_, view)) = self.tabs.iter().find(|(r, _)| r.contains(p)) {
             self.view = *view;
-        } else if let Some((_, path)) = self.project_buttons.iter().find(|(r, _)| r.contains(p)) {
-            let path = path.clone();
-            self.launch(&path);
+        } else if self.open_button.is_some_and(|r| r.contains(p)) {
+            self.open_current(false);
         } else {
             return false;
         }
