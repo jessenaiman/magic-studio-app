@@ -384,6 +384,7 @@ const SONG_SECTIONS = ['lyrics', 'transcript'];
 
 // What each workspace does when it opens. Wrapped in arrows: the views load after this file.
 const WORKSPACE_OPENERS: Record<string, () => unknown> = {
+  project: () => renderProjectList(),
   storyboard: () => renderStoryboard(),
   animation: () => animationOpen(),
   design: () => wordsOpen(),
