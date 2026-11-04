@@ -123,7 +123,9 @@ are unchanged by this structural reduction.
 
 ## Observed verification and size
 
-No new tests. Real 100×24 terminal interaction covered keyboard/mouse tool and
+No new tests. Review also verified that FIFO and malformed report inputs are
+rejected promptly; Linux report opens are nonblocking before descriptor checks.
+Header/status text is sanitized for display. Real 100×24 terminal interaction covered keyboard/mouse tool and
 view selection, all five views, vertical/horizontal scrolling, expand/close,
 report rereading, native Activity response and Quit. The real nine-tool report's
 checksum was unchanged. Plain whole-report output matched its input; selected
@@ -140,14 +142,14 @@ generated files and documentation are excluded on both sides.
 
 | Scope | Before | After |
 | --- | ---: | ---: |
-| Whole Backstage, baseline `9b36324` | 8,355 | 722 |
-| Whole Backstage, previous published `7f5d8ee` | 4,279 | 722 |
+| Whole Backstage, baseline `9b36324` | 8,355 | 737 |
+| Whole Backstage, previous published `7f5d8ee` | 4,279 | 737 |
 | Source files, previous published | 14 | 1 |
 
-The 722 lines include the native Activity process lifecycle and limits, not just
+The 737 lines include the native Activity process lifecycle and limits, not just
 rendering. The unchanged analyzer script is 73 lines and its Rust bridge 58;
 Herdr adapter 78, engine report reader 61, desktop Mayhem 138 (408 combined).
 Existing shared ECharts renderer (60), Mayhem CSS (69), MCP transport (178), CLI,
 registry and component files are retained; their unrelated code is not called
 audit-only code or counted as Backstage. For the earlier explicit broader union,
-including those whole shared files, source shrank from 16,102 to 6,088 lines.
+including those whole shared files, source shrank from 16,102 to 6,103 lines.

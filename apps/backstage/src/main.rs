@@ -11,7 +11,7 @@ use ratatui::{
 };
 use serde_json::{Value, json};
 use std::{
-    fs::File,
+    fs::OpenOptions,
     io::{self, Read},
     path::{Path, PathBuf},
     sync::mpsc,
@@ -187,7 +187,22 @@ fn clean(value: &str) -> String {
         .collect()
 }
 fn read_report(path: &Path) -> Result<Value, String> {
-    let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Err(format!(
+            "Expected a regular report file at {}",
+            path.display()
+        ));
+    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(nix::libc::O_NONBLOCK);
+    }
+    let file = options
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     if !file
         .metadata()
         .is_ok_and(|m| m.is_file() && m.len() <= 32 * 1024 * 1024)
@@ -238,8 +253,8 @@ fn draw(frame: &mut ratatui::Frame, app: &App) -> Hits {
     frame.render_widget(
         Paragraph::new(format!(
             "BACKSTAGE / NATIVE REPORTS\n{} • revision {}",
-            app.path.display(),
-            app.report["revision"].as_str().unwrap_or("Unknown")
+            clean(&app.path.display().to_string()),
+            clean(app.report["revision"].as_str().unwrap_or("Unknown"))
         ))
         .style(Style::default().fg(gold)),
         bands[0],
@@ -327,11 +342,11 @@ fn draw(frame: &mut ratatui::Frame, app: &App) -> Hits {
     );
     let footer = Layout::vertical([Constraint::Length(1); 3]).split(bands[3]);
     frame.render_widget(
-        Paragraph::new(if app.reading {
+        Paragraph::new(clean(if app.reading {
             "Reading native Herdr activity…"
         } else {
             &app.message
-        })
+        }))
         .style(Style::default().fg(gold)),
         footer[0],
     );
