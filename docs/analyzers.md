@@ -152,6 +152,12 @@ the selected PR URL; Settings used its selected settings.json, matching Enter.
 The latter used temporary process-scoped XDG configuration created through
 project.root; no existing user settings were changed. The native opener exited
 3 in this environment, so successful application opening is not claimed.
+A further native terminal pass used a CLI-created project and CLI-imported image
+in a separate cloud directory with private process-scoped configuration. It
+verified mouse/keyboard Mayhem entry, visible selection after group collapse,
+empty-file Open disabled, and project-pane Enter targeting the .magic file.
+Actual opener completion redrew without further input. No user project or
+existing settings were changed.
 
 ## Implementation size
 
@@ -161,21 +167,21 @@ union is used before/after; documentation, generated output, dependencies and
 reports are excluded on both sides. No new tests were added or run.
 
 Whole Backstage means every Rust source under `apps/backstage/src`, including
-unchanged handoff code and the new shared widgets: **8,355 → 4,232** lines
-(49.3% removed). It is not a fourfold reduction. Removed presentation modules
+unchanged handoff code and the new shared widgets: **8,355 → 4,272** lines
+(48.9% removed). It is not a fourfold reduction. Removed presentation modules
 are replaced by shared widgets and small views; provider/handoff functionality
-remains. Its 4,232 lines comprise:
+remains. Its 4,272 lines comprise:
 
-- Main lifecycle/input: 1,165; real project/settings observations: 883;
+- Main lifecycle/input: 1,201; real project/settings observations: 883;
   bounded process provider: 330; unchanged PR handoff/parser/input: 826.
-- Four views and navigation: 712; shared widgets: 125; native report reader: 191.
+- Four views and navigation: 716; shared widgets: 125; native report reader: 191.
 
 The dedicated runner, Rust bridge, Herdr adapter, engine report reader and desktop
 Mayhem view total **408** lines (73 + 58 + 78 + 61 + 138). Backstage's report
 reader/view add 398, including its inventory presentation. These totals do not
 hide shared wiring: the complete scoped file union below includes entire CLI,
 registry, component and Backstage files, even their unrelated retained code.
-Thus its 9,598 lines are not 9,598 lines of audit logic. The unchanged ECharts
+Thus its 9,638 lines are not 9,638 lines of audit logic. The unchanged ECharts
 renderer (60), Mayhem stylesheet (69), and MCP transport (178) are shared
 existing code outside this changed-file union, retained on both sides.
 
@@ -203,7 +209,7 @@ existing code outside this changed-file union, retained on both sides.
 | `apps/backstage/src/handoff/imports.rs` | 149 | 149 |
 | `apps/backstage/src/handoff/input.rs` | 113 | 113 |
 | `apps/backstage/src/handoff/pr.rs` | 327 | 327 |
-| `apps/backstage/src/main.rs` | 1,150 | 1,165 |
+| `apps/backstage/src/main.rs` | 1,150 | 1,201 |
 | `apps/backstage/src/mayhem.rs` | 1,845 | 207 |
 | `apps/backstage/src/mops.rs` | 50 | 110 |
 | `apps/backstage/src/mops/cast.rs` | 100 | 0 |
@@ -214,6 +220,6 @@ existing code outside this changed-file union, retained on both sides.
 | `apps/backstage/src/project_data.rs` | 497 | 502 |
 | `apps/backstage/src/provider.rs` | 327 | 330 |
 | `apps/backstage/src/ui.rs` | 989 | 284 |
-| `apps/backstage/src/workshop.rs` | 717 | 111 |
+| `apps/backstage/src/workshop.rs` | 717 | 115 |
 | `apps/backstage/src/widgets.rs` | 0 | 125 |
-| **Full file union** | **16,102** | **9,598** |
+| **Full file union** | **16,102** | **9,638** |

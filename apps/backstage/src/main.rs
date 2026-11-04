@@ -46,6 +46,7 @@ use std::{io, path::Path, process::Command};
 
 enum Wake {
     Shutdown,
+    OpenerFinished(String),
     MopsObserved(Box<handoff::Snapshot>),
     AuditObserved(Result<Box<audit::Reports>, String>),
     Terminal(io::Result<Event>),
@@ -134,7 +135,7 @@ struct App {
     message: String,
     details: bool,
     detail_scroll: u16,
-    opener_result: Option<std::sync::mpsc::Receiver<String>>,
+    wake_sender: std::sync::mpsc::Sender<Wake>,
     rows: Vec<(Rect, usize)>,
 }
 struct ProjectSelection {
@@ -143,7 +144,10 @@ struct ProjectSelection {
     worktree: Option<std::path::PathBuf>,
 }
 impl App {
-    fn new(audit_inputs: Option<audit::Inputs>) -> Self {
+    fn new(
+        audit_inputs: Option<audit::Inputs>,
+        wake_sender: std::sync::mpsc::Sender<Wake>,
+    ) -> Self {
         Self {
             clipboard_supported: std::env::var("TERM")
                 .is_ok_and(|term| !term.is_empty() && !matches!(term.as_str(), "dumb" | "linux")),
@@ -181,7 +185,7 @@ impl App {
             message: String::new(),
             details: false,
             detail_scroll: 0,
-            opener_result: None,
+            wake_sender,
             rows: vec![],
         }
     }
@@ -496,20 +500,14 @@ impl App {
         }
     }
     fn open_pr_url(&mut self, url: &str) {
-        self.message = match open_url(url) {
-            Ok(receiver) => {
-                self.opener_result = Some(receiver);
-                "Browser opener requested; outcome unknown".into()
-            }
+        self.message = match open_url(url, self.wake_sender.clone()) {
+            Ok(()) => "Browser opener requested; outcome unknown".into(),
             Err(error) => error.to_string(),
         };
     }
     fn launch(&mut self, path: &Path) {
-        self.message = match open_external(path) {
-            Ok(receiver) => {
-                self.opener_result = Some(receiver);
-                "External opener started; application outcome unknown".into()
-            }
+        self.message = match open_external(path, self.wake_sender.clone()) {
+            Ok(()) => "External opener started; application outcome unknown".into(),
             Err(error) => format!("External opener failed: {error}"),
         };
     }
@@ -589,8 +587,18 @@ impl App {
     }
     fn workshop_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
         let project = self.project_data.projects.get(self.project_selected)?;
-        if folder && self.focus_projects {
-            return project.exists.then(|| project.path.clone());
+        if self.focus_projects {
+            return if folder {
+                project.exists.then(|| project.path.clone())
+            } else {
+                project.identity.is_file().then(|| project.identity.clone())
+            };
+        }
+        if !self
+            .visible_workshop_files()
+            .contains(&self.project_file_selected)
+        {
+            return None;
         }
         let file = project
             .files
@@ -613,11 +621,19 @@ impl App {
             self.audit_scroll = 0;
             return;
         }
+        if self.view == View::Workshop && !self.focus_projects {
+            let indices = self.visible_workshop_files();
+            let mut selected = indices
+                .iter()
+                .position(|i| *i == self.project_file_selected)
+                .unwrap_or(0);
+            step_index(&mut selected, indices.len(), down);
+            self.project_file_selected = indices.get(selected).copied().unwrap_or(usize::MAX);
+            return;
+        }
         self.step_primary_selection(down);
         if self.focus_projects {
             self.project_file_selected = 0;
-        } else if self.view == View::Workshop {
-            self.expand_selected_workshop_group();
         }
     }
     fn step_primary_selection(&mut self, down: bool) {
@@ -641,17 +657,25 @@ impl App {
         };
         step_index(selected, len, down);
     }
-    fn expand_selected_workshop_group(&mut self) {
-        if let Some(file) = self
-            .project_data
+    fn visible_workshop_files(&self) -> Vec<usize> {
+        self.project_data
             .projects
             .get(self.project_selected)
-            .and_then(|p| p.files.get(self.project_file_selected))
-            && let Some(group) = ["Storyboard", "Animations", "Lyrics", "Studio"]
-                .iter()
-                .position(|g| *g == file.group)
-        {
-            self.collapsed[group] = false;
+            .into_iter()
+            .flat_map(|p| p.files.iter().enumerate())
+            .filter(|(_, f)| {
+                !["Storyboard", "Animations", "Lyrics", "Studio"]
+                    .iter()
+                    .position(|g| *g == f.group)
+                    .is_some_and(|g| self.collapsed[g])
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+    fn reconcile_workshop_selection(&mut self) {
+        let indices = self.visible_workshop_files();
+        if !indices.contains(&self.project_file_selected) {
+            self.project_file_selected = indices.first().copied().unwrap_or(usize::MAX);
         }
     }
     fn open(&mut self, index: usize) {
@@ -663,11 +687,8 @@ impl App {
         if index == usize::MAX {
             let path = self.data.projects_root.as_deref().filter(|p| p.is_dir());
             self.message = match path {
-                Some(path) => match open_external(path) {
-                    Ok(receiver) => {
-                        self.opener_result = Some(receiver);
-                        "External folder opener started; application outcome unknown".into()
-                    }
+                Some(path) => match open_external(path, self.wake_sender.clone()) {
+                    Ok(()) => "External folder opener started; application outcome unknown".into(),
                     Err(e) => format!("External opener failed: {e}"),
                 },
                 None => "Project root unavailable".into(),
@@ -683,27 +704,24 @@ impl App {
             self.message = "Unavailable: no accessible external target".into();
             return;
         };
-        self.message = match open_external(path) {
-            Ok(receiver) => {
-                self.opener_result = Some(receiver);
-                "External opener started; application outcome unknown".into()
-            }
+        self.message = match open_external(path, self.wake_sender.clone()) {
+            Ok(()) => "External opener started; application outcome unknown".into(),
             Err(e) => format!("External opener failed: {e}"),
         };
     }
 }
-fn open_external(path: &Path) -> io::Result<std::sync::mpsc::Receiver<String>> {
+fn open_external(path: &Path, sender: std::sync::mpsc::Sender<Wake>) -> io::Result<()> {
     // Canonical absolute filesystem arguments cannot become shell commands or URL schemes.
     let path = path.canonicalize()?;
-    spawn_opener(path.as_os_str())
+    spawn_opener(path.as_os_str(), sender)
 }
-fn open_url(url: &str) -> io::Result<std::sync::mpsc::Receiver<String>> {
+fn open_url(url: &str, sender: std::sync::mpsc::Sender<Wake>) -> io::Result<()> {
     if !url.starts_with("https://github.com/") || url.chars().any(char::is_control) {
         return Err(io::Error::other(
             "Only validated GitHub HTTPS links are supported",
         ));
     }
-    spawn_opener(std::ffi::OsStr::new(url))
+    spawn_opener(std::ffi::OsStr::new(url), sender)
 }
 fn copy_text(text: &str) -> String {
     if text.len() > 65536 {
@@ -727,7 +745,7 @@ fn copy_text(text: &str) -> String {
         Err(error) => format!("Clipboard request failed: {error}"),
     }
 }
-fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receiver<String>> {
+fn spawn_opener(target: &std::ffi::OsStr, sender: std::sync::mpsc::Sender<Wake>) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     let mut cmd = Command::new("xdg-open");
     #[cfg(target_os = "macos")]
@@ -745,7 +763,6 @@ fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receive
         .stderr(std::process::Stdio::null())
         .spawn()?;
     // Reap only this explicit desktop-opener child; no scan, timer or UI blocking.
-    let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let message = match child.wait() {
             Ok(status) if status.success() => {
@@ -754,9 +771,9 @@ fn spawn_opener(target: &std::ffi::OsStr) -> io::Result<std::sync::mpsc::Receive
             Ok(status) => format!("External opener failed: {status}"),
             Err(error) => format!("External opener wait failed: {error}"),
         };
-        let _ = sender.send(message);
+        let _ = sender.send(Wake::OpenerFinished(message));
     });
-    Ok(receiver)
+    Ok(())
 }
 fn copy_resume(task: &handoff::Task) -> String {
     match task.copyable_resume() {
@@ -789,14 +806,14 @@ fn print_pr_report(args: &[String], index: usize) -> io::Result<()> {
     print!("{}", task.audit_unavailable());
     Ok(())
 }
-fn configured_app(args: &[String]) -> io::Result<App> {
+fn configured_app(args: &[String], sender: std::sync::mpsc::Sender<Wake>) -> io::Result<App> {
     let audit_inputs = if args.iter().any(|a| a.starts_with("--audit-")) {
         Some(audit::Inputs::parse(args).map_err(io::Error::other)?)
     } else {
         None
     };
     let mops_inputs = handoff::Inputs::parse(args).map_err(io::Error::other)?;
-    let mut app = App::new(audit_inputs);
+    let mut app = App::new(audit_inputs, sender);
     if mops_inputs.is_some() {
         app.view = View::Mops;
         app.mops_inputs = mops_inputs;
@@ -834,6 +851,10 @@ fn receive_ui_event(
         .map_err(|_| io::Error::other("UI event channel closed"))?
     {
         Wake::Shutdown => Ok(UiEvent::Shutdown),
+        Wake::OpenerFinished(message) => {
+            app.message = message;
+            Ok(UiEvent::Redraw)
+        }
         Wake::Terminal(input) => input.map(UiEvent::Input),
         Wake::MopsObserved(snapshot) => {
             app.mops_observed(*snapshot);
@@ -851,15 +872,6 @@ fn receive_ui_event(
 }
 
 impl App {
-    fn poll_opener_result(&mut self) {
-        // Inspect only our explicit opener result on terminal input, never on a timer.
-        if let Some(receiver) = &self.opener_result
-            && let Ok(message) = receiver.try_recv()
-        {
-            self.message = message;
-            self.opener_result = None;
-        }
-    }
     fn handle_input(
         &mut self,
         input: Event,
@@ -875,7 +887,11 @@ impl App {
             }
             Event::Mouse(m) => {
                 if !self.details && m.kind == MouseEventKind::Down(MouseButton::Left) {
-                    self.handle_mouse_click(ratatui::layout::Position::new(m.column, m.row));
+                    self.handle_mouse_click(
+                        ratatui::layout::Position::new(m.column, m.row),
+                        control,
+                        sender,
+                    );
                 }
                 false
             }
@@ -891,14 +907,15 @@ impl App {
         if let Some(quit) = self.handle_details_key(code) {
             return quit;
         }
-        if code == KeyCode::F(4) {
-            self.view = View::Mayhem;
-            if self.audit_inputs.is_none() {
-                self.audit_inputs = audit::Inputs::from_saved_analytics();
-            }
-            if self.audit_inputs.is_some() {
-                self.refresh(control.clone(), sender.clone());
-            }
+        let view = match code {
+            KeyCode::F(1) => Some(View::Workshop),
+            KeyCode::F(3) => Some(View::Mops),
+            KeyCode::F(4) => Some(View::Mayhem),
+            KeyCode::F(5) => Some(View::Settings),
+            _ => None,
+        };
+        if let Some(view) = view {
+            self.select_view(view, control, sender);
             return false;
         }
         if self.handle_navigation_key(code)
@@ -929,11 +946,7 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(false),
             KeyCode::Char(c @ '1'..='4') => self.toggle_workshop_group(c),
             KeyCode::Tab => self.focus_projects = !self.focus_projects,
-            KeyCode::F(1) => self.view = View::Workshop,
             KeyCode::F(2) => self.message = "Booth is not implemented".into(),
-            KeyCode::F(3) => self.view = View::Mops,
-            KeyCode::F(4) => self.view = View::Mayhem,
-            KeyCode::F(5) => self.view = View::Settings,
             _ => return false,
         }
         true
@@ -1029,22 +1042,48 @@ impl App {
         {
             let i = (digit - 1) as usize;
             self.collapsed[i] = !self.collapsed[i];
+            self.reconcile_workshop_selection();
         }
     }
     fn toggle_details(&mut self) {
         self.details = !self.details;
         self.detail_scroll = 0;
     }
-    fn handle_mouse_click(&mut self, p: ratatui::layout::Position) {
+    fn select_view(
+        &mut self,
+        view: View,
+        control: &provider::Control,
+        sender: &std::sync::mpsc::Sender<Wake>,
+    ) {
+        self.view = view;
+        if view == View::Mayhem {
+            if self.audit_inputs.is_none() {
+                self.audit_inputs = audit::Inputs::from_saved_analytics();
+            }
+            if self.audit_inputs.is_some() {
+                self.refresh(control.clone(), sender.clone());
+            }
+        }
+    }
+    fn handle_mouse_click(
+        &mut self,
+        p: ratatui::layout::Position,
+        control: &provider::Control,
+        sender: &std::sync::mpsc::Sender<Wake>,
+    ) {
         if self.details {
             return;
         }
-        if self.handle_overlay_or_tab_click(p) {
+        if let Some((_, view)) = self.tabs.iter().find(|(r, _)| r.contains(p)) {
+            self.select_view(*view, control, sender);
+            return;
+        }
+        if self.handle_action_or_selection_click(p) {
             return;
         }
         self.handle_row_or_button_click(p);
     }
-    fn handle_overlay_or_tab_click(&mut self, p: ratatui::layout::Position) -> bool {
+    fn handle_action_or_selection_click(&mut self, p: ratatui::layout::Position) -> bool {
         if let Some((_, action)) = self.mops_actions.iter().find(|(r, _)| r.contains(p)) {
             self.mops_action(*action);
         } else if let Some((_, i)) = self.mops_rows.iter().find(|(r, _)| r.contains(p)) {
@@ -1052,8 +1091,6 @@ impl App {
         } else if let Some((_, i)) = self.audit_rows.iter().find(|(r, _)| r.contains(p)) {
             self.audit_selected = *i;
             self.audit_scroll = 0;
-        } else if let Some((_, view)) = self.tabs.iter().find(|(r, _)| r.contains(p)) {
-            self.view = *view;
         } else if self.open_button.is_some_and(|r| r.contains(p)) {
             self.open_current(false);
         } else {
@@ -1125,7 +1162,6 @@ fn run_event_loop(
     receiver: &std::sync::mpsc::Receiver<Wake>,
 ) -> io::Result<()> {
     loop {
-        app.poll_opener_result();
         terminal.draw(|f| ui::draw(f, app))?;
         let input = match receive_ui_event(receiver, app)? {
             UiEvent::Input(input) => input,
@@ -1144,12 +1180,12 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     apply_color_flag(&args);
-    let mut app = configured_app(&args)?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let mut app = configured_app(&args, sender.clone())?;
     let mut terminal = ratatui::init();
     execute!(io::stdout(), EnableMouseCapture)?;
     let control = provider::Control::default();
     let _lifecycle = provider::Owner(control.clone());
-    let (sender, receiver) = std::sync::mpsc::channel();
     // Drop closes the signal listener after normal exit or an early UI error.
     #[cfg(unix)]
     let _shutdown = ShutdownSignals::new(sender.clone())?;

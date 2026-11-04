@@ -5,6 +5,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
 };
 pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
+    app.reconcile_workshop_selection();
     let bands = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).split(area);
     let columns = Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(bands[0]);
@@ -35,29 +36,23 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
         app.project_selected,
     );
     let project = app.project_data.projects.get(app.project_selected);
-    let mut indices = Vec::new();
-    let mut files = Vec::new();
-    if let Some(project) = project {
-        for (i, file) in project.files.iter().enumerate() {
-            let group = ["Storyboard", "Animations", "Lyrics", "Studio"]
-                .iter()
-                .position(|g| *g == file.group);
-            if group.is_some_and(|g| app.collapsed[g]) {
-                continue;
-            }
-            indices.push(i);
-            files.push(vec![
+    let indices = app.visible_workshop_files();
+    let files = indices
+        .iter()
+        .map(|i| {
+            let file = &project.unwrap().files[*i];
+            vec![
                 file.name.clone(),
                 file.group.clone(),
                 bytes(file.bytes),
                 if file.available { "Ready" } else { "Missing" }.into(),
-            ]);
-        }
-    }
+            ]
+        })
+        .collect();
     let selected = indices
         .iter()
         .position(|i| *i == app.project_file_selected)
-        .unwrap_or(0);
+        .unwrap_or(usize::MAX);
     app.project_file_rows = table(
         f,
         columns[1],
@@ -72,6 +67,15 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     .collect();
     let content = project
         .map(|p| {
+            if app.focus_projects {
+                return format!(
+                    "{}\n{}",
+                    p.identity.display(),
+                    p.error
+                        .as_deref()
+                        .unwrap_or("Saved project • Enter opens project • p opens folder")
+                );
+            }
             p.files
                 .get(app.project_file_selected)
                 .map(|file| {
@@ -87,7 +91,9 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
                     format!(
                         "{}\n{}",
                         p.path.display(),
-                        p.error.as_deref().unwrap_or("No saved references")
+                        p.error
+                            .as_deref()
+                            .unwrap_or("No visible references; expand groups 1–4")
                     )
                 })
         })

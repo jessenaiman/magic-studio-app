@@ -15,7 +15,8 @@ Arrows or j/k select; Tab changes focus; Enter/o opens the selected target;
 p opens its folder; d opens complete details; PgUp/PgDn scroll details;
 r rereads observations; q exits. Mouse tabs, row selection and explicit Open
 are supported. `--color=always` overrides inherited NO_COLOR for this process.
-Navigation never launches an app or runs an analyzer. Opening requests the
+Navigation never launches an app or runs an analyzer. Opener completion wakes
+the existing UI event channel, so its status appears without another keypress. Opening requests the
 system association; success does not prove that an application opened.
 
 Desktop Mayhem's explicit Launch Backstage control uses the companion binary
@@ -25,7 +26,9 @@ The standalone command remains available. Desktop Stop/exit and q end the sessio
 ## Workshop and Settings
 
 Workshop presents saved projects and their existing file references. Tab switches
-project/file focus; 1–4 collapse creative-area groups. Settings presents observed
+project/file focus; Enter on the project pane opens its .magic file and p opens
+its folder. 1–4 collapse creative-area groups; selection and Open follow visible
+rows. Settings presents observed
 configuration and role documents, with full paths and provider outcomes under d.
 Saved references are not a complete filesystem census or an active agent cast.
 Missing data is unavailable, never fabricated.
@@ -50,7 +53,7 @@ See [the native reports and Herdr contract](../../docs/analyzers.md).
 
 ## Mayhem reports
 
-F4 reads the saved native report. Press a to switch reports/inventory; r rereads
+F4 and the Mayhem mouse tab use the same saved-report entry action. Press a to switch reports/inventory; r rereads
 without running checkers. The tool table displays actual exit status; the selected
 pane shows original output first. [/] or PgUp/PgDn scroll it, d gives full details,
 and Enter opens the retained raw stdout artifact. Failed tools remain visible.
