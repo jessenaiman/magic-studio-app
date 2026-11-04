@@ -25,7 +25,7 @@ enum Action {
     Select(usize),
     Move(bool),
     Pane(usize),
-    Scroll(bool),
+    Scroll(bool, usize),
     Pan(bool),
     Details,
     Refresh,
@@ -55,7 +55,7 @@ struct App {
     message: String,
 }
 
-fn input_action(app: &App, event: Event, hits: &Hits) -> Option<Action> {
+fn input_action(app: &App, event: Event, hits: &Hits, page_rows: usize) -> Option<Action> {
     match event {
         Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
             KeyCode::Char('q') => Some(Action::Quit),
@@ -67,8 +67,10 @@ fn input_action(app: &App, event: Event, hits: &Hits) -> Option<Action> {
             KeyCode::Enter | KeyCode::Char('d') => Some(Action::Details),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::Move(true)),
             KeyCode::Up | KeyCode::Char('k') => Some(Action::Move(false)),
-            KeyCode::PageDown | KeyCode::Char(']') => Some(Action::Scroll(true)),
-            KeyCode::PageUp | KeyCode::Char('[') => Some(Action::Scroll(false)),
+            KeyCode::PageDown => Some(Action::Scroll(true, page_rows.max(1))),
+            KeyCode::Char(']') => Some(Action::Scroll(true, 1)),
+            KeyCode::PageUp => Some(Action::Scroll(false, page_rows.max(1))),
+            KeyCode::Char('[') => Some(Action::Scroll(false, 1)),
             KeyCode::Right => Some(Action::Pan(true)),
             KeyCode::Left => Some(Action::Pan(false)),
             KeyCode::Char('r' | 'R') => Some(Action::Refresh),
@@ -77,6 +79,12 @@ fn input_action(app: &App, event: Event, hits: &Hits) -> Option<Action> {
             KeyCode::F(n @ 1..=5) => Some(Action::Pane(n as usize - 1)),
             _ => None,
         },
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
+            Some(Action::Scroll(true, 1))
+        }
+        Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
+            Some(Action::Scroll(false, 1))
+        }
         Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => hits
             .iter()
             .rev()
@@ -109,11 +117,13 @@ fn update(
             }
         }
         Action::Pane(i) => app.pane = i,
-        Action::Scroll(down) => {
+        Action::Scroll(down, lines) => {
             app.scroll = if down {
-                (app.scroll + 10).min(app.content().lines().count().saturating_sub(1))
+                app.scroll
+                    .saturating_add(lines)
+                    .min(app.content().lines().count().saturating_sub(1))
             } else {
-                app.scroll.saturating_sub(10)
+                app.scroll.saturating_sub(lines)
             }
         }
         Action::Pan(right) => {
@@ -226,7 +236,7 @@ fn read_report(path: &Path) -> Result<Value, String> {
 }
 
 // The renderer reads state and returns fresh Action targets; it never changes selection.
-fn draw(frame: &mut ratatui::Frame, app: &App) -> Hits {
+fn draw(frame: &mut ratatui::Frame, app: &App) -> (Hits, usize) {
     let mut hits = Vec::new();
     let area = frame.area();
     let gold = Color::Rgb(245, 186, 56);
@@ -241,7 +251,7 @@ fn draw(frame: &mut ratatui::Frame, app: &App) -> Hits {
             Paragraph::new("Backstage • resize to 45×12 • q quits"),
             area,
         );
-        return hits;
+        return (hits, 1);
     }
     let bands = Layout::vertical([
         Constraint::Length(2),
@@ -352,7 +362,7 @@ fn draw(frame: &mut ratatui::Frame, app: &App) -> Hits {
     );
     frame.render_widget(
         Paragraph::new(
-            "↑↓ tool · 1–5/Tab views · PgUp/PgDn/←→ scroll · d/Enter expand · r reread · q quit",
+            "↑↓ tool · 1–5/Tab views · PgUp/Dn page · [/] or wheel line · ←→ pan · d expand · r reread · q quit",
         ),
         footer[1],
     );
@@ -369,7 +379,7 @@ fn draw(frame: &mut ratatui::Frame, app: &App) -> Hits {
         );
         hits.push((*rect, action));
     }
-    hits
+    (hits, body.height.saturating_sub(2) as usize)
 }
 
 fn main() -> io::Result<()> {
@@ -480,15 +490,15 @@ fn main() -> io::Result<()> {
             }
         });
         loop {
-            let mut hits = Vec::new();
-            terminal.draw(|frame| hits = draw(frame, &app))?;
+            let mut rendered = (Vec::new(), 1);
+            terminal.draw(|frame| rendered = draw(frame, &app))?;
             match receiver
                 .recv()
                 .map_err(|_| io::Error::other("Event channel closed"))?
             {
                 Wake::Quit => break Ok(()),
                 Wake::Input(event) => {
-                    if input_action(&app, event?, &hits)
+                    if input_action(&app, event?, &rendered.0, rendered.1)
                         .is_some_and(|action| update(&mut app, action, &control, &sender))
                     {
                         break Ok(());

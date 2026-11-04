@@ -27,7 +27,8 @@ The tool list displays actual exit statuses. Five views use the same text pane:
 5. Activity: the existing native scoped Herdr adapter's response, including unknowns.
 
 Arrows/j/k or a mouse row select a tool. 1–5, F1–F5, Tab or a mouse tab change
-view. PgUp/PgDn or [/] scroll lines; left/right scroll columns. d/Enter or the
+view. PgUp/PgDn scroll by the actual visible content height; [/] or the mouse wheel
+scroll one line. Left/right scroll columns. d/Enter or the
 Expand/close button expands/closes the text pane. Esc closes expansion, otherwise
 quits. q or Quit exits. r/R or Reread refreshes the report, except in Activity,
 where it explicitly queries `magic-cli exec mayhem.evidence` with
@@ -46,7 +47,7 @@ Existing project/report/history data is untouched. Their underlying application
 commands remain available through magic-cli; Backstage no longer orchestrates them.
 Desktop Mayhem and the shared analyzer runner remain separate, unchanged consumers.
 
-Verified in a real 100×24 terminal: keyboard/mouse selection, five views, scrolling,
+Verified in real 45×12, 80×19 and 100×24 terminals: keyboard/mouse selection, five views, scrolling,
 expand/close, report reread, Activity refresh and clean Quit. A real nine-tool
 manifest kept its checksum; plain whole/selected reports matched native data.
 Build and scoped Clippy passed. Herdr is absent here, so Activity honestly reports
