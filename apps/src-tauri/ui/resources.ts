@@ -16,7 +16,7 @@ async function renderResources() {
       const input = el('textarea', {id:`wf-${row.id}-${key}`, rows:1,
         'aria-label':label+' · '+row.label, class:'workflow-field wf-'+key});
       input.value = row[key];
-      const resize = () => { input.style.setProperty('--workflow-field-height','auto'); input.style.setProperty('--workflow-field-height',input.scrollHeight+'px'); };
+      const resize = () => { input.style.height='auto'; input.style.height=input.scrollHeight+'px'; };
       input.addEventListener('input',resize);
       input.addEventListener('change', async () => {
         const previous = row[key], value = input.value;
@@ -32,7 +32,7 @@ async function renderResources() {
       return input;
     };
     const resizeFields = (node: HTMLElement) => node.querySelectorAll('textarea').forEach(input => {
-      if (input.clientWidth) {input.style.setProperty('--workflow-field-height','auto');input.style.setProperty('--workflow-field-height',input.scrollHeight+'px');}
+      if (input.clientWidth) {input.style.height='auto';input.style.height=input.scrollHeight+'px';}
     });
     const stages = guide.production.map((row,i) => {
       const body=el('div',{class:'workflow-details'},...Object.entries({

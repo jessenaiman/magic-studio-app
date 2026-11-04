@@ -76,16 +76,6 @@
       "label": "Review 3D motion",
       "indicator": "hidden"
     },
-    "workflow-guide": {
-      "component": "workspace",
-      "label": "Music video workflow",
-      "indicator": "hidden"
-    },
-    "workflow-terminal-steps": {
-      "component": "workflow-steps",
-      "label": "Production steps",
-      "indicator": "hidden"
-    },
     "view-home": {
       "component": "workspace",
       "label": "Home",

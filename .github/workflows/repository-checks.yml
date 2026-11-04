@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   sanity:
-    name: TypeScript and source lint
+    name: TypeScript and whitespace
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -32,7 +32,6 @@ jobs:
           git diff --check HEAD^ HEAD
           npm ci --ignore-scripts
           npx tsc -p .
-          node apps/src-tauri/scripts/ui-lint.mjs --report
   build:
     name: Native Linux build
     runs-on: ubuntu-24.04

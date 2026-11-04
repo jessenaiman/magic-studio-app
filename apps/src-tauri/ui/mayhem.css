@@ -9,17 +9,17 @@
 .may-head,.may-verdict,.may-rule { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
 .may-head small,.may-stamp,.may-numbers span,.may-numbers small { color:var(--muted); }
 .may-head h1 { font-size:var(--may-heading); letter-spacing:-.05em; margin:.15em 0 .35em; color:var(--accent); }
-.may-verdict { justify-content:flex-start; border-block:var(--size-1) solid var(--line); }
+.may-verdict { justify-content:flex-start; border-block:1px solid var(--line); }
 .may-verdict strong { display:flex; align-items:center; gap:.5rem; white-space:nowrap; }
 .may-numbers { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin:1.5rem 0; gap:1rem; }
 .may-numbers div { display:grid; gap:.3rem; }
 .may-numbers strong { font-size:var(--may-value); font-variant-numeric:tabular-nums; }
-.may-rule { background:var(--surface); border-left:var(--size-3) solid var(--accent); padding:.85rem 1rem; flex-wrap:wrap; }
+.may-rule { background:var(--surface); border-left:3px solid var(--accent); padding:.85rem 1rem; flex-wrap:wrap; }
 .may-summary h2 { font-size:var(--text-lg); margin:0; }
 .may-rule p { flex:1 1 17rem; margin:0; color:var(--muted); }
 .may-history { margin:1.4rem 0 .3rem; }
 .may-trend { height:8rem; }
-.may-more { border-top:var(--size-1) solid var(--line); margin-top:.75rem; padding-top:.65rem; }
+.may-more { border-top:1px solid var(--line); margin-top:.75rem; padding-top:.65rem; }
 .may-more summary { cursor:pointer; }
 .may-more pre { overflow:auto; max-height:22rem; white-space:pre-wrap; }
 @media(max-width:600px){ .may-numbers {grid-template-columns:repeat(2,minmax(0,1fr));} .may-verdict {align-items:flex-start; flex-direction:column;gap:0;padding-top:.7rem;} }
@@ -27,7 +27,7 @@
 [data-health=red] .navigation-health { background:var(--danger); }
 [data-health=yellow] .navigation-health { background:var(--amber); }
 [data-health=green] .navigation-health { background:var(--accent); }
-.may-part { border-top:var(--size-1) solid var(--line); padding:1rem 0; }
+.may-part { border-top:1px solid var(--line); padding:1rem 0; }
 .may-part h2 { margin-bottom:.7rem; }
 .may-part h2 small { color:var(--accent); margin-right:.8rem; font-variant-numeric:tabular-nums; }
 .may-part .may-stamp { margin-left:.8rem; }
@@ -36,7 +36,7 @@
 .may-search[data-signal=yellow]{background:var(--amber);}
 .may-search[data-signal=red]{background:var(--danger);}
 .may-list {padding-left:1.1rem;overflow-wrap:anywhere;}
-.may-tool {border-top:var(--size-1) solid var(--line);padding:.7rem 0;}
+.may-tool {border-top:1px solid var(--line);padding:.7rem 0;}
 .may-tool>span {margin-left:.75rem;color:var(--muted);}
 .may-tool p {margin:.4rem 0;overflow-wrap:anywhere;}
 .may-tool pre {max-height:18rem;overflow:auto;white-space:pre-wrap;}
@@ -50,15 +50,15 @@
 .may-dashboard { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.7rem; padding:1rem; max-width:76rem; }
 .may-dashboard .may-head,.may-dashboard .may-p03 { grid-column:1/-1; }
 .may-dashboard .may-head h1 { margin:0; }
-.may-dashboard .may-part { min-width:0; background:var(--surface); border:var(--size-1) solid var(--line); border-radius:var(--radius); padding:.8rem 1rem; }
+.may-dashboard .may-part { min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:.8rem 1rem; }
 .may-dashboard .may-part h2 { font-size:var(--text-md); margin:0 0 .6rem; }
 .may-dashboard .may-head { padding:.4rem .2rem; }
-.may-dashboard .may-numbers { border-block:var(--size-1) solid var(--line); padding:.6rem 0; margin:.7rem 0; }
+.may-dashboard .may-numbers { border-block:1px solid var(--line); padding:.6rem 0; margin:.7rem 0; }
 .may-dashboard .may-plots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem; }
 .may-plots figure { margin:0; min-width:0; }
 .may-plots figcaption { color:var(--muted); margin-bottom:.3rem; }
 .may-scan-line,.may-agents { display:flex; align-items:center; flex-wrap:wrap;gap:.5rem; }
-.may-agent {display:grid;grid-template-columns:1fr auto;gap:.3rem 1rem;border-left:var(--size-3) solid var(--accent);background:var(--bg);padding:.5rem .8rem;}
+.may-agent {display:grid;grid-template-columns:1fr auto;gap:.3rem 1rem;border-left:3px solid var(--accent);background:var(--bg);padding:.5rem .8rem;}
 .may-agent span,.may-agent small,.may-scan-line small {color:var(--muted);}
 .may-agent small {grid-column:1/-1;}
 .may-bars div {grid-template-columns:minmax(0,1.4fr) 1fr 2ch;}

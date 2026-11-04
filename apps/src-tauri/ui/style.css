@@ -1112,7 +1112,7 @@ svg.lyric-flow-arrows .lyric-flow-dot { fill: var(--depth-gold); stroke: var(--b
 .workflow-stages { padding:0; list-style:none; }
 .workflow-stages>li { display:grid; grid-template-columns:2rem minmax(0,1fr); padding:.55rem 0; border-top:1px solid var(--line); }
 .workflow-number { padding-top:.3rem; font-variant-numeric:tabular-nums; }
-.workflow-field { height:var(--workflow-field-height,auto); display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:1.7rem; background:transparent; color:var(--text); border:1px solid transparent; padding:.2rem; font:inherit; }
+.workflow-field { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:1.7rem; background:transparent; color:var(--text); border:1px solid transparent; padding:.2rem; font:inherit; }
 .workflow-field:hover,.workflow-field:focus { border-color:var(--line); background:var(--surface); }
 .workflow-field[aria-invalid=true] { border-color:var(--amber); }
 .wf-label { font-weight:bold; }
