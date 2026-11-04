@@ -105,123 +105,49 @@ workspace context or unsupported schemas stay unknown. No issue-title matching,
 branch-name guesses, other-worktree scans or unrelated usage-directory scans
 run in this path. No settings are changed and no terminal control is issued.
 
-## Observed verification
+## Backstage: one small report reader
 
-These are live command observations, not new regression tests. Commands ran
-against the working patch based on `9b363245a1727b8dbc2fb7ce3a89765b5f49b0b9`;
-reports retain the dirty working-tree state rather than claiming that base
-revision alone contains the changes.
+Backstage now reads the same manifest in one Rust file. It has a tool list and
+five text views: Output, Command, Run, Files and Activity. One action definition,
+input map and dispatcher serve keyboard and mouse; rendering is read-only and
+returns fresh action targets. It never runs analyzers. Activity explicitly calls
+the existing native Herdr adapter, retaining bounded child cancellation and
+unknown states. See [controls and removals](../apps/backstage/README.md).
 
-- `cargo build -p magic-cli -p backstage --locked`: passed.
-- `cargo clippy -p magicstudio-engine -p magic-cli -p backstage --lib --bins --locked -- -D warnings`: passed.
-- `npx tsc -p .`, `git diff --check`, and Bun's browser transpilation of
-  `apps/src-tauri/ui/analytics.ts`: passed.
-- CLI quick/comprehensive commands executed real native tools, preserving failures.
-- MCP initialized, discovered `command_list`/`command_run`/`studio_open`, then
-  executed selected and comprehensive scans and read the resulting evidence.
-- A selected MCP TypeScript/Wallace run returned 0 for both commands after
-  correcting Wallace's relative-path adapter. A default-PATH Lizard invocation
-  recorded the actual missing-executable error with a null exit code.
+Removed TUI orchestration: Workshop/project browsing, Settings/crew inspection,
+MOPS PR imports and handoffs, clipboard/resume actions, Git inventory, baseline
+comparisons, legacy audit adapters and external openers. These removals implement
+the user's narrowed request for a simple existing-report reader. No saved project,
+report, history or settings data is removed. Desktop Mayhem and the native runner
+are unchanged by this structural reduction.
 
-The comprehensive MCP outcomes were Clippy 101, TypeScript 0, ESLint 1,
-Stylelint 2, Lizard 0, Wallace 0, jscpd 0, PurgeCSS 0 and Git scope 0. Workspace
-Clippy cannot build the desktop dependencies here because `glib-2.0.pc` is
-missing; the engine/CLI-specific Clippy invocation above passes. ESLint and
-Stylelint report existing style violations; their rules were not weakened.
-Lizard 1.17.31 was installed only under the cloud workspace for observation,
-with its PATH/PYTHONPATH supplied to those commands. No system installation or
-settings changes were made.
+## Observed verification and size
 
-Live Herdr remains unavailable: no `herdr` executable, `HERDR_ENV` or workspace
-ID is present. Evidence reports `Herdr caller context unavailable
-(HERDR_ENV != 1); no session queried`. Native desktop observation is also
-unavailable: no desktop session/runtime directory is present and the user's
-PC is disconnected. Type-checking is not a visual UI check. No PC worktree
-cleanup, readiness change or merge is claimed.
+No new tests. Real 100×24 terminal interaction covered keyboard/mouse tool and
+view selection, all five views, vertical/horizontal scrolling, expand/close,
+report rereading, native Activity response and Quit. The real nine-tool report's
+checksum was unchanged. Plain whole-report output matched its input; selected
+tsc output retained native exit 0. Backstage build, scoped Clippy and whitespace
+checks passed. Herdr reports unavailable caller context here; successful live
+Herdr and desktop embedding remain unverified. Earlier real CLI/MCP analyzer
+runs preserved Clippy 101 (missing GTK development files), tsc 0, ESLint 1,
+Stylelint 2 and zero statuses for Lizard, Wallace, jscpd, PurgeCSS and Git scope.
 
-Backstage was also exercised in an actual 80×24 terminal: imported PR #76,
-selection, full-detail scrolling and native report loading worked; q exited
-cleanly. Settings successfully observed project.root; crew.list reported the actual
-missing department role file, and activity receipt writing hit the cloud
-read-only home filesystem. Those remain visible failures, not passed flows.
-The imported PR came from the authenticated GitHub connector, converted
-to the documented native input fields; direct unauthenticated REST returned 403.
-This verifies file import, not Backstage's live `gh` authentication. Clipboard success and a successful live Herdr snapshot remain unverified.
-A follow-up 80×24 interaction traced actual mouse Open invocations: MOPS used
-the selected PR URL; Settings used its selected settings.json, matching Enter.
-The latter used temporary process-scoped XDG configuration created through
-project.root; no existing user settings were changed. The native opener exited
-3 in this environment, so successful application opening is not claimed.
-A further native terminal pass used a CLI-created project and CLI-imported image
-in a separate cloud directory with private process-scoped configuration. It
-verified mouse/keyboard Mayhem entry, visible selection after group collapse,
-empty-file Open disabled, and project-pane Enter targeting the .magic file.
-Actual opener completion redrew without further input. No user project or
-existing settings were changed. A follow-up trace confirmed two actual opener
-processes overlapped. Completion events now carry request IDs, and only the
-latest request updates the status; reverse completion order was not forced.
+Counts are physical lines, including blanks/comments, across the same union of
+all Rust files under `apps/backstage/src`. Deleted files count zero; the temporary
+unpublished multi-screen refactor is not used as a baseline. Dependencies,
+generated files and documentation are excluded on both sides.
 
-## Implementation size
-
-The baseline is `9b363245a1727b8dbc2fb7ce3a89765b5f49b0b9`. Physical lines include
-comments, blanks and existing tests. Missing files count zero. The same file
-union is used before/after; documentation, generated output, dependencies and
-reports are excluded on both sides. No new tests were added or run.
-
-Whole Backstage means every Rust source under `apps/backstage/src`, including
-unchanged handoff code and the new shared widgets: **8,355 → 4,279** lines
-(48.8% removed). It is not a fourfold reduction. Removed presentation modules
-are replaced by shared widgets and small views; provider/handoff functionality
-remains. Its 4,279 lines comprise:
-
-- Main lifecycle/input: 1,202; real project/settings observations: 883;
-  bounded process provider: 330; unchanged PR handoff/parser/input: 826.
-- Four views and navigation: 722; shared widgets: 125; native report reader: 191.
-
-The dedicated runner, Rust bridge, Herdr adapter, engine report reader and desktop
-Mayhem view total **408** lines (73 + 58 + 78 + 61 + 138). Backstage's report
-reader/view add 398, including its inventory presentation. These totals do not
-hide shared wiring: the complete scoped file union below includes entire CLI,
-registry, component and Backstage files, even their unrelated retained code.
-Thus its 9,645 lines are not 9,645 lines of audit logic. The unchanged ECharts
-renderer (60), Mayhem stylesheet (69), and MCP transport (178) are shared
-existing code outside this changed-file union, retained on both sides.
-
-| File | Before | After |
+| Scope | Before | After |
 | --- | ---: | ---: |
-| `apps/magic-cli/src/audit.rs` | 931 | 0 |
-| `apps/magic-cli/src/main.rs` | 526 | 561 |
-| `crates/engine/src/analyzers.rs` | 0 | 58 |
-| `crates/engine/src/complexity.rs` | 797 | 0 |
-| `crates/engine/src/doctor.rs` | 663 | 91 |
-| `crates/engine/src/herdr.rs` | 0 | 78 |
-| `crates/engine/src/mayhem.rs` | 241 | 61 |
-| `crates/engine/src/lib.rs` | 335 | 336 |
-| `crates/engine/src/command_catalog.rs` | 1,407 | 1,379 |
-| `crates/engine/src/commands.rs` | 179 | 151 |
-| `apps/magic-cli/src/session.rs` | 386 | 397 |
-| `apps/src-tauri/ui/analytics.ts` | 231 | 138 |
-| `apps/src-tauri/frontend/analytics.test.ts` | 38 | 0 |
-| `apps/magic-cli/src/doctor.rs` | 0 | 40 |
-| `apps/src-tauri/ui/components.json` | 2,013 | 2,003 |
-| `scripts/analyze.mjs` | 0 | 73 |
-| `apps/backstage/src/audit.rs` | 685 | 191 |
-| `apps/backstage/src/data.rs` | 401 | 381 |
-| `apps/backstage/src/handoff.rs` | 237 | 237 |
-| `apps/backstage/src/handoff/imports.rs` | 149 | 149 |
-| `apps/backstage/src/handoff/input.rs` | 113 | 113 |
-| `apps/backstage/src/handoff/pr.rs` | 327 | 327 |
-| `apps/backstage/src/main.rs` | 1,150 | 1,202 |
-| `apps/backstage/src/mayhem.rs` | 1,845 | 207 |
-| `apps/backstage/src/mops.rs` | 50 | 110 |
-| `apps/backstage/src/mops/cast.rs` | 100 | 0 |
-| `apps/backstage/src/mops/selected.rs` | 263 | 0 |
-| `apps/backstage/src/mops/session.rs` | 162 | 0 |
-| `apps/backstage/src/mops/table.rs` | 171 | 0 |
-| `apps/backstage/src/mops/widgets.rs` | 172 | 0 |
-| `apps/backstage/src/project_data.rs` | 497 | 502 |
-| `apps/backstage/src/provider.rs` | 327 | 330 |
-| `apps/backstage/src/ui.rs` | 989 | 284 |
-| `apps/backstage/src/workshop.rs` | 717 | 121 |
-| `apps/backstage/src/widgets.rs` | 0 | 125 |
-| **Full file union** | **16,102** | **9,645** |
+| Whole Backstage, baseline `9b36324` | 8,355 | 722 |
+| Whole Backstage, previous published `7f5d8ee` | 4,279 | 722 |
+| Source files, previous published | 14 | 1 |
+
+The 722 lines include the native Activity process lifecycle and limits, not just
+rendering. The unchanged analyzer script is 73 lines and its Rust bridge 58;
+Herdr adapter 78, engine report reader 61, desktop Mayhem 138 (408 combined).
+Existing shared ECharts renderer (60), Mayhem CSS (69), MCP transport (178), CLI,
+registry and component files are retained; their unrelated code is not called
+audit-only code or counted as Backstage. For the earlier explicit broader union,
+including those whole shared files, source shrank from 16,102 to 6,088 lines.
