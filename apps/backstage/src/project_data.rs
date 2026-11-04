@@ -26,6 +26,7 @@ pub struct ProjectRecord {
     pub exists: bool,
 }
 pub struct ProjectSnapshot {
+    pub activity: Value,
     pub projects: Vec<ProjectRecord>,
     pub catalog_observed: bool,
     pub source: String,
@@ -37,6 +38,7 @@ pub struct ProjectSnapshot {
 impl Default for ProjectSnapshot {
     fn default() -> Self {
         Self {
+            activity: serde_json::json!({"available":false,"error":"Herdr activity not observed"}),
             projects: vec![],
             catalog_observed: false,
             source: "Native saved-project observation pending".into(),
@@ -51,6 +53,9 @@ impl ProjectSnapshot {
     pub fn read(control: &provider::Control) -> Self {
         let mut snapshot = Self::read_projects(control);
         snapshot.load_worktrees(control);
+        snapshot.activity = provider::activity(control)
+            .map(|v| v["activity"].clone())
+            .unwrap_or_else(|error| serde_json::json!({"available":false,"error":error}));
         snapshot
     }
     fn read_projects(control: &provider::Control) -> Self {

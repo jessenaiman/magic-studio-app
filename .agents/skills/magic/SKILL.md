@@ -84,12 +84,15 @@ Full repository audits are exclusively for dedicated Mayhem and code analytics s
 
 ```bash
 magic-cli audit /absolute/checkout --base <same-comparison-commit>
-magic-cli app analytics scan=false
+magic-cli mayhem evidence
 magic-cli ui click id=tab-analytics
 magic-cli ui look output=/absolute/mayhem-review.png
 ```
 
-Audit computes and saves measurements into `target/analytics/audit.json` across the entire workspace. Use this only when Jesse explicitly requests a repository audit or Mayhem review session.
+Audit runs the native tools and saves complete outputs and exit statuses in
+`target/analytics/analyzer-runs/`; `analyzers.json` identifies the latest run.
+Each tool records its actual scope. Use this only for an explicitly requested
+repository audit or Mayhem review. See `docs/analyzers.md` for profiles and MCP.
 
 ## Tool boundaries
 

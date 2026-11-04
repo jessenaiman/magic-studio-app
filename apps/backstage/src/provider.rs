@@ -61,7 +61,7 @@ fn stop(group: i32) {
 fn stop(_: i32) {}
 #[derive(Clone)]
 pub enum Query {
-    Template,
+    Activity,
     Root,
     Crew,
     Catalog,
@@ -71,12 +71,13 @@ impl Query {
     fn params(&self) -> String {
         match self {
             Self::Observe(path) => serde_json::json!({"path":path}).to_string(),
+            Self::Activity => "{\"activity_only\":true}".into(),
             _ => "{}".into(),
         }
     }
     fn id(&self) -> &'static str {
         match self {
-            Self::Template => "storyboard.template",
+            Self::Activity => "mayhem.evidence",
             Self::Root => "project.root",
             Self::Crew => "crew.list",
             Self::Catalog => "project.catalog",
@@ -85,13 +86,11 @@ impl Query {
     }
 }
 pub struct Results {
-    pub template: Result<Value, String>,
     pub root: Result<Value, String>,
     pub crew: Result<Value, String>,
 }
 pub fn read(control: &Control) -> Results {
     Results {
-        template: query(control, Query::Template),
         root: query(control, Query::Root),
         crew: query(control, Query::Crew),
     }
@@ -324,4 +323,8 @@ pub fn pull_request(control: &Control, repo: &str, number: u64) -> Result<Value,
 #[cfg(not(target_os = "linux"))]
 pub fn pull_request(_: &Control, _: &str, _: u64) -> Result<Value, String> {
     Err("Native GitHub reader supports Linux only; use a supplied PR JSON file".into())
+}
+
+pub fn activity(control: &Control) -> Result<Value, String> {
+    query(control, Query::Activity)
 }

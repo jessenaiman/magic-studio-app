@@ -1,197 +1,106 @@
-# Backstage — observer views
+# Backstage
 
-Magic Studio's separate Rust/Ratatui observer has Workshop (F1), MOPS (F3),
-Mayhem (F4), and Settings (F5). Booth remains disabled.
-
-Actual native captures: [MOPS PR handoff](../../references/backstage/mops-pr22.png)
-and [Mayhem audit evidence](../../references/backstage/mayhem-pr30.png).
-These show imported GitHub snapshots and historical native audit artifacts,
-not live session state or an audit of the current checkout.
-
-Launch from a prepared source-development environment:
+Backstage is Magic Studio's Rust/Ratatui observer. Four views use the same
+palette, tables and full-detail drawer: F1 Workshop, F3 MOPS, F4 Mayhem,
+F5 Settings. It works at 80×24; below 40×10 it shows compact navigation help.
 
 ```sh
 cargo run -p backstage
+magic-cli audit --quick
+backstage --audit-report target/analytics/analyzers.json
+backstage --mayhem-report --audit-tool tsc
 ```
 
-On Linux, desktop Mayhem also has an explicit **Launch Backstage** terminal control. Build
-`cargo build -p magic-studio -p backstage` and launch
-`target/debug/magic-studio` from the intended repository directory. The
-companion must sit beside the shell executable; no PATH or shell command is used.
-Mayhem navigation preserves one live session; q, Stop, or desktop exit ends it.
-Launch failures remain inline. The standalone command above remains supported.
+Arrows or j/k select; Tab changes focus; Enter/o opens the selected target;
+p opens its folder; d opens complete details; PgUp/PgDn scroll details;
+r rereads observations; q exits. Mouse tabs, row selection and explicit Open
+are supported. `--color=always` overrides inherited NO_COLOR for this process.
+Navigation never launches an app or runs an analyzer. Opening requests the
+system association; success does not prove that an application opened.
 
-Recommended: 166×54, truecolor and Unicode. Use `--color=always` to explicitly
-override a process-inherited NO_COLOR setting without changing the desktop theme. Arrows/j/k select files; Enter/o or
-mouse Open requests the desktop association; p opens the observed project folder; d shows wrapped observations and
-provider outcomes (PgUp/PgDn scroll); r refreshes deliberately; q quits. Smaller
-grids scroll; below 90×28 compact help preserves keyboard selection/open/details.
-Selection/navigation never launches an app or contacts agents/models.
+Desktop Mayhem's explicit Launch Backstage control uses the companion binary
+beside the desktop executable. Build `cargo build -p magic-studio -p backstage`.
+The standalone command remains available. Desktop Stop/exit and q end the session.
 
-## Observation boundary
+## Workshop and Settings
 
-On Linux, startup and explicit refresh attempt these three Settings-specific official
-current-main CLI calls, in one background observation, without blocking UI input:
+Workshop presents saved projects and their existing file references. Tab switches
+project/file focus; 1–4 collapse creative-area groups. Settings presents observed
+configuration and role documents, with full paths and provider outcomes under d.
+Saved references are not a complete filesystem census or an active agent cast.
+Missing data is unavailable, never fabricated.
 
+Official isolated `magic-cli --session-file /dev/null exec …` calls observe
+`project.root`, `crew.list`, `project.catalog` and `backstage.observe`.
+The obsolete `storyboard.template` query has been removed. The existing repository
+template asset remains labeled as a source file, not a successful native query.
+No project is attached or loaded by these observer calls. Each provider child
+has a 10-second deadline, 1 MiB output bounds and its own process group; timeout
+and exit reap only that group. One refresh runs at a time and input stays live.
+No timer polling, generic agent/model execution or configuration mutation is added.
+
+Mayhem inventory uses current-directory Git worktree/tracked-file observations,
+not recursive home/temp scans. Samples retain existing bounds (16 worktrees,
+3,000 tracked references / 200 ms per worktree). Missing/unsafe paths and sample
+limits remain partial/error states; tracked sizes exclude untracked files and
+are never summed across worktrees. Herdr activity uses the shared engine's
+read-only snapshot adapter, with verified workspace/project-directory filtering.
+Missing context, names or IDs remain unknown. Full scoped activity is under d.
+See [the native reports and Herdr contract](../../docs/analyzers.md).
+
+## Mayhem reports
+
+F4 reads the saved native report. Press a to switch reports/inventory; r rereads
+without running checkers. The tool table displays actual exit status; the selected
+pane shows original output first. [/] or PgUp/PgDn scroll it, d gives full details,
+and Enter opens the retained raw stdout artifact. Failed tools remain visible.
+No second engine, grades, guessed coverage, synthetic findings or count deltas.
+
+`--audit-report PATH` (also `--audit-candidate PATH`) selects a manifest.
+`--audit-tool NAME` selects a recorded tool. `--mayhem-report` prints native
+reports and exits without a terminal. Existing legacy JSON remains readable as
+raw data, without reinterpretation. Input must be regular JSON up to 32 MiB.
+Original files are never rewritten. Optional `--audit-baseline PATH` remains a
+raw artifact input; it does not create normalized comparisons. Expected revisions
+via `--audit-baseline-sha`/`--audit-candidate-sha` require a matching recorded clean
+revision. A dirty checkout is not claimed as evidence of its HEAD alone.
+
+## MOPS handoffs
+
+MOPS retains PR selection, task/agent/next action/blocker, review, provenance and
+full original PR body. r explicitly reads configured inputs; selection does not
+fetch. It never discovers, resumes or controls an agent session.
+
+```sh
+backstage --mops-repo OWNER/REPO --mops-pr NUMBER
+backstage --mops-repo OWNER/REPO --mops-pr-file native-pr.json
 ```
-magic-cli --session-file /dev/null exec storyboard.template --params '{}'
-magic-cli --session-file /dev/null exec project.root --params '{}'
-magic-cli --session-file /dev/null exec crew.list --params '{}'
-```
 
-These are direct argument vectors, not shell strings. `/dev/null` is verified as a
-character device: the CLI cannot inherit a saved project/window binding. No
-`--project`, desktop connection, dry-run, project-open, discovery, agent/model call, or generic
-command dispatcher is used. No repeat calls occur on tab/file selection. A refresh
-in flight is not duplicated; the prior observation stays visible until completion.
-Each call has a 10-second deadline and 1 MiB stdout/stderr limits. Only its own
-isolated process group is killed/reaped on timeout or shutdown, including its
-native backend. A blocking event channel wakes the UI; there is no polling timer.
+Live input uses bounded read-only `gh api --method GET repos/OWNER/REPO/pulls/NUMBER`;
+repeat --mops-pr up to 20 times. Import accepts native REST PR JSON object/array.
+Optional `--mops-reviews-file NUMBER=PATH`, `--mops-checks-file NUMBER=PATH` and
+`--mops-provenance PATH` attach only matching head/provenance. Inputs are regular
+JSON up to 4 MiB. Imports are labeled snapshots; r rereads the file, not GitHub.
 
-The verified contracts are in `apps/magic-cli/src/main.rs`,
-`session.rs`, `studio.rs`, and the engine's `storyboard.rs`,
-`project_settings.rs`, `crew.rs`, `commands.rs`. A blank native headless session
-has no project to attach/load. The existing engine activity telemetry for journaled
-read commands remains enabled under the user's logging authorization. Backstage
-adds no logs, report archive, persisted context, session file, writer lease, or
-configuration mutation; it does not link the engine or change desktop themes.
+Enter opens the validated PR URL; l opens a verified role file; p opens the
+recorded available worktree; c copies recorded resume text; f copies actual
+feedback; m shows that PR's report scope; d shows full provenance and body.
+OSC52 copy is a request, not confirmed host clipboard success. Commands are never
+executed; missing/control-containing/over-4-KiB commands disable copying.
+The canonical handoff fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
+Recorded session/worktree/Resume verified fields are metadata, not live validation.
+`--mayhem-pr-report NUMBER` prints the same base/head evidence scope without
+substituting unrelated reports or treating CI as reviewer approval.
 
-CLI/native-backend absence, timeout, malformed response and command errors remain
-inspectable separately. Failed calls retain explicitly labeled repository fallback
-for the existing native template and five actual department AGENTS.md files when
-run inside this checkout. No embedded role fallback is passed off as an existing
-file. Runtime replies provide template `path`, project `root`/`config`/`source`,
-and crew `departments[].path`/`exists`/`document.department`; local metadata then
-checks actual files. Missing root/config stays unavailable; no path is invented.
-Role documents/candidates are never presented as active cast.
+## Observed verification
 
-Total project count and unknown-file/folder classification remain unavailable:
-there is no verified complete-library/classification contract. Desktop association
-is unknown until explicitly requested. Open passes one canonical absolute target
-argument and reports only launcher outcomes, never that an app actually opened.
-
-## Acceptance status
-
-The adapter is implemented from verified source contracts, but **real successful
-CLI/native runtime verification remains blocked**: neither is installed in this
-cloud workspace. The command-absent state can be exercised honestly; no fake
-provider or records are used. External Open also remains unverified here. This is
-not an exact visual-match/full-acceptance claim, and acceptance is not implied by navigation availability.
-
-References: [Ratatui initialization](https://docs.rs/ratatui/latest/ratatui/init/index.html),
-[Crossterm event handling](https://ratatui.rs/tutorials/counter-app/_multiple-files/event/),
-[Rust process groups](https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#method.process_group),
-[safe nix killpg](https://docs.rs/nix/latest/nix/sys/signal/fn.killpg.html).
-
-## Project and worktree scope
-
-Workshop also reads `project.catalog` (newest-ten history, not a filesystem census)
-and `backstage.observe` for each listed project using the same isolated CLI and
-bounded child lifecycle. Saved response identity/source must match the requested
-canonical project. File rows are existing saved references and their local metadata,
-not a guessed complete inventory. Four creative-area headers remain present;
-unclassified saved asset references are explicitly separated. No filename or model
-assignment is fabricated. Tab changes, selection and collapse never start queries.
-Tab changes keyboard focus between project/sidebar and file/worktree list; 1–4
-collapse Workshop groups. Enter/o opens the selected file/folder only explicitly;
-p matches selected-file folder Open, or project folder with project focus.
-
-Mayhem observes only the explicit current-directory Git repository using native
-`git worktree list --porcelain -z` and `git ls-files -z --cached`. Commands disable
-pager, fsmonitor and hooks, inherit no caller project binding, and use the same
-bounded process-group lifecycle. Metadata is sampled only on startup/explicit R:
-3000 tracked references / 200ms per worktree, maximum16 worktrees; missing/unsafe
-paths and limits are partial/error states. No recursive home/temp scan is used.
-Symlink escapes are excluded; hardlinked bytes are deduplicated within each path.
-Counts/bytes exclude .git and untracked files and are never summed across worktrees.
-Folder names come from observed tracked paths, not assumed source/build categories.
-Token usage remains unavailable without a real saved usage provider; no inference,
-provider calls, agent connections or subscriptions are used to populate it.
-
-Git contracts: https://git-scm.com/docs/git-worktree and
-https://git-scm.com/docs/git-ls-files .
-
-## MAYHEM native audit artifacts
-
-No checker runs on browse. Supply existing native Codacy JSON report files using
-`--audit-baseline PATH --audit-candidate PATH`, optionally paired
-`--audit-baseline-supplement PATH --audit-candidate-supplement PATH`. Source Git
-provenance can be caller-supplied with `--audit-baseline-sha HEX` and
-`--audit-candidate-sha HEX`; it is labeled external input, never invented from HEAD.
-Reports are bounded regular JSON files (32MiB each), parsed outside the TUI loop.
-Audit artifact sessions do not start native project queries; other views explicitly
-show that project observation was not requested.
-
-Add `--mayhem-report` to print the same read-only audit comparison as plain Markdown
-and exit without initializing the terminal or launching any process. Tool names and
-native issueCount/errorCount/filesAnalyzed/status fields are retained. Supplement
-counts/errors remain separate; count deltas are not quality scores. Primary errors,
-skipped files, missing tools and changed scope are not erased by retries.
-
-In the artifact TUI: arrows/j/k select native toolId; [/] select that tool's candidate
-finding; d opens native details, PgUp/PgDn scroll, Enter/o requests an observed source
-file externally. Artifact and source links are bounded metadata observations, not a
-report archive. Existing JSON files are never modified or rewritten.
-
-For an unchanged-rule-inclusive readout, add `--audit-tool ESLint9` with
-`--mayhem-report`. This prints the ten largest remaining native patternId groups by
-candidate issue-record count, including unchanged groups—not only largest deltas.
-The filter also selects that native toolId initially in the artifact TUI. Display
-labels are a bounded static mapping: e.g. JavaScript quality / ESLint9 and Unknown
-names / ESLint9_no-undef. Technical IDs stay indented/dim on the next terminal row
-(same cell size), and are retained alongside labels in Markdown. No counts, fields,
-rule identities or original JSON files are rewritten; unknown IDs use their raw
-name. Official rule documentation links accompany known remaining-rule labels.
-
-## MOPS — PR-owned handoff, never a session controller
-
-The approved visual reference is versioned at
-`references/backstage/mops-task-handoff-v2.png`. MOPS reads only explicitly selected
-PR metadata. It never contacts a harness, discovers sessions, resumes an agent or
-executes a command supplied by a PR. Navigation does not fetch GitHub data. Press R
-explicitly to read the configured source; a single in-flight read is not duplicated.
-
-Live source: `--mops-repo OWNER/REPO --mops-pr NUMBER` (repeat PR flags, maximum20).
-The supported native `gh api --method GET repos/OWNER/REPO/pulls/NUMBER` route is
-read-only and uses the existing bounded child lifecycle. This cloud's gh is not
-authenticated; no login, token injection or credential changes were performed.
-
-Acceptance/import source: `--mops-pr-file PATH` consumes an untouched native GitHub
-REST PR JSON object (or bounded object array). Optional native auxiliary inputs are
-`--mops-reviews-file NUMBER=PATH`, `--mops-checks-file NUMBER=PATH` and repeatable
-`--mops-provenance PATH`. Inputs are regular JSON files bounded to4MiB, not an app
-archive. Head identity/provenance gates review/check attachment. The screen labels
-**imported GitHub snapshot**, retrieval time and the limitation that R rereads files,
-not the network. This is not fully connected/live MOPS. Missing metadata is Unknown.
-
-The single canonical PR rule is `.github/PULL_REQUEST_TEMPLATE.md`'s `## MOPS
-handoff` section. The obsolete lowercase duplicate template was examined, found
-unreferenced, and removed. Agents record their own harness, session ID, worktree,
-recorded resume command and next action/blocker there. No session logging or
-extra session script is needed. Existing role files are neither moved nor created;
-role Open is enabled only for a discovered existing crew role target. A reported
-worktree is a resolved directory, not proof of its branch or live session state.
-
-Controls: arrows/j/k select PR; Enter/o opens its validated GitHub URL; l opens the
-verified role; p opens the recorded available folder; c requests copy of a
-recorded resume command; f requests copying actual review feedback;
-m opens the same PR's Mayhem evidence scope; d exposes full source fields, warnings
-and original PR body. Copy uses Crossterm OSC52 only and reports a request, not
-confirmed host clipboard success. Missing commands, control characters, commands
-over 4 KiB, and known unsupported terminals disable copy. Harness, session ID, worktree, and the
-legacy Resume verified field are recorded metadata, never live-session
-validation or prerequisites for copying the displayed command. Session ID and
-Resume command are literal text after the field colon and one optional space;
-do not wrap these values in Markdown backticks. Additional spaces, backticks,
-and shell redirection remain unchanged. No copied command is ever executed by
-Backstage.
-
-`--mayhem-pr-report NUMBER` with the same explicit MOPS inputs prints native PR
-base/head scope and missing matching audit-artifact evidence. It never substitutes
-unrelated whole-project counts, never treats CI as reviewer approval/code-audit
-coverage, and never starts a checker. A late audit result is checked against the
-currently selected PR revisions before it can replace the visible evidence.
-
-Native manual acceptance has used real imported PR22/PR30 snapshots. Those runs
-are not production acceptance, live GitHub integration, clipboard confirmation,
-GUI/full-video evidence or successful session resume. No tests were added or run.
+The CLI/Backstage build and scoped Clippy pass in this cloud workspace. Native
+80×24 terminal interaction covered PR #76 snapshot import, selection, full-detail
+scrolling and saved analyzer output; q exited cleanly. The connector-provided PR
+fields were explicitly converted to native import shape. This is not proof of
+live `gh` authentication (the installed token is invalid). External Open,
+Settings project.root succeeded; crew.list reported a missing department role
+file and activity receipt writing failed on the cloud read-only home filesystem.
+Clipboard success, desktop embedding and successful live Herdr activity remain
+unverified. Herdr is absent and its caller/workspace context is unavailable here.
+No tests were added. The user's disconnected PC was not modified.

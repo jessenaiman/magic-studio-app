@@ -104,36 +104,26 @@
       "component": "workspace",
       "label": "Mayhem reports and Backstage"
     },
-    "analytics-surface": {
-      "component": "surface",
-      "label": "Analytics surface",
-      "target": "view-analytics"
-    },
     "tab-analytics": {
       "component": "control",
       "label": "Mayhem",
       "target": "view-analytics"
     },
+    "analytics-profile": {
+      "component": "field",
+      "label": "Analyzer profile",
+      "target": "view-analytics"
+    },
+    "mayhem-search": {
+      "component": "start",
+      "label": "Run analyzers",
+      "command": "mayhem.scan",
+      "target": "view-analytics"
+    },
     "analytics-refresh": {
-      "component": "control",
-      "label": "Refresh",
-      "command": "app.analytics",
-      "target": "view-analytics"
-    },
-    "analytics-scan": {
-      "component": "control",
-      "label": "Scan code",
-      "command": "app.analytics",
-      "target": "view-analytics"
-    },
-    "analytics-diagram-select": {
-      "component": "control",
-      "label": "Architecture reference",
-      "target": "view-analytics"
-    },
-    "analytics-command-search": {
-      "component": "control",
-      "label": "Find current command",
+      "component": "ghost",
+      "label": "Refresh saved results",
+      "command": "mayhem.evidence",
       "target": "view-analytics"
     },
     "blocks": {

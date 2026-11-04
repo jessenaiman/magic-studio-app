@@ -32,6 +32,7 @@ mod mops;
 mod project_data;
 mod provider;
 mod ui;
+mod widgets;
 mod workshop;
 use crossterm::{
     event::{
@@ -46,7 +47,7 @@ use std::{io, path::Path, process::Command};
 enum Wake {
     Shutdown,
     MopsObserved(Box<handoff::Snapshot>),
-    AuditObserved(Result<Box<audit::Comparison>, String>),
+    AuditObserved(Result<Box<audit::Reports>, String>),
     Terminal(io::Result<Event>),
     Observed(Box<data::Snapshot>, Box<project_data::ProjectSnapshot>),
 }
@@ -109,11 +110,11 @@ struct App {
     mops_rows: Vec<(Rect, usize)>,
     mops_actions: Vec<(Rect, MopsAction)>,
     audit_pr_context: Option<handoff::PrScope>,
-    audit: Option<audit::Comparison>,
+    audit: Option<audit::Reports>,
     audit_error: Option<String>,
     audit_inputs: Option<audit::Inputs>,
     audit_selected: usize,
-    audit_finding_selected: usize,
+    audit_scroll: usize,
     audit_rows: Vec<(Rect, usize)>,
     view: View,
     project_data: project_data::ProjectSnapshot,
@@ -125,19 +126,15 @@ struct App {
     project_rows: Vec<(Rect, usize)>,
     project_file_rows: Vec<(Rect, usize)>,
     worktree_rows: Vec<(Rect, usize)>,
-    group_rows: Vec<(Rect, usize)>,
     project_buttons: Vec<(Rect, std::path::PathBuf)>,
     tabs: Vec<(Rect, View)>,
     data: data::Snapshot,
     refreshing: bool,
     selected: usize,
-    offset: usize,
     message: String,
     details: bool,
     detail_scroll: u16,
-    outlined_controls: bool,
     opener_result: Option<std::sync::mpsc::Receiver<String>>,
-    buttons: Vec<(Rect, usize)>,
     rows: Vec<(Rect, usize)>,
 }
 struct ProjectSelection {
@@ -165,7 +162,7 @@ impl App {
             audit_error: None,
             audit_inputs,
             audit_selected: 0,
-            audit_finding_selected: 0,
+            audit_scroll: 0,
             audit_rows: vec![],
             project_data: project_data::ProjectSnapshot::default(),
             project_selected: 0,
@@ -176,19 +173,15 @@ impl App {
             project_rows: vec![],
             project_file_rows: vec![],
             worktree_rows: vec![],
-            group_rows: vec![],
             project_buttons: vec![],
             tabs: vec![],
             data: data::Snapshot::read(),
             refreshing: false,
             selected: 0,
-            offset: 0,
             message: String::new(),
             details: false,
             detail_scroll: 0,
             opener_result: None,
-            outlined_controls: true,
-            buttons: vec![],
             rows: vec![],
         }
     }
@@ -222,7 +215,7 @@ impl App {
             .clone()
             .unwrap_or_else(|| "PR metadata read; no harness contacted".into());
     }
-    fn audit_observed(&mut self, result: Result<Box<audit::Comparison>, String>) {
+    fn audit_observed(&mut self, result: Result<Box<audit::Reports>, String>) {
         self.refreshing = false;
         if !self.audit_completion_matches(&result) {
             return;
@@ -239,10 +232,7 @@ impl App {
             }
         }
     }
-    fn audit_completion_matches(
-        &mut self,
-        result: &Result<Box<audit::Comparison>, String>,
-    ) -> bool {
+    fn audit_completion_matches(&mut self, result: &Result<Box<audit::Reports>, String>) -> bool {
         let Some(scope) = &self.audit_pr_context else {
             return true;
         };
@@ -260,7 +250,7 @@ impl App {
             "Discarded artifact result: it does not match the selected PR base/head".into();
         false
     }
-    fn audit_tool_accepted(&mut self, report: &audit::Comparison) -> bool {
+    fn audit_tool_accepted(&mut self, report: &audit::Reports) -> bool {
         let Some(requested) = self
             .audit_inputs
             .as_ref()
@@ -275,16 +265,16 @@ impl App {
         }
         true
     }
-    fn install_audit(&mut self, report: audit::Comparison) {
+    fn install_audit(&mut self, report: audit::Reports) {
         self.audit_selected = self.preferred_audit_tool(&report);
-        self.audit_finding_selected = self
-            .audit_finding_selected
-            .min(report.finding_count(self.audit_selected).saturating_sub(1));
+        self.audit_scroll = self
+            .audit_scroll
+            .min(report.detail_count(self.audit_selected).saturating_sub(1));
         self.audit = Some(report);
         self.audit_error = None;
         self.message = "Native audit artifacts read; no checks run".into();
     }
-    fn preferred_audit_tool(&self, report: &audit::Comparison) -> usize {
+    fn preferred_audit_tool(&self, report: &audit::Reports) -> usize {
         let id = self
             .audit
             .as_ref()
@@ -297,7 +287,7 @@ impl App {
         id.and_then(|id| report.tool_ids().iter().position(|tool| *tool == id))
             .unwrap_or_else(|| {
                 (0..report.tool_ids().len())
-                    .find(|index| report.finding_count(*index) > 0)
+                    .find(|index| report.detail_count(*index) > 0)
                     .unwrap_or(0)
             })
     }
@@ -386,7 +376,11 @@ impl App {
             return;
         }
         self.refreshing = true;
-        if let Some(inputs) = self.audit_inputs.clone() {
+        if let Some(inputs) = self
+            .audit_inputs
+            .clone()
+            .filter(|_| self.view == View::Mayhem)
+        {
             std::thread::spawn(move || {
                 let _ = sender.send(Wake::AuditObserved(inputs.load().map(Box::new)));
             });
@@ -521,7 +515,7 @@ impl App {
     }
     fn open_current(&mut self, folder: bool) {
         if self.is_audit_mayhem() {
-            self.open_audit_finding();
+            self.open_audit_artifact();
             return;
         }
         if self.view == View::Settings {
@@ -538,18 +532,15 @@ impl App {
         self.view == View::Mayhem
             && (self.audit_inputs.is_some() || self.audit_pr_context.is_some())
     }
-    fn open_audit_finding(&mut self) {
+    fn open_audit_artifact(&mut self) {
         let path = self
             .audit
             .as_ref()
-            .and_then(|a| a.finding_link(self.audit_selected, self.audit_finding_selected))
-            .map(Path::to_path_buf);
+            .and_then(|a| a.artifact(self.audit_selected));
         if let Some(path) = path {
             self.launch(&path);
         } else {
-            self.message =
-                "Native finding source link unavailable/unverified; report remains inspectable"
-                    .into();
+            self.message = "Native artifact unavailable; press d for report details".into();
         }
     }
     fn current_target_path(&self, folder: bool) -> Option<std::path::PathBuf> {
@@ -603,7 +594,7 @@ impl App {
         if self.is_audit_mayhem() {
             let len = self.audit.as_ref().map_or(0, |a| a.tool_ids().len());
             step_index(&mut self.audit_selected, len, down);
-            self.audit_finding_selected = 0;
+            self.audit_scroll = 0;
             return;
         }
         self.step_primary_selection(down);
@@ -884,6 +875,16 @@ impl App {
         if let Some(quit) = self.handle_details_key(code) {
             return quit;
         }
+        if code == KeyCode::F(4) {
+            self.view = View::Mayhem;
+            if self.audit_inputs.is_none() {
+                self.audit_inputs = audit::Inputs::from_saved_analytics();
+            }
+            if self.audit_inputs.is_some() {
+                self.refresh(control.clone(), sender.clone());
+            }
+            return false;
+        }
         if self.handle_navigation_key(code)
             || self.handle_audit_key(code)
             || self.handle_mops_key(code)
@@ -928,15 +929,15 @@ impl App {
         match code {
             KeyCode::Char('B') => self.open_audit_json(true),
             KeyCode::Char('C') => self.open_audit_json(false),
-            KeyCode::Char('[') => {
-                self.audit_finding_selected = self.audit_finding_selected.saturating_sub(1);
+            KeyCode::PageUp | KeyCode::Char('[') => {
+                self.audit_scroll = self.audit_scroll.saturating_sub(1);
             }
-            KeyCode::Char(']') => {
+            KeyCode::PageDown | KeyCode::Char(']') => {
                 let n = self
                     .audit
                     .as_ref()
-                    .map_or(0, |a| a.finding_count(self.audit_selected));
-                step_index(&mut self.audit_finding_selected, n, true);
+                    .map_or(0, |a| a.detail_count(self.audit_selected));
+                step_index(&mut self.audit_scroll, n, true);
             }
             _ => return false,
         }
@@ -950,7 +951,7 @@ impl App {
                 a.candidate.path.clone()
             }
         });
-        if let Some(path) = path {
+        if let Some(path) = path.filter(|p| p.is_file()) {
             self.launch(&path);
         }
     }
@@ -980,7 +981,7 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => return true,
             KeyCode::Enter | KeyCode::Char('o') => self.open_current(false),
             KeyCode::Char('p') => self.open_current(true),
-            KeyCode::Char('r') => self.refresh(control.clone(), sender.clone()),
+            KeyCode::Char('r' | 'R') => self.refresh(control.clone(), sender.clone()),
             KeyCode::Char('a') if self.view == View::Mayhem => {
                 self.toggle_saved_audit(control, sender);
             }
@@ -1031,7 +1032,7 @@ impl App {
             self.mops_selected = *i;
         } else if let Some((_, i)) = self.audit_rows.iter().find(|(r, _)| r.contains(p)) {
             self.audit_selected = *i;
-            self.audit_finding_selected = 0;
+            self.audit_scroll = 0;
         } else if let Some((_, view)) = self.tabs.iter().find(|(r, _)| r.contains(p)) {
             self.view = *view;
         } else if let Some((_, path)) = self.project_buttons.iter().find(|(r, _)| r.contains(p)) {
@@ -1043,9 +1044,7 @@ impl App {
         true
     }
     fn handle_row_or_button_click(&mut self, p: ratatui::layout::Position) {
-        if let Some((_, i)) = self.group_rows.iter().find(|(r, _)| r.contains(p)) {
-            self.collapsed[*i] = !self.collapsed[*i];
-        } else if let Some((_, i)) = self.worktree_rows.iter().find(|(r, _)| r.contains(p)) {
+        if let Some((_, i)) = self.worktree_rows.iter().find(|(r, _)| r.contains(p)) {
             self.worktree_selected = *i;
             self.focus_projects = false;
         } else if let Some((_, i)) = self.project_file_rows.iter().find(|(r, _)| r.contains(p)) {
@@ -1055,8 +1054,6 @@ impl App {
             self.project_selected = *i;
             self.project_file_selected = 0;
             self.focus_projects = true;
-        } else if let Some((_, i)) = self.buttons.iter().find(|(r, _)| r.contains(p)) {
-            self.open(*i);
         } else if let Some((_, i)) = self.rows.iter().find(|(r, _)| r.contains(p)) {
             self.selected = *i;
         }

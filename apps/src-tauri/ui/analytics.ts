@@ -1,39 +1,20 @@
-const MAYHEM_LANG_LABELS: Record<string, string> = {
-  rust: 'Rust', typescript: 'TypeScript', tsx: 'TSX · Remotion', javascript: 'JavaScript',
-  css: 'CSS', html: 'HTML · Shell', markdown: 'Markdown', python: 'Python',
-};
+function mayhemTime(seconds: unknown) { return typeof seconds === 'number' ? new Date(seconds * 1000).toLocaleString() : 'Unknown'; }
 
-function mayhemTime(seconds) { return seconds == null ? 'time unavailable' : new Date(seconds * 1000).toLocaleString(); }
-type MayhemScatterRow = {label: string; ccn: number; nloc: number};
-type MayhemChartSource = {complexity?: {available?: boolean; languages?: {lang: string; label?: string; lines?: number}[];
-  history?: {measured_at_unix_secs?: number; max_ccn?: number}[]};
-  usage?: {available?: boolean; agents?: {name?: string; id?: string; today_tokens?: number}[]};
-  audit?: {available?: boolean; tools?: {label?: string; tool?: string; findings?: number}[]}};
-
-function mayhemNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
-
-function mayhemChartSeries(d: MayhemChartSource) {
-  const comp = d.complexity || {}, usage = d.usage || {}, audit = d.audit || {};
-  return {
-    languages: comp.available ? (comp.languages || []).filter(row => mayhemNumber(row.lines))
-      .map(row => ({label: row.label || MAYHEM_LANG_LABELS[row.lang] || row.lang, value: row.lines})) : [],
-    usage: usage.available ? (usage.agents || []).filter(row => mayhemNumber(row.today_tokens))
-      .map(row => ({label: row.name || row.id || 'Unnamed agent', value: row.today_tokens})) : [],
-    history: comp.available ? (comp.history || []).filter(row => mayhemNumber(row.measured_at_unix_secs) && mayhemNumber(row.max_ccn))
-      .map(row => ({label: mayhemTime(row.measured_at_unix_secs), value: row.max_ccn})) : [],
-    checks: audit.available ? (audit.tools || []).filter(row => mayhemNumber(row.findings))
-      .map(row => ({label: row.label || row.tool || 'Unnamed check', value: row.findings})) : [],
-  };
-}
-
-function mayhemScatterRows(comp: {available?: boolean; hotspots?: {name?: string; file?: string; start_line?: number; ccn?: number; nloc?: number}[]}): MayhemScatterRow[] {
-  return comp.available ? (comp.hotspots || []).filter(row => mayhemNumber(row.ccn) && mayhemNumber(row.nloc))
-    .map(row => ({label: `${row.name || 'Unnamed'} · ${row.file || '?'}:${row.start_line ?? '?'}`, ccn: row.ccn, nloc: row.nloc})) : [];
+// Display Lizard's native XML labels and values; no custom thresholds or grading.
+function mayhemLizard(report: any, type: string) {
+  const tool = report?.tools?.find((row: any) => row.tool === 'lizard');
+  if (typeof tool?.stdout !== 'string') return [];
+  const xml = new DOMParser().parseFromString(tool.stdout, 'application/xml');
+  if (xml.querySelector('parsererror')) return [];
+  const measure = [...xml.querySelectorAll('measure')].find(node => node.getAttribute('type') === type);
+  if (!measure) return [];
+  const labels = [...measure.querySelectorAll('labels > label')].map(node => node.textContent);
+  return [...measure.querySelectorAll('item')].map(node => ({name: node.getAttribute('name'),
+    values: Object.fromEntries([...node.querySelectorAll('value')].map((value, i) => [labels[i], value.textContent?.trim() ? Number(value.textContent) : NaN]))}));
 }
 
 const mayhemBundles = new Map<string, Promise<void>>();
 function mayhemBundle(file: string): Promise<void> {
-  // This WebKit UI targets ES2023, before Promise.withResolvers.
   if (!mayhemBundles.has(file)) mayhemBundles.set(file, new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = `vendor/${file}.bundle.js`;
@@ -44,187 +25,113 @@ function mayhemBundle(file: string): Promise<void> {
   return mayhemBundles.get(file);
 }
 
-function mayhemEvidence(title: string, value: unknown) {
-  return el('details', {class: 'mayhem-evidence'}, el('summary', {}, title),
-    el('pre', {}, JSON.stringify(value ?? null, null, 2)));
-}
-
-// The engine owns the verdict. Opening the pane reads the saved score once.
 class AnalyticsViewController {
   data: any = null;
-  score: any = null;
-  evidence: any = {};
-  tree: {dispose():void} | null = null;
-  judgeError = '';
-  judging = false;
-  loading = false;
-  chart: {dispose(): void} | null = null;
-  detailsOpen = false;
+  busy = false;
+  error = '';
+  profile = 'quick';
+  charts: {dispose(): void}[] = [];
 
-  async runJev() {
-    if (this.judging || this.loading) return;
-    this.judging = true;
-    this.judgeError = null;
-    $('analytics-refresh').disabled = true;
-    $('analytics-scan').disabled = true;
-    this.renderSurface();
-    try {
-      const result = await invoke('engine_command', {id: 'app.analytics', params: {judge: true}});
-      if (!result?.jev || typeof result.jev !== 'object') throw new Error('Backend returned no Jev report.');
-      this.data = {...(this.data || {}), jev: result.jev};
-    } catch (error) {
-      this.judgeError = String(error);
-    } finally {
-      this.judging = false;
-      $('analytics-refresh').disabled = false;
-      $('analytics-scan').disabled = false;
-      this.renderSurface();
-    }
-  }
+  clearChart() { this.charts.forEach(chart => chart.dispose()); this.charts = []; }
 
   async render(scan = false) {
-    if (this.loading || this.judging) return;
-    this.loading = true;
-    const host = $('view-analytics');
-    if (scan && this.score) this.renderSurface();
-    else host.replaceChildren(el('p', {class:'may-summary',role:'status'},'Reading saved evidence…'));
+    if (this.busy) return;
+    this.busy = true;
+    this.error = '';
+    this.renderSurface();
     try {
-      this.score = await motionCommand(scan ? 'mayhem.scan' : 'mayhem.score');
-      this.evidence = await motionCommand('mayhem.evidence');
-      this.loading = false;
-      this.data = null;
-      this.detailsOpen = false;
-      this.renderSurface();
-    } catch (e) {
-      host.replaceChildren(el('p', {role:'alert'}, String(e)),
-        el('button', {onclick:()=>this.render()}, 'Retry'));
-    } finally { this.loading = false; }
+      if (scan) await motionCommand('mayhem.scan', {quick: this.profile === 'quick'});
+      this.data = await motionCommand('mayhem.evidence');
+    } catch (error) { this.error = String(error); }
+    finally { this.busy = false; this.renderSurface(); }
   }
 
-  clearChart() { this.chart?.dispose(); this.chart = null; this.tree?.dispose();this.tree=null; }
-
-  async trend(node: HTMLElement, history: any[]) {
-    const rows = history.filter(h => mayhemNumber(h.lines) && mayhemNumber(h.time))
-      .map(h => ({label:mayhemTime(h.time), value:h.lines}));
-    if (rows.length < 2) { node.textContent = 'Two scans establish a trend.'; return; }
+  async plot(node: HTMLElement, rows: any[], unit: string) {
+    if (!rows.length) { node.textContent = 'No native measurements in the saved report.'; return; }
     try {
       await mayhemBundle('mayhem-charts');
-      if (node.isConnected && state.view === 'analytics')
-        this.chart = (window as any).magicMayhemCharts.mount(node, rows, 'line', getComputedStyle(node).getPropertyValue('--accent').trim(), 'lines');
-    } catch (e) { node.textContent = String(e); }
-  }
-
-  async inspect(panel: HTMLElement) {
-    try {
-      const report = this.data || await motionCommand('app.analytics');
-      if (!panel.isConnected) return;
-      this.data = report;
-      const series = mayhemChartSeries(report);
-      panel.replaceChildren(mayhemEvidence('Code hotspots', mayhemScatterRows(report.complexity)),
-        mayhemEvidence('Checks and usage', {checks:series.checks, usage:series.usage}),
-        mayhemEvidence('Full native report', report),
-        el('button', {onclick:()=>this.runJev()}, 'Run Jev review'));
-      if (this.judgeError) panel.append(el('p',{role:'alert'},this.judgeError));
-      if (report.jev) panel.append(mayhemEvidence('Jev report', report.jev));
-    } catch (e) { panel.textContent = String(e); }
+      if (node.isConnected && state.view === 'analytics') this.charts.push((window as any).magicMayhemCharts.mount(
+        node, rows, 'bar', getComputedStyle(node).getPropertyValue('--accent').trim(), unit));
+    } catch (error) { node.textContent = String(error); }
   }
 
   renderSurface() {
     this.clearChart();
-    const d = this.score || {}, sig = d.signal || 'yellow';
-    const title = {red:'Rule broken',yellow:'Needs review',green:'Checks passed'}[sig];
-    const indicator = window.companionBoxes.dot({red:'failed',yellow:'needs-attention',green:'ready'}[sig]);
-    const actions = el('div',{class:'report-actions'},
-      el('button',{id:'analytics-refresh',class:'ghost',onclick:()=>this.render()},'Refresh'),
-      el('span',{id:'analytics-scan',hidden:true}));
-    const stamp = d.measured_at ? 'Saved scan · '+mayhemTime(d.measured_at)+' · '+String(d.revision || '').slice(0,7) : 'No saved scan';
-    const review = d.package_review;
-    const brief = ['Mayhem rule #1: Could a maintained package replace this custom logic?',
-      'Review measured snapshot '+d.snapshot+'. Start at '+(d.hotspot?.file || 'the changed source')+'.',
-      'Compare an actual package with the implementation. Cite the code and package documentation, then recommend keeping, simplifying or replacing it.',
-      'Record the conclusion using magic-cli commands mayhem.review.'].join('\n');
-    const trend = el('div',{class:'may-trend',role:'img','aria-label':'Source lines across saved scans'});
-    const advancedBody = el('div', {});
-    const advanced = el('details',{class:'may-more'}, el('summary',{},'Diagnostics'),advancedBody);
-    advanced.open = this.detailsOpen;
-    advanced.ontoggle = () => { this.detailsOpen = advanced.open; if (advanced.open && !advancedBody.childNodes.length) this.inspect(advancedBody); };
-    const terminal = el('details',{class:'may-more'},el('summary',{},'Backstage terminal'));
-    terminal.ontoggle = () => {
-      if (terminal.open) { terminal.append(window.magicBackstageTerminal.mount()); window.dispatchEvent(new Event('backstage-visible')); }
+    const d = this.data || {}, report = d.report || {}, activity = d.activity || {};
+    const tools = report.tools || [];
+    const part = (n: string, title: string, ...body: any[]) => el('section', {class: 'may-part may-p' + n},
+      el('h2', {}, el('small', {}, n), title), ...body);
+    const details = (title: string, value: unknown, open = false) => {
+      let text = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2);
+      if (typeof value === 'string') { try { text = JSON.stringify(JSON.parse(value), null, 2); } catch {} }
+      return el('details', {class: 'may-more', open}, el('summary', {}, title), el('pre', {}, text));
     };
-    const e=this.evidence, agents=e.agents, functions=e.critical_functions, files=e.oversized_files || [];
-    const measured=Array.isArray(functions), violations=measured ? functions.length+files.length : null;
-    const scanButton=el('button',{id:'mayhem-search',class:'may-search',disabled:this.loading,
-      'data-signal':this.loading?'yellow':violations?'red':'green',onclick:()=>this.render(true)},
-      this.loading?'Scanning…':violations ? `Scan again · ${violations} violations` : 'Search for violations');
-    const part=(n:string,name:string,...body:any[])=>el('section',{class:'may-part may-p'+n},
-      el('h2',{},el('small',{},n),name),...body);
-    const nums=el('div',{class:'may-numbers'},...(d.metrics || []).map(m=>el('div',{},
-      el('span',{},m.label),el('strong',{},m.current?.toLocaleString() ?? '—'),
-      el('small',{},m.delta==null?'No baseline':m.delta===0?'No change':(m.delta>0?'+':'−')+Math.abs(m.delta).toLocaleString()))));
-    const traces=(items:any[],format:(row:any)=>string)=>el('ul',{class:'may-list'},
-      ...items.map(row=>el('li',{},format(row))));
-    const offenders=[...(functions || []),...files];
-    const bars=el('div',{class:'may-bars',id:'mayhem-violation-bars','aria-label':'Highest function complexity'});
-    const cap=e.rules?.max_function_ccn;
-    for (const f of (functions || []).filter(row=>row.ccn>cap).slice(0,5)) {
-      bars.append(el('div',{title:f.file+':'+f.start_line},
-        el('span',{},f.name),el('progress',{value:f.ccn,max:Math.max(functions[0].ccn,cap)}),
-        el('b',{},String(f.ccn))));
-    }
-    const finding=(f:any)=> f.name ? `${f.name} · ${f.file}:${f.start_line} · CCN ${f.ccn}, ${f.nloc} code lines` :
-      `${f.file} · ${f.lines} lines`;
-    const cli=e.cli_scope, count=cli?.functions||0, usage=e.cli_events||[];
-    const hierarchy=el('details',{class:'may-more'},el('summary',{id:'mayhem-command-tree'},'Explore magic-cli commands'));
-    hierarchy.open=true;
-    hierarchy.ontoggle=async()=>{
-      if (!hierarchy.open) {this.tree?.dispose();this.tree=null;hierarchy.querySelector('.may-tree')?.remove();return;}
-      const node=el('div',{class:'may-tree','aria-label':'Command groups and registered commands'});hierarchy.append(node);
-      try {await mayhemBundle('mayhem-charts');if(node.isConnected) this.tree=(window as any).magicMayhemTree(node,e.commands||[]);}
-      catch(err){node.textContent=String(err);}
+    const outcome = (tool: any) => tool.error ? `Could not execute · ${tool.error}` :
+      tool.signal != null ? `Terminated by signal ${tool.signal}` :
+      tool.exit_code == null ? 'Not executed' : `Exit ${tool.exit_code}`;
+    const profile = el('select', {id: 'analytics-profile', 'aria-label': 'Analyzer profile', disabled: this.busy,
+      onchange: (event: any) => { this.profile = event.target.value; }},
+      el('option', {value: 'quick'}, 'Quick · language checks'), el('option', {value: 'comprehensive'}, 'Comprehensive · all analyzers'));
+    profile.value = this.profile;
+    const actions = el('div', {class: 'report-actions'}, profile,
+      el('button', {id: 'mayhem-search', class: 'start', disabled: this.busy, onclick: () => this.render(true)}, this.busy ? 'Working…' : 'Run analyzers'),
+      el('button', {id: 'analytics-refresh', class: 'ghost', disabled: this.busy, onclick: () => this.render()}, 'Refresh saved results'));
+    const measured = (type: string, field: string) => mayhemLizard(report, type)
+      .filter(row => Number.isFinite(row.values[field])).sort((a, b) => b.values[field] - a.values[field]);
+    const functions = measured('Function', 'CCN'), files = measured('File', 'NCSS');
+    const complexity = el('div', {class: 'may-trend', role: 'img', 'aria-label': 'Functions by native Lizard CCN'});
+    const sizes = el('div', {class: 'may-trend', role: 'img', 'aria-label': 'Files by native Lizard NCSS'});
+    const hierarchy = el('details', {class: 'may-more'}, el('summary', {id: 'mayhem-command-tree'}, 'Explore magic-cli commands'));
+    hierarchy.ontoggle = async () => {
+      if (!hierarchy.open || hierarchy.querySelector('.may-tree')) return;
+      const node = el('div', {class: 'may-tree', 'aria-label': 'Registered command groups'});
+      hierarchy.append(node);
+      try { await mayhemBundle('mayhem-charts'); if (node.isConnected) this.charts.push((window as any).magicMayhemTree(node, d.commands || [])); }
+      catch (error) { node.textContent = String(error); }
     };
-    const tools=['lizard','eslint','stylelint','tsc','clippy'];
-    const scanners=tools.map(id=>{
-      const t=(e.scanners || []).find(t=>t.tool===id);
-      const hits=t?.issues || [];
-      return el('article',{class:'may-tool'},el('strong',{},t?.label || id),
-        el('span',{},id==='lizard' && measured ? `${violations} current violations` :
-          t ? `${t.status} · ${t.findings} findings` : 'No saved check'),
-        el('p',{},id==='lizard' && offenders.length ? finding(offenders[0]) :
-          hits.length ? `${hits[0].filePath}:${hits[0].line} · ${hits[0].message}` :
-          t?.findings?'This older report contains counts only.':t?.status==='passed'?'No finding in this check.':'No issue recorded.'),
-        el('details',{},el('summary',{},'Trace and findings'),el('code',{},`magic-cli audit --tool ${id}`),
-          el('p',{},t?.measured_at ? mayhemTime(t.measured_at) : 'See saved audit revision '+String(e.audit_revision||'unknown').slice(0,7)),
-          id==='lizard'?traces(offenders,finding):traces(hits,r=>`${r.filePath}:${r.line} · ${r.patternId} · ${r.message}`),
-          el('pre',{},t?.trace || t?.error || 'Raw output was not retained for this run.')));
-    });
-    const trust=d.snapshot ? d.revision_changed?'Earlier revision':d.working_tree_modified?'Working-tree snapshot':'Recorded revision':'Unmeasured';
-    const self=e.self_audit || {}, own=self.findings || [];
-    const checks=(self.scanner_reports || []).map(r=>r.tool).join(', ');
-    const selfReport=el('details',{class:'may-more',id:'mayhem-self-audit'},
-      el('summary',{id:'mayhem-own-findings'},self.source_measured ? `Mayhem’s own code · ${own.length} recorded findings` : 'Mayhem’s own code · scan required'),
-      el('p',{},`Source: Lizard. Retained tool traces: ${checks || 'none'}. Each tool reports at its own scan time.`),
-      el('code',{},'magic-cli audit --tool lizard --tool eslint --tool stylelint'),
-      ...own.map(r=>el('p',{},`${r.tool} · ${r.file}:${r.line || 1} · ${r.evidence.message || finding(r.evidence)}`)));
-    const content=el('div',{class:'may-summary may-dashboard','data-signal':sig},
-      el('header',{class:'may-head'},el('div',{},el('small',{},'MAYHEM  /  RULE 01'),el('h1',{},'Am I good?')),actions),
-      part('01','Is Mayhem trustworthy?',el('strong',{},trust),el('small',{class:'may-stamp'},stamp),
-        el('p',{class:'may-review-label'},'Package review · ', review ? [review.verdict,review.finding,review.reviewer,review.evidence].join(' · '):'Awaiting an outside reviewer.'),
-        d.snapshot?el('button',{class:'ghost',onclick:async()=>{try{await navigator.clipboard.writeText(brief);toast('Review brief copied');}catch(err){toast(String(err));}}},'Copy review brief'):null,selfReport),
-
-      part('02','Where are my agents?',Array.isArray(agents) && agents.length ?
-        el('div',{class:'may-agents'},...agents.map(a=>el('div',{class:'may-agent',title:a.cwd||''},el('b',{},a.agent),el('span',{},a.agent_status||'Unknown'),el('small',{},[a.cwd?.split('/').pop(),a.pane_id].filter(Boolean).join(' / '))))):
-        el('p',{},Array.isArray(agents)?'Herdr reports no agents.':'Agent inventory unavailable.')),
-      part('03','God functions and oversized files',el('div',{class:'may-scan-line'},scanButton,el('small',{},d.reason)),nums,
-        el('div',{class:'may-plots'},el('figure',{},el('figcaption',{},'Most complex functions · CCN'),bars),el('figure',{},el('figcaption',{},'Source lines · recent scans'),trend)),offenders.length?el('details',{},el('summary',{},'All violations'),traces(offenders,finding)):null,
-        measured?null:el('p',{},'Run a source scan for the full list.'),el('details',{},el('summary',{},'Measurement details'),el('small',{},stamp))),
-      part('04','magic-cli',el('p',{},count?`${Math.round(100*cli.within_limits/count)}% of measured CLI functions meet the branching and length limits · ${cli.within_limits}/${count} · ${cli.source_lines} source lines`:'CLI size and standards coverage need a scan.'),
-        el('p',{},usage.length?`Observed CLI call: ${usage[usage.length-1].command}`:'No CLI use observed in the retained events for this context.'),hierarchy),
-      part('05','Scanner findings',el('p',{class:'muted'},'Open a trace for the rule, file and scanner output. Confirm the behavior before choosing a fix.'),...scanners),advanced,terminal);
+    const terminal = el('details', {class: 'may-more'}, el('summary', {}, 'Backstage terminal'));
+    terminal.ontoggle = () => { if (terminal.open) { terminal.append(window.magicBackstageTerminal.mount()); window.dispatchEvent(new Event('backstage-visible')); } };
+    const rows = activity.rows || [];
+    const agents = activity.available ? [
+      el('p', {class: 'muted'}, `${activity.scope} · ${activity.project_directory} · workspace ${activity.workspace_id}`),
+      rows.length ? el('div', {class: 'may-agents'}, ...rows.map((row: any) => el('div', {class: 'may-agent'},
+        el('b', {}, row.agent_name || 'Unknown agent name'), el('span', {}, row.agent_status || 'Unknown status'),
+        el('small', {}, `Kind: ${row.agent_kind || 'Unknown'} · terminal: ${row.terminal_id || 'Unknown'}`),
+        el('small', {}, `Workspace: ${row.workspace_name || 'Unknown'} (${row.workspace_id || 'Unknown'})`),
+        el('small', {}, `Tab: ${row.tab_name || 'Unknown'} (${row.tab_id || 'Unknown'}) · pane: ${row.pane_name || 'Unknown'} (${row.pane_id || 'Unknown'})`),
+        el('small', {}, row.cwd)))) : el('p', {}, 'No panes with a verified directory in this project/workspace.'),
+      activity.unknown_directories ? el('p', {}, `${activity.unknown_directories} workspace panes have unknown directories and are excluded.`) : null,
+    ] : [el('p', {}, activity.error || 'Herdr snapshot unavailable. Project/workspace activity is unknown.')];
+    const events = (d.cli_events?.events || []).filter((row: any) => row.origin === 'CLI');
+    const content = el('div', {class: 'may-summary may-dashboard'},
+      el('header', {class: 'may-head'}, el('div', {}, el('small', {}, 'MAYHEM  /  NATIVE REPORTS'), el('h1', {}, 'Mayhem')), actions),
+      this.error ? el('p', {role: 'alert'}, this.error) : null,
+      part('01', 'Run evidence', el('p', {}, report.error || `Saved ${report.profile || 'Unknown profile'} run · ${mayhemTime(report.measured_at)}`),
+        el('p', {}, `Source: ${report.source_root || d.root || 'Unknown'} · target: ${report.target || 'Unknown'}`),
+        el('p', {}, `Revision: ${report.revision || 'Unknown'} · ${report.working_tree == null ? 'Working tree unknown' : report.working_tree ? 'Included uncommitted changes' : 'Recorded clean working tree'}`),
+        el('p', {}, tools.length ? `${tools.filter((t: any) => t.exit_code === 0).length} commands returned 0; ${tools.filter((t: any) => t.exit_code != null && t.exit_code !== 0).length} returned nonzero; ${tools.filter((t: any) => t.exit_code == null).length} have no native exit code.` : 'No command outcomes recorded.'),
+        el('p', {class: 'muted'}, 'These are command outcomes for the recorded scopes, not an application grade or coverage claim.')),
+      part('02', 'Where are my agents?', ...agents),
+      part('03', 'Native measurements', el('div', {class: 'may-plots'},
+        el('figure', {}, el('figcaption', {}, 'Functions · Lizard CCN'), complexity),
+        el('figure', {}, el('figcaption', {}, 'Files · Lizard NCSS'), sizes)),
+        details('All Lizard function measurements', functions), details('All Lizard file measurements', files)),
+      part('04', 'magic-cli', el('code', {}, 'magic-cli audit --quick · magic-cli audit · magic-cli audit --tool tsc'),
+        el('p', {}, 'MCP: command_run mayhem.scan with quick=true or selected tools. Each report records its exact scope.'),
+        events.length ? details('Observed CLI events in this session', events) : el('p', {}, 'No CLI events recorded in this session.'), hierarchy),
+      part('05', 'Analyzer reports', ...tools.map((tool: any) => el('article', {class: 'may-tool'},
+        el('strong', {}, tool.tool), el('span', {}, outcome(tool)), el('p', {}, `Scope: ${tool.scope}`),
+        details('Exact invocation', {cwd: tool.cwd, executable: tool.executable, args: tool.args}),
+        details('Complete stdout', tool.stdout, tool.exit_code !== 0 && Boolean(tool.stdout)), details('Complete stderr', tool.stderr, tool.exit_code !== 0 && Boolean(tool.stderr)), tool.native_report ? details('Native report file', tool.native_report.error || tool.native_report.contents) : null)),
+        !tools.length ? el('p', {}, 'No analyzer report is loaded. Choose a profile and run it explicitly.') : null),
+      details('Complete saved run', report),
+      report.artifacts ? el('div', {}, el('code', {}, report.artifacts), el('button', {class: 'ghost', onclick: () => openPath(report.artifacts)}, 'Open raw artifacts')) : null,
+      terminal);
     $('view-analytics').replaceChildren(content);
     const nav = $('mayhem-health');
-    if (nav) { nav.textContent = title; nav.parentElement.dataset.health = sig; }
-    void this.trend(trend,d.history || []);
+    if (nav) { nav.textContent = this.busy ? 'Running' : report.measured_at ? 'Saved reports' : 'Not measured'; delete nav.parentElement.dataset.health; }
+    void this.plot(complexity, functions.slice(0, 5).map(row => ({label: row.name, value: row.values.CCN})), 'CCN');
+    void this.plot(sizes, files.slice(0, 5).map(row => ({label: row.name, value: row.values.NCSS})), 'NCSS');
   }
 }
 const mayhemView = new AnalyticsViewController();

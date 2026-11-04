@@ -188,7 +188,6 @@ pub enum Status {
     Found,
     Present,
     None,
-    Unavailable,
 }
 fn is_project(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == "magic")
@@ -280,25 +279,6 @@ fn read_role(path: &Path) -> std::io::Result<String> {
 impl Snapshot {
     pub fn apply(&mut self, results: crate::provider::Results) {
         let mut details = Vec::new();
-        let template = results.template.and_then(|v| response_path(&v, "path"));
-        match template {
-            Ok(path) => {
-                self.files[0] = FileRecord::observe(
-                    "Storyboard template".into(),
-                    "Templates",
-                    "DeckCraft",
-                    Some(path),
-                );
-                self.files[0].reason =
-                    "Observed storyboard.template; local metadata; desktop association unavailable"
-                        .into();
-                details.push("storyboard.template: observed".into());
-            }
-            Err(e) => {
-                self.files[0].reason = format!("Repository fallback; storyboard.template: {e}");
-                details.push(format!("storyboard.template: {e}"));
-            }
-        }
         match results.root.and_then(|v| {
             Ok((
                 response_path(&v, "root")?,
