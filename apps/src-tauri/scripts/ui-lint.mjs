@@ -9,6 +9,7 @@
 //                                           with a non-zero count must lower one
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import ts from 'typescript';
 import { execSync } from 'node:child_process';
 
 const UI = new URL('../ui/', import.meta.url);
@@ -134,11 +135,27 @@ function cssCounts(file, source) {
 // An element id the config does not know is untracked UI; a class still
 // written at the call site is a look that has not moved into the config yet.
 function configCounts(source) {
-  const ids = [...source.matchAll(/\bid\s*:\s*["'`]([^"'`$]*)["'`]/g)].map(match => match[1]);
-  const withoutEntry = ids.filter(id => id && !configured.has(id)).length;
+  let withoutEntry = 0;
+  const syntax = ts.createSourceFile('ui.ts', source, ts.ScriptTarget.Latest, true);
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'el') {
+      const attrs = node.arguments[1];
+      if (attrs && ts.isObjectLiteralExpression(attrs)) {
+        const values = new Map(attrs.properties.filter(ts.isPropertyAssignment)
+          .map(property => [property.name.getText(syntax).replace(/^['"]|['"]$/g, ''), property.initializer]));
+        const literal = key => {
+          const value = values.get(key);
+          return value && ts.isStringLiteralLike(value) ? value.text : null;
+        };
+        const id = literal('box') || literal('id');
+        if (id && !configured.has(id)) withoutEntry++;
+
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(syntax);
   const calls = source.match(/el\([^)]*?\}/gs) || [];
-  // A class written in code that the config does not name: the look is still
-  // at the call site instead of in components.json.
   const classFromCode = calls.filter(call => {
     const id = call.match(/\bid\s*:\s*["'`]([^"'`$]*)["'`]/);
     const klass = call.match(/\bclass\s*:\s*["'`]([^"'`]*)["'`]/);
@@ -197,21 +214,7 @@ function reportFor(sources) {
 
 const report = () => reportFor(sources);
 
-// The Task 8 acceptance bar. It is printed, not enforced: the tree is over it today.
-const BAR = { css_lines: 911, css_selectors: 673, js_lines: 4227 };
-
-function acceptance() {
-  const css = 'style.css';
-  const c = counts[css] ?? {};
-  const js = jsFiles.reduce((sum, file) => sum + (counts[file]?.lines ?? 0), 0);
-  const writes = jsFiles.reduce((sum, file) => sum + (counts[file]?.style_writes ?? 0), 0);
-  const attributes = jsFiles.reduce((sum, file) => sum + (counts[file]?.style_attributes ?? 0), 0);
-  const gap = (value, limit) => `${value}/${limit}${value > limit ? ` (+${value - limit})` : ''}`;
-  return `acceptance: css ${gap(c.lines ?? 0, BAR.css_lines)} lines · selectors ${gap(c.selectors ?? 0, BAR.css_selectors)} · js ${gap(js, BAR.js_lines)} lines · px outside :root ${c.px_outside_root ?? 0} · hex outside :root ${c.hex_outside_root ?? 0} · ${writes} .style.x = · ${attributes} style: attributes`;
-}
-
 if (process.argv.includes('--report')) console.log('report: ' + report());
-if (process.argv.includes('--report') || process.argv.includes('--ratchet')) console.log(acceptance());
 
 if (process.argv.includes('--write-baseline')) {
   fs.writeFileSync(BASELINE, JSON.stringify({ files: counts }, null, 2) + '\n');

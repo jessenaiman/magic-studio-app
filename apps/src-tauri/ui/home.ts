@@ -67,7 +67,6 @@ class HomeViewController {
     document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-project"));
     $("blocks").classList.remove("collapsed");
     $("project-name").textContent = "New project";
-    $("sb-chips").replaceChildren();
     $("sb-page").textContent = "—";
     $("sb-cards").replaceChildren(projectSetupCard(true));
     renderBlocks();
