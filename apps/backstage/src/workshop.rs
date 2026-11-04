@@ -37,18 +37,22 @@ pub fn draw(f: &mut Frame, area: Rect, app: &mut App) {
     );
     let project = app.project_data.projects.get(app.project_selected);
     let indices = app.visible_workshop_files();
-    let files = indices
-        .iter()
-        .map(|i| {
-            let file = &project.unwrap().files[*i];
-            vec![
-                file.name.clone(),
-                file.group.clone(),
-                bytes(file.bytes),
-                if file.available { "Ready" } else { "Missing" }.into(),
-            ]
-        })
-        .collect();
+    let files = if let Some(project) = project {
+        indices
+            .iter()
+            .map(|i| {
+                let file = &project.files[*i];
+                vec![
+                    file.name.clone(),
+                    file.group.clone(),
+                    bytes(file.bytes),
+                    if file.available { "Ready" } else { "Missing" }.into(),
+                ]
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let selected = indices
         .iter()
         .position(|i| *i == app.project_file_selected)

@@ -46,7 +46,7 @@ use std::{io, path::Path, process::Command};
 
 enum Wake {
     Shutdown,
-    OpenerFinished(String),
+    OpenerFinished(u64, String),
     MopsObserved(Box<handoff::Snapshot>),
     AuditObserved(Result<Box<audit::Reports>, String>),
     Terminal(io::Result<Event>),
@@ -136,6 +136,7 @@ struct App {
     details: bool,
     detail_scroll: u16,
     wake_sender: std::sync::mpsc::Sender<Wake>,
+    opener_request: u64,
     rows: Vec<(Rect, usize)>,
 }
 struct ProjectSelection {
@@ -186,6 +187,7 @@ impl App {
             details: false,
             detail_scroll: 0,
             wake_sender,
+            opener_request: 0,
             rows: vec![],
         }
     }
@@ -500,13 +502,15 @@ impl App {
         }
     }
     fn open_pr_url(&mut self, url: &str) {
-        self.message = match open_url(url, self.wake_sender.clone()) {
+        self.opener_request = self.opener_request.wrapping_add(1);
+        self.message = match open_url(url, self.wake_sender.clone(), self.opener_request) {
             Ok(()) => "Browser opener requested; outcome unknown".into(),
             Err(error) => error.to_string(),
         };
     }
     fn launch(&mut self, path: &Path) {
-        self.message = match open_external(path, self.wake_sender.clone()) {
+        self.opener_request = self.opener_request.wrapping_add(1);
+        self.message = match open_external(path, self.wake_sender.clone(), self.opener_request) {
             Ok(()) => "External opener started; application outcome unknown".into(),
             Err(error) => format!("External opener failed: {error}"),
         };
@@ -684,44 +688,35 @@ impl App {
             self.detail_scroll = 0;
             return;
         }
-        if index == usize::MAX {
-            let path = self.data.projects_root.as_deref().filter(|p| p.is_dir());
-            self.message = match path {
-                Some(path) => match open_external(path, self.wake_sender.clone()) {
-                    Ok(()) => "External folder opener started; application outcome unknown".into(),
-                    Err(e) => format!("External opener failed: {e}"),
-                },
-                None => "Project root unavailable".into(),
-            };
-            return;
-        }
-        let Some(file) = self.data.files.get(index) else {
-            return;
+        let path = if index == usize::MAX {
+            self.data.projects_root.clone().filter(|p| p.is_dir())
+        } else {
+            self.data
+                .files
+                .get(index)
+                .filter(|file| file.found)
+                .and_then(|file| file.path.clone())
+                .filter(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_file()))
         };
-        let Some(path) = file.path.as_deref().filter(|p| {
-            file.found && std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_file())
-        }) else {
-            self.message = "Unavailable: no accessible external target".into();
-            return;
-        };
-        self.message = match open_external(path, self.wake_sender.clone()) {
-            Ok(()) => "External opener started; application outcome unknown".into(),
-            Err(e) => format!("External opener failed: {e}"),
-        };
+        self.open_recorded_path(path, "Unavailable: no accessible external target");
     }
 }
-fn open_external(path: &Path, sender: std::sync::mpsc::Sender<Wake>) -> io::Result<()> {
+fn open_external(
+    path: &Path,
+    sender: std::sync::mpsc::Sender<Wake>,
+    request: u64,
+) -> io::Result<()> {
     // Canonical absolute filesystem arguments cannot become shell commands or URL schemes.
     let path = path.canonicalize()?;
-    spawn_opener(path.as_os_str(), sender)
+    spawn_opener(path.as_os_str(), sender, request)
 }
-fn open_url(url: &str, sender: std::sync::mpsc::Sender<Wake>) -> io::Result<()> {
+fn open_url(url: &str, sender: std::sync::mpsc::Sender<Wake>, request: u64) -> io::Result<()> {
     if !url.starts_with("https://github.com/") || url.chars().any(char::is_control) {
         return Err(io::Error::other(
             "Only validated GitHub HTTPS links are supported",
         ));
     }
-    spawn_opener(std::ffi::OsStr::new(url), sender)
+    spawn_opener(std::ffi::OsStr::new(url), sender, request)
 }
 fn copy_text(text: &str) -> String {
     if text.len() > 65536 {
@@ -745,7 +740,11 @@ fn copy_text(text: &str) -> String {
         Err(error) => format!("Clipboard request failed: {error}"),
     }
 }
-fn spawn_opener(target: &std::ffi::OsStr, sender: std::sync::mpsc::Sender<Wake>) -> io::Result<()> {
+fn spawn_opener(
+    target: &std::ffi::OsStr,
+    sender: std::sync::mpsc::Sender<Wake>,
+    request: u64,
+) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     let mut cmd = Command::new("xdg-open");
     #[cfg(target_os = "macos")]
@@ -771,7 +770,7 @@ fn spawn_opener(target: &std::ffi::OsStr, sender: std::sync::mpsc::Sender<Wake>)
             Ok(status) => format!("External opener failed: {status}"),
             Err(error) => format!("External opener wait failed: {error}"),
         };
-        let _ = sender.send(Wake::OpenerFinished(message));
+        let _ = sender.send(Wake::OpenerFinished(request, message));
     });
     Ok(())
 }
@@ -851,8 +850,10 @@ fn receive_ui_event(
         .map_err(|_| io::Error::other("UI event channel closed"))?
     {
         Wake::Shutdown => Ok(UiEvent::Shutdown),
-        Wake::OpenerFinished(message) => {
-            app.message = message;
+        Wake::OpenerFinished(request, message) => {
+            if request == app.opener_request {
+                app.message = message;
+            }
             Ok(UiEvent::Redraw)
         }
         Wake::Terminal(input) => input.map(UiEvent::Input),

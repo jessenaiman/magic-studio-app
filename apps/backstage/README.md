@@ -16,7 +16,8 @@ p opens its folder; d opens complete details; PgUp/PgDn scroll details;
 r rereads observations; q exits. Mouse tabs, row selection and explicit Open
 are supported. `--color=always` overrides inherited NO_COLOR for this process.
 Navigation never launches an app or runs an analyzer. Opener completion wakes
-the existing UI event channel, so its status appears without another keypress. Opening requests the
+the existing UI event channel, so its status appears without another keypress.
+Only the latest Open request can update that status. Opening requests the
 system association; success does not prove that an application opened.
 
 Desktop Mayhem's explicit Launch Backstage control uses the companion binary
