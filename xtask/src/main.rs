@@ -1,7 +1,7 @@
 //! `cargo xtask install`: install this built checkout's Magic Studio app, `magic-cli`,
-//! Backstage, runtime resources and desktop entry for the current user. It installs Magic
+//! runtime resources and desktop entry for the current user. It installs Magic
 //! only; it never installs or configures other Craft apps. Build first:
-//!   cargo build -p magic-studio -p magic-cli -p backstage [--release]
+//!   cargo build -p magic-studio -p magic-cli [--release]
 use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -33,7 +33,7 @@ enum Profile {
 }
 
 /// The binaries this repository builds and installs.
-const BINARIES: &[&str] = &["magic-studio", "magic-cli", "backstage"];
+const BINARIES: &[&str] = &["magic-studio", "magic-cli"];
 /// Names earlier installs left behind: the old app name and the retired Python CLI.
 const RETIRED: &[&str] = &["magicstudio-shell", "python-magic-cli"];
 /// Tracked runtime resources the app reads at run time.
@@ -210,7 +210,7 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
         Ok(build)
     } else {
         Err(format!(
-            "Build first: cargo build -p magic-studio -p magic-cli -p backstage{flag}"
+            "Build first: cargo build -p magic-studio -p magic-cli{flag}"
         ))
     }
 }
