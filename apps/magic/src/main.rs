@@ -35,6 +35,13 @@ fn execute_command(
     session.execute(&id, params).map_err(|e| e.to_string())
 }
 
+/// The project the session has open (from `--project` or a later `project.open`), if any.
+#[tauri::command]
+fn current_project(state: tauri::State<'_, AppSession>) -> Option<String> {
+    let session = state.lock().ok()?;
+    session.project_path.as_ref().map(|p| p.display().to_string())
+}
+
 /// List all registered command IDs from the engine registry.
 #[tauri::command]
 fn command_list() -> Vec<String> {
@@ -54,7 +61,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(session)
-        .invoke_handler(generate_handler![execute_command, command_list])
+        .invoke_handler(generate_handler![execute_command, command_list, current_project])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

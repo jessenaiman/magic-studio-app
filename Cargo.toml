@@ -20,6 +20,8 @@ vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft" }
 filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 deckcraft-engine = { git = "https://github.com/storytold/deckcraft" }
+designcraft-engine = { git = "https://github.com/storytold/designcraft" }
+designcraft-render = { git = "https://github.com/storytold/designcraft" }
 
 # Additional Craft crates used directly in-process by Magic
 filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
@@ -80,7 +82,10 @@ codegen-units = 1
 [patch.crates-io]
 epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 krilla = { git = "https://github.com/storytold/craft-libs" }
+hayro = { git = "https://github.com/storytold/craft-libs" }
 hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
+hayro-cmap = { git = "https://github.com/storytold/craft-libs" }
+hayro-postscript = { git = "https://github.com/storytold/craft-libs" }
 hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
 hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }
 # Note: egui-based Craft apps also patch ecolor/emath/epaint/egui/eframe/winit from storytold/egui.git & storytold/winit.git

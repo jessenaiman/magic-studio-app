@@ -25,7 +25,7 @@ pub(crate) fn doctor() -> Result<()> {
     let cargo = env!("CARGO");
 
     // 1. Inventory workspace packages via cargo metadata.
-    let metadata = cargo_metadata(&cargo)?;
+    let metadata = cargo_metadata(cargo)?;
     let packages: Vec<(String, Vec<String>)> = workspace_packages(&metadata)?;
 
     // 2. Check each app package is configured.
@@ -43,7 +43,7 @@ pub(crate) fn doctor() -> Result<()> {
     }
 
     // 3. Run cargo check and capture per-package breakage.
-    let check = run_cargo_check(&cargo)?;
+    let check = run_cargo_check(cargo)?;
     let broken_packages = parse_broken_packages(&check);
 
     // 4. Scan source for stale references (deleted files, MCP hacks, old paths).
@@ -112,7 +112,7 @@ pub(crate) fn doctor() -> Result<()> {
         Ok(())
     } else {
         println!("doctor: {total_issues} issue(s) found");
-        Err(format!("doctor: {total_issues} issue(s) found").into())
+        Err(format!("doctor: {total_issues} issue(s) found"))
     }
 }
 
@@ -219,13 +219,13 @@ fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
             || !line[abs - 1..abs]
                 .chars()
                 .next()
-                .map_or(true, |c| c.is_alphanumeric() || c == '_');
+                .is_none_or(|c| c.is_alphanumeric() || c == '_');
         // Word boundary after: not alphanumeric/underscore, or end of line.
         let after_ok = end >= line.len()
             || !line[end..end + 1]
                 .chars()
                 .next()
-                .map_or(true, |c| c.is_alphanumeric() || c == '_');
+                .is_none_or(|c| c.is_alphanumeric() || c == '_');
         if before_ok && after_ok {
             return true;
         }
@@ -294,7 +294,7 @@ fn is_configured(name: &str) -> bool {
         let has_rs = match std::fs::read_dir(&src) {
             Ok(entries) => entries
                 .filter_map(|e| e.ok())
-                .any(|e| e.path().extension().map_or(false, |ext| ext == "rs")),
+                .any(|e| e.path().extension().is_some_and(|ext| ext == "rs")),
             Err(_) => false,
         };
         if !has_rs {

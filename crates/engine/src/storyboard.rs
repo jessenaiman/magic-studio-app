@@ -1,274 +1,313 @@
-//! The storyboard is a DeckCraft deck. `storyboard.create` fills the template from a scene plan
-//! and the project's transcription file; `storyboard.render` draws its pages for the Storyboard
-//! view. DeckCraft owns the typography and style: Magic only sets the template's own fields and
-//! inserts pictures. DeckCraft owns saving and closing its hand-editing window.
-use crate::{EngineError, Result, Session};
-use serde_json::{Map, Value, json};
+//! Storyboard: one lightweight DesignCraft document, edited by object label.
+//!
+//! The document is a `.designcraft` file made from the embedded neutral template. Every
+//! editable frame carries an `object.label` (`scene_id`, `title`, `cue`, `hero_image`,
+//! `ref_1`..`ref_12` ...), and a scene is one spread holding a `scene_id` frame. The commands
+//! here open the file in `designcraft-engine`, change labelled frames, and save it back.
+//! There is no second data model: the file is the storyboard.
+
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-// ---- The native engine, the template and the project files this file uses ----------------------------
+use designcraft_engine::Session as Dc;
+use serde_json::{Value, json};
 
-/// Deck operations use the published DeckCraft Rust session and renderer.
-/// Pages: 1 overview, 2 sequence, 3 the scene page (duplicated once per scene), last handoff.
-const TEMPLATE: &[u8] = include_bytes!("../../../references/storyboard/Storyboard.potx");
-const SCENE_PAGE: usize = 3;
-/// In the project folder.
-const DECK: &str = "storyboard/storyboard.deckcraft";
-const PAGES: &str = "storyboard/pages";
-const MANIFEST: &str = "storyboard/movie-board.json";
+use crate::{EngineError, Result, Session};
 
-// ---- Deck operations ------------------------------------------------------------------------
+const TEMPLATE: &[u8] = include_bytes!("../templates/storyboard.designcraft");
+/// The scene spread of the template (cover, world and character spreads come first).
+const TEMPLATE_SCENE_SPREAD: usize = 3;
+const MAX_REFS: usize = 12;
 
-fn bad(message: impl Into<String>) -> EngineError {
-    EngineError::InvalidParams(message.into())
+/// Text frames a scene exposes.
+pub const TEXT_FIELDS: &[&str] = &[
+    "running_title", "running_sub", "badge", "section", "hand_note", "scene_id", "title", "cue", "time",
+    "purpose", "staging_notes", "revision", "overall_design", "location_ref", "character_shared",
+    "character_lead", "asset_geometry", "match_note", "exact_prompt", "strip_note", "source_image_caption",
+    "result_image_caption", "page_no_left", "page_no_right",
+];
+/// Picture frames a scene exposes (besides `ref_1`..`ref_12`).
+pub const IMAGE_FIELDS: &[&str] = &["hero_image", "source_image", "result_image", "sketch_left", "sketch_right"];
+
+fn fail(e: impl std::fmt::Display) -> EngineError {
+    EngineError::CommandFailed("storyboard".into(), e.to_string())
 }
 
-fn open_deck(path: &Path) -> Result<deckcraft_engine::Session> {
-    let path = std::fs::canonicalize(path)?;
-    let mut session = deckcraft_engine::Session::new();
-    session
-        .execute("file.open", &json!({"path": path}))
-        .map_err(|e| bad(format!("DeckCraft open: {e}")))?;
-    Ok(session)
+fn bad(msg: &str) -> EngineError {
+    EngineError::InvalidParams(msg.into())
 }
 
-/// Run DeckCraft commands on `input`: save the result to `save`, or return each command's answer.
-fn run(
-    _dir: &Path,
-    input: &Path,
-    commands: &[(&str, Value)],
-    save: Option<&Path>,
-) -> Result<Vec<Value>> {
-    let mut session = open_deck(input)?;
-    let mut results = Vec::with_capacity(commands.len());
-    for (id, params) in commands {
-        results.push(
-            session
-                .execute(id, params)
-                .map_err(|e| bad(format!("DeckCraft {id}: {e}")))?,
-        );
-    }
-    if let Some(path) = save {
-        session
-            .execute("file.saveAs", &json!({"path": path}))
-            .map_err(|e| bad(format!("DeckCraft save: {e}")))?;
-    }
-    Ok(results)
-}
-
-/// The named shapes on `page` (from 1).
-fn slots(dir: &Path, deck: &Path, page: usize) -> Result<Map<String, Value>> {
-    let inspected = run(
-        dir,
-        deck,
-        &[("slide.inspect", json!({"index": page - 1}))],
-        None,
-    )?;
-    Ok(inspected
-        .first()
-        .and_then(|p| p["shapes"].as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|s| Some((s["name"].as_str()?.to_owned(), s.clone())))
-        .collect())
-}
-
-/// Commands that set `page`'s text fields and place its pictures (paths from `root`).
-fn fill(
-    dir: &Path,
-    deck: &Path,
-    page: usize,
-    card: &Value,
-    root: &Path,
-) -> Result<Vec<(&'static str, Value)>> {
-    let slots = slots(dir, deck, page)?;
-    let mut ops = vec![("slide.go", json!({"index": page - 1}))];
-    for (name, text) in card["fields"].as_object().into_iter().flatten() {
-        let slot = slots
-            .get(name)
-            .filter(|s| s["kind"] == "shape")
-            .ok_or_else(|| bad(format!("Page {page} has no text field {name}")))?;
-        ops.push(("text.set", json!({"id": slot["id"], "text": text})));
-    }
-    for (name, image) in card["images"].as_object().into_iter().flatten() {
-        let slot = slots
-            .get(name)
-            .ok_or_else(|| bad(format!("Page {page} has no picture {name}")))?;
-        let path = root.join(image.as_str().unwrap_or_default());
-        ops.push((
-            "insert.picture",
-            json!({"name": format!("{name} artwork"), "rect": slot["box"], "path": path}),
-        ));
-    }
-    Ok(ops)
-}
-
-fn project_dir(s: &Session) -> Result<PathBuf> {
-    crate::workshop::project_dir(s)
-}
-
-// ---- Commands -------------------------------------------------------------------------------
-
-/// The project's transcription file as timed lines. It was checked once against the artist's
-/// lyrics when it was added and is used as it is: no further spelling or wording changes.
-fn transcript_lines(dir: &Path) -> Result<Vec<Value>> {
-    let file = crate::workshop::transcript_files(dir)
-        .into_iter()
-        .next()
-        .ok_or_else(|| bad("No transcription file; add or transcribe the song first"))?;
-    let doc = crate::workshop::transcript_document(&file)?;
-    Ok(doc["paragraphs"].as_array().cloned().unwrap_or_default())
-}
-
-/// `storyboard.create plan=<scene plan .json>`: a new deck from the template. The plan fills the
-/// overview, sequence and handoff cards and one card per scene; scenes cover every transcript
-/// line once, in order (`"lines": [first, last]`, from 1).
-pub fn cmd_storyboard_create(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
-    let deck = dir.join(DECK);
-    if deck.exists() {
-        return Err(bad(format!(
-            "{} exists; edit it in DeckCraft",
-            deck.display()
-        )));
-    }
-    let plan_path = PathBuf::from(
-        p["plan"]
-            .as_str()
-            .ok_or_else(|| bad("plan=<scene plan .json> is required"))?,
-    );
-    let plan: Value = serde_json::from_slice(&std::fs::read(&plan_path)?)
-        .map_err(|e| bad(format!("{}: {e}", plan_path.display())))?;
-    let root = plan_path.parent().unwrap_or(&dir).to_path_buf();
-    let lines = transcript_lines(&dir)?;
-    let scenes = plan["scenes"].as_array().cloned().unwrap_or_default();
-    if scenes.is_empty() {
-        return Err(bad("The plan needs at least one scene"));
-    }
-    std::fs::create_dir_all(dir.join("storyboard"))?;
-    let template =
-        std::env::temp_dir().join(format!("magic-storyboard-{}.potx", std::process::id()));
-    std::fs::write(&template, TEMPLATE)?;
-    let layout = dir.join("storyboard/.layout.deckcraft");
-    let copies: Vec<(&str, Value)> = (1..scenes.len())
-        .map(|_| ("slide.duplicate", json!({"index": SCENE_PAGE - 1})))
-        .collect();
-    let made = run(&dir, &template, &copies, Some(&layout));
-    let _ = std::fs::remove_file(&template);
-    made?;
-    let handoff = SCENE_PAGE + scenes.len();
-    let mut ops = Vec::new();
-    for (page, key) in [(1, "overview"), (2, "sequence"), (handoff, "handoff")] {
-        ops.extend(fill(&dir, &layout, page, &plan[key], &root)?);
-    }
-    let (mut next, mut cues) = (1, vec![Vec::new(), Vec::new()]);
-    for (i, scene) in scenes.iter().enumerate() {
-        let (first, last) = (
-            scene["lines"][0].as_u64().unwrap_or(0) as usize,
-            scene["lines"][1].as_u64().unwrap_or(0) as usize,
-        );
-        if first != next || last < first || last > lines.len() {
-            return Err(bad(format!(
-                "Scene {}: lines must continue at {next}, within 1–{}",
-                i + 1,
-                lines.len()
-            )));
+/// The document path: `path`, else `storyboard.designcraft` beside the open project.
+fn doc_path(s: &Session, p: &Value) -> Result<PathBuf> {
+    if let Some(raw) = p.get("path").and_then(Value::as_str).filter(|r| !r.trim().is_empty()) {
+        let mut path = crate::workspace::resolve_workspace_path(s, raw);
+        if path.extension().is_none_or(|e| !e.eq_ignore_ascii_case("designcraft")) {
+            path.as_mut_os_string().push(".designcraft");
         }
-        next = last + 1;
-        let said = &lines[first - 1..last];
-        let mut card = scene.clone();
-        let fields = card["fields"]
-            .as_object_mut()
-            .ok_or_else(|| bad(format!("Scene {}: fields", i + 1)))?;
-        fields.insert("scene_id".into(), json!(format!("S{:02}", i + 1)));
-        fields.insert(
-            "cue".into(),
-            json!(
-                said.iter()
-                    .filter_map(|l| l["text"].as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ),
-        );
-        if let (Some(start), Some(end)) = (
-            said[0]["start"].as_f64(),
-            said[said.len() - 1]["end"].as_f64(),
-        ) {
-            fields
-                .entry("time")
-                .or_insert_with(|| json!(format!("{start:.2}–{end:.2} s")));
+        return Ok(path);
+    }
+    let project = s.project_path.as_ref().ok_or_else(|| bad("give a `path`, or open a project"))?;
+    Ok(project.with_file_name("storyboard.designcraft"))
+}
+
+/// An open storyboard document and the frames of each of its scenes.
+struct Board {
+    dc: Dc,
+    path: PathBuf,
+}
+
+impl Board {
+    fn open(path: &Path) -> Result<Self> {
+        let mut dc = Dc::new();
+        dc.execute("file.open", &json!({"path": path})).map_err(fail)?;
+        Ok(Self { dc, path: path.to_path_buf() })
+    }
+
+    fn run(&mut self, id: &str, params: Value) -> Result<Value> {
+        self.dc.execute(id, &params).map_err(fail)
+    }
+
+    fn save(&mut self) -> Result<()> {
+        let path = self.path.clone();
+        self.run("file.save", json!({"path": path}))?;
+        Ok(())
+    }
+
+    /// Label -> frame id, for each spread.
+    fn frames(&mut self) -> Result<Vec<HashMap<String, u64>>> {
+        let inspect = self.run("document.inspect", json!({}))?;
+        let spreads = inspect["spreads"].as_array().cloned().unwrap_or_default();
+        let mut owner: HashMap<u64, usize> = HashMap::new();
+        for (i, sp) in spreads.iter().enumerate() {
+            for item in sp["items"].as_array().into_iter().flatten() {
+                if let Some(id) = item["id"].as_u64() {
+                    owner.insert(id, i);
+                }
+            }
         }
-        cues.push(said.iter().map(|l| json!({"text": l["text"]})).collect());
-        ops.extend(fill(&dir, &layout, SCENE_PAGE + i, &card, &root)?);
+        let mut out = vec![HashMap::new(); spreads.len()];
+        for label in all_labels() {
+            let found = self.run("object.findByLabel", json!({"label": label}))?;
+            for id in found["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
+                if let Some(&sp) = owner.get(&id) {
+                    out[sp].insert(label.clone(), id);
+                }
+            }
+        }
+        Ok(out)
     }
-    if next != lines.len() + 1 {
-        return Err(bad("The scenes must cover every transcript line"));
+
+    /// Spread indexes that are scenes (hold a `scene_id` frame), in document order.
+    fn scenes(&mut self) -> Result<(Vec<usize>, Vec<HashMap<String, u64>>)> {
+        let frames = self.frames()?;
+        let scenes = (0..frames.len()).filter(|&i| frames[i].contains_key("scene_id")).collect();
+        Ok((scenes, frames))
     }
-    cues.push(Vec::new());
-    let saved = run(&dir, &layout, &ops, Some(&deck));
-    let _ = std::fs::remove_file(&layout);
-    saved?;
-    render(&dir, Some(json!(cues)))
+
+    fn text(&mut self, frame: u64) -> Result<String> {
+        let r = self.run("story.get", json!({"frame": frame}))?;
+        Ok(r["text"].as_str().unwrap_or_default().to_string())
+    }
+
+    fn set_text(&mut self, frame: u64, text: &str) -> Result<()> {
+        let r = self.run("story.get", json!({"frame": frame}))?;
+        let story = r.get("story").or_else(|| r.get("id")).cloned().ok_or_else(|| fail("frame has no story"))?;
+        self.run("story.setText", json!({"story": story, "text": text}))?;
+        Ok(())
+    }
+
+    fn set_image(&mut self, frame: u64, hint: Option<u64>, path: &str) -> Result<()> {
+        self.run("place.load", json!({"path": path}))?;
+        self.run("place.drop", json!({"x": 0, "y": 0, "frame": frame}))?;
+        self.run("object.fit", json!({"mode": "fillProportionally", "ids": [frame]}))?;
+        if let Some(h) = hint {
+            self.run("object.setFlags", json!({"ids": [h], "hidden": true}))?;
+        }
+        Ok(())
+    }
 }
 
-/// `storyboard.render`: draw the deck's pages for the Storyboard view (after editing in DeckCraft).
-pub fn cmd_storyboard_render(s: &mut Session, _: &Value) -> Result<Value> {
-    render(&project_dir(s)?, None)
+fn all_labels() -> Vec<String> {
+    let mut v: Vec<String> = TEXT_FIELDS.iter().chain(IMAGE_FIELDS).map(|s| (*s).to_string()).collect();
+    v.extend(IMAGE_FIELDS.iter().map(|s| format!("{s}_hint")));
+    v.extend((1..=MAX_REFS).map(|n| format!("ref_{n}")));
+    v.push("contact_strip".into());
+    v
 }
 
-fn render(dir: &Path, cues: Option<Value>) -> Result<Value> {
-    let deck = dir.join(DECK);
-    if !deck.is_file() {
-        return Err(bad("No storyboard yet; run storyboard.create"));
-    }
-    let pages = dir.join(PAGES);
-    let _ = std::fs::remove_dir_all(&pages);
-    std::fs::create_dir_all(&pages)?;
-    let mut session = open_deck(&deck)?;
-    let document = &session.doc().map_err(|e| bad(e.to_string()))?.doc;
-    for index in 0..document.slides.len() {
-        let (png, _, _) =
-            deckcraft_engine::cmd::file::render_png_with(document, index, 2.0, false, false);
-        std::fs::write(pages.join(format!("slide-{:02}.png", index + 1)), png)?;
-    }
-    let mut previews: Vec<PathBuf> = std::fs::read_dir(&pages)?
-        .flatten()
-        .map(|e| e.path())
-        .collect();
-    previews.sort();
-    let info = session
-        .execute("document.inspect", &json!({}))
-        .map_err(|e| bad(format!("DeckCraft inspect: {e}")))?;
-    let inspect: Vec<(&str, Value)> = (0..previews.len())
-        .map(|i| ("slide.inspect", json!({"index": i})))
-        .collect();
-    let titles: Vec<Value> = run(dir, &deck, &inspect, None)?
-        .iter()
-        .map(|page| {
-            let named = |n: &str| {
-                page["shapes"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .find(|s| s["name"] == n)
-                    .and_then(|s| s["text"].as_str())
-            };
-            json!(match (named("scene_id"), named("title")) {
-                (Some(id), Some(title)) => format!("{id} · {title}"),
-                (_, title) => title.unwrap_or_default().to_owned(),
-            })
+/// Slot rectangles `[x0, y0, x1, y1]` for the contact strip with `n` pictures, and its band.
+fn strip_layout(n: usize) -> ([f64; 4], Vec<[f64; 4]>) {
+    let (x0, x1, pad, gap) = (846.0, 1556.0, 10.0, 6.0);
+    let single = n <= 6;
+    let (band, cols, top, bottom) = if single { ([x0, 800.0, x1, 912.0], n.max(1), 814.0, 898.0) } else { ([x0, 792.0, x1, 918.0], if n > 8 { 6 } else { 4 }, 808.0, 918.0 - 16.0) };
+    let rows = n.div_ceil(cols).max(1);
+    let w = (x1 - x0 - 2.0 * pad - gap * (cols as f64 - 1.0)) / cols as f64;
+    let h = (bottom - top - gap * (rows as f64 - 1.0)) / rows as f64;
+    let slots = (0..n)
+        .map(|k| {
+            let (r, c) = (k / cols, k % cols);
+            let sx = x0 + pad + c as f64 * (w + gap);
+            let sy = top + r as f64 * (h + gap);
+            [sx, sy, sx + w, sy + h]
         })
         .collect();
-    let manifest = dir.join(MANIFEST);
-    let earlier: Value = std::fs::read(&manifest)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
-    let board = json!({"deck": DECK, "previews": previews, "page_titles": titles,
-        "page_size": info["size"], "page_cues": cues.unwrap_or_else(|| earlier["page_cues"].clone())});
-    std::fs::write(
-        &manifest,
-        serde_json::to_vec_pretty(&board).unwrap_or_default(),
-    )?;
-    Ok(json!({"ok": true, "deck": deck, "pages": previews.len(), "manifest": manifest}))
+    (band, slots)
+}
+
+fn place_rect(b: &mut Board, frame: u64, r: [f64; 4]) -> Result<()> {
+    b.run("transform.set", json!({"x": r[0], "y": r[1], "width": r[2] - r[0], "height": r[3] - r[1], "ids": [frame]}))?;
+    Ok(())
+}
+
+fn fill_refs(b: &mut Board, frames: &HashMap<String, u64>, refs: &[String]) -> Result<()> {
+    if refs.len() > MAX_REFS {
+        return Err(bad("at most 12 `refs`"));
+    }
+    let (band, slots) = strip_layout(refs.len());
+    if let Some(&strip) = frames.get("contact_strip") {
+        place_rect(b, strip, band)?;
+    }
+    for n in 1..=MAX_REFS {
+        let Some(&frame) = frames.get(&format!("ref_{n}")) else { continue };
+        let used = n <= refs.len();
+        b.run("object.setFlags", json!({"ids": [frame], "hidden": !used}))?;
+        if used {
+            place_rect(b, frame, slots[n - 1])?;
+            b.set_image(frame, None, &refs[n - 1])?;
+        }
+    }
+    Ok(())
+}
+
+/// Apply `fields`, `images` and `refs` from `p` to the scene whose frames are `frames`.
+fn fill_scene(b: &mut Board, frames: &HashMap<String, u64>, p: &Value) -> Result<()> {
+    for (label, value) in p.get("fields").and_then(Value::as_object).into_iter().flatten() {
+        let text = value.as_str().ok_or_else(|| bad("`fields` values are strings"))?;
+        let frame = *frames.get(label).filter(|_| TEXT_FIELDS.contains(&label.as_str())).ok_or_else(|| bad(&format!("`{label}` is not a text field")))?;
+        b.set_text(frame, text)?;
+    }
+    for (label, value) in p.get("images").and_then(Value::as_object).into_iter().flatten() {
+        let path = value.as_str().ok_or_else(|| bad("`images` values are file paths"))?;
+        let frame = *frames.get(label).filter(|_| IMAGE_FIELDS.contains(&label.as_str())).ok_or_else(|| bad(&format!("`{label}` is not an image field")))?;
+        b.set_image(frame, frames.get(&format!("{label}_hint")).copied(), path)?;
+    }
+    if let Some(refs) = p.get("refs").and_then(Value::as_array) {
+        let refs: Vec<String> = refs.iter().filter_map(|r| r.as_str().map(str::to_string)).collect();
+        fill_refs(b, frames, &refs)?;
+    }
+    Ok(())
+}
+
+fn scene_summary(b: &mut Board, number: usize, spread: usize, frames: &HashMap<String, u64>) -> Result<Value> {
+    let mut fields = serde_json::Map::new();
+    for label in TEXT_FIELDS {
+        if let Some(&id) = frames.get(*label) {
+            fields.insert((*label).to_string(), json!(b.text(id)?));
+        }
+    }
+    Ok(json!({"scene": number, "spread": spread, "fields": fields}))
+}
+
+fn pick_scene(scenes: &[usize], p: &Value) -> Result<(usize, usize)> {
+    let n = p.get("scene").and_then(Value::as_u64).ok_or_else(|| bad("missing `scene` (1-based)"))? as usize;
+    scenes.get(n.wrapping_sub(1)).map(|&sp| (n, sp)).ok_or_else(|| bad(&format!("no scene {n}; the storyboard has {}", scenes.len())))
+}
+
+/// `storyboard.new`: a new storyboard from the embedded neutral template.
+pub fn cmd_storyboard_new(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = doc_path(s, p)?;
+    if path.exists() && !p.get("overwrite").and_then(Value::as_bool).unwrap_or(false) {
+        return Err(bad(&format!("{} exists; pass overwrite=true to replace it", path.display())));
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, TEMPLATE)?;
+    Ok(json!({"ok": true, "path": path, "scenes": 1}))
+}
+
+/// `storyboard.scenes`: every scene with its text fields.
+pub fn cmd_storyboard_scenes(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let (scenes, frames) = b.scenes()?;
+    let mut list = Vec::new();
+    for (i, &sp) in scenes.iter().enumerate() {
+        list.push(scene_summary(&mut b, i + 1, sp, &frames[sp])?);
+    }
+    Ok(json!({"ok": true, "path": b.path, "scenes": list}))
+}
+
+/// `storyboard.set`: change one scene's text, images and contact strip, then save.
+pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let (scenes, frames) = b.scenes()?;
+    let (n, sp) = pick_scene(&scenes, p)?;
+    fill_scene(&mut b, &frames[sp], p)?;
+    b.save()?;
+    Ok(json!({"ok": true, "scene": n, "path": b.path}))
+}
+
+/// `storyboard.add`: copy a scene spread (default the last) to the end and fill it.
+pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let (scenes, _) = b.scenes()?;
+    let from = match p.get("from").and_then(Value::as_u64) {
+        Some(n) => pick_scene(&scenes, &json!({"scene": n}))?.1,
+        None => scenes.last().copied().unwrap_or(TEMPLATE_SCENE_SPREAD),
+    };
+    let dup = b.run("layout.pages.duplicateSpread", json!({"spread": from, "atEnd": true}))?;
+    let spread = dup["page"].as_u64().ok_or_else(|| fail("no page index from duplicateSpread"))? as usize;
+    let frames = b.frames()?;
+    let new = frames.get(spread).ok_or_else(|| fail("the new spread was not found"))?;
+    fill_scene(&mut b, new, p)?;
+    b.save()?;
+    let (scenes, _) = b.scenes()?;
+    Ok(json!({"ok": true, "scene": scenes.len(), "path": b.path}))
+}
+
+fn render_png(b: &mut Board, page: usize, scale: f64) -> Result<Vec<u8>> {
+    let st = b.dc.doc().map_err(fail)?;
+    let mut r = designcraft_render::Renderer::new();
+    let opts = designcraft_render::RenderOptions { printing_only: true, ..Default::default() };
+    let img = r.render_page(&st.doc, &b.dc.cache, page, scale, true, &opts).ok_or_else(|| bad("no such page"))?;
+    Ok(img.to_png())
+}
+
+/// `storyboard.thumbnail`: one scene spread as a PNG.
+pub fn cmd_storyboard_thumbnail(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let (scenes, _) = b.scenes()?;
+    let (n, sp) = pick_scene(&scenes, p)?;
+    let out = p.get("out").and_then(Value::as_str).ok_or_else(|| bad("missing `out` .png path"))?;
+    let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(0.5);
+    let png = render_png(&mut b, sp, scale)?;
+    if let Some(dir) = Path::new(out).parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(out, png)?;
+    Ok(json!({"ok": true, "scene": n, "out": out}))
+}
+
+/// `storyboard.export`: the whole storyboard as a PDF, and optionally every spread as a PNG.
+pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let mut done = serde_json::Map::new();
+    if let Some(pdf) = p.get("pdf").and_then(Value::as_str) {
+        b.run("file.exportPdf", json!({"path": pdf}))?;
+        done.insert("pdf".into(), json!(pdf));
+    }
+    if let Some(dir) = p.get("png_dir").and_then(Value::as_str) {
+        std::fs::create_dir_all(dir)?;
+        let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.0);
+        let pages = b.frames()?.len();
+        for page in 0..pages {
+            let png = render_png(&mut b, page, scale)?;
+            std::fs::write(Path::new(dir).join(format!("page-{:03}.png", page + 1)), png)?;
+        }
+        done.insert("png_dir".into(), json!(dir));
+    }
+    if done.is_empty() {
+        return Err(bad("give `pdf` and/or `png_dir`"));
+    }
+    Ok(json!({"ok": true, "exported": done}))
 }

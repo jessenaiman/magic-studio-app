@@ -144,12 +144,12 @@ fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String>
 fn main() {
     let cli = Cli::parse();
     let mut session = magic_engine::Session::user_session();
-    if let Some(proj) = cli.project.clone().or_else(load_saved_project) {
-        if std::path::Path::new(&proj).is_file() {
-            let _ = session.execute("project.open", json!({ "path": proj }));
-            if cli.project.is_some() {
-                save_project(Some(&proj));
-            }
+    if let Some(proj) = cli.project.clone().or_else(load_saved_project)
+        && std::path::Path::new(&proj).is_file()
+    {
+        let _ = session.execute("project.open", json!({ "path": proj }));
+        if cli.project.is_some() {
+            save_project(Some(&proj));
         }
     }
     let outcome: Result<(), String> = (|| {
@@ -199,11 +199,11 @@ fn main() {
             }
             Some(Cmd::Registry(tokens)) => {
                 let (id, rest) = resolve_shorthand(&tokens)?;
-                if rest.iter().any(|t| t == "--help" || t == "-h") {
-                    if let Some(c) = magic_engine::find_command(&id) {
-                        emit(&c.describe());
-                        return Ok(());
-                    }
+                if rest.iter().any(|t| t == "--help" || t == "-h")
+                    && let Some(c) = magic_engine::find_command(&id)
+                {
+                    emit(&c.describe());
+                    return Ok(());
                 }
                 let mut kv = Vec::new();
                 let mut raw = None;

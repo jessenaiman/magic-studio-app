@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import React, { useEffect, useState } from "react";
 import { executeCommand, pickFile, WorkshopData } from "./api";
 import { AnimationView } from "./views/AnimationView";
@@ -70,10 +71,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     void (async () => {
       try {
-        const id = await executeCommand<{ path?: string; project?: string }>(
-          "project.identity",
-        );
-        const current = id.path || id.project;
+        const current = await invoke<string | null>("current_project");
         if (current) {
           await openProject(current, "project");
         }
@@ -178,7 +176,7 @@ export const App: React.FC = () => {
             {(
               [
                 ["project", "Project"],
-                ["storyboard", "Storyboard (.deckcraft)"],
+                ["storyboard", "Storyboard"],
                 ["design", "Lyrics (.ecproj)"],
                 ["animation", "Animation (.pcraft / .ecproj)"],
                 ["studio", "Studio (.fcproj)"],
@@ -202,11 +200,7 @@ export const App: React.FC = () => {
         {view === "home" || !projectPath ? (
           <HomeView onOpenProject={openProject} onToast={showToast} />
         ) : view === "storyboard" ? (
-          <StoryboardView
-            storyboard={data?.storyboard}
-            onRefresh={() => refreshProject()}
-            onToast={showToast}
-          />
+          <StoryboardView projectPath={projectPath} onToast={showToast} />
         ) : view === "design" ? (
           <LyricsView
             projectPath={projectPath}
@@ -301,10 +295,7 @@ export const App: React.FC = () => {
                   style={{ textAlign: "left" }}
                   onClick={() => setView("storyboard")}
                 >
-                  DeckCraft Storyboard:{" "}
-                  {data?.storyboard?.deck
-                    ? data.storyboard.deck.split("/").pop()
-                    : "Not created yet"}
+                  Storyboard: storyboard.designcraft
                 </button>
                 <button
                   className="ghost"
@@ -331,11 +322,7 @@ export const App: React.FC = () => {
             </aside>
 
             <main style={{ height: "100%", overflow: "hidden" }}>
-              <StoryboardView
-                storyboard={data?.storyboard}
-                onRefresh={() => refreshProject()}
-                onToast={showToast}
-              />
+              <StoryboardView projectPath={projectPath} onToast={showToast} />
             </main>
           </div>
         )}

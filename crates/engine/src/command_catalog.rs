@@ -1301,22 +1301,49 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 fn specs_storyboard() -> Vec<CommandSpec> {
     vec![
         cmd!(
-            "storyboard.create",
-            "Create Storyboard (DeckCraft)",
+            "storyboard.new",
+            "New Storyboard from the Neutral Template",
             ["Storyboard"],
             None,
-            "{\"plan\":\"scene plan .json: overview, sequence and handoff cards and scenes [{lines:[first,last] of the transcript lines, fields, images}]\"}",
+            "{\"path\":\"/absolute/storyboard.designcraft; default storyboard.designcraft beside the open project\",\"overwrite\":false}",
             always,
-            crate::storyboard::cmd_storyboard_create
+            crate::storyboard::cmd_storyboard_new
+        ),
+        query!(
+            "storyboard.scenes",
+            "Storyboard Scenes and Their Text Fields",
+            "{\"path\":\"optional storyboard.designcraft\"}",
+            crate::storyboard::cmd_storyboard_scenes
         ),
         cmd!(
-            "storyboard.render",
-            "Draw Storyboard Pages (DeckCraft)",
+            "storyboard.set",
+            "Edit a Scene: Text, Images, Contact Strip",
             ["Storyboard"],
             None,
-            "{}",
+            "{\"path\":\"optional\",\"scene\":1,\"fields\":{\"label\":\"text for scene_id, title, cue, time, purpose, staging_notes, revision, overall_design, location_ref, character_shared, character_lead, asset_geometry, match_note, exact_prompt ...\"},\"images\":{\"label\":\"file for hero_image, source_image, result_image, sketch_left, sketch_right\"},\"refs\":[\"1 to 12 image files for the contact strip\"]}",
             always,
-            crate::storyboard::cmd_storyboard_render
+            crate::storyboard::cmd_storyboard_set
+        ),
+        cmd!(
+            "storyboard.add",
+            "Add a Scene (Copy of a Scene Spread)",
+            ["Storyboard"],
+            None,
+            "{\"path\":\"optional\",\"from\":1,\"fields\":{},\"images\":{},\"refs\":[]}",
+            always,
+            crate::storyboard::cmd_storyboard_add
+        ),
+        query!(
+            "storyboard.thumbnail",
+            "Render One Scene Spread to PNG",
+            "{\"path\":\"optional\",\"scene\":1,\"out\":\"/absolute/scene.png\",\"scale\":0.5}",
+            crate::storyboard::cmd_storyboard_thumbnail
+        ),
+        query!(
+            "storyboard.export",
+            "Export Storyboard to PDF and/or PNG Spreads",
+            "{\"path\":\"optional\",\"pdf\":\"/absolute/storyboard.pdf\",\"png_dir\":\"/absolute/dir\",\"scale\":1.0}",
+            crate::storyboard::cmd_storyboard_export
         ),
     ]
 }

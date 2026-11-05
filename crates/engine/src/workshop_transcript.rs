@@ -683,11 +683,11 @@ fn analyze_with_filmcraft(
         ran.push("filmcraft-speech transcribe → transcript.json");
     }
     let doc = transcript_document(&transcript)?;
-    if overwrite || !srt.is_file() {
-        if let Some(srt_text) = srt_from_paragraphs(&doc) {
-            craft_atomic::atomic_write(&srt, srt_text.as_bytes())?;
-            ran.push("filmcraft-captions write → transcript.srt");
-        }
+    if (overwrite || !srt.is_file())
+        && let Some(srt_text) = srt_from_paragraphs(&doc)
+    {
+        craft_atomic::atomic_write(&srt, srt_text.as_bytes())?;
+        ran.push("filmcraft-captions write → transcript.srt");
     }
     let beat_item = crate::song_timing::analyze_music_native(dir, audio)?;
     let analysis = json!({"ok": true, "engine": "filmcraft-audio-dsp", "items": [beat_item.clone()]});

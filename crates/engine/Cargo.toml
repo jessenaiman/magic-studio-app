@@ -26,6 +26,8 @@ craft-docpath = { workspace = true }
 craft-media = { workspace = true }
 craft-update = { workspace = true }
 deckcraft-engine = { workspace = true }
+designcraft-engine = { workspace = true }
+designcraft-render = { workspace = true }
 effectcraft-engine = { workspace = true }
 effectcraft-host = { workspace = true }
 filmcraft-audio-dsp = { workspace = true }
