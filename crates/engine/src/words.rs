@@ -406,7 +406,7 @@ fn detect_design_overlaps(html: &str, sections: &[Value]) -> Vec<Value> {
             continue;
         }
         if let (Some(id), Some(s), Some(d)) = (
-            tag_attr(tag, "data-magicstudio-words").or_else(|| tag_attr(tag, "id")),
+            tag_attr(tag, "data-magic-words").or_else(|| tag_attr(tag, "id")),
             tag_attr(tag, "data-start").and_then(|v| v.parse::<f64>().ok()),
             tag_attr(tag, "data-duration").and_then(|v| v.parse::<f64>().ok()),
         ) {
@@ -608,7 +608,7 @@ pub(crate) fn default_document(report: &Value) -> Result<Value> {
         timing(anim);
     }
     Ok(json!({
-        "format": "magicstudio.words",
+        "format": "magic.words",
         "version": 1,
         "reference": report["reference"],
         "canonical": report["canonical"],
@@ -785,7 +785,7 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
     let index = dir.join("hyperframes/index.html");
     let host = fs::read_to_string(&index).unwrap_or_default();
     let designed: std::collections::BTreeSet<&str> = host
-        .split("data-magicstudio-words=\"")
+        .split("data-magic-words=\"")
         .skip(1)
         .filter_map(|r| r.split("\"").next())
         .collect();
@@ -816,6 +816,12 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
             json!({"ok":true,"caption_track":"removed: every section is designed","source":dest,"designed":designed}),
         );
     }
+    let duration = crate::video_target::probe_audio_duration(s.song_audio.as_deref())?.max(
+        words
+            .iter()
+            .filter_map(|w| w["end"].as_f64())
+            .fold(0.0, f64::max),
+    );
     let kept = if dest.is_file() {
         let version = (1..)
             .map(|n| comp.join(format!("captions.v{n}.html")))
@@ -826,18 +832,12 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
     } else {
         None
     };
-    let duration = crate::video_target::probe_audio_duration(s.song_audio.as_deref()).max(
-        words
-            .iter()
-            .filter_map(|w| w["end"].as_f64())
-            .fold(0.0, f64::max),
-    );
     crate::video_target::write_caption_source(&dest, &words, &groups, duration)?;
     let digest = format!(
         "{:x}",
         Sha256::digest(serde_json::to_vec(&words).map_err(|e| invalid(e.to_string()))?)
     );
-    let receipt = dir.join("hyperframes/.magicstudio-captions.json");
+    let receipt = dir.join("hyperframes/.magic-captions.json");
     fs::write(
         &receipt,
         serde_json::to_vec_pretty(&json!({

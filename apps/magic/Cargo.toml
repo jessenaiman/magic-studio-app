@@ -1,0 +1,18 @@
+[package]
+name = "magic"
+description = "Magic Studio desktop GUI: native Rust GUI over magic-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+magic-engine = { workspace = true }
+serde_json = { workspace = true }
+eframe = { workspace = true }
+egui = { workspace = true }
+rfd = { workspace = true }
+image = { workspace = true }
+clap = { version = "4.6", features = ["derive", "env"] }

@@ -1,4 +1,4 @@
-//! Project-aware control state shared by terminal, MCP and Studio through the command registry.
+//! Project-aware control state shared by terminal and Studio through the command registry.
 use crate::workspace::{resolve_workspace_path, sanitize_asset_id};
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
@@ -79,7 +79,7 @@ pub fn observe_saved_project(_: &mut Session, params: &Value) -> Result<Value> {
     }
     let doc: Value = serde_json::from_slice(&bytes)
         .map_err(|e| EngineError::InvalidParams(format!("invalid project file: {e}")))?;
-    if doc["format"] != "magicstudio.project" {
+    if doc["format"] != "magic.project" {
         return Err(EngineError::InvalidParams(
             "path is not a Magic Studio project".into(),
         ));
@@ -102,7 +102,7 @@ pub(crate) fn write_state(dir: &Path, v: &Value) -> Result<()> {
     Ok(())
 }
 
-pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
+fn intake_destination(s: &Session, p: &Value) -> Result<(PathBuf, Value)> {
     let production_root = crate::project_settings::root()?;
     let mut location = json!({"source":"explicit path override","production_root":production_root,"setting_changed":false});
     let mut path = if let Some(v) = p["path"].as_str() {
@@ -151,6 +151,76 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     if path.exists() {
         path = fs::canonicalize(&path)?;
     }
+    Ok((path, location))
+}
+
+fn intake_next_commands(p: &Value, steps: &[Value], problems: &[String]) -> Vec<Value> {
+    if problems.is_empty() {
+        return vec![
+            json!({"command":"project.add_asset","params":{"path":"<your image>"},"reason":"Add artwork to the project without placing it"}),
+            json!({"command":"workshop.import_transcript","params":{"path":"<timed transcript JSON>"},"reason":"Import timed lyrics when you have them"}),
+        ];
+    }
+    if steps
+        .iter()
+        .any(|step| step["command"] == "workshop.set_audio" && step["status"] == "failed")
+        && let Some(audio) = p["audio"].as_str()
+    {
+        return vec![
+            json!({"command":"workshop.set_audio","params":{"path":audio},"reason":"Fix the reported audio or HyperFrames error, then retry"}),
+        ];
+    }
+    Vec::new()
+}
+
+fn register_intake_skills(
+    s: &mut Session,
+    p: &Value,
+    steps: &mut Vec<Value>,
+    problems: &mut Vec<String>,
+) {
+    // Register knowledge skills for this project: each becomes an info block in the
+    // Skills view (researching / implemented / not_implemented) with where it plugs in.
+    if let Some(skill_list) = p["skills"].as_array() {
+        for skill in skill_list.iter().filter_map(Value::as_object) {
+            let id = skill
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|v| !v.trim().is_empty());
+            let name = skill
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|v| !v.trim().is_empty());
+            match (id, name) {
+                (Some(id), Some(name)) => {
+                    let params = json!({
+                        "id": id,
+                        "name": name,
+                        "description": skill.get("description").and_then(Value::as_str).unwrap_or(""),
+                        "status": skill.get("status").and_then(Value::as_str).unwrap_or("researching"),
+                        "source": skill.get("source").and_then(Value::as_str).unwrap_or(""),
+                        "implemented_at": skill.get("implemented_at").cloned().unwrap_or(json!([])),
+                        "implemented_in": skill.get("implemented_in").cloned().unwrap_or(json!([])),
+                        "integration_notes": skill.get("integration_notes").and_then(Value::as_str).unwrap_or(""),
+                    });
+                    match s.execute("skills.add", params) {
+                        Ok(_) => steps
+                            .push(json!({"command":"skills.add","id":id,"status":"registered"})),
+                        Err(e) => {
+                            let error = e.to_string();
+                            steps.push(json!({"command":"skills.add","id":id,"status":"failed","error":error}));
+                            problems.push(format!("skill {id}: {error}"));
+                        }
+                    }
+                }
+                _ => problems.push("skills[] entry missing id or name".to_string()),
+            }
+        }
+    }
+}
+
+pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
+    let (path, location) = intake_destination(s, p)?;
     let keep_owner = s.project_owner.is_some() && s.project_path.as_ref() == Some(&path);
     let exists = path.exists();
     let intake_owner = if exists {
@@ -215,21 +285,7 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
     if p["prepare_only"] == true {
         let outputs = json!({"video.init":audio_setup});
         s.execute("project.save", json!({}))?;
-        let mut next_commands = Vec::new();
-        if !problems.is_empty() {
-            if steps
-                .iter()
-                .any(|step| step["command"] == "workshop.set_audio" && step["status"] == "failed")
-                && let Some(audio) = p["audio"].as_str()
-            {
-                next_commands.push(json!({"command":"workshop.set_audio","params":{"path":audio},"reason":"Fix the reported audio or HyperFrames error, then retry"}));
-            }
-        } else {
-            next_commands.extend([
-                json!({"command":"project.add_asset","params":{"path":"<your image>"},"reason":"Add artwork to the project without placing it"}),
-                json!({"command":"workshop.import_transcript","params":{"path":"<timed transcript JSON>"},"reason":"Import timed lyrics when you have them"}),
-            ]);
-        }
+        let next_commands = intake_next_commands(p, &steps, &problems);
         let result = json!({"ok":true,"project":path,"location":location,"warnings":warnings,
             "steps":steps,"problems":problems,"setup_ready":problems.is_empty(),"intake_ready":false,"prepared_only":true,
             "video":outputs["video.init"],
@@ -271,44 +327,7 @@ pub fn intake(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
 
-    // Register knowledge skills for this project: each becomes an info block in the
-    // Skills view (researching / implemented / not_implemented) with where it plugs in.
-    if let Some(skill_list) = p["skills"].as_array() {
-        for skill in skill_list.iter().filter_map(Value::as_object) {
-            let id = skill
-                .get("id")
-                .and_then(Value::as_str)
-                .filter(|v| !v.trim().is_empty());
-            let name = skill
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|v| !v.trim().is_empty());
-            match (id, name) {
-                (Some(id), Some(name)) => {
-                    let params = json!({
-                        "id": id,
-                        "name": name,
-                        "description": skill.get("description").and_then(Value::as_str).unwrap_or(""),
-                        "status": skill.get("status").and_then(Value::as_str).unwrap_or("researching"),
-                        "source": skill.get("source").and_then(Value::as_str).unwrap_or(""),
-                        "implemented_at": skill.get("implemented_at").cloned().unwrap_or(json!([])),
-                        "implemented_in": skill.get("implemented_in").cloned().unwrap_or(json!([])),
-                        "integration_notes": skill.get("integration_notes").and_then(Value::as_str).unwrap_or(""),
-                    });
-                    match s.execute("skills.add", params) {
-                        Ok(_) => steps
-                            .push(json!({"command":"skills.add","id":id,"status":"registered"})),
-                        Err(e) => {
-                            let error = e.to_string();
-                            steps.push(json!({"command":"skills.add","id":id,"status":"failed","error":error}));
-                            problems.push(format!("skill {id}: {error}"));
-                        }
-                    }
-                }
-                _ => problems.push("skills[] entry missing id or name".to_string()),
-            }
-        }
-    }
+    register_intake_skills(s, p, &mut steps, &mut problems);
 
     let valid_transcript = || {
         crate::workshop::transcript_files(dir).iter().any(|f| {
@@ -413,10 +432,10 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
   json!({"id":c.id,"label":c.label,"params":c.params,"menu":c.menu,"enabled":reason.is_none(),"block_reason":reason,"long_running":c.long_running})
  }).collect();
     let mapping = json!([
- {"control":"Home / Open Project","command":"project.open","source":"apps/src-tauri/src/main.rs:project_open","status":"source verified; UI transport separate"},
- {"control":"Home / New song","command":"project.intake","source":"apps/src-tauri/src/main.rs:project_create","status":"source verified; shared intake command"},
- {"control":"Add transcript","command":"workshop.import_transcript","source":"apps/src-tauri/ui/app.js","status":"existing UI omits captions picker"},
- {"control":"Save","command":"project.save","source":"crates/engine/src/commands.rs","status":"backend command; not every UI save control verified"}]);
+ {"control":"Home / Open Project","command":"project.open","source":"apps/magic/src/app/project_list.rs","status":"source verified"},
+ {"control":"Home / New song","command":"project.new","source":"apps/magic/src/app/project_list.rs","status":"source verified"},
+ {"control":"Add transcript","command":"workshop.import_transcript","source":"apps/magic/src/app/project_view.rs","status":"source verified"},
+ {"control":"Save","command":"project.save","source":"apps/magic/src/app.rs","status":"source verified"}]);
     let provenance = dir
         .and_then(|d| fs::read(d.join("transcript-provenance.json")).ok())
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
@@ -468,7 +487,7 @@ pub fn status(s: &mut Session, p: &Value) -> Result<Value> {
         let hf = dir.join("hyperframes");
         let host = fs::read_to_string(hf.join("index.html")).ok();
         let source = fs::read_to_string(hf.join("compositions/captions.html")).ok();
-        let receipt = fs::read(hf.join(".magicstudio-captions.json"))
+        let receipt = fs::read(hf.join(".magic-captions.json"))
             .ok()
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
         let current = words.map(|w| {
@@ -592,7 +611,6 @@ pub(crate) fn shell_quote(value: &str) -> String {
 pub(crate) fn cli_program() -> String {
     std::env::current_exe()
         .ok()
-        .map(|p| p.with_file_name("magic-cli"))
         .filter(|p| p.is_file())
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "magic-cli".into())

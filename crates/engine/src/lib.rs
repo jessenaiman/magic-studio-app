@@ -1,6 +1,6 @@
 //! Shared project state and command dispatch for Magic Studio's creative workspace.
 //!
-//! The desktop Tauri shell, CLI, and MCP clients share the same command registry
+//! The desktop egui shell, CLI clients share the same command registry
 //! and [`Session::execute`] entry point. This crate owns project state and domain
 //! validation; frontends should not implement a second persistence model.
 //!
@@ -16,7 +16,7 @@
 //! Inspect the registry without opening a project or invoking a production tool:
 //!
 //! ```no_run
-//! use magicstudio_engine::{Session, command_specs, find_command};
+//! use magic_engine::{Session, command_specs, find_command};
 //!
 //! let session = Session::default();
 //! for command in command_specs() {
@@ -69,22 +69,23 @@ pub mod character;
 pub mod command_catalog;
 pub mod command_center;
 pub mod commands;
-pub mod analyzers;
-pub mod herdr;
 mod creation_loop;
 pub mod crew;
 pub mod doctor;
+mod effectcraft;
 pub mod feedback_state;
 pub mod fidget;
 pub mod film;
+mod filmcraft;
 pub mod headless;
+pub mod herdr;
 pub mod image_generation;
 pub mod lettering;
 pub mod lyrics;
 pub(crate) mod lyrics_layout;
 mod mayhem;
-pub mod native_app;
 pub mod panels;
+mod photocraft;
 pub mod project;
 pub mod project_settings;
 pub(crate) mod read_only_file;
@@ -92,9 +93,10 @@ pub mod scribbles;
 pub mod session;
 pub mod skills_registry;
 pub mod song_metadata;
-pub mod storyboard;
 pub mod song_timing;
+pub mod storyboard;
 pub mod studio_cues;
+mod texturecraft;
 pub mod video_target;
 pub mod words;
 mod words_compose;
@@ -131,7 +133,7 @@ pub enum EngineError {
 pub type Result<T> = std::result::Result<T, EngineError>;
 
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`
-/// description (e.g. `"auto_cut": "true"` where the description says `false`). Every caller (CLI, MCP,
+/// description (e.g. `"auto_cut": "true"` where the description says `false`). Every caller (CLI,
 /// app) goes through `Session::execute`, so a mistyped value fails the same way everywhere
 /// instead of a handler silently falling back to its default.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {

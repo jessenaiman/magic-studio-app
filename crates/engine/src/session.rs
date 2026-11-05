@@ -48,8 +48,6 @@ pub struct Session {
     pub project_saves: std::sync::atomic::AtomicU64,
     /// Successful journaled commands since the project file was last written.
     pub edits_since_save: u64,
-    /// App documents this window's views opened; saved with the project, closed on leaving.
-    pub open_documents: Vec<crate::native_app::OpenDocument>,
 }
 
 impl Default for Session {
@@ -73,7 +71,6 @@ impl Default for Session {
             last_result: None,
             project_saves: std::sync::atomic::AtomicU64::new(0),
             edits_since_save: 0,
-            open_documents: Vec::new(),
         }
     }
 }
@@ -102,7 +99,6 @@ impl Clone for Session {
             ),
             edits_since_save: self.edits_since_save,
             // A copy does not own the apps this session opened.
-            open_documents: Vec::new(),
         }
     }
 }

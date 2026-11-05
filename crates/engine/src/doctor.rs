@@ -37,14 +37,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
         "agent-desktop",
         "codex",
         "hyperframes",
-        "photocraft-cli",
-        "vectorcraft-cli",
-        "effectcraft-cli",
-        "filmcraft-cli",
-        "deckcraft-cli",
-        "pdfcraft-cli",
         "ffmpeg",
-        "ffprobe",
     ]
     .iter()
     .map(|name| {
@@ -64,6 +57,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
         "processes": null,
         "video_server": video_server_state,
         "tools": tools,
+        "in_process_libraries": ["effectcraft-engine", "effectcraft-host", "filmcraft-engine", "photocraft-engine", "deckcraft-engine", "texturecraft-formats"],
         "ponytail_candidates": null,
         "recommendations": [],
     }))
@@ -71,7 +65,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
 
 pub(crate) fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
     let is_checkout =
-        |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/src-tauri/Cargo.toml").is_file();
+        |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/magic/Cargo.toml").is_file();
     if is_checkout(&s.cwd) {
         return s.cwd.clone();
     }

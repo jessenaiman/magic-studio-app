@@ -1,17 +1,14 @@
 //! The storyboard is a DeckCraft deck. `storyboard.create` fills the template from a scene plan
 //! and the project's transcription file; `storyboard.render` draws its pages for the Storyboard
 //! view. DeckCraft owns the typography and style: Magic only sets the template's own fields and
-//! inserts pictures. Editing happens
-//! in DeckCraft itself (opened, saved and closed by `native_app`), never here.
+//! inserts pictures. DeckCraft owns saving and closing its hand-editing window.
 use crate::{EngineError, Result, Session};
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 
-// ---- The CLI, the template and the project files this file uses ----------------------------
+// ---- The native engine, the template and the project files this file uses ----------------------------
 
-/// Every deck operation: `deckcraft-cli run --in DECK --cmd NAME=JSON … (--save OUT | --print)`,
-/// `deckcraft-cli info DECK`, `deckcraft-cli render DECK --all DIR`.
-const CLI: &str = "deckcraft-cli";
+/// Deck operations use the published DeckCraft Rust session and renderer.
 /// Pages: 1 overview, 2 sequence, 3 the scene page (duplicated once per scene), last handoff.
 const TEMPLATE: &[u8] = include_bytes!("../../../references/storyboard/Storyboard.potx");
 const SCENE_PAGE: usize = 3;
@@ -26,30 +23,37 @@ fn bad(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
+fn open_deck(path: &Path) -> Result<deckcraft_engine::Session> {
+    let path = std::fs::canonicalize(path)?;
+    let mut session = deckcraft_engine::Session::new();
+    session
+        .execute("file.open", &json!({"path": path}))
+        .map_err(|e| bad(format!("DeckCraft open: {e}")))?;
+    Ok(session)
+}
+
 /// Run DeckCraft commands on `input`: save the result to `save`, or return each command's answer.
 fn run(
-    dir: &Path,
+    _dir: &Path,
     input: &Path,
     commands: &[(&str, Value)],
     save: Option<&Path>,
 ) -> Result<Vec<Value>> {
-    let mut args = vec![
-        "run".into(),
-        "--in".into(),
-        input.to_string_lossy().into_owned(),
-    ];
-    for (name, params) in commands {
-        args.extend(["--cmd".into(), format!("{name}={params}")]);
+    let mut session = open_deck(input)?;
+    let mut results = Vec::with_capacity(commands.len());
+    for (id, params) in commands {
+        results.push(
+            session
+                .execute(id, params)
+                .map_err(|e| bad(format!("DeckCraft {id}: {e}")))?,
+        );
     }
-    match save {
-        Some(out) => args.extend(["--save".into(), out.to_string_lossy().into_owned()]),
-        None => args.push("--print".into()),
+    if let Some(path) = save {
+        session
+            .execute("file.saveAs", &json!({"path": path}))
+            .map_err(|e| bad(format!("DeckCraft save: {e}")))?;
     }
-    let out = crate::workspace::run_tool_in(dir, CLI, &args)?;
-    Ok(out
-        .lines()
-        .filter_map(|l| serde_json::from_str(l.split_once(" → ")?.1).ok())
-        .collect())
+    Ok(results)
 }
 
 /// The named shapes on `page` (from 1).
@@ -220,25 +224,21 @@ fn render(dir: &Path, cues: Option<Value>) -> Result<Value> {
     let pages = dir.join(PAGES);
     let _ = std::fs::remove_dir_all(&pages);
     std::fs::create_dir_all(&pages)?;
-    let args = [
-        "render",
-        &deck.to_string_lossy(),
-        "--all",
-        &pages.to_string_lossy(),
-    ]
-    .map(String::from);
-    crate::workspace::run_tool_in(dir, CLI, &args)?;
+    let mut session = open_deck(&deck)?;
+    let document = &session.doc().map_err(|e| bad(e.to_string()))?.doc;
+    for index in 0..document.slides.len() {
+        let (png, _, _) =
+            deckcraft_engine::cmd::file::render_png_with(document, index, 2.0, false, false);
+        std::fs::write(pages.join(format!("slide-{:02}.png", index + 1)), png)?;
+    }
     let mut previews: Vec<PathBuf> = std::fs::read_dir(&pages)?
         .flatten()
         .map(|e| e.path())
         .collect();
     previews.sort();
-    let info: Value = serde_json::from_str(&crate::workspace::run_tool_in(
-        dir,
-        CLI,
-        &["info".into(), deck.to_string_lossy().into_owned()],
-    )?)
-    .map_err(|e| bad(format!("{CLI} info: {e}")))?;
+    let info = session
+        .execute("document.inspect", &json!({}))
+        .map_err(|e| bad(format!("DeckCraft inspect: {e}")))?;
     let inspect: Vec<(&str, Value)> = (0..previews.len())
         .map(|i| ("slide.inspect", json!({"index": i})))
         .collect();

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use super::{bad, effectcraft, path_arg, step};
+use super::{bad, effectcraft, step};
 use crate::{Result, Session};
 
 /// Where one sprite lives: `<project>/assets/characters/<id>/sprites/<name>/`.
@@ -32,23 +32,14 @@ fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32)) -> Result<Vec<PathBuf
     for i in 0..cols * rows {
         let file = frames.join(format!("frame_{:04}.png", i + 1));
         let crop = json!({"x": (i % cols) * cw, "y": (i / cols) * ch, "width": cw, "height": ch});
-        let args = vec![
-            "run".into(),
-            path_arg(sheet),
-            "--cmd".into(),
-            "image.crop".into(),
-            "--params".into(),
-            crop.to_string(),
-            // Scribbles leaves a faint haze where the sheet should be clear; Remove Background
-            // makes every frame truly transparent so it composites cleanly over a scene.
-            "--cmd".into(),
-            "layer.removeBackground".into(),
-            "--params".into(),
-            "{\"refine\":true}".into(),
-            "--out".into(),
-            path_arg(&file),
-        ];
-        crate::workspace::run_tool_in(dir, "photocraft-cli", &args)?;
+        crate::photocraft::run(
+            sheet,
+            &[
+                ("image.crop", crop),
+                ("layer.removeBackground", json!({"refine": true})),
+            ],
+            Some(&file),
+        )?;
         out.push(file);
     }
     Ok(out)

@@ -31,7 +31,7 @@ fn directory() -> Result<PathBuf> {
             "Change notification directory must be absolute".into(),
         ));
     }
-    Ok(base.join("magicstudio"))
+    Ok(base.join("magic"))
 }
 
 fn ensure_private_directory(dir: &std::path::Path) -> Result<()> {

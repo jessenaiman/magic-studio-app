@@ -22,13 +22,13 @@ Explain the problem solved and why the change matters.
 ## Where
 List the changed file paths and what changed in each.
 
-## magic-cli audit stats
+## Native verification
 Record the actual command used and its exit status.
-Report native tool names and values. Show before → after only when
+Report the actual Cargo commands, raw diagnostics and exit codes. Show before → after only when
 both results use comparable scope, tools and configuration.
 Label incomparable results; do not imply measured progress from them.
 List failed, skipped, unavailable and not-run checks explicitly.
-Missing audit evidence stays unavailable or not run.
+Missing verification evidence stays unavailable or not run.
 
 ## Agent session
 Put the agent name, harness and session ID at the bottom.

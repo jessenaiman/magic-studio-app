@@ -21,7 +21,7 @@ fn read(path: &Path) -> Result<Value> {
 pub fn workflow(_: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workspace::user_data_dir()
         .ok_or_else(|| invalid("User data directory unavailable"))?
-        .join("magic-studio/resources");
+        .join("magic/resources");
     let path = dir.join("creator-loop.json");
     let doc = if p.get("field").is_some() {
         fs::create_dir_all(&dir)?;

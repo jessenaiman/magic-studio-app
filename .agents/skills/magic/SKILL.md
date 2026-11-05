@@ -69,30 +69,17 @@ A screenshot, successful command, or empty error list alone proves no movie.
 After UI code edits, rebuild the shell before checking the installed app;
 report if the visible app still runs a different build.
 
-## Code verification and review
+## Native Rust verification
 
-For routine feature and bugfix tasks, verify code directly and locally:
-- Check compilation: `cargo check` and `cargo clippy -p <crate> -- -D warnings`
-- Review a specific modified file or directory: `magic-cli review <path>`
-- Auto-fix formatting/lint: `magic-cli doctor <path>`
+The retired Magic audit, review and formatting wrappers are removed. For
+verification authorized by Jesse, use Craft's actual Cargo commands directly:
+`cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`.
+Capture each native command's output and exit status without custom scores or
+relabeling failures. Do not run the withdrawn frontend or acceptance checks.
+No Craft CI wrapper has been installed over Magic's existing `xtask`.
 
-Do NOT run repository-wide `magic-cli audit` during feature work, and do NOT attempt to refactor unrelated files to reduce repository-wide CCN or complexity metrics.
-
-## Mayhem and audit sessions
-
-Full repository audits are exclusively for dedicated Mayhem and code analytics sessions:
-
-```bash
-magic-cli audit /absolute/checkout --base <same-comparison-commit>
-magic-cli mayhem evidence
-magic-cli ui click id=tab-analytics
-magic-cli ui look output=/absolute/mayhem-review.png
-```
-
-Audit runs the native tools and saves complete outputs and exit statuses in
-`target/analytics/analyzer-runs/`; `analyzers.json` identifies the latest run.
-Each tool records its actual scope. Use this only for an explicitly requested
-repository audit or Mayhem review. See `docs/analyzers.md` for profiles and MCP.
+Mayhem's `mayhem.evidence` command may read retained historical reports. It does
+not execute a scan. Preserve those reports and user project data.
 
 ## Tool boundaries
 

@@ -1,7 +1,7 @@
 //! Studio windows: find the app, open or reuse a window, and send it commands.
 //! Discovery, focus and the socket protocol are the engine's (`studio_sessions`); this file
 //! adds only what a caller needs: agent windows stay off the user's screen.
-use magicstudio_engine::studio_sessions::{self, Launch};
+use magic_engine::studio_sessions::{self, Launch};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -34,16 +34,16 @@ pub fn shell_binary() -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let beside = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join("magic-studio")));
+        .and_then(|p| p.parent().map(|d| d.join("magic")));
     let candidates = [
         beside,
         home.as_ref()
-            .map(|h| h.join(".local/share/magic-studio/bin/magic-studio")),
-        home.as_ref().map(|h| h.join(".local/bin/magic-studio")),
+            .map(|h| h.join(".local/share/magic/bin/magic")),
+        home.as_ref().map(|h| h.join(".local/bin/magic")),
     ];
     let path_hit = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
-            .map(|d| d.join("magic-studio"))
+            .map(|d| d.join("magic"))
             .find(|p| executable(p))
     });
     candidates
@@ -52,12 +52,12 @@ pub fn shell_binary() -> Result<PathBuf, String> {
         .find(|p| executable(p))
         .or(path_hit)
         .ok_or_else(|| {
-            "Magic Studio (`magic-studio`) is not installed or built. Build it with:\n  CARGO_BUILD_JOBS=1 cargo build -p magic-studio".into()
+            "Magic (`magic`) is not installed or built. Build it with:\n  CARGO_BUILD_JOBS=1 cargo build -p magic".into()
         })
 }
 
 fn socket_dir() -> Option<PathBuf> {
-    studio_sessions::runtime_dir().map(|r| r.join("magicstudio-studio"))
+    studio_sessions::runtime_dir().map(|r| r.join("magic-studio"))
 }
 
 fn socket_path(endpoint: &str) -> Result<&Path, String> {

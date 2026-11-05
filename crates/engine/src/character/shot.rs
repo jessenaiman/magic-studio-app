@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use super::{bad, effectcraft, path_arg, point, sprite::sprite_dir, step};
+use super::{bad, effectcraft, point, sprite::sprite_dir, step};
 use crate::{Result, Session};
 
 /// Film frame and rate; matches `video.assemble`.
@@ -128,21 +128,12 @@ pub fn cmd_character_shot(s: &mut Session, p: &Value) -> Result<Value> {
     steps.push(step("file.saveAs", json!({"path": project})));
     effectcraft(&dir, None, &steps)?;
     let clip = dir.join(format!("{name}.mov"));
-    let args: Vec<String> = vec![
-        "render".into(),
-        path_arg(&project),
-        "--comp".into(),
-        name.clone(),
-        "--out".into(),
-        path_arg(&clip),
-        "--format".into(),
-        "prores".into(),
-        "--prores".into(),
-        "4444".into(),
-        "--channels".into(),
-        "rgba".into(),
-    ];
-    crate::workspace::run_tool_in(&dir, "effectcraft-cli", &args)?;
+    crate::effectcraft::render(
+        &project,
+        json!({
+            "comp": name, "output": clip, "format": "prores", "proresProfile": "4444", "channels": "rgba"
+        }),
+    )?;
     Ok(
         json!({"ok": true, "clip": clip, "ecproj": project, "comp": name, "duration": at.duration,
         "from": at.from, "to": at.to, "scale": at.scale, "mirror": at.mirror, "hops": at.hop.is_some()}),

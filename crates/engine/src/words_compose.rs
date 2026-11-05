@@ -185,7 +185,7 @@ fn design_composition(
 }
 
 fn without_placement(html: &str, id: &str) -> String {
-    let mark = format!("data-magicstudio-words=\"{id}\"");
+    let mark = format!("data-magic-words=\"{id}\"");
     let mut out = html.to_owned();
     for (open, close) in [
         ("<style ", "</style>\n"),
@@ -514,17 +514,28 @@ fn soften_webgpu_shader_guard(hf: &Path) {
     let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
 }
 
-fn mount_overlay(
-    s: &mut Session,
-    dir: &Path,
-    id: &str,
-    read: &Value,
-    html: &mut String,
+#[derive(Clone, Copy)]
+struct WordsPlacement<'a> {
+    dir: &'a Path,
+    id: &'a str,
     root: usize,
     track_index: u64,
-    w: u64,
-    h: u64,
+    size: (u64, u64),
+}
+
+fn mount_overlay(
+    s: &mut Session,
+    placement: &WordsPlacement<'_>,
+    read: &Value,
+    html: &mut String,
 ) -> Result<Option<Value>> {
+    let WordsPlacement {
+        dir,
+        id,
+        root,
+        track_index,
+        size: (w, h),
+    } = *placement;
     let overlay = &read["document"]["animations"][0]["kinetic"]["overlay"];
     let lib: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let Some(block) = overlay
@@ -568,7 +579,7 @@ fn mount_overlay(
     html.insert_str(
         root,
         &format!(
-            "<div id=\"{own}\" class=\"clip lyric-overlay-clip\" data-magicstudio-words=\"{id}\" data-composition-id=\"{own}\" data-composition-src=\"{own_src}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;left:0;top:0;width:{w}px;height:{h}px;z-index:75;mix-blend-mode:{};opacity:{}\"></div>\n",
+            "<div id=\"{own}\" class=\"clip lyric-overlay-clip\" data-magic-words=\"{id}\" data-composition-id=\"{own}\" data-composition-src=\"{own_src}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;left:0;top:0;width:{w}px;height:{h}px;z-index:75;mix-blend-mode:{};opacity:{}\"></div>\n",
             overlay_start,
             overlay_duration,
             track_index + 1,
@@ -607,16 +618,19 @@ fn section_backdrop_span(track: &Value, scope: &Value, composed: &Value, html: &
 
 fn mount_section_backdrop(
     s: &Session,
-    dir: &Path,
-    id: &str,
+    placement: &WordsPlacement<'_>,
     read: &Value,
     composed: &Value,
     track: &Value,
     html: &mut String,
-    root: usize,
-    w: u64,
-    h: u64,
 ) -> Option<Value> {
+    let WordsPlacement {
+        dir,
+        id,
+        root,
+        size: (w, h),
+        ..
+    } = *placement;
     let anim = &read["document"]["animations"][0];
     if html.contains("id=\"scene-") && anim["background_custom"].as_bool() != Some(true) {
         return None;
@@ -627,7 +641,7 @@ fn mount_section_backdrop(
     html.insert_str(
         root,
         &format!(
-            "<img id=\"{id}-backdrop\" class=\"clip lyric-backdrop-clip\" data-magicstudio-words=\"{id}\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.6}\" data-duration=\"{duration:.6}\" data-track-index=\"1\" style=\"position:absolute;inset:0;width:{w}px;height:{h}px;object-fit:cover;z-index:1\">\n"
+            "<img id=\"{id}-backdrop\" class=\"clip lyric-backdrop-clip\" data-magic-words=\"{id}\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.6}\" data-duration=\"{duration:.6}\" data-track-index=\"1\" style=\"position:absolute;inset:0;width:{w}px;height:{h}px;object-fit:cover;z-index:1\">\n"
         ),
     );
     Some(
@@ -656,7 +670,7 @@ fn insert_section_hide_style(
     html.insert_str(
         head,
         &format!(
-            "<style data-magicstudio-words=\"{id}\">{} {{ visibility: hidden !important; }}</style>\n",
+            "<style data-magic-words=\"{id}\">{} {{ visibility: hidden !important; }}</style>\n",
             selectors.join(", ")
         ),
     );
@@ -710,12 +724,19 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
             composed["width"].as_u64().unwrap_or(1920),
             composed["height"].as_u64().unwrap_or(1080),
         );
+        let placement = WordsPlacement {
+            dir: &dir,
+            id,
+            root,
+            track_index,
+            size: (w, h),
+        };
         let composition_id = composed["composition_id"].as_str().unwrap_or(id);
         let composed_sha = composed["sha256"].as_str().unwrap_or_default();
         html.insert_str(
             root,
             &format!(
-                "<div id=\"{composition_id}\" class=\"clip lyric-design-clip\" data-magicstudio-words=\"{id}\" data-magicstudio-sha=\"{composed_sha}\" data-composition-id=\"{composition_id}\" data-composition-src=\"{}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{track_index}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;left:0;top:0;width:{w}px;height:{h}px;z-index:76\"></div>\n",
+                "<div id=\"{composition_id}\" class=\"clip lyric-design-clip\" data-magic-words=\"{id}\" data-magic-sha=\"{composed_sha}\" data-composition-id=\"{composition_id}\" data-composition-src=\"{}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{track_index}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;left:0;top:0;width:{w}px;height:{h}px;z-index:76\"></div>\n",
                 composed["src"].as_str().unwrap_or_default(),
                 composed["song_anchor"].as_f64().unwrap_or(0.0),
                 composed["authored_duration"].as_f64().unwrap_or(0.0)
@@ -730,7 +751,7 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
             html.insert_str(
                 root,
                 &format!(
-                    "<div id=\"{}\" class=\"clip lyric-drawing-clip\" data-magicstudio-words=\"{id}\" data-track-kind=\"graphics\" data-composition-id=\"{}\" data-composition-src=\"{}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;inset:0;z-index:77\"></div>\n",
+                    "<div id=\"{}\" class=\"clip lyric-drawing-clip\" data-magic-words=\"{id}\" data-track-kind=\"graphics\" data-composition-id=\"{}\" data-composition-src=\"{}\" data-start=\"{:.6}\" data-duration=\"{:.6}\" data-track-index=\"{}\" data-width=\"{w}\" data-height=\"{h}\" style=\"position:absolute;inset:0;z-index:77\"></div>\n",
                     draw["composition_id"].as_str().unwrap_or_default(),
                     draw["composition_id"].as_str().unwrap_or_default(),
                     draw["src"].as_str().unwrap_or_default(),
@@ -741,11 +762,10 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
             );
         }
         receipt["drawings"] = composed["drawings"].clone();
-        if let Some(ov) = mount_overlay(s, &dir, id, &read, &mut html, root, track_index, w, h)? {
+        if let Some(ov) = mount_overlay(s, &placement, &read, &mut html)? {
             receipt["overlay"] = ov;
         }
-        if let Some(bg) =
-            mount_section_backdrop(s, &dir, id, &read, &composed, &track, &mut html, root, w, h)
+        if let Some(bg) = mount_section_backdrop(s, &placement, &read, &composed, &track, &mut html)
         {
             receipt["backdrop"] = bg;
         }
@@ -783,11 +803,11 @@ fn compose_drawing_subcompositions(
     anim: &Value,
     read: &Value,
     composition_id: &str,
-    width: u64,
-    height: u64,
+    size: (u64, u64),
     anchor: f64,
     words: &[Value],
 ) -> Result<Vec<Value>> {
+    let (width, height) = size;
     if !anim["kinetic"].is_object() {
         return Ok(Vec::new());
     }
@@ -831,13 +851,13 @@ fn compose_drawing_subcompositions(
 fn render_section_html(
     anim: &Value,
     composition_id: &str,
-    width: u64,
-    height: u64,
+    size: (u64, u64),
     duration: f64,
     words: &[Value],
     data: &Value,
     local: &dyn Fn(f64) -> f64,
 ) -> Result<String> {
+    let (width, height) = size;
     let designed = anim["design"]
         .as_object()
         .is_some_and(|d| d.values().any(Value::is_object));
@@ -1016,8 +1036,7 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
     let html = render_section_html(
         anim,
         &composition_id,
-        width,
-        height,
+        (width, height),
         duration,
         &words,
         &data,
@@ -1029,8 +1048,7 @@ pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
         anim,
         &read,
         &composition_id,
-        width,
-        height,
+        (width, height),
         anchor,
         &words,
     )?;

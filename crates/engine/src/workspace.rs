@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::{EngineError, Result};
 
-/// Return the canonical current Tauri/engine workspace, independent of the caller working directory.
+/// Return the canonical current Magic Studio workspace, independent of the caller working directory.
 pub fn workspace_root(s: &crate::Session) -> PathBuf {
     // Installed binaries resolve their bundled runtime before any development checkout.
     if let Ok(exe) = std::env::current_exe()
@@ -27,7 +27,7 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
         }
     }
     let current_root = |root: &Path| {
-        root.join("Cargo.toml").is_file() && root.join("apps/src-tauri/Cargo.toml").is_file()
+        root.join("Cargo.toml").is_file() && root.join("apps/magic/Cargo.toml").is_file()
     };
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()
@@ -99,8 +99,22 @@ pub(crate) fn find_executable(name: &str) -> Result<PathBuf> {
         })
 }
 
+/// Hand off a document for editing. The editor owns its window and unsaved changes.
+pub(crate) fn open_editor(app: &str, document: &Path) -> Result<()> {
+    use std::process::{Command, Stdio};
+    let mut editor = Command::new(resolve_tool(app))
+        .arg(document)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| EngineError::ExternalTool(app.to_owned(), e.to_string()))?;
+    std::thread::spawn(move || editor.wait());
+    Ok(())
+}
+
 /// Resolve an installed tool executable from `<TOOL_NAME>` env override,
-/// `~/.config/magicstudio/settings.json` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
+/// `~/.config/magic/settings.json` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
 pub fn resolve_tool(name: &str) -> String {
     if let Ok(env_val) = std::env::var(name.to_uppercase().replace('-', "_")) {
         let trimmed = env_val.trim();

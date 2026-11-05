@@ -1,13 +1,11 @@
-//! `words.letter`: the song's lyrics lettered and animated by the installed effects app,
-//! driven only through its CLI. Magic owns the words, their timing and the approved recipe
-//! (`lyrics-design.json`); the effects app owns layout, type, motion and rendering. The result
+//! `words.letter`: the song's lyrics lettered and animated by the linked EffectCraft engine. Magic owns the words, their timing and the approved recipe
+//! (`lyrics-design.json`); EffectCraft owns layout, type, motion and rendering. The result
 //! lives in the project folder: `lettering/lyrics.ecproj`, the commands that built it, and a
 //! transparent render for the film to place over the backgrounds.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-const EFFECTS_CLI: &str = "effectcraft-cli";
 const COMP: &str = "Lyrics";
 const FRAME: (f64, f64) = (1920.0, 1080.0);
 /// Seconds a line appears before its first sung word, and lingers after its last.
@@ -596,10 +594,6 @@ fn words_designs(dir: &Path) -> Value {
     Value::Object(map)
 }
 
-fn run_effects(dir: &Path, args: &[String]) -> Result<String> {
-    crate::workspace::run_tool_in(dir, EFFECTS_CLI, args)
-}
-
 /// `words.letter`: build `lettering/lyrics.ecproj` from the approved recipe and the aligned
 /// lyrics, then render it with transparency unless `render` is false.
 pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
@@ -638,40 +632,18 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let (project, commands) = (out.join("lyrics.ecproj"), out.join("lyrics.steps.jsonl"));
     let jsonl: String = steps.iter().map(|v| format!("{v}\n")).collect();
     std::fs::write(&commands, jsonl)?;
-    let arg = |p: &Path| p.to_string_lossy().into_owned();
-    run_effects(
-        &dir,
-        &[
-            "--empty".into(),
-            "--save-as".into(),
-            arg(&project),
-            "--json".into(),
-            "run".into(),
-            "--commands".into(),
-            arg(&commands),
-        ],
-    )?;
+    let mut native_steps = steps;
+    native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
+    crate::effectcraft::run(&dir, None, &native_steps)?;
     let render = if p["render"] == false {
         None
     } else {
         let movie = out.join("lyrics.mov");
-        run_effects(
-            &dir,
-            &[
-                "--project".into(),
-                arg(&project),
-                "render".into(),
-                "--comp".into(),
-                COMP.into(),
-                "--out".into(),
-                arg(&movie),
-                "--format".into(),
-                "prores".into(),
-                "--prores".into(),
-                "4444".into(),
-                "--channels".into(),
-                "rgba".into(),
-            ],
+        crate::effectcraft::render(
+            &project,
+            json!({
+                "comp": COMP, "output": movie, "format": "prores", "proresProfile": "4444", "channels": "rgba"
+            }),
         )?;
         Some(movie)
     };

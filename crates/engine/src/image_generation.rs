@@ -86,21 +86,21 @@ fn env_nonempty(key: &str) -> Option<String> {
 }
 
 /// Resolve image generation configuration from request params, environment variables, and
-/// `~/.config/magicstudio/settings.json` (`image` object). Defaults to `codex` subscription.
+/// `~/.config/magic/settings.json` (`image` object). Defaults to `codex` subscription.
 fn resolve_config(p: &Value) -> Result<ImageConfig> {
     let settings = crate::project_settings::stored_settings();
     let img_settings = &settings["image"];
     let provider = nonempty_str(p.get("provider"))
-        .or_else(|| env_nonempty("MAGICSTUDIO_IMAGE_PROVIDER"))
+        .or_else(|| env_nonempty("magic_IMAGE_PROVIDER"))
         .or_else(|| nonempty_str(img_settings.get("provider")))
         .unwrap_or_else(|| "codex".into());
     if !matches!(provider.as_str(), "codex" | "http") {
         return Err(invalid(&format!(
-            "image provider must be `codex` (subscription default) or `http` (configured in settings.json / MAGICSTUDIO_IMAGE_ENDPOINT); got `{provider}`"
+            "image provider must be `codex` (subscription default) or `http` (configured in settings.json / magic_IMAGE_ENDPOINT); got `{provider}`"
         )));
     }
     let model = nonempty_str(p.get("model"))
-        .or_else(|| env_nonempty("MAGICSTUDIO_IMAGE_MODEL"))
+        .or_else(|| env_nonempty("magic_IMAGE_MODEL"))
         .or_else(|| nonempty_str(img_settings.get("model")));
     if let Some(ref m) = model {
         let ok = m.len() <= 160
@@ -111,9 +111,9 @@ fn resolve_config(p: &Value) -> Result<ImageConfig> {
             return Err(invalid("Invalid model identifier"));
         }
     }
-    let endpoint = env_nonempty("MAGICSTUDIO_IMAGE_ENDPOINT")
-        .or_else(|| nonempty_str(img_settings.get("endpoint")));
-    let api_key_env = env_nonempty("MAGICSTUDIO_IMAGE_API_KEY_ENV")
+    let endpoint =
+        env_nonempty("magic_IMAGE_ENDPOINT").or_else(|| nonempty_str(img_settings.get("endpoint")));
+    let api_key_env = env_nonempty("magic_IMAGE_API_KEY_ENV")
         .or_else(|| nonempty_str(img_settings.get("api_key_env")));
     Ok(ImageConfig {
         provider,
@@ -632,10 +632,10 @@ fn generate_via_configured_http(
     timeout: u64,
 ) -> Result<Value> {
     let endpoint = cfg.endpoint.as_deref().ok_or_else(|| {
-        invalid("HTTP image provider requires `image.endpoint` in settings.json or MAGICSTUDIO_IMAGE_ENDPOINT")
+        invalid("HTTP image provider requires `image.endpoint` in settings.json or magic_IMAGE_ENDPOINT")
     })?;
     let key_env = cfg.api_key_env.as_deref().ok_or_else(|| {
-        invalid("HTTP image provider requires `image.api_key_env` in settings.json or MAGICSTUDIO_IMAGE_API_KEY_ENV")
+        invalid("HTTP image provider requires `image.api_key_env` in settings.json or magic_IMAGE_API_KEY_ENV")
     })?;
     let key = std::env::var(key_env).map_err(|_| {
         invalid(&format!(
@@ -643,7 +643,9 @@ fn generate_via_configured_http(
         ))
     })?;
     let model = cfg.model.as_deref().ok_or_else(|| {
-        invalid("HTTP image provider requires `model` in params, MAGICSTUDIO_IMAGE_MODEL, or settings.json")
+        invalid(
+            "HTTP image provider requires `model` in params, magic_IMAGE_MODEL, or settings.json",
+        )
     })?;
     let mut request = json!({
         "model": model,
@@ -967,7 +969,7 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         write_bytes(&prepared.prompt_file, last.as_bytes(), "write_prompt")?;
     }
     let mut record = json!({
-        "format": "magicstudio.image-generation",
+        "format": "magic.image-generation",
         "provider": "codex",
         "project": prepared.project,
         "prompt": prompt,

@@ -1,12 +1,9 @@
-//! `video.assemble`: the film put together by the installed editor, driven only through its
-//! CLI. The song's audio on A1, the backgrounds on V1 from the times the caller gives, and the
+//! `video.assemble`: the film put together by the linked FilmCraft engine. The song's audio on A1, the backgrounds on V1 from the times the caller gives, and the
 //! lettering render on V2; then an export. The editor project lives in the project folder
 //! (`film/<song>.fcproj`) so it can be opened and refined in the editor itself.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-
-const EDITOR_CLI: &str = "filmcraft-cli";
 
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -17,7 +14,7 @@ fn arg(p: &Path) -> String {
 }
 
 /// Run editor commands (one JSON object per line) and return each command's result in order.
-pub(crate) fn run(dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
+pub(crate) fn run(_dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
     let file = project.with_extension("steps.jsonl");
     let mut body: String = steps.iter().map(|s| format!("{s}\n")).collect();
     // Keep every batch the film was built from, in order, beside the project.
@@ -25,29 +22,7 @@ pub(crate) fn run(dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> R
         body = earlier + &body;
     }
     std::fs::write(&file, &body)?;
-    let batch = project.with_extension("batch.jsonl");
-    std::fs::write(
-        &batch,
-        steps.iter().map(|s| format!("{s}\n")).collect::<String>(),
-    )?;
-    let mode = if fresh { "--save-as" } else { "--project" };
-    let mut args = vec![mode.to_owned(), arg(project)];
-    if !fresh {
-        args.push("--save".into());
-    }
-    args.extend(["run".into(), arg(&batch)]);
-    let out = crate::workspace::run_tool_in(dir, EDITOR_CLI, &args)?;
-    let _ = std::fs::remove_file(&batch);
-    out.lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .map(|r| {
-            if r["ok"] == true {
-                Ok(r["result"].clone())
-            } else {
-                Err(invalid(format!("{EDITOR_CLI} {}: {}", r["id"], r["error"])))
-            }
-        })
-        .collect()
+    crate::filmcraft::run(project, fresh, steps)
 }
 
 pub(crate) fn ids(result: &Value, field: &str) -> Vec<u64> {
@@ -276,7 +251,7 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()>
     let items = made.get(2).map(|r| ids(r, "items")).unwrap_or_default();
     if items.len() != media.len() {
         return Err(invalid(format!(
-            "{EDITOR_CLI} imported {} of {} files",
+            "FilmCraft imported {} of {} files",
             items.len(),
             media.len()
         )));
@@ -313,15 +288,7 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
     let exports = dir.join("exports");
     std::fs::create_dir_all(&exports)?;
     let out = exports.join(format!("{name}.mp4"));
-    let args = [
-        "--project".into(),
-        arg(project),
-        "export".into(),
-        arg(&out),
-        "--format".into(),
-        "h264".into(),
-    ];
-    crate::workspace::run_tool_in(dir, EDITOR_CLI, &args)?;
+    crate::filmcraft::export(project, &out, false)?;
     Ok(out)
 }
 

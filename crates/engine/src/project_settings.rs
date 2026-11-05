@@ -53,7 +53,7 @@ fn configured_root(settings: &Value) -> Result<PathBuf> {
                 .ok_or_else(|| invalid("Saved projects_root must be a string"))?,
         ),
         None => crate::workspace::user_data_dir()
-            .map(|root| root.join("magicstudio/projects"))
+            .map(|root| root.join("magic/projects"))
             .ok_or_else(|| invalid("Project root unavailable; configure XDG_DATA_HOME or HOME")),
     }
 }
@@ -62,7 +62,7 @@ pub fn root() -> Result<PathBuf> {
     configured_root(&stored()?)
 }
 
-/// Read the saved Magic Studio settings object (`~/.config/magicstudio/settings.json`), or `{}`.
+/// Read the saved Magic Studio settings object (`~/.config/magic/settings.json`), or `{}`.
 pub(crate) fn stored_settings() -> Value {
     stored().unwrap_or_else(|_| json!({}))
 }
@@ -75,7 +75,7 @@ pub fn saved_path(key: &str) -> Option<PathBuf> {
 
 /// Optional external character library. Its location belongs to the user's configuration.
 pub fn characters_root() -> Option<PathBuf> {
-    std::env::var_os("MAGICSTUDIO_CHARACTERS_ROOT")
+    std::env::var_os("magic_CHARACTERS_ROOT")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .or_else(|| saved_path("characters_root"))

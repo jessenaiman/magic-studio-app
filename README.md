@@ -3,9 +3,9 @@
 **Songs into animated films.**
 
 Plan scenes, animate artwork, design lyrics, and compose a music video in one
-desktop workspace. The native app, CLI, and MCP share the same Rust engine.
+desktop workspace. The native app and CLI share the same Rust engine.
 
-[Install](#install) · [Production guide](MAGIC-STUDIO.md) ·
+[Install](#install) · [Production guide](magic.md) ·
 [Documentation](docs/README.md) · [Contributing](#contributing)
 
 ## Document ownership and save/load contract
@@ -85,7 +85,7 @@ a selected action, its preview, and the controls used to produce that result. --
 Open **Animation** and select an imported character or prop.
 Prepare cutouts, rigs, and motion with the installed Craft applications
 (PhotoCraft, VectorCraft, EffectCraft, FilmCraft) and place transparent clips
-into the project. See the [production guide](MAGIC-STUDIO.md) for artwork
+into the project. See the [production guide](magic.md) for artwork
 preparation, motion authoring, and composition handoff.
 
 ## Lyrics: make the words part of the picture
@@ -121,26 +121,35 @@ The current source-installation path is for **Linux**; other platforms remain
 unverified. Before building, install:
 
 - Git and Rust/Cargo **1.95 or newer**.
-- [Bun](https://bun.sh/docs/installation) for embedded frontend integrations.
-- Your distribution's [Tauri 2 Linux build dependencies](https://v2.tauri.app/start/prerequisites/#linux),
-  including the native compiler and GTK/WebKitGTK libraries.
+- A native compiler and the platform libraries required by the Rust workspace.
 
-A fresh build downloads missing Rust and frontend dependencies.
+A fresh build downloads missing Rust dependencies. The native Rust UI rewrite
+is underway in `apps/magic/`; preserve the retired frontend's deletion.
 
 ### Build and install the app and CLI
 
 ```sh
-git clone https://github.com/jessenaiman/magic-studio-app.git
-cd magic-studio-app
-cargo build -p magic-studio -p magic-cli -p backstage --release --locked
+# Existing checkout: build, run, and rerun checks without installing
+cargo build -p magic --locked
+cargo run -p magic
+cargo xtask ci
+cargo xtask layers
+cargo xtask assets
+```
+Asset rights metadata is pending; SonarCloud, WASM and translations are not configured.
+
+```sh
+git clone https://github.com/jessenaiman/magic-app.git
+cd magic-app
+cargo build -p magic --release --locked
 cargo xtask install --profile release
 ```
 
-This installs **Magic Studio** and **`magic-cli`**, which also serves MCP (`magic-cli mcp`).
+This installs one **Magic Studio** executable with `magic` and `magic-cli` aliases.
 The installer installs:
 
 - Commands under `~/.local/bin`.
-- App and runtime resources: `~/.local/share/magic-studio`.
+- App and runtime resources: `~/.local/share/magic`.
 - A desktop entry and icon under `~/.local/share`.
 
 Ensure `~/.local/bin` is on your `PATH`, then launch:
@@ -153,14 +162,15 @@ Open **File → Application Settings** and choose an existing **Production proje
 root** outside the checkout. This selects the destination for new projects;
 it does not move existing ones.
 
-An installed app opens without a provider key. Production workflows require
-separate tools: HyperFrames, relevant Craft applications (PhotoCraft, VectorCraft,
-EffectCraft, FilmCraft, DeckCraft, PdfCraft), and FFmpeg. See the [production guide](MAGIC-STUDIO.md).
-The [setup guide](apps/magic-cli/README.md) covers installer
+An installed app opens without a provider key. Supported Craft document operations
+use linked Rust libraries. Opening a separate native editor requires its installed
+application. HyperFrames and FFmpeg remain external runtimes. See the
+[production guide](magic.md).
+The [setup guide](apps/magic/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
-## CLI and MCP
+## CLI
 
 The CLI uses the application's command registry:
 
@@ -171,34 +181,15 @@ magic-cli commands project
 magic-cli studio open /absolute/path/Song.magic
 ```
 
-The MCP entrypoint is `magic-cli mcp`. Add the installed server to your MCP
-client; for clients accepting `mcpServers` JSON:
-
-```json
-{
-  "mcpServers": {
-    "magicstudio": {
-      "command": "magic-cli",
-      "args": ["mcp"]
-    }
-  }
-}
-```
-
-The client must have `magic-cli` on its `PATH`. Otherwise, use the absolute path
-returned by `command -v magic-cli` as `command`. This registers the installed
-server; it does not install the app or open a window.
-
-Use **`command_list`** for discovery, **`command_run`** to execute an operation,
-and **`studio_open`** to open/select a visible project. The
-[Magic command guide](apps/magic-cli/SKILL.md) explains
-project targeting, MCP configuration, and independent session bindings.
+The [Magic command guide](apps/magic/SKILL.md) explains project targeting
+and independent session bindings. Craft document operations use their linked
+Rust libraries where integrated. Magic retains its genuine command-line interface.
 
 ## Contributing
 
 Focused fixes, documentation improvements, and reproducible bug reports are
 welcome. Start with [CONTRIBUTING](CONTRIBUTING.md) and the
-[command architecture](apps/magic-cli/MAGIC.md). Keep changes scoped and report
+[command architecture](apps/magic/MAGIC.md). Keep changes scoped and report
 the resulting behaviour, checks actually performed, and remaining limitations.
 Use the source setup guide for development; rebuild after editing embedded UI.
 

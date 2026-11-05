@@ -1,0 +1,10 @@
+#!/bin/sh
+# Pre-commit hook: reports which workspace apps are configured, which are not,
+# and where the app breaks. Blocks commit on failure.
+#
+# To bypass: git commit --no-verify
+
+set -e
+
+echo "Running magic doctor report..."
+cargo xtask doctor

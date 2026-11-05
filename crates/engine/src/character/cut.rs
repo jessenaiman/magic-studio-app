@@ -4,21 +4,18 @@
 
 use serde_json::{Value, json};
 
-use super::{View, bad, part_list, path_arg, root_part};
+use super::{View, bad, part_list, root_part};
 use crate::{Result, Session};
 
 /// Pixels the fill reaches past each outline, so no edge of the original part survives.
 const FILL_MARGIN: u32 = 6;
 
-fn cmd(args: &mut Vec<String>, id: &str, params: Option<Value>) {
-    args.extend(["--cmd".into(), id.into()]);
-    if let Some(params) = params {
-        args.extend(["--params".into(), params.to_string()]);
-    }
+fn cmd(args: &mut Vec<(&'static str, Value)>, id: &'static str, params: Option<Value>) {
+    args.push((id, params.unwrap_or_else(|| json!({}))));
 }
 
 /// Front-most part first, so each fill only repairs the layers still underneath it.
-fn cut_part(args: &mut Vec<String>, part: &Value, root: &str) -> Result<()> {
+fn cut_part(args: &mut Vec<(&'static str, Value)>, part: &Value, root: &str) -> Result<()> {
     let id = part["id"].as_str().ok_or_else(|| bad("a part has no id"))?;
     let outline = part["outline"]
         .as_array()
@@ -46,14 +43,8 @@ fn cut_part(args: &mut Vec<String>, part: &Value, root: &str) -> Result<()> {
 }
 
 /// Each layer's bounds `[x, y, w, h]` from the saved PSD, by layer name.
-fn layer_bounds(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<String, Value>> {
-    let info = crate::workspace::run_tool_in(
-        &view.dir,
-        "photocraft-cli",
-        &["info".into(), path_arg(psd)],
-    )?;
-    let doc: Value =
-        serde_json::from_str(&info).map_err(|e| bad(format!("photocraft info: {e}")))?;
+fn layer_bounds(psd: &std::path::Path) -> Result<serde_json::Map<String, Value>> {
+    let doc = crate::photocraft::inspect(psd)?;
     let mut out = serde_json::Map::new();
     for layer in doc["layers"].as_array().into_iter().flatten() {
         if let (Some(name), Some(bounds)) = (layer["name"].as_str(), layer.get("bounds")) {
@@ -70,10 +61,10 @@ fn export_layers(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<S
         std::fs::remove_dir_all(&dir)?;
     }
     std::fs::create_dir_all(&dir)?;
-    let mut args = vec!["run".into(), path_arg(psd)];
+    let mut args = Vec::new();
     let params = json!({"dir": dir, "format": "png", "prefix": "", "trim": true});
     cmd(&mut args, "file.export.layersToFiles", Some(params));
-    crate::workspace::run_tool_in(&view.dir, "photocraft-cli", &args)?;
+    crate::photocraft::run(psd, &args, None)?;
     let mut out = serde_json::Map::new();
     for entry in std::fs::read_dir(&dir)?.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -100,7 +91,7 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         .ok_or_else(|| bad("parts.json image is missing"))?;
     let psd = view.file("psd");
     let pcraft = view.file("pcraft");
-    let mut args = vec!["run".into(), path_arg(&image)];
+    let mut args = Vec::new();
     cmd(&mut args, "layer.renameLayer", Some(json!({"name": root})));
     for part in list
         .iter()
@@ -114,9 +105,8 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         "file.saveACopy",
         Some(json!({"path": psd, "overwrite": true})),
     );
-    args.extend(["--out".into(), path_arg(&pcraft)]);
-    crate::workspace::run_tool_in(&view.dir, "photocraft-cli", &args)?;
-    let bounds = layer_bounds(&view, &psd)?;
+    crate::photocraft::run(&image, &args, Some(&pcraft))?;
+    let bounds = layer_bounds(&psd)?;
     let files = export_layers(&view, &psd)?;
     for part in parts["parts"].as_array_mut().into_iter().flatten() {
         let id = part["id"].as_str().unwrap_or_default().to_string();

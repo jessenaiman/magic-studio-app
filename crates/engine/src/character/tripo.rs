@@ -387,28 +387,22 @@ fn build_breakout_record(
                 let out_png = breakout_dir.join(format!("{id}-cutout.png"));
                 let layers_dir = breakout_dir.join(format!("{id}-split-layers"));
                 let _ = std::fs::create_dir_all(&layers_dir);
-                let args = vec![
-                    "run".into(),
-                    super::path_arg(src),
-                    "--cmd".into(),
-                    "layer.removeBackground".into(),
-                    "--cmd".into(),
-                    "file.export.layersToFiles".into(),
-                    "--params".into(),
-                    json!({"dir": layers_dir, "format": "png", "prefix": id, "trim": true})
-                        .to_string(),
-                    "--cmd".into(),
-                    "file.saveACopy".into(),
-                    "--params".into(),
-                    json!({"path": out_png, "overwrite": true}).to_string(),
-                    "--out".into(),
-                    super::path_arg(&out_pcraft),
+                let steps = [
+                    ("layer.removeBackground", json!({})),
+                    (
+                        "file.export.layersToFiles",
+                        json!({"dir": layers_dir, "format": "png", "prefix": id, "trim": true}),
+                    ),
+                    (
+                        "file.saveACopy",
+                        json!({"path": out_png, "overwrite": true}),
+                    ),
                 ];
-                match crate::workspace::run_tool_in(breakout_dir, "photocraft-cli", &args) {
+                match crate::photocraft::run(src, &steps, Some(&out_pcraft)) {
                     Ok(_) => {
                         let exported = collect_files_with_ext(&layers_dir, &["png"], 1);
                         json!({
-                            "tool": "photocraft-cli",
+                            "tool": "photocraft-engine",
                             "status": "executed_local_cutout_and_trimmed_layers",
                             "pcraft": out_pcraft,
                             "png": out_png,
@@ -417,7 +411,7 @@ fn build_breakout_record(
                         })
                     }
                     Err(e) => {
-                        json!({"tool": "photocraft-cli", "status": "failed", "error": e.to_string()})
+                        json!({"tool": "photocraft-engine", "status": "failed", "error": e.to_string()})
                     }
                 }
             }
@@ -512,20 +506,6 @@ fn validate_rig_options(p: &Value) -> Result<(&str, &str, &str, u64)> {
     Ok((rig_type, skel, topology, max_faces))
 }
 
-fn probe_mesh_with_texturecraft(dir: &Path, model_path: &Option<PathBuf>) -> Value {
-    let Some(mesh) = model_path.as_ref().filter(|m| m.is_file()) else {
-        return Value::Null;
-    };
-    crate::workspace::run_tool_in(
-        dir,
-        "texturecraft-cli",
-        &["info".into(), super::path_arg(mesh)],
-    )
-    .ok()
-    .and_then(|out| serde_json::from_str::<Value>(&out).ok())
-    .unwrap_or(Value::Null)
-}
-
 fn build_precheck_value(
     p: &Value,
     current: &Value,
@@ -533,14 +513,13 @@ fn build_precheck_value(
     topology: &str,
     max_faces: u64,
     t_pose_ready: bool,
-) -> (bool, Value) {
-    let observed_faces = p["face_count"]
+) -> Result<(bool, Value)> {
+    let observed_faces = tc_report["triangles"]
         .as_u64()
-        .or_else(|| tc_report["mesh"]["triangles"].as_u64())
-        .or_else(|| tc_report["triangles"].as_u64())
+        .or_else(|| p["face_count"].as_u64())
         .or_else(|| current["import_summary"]["faces"].as_u64())
-        .unwrap_or(10_000);
-    let observed_vertices = tc_report["mesh"]["vertices"].as_u64();
+        .ok_or_else(|| bad("Cannot check polygon limit without a mesh or a face count"))?;
+    let observed_vertices = tc_report["vertices"].as_u64();
     let within_limit = observed_faces <= max_faces;
     let fallback = if !within_limit {
         Some("retopologize")
@@ -550,7 +529,7 @@ fn build_precheck_value(
         None
     };
     let riggable = within_limit && t_pose_ready;
-    (
+    Ok((
         riggable,
         json!({
             "endpoint": "/v2/studio/operation/pre_rig_check",
@@ -565,7 +544,7 @@ fn build_precheck_value(
             "texturecraft_info": tc_report,
             "recommended_fallback": fallback,
         }),
-    )
+    ))
 }
 
 /// `character.tripo.rig`: Configure and validate Tripo 3D Pre-Rig Check + Auto-Rigging.
@@ -583,9 +562,13 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         .filter(|m| !m.trim().is_empty())
         .map(|m| resolve_project_path(s, &project_dir, m))
         .or_else(|| current["primary_glb"].as_str().map(PathBuf::from));
-    let tc_report = probe_mesh_with_texturecraft(&dir, &model_path);
+    let tc_report = model_path
+        .as_deref()
+        .map(crate::texturecraft::mesh_info)
+        .transpose()?
+        .unwrap_or(Value::Null);
     let (riggable, precheck) =
-        build_precheck_value(p, &current, &tc_report, topology, max_faces, t_pose_ready);
+        build_precheck_value(p, &current, &tc_report, topology, max_faces, t_pose_ready)?;
     let rig_payload = json!({
         "endpoint": "/v2/studio/operation/rigging_model",
         "model_version": "v3.0-20260909",
@@ -851,23 +834,17 @@ fn build_effectcraft_3d_comp(
     if super::effectcraft(clips_dir, None, &steps).is_err() {
         return (Value::Null, Value::Null);
     }
-    let render_args = vec![
-        "render-frame".into(),
-        "--project".into(),
-        super::path_arg(&ec_path),
-        "--comp".into(),
-        comp_name,
-        "--time".into(),
-        (duration * 0.5).min(1.0).to_string(),
-        "--transparent".into(),
-        "--out".into(),
-        super::path_arg(&frame_path),
-    ];
-    let rendered = crate::workspace::run_tool_in(clips_dir, "effectcraft-cli", &render_args)
-        .ok()
-        .filter(|_| frame_path.is_file())
-        .map(|_| json!(frame_path))
-        .unwrap_or(Value::Null);
+    let rendered = crate::effectcraft::frame(
+        &ec_path,
+        &comp_name,
+        (duration * 0.5).min(1.0),
+        0,
+        &frame_path,
+    )
+    .ok()
+    .filter(|_| frame_path.is_file())
+    .map(|_| json!(frame_path))
+    .unwrap_or(Value::Null);
     (json!(ec_path), rendered)
 }
 
@@ -935,7 +912,7 @@ pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
         glb_path.as_ref().or(fbx_path.as_ref()),
     );
     let clip_doc = json!({
-        "schema": "magicstudio.tripo.anim.v1",
+        "schema": "magic.tripo.anim.v1",
         "id": spec.id,
         "character": id,
         "name": spec.name,

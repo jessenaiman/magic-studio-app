@@ -1,5 +1,5 @@
 //! Headless engine dispatch: one command (or a JSON-lines stream) against a session with no
-//! window. Shared by `magic-studio --headless` and the Rust `magic-cli`.
+//! window. Shared by `magic --headless` and the Rust `magic-cli`.
 use crate::Session;
 use serde_json::{Value, json};
 
@@ -99,7 +99,7 @@ pub fn run_cli(args: Vec<String>) -> i32 {
         (args.first().map(String::as_str).unwrap_or(""), 1)
     };
     if id.is_empty() {
-        eprintln!("magic-studio --headless <command_id> [params_json | key=value ...]");
+        eprintln!("magic --headless <command_id> [params_json | key=value ...]");
         return 2;
     }
     let (params, dry_run) = parse_cli_params(args.get(param_start..).unwrap_or(&[]));

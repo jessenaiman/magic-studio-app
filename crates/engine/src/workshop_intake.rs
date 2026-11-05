@@ -311,7 +311,7 @@ fn grid_dims(params: &Value) -> (u32, u32, u32) {
 
 /// One PhotoCraft crop per panel, written as storyboard/panel-NN.png.
 fn crop_panels(
-    dir: &Path,
+    _dir: &Path,
     image: &Path,
     out_dir: &Path,
     columns: u32,
@@ -325,20 +325,7 @@ fn crop_panels(
             let n = r * columns + c + 1;
             let out = out_dir.join(format!("panel-{n:02}.png"));
             let rect = json!({"x": c * cw + inset, "y": r * ch + inset, "width": cw - 2 * inset, "height": ch - 2 * inset});
-            run_tool_in(
-                dir,
-                "photocraft-cli",
-                &[
-                    "run".into(),
-                    image.to_string_lossy().into_owned(),
-                    "--cmd".into(),
-                    "image.crop".into(),
-                    "--params".into(),
-                    rect.to_string(),
-                    "--out".into(),
-                    out.to_string_lossy().into_owned(),
-                ],
-            )?;
+            crate::photocraft::run(image, &[("image.crop", rect)], Some(&out))?;
             panels.push(out);
         }
     }

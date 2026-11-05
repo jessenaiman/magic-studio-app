@@ -30,8 +30,8 @@ const BEATS: [&str; 5] = [
     "local",
     "--json",
 ];
-/// FilmCraft runs through `assembly::run` (`filmcraft-cli --project FILM --save run BATCH`).
-const FILMCRAFT_CLI: &str = "filmcraft-cli";
+/// FilmCraft document commands execute in-process through its Rust engine.
+const FILMCRAFT_CLI: &str = "FilmCraft Rust API";
 const TICKS: f64 = 254_016_000_000.0;
 /// In the project folder.
 const BEATS_FILE: &str = "beats.json";
@@ -106,18 +106,7 @@ fn song_item(dir: &Path, film: &Path, audio: &Path) -> Result<u64> {
         let sequence = json!({"id": "file.newSequence", "params": {"name": "Film", "fps": 30}});
         crate::assembly::run(dir, film, true, &[sequence])?;
     }
-    let project = crate::workspace::run_tool_in(
-        dir,
-        FILMCRAFT_CLI,
-        &[
-            "--project".into(),
-            arg(film),
-            "inspect".into(),
-            "project".into(),
-        ],
-    )?;
-    let project: Value =
-        serde_json::from_str(&project).map_err(|e| bad(format!("{FILMCRAFT_CLI} inspect: {e}")))?;
+    let project = crate::filmcraft::execute(film, "project.inspect", json!({}))?;
     let name = audio
         .file_name()
         .and_then(|n| n.to_str())
@@ -170,17 +159,7 @@ pub fn cmd_song_timing(s: &mut Session, _: &Value) -> Result<Value> {
     let beat = beats(&dir, &audio)?;
     let item = song_item(&dir, &film, &audio)?;
     crate::film::link(s, &film)?;
-    let held = crate::workspace::run_tool_in(
-        &dir,
-        FILMCRAFT_CLI,
-        &[
-            "--project".into(),
-            arg(&film),
-            "exec".into(),
-            "transcript.inspect".into(),
-        ],
-    )?;
-    let held: Value = serde_json::from_str(&held).unwrap_or_default();
+    let held = crate::filmcraft::execute(&film, "transcript.inspect", json!({}))?;
     let loaded = held["items"]
         .as_array()
         .into_iter()

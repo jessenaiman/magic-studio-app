@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use crate::{EngineError, Result, Session};
 
 /// Identifies a Magic Studio project file (`.magic`, JSON).
-const PROJECT_FORMAT: &str = "magicstudio.project";
+const PROJECT_FORMAT: &str = "magic.project";
 
 fn saved_path(path: &Path, project: &Path) -> PathBuf {
     let parent = project.parent().unwrap_or(Path::new("."));
@@ -636,10 +636,8 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     match target {
         Some(target) if s.project_path.as_ref() != Some(&target) => save_as(s, target),
         _ => {
-            // Each app saves its own document; Magic writes only the .magic file.
-            let documents = crate::native_app::save_all(s);
             write_project_file(s)?;
-            Ok(json!({"ok": true, "project": s.project_path, "documents": documents}))
+            Ok(json!({"ok": true, "project": s.project_path, "documents": []}))
         }
     }
 }

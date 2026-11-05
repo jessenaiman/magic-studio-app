@@ -219,19 +219,12 @@ pub fn cmd_prepare_motion(s: &mut Session, p: &Value) -> Result<Value> {
         &script,
         serde_json::to_vec_pretty(&steps).map_err(|e| bad(e.to_string()))?,
     )?;
-    let result = crate::workspace::run_tool_in(
-        &dir,
-        "effectcraft-cli",
-        &[
-            "--empty".into(),
-            "run".into(),
-            "--commands".into(),
-            script.to_string_lossy().into_owned(),
-            "--save-as".into(),
-            project.to_string_lossy().into_owned(),
-            "--json".into(),
-        ],
-    )?;
+    let mut native_steps = steps
+        .as_array()
+        .cloned()
+        .ok_or_else(|| bad("EffectCraft steps must be an array"))?;
+    native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
+    let result = crate::effectcraft::run(&dir, None, &native_steps)?;
     let manifest = json!({"character":character,"clip":clip,"option":option,"source":source,"source_sha256":fingerprint,"script":script,"project":project,"rendered":false,"status":"ready-for-preview","resource_policy":"one subject; no render during preparation","filmcraft_handoff":"Render a chosen short clip from this EffectCraft project, then import the result into FilmCraft; source rig remains unchanged"});
     std::fs::write(
         folder.join("option.json"),

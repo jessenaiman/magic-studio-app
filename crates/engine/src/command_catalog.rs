@@ -831,7 +831,7 @@ fn specs_agent_and_image() -> Vec<CommandSpec> {
             "Generate Image (Codex)",
             ["Project Assets"],
             None,
-            "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from settings.json / MAGICSTUDIO_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
+            "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from settings.json / magic_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
             always,
             crate::image_generation::generate
         ),
@@ -976,13 +976,12 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
 
 fn specs_diagnostics() -> Vec<CommandSpec> {
     vec![
-        query!("mayhem.evidence", "Mayhem · Read saved analyzer reports and scoped Herdr activity", "{\"path\":\"optional source checkout\",\"workspace_id\":\"optional verified Herdr workspace ID\"}", crate::mayhem::evidence),
-        CommandSpec {
-            id: "mayhem.scan", label: "Mayhem · Scan source", menu: &["Mayhem"], shortcut: None,
-            params: "{\"path\":\"optional source file or directory\",\"quick\":false,\"tools\":[\"tsc\"],\"base\":\"HEAD\",\"dry_run\":false}", help: "Run existing native analyzers and save their complete output and actual exit statuses. Omit tools for the selected profile.",
-            example: "magic-cli mayhem scan", enabled: always, run: crate::mayhem::scan,
-            journal: false, long_running: true,
-        },
+        query!(
+            "mayhem.evidence",
+            "Mayhem · Read saved analyzer reports and scoped Herdr activity",
+            "{\"path\":\"optional source checkout\",\"workspace_id\":\"optional verified Herdr workspace ID\"}",
+            crate::mayhem::evidence
+        ),
         cmd!(
             "resources.workflow",
             "Shared Creation Loop",

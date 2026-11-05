@@ -1,7 +1,10 @@
 //! Mayhem reads native analyzer reports. Opening this view never runs an analyzer.
-use crate::{EngineError, Result, Session, analyzers, doctor::analytics_source_root};
+use crate::{Result, Session, doctor::analytics_source_root};
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 fn saved(root: &Path) -> Value {
     match fs::read(root.join("target/analytics/analyzers.json")) {
@@ -27,8 +30,7 @@ pub fn evidence(s: &mut Session, params: &Value) -> Result<Value> {
     }
     let root = params["path"]
         .as_str()
-        .map(Path::new)
-        .map(analyzers::root)
+        .map(PathBuf::from)
         .unwrap_or_else(|| analytics_source_root(s));
     let report = saved(&root);
     let commands: Vec<_> = crate::command_specs()
@@ -39,23 +41,4 @@ pub fn evidence(s: &mut Session, params: &Value) -> Result<Value> {
         json!({"root":root,"report":report,"activity":crate::herdr::activity(s, params),"commands":commands,
         "cli_events":crate::activity::events(s, &json!({"limit":192}))?}),
     )
-}
-
-/// CLI and MCP use this same runner; there is no engine-side scoring or second scan.
-pub fn scan(s: &mut Session, params: &Value) -> Result<Value> {
-    let target = params["path"]
-        .as_str()
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| analytics_source_root(s));
-    let tools: Vec<String> =
-        serde_json::from_value(params.get("tools").cloned().unwrap_or(json!([])))
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    let report = analyzers::run(
-        &target,
-        &tools,
-        params["dry_run"] == true,
-        params["base"].as_str().unwrap_or("HEAD"),
-        params["quick"] == true,
-    )?;
-    Ok(json!({"report":report,"runner_exit_code":analyzers::exit_code(&report)}))
 }

@@ -1,9 +1,9 @@
 //! One caller's binding (project, and the window serving it) and the single route every
 //! command takes: the pinned window, else the window that has the project open, else the
 //! engine in this process. The binding file never touches the `.magic` project itself.
-use crate::{project, studio};
-use magicstudio_engine::headless;
-use magicstudio_engine::studio_sessions::Launch;
+use super::{project, studio};
+use magic_engine::headless;
+use magic_engine::studio_sessions::Launch;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -32,8 +32,8 @@ pub fn default_file() -> PathBuf {
     if let Some(path) = std::env::var_os("MAGIC_SESSION_FILE") {
         return PathBuf::from(path);
     }
-    let base = magicstudio_engine::studio_sessions::runtime_dir()
-        .map(|r| r.join("magicstudio"))
+    let base = magic_engine::studio_sessions::runtime_dir()
+        .map(|r| r.join("magic"))
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".magic")))
         .unwrap_or_else(|| PathBuf::from(".magic"));
     match std::env::var("HERDR_PANE_ID") {
@@ -52,7 +52,7 @@ pub fn default_file() -> PathBuf {
 pub struct Session {
     file: PathBuf,
     bind: Binding,
-    engine: Option<magicstudio_engine::Session>,
+    engine: Option<magic_engine::Session>,
     origin: &'static str,
 }
 
@@ -158,7 +158,7 @@ impl Session {
     fn headless(&mut self, id: &str, params: Value, dry_run: bool) -> Result<Value, String> {
         let engine = self
             .engine
-            .get_or_insert_with(magicstudio_engine::Session::user_session);
+            .get_or_insert_with(magic_engine::Session::user_session);
         headless::dispatch(engine, id, params, dry_run, true)
     }
 
@@ -269,7 +269,7 @@ impl Session {
     ) -> Result<(Value, bool), String> {
         let live = match target {
             Some(t) if Path::new(t).exists() => {
-                magicstudio_engine::studio_sessions::for_project(Path::new(t))?
+                magic_engine::studio_sessions::for_project(Path::new(t))?
             }
             _ => None,
         };
@@ -362,14 +362,13 @@ impl Session {
         if matches!(
             id,
             "resources.workflow"
-                | "mayhem.scan"
                 | "mayhem.evidence"
                 | "command.list"
                 | "backstage.observe"
                 | "backstage.changes"
         ) {
             let mut observer = if id.starts_with("mayhem.") {
-                magicstudio_engine::Session {
+                magic_engine::Session {
                     project_path: req["project"]
                         .as_str()
                         .map(project::resolve)
@@ -378,7 +377,7 @@ impl Session {
                     ..Default::default()
                 }
             } else {
-                magicstudio_engine::Session::user_session()
+                magic_engine::Session::user_session()
             };
             return headless::dispatch(&mut observer, id, req, dry_run, false);
         }

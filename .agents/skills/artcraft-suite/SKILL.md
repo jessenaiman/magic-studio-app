@@ -18,7 +18,7 @@ Use the installed apps as the source of truth; this skill is not an app catalogu
 3. Magic Studio is installed separately: start with `magic-cli --help` and
    `magic-cli commands <relevant filter>`; use `magic` to open the app when
    requested. For project creation and storyboard behavior, read the maintained
-   `apps/magic-cli/SKILL.md` in this checkout. App discovery alone does not prove
+   `apps/magic/SKILL.md` in this checkout. App discovery alone does not prove
    a project workflow is implemented or working.
 
 Keep discovery scoped to the requested task. Do not load every app's help,

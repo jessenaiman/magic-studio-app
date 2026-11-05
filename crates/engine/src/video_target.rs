@@ -155,8 +155,8 @@ pub(crate) fn resolve_video_cli(explicit: Option<&str>, project: Option<&Path>) 
         })
     };
     let path=configured.or_else(cached).or_else(on_path).ok_or_else(||EngineError::InvalidParams(match &pinned {
-        Some((dir,version))=>format!("HyperFrames {version} not found. This project pins it in {}. Install it with `npm i -g hyperframes@{version}`, or set HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.",dir.join("package.json").display()),
-        None=>"HyperFrames executable not found on PATH. Install it with `npm i -g hyperframes`, or set HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.".into(),
+        Some((dir,version))=>format!("HyperFrames {version} not found. This project pins it in {}. Use an existing matching executable through HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.",dir.join("package.json").display()),
+        None=>"HyperFrames executable not found on PATH. Use an existing executable through HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.".into(),
     }))?;
     if !path.is_absolute() || !path.is_file() {
         return Err(EngineError::InvalidParams(format!(
@@ -282,25 +282,10 @@ pub(crate) fn ensure_video_target_project(
     })
 }
 
-pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> f64 {
-    if let Some(audio) = audio
-        && let Ok(out) = std::process::Command::new("ffprobe")
-            .args([
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-            ])
-            .arg(audio)
-            .output()
-        && let Ok(secs) = String::from_utf8_lossy(&out.stdout).trim().parse::<f64>()
-        && secs > 0.5
-    {
-        return secs;
-    }
-    30.0
+pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> Result<f64> {
+    audio.map_or(Ok(30.0), |path| {
+        crate::filmcraft::media_duration(path, false)
+    })
 }
 
 /// The official caption component bound to timed words (`{text,start,end}`) shown in the given index groups.
@@ -471,13 +456,13 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
     };
     let digest = caption_digest(&words)?;
     let dest = hf.join("compositions/captions.html");
-    let receipt = hf.join(".magicstudio-captions.json");
+    let receipt = hf.join(".magic-captions.json");
     let entry = hf.join("index.html");
     let mut host = std::fs::read_to_string(&entry)?;
     if let Some(value) = preserved_caption_track(&host, words.len()) {
         return Ok(value);
     }
-    let duration = probe_audio_duration(s.song_audio.as_deref()).max(
+    let duration = probe_audio_duration(s.song_audio.as_deref())?.max(
         words
             .iter()
             .filter_map(|w| w["end"].as_f64())
@@ -720,7 +705,7 @@ fn verify_generation_receipt(project: &Path, receipt_rel: Option<&str>) -> Resul
     }
     let data: Value = serde_json::from_slice(&std::fs::read(&receipt)?)
         .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    if data["format"].as_str() != Some("magicstudio.image-generation")
+    if data["format"].as_str() != Some("magic.image-generation")
         || data["result"]["ok"].as_bool() != Some(true)
     {
         return Err(EngineError::InvalidParams(
@@ -896,7 +881,7 @@ fn find_scene_insertion_offset(html: &str, comp_end: usize) -> usize {
             break;
         };
         let open_end = start + open_rel + 1;
-        if html[start..open_end].contains("data-magicstudio-scene=")
+        if html[start..open_end].contains("data-magic-scene=")
             && let Some(close_rel) = lower[open_end..].find("</video>")
         {
             let close_end = open_end + close_rel + "</video>".len();
@@ -988,13 +973,13 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
         .unwrap_or(&target)
         .to_string_lossy();
     let tag = format!(
-        "<video id=\"{key}\" class=\"clip\" src=\"{}\" data-start=\"{start}\" data-duration=\"{duration}\" data-playback-rate=\"{rate}\" data-track-index=\"{track_idx}\" data-magicstudio-scene=\"{}\" data-magicstudio-character=\"{}\" data-magicstudio-track=\"{}\" muted playsinline style=\"position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;object-fit:contain;z-index:10\"></video>",
+        "<video id=\"{key}\" class=\"clip\" src=\"{}\" data-start=\"{start}\" data-duration=\"{duration}\" data-playback-rate=\"{rate}\" data-track-index=\"{track_idx}\" data-magic-scene=\"{}\" data-magic-character=\"{}\" data-magic-track=\"{}\" muted playsinline style=\"position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;object-fit:contain;z-index:10\"></video>",
         html_attr_escape(&rel_src),
         html_attr_escape(&scene_str),
         html_attr_escape(char_val),
         html_attr_escape(track_val),
     );
-    let backup_dir = root.join(".magicstudio-history");
+    let backup_dir = root.join(".magic-history");
     std::fs::create_dir_all(&backup_dir)?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1086,7 +1071,7 @@ fn unique_stage_dir(parent: &Path) -> Result<PathBuf> {
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| EngineError::InvalidParams(e.to_string()))?
             .as_nanos();
-        let path = parent.join(format!(".magicstudio-video-{}-{stamp}", std::process::id()));
+        let path = parent.join(format!(".magic-video-{}-{stamp}", std::process::id()));
         match std::fs::create_dir(&path) {
             Ok(()) => return Ok(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -1345,43 +1330,6 @@ pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
     }))
 }
 
-fn ffprobe_duration(ffprobe: &std::ffi::OsStr, path: &Path) -> Result<f64> {
-    let result = std::process::Command::new(ffprobe)
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(path)
-        .output()
-        .map_err(|e| EngineError::ExternalTool("ffprobe".into(), e.to_string()))?;
-    if !result.status.success() {
-        return Err(EngineError::ExternalTool(
-            "ffprobe".into(),
-            format!(
-                "could not inspect rendered video: {}",
-                String::from_utf8_lossy(&result.stderr)
-            ),
-        ));
-    }
-    let value = String::from_utf8_lossy(&result.stdout)
-        .trim()
-        .parse::<f64>()
-        .map_err(|e| {
-            EngineError::ExternalTool("ffprobe".into(), format!("invalid duration: {e}"))
-        })?;
-    if !value.is_finite() || value <= 0.0 {
-        return Err(EngineError::ExternalTool(
-            "ffprobe".into(),
-            "rendered video has no positive duration".into(),
-        ));
-    }
-    Ok(value)
-}
-
 fn sha256_file(path: &Path) -> Result<String> {
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;
@@ -1445,19 +1393,11 @@ pub fn cmd_video_render(s: &mut Session, params: &Value) -> Result<Value> {
         .unwrap_or(4)
         .clamp(1, 16);
     let hf = dir.join("hyperframes");
-    render_video(
-        params,
-        std::ffi::OsStr::new("ffprobe"),
-        &hf,
-        &out_path,
-        fps,
-        workers,
-    )
+    render_video(params, &hf, &out_path, fps, workers)
 }
 
 fn render_video(
     params: &Value,
-    ffprobe: &std::ffi::OsStr,
     hf: &Path,
     out_path: &Path,
     fps: f64,
@@ -1509,7 +1449,7 @@ fn render_video(
             ),
         ));
     }
-    let duration = match ffprobe_duration(ffprobe, &staged) {
+    let duration = match crate::filmcraft::media_duration(&staged, true) {
         Ok(value) => value,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&stage);

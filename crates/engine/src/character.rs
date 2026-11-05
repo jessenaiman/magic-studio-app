@@ -1,6 +1,5 @@
 //! Characters as app documents. Scribbles (Codex) marks the parts, PhotoCraft cuts them,
-//! EffectCraft rigs, animates and renders them. These commands only chain the apps' own CLI
-//! commands; the `.psd`, `.pcraft` and `.ecproj` files open directly in the apps.
+//! EffectCraft rigs, animates and renders them through its native Rust APIs; the `.psd`, `.pcraft` and `.ecproj` files open directly in the apps.
 //!
 //! Layout: `<project>/assets/characters/<id>/<view>/` holds `parts.json`, `<id>-<view>.psd`,
 //! `<id>-<view>.pcraft`, `<id>-<view>.ecproj` and rendered `frames/`.
@@ -98,19 +97,13 @@ impl View {
     }
 }
 
-/// Run EffectCraft steps (`{"command", "params"}` objects) in one headless session.
-pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value]) -> Result<String> {
-    let file = dir.join(".effectcraft-steps.jsonl");
-    let lines: Vec<String> = steps.iter().map(Value::to_string).collect();
-    std::fs::write(&file, lines.join("\n"))?;
-    let mut args: Vec<String> = vec!["run".into(), "--commands".into(), path_arg(&file)];
-    match project {
-        Some(project) => args.extend(["--project".into(), path_arg(project), "--save".into()]),
-        None => args.push("--empty".into()),
-    }
-    let out = crate::workspace::run_tool_in(dir, "effectcraft-cli", &args);
-    let _ = std::fs::remove_file(&file);
-    out
+/// Run EffectCraft's native registry in-process; no CLI or temporary command file.
+pub(crate) fn effectcraft(
+    dir: &Path,
+    project: Option<&Path>,
+    steps: &[Value],
+) -> Result<Vec<Value>> {
+    crate::effectcraft::run(dir, project, steps)
 }
 
 pub(crate) fn path_arg(path: &Path) -> String {
@@ -207,66 +200,8 @@ pub fn cmd_character_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let frames = view.dir.join("frames");
     std::fs::create_dir_all(&frames)?;
     let out = frames.join(format!("{}-{:07.3}.png", view.comp(), time));
-    let args = vec![
-        "render-frame".into(),
-        path_arg(&project),
-        "--comp".into(),
-        view.comp(),
-        "--time".into(),
-        time.to_string(),
-        "--max-side".into(),
-        side.to_string(),
-        "--transparent".into(),
-        "--out".into(),
-        path_arg(&out),
-    ];
-    crate::workspace::run_tool_in(&view.dir, "effectcraft-cli", &args)?;
+    crate::effectcraft::frame(&project, &view.comp(), time, side as u32, &out)?;
     Ok(json!({"ok": true, "frame": out, "time": time, "project": project}))
-}
-
-fn render_args(
-    comp: &str,
-    project: &Path,
-    out: &Path,
-    range: (f64, f64, u64),
-    clip: bool,
-) -> Vec<String> {
-    let (start, end, fps) = range;
-    let mut args: Vec<String> = vec![
-        "render".into(),
-        path_arg(project),
-        "--comp".into(),
-        comp.to_string(),
-    ];
-    args.extend([
-        "--out".into(),
-        path_arg(out),
-        "--start".into(),
-        start.to_string(),
-    ]);
-    args.extend([
-        "--end".into(),
-        end.to_string(),
-        "--fps".into(),
-        fps.to_string(),
-    ]);
-    args.extend(["--channels".into(), "rgba".into()]);
-    if clip {
-        args.extend([
-            "--format".into(),
-            "prores".into(),
-            "--prores".into(),
-            "4444".into(),
-        ]);
-    } else {
-        args.extend([
-            "--format".into(),
-            "png".into(),
-            "--resolution".into(),
-            "half".into(),
-        ]);
-    }
-    args
 }
 
 fn rendered_pngs(dir: &Path) -> Result<Vec<PathBuf>> {
@@ -322,8 +257,14 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         (dir.clone(), dir.join("frame.png"))
     };
     std::fs::create_dir_all(&dir)?;
-    let args = render_args(&comp, &project, &out, (start, end, fps), clip);
-    crate::workspace::run_tool_in(&base, "effectcraft-cli", &args)?;
+    crate::effectcraft::render(
+        &project,
+        json!({
+            "comp": comp, "output": out, "start": start, "end": end, "frameRate": fps,
+            "channels": "rgba", "format": if clip { "prores" } else { "png" },
+            "proresProfile": "4444", "resolution": if clip { "full" } else { "half" }
+        }),
+    )?;
     let frames = if clip {
         Vec::new()
     } else {
@@ -382,17 +323,6 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
             )));
         }
     };
-    // EffectCraft is saved and closed with the view; PhotoCraft opens as a plain app.
-    if app == "effectcraft" {
-        return crate::native_app::open(s, &crate::native_app::EFFECTCRAFT, &file);
-    }
-    let exe = crate::workspace::resolve_tool(app);
-    std::process::Command::new(&exe)
-        .arg(&file)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| EngineError::ExternalTool(app.into(), e.to_string()))?;
-    Ok(json!({"ok": true, "app": app, "file": file}))
+    crate::workspace::open_editor(app, &file)?;
+    Ok(json!({"ok": true, "app": app, "file": file, "document": {"app": app, "file": file}}))
 }

@@ -51,11 +51,7 @@ fn record_rest(view: &View, project: &std::path::Path, mut parts: Value) -> Resu
         ));
     }
     let out = effectcraft(&view.dir, Some(project), &steps)?;
-    let values: Vec<Value> = serde_json::Deserializer::from_str(&out)
-        .into_iter::<Value>()
-        .filter_map(std::result::Result::ok)
-        .skip(1)
-        .collect();
+    let values: Vec<Value> = out.into_iter().skip(1).collect();
     if values.len() != layers.len() {
         return Err(bad(format!(
             "EffectCraft returned {} rest positions for {} layers",

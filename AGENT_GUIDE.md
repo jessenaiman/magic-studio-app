@@ -6,10 +6,10 @@ Start with the user's request. Operate the installed app through `magic` and
 `magic-cli`; discover commands rather than inventing them. A greeting, app fix,
 project inspection, or lettering edit does not require a full pipeline preflight.
 
-For app work, read [the app agent contract](apps/src-tauri/agent.md) and
-[the Magic CLI/MCP skill](apps/magic-cli/SKILL.md).
+For app work, read [the app agent contract](apps/magic/agent.md) and
+[the Magic Rust/CLI skill](apps/magic/SKILL.md).
 The four creative areas are Storyboard, Animation, Lyrics, and Studio. Backstage
-is the separate observer. [Setup](apps/magic-cli/README.md) is
+is the separate observer. [Setup](apps/magic/README.md) is
 only needed for an absent installation or an explicitly requested source build.
 
 ## Rule Zero — pipeline production
@@ -103,7 +103,7 @@ budget estimate/reservation/reconciliation. Approval is per gate unless an
 explicit recorded authorization covers more.
 
 For workspace conventions and the retained skill map, use
-[MAGIC-STUDIO.md](MAGIC-STUDIO.md) and `.agents/skills/`.
+[magic.md](magic.md) and `.agents/skills/`.
 Keep generated projects/media outside the repository. Verify actual saved output
 and pixels before claiming success; a receipt is not visual or creative approval.
 

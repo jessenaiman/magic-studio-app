@@ -30,7 +30,7 @@ pub struct CommandSpec {
     pub menu: &'static [&'static str],
     /// Default shortcut (egui-style names, `Cmd` = ⌘ on macOS / Ctrl elsewhere).
     pub shortcut: Option<&'static str>,
-    /// Parameter description (JSON-ish, for agents and the MCP schema).
+    /// Parameter description (JSON-ish, for agents and command metadata).
     pub params: &'static str,
     /// One sentence describing behavior and the next useful operation.
     pub help: &'static str,
@@ -117,7 +117,7 @@ pub(crate) fn always(_: &Session) -> std::result::Result<(), String> {
 }
 
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`
-/// description. Every caller (CLI, MCP, app) goes through `Session::execute`, so a
+/// description. Every caller (CLI, app) goes through `Session::execute`, so a
 /// mistyped value fails the same way everywhere.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
     let (Ok(Value::Object(expected)), Some(given)) = (

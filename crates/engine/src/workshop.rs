@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use crate::{EngineError, Result, Session};
 
 use crate::video_target::{target_project_chip, target_project_path};
-use crate::workspace::{has_extension, run_tool_in, workspace_root};
+use crate::workspace::{has_extension, workspace_root};
 
 // Re-export video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
 pub use crate::video_target::{
@@ -50,18 +50,7 @@ pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
         return Some(duration);
     }
     let fcproj = video_project_path(dir)?;
-    let out = run_tool_in(
-        dir,
-        "filmcraft-cli",
-        &[
-            "--project".into(),
-            fcproj.to_string_lossy().into_owned(),
-            "inspect".into(),
-            "sequence".into(),
-        ],
-    )
-    .ok()?;
-    let seq: Value = serde_json::from_str(&out).ok()?;
+    let seq = crate::filmcraft::execute(&fcproj, "sequence.inspect", json!({})).ok()?;
     seq.get("duration")
         .and_then(Value::as_f64)
         .map(|t| t / SEQUENCE_TICKS_PER_SECOND)
@@ -281,7 +270,7 @@ pub(crate) fn workshop_asset_files(dir: &Path) -> Vec<PathBuf> {
                 p.is_dir()
                     && p.file_name()
                         .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("magicstudio-"))
+                        .is_some_and(|n| n.starts_with("magic-"))
             })
             .collect();
         subdirs.sort();

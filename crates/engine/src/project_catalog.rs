@@ -1,4 +1,4 @@
-//! The existing Home navigation history, shared by UI, terminal and MCP. Not a media scan.
+//! The existing Home navigation history, shared by UI, terminal and native app. Not a media scan.
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -9,7 +9,7 @@ pub fn file() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .map(|p| p.join("magicstudio/recent_projects.json"))
+        .map(|p| p.join("magic/recent_projects.json"))
 }
 pub fn list() -> Vec<String> {
     file()
@@ -143,7 +143,7 @@ fn readiness(path: &Path) -> Value {
     let Ok(doc) = serde_json::from_str::<Value>(&text) else {
         return json!({"state":"unreadable","openable":false,"next_step":"The project file contains invalid JSON.","editor_ready":false});
     };
-    if doc["format"].as_str() != Some("magicstudio.project") {
+    if doc["format"].as_str() != Some("magic.project") {
         return json!({"state":"unreadable","openable":false,"next_step":"This file is not a Magic Studio project.","editor_ready":false});
     }
     let dir = path.parent().unwrap_or(path);

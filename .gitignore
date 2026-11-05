@@ -59,7 +59,7 @@ blender-skills/
 !.agents/skills/craft-app-lifecycle/
 !.agents/skills/magic/
 !.agents/skills/magic-pr/
-!.agents/skills/magic-studio-ui/
+!.agents/skills/magic-ui/
 !.agents/skills/character-rigging/
 !.agents/skills/pose-library-design/
 !.agents/skills/rust-egui-craft-ui/
@@ -128,6 +128,14 @@ generated_image.png
 pixabay_music_*
 venv/
 .venv/
+# Local venvs
+venv/
+.venv/
+.venv-wan/
+
+# Git worktrees — not part of the main checkout.
+.worktrees/
+
 # Backlot local cache (thumbnails)
 .backlot/
 # Workspace-local third-party runtimes (for example the portable Blender LTS
@@ -203,8 +211,13 @@ apps/src-tauri/acceptance/artifacts/
 /capture/
 /investigation.cany/
 
+# Large media directories — never source, regenerated or synced externally.
+media/
+animations/
+assets/
+
 # Magic projects, app documents and media are never source. Assets and animations live in
-# magic-studio/ (assets/, animations/); .magic projects live in ~/.magic/projects.
+# magic/ (assets/, animations/); .magic projects live in ~/.magic/projects.
 *.magic
 *.fcproj
 *.ecproj

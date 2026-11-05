@@ -46,7 +46,7 @@ fn legacy_file() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")))
-        .map(|p| p.join("magicstudio/skills.json"))
+        .map(|p| p.join("magic/skills.json"))
 }
 fn read_json(p: &Path) -> Result<Value> {
     match fs::read(p) {

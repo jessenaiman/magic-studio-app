@@ -1,14 +1,12 @@
 //! The film as FilmCraft holds it: `film/<song>.fcproj` (built by `video.assemble`), a fast
 //! half-size preview to watch in Studio, single program frames, the final export, and opening the
-//! timeline in FilmCraft for hand edits. Every step is a `filmcraft-cli` command.
+//! timeline in FilmCraft for hand edits. Document operations call the linked FilmCraft engine.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
-
-const EDITOR_CLI: &str = "filmcraft-cli";
 
 fn bad(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -72,10 +70,6 @@ fn file_info(path: &Path) -> Value {
     json!({"path": path, "exists": path.is_file(), "modified": modified})
 }
 
-fn path_arg(p: &Path) -> String {
-    p.to_string_lossy().into_owned()
-}
-
 /// The same timeline Studio opens and exports. Checking the file starts no external process.
 /// The song's one film (see `film`).
 pub(crate) fn film_path(s: &Session) -> Result<PathBuf> {
@@ -91,22 +85,7 @@ fn export_with(f: &Film, out: &Path, draft: bool) -> Result<()> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut args = vec![
-        "--project".into(),
-        path_arg(f.require()?),
-        "export".into(),
-        path_arg(out),
-    ];
-    args.extend(["--format".into(), "h264".into()]);
-    if draft {
-        args.extend([
-            "--scale".into(),
-            "0.5".into(),
-            "--quality".into(),
-            "60".into(),
-        ]);
-    }
-    crate::workspace::run_tool_in(&f.dir, EDITOR_CLI, &args)?;
+    crate::filmcraft::export(f.require()?, out, draft)?;
     Ok(())
 }
 
@@ -151,18 +130,7 @@ pub fn cmd_video_frame(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let args = vec![
-        "--project".into(),
-        path_arg(f.require()?),
-        "render".into(),
-        "--seconds".into(),
-        seconds.to_string(),
-        "--out".into(),
-        path_arg(&out),
-        "--scale".into(),
-        "0.5".into(),
-    ];
-    crate::workspace::run_tool_in(&f.dir, EDITOR_CLI, &args)?;
+    crate::filmcraft::frame(f.require()?, seconds, &out)?;
     Ok(json!({"ok": true, "frame": out, "seconds": seconds}))
 }
 
@@ -170,9 +138,8 @@ pub fn cmd_video_frame(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_video_open(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
     let project = f.require()?.to_path_buf();
-    let mut opened = crate::native_app::open(s, &crate::native_app::FILMCRAFT, &project)?;
-    opened["timeline"] = json!(project);
-    Ok(opened)
+    crate::workspace::open_editor("filmcraft", &project)?;
+    Ok(json!({"ok": true, "timeline": project, "document": {"app":"filmcraft", "file":project}}))
 }
 
 /// FilmCraft's time unit: ticks per second.
@@ -202,15 +169,7 @@ fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
 /// The timeline's tracks and clips (in seconds) as FilmCraft holds them, for Studio's layer view.
 pub fn cmd_video_timeline(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
-    let args = vec![
-        "--project".into(),
-        path_arg(f.require()?),
-        "inspect".into(),
-        "sequence".into(),
-    ];
-    let out = crate::workspace::run_tool_in(&f.dir, EDITOR_CLI, &args)?;
-    let seq: Value =
-        serde_json::from_str(&out).map_err(|e| bad(format!("{EDITOR_CLI} inspect: {e}")))?;
+    let seq = crate::filmcraft::execute(f.require()?, "sequence.inspect", json!({}))?;
     let mut tracks = track_rows(&seq["video"], "video");
     tracks.reverse();
     tracks.extend(track_rows(&seq["audio"], "audio"));
@@ -252,7 +211,7 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
     let item = imported
         .first()
         .and_then(|r| crate::assembly::ids(r, "items").first().copied())
-        .ok_or_else(|| bad(format!("{EDITOR_CLI} did not import {}", clip.display())))?;
+        .ok_or_else(|| bad(format!("FilmCraft did not import {}", clip.display())))?;
     let place = json!({"id": "timeline.place", "params": {"item": item, "track": track, "seconds": from,
         "insert": false, "audio": false}});
     let placed = crate::assembly::run(&f.dir, &project, false, &[place])?;
@@ -262,7 +221,7 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
         .unwrap_or_default();
     if clips.is_empty() {
         return Err(bad(format!(
-            "{EDITOR_CLI} did not place {} on {track}",
+            "FilmCraft did not place {} on {track}",
             clip.display()
         )));
     }

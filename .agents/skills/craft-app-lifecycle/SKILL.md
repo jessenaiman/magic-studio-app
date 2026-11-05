@@ -15,7 +15,7 @@ whole session.
 
 ## Before launching
 
-For Magic Studio, select/open the intended project with `magic-cli studio open /absolute/Project.magic`; inspect `magic-cli ui feedback` and retain its PID/instance. Subsequent CLI or MCP `command_run` calls route automatically. Use `magic-cli project save` before `magic-cli app quit`; dirty or pending work blocks the close. The port instructions below apply to the other Craft apps.
+For Magic Studio, select/open the intended project with `magic-cli studio open /absolute/Project.magic`; inspect `magic-cli ui feedback` and retain its PID/instance. Subsequent Magic CLI calls route automatically. Use `magic-cli project save` before `magic-cli app quit`; dirty or pending work blocks the close. The port instructions below apply to the other Craft apps.
 
 - Use a unique `--control <port>` per agent and a per-task config/data directory
   where the app supports one (`PHOTOCRAFT_CONFIG_DIR`, `EFFECTCRAFT_CONFIG_DIR`,
@@ -33,7 +33,7 @@ the process to exit and the port to become free.
 
 | App | Close the live window | Notes |
 |---|---|---|
-| Magic Studio | `magic-cli app quit` or MCP `command_run` with `id: "app.quit"` | Targets the pinned window; dirty or pending work blocks closing. Verify the exact PID/endpoint exits; never silently discard work. |
+| Magic Studio | `magic-cli app quit` | Targets the pinned window; dirty or pending work blocks closing. Verify the exact PID/endpoint exits; never silently discard work. |
 | PhotoCraft | `photocraft-cli mcp --bridge 127.0.0.1:PORT` then `control_call {"method":"app.quit","params":{}}` | The control channel needs its token: launch with `--control-token-file <file>` and pass `--control-token-file <file>` to the MCP server, or read the generated token from stderr. `app.quit` sets `allow_close`, so it does **not** prompt; save/close documents first. |
 | EffectCraft | `effectcraft-cli --bridge PORT exec app.quit`, or the control line `{"id":1,"method":"app.quit","params":{"force":true}}` | A dirty project cancels a plain `app.quit` and opens the save prompt. Save, answer the prompt, or use `force: true` to discard. |
 | VectorCraft | `vectorcraft-cli mcp --connect 127.0.0.1:PORT` then `invoke_menu {"command":"app.quit"}`, or the control line `{"id":1,"method":"app.quit","params":{}}` | A modified document returns `{"pending":"saveChanges"}` and the window stays. Save, or answer the dialog (`ui.dialog.confirm` with `discard: true`) before quitting. |

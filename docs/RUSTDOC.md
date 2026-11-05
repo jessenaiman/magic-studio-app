@@ -8,7 +8,7 @@ from the repository root and do not run tests or doctests.
 ## Build and browse the standard reference
 
 ```sh
-cargo doc --no-deps --locked -p magicstudio-engine -p backstage
+cargo doc --no-deps --locked -p magic-engine -p magic
 rustdoc --edition=2024 docs/rustdoc/index.md --markdown-no-toc \
   --markdown-css magic-rustdoc.css --out-dir "${CARGO_TARGET_DIR:-target}/doc"
 cp docs/rustdoc/magic-rustdoc.css "${CARGO_TARGET_DIR:-target}/doc/"
@@ -20,7 +20,7 @@ landing page links to:
 
 | Crate | Generated entry point | Coverage |
 |---|---|---|
-| `magicstudio-engine` | `magicstudio_engine/index.html` | Public modules, types, command registry, session, and domain handlers |
+| `magic-engine` | `magic_engine/index.html` | Public modules, types, command registry, session, and domain handlers |
 | `backstage` | `backstage/index.html` | Binary implementation, observation boundaries, view and data modules |
 
 On crate pages, use the sidebar or **All Items**, the search box (`S` or `/`),
@@ -35,15 +35,15 @@ blocker, not a reason to silently fetch it. `--locked` preserves `Cargo.lock`.
 
 ## Optional native-shell and internal reference
 
-In the already prepared [native development environment](../apps/magic-cli/README.md):
+In the already prepared [native development environment](../apps/magic/README.md):
 
 ```sh
 cargo doc --workspace --no-deps --locked
 ```
 
-This adds `magic_studio/index.html`, including the shell's binary-private
+This adds `magic/index.html`, including the shell's binary-private
 implementation. It requires the shell's locked dependencies, build script, and
-platform Tauri prerequisites. Do not claim shell coverage if that command fails.
+native platform prerequisites for the current Rust app. Do not claim app coverage if that command fails.
 To additionally inspect engine internals, append `--document-private-items` to
 the standard Cargo command. Neither option is required for the public reference.
 
@@ -64,7 +64,7 @@ prepared native development environment to establish shell coverage.
 ## GitHub visibility and optional hosting
 
 The [repository documentation](README.md) and
-[command architecture](../apps/magic-cli/MAGIC.md) are readable on GitHub
+[command architecture](../apps/magic/MAGIC.md) are readable on GitHub
 without deploying anything. Links from generated pages to repository guides
 track the default branch: newly added guide pages are not live at those links
 until this documentation commit merges. To host the API reference, publish the

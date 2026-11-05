@@ -1,5 +1,5 @@
 [package]
-name = "magicstudio-engine"
+name = "magic-engine"
 description = "Magic Studio engine: command registry and session for 2D/3D turnaround animation"
 version.workspace = true
 edition.workspace = true
@@ -20,4 +20,4 @@ sha2 = "0.10"
 ureq = { version = "3.5.0", default-features = false, features = ["rustls", "json"] }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "=1.1.5", features = ["fs", "net", "process"] }
+rustix = { version = "1.1.5", features = ["fs", "net", "process"] }

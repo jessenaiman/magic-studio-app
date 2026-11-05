@@ -5,8 +5,9 @@ description: Use when building, redesigning, or polishing native Rust + egui des
 
 # Rust `egui` Craft-Suite UI Skill (`rust-egui-craft-ui`)
 
-Use this skill for existing egui-based Craft apps. Magic Studio uses the Tauri shell; see
-`../magic-studio-ui/SKILL.md` for its UI. Default `egui` widgets (`ui.button`, `ui.slider`, `ui.horizontal_wrapped` with emoji labels) look like debug overlays and quickly turn into unorganized button soup. Pro creative tools in `egui` require a disciplined token system, custom painter-drawn controls, and mode-scoped layout hierarchy.
+Use this skill for egui-based Craft apps, including the native Rust UI rewrite
+in `apps/magic/`. Preserve its existing work and follow `AGENTS.md`.
+Default `egui` widgets (`ui.button`, `ui.slider`, `ui.horizontal_wrapped` with emoji labels) look like debug overlays and quickly turn into unorganized button soup. Pro creative tools in `egui` require a disciplined token system, custom painter-drawn controls, and mode-scoped layout hierarchy.
 
 ---
 

@@ -317,25 +317,9 @@ fn mapped_duration(s: &Session, params: &Value) -> Option<f64> {
         .filter(|v| v.is_finite() && *v >= 0.0)
 }
 
-/// The recording's own duration, asked of ffprobe; None when it cannot be known.
+/// Unknown duration is retained as a warning by the transcript importer.
 fn probed_duration(s: &Session) -> Option<f64> {
-    let audio = s.song_audio.as_ref()?;
-    std::process::Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(audio)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| std::str::from_utf8(&o.stdout).ok().map(str::to_string))
-        .and_then(|v| v.trim().parse::<f64>().ok())
-        .filter(|v| v.is_finite() && *v >= 0.0)
+    crate::filmcraft::media_duration(s.song_audio.as_deref()?, false).ok()
 }
 
 /// What the recording's duration is, where it came from, and anything that contradicts it.
@@ -371,7 +355,7 @@ fn check_recording(
         mapped,
         duration: probed.or(mapped),
         warning: probed.is_none().then_some(
-            "Recording duration is unknown: provide readable matching audio and a working ffprobe. Supplied map duration, if any, is unverified; transcript endpoints are not recording-length evidence.",
+            "Recording duration is unknown: provide matching audio readable by FilmCraft. Supplied map duration, if any, is unverified; transcript endpoints are not recording-length evidence.",
         ),
     }
 }
@@ -634,11 +618,11 @@ fn transcribe_steps(
     runtime: &str,
     hf: &Path,
     audio: &Path,
-    transcript: &Path,
-    srt: &Path,
+    outputs: (&Path, &Path),
     model: &str,
     overwrite: bool,
 ) -> Result<Vec<&'static str>> {
+    let (transcript, srt) = outputs;
     let mut ran = Vec::new();
     if transcribe_recording(
         trace,
@@ -740,8 +724,7 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
         &runtime,
         &hf,
         &audio,
-        &transcript,
-        &srt,
+        (&transcript, &srt),
         &model,
         overwrite,
     )?;

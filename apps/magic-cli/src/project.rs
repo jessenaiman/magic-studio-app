@@ -62,7 +62,7 @@ fn recent(token: &str) -> Option<PathBuf> {
     let config = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-    let text = std::fs::read_to_string(config.join("magicstudio/recent_projects.json")).ok()?;
+    let text = std::fs::read_to_string(config.join("magic/recent_projects.json")).ok()?;
     let entries: Vec<PathBuf> = serde_json::from_str(&text).ok()?;
     let token = token.to_lowercase();
     entries.into_iter().find(|p| {

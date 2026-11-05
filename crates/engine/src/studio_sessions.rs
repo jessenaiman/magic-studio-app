@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 /// The caller's runtime directory: XDG_RUNTIME_DIR, else the private `/run/user/<uid>` the
-/// desktop session made (an MCP client may start servers with a reduced environment).
+/// desktop session made (an agent may start tools with a reduced environment).
 pub fn runtime_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
         return Some(PathBuf::from(dir));
@@ -57,16 +57,16 @@ pub fn request_slow(path: &Path, id: &str, params: Value) -> Result<Value, Strin
     request_within(path, id, params, reply_deadline(id)?)
 }
 
-/// Seconds to wait for a reply: MAGICSTUDIO_COMMAND_TIMEOUT_MS when set, else an hour for a
+/// Seconds to wait for a reply: magic_COMMAND_TIMEOUT_MS when set, else an hour for a
 /// long-running registry command and 30 s for the rest.
 fn reply_deadline(id: &str) -> Result<u64, String> {
-    if let Ok(raw) = std::env::var("MAGICSTUDIO_COMMAND_TIMEOUT_MS") {
+    if let Ok(raw) = std::env::var("magic_COMMAND_TIMEOUT_MS") {
         let ms: f64 = raw
             .trim()
             .parse()
             .ok()
             .filter(|v: &f64| v.is_finite() && *v > 0.0)
-            .ok_or("MAGICSTUDIO_COMMAND_TIMEOUT_MS must be a positive number")?;
+            .ok_or("magic_COMMAND_TIMEOUT_MS must be a positive number")?;
         return Ok(((ms / 1000.0).ceil() as u64).max(1));
     }
     Ok(if crate::find_command(id).is_some_and(|c| c.long_running) {
@@ -163,7 +163,7 @@ pub fn request_within(
 #[cfg(unix)]
 fn sessions_dir() -> Result<Option<PathBuf>, String> {
     let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
-    let dir = runtime.join("magicstudio-studio");
+    let dir = runtime.join("magic-studio");
     if !dir.exists() {
         return Ok(None);
     }
@@ -278,7 +278,7 @@ fn select(matches: &[Value]) -> Result<Option<Value>, String> {
     Err("Multiple Studio sessions report this project; no unique writer. Inspect magic-cli studio list and select the intended project; no command executed".into())
 }
 
-/// Shared app opening for desktop, CLI and MCP. Existing windows are never replaced.
+/// Shared app opening for desktop, UI and CLI. Existing windows are never replaced.
 pub fn open(executable: &Path, project: Option<&str>) -> Result<Value, String> {
     open_with_options(executable, project, &Launch::default())
 }
@@ -420,7 +420,7 @@ pub fn open_with_options(
         return Ok(existing);
     }
     let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
-    let dir = runtime.join("magicstudio-studio");
+    let dir = runtime.join("magic-studio");
     let executable = live_executable(executable);
     let mut command = launch_command(&executable, project.as_deref(), launch);
     let mut child = command

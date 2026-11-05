@@ -1,11 +1,16 @@
+//! `cargo xtask ci`: run the Craft native quality gates.
 //! `cargo xtask install`: install this built checkout's Magic Studio app, `magic-cli`,
-//! Backstage, runtime resources and desktop entry for the current user. It installs Magic
+//! runtime resources and desktop entry for the current user. It installs Magic
 //! only; it never installs or configures other Craft apps. Build first:
-//!   cargo build -p magic-studio -p magic-cli -p backstage [--release]
+//!   cargo build -p magic [--release]
 use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+mod ci;
+mod doctor;
+mod policy;
 
 #[derive(Parser)]
 #[command(name = "cargo xtask")]
@@ -16,9 +21,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Task {
+    /// Check formatting, Clippy, workspace tests and doctests using Craft's native gates.
+    Ci,
+    /// Report which workspace apps are configured, which are not, and where the app breaks.
+    Doctor,
+    /// Check the workspace against FilmCraft's declared dependency layers.
+    Layers,
+    /// Check repository asset attribution using FilmCraft's requirements.
+    Assets,
     /// Install the built app, CLI, resources and desktop entry under PREFIX.
     Install {
-        /// Install prefix (binaries under PREFIX/share/magic-studio/bin, links in PREFIX/bin).
+        /// Install prefix (binaries under PREFIX/share/magic/bin, links in PREFIX/bin).
         #[arg(long)]
         prefix: Option<PathBuf>,
         #[arg(long, value_enum, default_value = "debug")]
@@ -32,17 +45,11 @@ enum Profile {
     Release,
 }
 
-/// The binaries this repository builds and installs.
-const BINARIES: &[&str] = &["magic-studio", "magic-cli", "backstage"];
 /// Names earlier installs left behind: the old app name and the retired Python CLI.
-const RETIRED: &[&str] = &["magicstudio-shell", "python-magic-cli"];
+const RETIRED: &[&str] = &["magic-shell", "python-magic-cli"];
 /// Tracked runtime resources the app reads at run time.
 const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/"];
-const RESOURCE_FILES: &[&str] = &[
-    "apps/src-tauri/agent.md",
-    "SOURCE-ATTRIBUTION.md",
-    "LICENSE",
-];
+const RESOURCE_FILES: &[&str] = &["apps/magic/agent.md", "SOURCE-ATTRIBUTION.md", "LICENSE"];
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -85,16 +92,18 @@ fn wanted_resource(name: &str) -> bool {
 
 /// Copy tracked runtime resources and record which source and app build they came from.
 fn install_resources(root: &Path, prefix: &Path, app: &Path) -> Result<()> {
-    let runtime = prefix.join("share/magic-studio/runtime");
+    let runtime = prefix.join("share/magic/runtime");
     for subdir in ["pipeline", ".agents/skills"] {
         let dir = runtime.join(subdir);
         if dir.is_dir() {
             io(dir.display(), std::fs::remove_dir_all(&dir))?;
         }
     }
-    for name in git(root, &["ls-files", "-z"])?
+    let tracked = git(root, &["ls-files", "-z"])?;
+    for name in tracked
         .split('\0')
-        .filter(|n| wanted_resource(n))
+        .filter(|n| wanted_resource(n) && !RESOURCE_FILES.contains(n))
+        .chain(RESOURCE_FILES.iter().copied())
     {
         let source = root.join(name);
         if !source.is_file() || source.is_symlink() {
@@ -162,7 +171,7 @@ fn remove_retired(prefix: &Path, bin: &Path) -> Result<Vec<PathBuf>> {
         io(launcher.display(), std::fs::remove_file(&launcher))?;
         removed.push(launcher);
     }
-    let venv = prefix.join("share/magic-studio/.venv");
+    let venv = prefix.join("share/magic/.venv");
     if venv.is_dir() {
         io(venv.display(), std::fs::remove_dir_all(&venv))?;
         removed.push(venv);
@@ -171,18 +180,18 @@ fn remove_retired(prefix: &Path, bin: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn install_desktop_entry(root: &Path, prefix: &Path) -> Result<()> {
-    let icon = prefix.join("share/icons/hicolor/256x256/apps/ai.storyteller.magicstudio.png");
+    let icon = prefix.join("share/icons/hicolor/256x256/apps/ai.storyteller.magic.png");
     io(
         icon.display(),
         std::fs::create_dir_all(icon.parent().expect("icon folder")),
     )?;
     io(
         icon.display(),
-        std::fs::copy(root.join("apps/src-tauri/icons/icon.png"), &icon),
+        std::fs::copy(root.join("apps/magic/icons/icon.png"), &icon),
     )?;
     let template = io(
         "magic.desktop",
-        std::fs::read_to_string(root.join("apps/src-tauri/magic.desktop")),
+        std::fs::read_to_string(root.join("apps/magic/magic.desktop")),
     )?;
     let launcher = prefix.join("bin/magic");
     let entry = template
@@ -191,7 +200,7 @@ fn install_desktop_entry(root: &Path, prefix: &Path) -> Result<()> {
             "Exec=magic %f",
             &format!("Exec=\"{}\" %f", launcher.display()),
         );
-    let desktop = prefix.join("share/applications/ai.storyteller.magicstudio.desktop");
+    let desktop = prefix.join("share/applications/ai.storyteller.magic.desktop");
     io(
         desktop.display(),
         std::fs::create_dir_all(desktop.parent().expect("applications folder")),
@@ -206,28 +215,32 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
         Profile::Release => ("release", " --release"),
     };
     let build = root.join("target").join(folder);
-    if BINARIES.iter().all(|name| build.join(name).is_file()) {
+    if build.join("magic").is_file() {
         Ok(build)
     } else {
-        Err(format!(
-            "Build first: cargo build -p magic-studio -p magic-cli -p backstage{flag}"
-        ))
+        Err(format!("Build first: cargo build -p magic{flag}"))
     }
 }
 
-/// Place each binary under PREFIX/share/magic-studio/bin with a PREFIX/bin link; `magic`
+/// Place each binary under PREFIX/share/magic/bin with a PREFIX/bin link; `magic`
 /// opens the app, so it is the app under its short name.
 fn install_binaries(build: &Path, prefix: &Path) -> Result<PathBuf> {
-    let bin = prefix.join("share/magic-studio/bin");
+    let bin = prefix.join("share/magic/bin");
     let links = prefix.join("bin");
     io(bin.display(), std::fs::create_dir_all(&bin))?;
     io(links.display(), std::fs::create_dir_all(&links))?;
-    for name in BINARIES {
-        replace_file(&build.join(name), &bin.join(name))?;
-        link(&bin.join(name), &links.join(name))?;
+    let app = bin.join("magic");
+    replace_file(&build.join("magic"), &app)?;
+    link(&app, &links.join("magic"))?;
+    // Older installations stored a separate CLI binary in our private bin directory.
+    let old_cli = bin.join("magic-cli");
+    if old_cli.is_file() && !old_cli.is_symlink() {
+        io(old_cli.display(), std::fs::remove_file(&old_cli))?;
     }
-    link(&bin.join("magic-studio"), &bin.join("magic"))?;
-    link(&bin.join("magic"), &links.join("magic"))?;
+    for alias in ["magic", "magic-cli"] {
+        link(&app, &bin.join(alias))?;
+        link(&bin.join(alias), &links.join(alias))?;
+    }
     Ok(bin)
 }
 
@@ -239,12 +252,12 @@ fn install(prefix: Option<PathBuf>, profile: Profile) -> Result<()> {
         .ok_or("HOME is not set")?;
     let prefix = prefix.unwrap_or_else(|| home.join(".local"));
     let build = built(&root, profile)?;
-    install_resources(&root, &prefix, &build.join("magic-studio"))?;
-    let removed = remove_retired(&prefix, &prefix.join("share/magic-studio/bin"))?;
+    install_resources(&root, &prefix, &build.join("magic"))?;
+    let removed = remove_retired(&prefix, &prefix.join("share/magic/bin"))?;
     install_binaries(&build, &prefix)?;
     install_desktop_entry(&root, &prefix)?;
     println!(
-        "Installed Magic app, magic-cli, Backstage and desktop entry under {}",
+        "Installed Magic app, magic-cli and desktop entry under {}",
         prefix.display()
     );
     for path in removed {
@@ -255,6 +268,10 @@ fn install(prefix: Option<PathBuf>, profile: Profile) -> Result<()> {
 
 fn main() {
     let result = match Cli::parse().task {
+        Task::Ci => ci::ci(),
+        Task::Doctor => doctor::doctor(),
+        Task::Layers => policy::layers(),
+        Task::Assets => policy::assets(),
         Task::Install { prefix, profile } => install(prefix, profile),
     };
     if let Err(error) = result {
@@ -270,19 +287,15 @@ mod tests {
     #[test]
     fn retired_names_in_the_shared_bin_are_removed_only_when_links() {
         let root = std::env::temp_dir().join(format!("xtask-retired-{}", std::process::id()));
-        let (bin, links) = (root.join("share/magic-studio/bin"), root.join("bin"));
+        let (bin, links) = (root.join("share/magic/bin"), root.join("bin"));
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::create_dir_all(&links).unwrap();
-        std::fs::write(bin.join("magicstudio-shell"), "old app").unwrap();
+        std::fs::write(bin.join("magic-shell"), "old app").unwrap();
         std::fs::write(links.join("python-magic-cli"), "someone else's").unwrap();
-        std::os::unix::fs::symlink(
-            bin.join("magicstudio-shell"),
-            links.join("magicstudio-shell"),
-        )
-        .unwrap();
+        std::os::unix::fs::symlink(bin.join("magic-shell"), links.join("magic-shell")).unwrap();
         remove_retired(&root, &bin).unwrap();
-        assert!(!bin.join("magicstudio-shell").exists());
-        assert!(!links.join("magicstudio-shell").is_symlink());
+        assert!(!bin.join("magic-shell").exists());
+        assert!(!links.join("magic-shell").is_symlink());
         assert!(links.join("python-magic-cli").is_file());
         std::fs::remove_dir_all(&root).unwrap();
     }
@@ -290,9 +303,9 @@ mod tests {
     #[test]
     fn runtime_resources_exclude_tests_and_unlisted_files() {
         assert!(wanted_resource("pipeline/templates/words-kinetic.html"));
-        assert!(wanted_resource("apps/src-tauri/agent.md"));
+        assert!(wanted_resource("apps/magic/agent.md"));
         assert!(!wanted_resource("pipeline/tests/test_layout.rs"));
         assert!(!wanted_resource("lib/test_helpers.rs"));
-        assert!(!wanted_resource("apps/magic-cli/src/main.rs"));
+        assert!(!wanted_resource("apps/magic/src/main.rs"));
     }
 }

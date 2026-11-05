@@ -1,4 +1,4 @@
-//! Project conversations are commands, shared by the desktop, CLI and MCP.
+//! Project conversations are commands, shared by the desktop, UI and CLI.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::{
@@ -53,7 +53,7 @@ fn settings_base() -> Option<std::path::PathBuf> {
 
 fn read_stored_settings(base: Option<std::path::PathBuf>) -> Result<Value> {
     if let Some(base) = base {
-        match fs::read_to_string(base.join("magicstudio/agent.json")) {
+        match fs::read_to_string(base.join("magic/agent.json")) {
             Ok(text)=>serde_json::from_str::<Value>(&text).map_err(|_|invalid("Invalid Magic Studio agent.json; repair existing settings without changing credentials")),
             Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(json!({})),
             Err(_)=>Err(invalid("Cannot read Magic Studio chat settings; no fallback agent selected")),
@@ -125,7 +125,7 @@ fn persist_selection(selection: &Value) -> Result<Value> {
         .ok_or_else(|| {
             invalid("Cannot locate the app settings directory; selection not persisted")
         })?;
-    let path = base.join("magicstudio/agent.json");
+    let path = base.join("magic/agent.json");
     let mut stored = fs::read_to_string(&path)
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
@@ -426,7 +426,7 @@ fn apply_selection_patch(value: &mut Value, patch: &Value) -> Result<()> {
 
 fn decorate_config(s: &Session, value: &mut Value) {
     let root = crate::workspace::workspace_root(s);
-    value["instructions"] = json!(root.join("apps/src-tauri/agent.md").to_string_lossy());
+    value["instructions"] = json!(root.join("apps/magic/agent.md").to_string_lossy());
     if let (Some(base), Value::Object(catalog)) = (value.as_object_mut(), agent_catalog()) {
         for (key, val) in catalog {
             base.insert(key, val);
@@ -683,30 +683,6 @@ fn archive(s: &Session) -> Result<()> {
     }
     Ok(())
 }
-// Native per-session policy for bounded Fidget tool/diagnostic tasks; never image generation.
-fn bounded_task_cli() -> Result<std::path::PathBuf> {
-    let exe = std::env::current_exe()?;
-    let folder = exe
-        .parent()
-        .ok_or_else(|| invalid("Cannot locate the installed magic CLI"))?;
-    {
-        let name = "magic-cli";
-        let candidate = folder.join(name);
-        let candidate = if candidate.is_file() {
-            candidate
-        } else {
-            folder.parent().unwrap_or(folder).join(name)
-        };
-        if let Ok(resolved) = fs::canonicalize(&candidate) {
-            return Ok(resolved);
-        }
-    }
-    let expected = folder.join("magic-cli");
-    Err(invalid(format!(
-        "Bounded task needs the matching installed CLI at {}; no alternative installed",
-        expected.display()
-    )))
-}
 pub fn cmd_agent_log(s: &mut Session, _p: &Value) -> Result<Value> {
     Ok(log_read(s))
 }
@@ -774,15 +750,15 @@ fn chat_message(params: &Value) -> Result<String> {
 }
 
 fn chat_instructions(s: &Session) -> Result<String> {
-    fs::read_to_string(crate::workspace::workspace_root(s).join("apps/src-tauri/agent.md"))
-        .map_err(|_|invalid("Cannot read apps/src-tauri/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))
+    fs::read_to_string(crate::workspace::workspace_root(s).join("apps/magic/agent.md"))
+        .map_err(|_|invalid("Cannot read apps/magic/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))
 }
 
 fn chat_task(params: &Value) -> Result<String> {
     if params["image_task"] == true {
         Ok(format!(
             "You are Fidget, the bounded tasks, tools, and error-sniffing assistant (never image generation; Scribbles handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
-            bounded_task_cli()?.display()
+            std::env::current_exe()?.display()
         ))
     } else {
         Ok(String::new())

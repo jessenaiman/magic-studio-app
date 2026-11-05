@@ -42,7 +42,7 @@ fn path() -> Option<PathBuf> {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))
-        .map(|p| p.join("magicstudio/activity.jsonl"))
+        .map(|p| p.join("magic/activity.jsonl"))
 }
 /// Saves, generations, keyframe edits, errors and page selection reports, kept apart from the
 /// three-root journal so UI clicks cannot evict them.
@@ -474,7 +474,7 @@ pub fn error(project: Option<&std::path::Path>, id: &str, error: &crate::EngineE
     }));
 }
 
-/// A project-scoped view of retained failures, shared by Mayhem, CLI and MCP.
+/// A project-scoped view of retained failures, shared by Mayhem, UI and CLI.
 pub fn errors(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
     let (text, mut history) = read_log()?;
     history.extend(parse_lines(&text));

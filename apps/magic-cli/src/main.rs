@@ -1,44 +1,24 @@
 //! `magic-cli`: operate Magic Studio from a terminal or an agent. Every operation is an
 //! engine registry command; this binary only chooses where it runs (the caller's window or
 //! the engine in-process) and prints JSON.
-use magicstudio_engine::analyzers as audit;
-mod doctor;
-mod mcp;
 mod project;
 mod session;
 mod studio;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Subcommand};
 use serde_json::{Value, json};
 use session::Session;
 use std::io::BufRead;
 use std::path::PathBuf;
 
-/// Operate Magic Studio and discover the ArtCraft suite: projects, animation, and the desktop app.
-///
-/// Open an existing project window:
-///   magic-cli studio open /absolute/Song.magic
-/// Open Animation only (creates an animation study when the file is new):
-///   magic-cli studio animate /absolute/Character.magic
-/// Inspect a project before authoring:
-///   magic-cli --project /absolute/Song.magic workshop status
-/// Confirm the recording, lyrics, liner notes and song meaning with the director
-/// before authoring. A successful read only identifies what is loaded.
-///
-/// Any registry command also works as `magic-cli <domain> <verb> key=value ...`
-/// (underscores may be written as hyphens) or `magic-cli <domain.verb> ...`.
-/// Use key=value arguments or --params JSON. `magic-cli commands [FILTER]` lists IDs.
-///
-/// Call each installed app directly by its command name and read its `--help`.
-#[derive(Parser)]
-#[command(name = "magic-cli", version, verbatim_doc_comment)]
-struct Cli {
+#[derive(Args)]
+pub struct CommandArgs {
     /// JSON output (also the default)
     #[arg(long, global = true)]
     json: bool,
     /// Select the intended .magic project
     #[arg(long, global = true)]
-    project: Option<String>,
+    pub project: Option<String>,
     /// Separate caller session binding
     #[arg(long, global = true, env = "MAGIC_SESSION_FILE")]
     session_file: Option<PathBuf>,
@@ -65,36 +45,6 @@ enum Cmd {
     Run {
         #[arg(default_value = "-")]
         file: String,
-    },
-    /// Serve Magic commands over MCP stdio (official rmcp SDK).
-    Mcp,
-    /// Auto-fix formatting and lint issues (`cargo fmt`, `eslint --fix`, `stylelint --fix`).
-    Doctor {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-    },
-    /// Run native analyzers and retain complete output and exit statuses.
-    Audit {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        #[arg(long = "tool")]
-        tools: Vec<String>,
-        #[arg(long, default_value = "HEAD")]
-        base: String,
-        /// Run language checks only; --tool replaces this profile.
-        #[arg(long)]
-        quick: bool,
-    },
-    /// Review a specific file or folder with all applicable native tools.
-    Review {
-        #[arg(default_value = ".")]
-        path: PathBuf,
-        /// Select a native tool; repeat to choose several.
-        #[arg(long = "tool")]
-        tools: Vec<String>,
-        /// Git revision the scope is measured from.
-        #[arg(long, default_value = "HEAD")]
-        base: String,
     },
     /// Select a desktop window; list inspects responsive windows without rebinding.
     Studio {
@@ -189,15 +139,15 @@ fn run_one(s: &mut Session, id: &str, params: Value, dry_run: bool) -> Result<Va
 }
 
 fn ids() -> Vec<&'static str> {
-    magicstudio_engine::command_specs()
-        .iter()
-        .map(|c| c.id)
-        .collect()
+    magic_engine::command_specs().iter().map(|c| c.id).collect()
 }
 
 /// Map `words read k=v` / `words.read k=v` / `words studio-track` onto a registry ID and
 /// its remaining arguments: the longest run of leading words that names a command.
-fn resolve_registry(tokens: &[String]) -> Result<(String, Vec<String>, bool), String> {
+fn resolve_registry(
+    program: &str,
+    tokens: &[String],
+) -> Result<(String, Vec<String>, bool), String> {
     let known = ids();
     let words: Vec<&String> = tokens
         .iter()
@@ -226,7 +176,7 @@ fn resolve_registry(tokens: &[String]) -> Result<(String, Vec<String>, bool), St
         .collect();
     if !prefix.is_empty() && !children.is_empty() {
         return Err(format!(
-            "{prefix} commands from the application registry:\n  {}\nNext: magic-cli {} <verb> --help",
+            "{prefix} commands from the application registry:\n  {}\nNext: {program} {} <verb> --help",
             children.join("\n  "),
             prefix.replace('.', " ").replace('_', "-")
         ));
@@ -245,12 +195,12 @@ fn resolve_registry(tokens: &[String]) -> Result<(String, Vec<String>, bool), St
     if !close.is_empty() {
         message += &format!(" Did you mean: {}?", close.join(", "));
     }
-    message += " Next: run 'magic-cli commands [FILTER]' or 'magic-cli --help'.";
+    message += &format!(" Next: run '{program} commands [FILTER]' or '{program} --help'.");
     Err(message)
 }
 
 fn registry_help(id: &str) -> Value {
-    magicstudio_engine::find_command(id).map_or(Value::Null, |c| c.describe())
+    magic_engine::find_command(id).map_or(Value::Null, |c| c.describe())
 }
 
 /// Split `--params JSON` out of a registry command's arguments.
@@ -298,8 +248,13 @@ fn run_jsonl(s: &mut Session, file: &str, dry_run: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn run_registry(s: &mut Session, tokens: &[String], dry: bool) -> Result<(), String> {
-    match resolve_registry(tokens) {
+fn run_registry(
+    program: &str,
+    s: &mut Session,
+    tokens: &[String],
+    dry: bool,
+) -> Result<(), String> {
+    match resolve_registry(program, tokens) {
         Ok((id, _, true)) => emit(&registry_help(&id)),
         Ok((id, rest, false)) => {
             let (args, raw) = split_params(&rest)?;
@@ -362,7 +317,7 @@ fn run_session(s: &mut Session, action: SessionCmd) -> Result<(), String> {
     Ok(())
 }
 
-fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
+fn run_command(program: &str, s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
     match command {
         Cmd::Commands { filter } => {
             let params = json!({"filter": filter.unwrap_or_default()});
@@ -384,90 +339,26 @@ fn run_command(s: &mut Session, command: Cmd, dry: bool) -> Result<(), String> {
         Cmd::Run { file } => run_jsonl(s, &file, dry)?,
         Cmd::Studio { action } => run_studio(s, action, dry)?,
         Cmd::Session { action } => run_session(s, action)?,
-        Cmd::Registry(tokens) => run_registry(s, &tokens, dry)?,
-        Cmd::Mcp | Cmd::Doctor { .. } | Cmd::Audit { .. } | Cmd::Review { .. } => {
-            unreachable!("handled before a session is loaded")
-        }
+        Cmd::Registry(tokens) => run_registry(program, s, &tokens, dry)?,
     }
     Ok(())
 }
 
-fn run_analyzers(
-    target: &std::path::Path,
-    tools: &[String],
-    dry: bool,
-    base: &str,
-    quick: bool,
-    json_output: bool,
-) -> Result<i32, String> {
-    let report = audit::run(target, tools, dry, base, quick).map_err(|e| e.to_string())?;
-    if json_output {
-        emit(&report);
-    } else {
-        for row in report["tools"].as_array().into_iter().flatten() {
-            println!(
-                "{}: exit={} · {} · {}",
-                row["tool"], row["exit_code"], row["scope"], row["error"]
-            );
-        }
+impl CommandArgs {
+    pub fn has_command(&self) -> bool {
+        self.command.is_some()
     }
-    if !json_output {
-        println!("Reports: {}", report["artifacts"]);
-    }
-    Ok(audit::exit_code(&report))
 }
 
-fn run(cli: Cli) -> Result<(), String> {
-    match &cli.command {
-        Some(Cmd::Doctor { path }) => {
-            let target =
-                std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            std::process::exit(doctor::run(&target, cli.dry_run));
-        }
-        Some(Cmd::Audit {
-            path,
-            tools,
-            base,
-            quick,
-        }) => {
-            let target =
-                std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            std::process::exit(run_analyzers(
-                &target,
-                tools,
-                cli.dry_run,
-                base,
-                *quick,
-                cli.json,
-            )?);
-        }
-        Some(Cmd::Review { path, tools, base }) => {
-            let target =
-                std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            std::process::exit(run_analyzers(
-                &target,
-                tools,
-                cli.dry_run,
-                base,
-                true,
-                cli.json,
-            )?);
-        }
-        _ => {}
-    }
-    let mcp = matches!(cli.command, Some(Cmd::Mcp));
-    let mut s = Session::load(cli.session_file, if mcp { "MCP" } else { "CLI" })?;
+pub fn run(cli: CommandArgs, mut help: clap::Command) -> Result<(), String> {
+    let mut s = Session::load(cli.session_file, "CLI")?;
     // Selecting the project is always real; --dry-run previews the command that follows.
     if let Some(project) = &cli.project {
         s.execute("project.open", json!({"path": project}), false)?;
     }
     match cli.command {
-        None => {
-            use clap::CommandFactory;
-            Cli::command().print_help().map_err(|e| e.to_string())
-        }
-        Some(Cmd::Mcp) => mcp::serve(s, cli.dry_run),
-        Some(command) => run_command(&mut s, command, cli.dry_run),
+        None => help.print_help().map_err(|e| e.to_string()),
+        Some(command) => run_command(help.get_name(), &mut s, command, cli.dry_run),
     }
 }
 
@@ -484,8 +375,8 @@ fn shell_word(arg: &str) -> String {
 }
 
 /// A failure is a magic-cli gap: ask for a fix instead of working around it.
-fn fix_routes(error: &str) -> String {
-    let command = std::iter::once("magic-cli".to_owned())
+fn fix_routes(program: &str, error: &str) -> String {
+    let command = std::iter::once(program.to_owned())
         .chain(std::env::args().skip(1))
         .map(|a| shell_word(&a))
         .collect::<Vec<_>>()
@@ -495,7 +386,7 @@ fn fix_routes(error: &str) -> String {
         error.chars().take(1500).collect::<String>()
     );
     let title = format!(
-        "magic-cli fails: {}",
+        "{program} fails: {}",
         command.chars().take(70).collect::<String>()
     );
     let issue = ["gh", "issue", "create", "--title", &title, "--body", &body]
@@ -504,14 +395,13 @@ fn fix_routes(error: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     format!(
-        "Request a magic-cli fix (do not work around it with the tool directly):\n  quick       small and in scope: fix this magic-cli command now\n  issue       {issue}\n  brainstorm  unsure which designer step or tool applies: ask Jesse first"
+        "Request a {program} fix (do not work around it with the tool directly):\n  quick       small and in scope: fix this {program} command now\n  issue       {issue}\n  brainstorm  unsure which designer step or tool applies: ask Jesse first"
     )
 }
 
-fn main() {
-    let cli = Cli::parse();
-    if let Err(error) = run(cli) {
-        eprintln!("magic-cli: {error}\n\n{}", fix_routes(&error));
+pub fn finish(program: &str, result: Result<(), String>) {
+    if let Err(error) = result {
+        eprintln!("{program}: {error}\n\n{}", fix_routes(program, &error));
         std::process::exit(1);
     }
 }
@@ -527,20 +417,24 @@ mod tests {
     #[test]
     fn domain_verb_and_dotted_ids_resolve_to_the_same_command() {
         assert_eq!(
-            resolve_registry(&toks("words read")).unwrap().0,
+            resolve_registry("magic-cli", &toks("words read"))
+                .unwrap()
+                .0,
             "words.read"
         );
         assert_eq!(
-            resolve_registry(&toks("words.read")).unwrap().0,
+            resolve_registry("magic-cli", &toks("words.read"))
+                .unwrap()
+                .0,
             "words.read"
         );
-        let (id, rest, _) = resolve_registry(&toks("words studio-track a=1")).unwrap();
+        let (id, rest, _) = resolve_registry("magic-cli", &toks("words studio-track a=1")).unwrap();
         assert_eq!((id.as_str(), rest), ("words.studio_track", toks("a=1")));
     }
 
     #[test]
     fn a_domain_alone_lists_its_commands() {
-        let err = resolve_registry(&toks("words")).unwrap_err();
+        let err = resolve_registry("magic-cli", &toks("words")).unwrap_err();
         assert!(err.contains("words.read"), "{err}");
     }
 

@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
-const LYRICS_ONLY_STYLE: &str = r#"<style data-magicstudio="lyrics-only">
+const LYRICS_ONLY_STYLE: &str = r#"<style data-magic="lyrics-only">
 [data-composition-id] * { visibility: hidden !important; }
 .lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip * { visibility: visible !important; }
 #title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*="captions.html"] { visibility: hidden !important; }
@@ -55,11 +55,11 @@ fn stage_only_style(html: &str) -> String {
         format!("{} {{ visibility: hidden !important; }}\n", cast.join(", "))
     };
     format!(
-        "<style data-magicstudio=\"stage\">\n{hide}#stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .caption, [data-composition-src*=\"captions.html\"] {{ visibility: hidden !important; }}\n</style>"
+        "<style data-magic=\"stage\">\n{hide}#stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .caption, [data-composition-src*=\"captions.html\"] {{ visibility: hidden !important; }}\n</style>"
     )
 }
 
-const SCENE_ONLY_STYLE: &str = r#"<style data-magicstudio="scene-only">
+const SCENE_ONLY_STYLE: &str = r#"<style data-magic="scene-only">
 #stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip *, .caption, [data-composition-src*="captions.html"] { visibility: hidden !important; }
 </style>"#;
 
@@ -302,7 +302,7 @@ fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
 fn lyrics_view_style_and_name(show: &str, html: &str) -> Result<(String, &'static str)> {
     match show {
         "still" => Ok((
-            "<style data-magicstudio=\"still\">#stage-fill, #title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*=\"captions.html\"] { visibility: hidden !important; }</style>".to_owned(),
+            "<style data-magic=\"still\">#stage-fill, #title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*=\"captions.html\"] { visibility: hidden !important; }</style>".to_owned(),
             "still-stage",
         )),
         "lyrics" => Ok((LYRICS_ONLY_STYLE.to_owned(), "lyrics-only")),
@@ -613,7 +613,7 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
     apply_display_text_for_read(&mut doc);
     let video = fs::read_to_string(dir.join("hyperframes/index.html")).unwrap_or_default();
     let in_video: Vec<&str> = video
-        .split("data-magicstudio-words=\"")
+        .split("data-magic-words=\"")
         .skip(1)
         .filter_map(|rest| rest.split('"').next())
         .collect::<std::collections::BTreeSet<_>>()
@@ -868,7 +868,7 @@ pub fn cmd_words_save(s: &mut Session, p: &Value) -> Result<Value> {
         .get("origin")
         .filter(|v| v.is_string())
         .cloned()
-        .unwrap_or(json!("magicstudio"));
+        .unwrap_or(json!("magic"));
     let saved = anim.clone();
     write_words_doc(&dir, &doc)?;
     Ok(json!({"ok":true,"conflict":false,"path":document_path(&dir),"animation":saved}))
