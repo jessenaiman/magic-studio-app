@@ -84,8 +84,6 @@ epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6
 krilla = { git = "https://github.com/storytold/craft-libs" }
 hayro = { git = "https://github.com/storytold/craft-libs" }
 hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
-hayro-cmap = { git = "https://github.com/storytold/craft-libs" }
-hayro-postscript = { git = "https://github.com/storytold/craft-libs" }
 hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
 hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }
 # Note: egui-based Craft apps also patch ecolor/emath/epaint/egui/eframe/winit from storytold/egui.git & storytold/winit.git

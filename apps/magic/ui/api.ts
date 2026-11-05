@@ -42,24 +42,6 @@ export interface StageInfo {
   };
 }
 
-export interface StoryboardLink {
-  page: number;
-  to_page: number;
-  rect: [number, number, number, number];
-}
-
-export interface StoryboardData {
-  deck?: string;
-  previews?: string[];
-  page_titles?: string[];
-  page_cues?: Array<Array<{ text: string; start?: number; end?: number }>>;
-  page_size?: [number, number];
-  layout?: {
-    links?: StoryboardLink[];
-  };
-  error?: string;
-}
-
 export interface ProjectAsset {
   id: string;
   name: string;
@@ -76,7 +58,6 @@ export interface WorkshopData {
     stages?: StageInfo[];
     asset_files?: StageInputOutput[];
   };
-  storyboard?: StoryboardData;
   assets?: {
     assets?: ProjectAsset[];
   };

@@ -26,8 +26,6 @@ pub const TEXT_FIELDS: &[&str] = &[
     "character_lead", "asset_geometry", "match_note", "exact_prompt", "strip_note", "source_image_caption",
     "result_image_caption", "page_no_left", "page_no_right",
 ];
-/// Picture frames a scene exposes (besides `ref_1`..`ref_12`).
-pub const IMAGE_FIELDS: &[&str] = &["hero_image", "source_image", "result_image", "sketch_left", "sketch_right"];
 
 fn fail(e: impl std::fmt::Display) -> EngineError {
     EngineError::CommandFailed("storyboard".into(), e.to_string())
@@ -73,8 +71,8 @@ impl Board {
         Ok(())
     }
 
-    /// Label -> frame id, for each spread.
-    fn frames(&mut self) -> Result<Vec<HashMap<String, u64>>> {
+    /// Label -> frame id per spread, for `labels` and `scene_id` (which marks a scene spread).
+    fn frames(&mut self, labels: &[String]) -> Result<Vec<HashMap<String, u64>>> {
         let inspect = self.run("document.inspect", json!({}))?;
         let spreads = inspect["spreads"].as_array().cloned().unwrap_or_default();
         let mut owner: HashMap<u64, usize> = HashMap::new();
@@ -86,11 +84,11 @@ impl Board {
             }
         }
         let mut out = vec![HashMap::new(); spreads.len()];
-        for label in all_labels() {
+        for label in labels.iter().map(String::as_str).chain(["scene_id"]) {
             let found = self.run("object.findByLabel", json!({"label": label}))?;
             for id in found["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
                 if let Some(&sp) = owner.get(&id) {
-                    out[sp].insert(label.clone(), id);
+                    out[sp].insert(label.to_string(), id);
                 }
             }
         }
@@ -98,8 +96,8 @@ impl Board {
     }
 
     /// Spread indexes that are scenes (hold a `scene_id` frame), in document order.
-    fn scenes(&mut self) -> Result<(Vec<usize>, Vec<HashMap<String, u64>>)> {
-        let frames = self.frames()?;
+    fn scenes(&mut self, labels: &[String]) -> Result<(Vec<usize>, Vec<HashMap<String, u64>>)> {
+        let frames = self.frames(labels)?;
         let scenes = (0..frames.len()).filter(|&i| frames[i].contains_key("scene_id")).collect();
         Ok((scenes, frames))
     }
@@ -127,11 +125,18 @@ impl Board {
     }
 }
 
-fn all_labels() -> Vec<String> {
-    let mut v: Vec<String> = TEXT_FIELDS.iter().chain(IMAGE_FIELDS).map(|s| (*s).to_string()).collect();
-    v.extend(IMAGE_FIELDS.iter().map(|s| format!("{s}_hint")));
-    v.extend((1..=MAX_REFS).map(|n| format!("ref_{n}")));
-    v.push("contact_strip".into());
+/// Every label a request names: `fields`, `images` (with their `_hint` frames) and the contact strip.
+fn wanted(p: &Value) -> Vec<String> {
+    let keys = |k: &str| -> Vec<String> { p.get(k).and_then(Value::as_object).map(|o| o.keys().cloned().collect()).unwrap_or_default() };
+    let mut v = keys("fields");
+    for image in keys("images") {
+        v.push(format!("{image}_hint"));
+        v.push(image);
+    }
+    if p.get("refs").is_some() {
+        v.push("contact_strip".into());
+        v.extend((1..=MAX_REFS).map(|n| format!("ref_{n}")));
+    }
     v
 }
 
@@ -183,12 +188,12 @@ fn fill_refs(b: &mut Board, frames: &HashMap<String, u64>, refs: &[String]) -> R
 fn fill_scene(b: &mut Board, frames: &HashMap<String, u64>, p: &Value) -> Result<()> {
     for (label, value) in p.get("fields").and_then(Value::as_object).into_iter().flatten() {
         let text = value.as_str().ok_or_else(|| bad("`fields` values are strings"))?;
-        let frame = *frames.get(label).filter(|_| TEXT_FIELDS.contains(&label.as_str())).ok_or_else(|| bad(&format!("`{label}` is not a text field")))?;
+        let frame = *frames.get(label).ok_or_else(|| bad(&format!("no frame labelled `{label}` in this scene")))?;
         b.set_text(frame, text)?;
     }
     for (label, value) in p.get("images").and_then(Value::as_object).into_iter().flatten() {
         let path = value.as_str().ok_or_else(|| bad("`images` values are file paths"))?;
-        let frame = *frames.get(label).filter(|_| IMAGE_FIELDS.contains(&label.as_str())).ok_or_else(|| bad(&format!("`{label}` is not an image field")))?;
+        let frame = *frames.get(label).ok_or_else(|| bad(&format!("no frame labelled `{label}` in this scene")))?;
         b.set_image(frame, frames.get(&format!("{label}_hint")).copied(), path)?;
     }
     if let Some(refs) = p.get("refs").and_then(Value::as_array) {
@@ -229,7 +234,8 @@ pub fn cmd_storyboard_new(s: &mut Session, p: &Value) -> Result<Value> {
 /// `storyboard.scenes`: every scene with its text fields.
 pub fn cmd_storyboard_scenes(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
-    let (scenes, frames) = b.scenes()?;
+    let labels: Vec<String> = TEXT_FIELDS.iter().map(|l| (*l).to_string()).collect();
+    let (scenes, frames) = b.scenes(&labels)?;
     let mut list = Vec::new();
     for (i, &sp) in scenes.iter().enumerate() {
         list.push(scene_summary(&mut b, i + 1, sp, &frames[sp])?);
@@ -240,7 +246,7 @@ pub fn cmd_storyboard_scenes(s: &mut Session, p: &Value) -> Result<Value> {
 /// `storyboard.set`: change one scene's text, images and contact strip, then save.
 pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
-    let (scenes, frames) = b.scenes()?;
+    let (scenes, frames) = b.scenes(&wanted(p))?;
     let (n, sp) = pick_scene(&scenes, p)?;
     fill_scene(&mut b, &frames[sp], p)?;
     b.save()?;
@@ -250,18 +256,18 @@ pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
 /// `storyboard.add`: copy a scene spread (default the last) to the end and fill it.
 pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
-    let (scenes, _) = b.scenes()?;
+    let (scenes, _) = b.scenes(&[])?;
     let from = match p.get("from").and_then(Value::as_u64) {
         Some(n) => pick_scene(&scenes, &json!({"scene": n}))?.1,
         None => scenes.last().copied().unwrap_or(TEMPLATE_SCENE_SPREAD),
     };
     let dup = b.run("layout.pages.duplicateSpread", json!({"spread": from, "atEnd": true}))?;
     let spread = dup["page"].as_u64().ok_or_else(|| fail("no page index from duplicateSpread"))? as usize;
-    let frames = b.frames()?;
+    let frames = b.frames(&wanted(p))?;
     let new = frames.get(spread).ok_or_else(|| fail("the new spread was not found"))?;
     fill_scene(&mut b, new, p)?;
     b.save()?;
-    let (scenes, _) = b.scenes()?;
+    let (scenes, _) = b.scenes(&[])?;
     Ok(json!({"ok": true, "scene": scenes.len(), "path": b.path}))
 }
 
@@ -276,7 +282,7 @@ fn render_png(b: &mut Board, page: usize, scale: f64) -> Result<Vec<u8>> {
 /// `storyboard.thumbnail`: one scene spread as a PNG.
 pub fn cmd_storyboard_thumbnail(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
-    let (scenes, _) = b.scenes()?;
+    let (scenes, _) = b.scenes(&[])?;
     let (n, sp) = pick_scene(&scenes, p)?;
     let out = p.get("out").and_then(Value::as_str).ok_or_else(|| bad("missing `out` .png path"))?;
     let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(0.5);
@@ -299,7 +305,7 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(dir) = p.get("png_dir").and_then(Value::as_str) {
         std::fs::create_dir_all(dir)?;
         let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.0);
-        let pages = b.frames()?.len();
+        let pages = b.frames(&[])?.len();
         for page in 0..pages {
             let png = render_png(&mut b, page, scale)?;
             std::fs::write(Path::new(dir).join(format!("page-{:03}.png", page + 1)), png)?;

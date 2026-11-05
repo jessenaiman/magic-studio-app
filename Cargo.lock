@@ -12880,13 +12880,3 @@ checksum = "cba11ecd07cc23351500e840ae03841b7e4997923ec8e4832ee3ae199ea0b6b4"
 dependencies = [
  "zune-core 0.5.3",
 ]
-
-[[patch.unused]]
-name = "hayro-cmap"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs#d836bea31b7d33d83023edc6bab9cd8059232471"
-
-[[patch.unused]]
-name = "hayro-postscript"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs#d836bea31b7d33d83023edc6bab9cd8059232471"

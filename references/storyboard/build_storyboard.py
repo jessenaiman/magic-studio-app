@@ -577,37 +577,6 @@ def spread_scene(b, d, template=False):
            align="right")
 
 
-def contact_layouts():
-    """Adaptive contact-strip slot rectangles (spread coords) for N refs."""
-    x0, x1 = PW + 50 - 4, W - 44
-    out = {}
-    for n in (1, 2, 3, 4, 5, 6):
-        band = [x0, 800, x1, 912]
-        gap, pad = 6, 10
-        w = (x1 - x0 - 2 * pad - gap * (n - 1)) / n
-        out[str(n)] = {"band": band, "slots": [[round(x0 + pad + k * (w + gap), 1), 814, round(x0 + pad + k * (w + gap) + w, 1), 898]
-                                               for k in range(n)]}
-    for n in (7, 8, 9, 10, 11, 12):
-        band = [x0, 792, x1, 918]
-        cols = 6 if n > 8 else 4
-        rows = -(-n // cols)
-        gap, pad = 6, 10
-        w = (x1 - x0 - 2 * pad - gap * (cols - 1)) / cols
-        h = (918 - 792 - 2 * 16 - gap * (rows - 1)) / rows
-        slots = []
-        for k in range(n):
-            r_, c_ = divmod(k, cols)
-            sx = x0 + pad + c_ * (w + gap)
-            sy = 792 + 16 + r_ * (h + gap)
-            slots.append([round(sx, 1), round(sy, 1), round(sx + w, 1), round(sy + h, 1)])
-        out[str(n)] = {"band": band, "slots": slots}
-    return out
-
-
-CONTACT = {"max_slots": 12, "template_slots": 6, "frame_label": "contact_strip", "slot_labels": "ref_1..ref_N",
-           "layouts": contact_layouts()}
-
-
 # ---------------------------------------------------------------------------
 # content
 # ---------------------------------------------------------------------------
@@ -821,11 +790,7 @@ if __name__ == "__main__":
             "spreads": [{"index": i, "role": r} for i, r in enumerate(["cover", "world", "character", "scene"])],
             "scene_spread_index": 3,
             "labels": b.labels,
-            "contact_strip": CONTACT,
-            "workflow": [
-                "scene_fill.py studio-template.designcraft scene.json out.designcraft  (duplicates the scene spread and fills every label)",
-                "labels are object.label values; find with object.findByLabel; text frames take story.setText, picture frames place.load + place.drop + object.fit",
-            ],
+            "note": "labels are the editing contract; the storyboard.* engine commands (magic-cli) fill them",
         }
         json.dump(build, open(os.path.join(HERE, "studio-template-build.json"), "w"), indent=2)
     print(out, len(b.lines), "steps")
