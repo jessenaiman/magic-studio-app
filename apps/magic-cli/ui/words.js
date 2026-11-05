@@ -50,7 +50,7 @@ function wordsMountMain(view, anim, animations, end, parts) {
   return wordsViewController.mountMain(view, anim, animations, end, parts);
 }
 function wordsRender() {
-  return wordsViewController.render();
+  return wordsOpen();
 }
 function wordsFitClock(view) {
   return wordsViewController.fitClock(view);

@@ -13,6 +13,7 @@ __pycache__/
 
 # Node.js
 node_modules
+apps/magic-cli/ui/lyrics-built/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

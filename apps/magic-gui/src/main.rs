@@ -26,6 +26,9 @@ use magic_ui_egui::{ControlRequest, MagicApp, ViewMode};
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq;
 
+#[cfg(feature = "lyrics-webview")]
+mod lyrics;
+
 #[derive(Parser)]
 #[command(name = "magic", about = "Magic Studio desktop app (Craft egui edition)")]
 struct Cli {
@@ -135,6 +138,11 @@ fn spawn_control_listener(
 
 fn main() -> eframe::Result {
     let cli = Cli::parse();
+
+    #[cfg(feature = "lyrics-webview")]
+    if cli.view.as_deref() == Some("lyrics") {
+        return lyrics::run().map_err(|error| eframe::Error::AppCreation(Box::new(error)));
+    }
 
     let mut session = Session::user_session();
     if let Some(path) = cli.project.as_deref().or(cli.file.as_deref()) {

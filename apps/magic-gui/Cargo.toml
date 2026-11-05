@@ -7,6 +7,13 @@ license.workspace = true
 rust-version.workspace = true
 default-run = "magic"
 
+[features]
+default = ["lyrics-webview"]
+lyrics-webview = ["dep:tauri", "dep:tauri-build"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", optional = true }
+
 [lints]
 workspace = true
 
@@ -24,3 +31,4 @@ magic-ui-egui = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 subtle = { workspace = true }
+tauri = { version = "=2.12.5", optional = true }

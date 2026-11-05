@@ -454,21 +454,6 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
     write_provenance(&dir, &source, params, &facts, grouping)?;
     // Native captions are generated before the status is read, so the summary reflects them.
     let captions = captions_status(s, &dir)?;
-    if let Some(audio) = s.song_audio.clone().filter(|p| p.is_file())
-        && let Ok(film) = crate::film::film_path(s)
-        && let Ok(item) = crate::song_timing::song_item(&dir, &film, &audio)
-    {
-        let beat = crate::song_timing::analyze_music_native(&dir, &audio)
-            .unwrap_or_else(|_| json!({"downbeats":{"times":[]},"sections":{"spans":[]}}));
-        let _ = crate::song_timing::sync_film_tracks(
-            &dir,
-            &film,
-            item,
-            &dir.join("hyperframes/transcript.json"),
-            &beat,
-        );
-        let _ = crate::film::link(s, &film);
-    }
     let mut status = workshop_status(s)?;
     status["captions"] = captions;
     status["imported"] = json!(copied);
@@ -658,76 +643,6 @@ fn transcript_word_count(
         .map_or(0, Vec::len))
 }
 
-/// Pure-Rust transcription (`filmcraft-speech`), SRT export (`filmcraft-captions`), and beat/loudness
-/// analysis (`filmcraft-audio-dsp`), with FilmCraft `.fcproj` (`A1` audio + `C1` timed lyrics) sync.
-fn analyze_with_filmcraft(
-    s: &mut Session,
-    params: &Value,
-    dir: &Path,
-    hf: &Path,
-    audio: &Path,
-    overwrite: bool,
-    model: &str,
-) -> Result<Value> {
-    std::fs::create_dir_all(hf)?;
-    let transcript = hf.join("transcript.json");
-    let srt = hf.join("transcript.srt");
-    let film = crate::film::film_path(s)?;
-    let item = crate::song_timing::song_item(dir, &film, audio)?;
-    let mut ran = Vec::new();
-    if overwrite || !transcript.is_file() {
-        let (doc, _) = crate::song_timing::native_transcribe(&film, item, Some(model))?;
-        let bytes = serde_json::to_vec_pretty(&doc)
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-        craft_atomic::atomic_write(&transcript, &bytes)?;
-        ran.push("filmcraft-speech transcribe → transcript.json");
-    }
-    let doc = transcript_document(&transcript)?;
-    if (overwrite || !srt.is_file())
-        && let Some(srt_text) = srt_from_paragraphs(&doc)
-    {
-        craft_atomic::atomic_write(&srt, srt_text.as_bytes())?;
-        ran.push("filmcraft-captions write → transcript.srt");
-    }
-    let beat_item = crate::song_timing::analyze_music_native(dir, audio)?;
-    let analysis = json!({"ok": true, "engine": "filmcraft-audio-dsp", "items": [beat_item.clone()]});
-    let analysis_bytes = serde_json::to_vec_pretty(&analysis)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    craft_atomic::atomic_write(&hf.join("audio-analysis.json"), &analysis_bytes)?;
-    let beats_dir = hf.join("beats");
-    std::fs::create_dir_all(&beats_dir)?;
-    craft_atomic::atomic_write(&beats_dir.join("beats.json"), &analysis_bytes)?;
-    ran.push("filmcraft-audio-dsp → audio-analysis.json & beats/beats.json");
-
-    let mut trace = crate::audio_trace::AudioTrace::new(dir, audio, params)?;
-    let word_count = transcript_word_count(&mut trace, &transcript)?;
-    trace.import(
-        s,
-        json!({"path": transcript, "captions": srt, "replace": overwrite}),
-    )?;
-    let _ = crate::song_timing::sync_film_tracks(dir, &film, item, &transcript, &beat_item);
-    let _ = crate::film::link(s, &film);
-    Ok(json!({
-        "ok": true,
-        "target": s.video_target,
-        "engine": "filmcraft",
-        "ran": ran,
-        "analysis_attempt": trace.data,
-        "provenance_receipt": dir.join("transcript-provenance.json"),
-        "words": word_count,
-        "film": film,
-        "files": {
-            "audio": audio,
-            "transcript": transcript,
-            "captions": srt,
-            "audio_analysis": hf.join("audio-analysis.json"),
-            "beats_dir": beats_dir,
-            "film": film,
-        },
-        "music_analysis": analysis,
-        "next": ["Review the words against the recording (`words.plan`), then add reference art (`project.add_asset`)"]
-    }))
-}
 
 /// Transcribe and analyze the selected original recording. Uses an explicit `resolve_video_cli`
 /// when given, or pure-Rust `filmcraft-speech` + `filmcraft-captions` + `filmcraft-audio-dsp`.
@@ -738,7 +653,11 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let overwrite = params["overwrite"].as_bool().unwrap_or(false);
     let model = params["model"].as_str().unwrap_or("whisper-base").to_string();
     if params["resolve_video_cli"].as_str().is_none() && params["engine"].as_str() != Some("hyperframes") {
-        return analyze_with_filmcraft(s, params, &dir, &hf, &audio, overwrite, &model);
+        return crate::film::cmd_video_exec(s, &json!({
+            "id": "transcript.generate",
+            "params": {"model": model, "language": "auto"},
+            "save": true
+        }));
     }
     let runtime = hyperframes_runtime(params, &hf)?;
     std::fs::create_dir_all(&hf)?;

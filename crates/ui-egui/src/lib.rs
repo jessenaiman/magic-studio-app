@@ -1185,7 +1185,7 @@ impl MagicApp {
                 });
                 ui.add_space(6.0);
 
-                if section_header(ui, "Song Audio & Timing (`workshop.set_audio` / `song.timing`)", true) {
+                if section_header(ui, "Song Audio (`workshop.set_audio`)", true) {
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Audio File", |ui| {
                             if primary_button(ui, "Link Audio").clicked()
@@ -1214,9 +1214,6 @@ impl MagicApp {
                         ui.horizontal(|ui| {
                             if secondary_button(ui, "Analyze Song Beats (`audio.analyze`)").clicked() {
                                 self.run_command(ctx, "audio.analyze", json!({}));
-                            }
-                            if secondary_button(ui, "Sync Song Timing (`song.timing`)").clicked() {
-                                self.run_command(ctx, "song.timing", json!({}));
                             }
                             if secondary_button(ui, "Design Sung Lines (`words.design`)").clicked() {
                                 self.run_command(ctx, "words.design", json!({}));

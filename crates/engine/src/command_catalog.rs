@@ -1405,15 +1405,6 @@ fn specs_storyboard() -> Vec<CommandSpec> {
 
 fn specs_film() -> Vec<CommandSpec> {
     vec![
-        cmd!(
-            "song.timing",
-            "Song Timing and Beats into the Film (HyperFrames, FilmCraft)",
-            ["Song"],
-            None,
-            "{}",
-            always,
-            crate::song_timing::cmd_song_timing
-        ),
         query!(
             "video.film",
             "Film Timeline, Preview and Export Status",

@@ -57,7 +57,16 @@ async function wordsBootstrapStudio(studio) {
   return wordsDesignController.bootstrapStudio(studio);
 }
 async function wordsOpen() {
-  return wordsDesignController.open();
+  const view = $("view-design");
+  if (view.shadowRoot) return;
+  await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "lyrics-built/app.js";
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.append(script);
+  });
+  MagicLyrics.mount(view);
 }
 const wordsFontsLoaded = new Set;
 async function wordsLoadFonts(fonts) {

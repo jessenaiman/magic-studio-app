@@ -1,0 +1,8 @@
+{
+  "productName": "Magic Studio",
+  "version": "0.17.0",
+  "identifier": "ai.storyteller.magic.lyrics",
+  "build": { "frontendDist": "../magic-cli/ui" },
+  "app": { "windows": [], "security": { "csp": null } },
+  "bundle": { "active": false }
+}
