@@ -17,12 +17,14 @@ mod project_view;
 mod storyboard_view;
 mod animation_view;
 mod lyrics_view;
+mod theme;
 
 use project_list::{ProjectList, ProjectListAction};
 use project_view::{ProjectViewAction, ProjectViewState};
 use storyboard_view::{StoryboardAction, StoryboardViewState};
 use animation_view::{AnimationAction, AnimationViewState};
 use lyrics_view::{LyricsAction, LyricsViewState};
+use theme::{apply_theme, stage_tone, signal_color, inspector_field, craft_dial, craft_switch, status_row, section_header, prop_row, number_field};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppView {
@@ -84,6 +86,9 @@ impl magicApp {
             ctx: Some(cc.egui_ctx.clone()),
             external_revision: AtomicU64::new(0),
         }));
+
+        // Apply the native egui design system (dark surfaces, teal accents).
+        apply_theme(&cc.egui_ctx);
 
         let socket_path = start_socket_listener(Arc::clone(&engine), Arc::clone(&shared_ui));
 
