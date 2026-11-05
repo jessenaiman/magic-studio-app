@@ -59,6 +59,7 @@ async function wordsBootstrapStudio(studio) {
 async function wordsOpen() {
   const view = $("view-design");
   if (view.shadowRoot) return;
+  view.style.gridTemplateColumns = "minmax(0, 1fr)";
   await new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "lyrics-built/app.js";
