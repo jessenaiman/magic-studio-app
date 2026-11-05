@@ -48,7 +48,7 @@ enum Profile {
 /// Names earlier installs left behind: the old app name and the retired Python CLI.
 const RETIRED: &[&str] = &["magic-shell", "python-magic-cli"];
 /// Tracked runtime resources the app reads at run time.
-const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/"];
+const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/", "apps/magic-cli/ui/"];
 const RESOURCE_FILES: &[&str] = &["apps/magic-gui/agent.md", "SOURCE-ATTRIBUTION.md", "LICENSE"];
 
 type Result<T> = std::result::Result<T, String>;
@@ -93,7 +93,7 @@ fn wanted_resource(name: &str) -> bool {
 /// Copy tracked runtime resources and record which source and app build they came from.
 fn install_resources(root: &Path, prefix: &Path, app: &Path) -> Result<()> {
     let runtime = prefix.join("share/magic/runtime");
-    for subdir in ["pipeline", ".agents/skills"] {
+    for subdir in ["pipeline", ".agents/skills", "apps/magic-cli/ui"] {
         let dir = runtime.join(subdir);
         if dir.is_dir() {
             io(dir.display(), std::fs::remove_dir_all(&dir))?;

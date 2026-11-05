@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
+mod ui_server;
+
 #[derive(Parser)]
 #[command(
     name = "magic-cli",
@@ -49,6 +51,15 @@ enum Cmd {
         /// Optional bearer token for the `--control` channel
         #[arg(long)]
         token: Option<String>,
+    },
+    /// Open the Magic web UI (lyrics, animation, storyboard) in the browser, served on loopback
+    Ui {
+        /// Loopback port to serve on
+        #[arg(long, default_value_t = 8765)]
+        port: u16,
+        /// Print the address instead of opening the browser
+        #[arg(long)]
+        no_open: bool,
     },
     /// Work on a storyboard document built from the neutral template
     Storyboard {
@@ -617,6 +628,7 @@ fn main() {
                     srv.serve().map_err(|e| e.to_string())?;
                 }
             }
+            Some(Cmd::Ui { port, no_open }) => ui_server::serve(&mut session, port, !no_open)?,
             Some(Cmd::Storyboard {
                 project,
                 document,
