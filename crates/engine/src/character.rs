@@ -154,6 +154,16 @@ pub(crate) fn effectcraft(
     project: Option<&Path>,
     steps: &[Value],
 ) -> Result<Vec<Value>> {
+    effectcraft_with_save(dir, project, steps, true)
+}
+
+/// Run EffectCraft commands, optionally saving the opened project after the steps.
+pub(crate) fn effectcraft_with_save(
+    dir: &Path,
+    project: Option<&Path>,
+    steps: &[Value],
+    save: bool,
+) -> Result<Vec<Value>> {
     let base = project.and_then(Path::parent).unwrap_or(dir);
     let mut session = match project {
         Some(path) => open_effectcraft(path)?,
@@ -172,7 +182,7 @@ pub(crate) fn effectcraft(
         })?;
         out.push(value);
     }
-    if let Some(path) = project {
+    if let Some(path) = project.filter(|_| save) {
         session
             .execute_checked("file.saveAs", json!({"path": path}))
             .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
