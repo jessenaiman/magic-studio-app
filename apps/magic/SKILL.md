@@ -52,6 +52,49 @@ Confirm IDs in the live controls; installed UI can differ from source.
 Inspect Studio's actual state and linked project before describing its renderer.
 Use `ui set` for controls and the registry command for project operations.
 
+## Storyboard documents
+
+A storyboard is one `.designcraft` file made from the neutral template. Its
+pages come in four kinds — cover, world (look development), character study and
+scene — and every editable frame carries a script label, so the page layout
+stays fixed while the text and images inside it change. Discover the pages and
+their labels before editing:
+
+```bash
+magic-cli storyboard pages --path /absolute/storyboard.designcraft
+magic-cli storyboard slots --path /absolute/storyboard.designcraft --page 1
+```
+
+Add a page copied from a template page, add a section (a parent page) and
+apply it to pages, then fill the new page:
+
+```bash
+magic-cli storyboard add --path /absolute/storyboard.designcraft --archetype world --at 2 \
+  --text world_heading="THE DESERT / L02"
+magic-cli storyboard section --path /absolute/storyboard.designcraft --name B --based-on A-Parent --page 4
+magic-cli storyboard set --path /absolute/storyboard.designcraft --label world_register \
+  --text world_register="L01 Ocean Stage / stage-ocean-v1.png / 1672 x 941 px"
+```
+
+Set text and images with `--text SLOT=VALUE` and `--image SLOT=PATH`; target a
+page with `--page`, `--label` or `--scene`.
+
+Put new art over an existing slot without losing the original: the revision
+becomes a new object on its own layer, and the frame it covers stays in the
+document, hidden, so the earlier art can be shown again to compare.
+
+```bash
+magic-cli storyboard overlay --path /absolute/storyboard.designcraft --page 4 \
+  --slot hero_image --image /absolute/revision.png --layer "Revision 01"
+```
+
+Render a page to look at it, and export the document when it is finished:
+
+```bash
+magic-cli storyboard render --path /absolute/storyboard.designcraft --page 1 --out /absolute/page.png
+magic-cli storyboard export --path /absolute/storyboard.designcraft --pdf /absolute/storyboard.pdf
+```
+
 ## Save and verify the result
 
 ```bash

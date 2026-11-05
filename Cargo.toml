@@ -14,39 +14,22 @@ repository = "https://github.com/jessenaiman/magic-studio-app"
 # Magic's own engine
 magic-engine = { path = "crates/engine" }
 
-# Craft engines
-photocraft-engine = { git = "https://github.com/storytold/photocraft" }
-vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft" }
-filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
-effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
-deckcraft-engine = { git = "https://github.com/storytold/deckcraft" }
+# Craft engines and domain crates (version-independent git tracking for `cargo update`)
 designcraft-engine = { git = "https://github.com/storytold/designcraft" }
 designcraft-render = { git = "https://github.com/storytold/designcraft" }
-
-# Additional Craft crates used directly in-process by Magic
+effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
+effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
 filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
 filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-project = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-speech = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "download"] }
 filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
-effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
+photocraft-engine = { git = "https://github.com/storytold/photocraft" }
 texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
+vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft", default-features = false }
 
-# Shared foundations
-thiserror = "2"
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
-url = "2.5.8"
-log = "0.4"
-chrono = { version = "0.4.45", default-features = false, features = ["std"] }
-rayon = "1"
-proptest = "1"
-roxmltree = "0.21"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-glam = "0.24"
-
-# Shared Craft libraries (version-independent git tracking)
+# Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking)
+craft-ai-core = { git = "https://github.com/storytold/craft-libs" }
 craft-atomic = { git = "https://github.com/storytold/craft-libs" }
 craft-doc = { git = "https://github.com/storytold/craft-libs" }
 craft-docpath = { git = "https://github.com/storytold/craft-libs" }
@@ -56,6 +39,23 @@ craft-pcraft-format = { git = "https://github.com/storytold/craft-libs" }
 craft-settings = { git = "https://github.com/storytold/craft-libs" }
 craft-update = { git = "https://github.com/storytold/craft-libs" }
 craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs" }
+
+# CLI, TUI, MCP, and system foundations
+clap = { version = "4.6", features = ["derive", "env"] }
+glam = "0.24"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+log = "0.4"
+rustix = { version = "1.1.5", features = ["fs", "net", "process"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+ureq = { version = "3.5.0", default-features = false, features = ["rustls", "json"] }
+
+# Desktop GUI packages (`apps/magic` only)
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
+tauri-build = { version = "2" }
+tauri-plugin-dialog = { version = "2" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -75,15 +75,19 @@ debug = "line-tables-only"
 opt-level = 2
 debug = false
 
+# symphonia's FLAC decoder restores LPC samples as `residual + (prediction as i32)`. In a valid
+# 32-bit stream the prediction can leave the i32 range while the sum does not, so a debug build
+# panics where a release build wraps to the right sample.
+[profile.dev.package.symphonia-bundle-flac]
+overflow-checks = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
-epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 krilla = { git = "https://github.com/storytold/craft-libs" }
 hayro = { git = "https://github.com/storytold/craft-libs" }
 hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
 hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
 hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }
-# Note: egui-based Craft apps also patch ecolor/emath/epaint/egui/eframe/winit from storytold/egui.git & storytold/winit.git

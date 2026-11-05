@@ -272,12 +272,7 @@ fn requires_ui(_: &mut crate::Session, _: &serde_json::Value) -> crate::Result<s
 
 fn specs_ui_controls() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "ui.state",
-            "Live window state",
-            "{}",
-            requires_ui
-        ),
+        query!("ui.state", "Live window state", "{}", requires_ui),
         query!(
             "ui.elements",
             "Visible controls",
@@ -1315,28 +1310,58 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             "{\"path\":\"optional storyboard.designcraft\"}",
             crate::storyboard::cmd_storyboard_scenes
         ),
+        query!(
+            "storyboard.pages",
+            "Storyboard Pages, Their Archetype, Section and Slots",
+            "{\"path\":\"optional storyboard.designcraft\"}",
+            crate::storyboard::cmd_storyboard_pages
+        ),
+        query!(
+            "storyboard.slots",
+            "The Labelled Slots of One Storyboard Page",
+            "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1}",
+            crate::storyboard::cmd_storyboard_slots
+        ),
         cmd!(
             "storyboard.set",
-            "Edit a Scene: Text, Images, Contact Strip",
+            "Edit a Page: Text, Images, Contact Strip",
             ["Storyboard"],
             None,
-            "{\"path\":\"optional\",\"scene\":1,\"fields\":{\"label\":\"text for scene_id, title, cue, time, purpose, staging_notes, revision, overall_design, location_ref, character_shared, character_lead, asset_geometry, match_note, exact_prompt ...\"},\"images\":{\"label\":\"file for hero_image, source_image, result_image, sketch_left, sketch_right\"},\"refs\":[\"1 to 12 image files for the contact strip\"]}",
+            "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1,\"fields\":{\"label\":\"text for the slot, e.g. running_title, cue, world_heading\"},\"images\":{\"label\":\"file for hero_image, source_image, result_image, sketch_left, sketch_right\"},\"refs\":[\"1 to 12 image files for the contact strip\"]}",
             always,
             crate::storyboard::cmd_storyboard_set
         ),
         cmd!(
             "storyboard.add",
-            "Add a Scene (Copy of a Scene Spread)",
+            "Add a Page (Copy of a Template Page)",
             ["Storyboard"],
             None,
-            "{\"path\":\"optional\",\"from\":1,\"fields\":{},\"images\":{},\"refs\":[]}",
+            "{\"path\":\"optional\",\"archetype\":\"scene\",\"at\":0,\"fields\":{},\"images\":{},\"refs\":[]}",
             always,
             crate::storyboard::cmd_storyboard_add
         ),
+        cmd!(
+            "storyboard.section",
+            "Add a Section (Parent Page) and Apply It",
+            ["Storyboard"],
+            None,
+            "{\"path\":\"optional\",\"name\":\"B\",\"based_on\":\"A-Parent\",\"pages\":[0,1]}",
+            always,
+            crate::storyboard::cmd_storyboard_section
+        ),
+        cmd!(
+            "storyboard.overlay",
+            "Overlay New Art, Keeping the Original Underneath",
+            ["Storyboard"],
+            None,
+            "{\"path\":\"optional\",\"page\":0,\"slot\":\"hero_image\",\"image\":\"/absolute/new.png\",\"layer\":\"Revision\",\"hide_original\":true}",
+            always,
+            crate::storyboard::cmd_storyboard_overlay
+        ),
         query!(
             "storyboard.thumbnail",
-            "Render One Scene Spread to PNG",
-            "{\"path\":\"optional\",\"scene\":1,\"out\":\"/absolute/scene.png\",\"scale\":0.5}",
+            "Render One Storyboard Page to PNG",
+            "{\"path\":\"optional\",\"page\":0,\"scene\":1,\"out\":\"/absolute/scene.png\",\"scale\":0.5}",
             crate::storyboard::cmd_storyboard_thumbnail
         ),
         query!(

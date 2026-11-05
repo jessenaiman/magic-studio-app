@@ -14,13 +14,13 @@ name = "magic"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2" }
+tauri-build = { workspace = true }
 
 [dependencies]
+clap = { workspace = true }
 magic-engine = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { version = "2", features = ["protocol-asset", "devtools"] }
-tauri-plugin-dialog = { version = "2" }
-clap = { version = "4.6", features = ["derive", "env"] }
+tauri = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
 

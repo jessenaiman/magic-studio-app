@@ -10,22 +10,21 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-thiserror = { workspace = true }
+glam = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-log = { workspace = true }
-image = { workspace = true }
-glam = { workspace = true }
-sha2 = "0.10"
-ureq = { version = "3.5.0", default-features = false, features = ["rustls", "json"] }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+ureq = { workspace = true }
 
 # Craft engines and shared Craft libraries called directly in-process
+craft-ai-core = { workspace = true }
 craft-atomic = { workspace = true }
 craft-doc = { workspace = true }
 craft-docpath = { workspace = true }
-craft-media = { workspace = true }
-craft-update = { workspace = true }
-deckcraft-engine = { workspace = true }
+craft-settings = { workspace = true }
 designcraft-engine = { workspace = true }
 designcraft-render = { workspace = true }
 effectcraft-engine = { workspace = true }
@@ -34,12 +33,10 @@ filmcraft-audio-dsp = { workspace = true }
 filmcraft-captions = { workspace = true }
 filmcraft-engine = { workspace = true }
 filmcraft-media = { workspace = true }
-filmcraft-project = { workspace = true }
-filmcraft-speech = { workspace = true }
 filmcraft-time = { workspace = true }
 photocraft-engine = { workspace = true }
 texturecraft-formats = { workspace = true }
 vectorcraft-engine = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1.1.5", features = ["fs", "net", "process"] }
+rustix = { workspace = true }

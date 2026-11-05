@@ -10,6 +10,6 @@ publish = false
 workspace = true
 
 [dependencies]
-clap = { version = "4.6", features = ["derive"] }
+clap = { workspace = true }
 serde_json = { workspace = true }
-sha2 = "0.10"
+sha2 = { workspace = true }
