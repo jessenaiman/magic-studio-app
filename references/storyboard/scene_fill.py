@@ -43,6 +43,7 @@ def main():
     text_keys = [k for k in sc if k not in ("refs",) and not k.endswith("_path") and k not in IMAGE_KEYS]
     refs = sc.get("refs", [])
     labels = sorted({l["label"] for l in BUILD["labels"] if l["spread"] == src})
+    holes = []
     n_holes = sum(1 for l in BUILD["labels"] if l["spread"] == src and l["label"] == "strip_hole")
     # phase 1: duplicate the spread, then find the labelled frames (the new ids are the highest)
     steps = [c("layout.pages.duplicateSpread", spread=src, atEnd=True)]
@@ -54,7 +55,7 @@ def main():
         spread_count = sum(1 for _ in ids)
         new[l] = ids[-1]          # duplicates are created last, so the newest id is on the new spread
         if l == "strip_hole":
-            holes = ids[-n_holes:]
+            holes = ids[-n_holes:] if n_holes else []
     page = res[0]["page"]
     # phase 2: story ids for text frames
     texts = {k: v for k, v in sc.items() if k in new and k not in IMAGE_KEYS and k != "refs"}

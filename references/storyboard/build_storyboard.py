@@ -16,6 +16,7 @@ NELLY = os.path.abspath(os.path.join(HERE, "../../media/merriweather/nelly"))
 W, H = 1600, 1000          # one page == one open-book spread
 PW = 800                   # page width (left page 0..800, right 800..1600)
 
+NEUTRAL = len(sys.argv) > 1 and sys.argv[1] == "template"   # the template carries no design style
 INK, RUST, CREAM, KRAFT = "Ink", "Rust", "Cream", "Kraft"
 SW = {
     "Ink": "#35291f", "Rust": "#9a3b2a", "Cream": "#fdf5e2", "Kraft": "#ecd9ab",
@@ -27,6 +28,14 @@ SERIF_D = "Fraunces"
 SERIF = "Newsreader"
 SANS = "Nunito"
 HAND = "Caveat"
+
+
+if NEUTRAL:
+    SW.update({"Ink": "#222222", "Rust": "#555555", "Cream": "#ffffff", "Kraft": "#ffffff", "Tape": "#e8e8e8",
+               "Navy": "#555555", "Slot": "#ececec", "Film": "#d9d9d9", "Pencil": "#777777", "Moss": "#555555",
+               "Sun": "#555555", "Hair": "#cfcfcf", "Leather": "#cfcfcf"})
+    SERIF_D = SERIF = SANS = "Noto Sans"
+    HAND = "Noto Sans"
 
 
 class B:
@@ -61,6 +70,8 @@ class B:
     # -- primitives ---------------------------------------------------
     def rect(self, r, fill=None, stroke=None, sw=0, label=None, shadow=None, shape="rectangle",
              opacity=None, dash=False):
+        if NEUTRAL and fill == "Cream" and not stroke:
+            stroke, sw = "Hair", 0.8
         i = self.cmd("frame.create", {"spread": self.spread, "rect": list(r), "shape": shape})
         ids = [self.ref(i)]
         self._style(ids, fill, stroke, sw, label, shadow, opacity, dash)
@@ -79,25 +90,24 @@ class B:
             self.cmd("object.stroke", p)
         else:
             self.cmd("object.stroke", {"swatch": "[None]", "weight": 0})
-        if shadow:
+        if shadow and not NEUTRAL:
             d, s, o = shadow
             self.cmd("object.dropShadow", {"on": True, "distance": d, "size": s, "opacity": o,
                                            "angle": 125, "globalLight": False, "ids": ids})
-        if opacity is not None:
+        if opacity is not None and not NEUTRAL:
             self.cmd("object.opacity", {"opacity": opacity, "ids": ids})
         if label:
             self.cmd("object.label", {"label": label, "ids": ids})
 
     def text(self, r, s, font=SERIF, style=None, size=14, color=INK, label=None, align="left",
              leading=None, tracking=0, caps=False, valign="top"):
-        if font == HAND:
+        if font == HAND and not NEUTRAL:
             r = list(r)
             r[3] = max(r[3], r[1] + size * 1.3 * 1.25 * (s.count("\n") + 1) + 2)
             size = size * 1.3
             if leading:
                 leading = leading * 1.2
-        if font != SANS:
-            s = s.replace("\u2192", "\u203a").replace("\u2248", "~")
+        s = s.replace("\u2192", "to" if NEUTRAL else "\u203a").replace("\u2248", "~")
         i = self.cmd("frame.create", {"spread": self.spread, "rect": list(r), "content": "text", "text": s})
         ids = [self.ref(i)]
         self.cmd("selection.set", {"ids": ids})
@@ -126,7 +136,7 @@ class B:
             self.cmd("object.fit", {"mode": fitmode, "ids": [self.ref(i)]})
             ids = [self.ref(i)]
             self.cmd("selection.set", {"ids": ids})
-            if shadow:
+            if shadow and not NEUTRAL:
                 d, s, o = shadow
                 self.cmd("object.dropShadow", {"on": True, "distance": d, "size": s, "opacity": o,
                                                "angle": 125, "globalLight": False, "ids": ids})
@@ -141,6 +151,9 @@ class B:
         return i
 
     def rotate(self, ids, deg):
+        if NEUTRAL:
+            return
+        ids = [i for i in ids if i is not None]
         self.cmd("transform.rotate", {"angle": deg, "ids": [self.ref(i) if isinstance(i, int) else i for i in ids]})
 
     def line(self, a, b, color=RUST, w=1.2, label=None):
@@ -152,6 +165,8 @@ class B:
         return i
 
     def tape(self, cx, cy, w=110, h=28, rot=0, label=None):
+        if NEUTRAL:
+            return None
         p = os.path.join(ASSETS, "washi-tape.png")
         r = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]
         if os.path.exists(p):
@@ -165,7 +180,7 @@ class B:
     def polaroid(self, r, path, label, caption, rot=0, ph=None, pad=10, bottom=34, tape_at=0.5):
         """Cream print card with image + handwritten caption + tape. Returns all ids."""
         card = [r[0], r[1], r[2], r[3]]
-        c = self.rect(card, fill="Cream", shadow=(5, 9, 0.38), label=label + "_card")
+        c = self.rect(card, fill="Cream", stroke="Hair" if NEUTRAL else None, sw=1 if NEUTRAL else 0, shadow=(5, 9, 0.38), label=label + "_card")
         im = [r[0] + pad, r[1] + pad, r[2] - pad, r[3] - bottom]
         img = self.image(im, path, label=label, ph_text=ph)
         cap = self.text([r[0] + pad, r[3] - bottom + 6, r[2] - pad, r[3] - 4], caption, font=HAND, size=15,
@@ -177,6 +192,8 @@ class B:
         return ids
 
     def taped_label(self, x, y, w, s, label, size=12, h=24, rot=0, font=SANS, style="Bold"):
+        if NEUTRAL:
+            return self.text([x, y + 2, x + w, y + h], s, font=SANS, style="Bold", size=size, color=INK, label=label, valign="center")
         t1 = self.rect([x, y, x + w, y + h], fill="Tape", opacity=88, shadow=(1.5, 3, 0.25))
         t2 = self.text([x + 8, y + 3, x + w - 8, y + h - 2], s, font=font, style=style, size=size, color=INK,
                        label=label, valign="center")
@@ -185,11 +202,15 @@ class B:
         return t2
 
     def stitch(self, r, inset=6, color="Hair", w=1.1):
+        if NEUTRAL:
+            return
         """Running-stitch border, like thread sewn into the paper."""
         self.rect([r[0] + inset, r[1] + inset, r[2] - inset, r[3] - inset], fill=None, stroke=color, sw=w, dash=True)
 
     def felt_label(self, x, y, w, s, label, fill="Moss", size=13, h=30, rot=0, color="Cream", font=SERIF_D, style="Bold"):
         """Felt-scrap label with a stitched edge."""
+        if NEUTRAL:
+            return self.text([x, y + 2, x + w, y + h], s, font=SANS, style="Bold", size=size, color=INK, label=label, valign="center")
         f = self.rect([x, y, x + w, y + h], fill=fill, shadow=(2, 4, 0.3), shape="rectangle")
         st = self.rect([x + 4, y + 4, x + w - 4, y + h - 4], fill=None, stroke="Cream", sw=1, dash=True, opacity=70)
         t = self.text([x + 10, y + 2, x + w - 10, y + h - 2], s, font=font, style=style, size=size, color=color,
@@ -232,6 +253,14 @@ class B:
 
     # -- paper & page furniture ---------------------------------------
     def paper(self, page_no_left=None, page_no_right=None):
+        if NEUTRAL:
+            self.rect([0, 0, W, H], fill="Cream")
+            self.line((PW, 0), (PW, H), "Hair", 0.8)
+            if page_no_left:
+                self.text([50, 950, 150, 970], page_no_left, font=SANS, size=10, color="Pencil", label="page_no_left")
+            if page_no_right:
+                self.text([W - 150, 950, W - 50, 970], page_no_right, font=SANS, size=10, color="Pencil", align="right", label="page_no_right")
+            return
         paper = os.path.join(ASSETS, "kraft-paper.png")
         if os.path.exists(paper):
             self.image([0, 0, W, H], paper, label="paper_bg")
@@ -274,7 +303,8 @@ def spread_cover(b, d):
     b.text([60, 238, 740, 272], d["subtitle"], font=SERIF, style="Italic", size=22, color="Rust", label="subtitle")
     ids = []
     ids.append(b.rect([60, 300, 740, 300 + 680 * 9 / 16 + 56], fill="Cream", shadow=(6, 10, 0.4), label="key_art_card"))
-    ids.append(b.rect([66, 306, 734, 300 + 680 * 9 / 16 + 50], fill=None, stroke="Hair", sw=1, dash=True))
+    if not NEUTRAL:
+        ids.append(b.rect([66, 306, 734, 300 + 680 * 9 / 16 + 50], fill=None, stroke="Hair", sw=1, dash=True))
     key = [72, 312, 728, 312 + 656 * 9 / 16]
     ids.append(b.image(key, d.get("key_art"), label="key_art", ph_text="[Key art 16:9]"))
     ids.append(b.text([72, key[3] + 8, 728, key[3] + 36], d["key_caption"], font=HAND, size=16, color="Pencil",
@@ -303,7 +333,7 @@ def spread_cover(b, d):
     b.text([PW + 50, 388, W - 50, 450], d["format_notes"], font=SERIF, size=14.5, color=INK, leading=19,
            label="format_notes")
     # song map: the song in scenes, with the artist's printed actions
-    b.text([PW + 50, 462, W - 50, 484], "THE SONG IN FIVE SCENES", font=SANS, style="Bold", size=12, color="Rust",
+    b.text([PW + 50, 462, W - 50, 484], "SCENE MAP" if NEUTRAL else "THE SONG IN FIVE SCENES", font=SANS, style="Bold", size=12, color="Rust",
            tracking=200, label="songmap_heading")
     b.line((PW + 50, 488), (W - 50, 488), RUST, 1)
     n = len(d["songmap"])
@@ -530,7 +560,7 @@ def spread_scene(b, d, template=False):
     strip = [x - 4, cy, W - 44, cy + 112]
     b.rect(strip, fill="Film", label="contact_strip", shadow=(3, 6, 0.35))
     hx = strip[0] + 8
-    while hx < strip[2] - 10:
+    while hx < strip[2] - 10 and not NEUTRAL:
         b.rect([hx, cy + 4, hx + 8, cy + 9], fill="Cream", opacity=90, label="strip_hole")
         b.rect([hx, cy + 103, hx + 8, cy + 108], fill="Cream", opacity=90, label="strip_hole")
         hx += 18

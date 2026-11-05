@@ -27,39 +27,6 @@
   "labels": [
     {
       "spread": 0,
-      "label": "cover_paper_bg",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "graphic"
-    },
-    {
-      "spread": 0,
-      "label": "cover_book_edge",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 0,
-      "label": "cover_spine_shadow",
-      "rect": [
-        754,
-        0,
-        846,
-        1000
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 0,
       "label": "cover_page_no_left",
       "rect": [
         50,
@@ -161,10 +128,10 @@
       "spread": 0,
       "label": "cover_badge",
       "rect": [
-        566,
+        556,
         60,
-        730,
-        88
+        740,
+        90
       ],
       "kind": "text"
     },
@@ -194,10 +161,10 @@
       "spread": 0,
       "label": "cover_revision",
       "rect": [
-        1428,
-        99,
-        1542,
-        118
+        1420,
+        98,
+        1550,
+        120
       ],
       "kind": "text"
     },
@@ -227,10 +194,10 @@
       "spread": 0,
       "label": "cover_d01_tag",
       "rect": [
-        872,
+        862,
         216,
-        1022,
-        236
+        1032,
+        238
       ],
       "kind": "text"
     },
@@ -403,10 +370,10 @@
       "spread": 0,
       "label": "cover_reg_id_1",
       "rect": [
-        868,
+        858,
         681,
-        896,
-        701
+        906,
+        703
       ],
       "kind": "text"
     },
@@ -447,10 +414,10 @@
       "spread": 0,
       "label": "cover_reg_id_2",
       "rect": [
-        868,
+        858,
         718,
-        896,
-        738
+        906,
+        740
       ],
       "kind": "text"
     },
@@ -491,10 +458,10 @@
       "spread": 0,
       "label": "cover_reg_id_3",
       "rect": [
-        868,
+        858,
         755,
-        896,
-        775
+        906,
+        777
       ],
       "kind": "text"
     },
@@ -535,10 +502,10 @@
       "spread": 0,
       "label": "cover_reg_id_4",
       "rect": [
-        868,
+        858,
         792,
-        896,
-        812
+        906,
+        814
       ],
       "kind": "text"
     },
@@ -579,10 +546,10 @@
       "spread": 0,
       "label": "cover_reg_id_5",
       "rect": [
-        868,
+        858,
         829,
-        896,
-        849
+        906,
+        851
       ],
       "kind": "text"
     },
@@ -623,10 +590,10 @@
       "spread": 0,
       "label": "cover_reg_id_6",
       "rect": [
-        868,
+        858,
         866,
-        896,
-        886
+        906,
+        888
       ],
       "kind": "text"
     },
@@ -673,39 +640,6 @@
         940
       ],
       "kind": "text"
-    },
-    {
-      "spread": 1,
-      "label": "world_paper_bg",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "graphic"
-    },
-    {
-      "spread": 1,
-      "label": "world_book_edge",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 1,
-      "label": "world_spine_shadow",
-      "rect": [
-        754,
-        0,
-        846,
-        1000
-      ],
-      "kind": "shape"
     },
     {
       "spread": 1,
@@ -788,10 +722,10 @@
       "spread": 1,
       "label": "world_badge",
       "rect": [
-        566,
+        556,
         96,
-        730,
-        124
+        740,
+        126
       ],
       "kind": "text"
     },
@@ -835,7 +769,7 @@
         54,
         624.25,
         746,
-        652.25
+        650.25
       ],
       "kind": "text"
     },
@@ -989,7 +923,7 @@
         854,
         782,
         1170,
-        808.375
+        806
       ],
       "kind": "text"
     },
@@ -1033,7 +967,7 @@
         1240,
         794,
         1556,
-        820.375
+        818
       ],
       "kind": "text"
     },
@@ -1044,7 +978,7 @@
         1410,
         560,
         1566,
-        584.75
+        580
       ],
       "kind": "text"
     },
@@ -1055,7 +989,7 @@
         850,
         850,
         1550,
-        881.25
+        880
       ],
       "kind": "text"
     },
@@ -1069,39 +1003,6 @@
         936
       ],
       "kind": "text"
-    },
-    {
-      "spread": 2,
-      "label": "char_paper_bg",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "graphic"
-    },
-    {
-      "spread": 2,
-      "label": "char_book_edge",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 2,
-      "label": "char_spine_shadow",
-      "rect": [
-        754,
-        0,
-        846,
-        1000
-      ],
-      "kind": "shape"
     },
     {
       "spread": 2,
@@ -1184,10 +1085,10 @@
       "spread": 2,
       "label": "char_badge",
       "rect": [
-        566,
+        556,
         96,
-        730,
-        124
+        740,
+        126
       ],
       "kind": "text"
     },
@@ -1424,39 +1325,6 @@
     },
     {
       "spread": 3,
-      "label": "paper_bg",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "graphic"
-    },
-    {
-      "spread": 3,
-      "label": "book_edge",
-      "rect": [
-        0,
-        0,
-        1600,
-        1000
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "spine_shadow",
-      "rect": [
-        754,
-        0,
-        846,
-        1000
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
       "label": "page_no_left",
       "rect": [
         50,
@@ -1503,10 +1371,10 @@
       "spread": 3,
       "label": "badge",
       "rect": [
-        62,
+        52,
         82,
-        238,
-        112
+        248,
+        114
       ],
       "kind": "text"
     },
@@ -1712,10 +1580,10 @@
       "spread": 3,
       "label": "ref_header",
       "rect": [
-        852,
-        43,
-        1046,
-        68
+        844,
+        42,
+        1054,
+        70
       ],
       "kind": "text"
     },
@@ -1723,10 +1591,10 @@
       "spread": 3,
       "label": "revision",
       "rect": [
-        1468,
-        43,
-        1542,
-        64
+        1460,
+        42,
+        1550,
+        66
       ],
       "kind": "text"
     },
@@ -1756,10 +1624,10 @@
       "spread": 3,
       "label": "location_ref_tag",
       "rect": [
-        858,
-        151,
-        984,
-        168
+        850,
+        150,
+        992,
+        170
       ],
       "kind": "text"
     },
@@ -1778,10 +1646,10 @@
       "spread": 3,
       "label": "character_shared_tag",
       "rect": [
-        858,
-        197,
-        984,
-        214
+        850,
+        196,
+        992,
+        216
       ],
       "kind": "text"
     },
@@ -1800,10 +1668,10 @@
       "spread": 3,
       "label": "character_lead_tag",
       "rect": [
-        858,
-        243,
-        984,
-        260
+        850,
+        242,
+        992,
+        262
       ],
       "kind": "text"
     },
@@ -1822,10 +1690,10 @@
       "spread": 3,
       "label": "asset_geometry_tag",
       "rect": [
-        858,
-        289,
-        984,
-        306
+        850,
+        288,
+        992,
+        308
       ],
       "kind": "text"
     },
@@ -1880,7 +1748,7 @@
         864,
         542,
         1166,
-        568.375
+        566
       ],
       "kind": "text"
     },
@@ -1924,7 +1792,7 @@
         1212,
         560,
         1530,
-        586.375
+        584
       ],
       "kind": "text"
     },
@@ -1935,7 +1803,7 @@
         1180,
         614,
         1540,
-        642.0
+        640
       ],
       "kind": "text"
     },
@@ -1954,10 +1822,10 @@
       "spread": 3,
       "label": "exact_prompt_tag",
       "rect": [
-        864,
-        643,
-        968,
-        662
+        856,
+        642,
+        976,
+        664
       ],
       "kind": "text"
     },
@@ -1980,864 +1848,6 @@
         800,
         1556,
         912
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        854,
-        804,
-        862,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        854,
-        903,
-        862,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        872,
-        804,
-        880,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        872,
-        903,
-        880,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        890,
-        804,
-        898,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        890,
-        903,
-        898,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        908,
-        804,
-        916,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        908,
-        903,
-        916,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        926,
-        804,
-        934,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        926,
-        903,
-        934,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        944,
-        804,
-        952,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        944,
-        903,
-        952,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        962,
-        804,
-        970,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        962,
-        903,
-        970,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        980,
-        804,
-        988,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        980,
-        903,
-        988,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        998,
-        804,
-        1006,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        998,
-        903,
-        1006,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1016,
-        804,
-        1024,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1016,
-        903,
-        1024,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1034,
-        804,
-        1042,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1034,
-        903,
-        1042,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1052,
-        804,
-        1060,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1052,
-        903,
-        1060,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1070,
-        804,
-        1078,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1070,
-        903,
-        1078,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1088,
-        804,
-        1096,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1088,
-        903,
-        1096,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1106,
-        804,
-        1114,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1106,
-        903,
-        1114,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1124,
-        804,
-        1132,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1124,
-        903,
-        1132,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1142,
-        804,
-        1150,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1142,
-        903,
-        1150,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1160,
-        804,
-        1168,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1160,
-        903,
-        1168,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1178,
-        804,
-        1186,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1178,
-        903,
-        1186,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1196,
-        804,
-        1204,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1196,
-        903,
-        1204,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1214,
-        804,
-        1222,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1214,
-        903,
-        1222,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1232,
-        804,
-        1240,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1232,
-        903,
-        1240,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1250,
-        804,
-        1258,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1250,
-        903,
-        1258,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1268,
-        804,
-        1276,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1268,
-        903,
-        1276,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1286,
-        804,
-        1294,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1286,
-        903,
-        1294,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1304,
-        804,
-        1312,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1304,
-        903,
-        1312,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1322,
-        804,
-        1330,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1322,
-        903,
-        1330,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1340,
-        804,
-        1348,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1340,
-        903,
-        1348,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1358,
-        804,
-        1366,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1358,
-        903,
-        1366,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1376,
-        804,
-        1384,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1376,
-        903,
-        1384,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1394,
-        804,
-        1402,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1394,
-        903,
-        1402,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1412,
-        804,
-        1420,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1412,
-        903,
-        1420,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1430,
-        804,
-        1438,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1430,
-        903,
-        1438,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1448,
-        804,
-        1456,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1448,
-        903,
-        1456,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1466,
-        804,
-        1474,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1466,
-        903,
-        1474,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1484,
-        804,
-        1492,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1484,
-        903,
-        1492,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1502,
-        804,
-        1510,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1502,
-        903,
-        1510,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1520,
-        804,
-        1528,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1520,
-        903,
-        1528,
-        908
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1538,
-        804,
-        1546,
-        809
-      ],
-      "kind": "shape"
-    },
-    {
-      "spread": 3,
-      "label": "strip_hole",
-      "rect": [
-        1538,
-        903,
-        1546,
-        908
       ],
       "kind": "shape"
     },
@@ -2980,7 +1990,7 @@
         850,
         924,
         1550,
-        948.75
+        944
       ],
       "kind": "text"
     }
