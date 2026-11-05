@@ -5,7 +5,7 @@
 
 SCENE.json (all keys optional; text keys take strings, image keys take file paths):
   text:   running_title running_sub badge section hand_note scene_id title cue time purpose
-          staging_1..3 revision overall_design location_ref character_shared character_lead
+          staging_notes revision overall_design location_ref character_shared character_lead
           asset_geometry match_note exact_prompt strip_note source_image_caption result_image_caption
           page_no_left page_no_right
   images: hero_image source_image result_image sketch_left sketch_right

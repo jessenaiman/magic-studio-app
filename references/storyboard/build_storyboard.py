@@ -23,10 +23,10 @@ SW = {
     "Leather": "#6b4630", "Pencil": "#6e665d", "Moss": "#5f7a4c", "Sun": "#e9a23b",
     "Spine0": "#000000", "Hair": "#c9a47a",
 }
-SERIF_D = "Noto Serif Display"
-SERIF = "Noto Serif"
-SANS = "Noto Sans"
-HAND = "Z003"
+SERIF_D = "Fraunces"
+SERIF = "Newsreader"
+SANS = "Nunito"
+HAND = "Caveat"
 
 
 class B:
@@ -49,6 +49,8 @@ class B:
             self._pending = (params.get("rect"), params.get("content") or "shape")
         elif name == "object.label":
             rect, kind = getattr(self, "_pending", (None, None))
+            if self.spread < 3:      # cover / world / character: namespaced so scene labels stay unique
+                params = dict(params, label=["cover_", "world_", "char_"][self.spread] + params["label"])
             self.labels.append({"spread": self.spread, "label": params["label"], "rect": rect, "kind": kind})
         self.lines.append({"command": name, "params": params})
         return len(self.lines) - 1
@@ -88,6 +90,12 @@ class B:
 
     def text(self, r, s, font=SERIF, style=None, size=14, color=INK, label=None, align="left",
              leading=None, tracking=0, caps=False, valign="top"):
+        if font == HAND:
+            r = list(r)
+            r[3] = max(r[3], r[1] + size * 1.3 * 1.25 * (s.count("\n") + 1) + 2)
+            size = size * 1.3
+            if leading:
+                leading = leading * 1.2
         if font != SANS:
             s = s.replace("\u2192", "\u203a").replace("\u2248", "~")
         i = self.cmd("frame.create", {"spread": self.spread, "rect": list(r), "content": "text", "text": s})
@@ -176,6 +184,20 @@ class B:
             self.rotate([t1, t2], rot)
         return t2
 
+    def stitch(self, r, inset=6, color="Hair", w=1.1):
+        """Running-stitch border, like thread sewn into the paper."""
+        self.rect([r[0] + inset, r[1] + inset, r[2] - inset, r[3] - inset], fill=None, stroke=color, sw=w, dash=True)
+
+    def felt_label(self, x, y, w, s, label, fill="Moss", size=13, h=30, rot=0, color="Cream", font=SERIF_D, style="Bold"):
+        """Felt-scrap label with a stitched edge."""
+        f = self.rect([x, y, x + w, y + h], fill=fill, shadow=(2, 4, 0.3), shape="rectangle")
+        st = self.rect([x + 4, y + 4, x + w - 4, y + h - 4], fill=None, stroke="Cream", sw=1, dash=True, opacity=70)
+        t = self.text([x + 10, y + 2, x + w - 10, y + h - 2], s, font=font, style=style, size=size, color=color,
+                      label=label, valign="center", align="center")
+        if rot:
+            self.rotate([f, st, t], rot)
+        return t
+
     def crop_marks(self, r, color="Pencil", n=14, w=1.1):
         x0, y0, x1, y1 = r
         for (cx, cy, dx, dy) in [(x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)]:
@@ -247,19 +269,20 @@ def spread_cover(b, d):
     b.text([60, 58, 740, 82], d["kicker"], font=SANS, style="Bold", size=13, color="Rust", tracking=300,
            label="kicker")
     b.line((60, 90), (740, 90), RUST, 1.4)
-    b.text([60, 100, 740, 222], d["title"], font=SERIF_D, style="Bold", size=58, color=INK, leading=60,
+    b.text([60, 100, 740, 222], d["title"], font=SERIF_D, style="Bold", size=54, color=INK, leading=58,
            label="title")
     b.text([60, 238, 740, 272], d["subtitle"], font=SERIF, style="Italic", size=22, color="Rust", label="subtitle")
     ids = []
     ids.append(b.rect([60, 300, 740, 300 + 680 * 9 / 16 + 56], fill="Cream", shadow=(6, 10, 0.4), label="key_art_card"))
+    ids.append(b.rect([66, 306, 734, 300 + 680 * 9 / 16 + 50], fill=None, stroke="Hair", sw=1, dash=True))
     key = [72, 312, 728, 312 + 656 * 9 / 16]
     ids.append(b.image(key, d.get("key_art"), label="key_art", ph_text="[Key art 16:9]"))
     ids.append(b.text([72, key[3] + 8, 728, key[3] + 36], d["key_caption"], font=HAND, size=16, color="Pencil",
                       label="key_art_caption", align="center"))
     ids.append(b.tape(400, 296, 150, 30, rot=-2))
     b.rotate(ids, -1.2)
-    b.taped_label(560, 62, 180, d["badge"], "badge", size=11, h=26, rot=3)
-    b.text([62, 880, 700, 930], d["hand_note"], font=HAND, size=20, color="Rust", label="hand_note")
+    b.felt_label(556, 58, 184, d["badge"], "badge", fill="Moss", size=12, h=32, rot=3)
+    b.text([62, 872, 700, 940], d["hand_note"], font=HAND, size=19, color="Rust", label="hand_note", leading=22)
 
     # right: production overview
     b.text([PW + 50, 100, W - 50, 122], "PRODUCTION OVERVIEW", font=SANS, style="Bold", size=14, color="Rust",
@@ -268,32 +291,48 @@ def spread_cover(b, d):
     b.text([PW + 50, 145, W - 50, 215], d["tagline"], font=SERIF, size=20, color=INK, leading=28,
            label="tagline")
     # overall design D01 card
-    b.rect([PW + 50, 235, W - 50, 395], fill="Cream", shadow=(4, 8, 0.3), label="d01_card")
-    b.taped_label(PW + 66, 224, 130, "D01 / OVERALL DESIGN", "d01_tag", size=10, h=22, rot=-2)
-    b.text([PW + 70, 262, W - 70, 385], d["overall_design"], font=SERIF, size=14.5, color=INK, leading=21,
+    b.rect([PW + 50, 228, W - 50, 336], fill="Cream", shadow=(4, 8, 0.3), label="d01_card")
+    b.stitch([PW + 50, 228, W - 50, 336], 5)
+    b.felt_label(PW + 62, 214, 170, "D01 / OVERALL DESIGN", "d01_tag", fill="Rust", size=11, h=24, rot=-2)
+    b.text([PW + 70, 250, W - 70, 330], d["overall_design"], font=SERIF, size=14.5, color=INK, leading=20,
            label="overall_design")
-    # format notes
-    b.text([PW + 50, 420, W - 50, 442], "SHORT-VIDEO FORMAT", font=SANS, style="Bold", size=12, color="Rust",
+    # short video format
+    b.text([PW + 50, 354, W - 50, 376], "SHORT-VIDEO FORMAT", font=SANS, style="Bold", size=12, color="Rust",
            tracking=200, label="format_heading")
-    b.line((PW + 50, 446), (W - 50, 446), RUST, 1)
-    b.text([PW + 50, 458, W - 50, 580], d["format_notes"], font=SERIF, size=14, color=INK, leading=20.5,
+    b.line((PW + 50, 380), (W - 50, 380), RUST, 1)
+    b.text([PW + 50, 388, W - 50, 450], d["format_notes"], font=SERIF, size=14.5, color=INK, leading=19,
            label="format_notes")
+    # song map: the song in scenes, with the artist's printed actions
+    b.text([PW + 50, 462, W - 50, 484], "THE SONG IN FIVE SCENES", font=SANS, style="Bold", size=12, color="Rust",
+           tracking=200, label="songmap_heading")
+    b.line((PW + 50, 488), (W - 50, 488), RUST, 1)
+    n = len(d["songmap"])
+    gap = 12
+    tw = (700 - gap * (n - 1)) / n
+    for k, (img, sid, action) in enumerate(d["songmap"]):
+        sx = PW + 50 + k * (tw + gap)
+        rot = [-2.2, 1.6, -1.2, 2.4, -1.8][k % 5]
+        cid = b.rect([sx, 500, sx + tw, 500 + tw * 0.5625 + 62], fill="Cream", shadow=(3, 6, 0.32))
+        iid = b.image([sx + 5, 505, sx + tw - 5, 505 + (tw - 10) * 0.5625], img, label="songmap_%d" % (k + 1))
+        t1 = b.text([sx + 5, 505 + (tw - 10) * 0.5625 + 3, sx + tw - 5, 505 + (tw - 10) * 0.5625 + 54],
+                    sid + "\n" + action, font=HAND, size=11.5, color="Rust", align="center", label="songmap_action_%d" % (k + 1))
+        b.rotate([cid, iid, t1], rot)
     # master reference register
-    b.text([PW + 50, 600, W - 50, 622], "MASTER REFERENCE REGISTER", font=SANS, style="Bold", size=12,
+    b.text([PW + 50, 640, W - 50, 662], "MASTER REFERENCE REGISTER", font=SANS, style="Bold", size=12,
            color="Rust", tracking=200, label="register_heading")
-    b.line((PW + 50, 626), (W - 50, 626), RUST, 1)
-    y = 634
+    b.line((PW + 50, 666), (W - 50, 666), RUST, 1)
+    y = 672
     for k, (rid, name, where, thumb) in enumerate(d["register"]):
-        row = [PW + 50, y, W - 50, y + 40]
+        row = [PW + 50, y, W - 50, y + 36]
         b.rect(row, fill="Cream" if k % 2 == 0 else None, opacity=70 if k % 2 == 0 else None)
-        b.taped_label(PW + 58, y + 9, 46, rid, "reg_id_%d" % (k + 1), size=11, h=22)
-        b.text([PW + 118, y + 7, PW + 440, y + 40], name, font=SERIF, style="Bold", size=14, color=INK,
+        b.felt_label(PW + 58, y + 7, 48, rid, "reg_id_%d" % (k + 1), fill=["Rust", "Navy", "Moss", "Sun", "Sun", "Sun"][k % 6], size=11, h=24)
+        b.text([PW + 120, y + 5, PW + 440, y + 36], name, font=SERIF, style="Bold", size=14, color=INK,
                label="reg_name_%d" % (k + 1), valign="center")
-        b.text([PW + 440, y + 7, W - 130, y + 40], where, font=SERIF, style="Italic", size=12, color="Pencil",
+        b.text([PW + 440, y + 5, W - 130, y + 36], where, font=SERIF, style="Italic", size=12, color="Pencil",
                label="reg_where_%d" % (k + 1), valign="center")
-        b.image([W - 120, y + 2, W - 56, y + 38], thumb, label="reg_thumb_%d" % (k + 1))
-        y += 44
-    b.text([PW + 50, 906, W - 50, 940], d["footer_note"], font=HAND, size=17, color="Pencil", label="footer_note")
+        b.image([W - 120, y + 2, W - 56, y + 36], thumb, label="reg_thumb_%d" % (k + 1))
+        y += 37
+    b.text([PW + 50, 900, W - 50, 940], d["footer_note"], font=HAND, size=17, color="Pencil", label="footer_note")
 
 
 def spread_world(b, d):
@@ -303,7 +342,7 @@ def spread_world(b, d):
     b.text([50, 78, 760, 150], d["heading"], font=SERIF_D, style="Bold", size=50, color=INK, label="heading")
     b.text([50, 150, 760, 190], d["subheading"], font=SERIF, style="Italic", size=24, color="Rust",
            label="subheading")
-    b.taped_label(560, 96, 180, d["badge"], "badge", size=11, h=26, rot=3)
+    b.felt_label(556, 94, 184, d["badge"], "badge", fill="Navy", size=12, h=32, rot=3)
     ids = []
     ids.append(b.rect([42, 215, 758, 215 + 716 * 9 / 16 + 54], fill="Cream", shadow=(6, 10, 0.4), label="stage_card"))
     fr = [54, 227, 746, 227 + 692 * 9 / 16]
@@ -315,24 +354,24 @@ def spread_world(b, d):
     b.text([50, 700, 760, 722], "MATERIAL & SCALE", font=SANS, style="Bold", size=12, color="Rust", tracking=200,
            label="material_heading")
     b.line((50, 726), (760, 726), RUST, 1)
-    b.text([50, 738, 760, 860], d["material_scale"], font=SERIF, size=14.5, color=INK, leading=21, label="material_scale")
+    b.text([50, 738, 760, 860], d["material_scale"], font=SERIF, size=16.5, color=INK, leading=23.5, label="material_scale")
     b.text([50, 900, 760, 935], d["hand_note"], font=HAND, size=18, color="Rust", label="hand_note")
     # right page
     x = PW + 50
     b.text([x, 78, W - 50, 100], "REFERENCE REGISTER", font=SANS, style="Bold", size=12, color="Rust", tracking=200,
            label="register_heading")
-    b.text([x, 108, W - 50, 190], d["register"], font=SERIF, size=14.5, color=INK, leading=21, label="register")
+    b.text([x, 108, W - 50, 190], d["register"], font=SERIF, size=16, color=INK, leading=23, label="register")
     b.line((x, 205), (W - 50, 205), RUST, 1)
     b.text([x, 218, W - 50, 240], "EXACT LOCATION PROMPT", font=SANS, style="Bold", size=12, color="Rust", tracking=200,
            label="location_prompt_heading")
     b.rect([x, 248, W - 50, 428], fill="Cream", shadow=(4, 8, 0.28), label="location_prompt_card")
     b.tape(x + 60, 248, 110, 26, rot=-3)
-    b.text([x + 18, 262, W - 68, 420], d["location_prompt"], font=SERIF, size=13.5, color=INK, leading=20,
+    b.text([x + 18, 262, W - 68, 420], d["location_prompt"], font=SERIF, size=16, color=INK, leading=23.5,
            label="location_prompt")
     b.text([x, 448, W - 50, 470], "REVISION / REASON", font=SANS, style="Bold", size=12, color="Rust", tracking=200,
            label="revision_heading")
     b.line((x, 474), (W - 50, 474), RUST, 1)
-    b.text([x, 486, W - 50, 560], d["revision"], font=SERIF, size=14, color=INK, leading=20, label="revision")
+    b.text([x, 486, W - 50, 560], d["revision"], font=SERIF, size=16, color=INK, leading=23, label="revision")
     # source -> result comparison
     sp = b.polaroid([x - 6, 580, x + 330, 580 + 230], d["source_image"], "source_image", d["source_caption"], rot=-2.2,
                     ph="[Source]")
@@ -352,23 +391,24 @@ def spread_character(b, d):
     b.header(d["running_title"], "character study", "EXACT PROMPT / " + d["prompt_id"])
     b.text([50, 78, 760, 150], d["heading"], font=SERIF_D, style="Bold", size=50, color=INK, label="heading")
     b.text([50, 150, 760, 190], d["subheading"], font=SERIF, style="Italic", size=24, color="Rust", label="subheading")
-    b.taped_label(560, 96, 180, d["badge"], "badge", size=11, h=26, rot=3)
+    b.felt_label(556, 94, 184, d["badge"], "badge", fill="Navy", size=12, h=32, rot=3)
     o = b.polaroid([48, 235, 380, 635], d["original_image"], "original_image", d["original_caption"], rot=-3.2,
                    ph="[Original drawing]", bottom=56, pad=14)
     r = b.polaroid([330, 275, 735, 800], d["pose_image"], "pose_image", d["pose_caption"], rot=2.6,
                    ph="[Animation-ready pose]", bottom=56, pad=14, tape_at=0.55)
     b.arrow(318, 470, 356)
-    b.text([50, 840, 330, 900], d["hand_note"], font=HAND, size=19, color="Rust", label="hand_note")
+    b.text([50, 835, 340, 900], d["hand_note"], font=HAND, size=14, color="Rust", label="hand_note")
     b.text([50, 900, 330, 935], d["character_tag"], font=SANS, style="Bold", size=10, color="Pencil", tracking=140,
            label="character_tag")
     # right: saved exact prompt card
     x = PW + 50
     b.rect([x - 10, 82, W - 40, 800], fill="Cream", shadow=(5, 9, 0.32), label="prompt_card")
+    b.stitch([x - 10, 82, W - 40, 800], 7)
     b.tape(x + 90, 82, 150, 30, rot=-2)
     b.tape(W - 150, 82, 150, 30, rot=2)
     b.text([x + 24, 112, W - 76, 134], "SAVED EXACT PROMPT", font=SANS, style="Bold", size=13, color="Rust",
            tracking=200, label="prompt_heading")
-    b.text([x + 24, 146, W - 76, 640], d["exact_prompt"], font=SERIF, size=14.5, color=INK, leading=22,
+    b.text([x + 24, 146, W - 76, 640], d["exact_prompt"], font=SERIF, size=15, color=INK, leading=22,
            label="exact_prompt")
     b.text([x + 24, 742, W - 76, 790], d["prompt_foot"], font=HAND, size=16, color="Pencil", label="prompt_foot")
     # geometry
@@ -377,7 +417,7 @@ def spread_character(b, d):
     b.line((x, 851), (W - 50, 851), RUST, 1)
     b.text([x, 860, W - 50, 940], d["geometry"], font=SERIF, size=13, color=INK, leading=19, label="asset_geometry")
     # canvas diagram: 2:3 canvas, body box ~1300px tall, baseline y=1440
-    gx, gy, gw, gh = x + 24, 405, 180, 270
+    gx, gy, gw, gh = x + 24, 418, 172, 258
     b.rect([gx, gy, gx + gw, gy + gh], fill="Slot", stroke="Pencil", sw=1, label="geometry_canvas")
     base = gy + gh * 1440 / 1536
     b.image([gx + 8, base - gh * 1300 / 1536, gx + gw - 8, base], d.get("pose_image"), label="geometry_pose", fitmode="fitProportionally")
@@ -400,10 +440,10 @@ def spread_scene(b, d, template=False):
     b.text([PW - 300, 32, PW - 50, 50], d["running_sub"], font=SANS, size=10, color=INK, tracking=100, align="right",
            label="running_sub")
     b.line((50, 62), (PW - 50, 62), RUST, 1.4)
-    b.taped_label(52, 80, 196, d["badge"], "badge", size=14, h=34, rot=-1.5, font=SERIF_D, style="Italic")
+    b.felt_label(52, 80, 196, d["badge"], "badge", fill=d.get("felt", "Moss"), size=14, h=34, rot=-1.5)
     b.text([262, 86, 560, 116], d["section"], font=SERIF_D, style="Bold", size=20, color="Rust", tracking=40,
            label="section", caps=True)
-    b.text([570, 76, 755, 118], d["hand_note"], font=HAND, size=15, color="Pencil", label="hand_note", align="right")
+    b.text([560, 92, 755, 118], d["hand_note"], font=HAND, size=11, color="Pencil", label="hand_note", align="right")
     b.text([50, 138, 224, 176], d["scene_id"], font=SERIF_D, style="Bold", size=27, color=INK, tracking=20,
            label="scene_id", valign="center")
     b.line((226, 142), (226, 172), "Pencil", 1)
@@ -411,6 +451,7 @@ def spread_scene(b, d, template=False):
     # hero (1920x1080 = 16:9)
     hero_card = [38, 190, 762, 190 + 724 * 0.5625 + 20]
     b.rect(hero_card, fill="Cream", shadow=(5, 9, 0.35), label="hero_card")
+    b.stitch(hero_card, 4)
     hero = [48, 200, 752, 200 + 704 * 0.5625]
     b.image(hero, d["hero"], label="hero_image", ph_text="[Scene image · 1920×1080 · 16:9]")
     b.tape(180, 190, 110, 26, rot=-4)
@@ -419,8 +460,10 @@ def spread_scene(b, d, template=False):
     b.text([50, y, 215, y + 24], "AUDIO / LYRIC CUE", font=SANS, style="Bold", size=12, color="Rust", tracking=100,
            label="cue_heading")
     b.line((222, y - 4), (222, y + 50), "Pencil", 1)
-    long = len(d["cue"]) > 44
-    b.text([236, y - 4, 755, y + (46 if long else 28)], d["cue"], font=SERIF, style="Italic", size=15 if long else 19,
+    n_ = len(d["cue"])
+    long = n_ > 76
+    csize = 19 if n_ <= 44 else (16.5 if n_ <= 76 else 15)
+    b.text([236, y - 4, 755, y + (46 if long else 28)], d["cue"], font=SERIF, style="Italic", size=csize,
            color=INK, leading=20 if long else None, label="cue")
     ty = y + (48 if long else 30)
     b.text([236, ty, 755, ty + 18], d["time"], font=SERIF, size=12, color="Pencil", tracking=60, label="time")
@@ -442,17 +485,17 @@ def spread_scene(b, d, template=False):
     b.image(skr, d.get("sketch_right"), label="sketch_right", ph_text="[sketch]")
     b.crop_marks(skr, n=9)
     b.text([262, sy - 2, 560, sy + 22], "STAGING CHECKLIST", font=SANS, style="Bold", size=10, color="Rust", tracking=140)
-    for k, ln in enumerate(d["staging"]):
-        yy = sy + 24 + k * 28
-        b.checkbox(262, yy + 3)
-        b.text([282, yy - 1, 560, yy + 24], ln, font=HAND, size=16, color=INK, label="staging_%d" % (k + 1))
+    for k in range(3):
+        b.checkbox(262, sy + 27 + k * 28)
+    b.text([282, sy + 20, 568, sy + 24 + 3 * 28], "\n".join(d["staging"]), font=HAND, size=13, color=INK,
+           leading=28 / 1.3, label="staging_notes")
     # ---- right page -------------------------------------------------
     x = PW + 50
     b.taped_label(x - 6, 40, 210, "REFERENCE LIST", "ref_header", size=14, h=30, rot=-1)
     b.taped_label(W - 140, 40, 90, d["revision"], "revision", size=12, h=26, rot=2)
     b.text([x, 92, x + 140, 114], "OVERALL DESIGN", font=SANS, style="Bold", size=12, color="Rust", tracking=100,
            label="overall_heading")
-    b.text([x + 155, 90, W - 50, 134], d["overall_design"], font=SERIF, size=12.5, color=INK, leading=17, label="overall_design")
+    b.text([x + 155, 90, W - 50, 134], d["overall_design"], font=SERIF, size=13.5, color=INK, leading=17.5, label="overall_design")
     rows = [("Location / original", "location_ref"), ("Character / shared", "character_shared"),
             ("Character / individual", "character_lead"), ("Asset geometry / props", "asset_geometry")]
     y = 146
@@ -464,9 +507,9 @@ def spread_scene(b, d, template=False):
         y += h + 8
     # source / result polaroids
     py = 352
-    b.polaroid([x + 4, py, x + 326, py + 218], d["source_image"], "source_image", d["source_caption"], rot=-3,
+    b.polaroid([x + 4, py, x + 326, py + 218], d["source_image"], "source_image", d["source_caption"], rot=d.get("src_rot", -3),
                ph="[Source]")
-    b.polaroid([x + 352, py + 14, x + 690, py + 236], d["result_image"], "result_image", d["result_caption"], rot=3,
+    b.polaroid([x + 352, py + 14, x + 690, py + 236], d["result_image"], "result_image", d["result_caption"], rot=d.get("res_rot", 3),
                ph="[Result]", tape_at=0.35)
     b.crop_marks([x + 362, py + 24, x + 680, py + 190], n=11)
     b.text([x + 330, py + 262, x + 690, py + 288], d["match_note"], font=HAND, size=16, color="Rust",
@@ -475,9 +518,10 @@ def spread_scene(b, d, template=False):
     # exact prompt card
     ey = 650
     b.rect([x - 4, ey, W - 44, ey + 138], fill="Cream", shadow=(4, 8, 0.28), label="exact_prompt_card")
+    b.stitch([x - 4, ey, W - 44, ey + 138], 5)
     b.taped_label(x + 6, ey - 10, 120, "EXACT PROMPT", "exact_prompt_tag", size=11, h=24, rot=-1.5)
     b.tape(W - 70, ey + 4, 90, 24, rot=18)
-    b.text([x + 14, ey + 22, W - 62, ey + 132], d["exact_prompt"], font=SERIF, size=12.5, color=INK, leading=17,
+    b.text([x + 14, ey + 22, W - 62, ey + 132], d["exact_prompt"], font=SERIF, size=13.5, color=INK, leading=18.5,
            label="exact_prompt")
     # adaptable contact strip: up to 6 slots (see studio-template-build.json for 3/4/6/grid layouts)
     cy = 800
@@ -542,6 +586,11 @@ def a(p):
     return os.path.join(ASSETS, p)
 
 
+def sk(sid, side):
+    p = a("sk-%s-%s.png" % (sid.lower(), side))
+    return p if os.path.exists(p) else a("sketch-nelly.png" if side == "left" else "sketch-waves.png")
+
+
 def nel(p):
     return os.path.join(NELLY, p)
 
@@ -558,22 +607,27 @@ def load_cues():
 
 
 SCENES = [
-    # id, title, section, bg, lines, purpose, staging, note
-    ("S01", "Ocean Stage", "Crossing the ocean", "stage_ocean/stage-ocean-v1.png", (0, 1),
-     "We learn the song’s first journey: Nelly sets out across big blue water.",
-     ["hold on the waves", "Nelly enters from page left", "keep paper scale steady"], "waves roll, Nelly strolls"),
-    ("S02", "Mountain Top", "Up the mountain", "stage_mountain/stage-mountain-v1.png", (2, 3),
-     "We hear “mountain top” and see up and back: a round trip.",
-     ["climb a little, pause at the peak", "turn back toward the camera", "keep felt colours calm"], "up, up — and back to me"),
-    ("S03", "Prairie", "Across the prairie", "stage_prairie/stage-prairie-v1.png", (4, 5),
-     "Wide open space is shown with a long, easy walk across flat land.",
-     ["long steady take", "horizon line stays low", "no extra props"], "big sky, long walk"),
-    ("S04", "Desert Sands", "Over the desert", "stage_desert/stage-desert-v1.png", (6, 7),
-     "Warm dry sand sets a new place, then Nelly comes back again.",
-     ["warm light only", "Nelly returns to start mark", "keep sand grain soft"], "same Nelly, new place"),
+    # id, title, section, bg, lyric lines, purpose, staging, note, printed action (handout), felt colour
+    ("S01", "Ocean Stage", "Circle left", "stage_ocean/stage-ocean-v1.png", (0, 1),
+     "Left is a direction we can move: Nelly circles left across the paper sea.",
+     ["circle left (artist\u2019s)", "Nelly enters from page right", "keep waves and paper scale steady"],
+     "first journey: circle left", "circle left", "Moss"),
+    ("S02", "Mountain Top", "Turn the other way", "stage_mountain/stage-mountain-v1.png", (2, 3),
+     "Going up and then coming back shows us how to turn and go the other way.",
+     ["turn the other way (artist\u2019s)", "pause at the peak, then turn", "keep felt colours calm"],
+     "up and over \u2014 then back to me", "turn the other way", "Navy"),
+    ("S03", "Prairie", "Circle right", "stage_prairie/stage-prairie-v1.png", (4, 5),
+     "Right is the opposite of left: Nelly circles right over wide open land.",
+     ["circle right (artist\u2019s)", "horizon line stays low", "no extra props"],
+     "big sky, long walk", "circle right", "Sun"),
+    ("S04", "Desert Sands", "Stop", "stage_desert/stage-desert-v1.png", (6, 7),
+     "Stopping is part of moving: Nelly comes back again, then stands still.",
+     ["stop (artist\u2019s)", "Nelly returns to her start mark", "warm light only"],
+     "come back again \u2014 and stop", "stop", "Rust"),
     ("S05", "Garden Jump", "Jump and turn", "stage_garden/stage-garden-v1.png", (8, 11),
      "Movement words become actions: jump up and down, then turn round and round.",
-     ["two small jumps", "slow turn, feet stay planted", "let the turn feel playful"], "jump — then spin!"),
+     ["jump, turn around, repeat (artist\u2019s)", "two small jumps, feet leave the ground", "slow turn, then repeat"],
+     "jump \u2014 then spin!", "jump \u00b7 turn \u00b7 repeat", "Moss"),
 ]
 
 OVERALL = ("Paper landscapes. Felt characters. Keep the handmade scale and material: tactile, delicate, playful. "
@@ -597,7 +651,7 @@ SCENE_PROMPT = ("Handmade felt-puppet storybook scene, 16:9. {who} on the open p
 
 
 def scene_data(i, sc, cue, template, page_l, page_r):
-    sid, title, section, bg, (l0, l1), purpose, staging, note = sc
+    sid, title, section, bg, (l0, l1), purpose, staging, note, action, felt = sc
     q, tcode = cue(l0, l1)
     spread = 3 + i
     hero = nel("assets/backgrounds/" + bg)
@@ -608,11 +662,12 @@ def scene_data(i, sc, cue, template, page_l, page_r):
     d = dict(
         spread=spread, page_left=page_l, page_right=page_r,
         running_title="NELLY / MAGIC STORYBOARD", running_sub="storyboard / scene study",
-        badge="SCENE STUDY", section=section, hand_note="handmade production notebook\nscene storyboard",
+        badge="SCENE STUDY", section=section, hand_note="action: " + action,
         scene_id="SCENE " + sid[1:], title=title,
         hero=result if os.path.exists(result) else hero,
         cue=q, time=tcode, purpose=purpose, staging=staging,
-        sketch_left=a("sketch-nelly.png"), sketch_right=a("sketch-waves.png"),
+        sketch_left=sk(sid, "left"), sketch_right=sk(sid, "right"),
+        src_rot=[-3, 2.4, -2, 3, -2.6][i % 5], res_rot=[3, -2.2, 2.8, -3, 2.2][i % 5], felt=felt,
         revision="REV 01", overall_design=OVERALL,
         location_ref="%s — %s paper stage (L01 family), original plate %s" % (sid, title, os.path.basename(bg)),
         character_shared="Nelly — felt rabbit, yellow vest, red shorts; C01 shared across scenes.",
@@ -646,11 +701,13 @@ def populated():
         spread=0, kicker="MAGIC STUDIO / STORYBOARD", title="Nelly Go ’Cross\nthe Ocean",
         subtitle="a felt-puppet storybook stage · short educational video",
         key_art=a("cover-keyart.png"), key_caption="key art · Nelly crosses the paper ocean",
-        badge="PRODUCTION BOOK", hand_note="Pixar-polish, Henson-warm: every frame feels handmade.",
+        badge="PRODUCTION BOOK", hand_note="\u201cThis is my first attempt at writing a singing game.\u201d \u2014 Kathy Reid-Naiman, More Tickles and Tunes",
+        songmap=[(nel("assets/backgrounds/" + sc[3]) if not os.path.exists(a("scene-%s-nelly.png" % sc[0].lower())) else a("scene-%s-nelly.png" % sc[0].lower()), sc[0], sc[8]) for sc in SCENES],
         rev="REV 01", tagline="A singing-game journey from Kathy Reid-Naiman’s “More Tickles and Tunes”, told on a miniature paper stage.",
         overall_design=OVERALL + " D01 governs every scene: nothing glossy, nothing digital-flat.",
-        format_notes="Short video (~1–2 min), 16:9, 1920×1080. One scene per lyric phrase; each scene teaches one idea "
-                     "(place, direction, action). Cues come from the checked transcript; lyrics are never paraphrased.",
+        format_notes="Short video (~1\u20132 min), 16:9, 1920\u00d71080. One scene per printed action; each teaches one idea "
+                     "(direction, stop, jump). The five scenes cover the song\u2019s first pass (0:02\u20130:27); it repeats after the "
+                     "instrumental break. Lyrics are as printed; timings are transcript estimates to confirm against the audio.",
         register=reg, footer_note="Every reference keeps its source, its prompt and its revision trail.",
     ))
     spread_world(b, dict(
@@ -692,7 +749,7 @@ def template():
     reg = [("[ID]", "[Reference name]", "[source / note]", None)] * 6
     spread_cover(b, dict(
         spread=0, kicker="[PROJECT] / STORYBOARD", title="[Project title]", subtitle="[subtitle / format]", key_art=None,
-        key_caption="[key art caption]", badge="PRODUCTION BOOK", hand_note="[handwritten note]", rev="REV 00",
+        key_caption="[key art caption]", badge="PRODUCTION BOOK", hand_note="[artist note, verbatim]", songmap=[(None, "S0%d" % k, "[action]") for k in range(1, 6)], rev="REV 00",
         tagline="[one-line premise]", overall_design="[D01 overall design prompt]", format_notes="[short-video format notes]",
         register=reg, footer_note="[footer note]"))
     spread_world(b, dict(

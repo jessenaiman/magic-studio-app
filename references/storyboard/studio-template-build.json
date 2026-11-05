@@ -27,7 +27,7 @@
   "labels": [
     {
       "spread": 0,
-      "label": "paper_bg",
+      "label": "cover_paper_bg",
       "rect": [
         0,
         0,
@@ -38,7 +38,7 @@
     },
     {
       "spread": 0,
-      "label": "book_edge",
+      "label": "cover_book_edge",
       "rect": [
         0,
         0,
@@ -49,7 +49,7 @@
     },
     {
       "spread": 0,
-      "label": "spine_shadow",
+      "label": "cover_spine_shadow",
       "rect": [
         754,
         0,
@@ -60,7 +60,7 @@
     },
     {
       "spread": 0,
-      "label": "page_no_left",
+      "label": "cover_page_no_left",
       "rect": [
         50,
         950,
@@ -71,7 +71,7 @@
     },
     {
       "spread": 0,
-      "label": "page_no_right",
+      "label": "cover_page_no_right",
       "rect": [
         1450,
         950,
@@ -82,7 +82,7 @@
     },
     {
       "spread": 0,
-      "label": "kicker",
+      "label": "cover_kicker",
       "rect": [
         60,
         58,
@@ -93,7 +93,7 @@
     },
     {
       "spread": 0,
-      "label": "title",
+      "label": "cover_title",
       "rect": [
         60,
         100,
@@ -104,7 +104,7 @@
     },
     {
       "spread": 0,
-      "label": "subtitle",
+      "label": "cover_subtitle",
       "rect": [
         60,
         238,
@@ -115,7 +115,7 @@
     },
     {
       "spread": 0,
-      "label": "key_art_card",
+      "label": "cover_key_art_card",
       "rect": [
         60,
         300,
@@ -126,7 +126,7 @@
     },
     {
       "spread": 0,
-      "label": "key_art",
+      "label": "cover_key_art",
       "rect": [
         72,
         312,
@@ -137,7 +137,7 @@
     },
     {
       "spread": 0,
-      "label": "key_art_hint",
+      "label": "cover_key_art_hint",
       "rect": [
         80,
         474.5,
@@ -148,7 +148,7 @@
     },
     {
       "spread": 0,
-      "label": "key_art_caption",
+      "label": "cover_key_art_caption",
       "rect": [
         72,
         689.0,
@@ -159,29 +159,29 @@
     },
     {
       "spread": 0,
-      "label": "badge",
+      "label": "cover_badge",
       "rect": [
-        568,
-        65,
-        732,
-        86
+        566,
+        60,
+        730,
+        88
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "hand_note",
+      "label": "cover_hand_note",
       "rect": [
         62,
-        880,
+        872,
         700,
-        930
+        940
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "overview_heading",
+      "label": "cover_overview_heading",
       "rect": [
         850,
         100,
@@ -192,7 +192,7 @@
     },
     {
       "spread": 0,
-      "label": "revision",
+      "label": "cover_revision",
       "rect": [
         1428,
         99,
@@ -203,7 +203,7 @@
     },
     {
       "spread": 0,
-      "label": "tagline",
+      "label": "cover_tagline",
       "rect": [
         850,
         145,
@@ -214,340 +214,461 @@
     },
     {
       "spread": 0,
-      "label": "d01_card",
+      "label": "cover_d01_card",
       "rect": [
         850,
-        235,
+        228,
         1550,
-        395
+        336
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "d01_tag",
+      "label": "cover_d01_tag",
       "rect": [
-        874,
-        227,
-        988,
-        244
+        872,
+        216,
+        1022,
+        236
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "overall_design",
+      "label": "cover_overall_design",
       "rect": [
         870,
-        262,
+        250,
         1530,
-        385
+        330
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "format_heading",
+      "label": "cover_format_heading",
       "rect": [
         850,
-        420,
+        354,
         1550,
-        442
+        376
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "format_notes",
+      "label": "cover_format_notes",
       "rect": [
         850,
-        458,
+        388,
         1550,
-        580
+        450
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "register_heading",
+      "label": "cover_songmap_heading",
       "rect": [
         850,
-        600,
+        462,
         1550,
-        622
+        484
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_id_1",
+      "label": "cover_songmap_1",
       "rect": [
-        866,
-        646,
-        896,
-        663
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_name_1",
-      "rect": [
-        918,
-        641,
-        1240,
-        674
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_where_1",
-      "rect": [
-        1240,
-        641,
-        1470,
-        674
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_thumb_1",
-      "rect": [
-        1480,
-        636,
-        1544,
-        672
+        855.0,
+        505,
+        975.4,
+        572.725
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "reg_id_2",
+      "label": "cover_songmap_action_1",
       "rect": [
-        866,
-        690,
-        896,
-        707
+        855.0,
+        575.725,
+        975.4,
+        626.725
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_name_2",
+      "label": "cover_songmap_2",
       "rect": [
-        918,
-        685,
-        1240,
-        718
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_where_2",
-      "rect": [
-        1240,
-        685,
-        1470,
-        718
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_thumb_2",
-      "rect": [
-        1480,
-        680,
-        1544,
-        716
+        997.4,
+        505,
+        1117.8,
+        572.725
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "reg_id_3",
+      "label": "cover_songmap_action_2",
       "rect": [
-        866,
-        734,
-        896,
-        751
+        997.4,
+        575.725,
+        1117.8,
+        626.725
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_name_3",
+      "label": "cover_songmap_3",
       "rect": [
-        918,
-        729,
-        1240,
-        762
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_where_3",
-      "rect": [
-        1240,
-        729,
-        1470,
-        762
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_thumb_3",
-      "rect": [
-        1480,
-        724,
-        1544,
-        760
+        1139.8,
+        505,
+        1260.2,
+        572.725
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "reg_id_4",
+      "label": "cover_songmap_action_3",
       "rect": [
-        866,
-        778,
-        896,
-        795
+        1139.8,
+        575.725,
+        1260.2,
+        626.725
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_name_4",
+      "label": "cover_songmap_4",
       "rect": [
-        918,
-        773,
-        1240,
-        806
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_where_4",
-      "rect": [
-        1240,
-        773,
-        1470,
-        806
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_thumb_4",
-      "rect": [
-        1480,
-        768,
-        1544,
-        804
+        1282.2,
+        505,
+        1402.6000000000001,
+        572.725
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "reg_id_5",
+      "label": "cover_songmap_action_4",
       "rect": [
-        866,
+        1282.2,
+        575.725,
+        1402.6000000000001,
+        626.725
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_songmap_5",
+      "rect": [
+        1424.6,
+        505,
+        1545.0,
+        572.725
+      ],
+      "kind": "shape"
+    },
+    {
+      "spread": 0,
+      "label": "cover_songmap_action_5",
+      "rect": [
+        1424.6,
+        575.725,
+        1545.0,
+        626.725
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_register_heading",
+      "rect": [
+        850,
+        640,
+        1550,
+        662
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_id_1",
+      "rect": [
+        868,
+        681,
+        896,
+        701
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_name_1",
+      "rect": [
+        920,
+        677,
+        1240,
+        708
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_where_1",
+      "rect": [
+        1240,
+        677,
+        1470,
+        708
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_thumb_1",
+      "rect": [
+        1480,
+        674,
+        1544,
+        708
+      ],
+      "kind": "shape"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_id_2",
+      "rect": [
+        868,
+        718,
+        896,
+        738
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_name_2",
+      "rect": [
+        920,
+        714,
+        1240,
+        745
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_where_2",
+      "rect": [
+        1240,
+        714,
+        1470,
+        745
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_thumb_2",
+      "rect": [
+        1480,
+        711,
+        1544,
+        745
+      ],
+      "kind": "shape"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_id_3",
+      "rect": [
+        868,
+        755,
+        896,
+        775
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_name_3",
+      "rect": [
+        920,
+        751,
+        1240,
+        782
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_where_3",
+      "rect": [
+        1240,
+        751,
+        1470,
+        782
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_thumb_3",
+      "rect": [
+        1480,
+        748,
+        1544,
+        782
+      ],
+      "kind": "shape"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_id_4",
+      "rect": [
+        868,
+        792,
+        896,
+        812
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_name_4",
+      "rect": [
+        920,
+        788,
+        1240,
+        819
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_where_4",
+      "rect": [
+        1240,
+        788,
+        1470,
+        819
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_thumb_4",
+      "rect": [
+        1480,
+        785,
+        1544,
+        819
+      ],
+      "kind": "shape"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_id_5",
+      "rect": [
+        868,
+        829,
+        896,
+        849
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_name_5",
+      "rect": [
+        920,
+        825,
+        1240,
+        856
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_where_5",
+      "rect": [
+        1240,
+        825,
+        1470,
+        856
+      ],
+      "kind": "text"
+    },
+    {
+      "spread": 0,
+      "label": "cover_reg_thumb_5",
+      "rect": [
+        1480,
         822,
-        896,
-        839
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_name_5",
-      "rect": [
-        918,
-        817,
-        1240,
-        850
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_where_5",
-      "rect": [
-        1240,
-        817,
-        1470,
-        850
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 0,
-      "label": "reg_thumb_5",
-      "rect": [
-        1480,
-        812,
         1544,
-        848
+        856
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "reg_id_6",
+      "label": "cover_reg_id_6",
       "rect": [
-        866,
+        868,
         866,
         896,
-        883
+        886
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_name_6",
+      "label": "cover_reg_name_6",
       "rect": [
-        918,
-        861,
+        920,
+        862,
         1240,
-        894
+        893
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_where_6",
+      "label": "cover_reg_where_6",
       "rect": [
         1240,
-        861,
+        862,
         1470,
-        894
+        893
       ],
       "kind": "text"
     },
     {
       "spread": 0,
-      "label": "reg_thumb_6",
+      "label": "cover_reg_thumb_6",
       "rect": [
         1480,
-        856,
+        859,
         1544,
-        892
+        893
       ],
       "kind": "shape"
     },
     {
       "spread": 0,
-      "label": "footer_note",
+      "label": "cover_footer_note",
       "rect": [
         850,
-        906,
+        900,
         1550,
         940
       ],
@@ -555,7 +676,7 @@
     },
     {
       "spread": 1,
-      "label": "paper_bg",
+      "label": "world_paper_bg",
       "rect": [
         0,
         0,
@@ -566,7 +687,7 @@
     },
     {
       "spread": 1,
-      "label": "book_edge",
+      "label": "world_book_edge",
       "rect": [
         0,
         0,
@@ -577,7 +698,7 @@
     },
     {
       "spread": 1,
-      "label": "spine_shadow",
+      "label": "world_spine_shadow",
       "rect": [
         754,
         0,
@@ -588,7 +709,7 @@
     },
     {
       "spread": 1,
-      "label": "page_no_left",
+      "label": "world_page_no_left",
       "rect": [
         50,
         950,
@@ -599,7 +720,7 @@
     },
     {
       "spread": 1,
-      "label": "page_no_right",
+      "label": "world_page_no_right",
       "rect": [
         1450,
         950,
@@ -610,7 +731,7 @@
     },
     {
       "spread": 1,
-      "label": "running_title",
+      "label": "world_running_title",
       "rect": [
         50,
         30,
@@ -621,7 +742,7 @@
     },
     {
       "spread": 1,
-      "label": "running_sub",
+      "label": "world_running_sub",
       "rect": [
         470,
         33,
@@ -632,7 +753,7 @@
     },
     {
       "spread": 1,
-      "label": "right_running_title",
+      "label": "world_right_running_title",
       "rect": [
         850,
         30,
@@ -643,7 +764,7 @@
     },
     {
       "spread": 1,
-      "label": "heading",
+      "label": "world_heading",
       "rect": [
         50,
         78,
@@ -654,7 +775,7 @@
     },
     {
       "spread": 1,
-      "label": "subheading",
+      "label": "world_subheading",
       "rect": [
         50,
         150,
@@ -665,18 +786,18 @@
     },
     {
       "spread": 1,
-      "label": "badge",
+      "label": "world_badge",
       "rect": [
-        568,
-        99,
-        732,
-        120
+        566,
+        96,
+        730,
+        124
       ],
       "kind": "text"
     },
     {
       "spread": 1,
-      "label": "stage_card",
+      "label": "world_stage_card",
       "rect": [
         42,
         215,
@@ -687,7 +808,7 @@
     },
     {
       "spread": 1,
-      "label": "stage_image",
+      "label": "world_stage_image",
       "rect": [
         54,
         227,
@@ -698,7 +819,7 @@
     },
     {
       "spread": 1,
-      "label": "stage_image_hint",
+      "label": "world_stage_image_hint",
       "rect": [
         62,
         399.625,
@@ -709,18 +830,18 @@
     },
     {
       "spread": 1,
-      "label": "stage_caption",
+      "label": "world_stage_caption",
       "rect": [
         54,
         624.25,
         746,
-        650.25
+        652.25
       ],
       "kind": "text"
     },
     {
       "spread": 1,
-      "label": "material_heading",
+      "label": "world_material_heading",
       "rect": [
         50,
         700,
@@ -731,7 +852,7 @@
     },
     {
       "spread": 1,
-      "label": "material_scale",
+      "label": "world_material_scale",
       "rect": [
         50,
         738,
@@ -742,7 +863,7 @@
     },
     {
       "spread": 1,
-      "label": "hand_note",
+      "label": "world_hand_note",
       "rect": [
         50,
         900,
@@ -753,7 +874,7 @@
     },
     {
       "spread": 1,
-      "label": "register_heading",
+      "label": "world_register_heading",
       "rect": [
         850,
         78,
@@ -764,7 +885,7 @@
     },
     {
       "spread": 1,
-      "label": "register",
+      "label": "world_register",
       "rect": [
         850,
         108,
@@ -775,7 +896,7 @@
     },
     {
       "spread": 1,
-      "label": "location_prompt_heading",
+      "label": "world_location_prompt_heading",
       "rect": [
         850,
         218,
@@ -786,7 +907,7 @@
     },
     {
       "spread": 1,
-      "label": "location_prompt_card",
+      "label": "world_location_prompt_card",
       "rect": [
         850,
         248,
@@ -797,7 +918,7 @@
     },
     {
       "spread": 1,
-      "label": "location_prompt",
+      "label": "world_location_prompt",
       "rect": [
         868,
         262,
@@ -808,7 +929,7 @@
     },
     {
       "spread": 1,
-      "label": "revision_heading",
+      "label": "world_revision_heading",
       "rect": [
         850,
         448,
@@ -819,7 +940,7 @@
     },
     {
       "spread": 1,
-      "label": "revision",
+      "label": "world_revision",
       "rect": [
         850,
         486,
@@ -830,7 +951,7 @@
     },
     {
       "spread": 1,
-      "label": "source_image_card",
+      "label": "world_source_image_card",
       "rect": [
         844,
         580,
@@ -841,7 +962,7 @@
     },
     {
       "spread": 1,
-      "label": "source_image",
+      "label": "world_source_image",
       "rect": [
         854,
         590,
@@ -852,7 +973,7 @@
     },
     {
       "spread": 1,
-      "label": "source_image_hint",
+      "label": "world_source_image_hint",
       "rect": [
         862,
         661.0,
@@ -863,18 +984,18 @@
     },
     {
       "spread": 1,
-      "label": "source_image_caption",
+      "label": "world_source_image_caption",
       "rect": [
         854,
         782,
         1170,
-        806
+        808.375
       ],
       "kind": "text"
     },
     {
       "spread": 1,
-      "label": "result_image_card",
+      "label": "world_result_image_card",
       "rect": [
         1230,
         592,
@@ -885,7 +1006,7 @@
     },
     {
       "spread": 1,
-      "label": "result_image",
+      "label": "world_result_image",
       "rect": [
         1240,
         602,
@@ -896,7 +1017,7 @@
     },
     {
       "spread": 1,
-      "label": "result_image_hint",
+      "label": "world_result_image_hint",
       "rect": [
         1248,
         673.0,
@@ -907,40 +1028,40 @@
     },
     {
       "spread": 1,
-      "label": "result_image_caption",
+      "label": "world_result_image_caption",
       "rect": [
         1240,
         794,
         1556,
-        818
+        820.375
       ],
       "kind": "text"
     },
     {
       "spread": 1,
-      "label": "crop_note",
+      "label": "world_crop_note",
       "rect": [
         1410,
         560,
         1566,
-        580
+        584.75
       ],
       "kind": "text"
     },
     {
       "spread": 1,
-      "label": "match_note",
+      "label": "world_match_note",
       "rect": [
         850,
         850,
         1550,
-        880
+        881.25
       ],
       "kind": "text"
     },
     {
       "spread": 1,
-      "label": "fit_note",
+      "label": "world_fit_note",
       "rect": [
         850,
         912,
@@ -951,7 +1072,7 @@
     },
     {
       "spread": 2,
-      "label": "paper_bg",
+      "label": "char_paper_bg",
       "rect": [
         0,
         0,
@@ -962,7 +1083,7 @@
     },
     {
       "spread": 2,
-      "label": "book_edge",
+      "label": "char_book_edge",
       "rect": [
         0,
         0,
@@ -973,7 +1094,7 @@
     },
     {
       "spread": 2,
-      "label": "spine_shadow",
+      "label": "char_spine_shadow",
       "rect": [
         754,
         0,
@@ -984,7 +1105,7 @@
     },
     {
       "spread": 2,
-      "label": "page_no_left",
+      "label": "char_page_no_left",
       "rect": [
         50,
         950,
@@ -995,7 +1116,7 @@
     },
     {
       "spread": 2,
-      "label": "page_no_right",
+      "label": "char_page_no_right",
       "rect": [
         1450,
         950,
@@ -1006,7 +1127,7 @@
     },
     {
       "spread": 2,
-      "label": "running_title",
+      "label": "char_running_title",
       "rect": [
         50,
         30,
@@ -1017,7 +1138,7 @@
     },
     {
       "spread": 2,
-      "label": "running_sub",
+      "label": "char_running_sub",
       "rect": [
         470,
         33,
@@ -1028,7 +1149,7 @@
     },
     {
       "spread": 2,
-      "label": "right_running_title",
+      "label": "char_right_running_title",
       "rect": [
         850,
         30,
@@ -1039,7 +1160,7 @@
     },
     {
       "spread": 2,
-      "label": "heading",
+      "label": "char_heading",
       "rect": [
         50,
         78,
@@ -1050,7 +1171,7 @@
     },
     {
       "spread": 2,
-      "label": "subheading",
+      "label": "char_subheading",
       "rect": [
         50,
         150,
@@ -1061,18 +1182,18 @@
     },
     {
       "spread": 2,
-      "label": "badge",
+      "label": "char_badge",
       "rect": [
-        568,
-        99,
-        732,
-        120
+        566,
+        96,
+        730,
+        124
       ],
       "kind": "text"
     },
     {
       "spread": 2,
-      "label": "original_image_card",
+      "label": "char_original_image_card",
       "rect": [
         48,
         235,
@@ -1083,7 +1204,7 @@
     },
     {
       "spread": 2,
-      "label": "original_image",
+      "label": "char_original_image",
       "rect": [
         62,
         249,
@@ -1094,7 +1215,7 @@
     },
     {
       "spread": 2,
-      "label": "original_image_hint",
+      "label": "char_original_image_hint",
       "rect": [
         70,
         392.0,
@@ -1105,7 +1226,7 @@
     },
     {
       "spread": 2,
-      "label": "original_image_caption",
+      "label": "char_original_image_caption",
       "rect": [
         62,
         585,
@@ -1116,7 +1237,7 @@
     },
     {
       "spread": 2,
-      "label": "pose_image_card",
+      "label": "char_pose_image_card",
       "rect": [
         330,
         275,
@@ -1127,7 +1248,7 @@
     },
     {
       "spread": 2,
-      "label": "pose_image",
+      "label": "char_pose_image",
       "rect": [
         344,
         289,
@@ -1138,7 +1259,7 @@
     },
     {
       "spread": 2,
-      "label": "pose_image_hint",
+      "label": "char_pose_image_hint",
       "rect": [
         352,
         494.5,
@@ -1149,7 +1270,7 @@
     },
     {
       "spread": 2,
-      "label": "pose_image_caption",
+      "label": "char_pose_image_caption",
       "rect": [
         344,
         750,
@@ -1160,18 +1281,18 @@
     },
     {
       "spread": 2,
-      "label": "hand_note",
+      "label": "char_hand_note",
       "rect": [
         50,
-        840,
-        330,
+        835,
+        340,
         900
       ],
       "kind": "text"
     },
     {
       "spread": 2,
-      "label": "character_tag",
+      "label": "char_character_tag",
       "rect": [
         50,
         900,
@@ -1182,7 +1303,7 @@
     },
     {
       "spread": 2,
-      "label": "prompt_card",
+      "label": "char_prompt_card",
       "rect": [
         840,
         82,
@@ -1193,7 +1314,7 @@
     },
     {
       "spread": 2,
-      "label": "prompt_heading",
+      "label": "char_prompt_heading",
       "rect": [
         874,
         112,
@@ -1204,7 +1325,7 @@
     },
     {
       "spread": 2,
-      "label": "exact_prompt",
+      "label": "char_exact_prompt",
       "rect": [
         874,
         146,
@@ -1215,7 +1336,7 @@
     },
     {
       "spread": 2,
-      "label": "prompt_foot",
+      "label": "char_prompt_foot",
       "rect": [
         874,
         742,
@@ -1226,7 +1347,7 @@
     },
     {
       "spread": 2,
-      "label": "geometry_heading",
+      "label": "char_geometry_heading",
       "rect": [
         850,
         825,
@@ -1237,7 +1358,7 @@
     },
     {
       "spread": 2,
-      "label": "asset_geometry",
+      "label": "char_asset_geometry",
       "rect": [
         850,
         860,
@@ -1248,56 +1369,56 @@
     },
     {
       "spread": 2,
-      "label": "geometry_canvas",
+      "label": "char_geometry_canvas",
       "rect": [
         874,
-        405,
-        1054,
-        675
+        418,
+        1046,
+        676
       ],
       "kind": "shape"
     },
     {
       "spread": 2,
-      "label": "geometry_pose",
+      "label": "char_geometry_pose",
       "rect": [
         882,
-        429.609375,
-        1046,
-        658.125
+        441.515625,
+        1038,
+        659.875
       ],
       "kind": "shape"
     },
     {
       "spread": 2,
-      "label": "geometry_baseline",
+      "label": "char_geometry_baseline",
       "rect": [
         882,
-        429.609375,
-        1046,
-        658.125
+        441.515625,
+        1038,
+        659.875
       ],
       "kind": "shape"
     },
     {
       "spread": 2,
-      "label": "geometry_body_box",
+      "label": "char_geometry_body_box",
       "rect": [
         882,
-        429.609375,
-        1046,
-        658.125
+        441.515625,
+        1038,
+        659.875
       ],
       "kind": "shape"
     },
     {
       "spread": 2,
-      "label": "silhouette_rules",
+      "label": "char_silhouette_rules",
       "rect": [
-        1114,
-        465,
+        1106,
+        478,
         1520,
-        635
+        648
       ],
       "kind": "text"
     },
@@ -1382,9 +1503,9 @@
       "spread": 3,
       "label": "badge",
       "rect": [
-        60,
-        83,
-        240,
+        62,
+        82,
+        238,
         112
       ],
       "kind": "text"
@@ -1404,8 +1525,8 @@
       "spread": 3,
       "label": "hand_note",
       "rect": [
-        570,
-        76,
+        560,
+        92,
         755,
         118
       ],
@@ -1578,34 +1699,12 @@
     },
     {
       "spread": 3,
-      "label": "staging_1",
+      "label": "staging_notes",
       "rect": [
         282,
-        823,
-        560,
-        848
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 3,
-      "label": "staging_2",
-      "rect": [
-        282,
-        851,
-        560,
-        876
-      ],
-      "kind": "text"
-    },
-    {
-      "spread": 3,
-      "label": "staging_3",
-      "rect": [
-        282,
-        879,
-        560,
-        904
+        820,
+        568,
+        908
       ],
       "kind": "text"
     },
@@ -1781,7 +1880,7 @@
         864,
         542,
         1166,
-        566
+        568.375
       ],
       "kind": "text"
     },
@@ -1825,7 +1924,7 @@
         1212,
         560,
         1530,
-        584
+        586.375
       ],
       "kind": "text"
     },
@@ -1836,7 +1935,7 @@
         1180,
         614,
         1540,
-        640
+        642.0
       ],
       "kind": "text"
     },
@@ -2881,7 +2980,7 @@
         850,
         924,
         1550,
-        944
+        948.75
       ],
       "kind": "text"
     }
