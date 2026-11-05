@@ -676,7 +676,7 @@ fn analyze_with_filmcraft(
     let item = crate::song_timing::song_item(dir, &film, audio)?;
     let mut ran = Vec::new();
     if overwrite || !transcript.is_file() {
-        let (doc, _) = crate::song_timing::native_transcribe(dir, &film, audio, item, Some(model))?;
+        let (doc, _) = crate::song_timing::native_transcribe(&film, item, Some(model))?;
         let bytes = serde_json::to_vec_pretty(&doc)
             .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
         craft_atomic::atomic_write(&transcript, &bytes)?;

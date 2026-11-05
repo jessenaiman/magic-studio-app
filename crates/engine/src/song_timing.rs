@@ -12,6 +12,10 @@ const TICKS: f64 = 254_016_000_000.0;
 /// In the project folder.
 const BEATS_FILE: &str = "beats.json";
 
+#[cfg(test)]
+#[path = "../tests/unit/song_timing.rs"]
+mod tests;
+
 fn bad(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
@@ -41,12 +45,10 @@ pub(crate) fn decode_audio_planar(audio: &Path) -> Result<(Vec<Vec<f32>>, u32, f
     Ok((buf.channels, sr, dur))
 }
 
-/// Pure-Rust Whisper transcription via `filmcraft-speech` (or `filmcraft-engine`'s `transcript.generate`),
-/// falling back to any existing transcript or canonical lyric sheet in the project folder.
+/// FilmCraft's actual recognition result, or an error. Never derive words or timing from a
+/// lyric sheet or filename when recognition fails.
 pub(crate) fn native_transcribe(
-    dir: &Path,
     film: &Path,
-    audio: &Path,
     item: u64,
     model_hint: Option<&str>,
 ) -> Result<(Value, String)> {
@@ -58,27 +60,25 @@ pub(crate) fn native_transcribe(
     let mut fc = crate::film::open_filmcraft(film)?;
     let models = fc
         .execute("transcript.models", json!({}))
-        .unwrap_or_else(|_| json!({}));
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
     let installed = models["models"]
         .as_array()
         .into_iter()
         .flatten()
         .any(|m| m["id"] == model && m["installed"] == true);
     if !installed {
-        let _ = fc.execute("transcript.downloadModel", json!({"model": model}));
-    }
-    if fc
-        .execute(
-            "transcript.generate",
-            json!({"items": [item], "model": model, "language": "en"}),
-        )
-        .is_ok()
-    {
-        let _ = fc.execute("file.saveAs", json!({"path": film}));
-        let inspected = fc
-            .execute("transcript.inspect", json!({}))
+        fc.execute("transcript.downloadModel", json!({"model": model}))
             .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
-        let words: Vec<Value> = inspected["words"]
+    }
+    fc.execute(
+        "transcript.generate",
+        json!({"items": [item], "model": model, "language": "en"}),
+    )
+    .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    let inspected = fc
+        .execute("transcript.inspect", json!({}))
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    let words: Vec<Value> = inspected["words"]
             .as_array()
             .into_iter()
             .flatten()
@@ -88,7 +88,7 @@ pub(crate) fn native_transcribe(
                 json!({"text": w["text"], "start": (s * 1e6).round() / 1e6, "end": (e * 1e6).round() / 1e6})
             })
             .collect();
-        let paragraphs: Vec<Value> = inspected["paragraphs"]
+    let paragraphs: Vec<Value> = inspected["paragraphs"]
             .as_array()
             .into_iter()
             .flatten()
@@ -98,69 +98,21 @@ pub(crate) fn native_transcribe(
                 json!({"text": p["text"], "start": (s * 1e6).round() / 1e6, "end": (e * 1e6).round() / 1e6})
             })
             .collect();
-        if !words.is_empty() {
-            return Ok((
-                json!({
-                    "source": "filmcraft-speech",
-                    "model": model,
-                    "words": words,
-                    "paragraphs": if paragraphs.is_empty() { words.clone() } else { paragraphs }
-                }),
-                format!("filmcraft-speech ({model})"),
-            ));
-        }
+    if !words.is_empty() {
+        fc.execute("file.saveAs", json!({"path": film}))
+            .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+        return Ok((
+            json!({
+                "source": "filmcraft-speech",
+                "model": model,
+                "words": words,
+                "paragraphs": if paragraphs.is_empty() { words.clone() } else { paragraphs }
+            }),
+            format!("filmcraft-speech ({model})"),
+        ));
     }
-    // Fallback when offline and no Whisper model weights are cached yet: derive deterministic
-    // timing across the recording duration from canonical lyrics if present, or a single vocal cue.
-    let (_, _, duration) = decode_audio_planar(audio)?;
-    let lyrics = crate::lyrics::song_lyrics_in(dir).unwrap_or_else(|_| json!({}));
-    let mut raw_lines: Vec<String> = lyrics["sections"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|sec| sec["lines"].as_array().into_iter().flatten())
-        .filter_map(|l| l["text"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned))
-        .collect();
-    if raw_lines.is_empty() {
-        let stem = audio
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(" Instrumental ");
-        raw_lines.push(stem.replace(['-', '_'], " "));
-    }
-    let total_words: usize = raw_lines
-        .iter()
-        .map(|l| l.split_whitespace().count().max(1))
-        .sum::<usize>()
-        .max(1);
-    let usable = (duration - 0.2).max(0.5);
-    let step = usable / total_words as f64;
-    let mut words = Vec::with_capacity(total_words);
-    let mut paragraphs = Vec::with_capacity(raw_lines.len());
-    let mut cursor = 0usize;
-    for line in &raw_lines {
-        let line_words: Vec<&str> = line.split_whitespace().collect();
-        if line_words.is_empty() {
-            continue;
-        }
-        let line_start = (cursor as f64 * step * 1e6).round() / 1e6;
-        for w in line_words {
-            let s = (cursor as f64 * step * 1e6).round() / 1e6;
-            cursor += 1;
-            let e = ((cursor as f64 * step).min(duration) * 1e6).round() / 1e6;
-            words.push(json!({"text": w, "start": s, "end": e}));
-        }
-        let line_end = ((cursor as f64 * step).min(duration) * 1e6).round() / 1e6;
-        paragraphs.push(json!({"text": line, "start": line_start, "end": line_end}));
-    }
-    Ok((
-        json!({
-            "source": "filmcraft-speech",
-            "model": model,
-            "words": words,
-            "paragraphs": paragraphs
-        }),
-        format!("filmcraft-speech ({model})"),
+    Err(bad(
+        "FilmCraft returned no recognized words; no transcript was created",
     ))
 }
 
@@ -168,14 +120,13 @@ pub(crate) fn native_transcribe(
 fn transcript(
     dir: &Path,
     film: &Path,
-    audio: &Path,
     item: u64,
     name: &str,
 ) -> Result<(PathBuf, bool)> {
     if let Some(existing) = crate::workshop::transcript_files(dir).into_iter().next() {
         return Ok((existing, false));
     }
-    let (doc, _) = native_transcribe(dir, film, audio, item, None)?;
+    let (doc, _) = native_transcribe(film, item, None)?;
     let saved = dir.join(format!("{name}.transcript.json"));
     let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| bad(e.to_string()))?;
     craft_atomic::atomic_write(&saved, &bytes)?;
@@ -198,52 +149,16 @@ pub(crate) fn analyze_music_native(dir: &Path, audio: &Path) -> Result<Value> {
     let sample_peak_dbfs = meter.sample_peak();
     let true_peak_dbtp = meter.true_peak_dbtp();
 
-    let (bpm, beat_times, downbeat_times, spans) = match filmcraft_audio_dsp::remix::analyze(&refs, sr) {
-        Ok(a) => {
-            let b_times: Vec<f64> = a
-                .beats
-                .iter()
-                .map(|&s| ((s as f64 / sr as f64) * 1e4).round() / 1e4)
-                .collect();
-            let db_times: Vec<f64> = b_times.iter().step_by(4).copied().collect();
-            let section_len = 16usize;
-            let mut sec_spans = Vec::new();
-            let mut idx = 0usize;
-            let mut sec_num = 1usize;
-            while idx < b_times.len() {
-                let start = if idx == 0 { 0.0 } else { b_times[idx] };
-                let next_idx = (idx + section_len).min(b_times.len());
-                let end = if next_idx < b_times.len() {
-                    b_times[next_idx]
-                } else {
-                    duration
-                };
-                if end > start {
-                    sec_spans.push(json!({
-                        "start": start,
-                        "end": end,
-                        "label": format!("Section {sec_num}")
-                    }));
-                    sec_num += 1;
-                }
-                idx = next_idx;
-            }
-            if sec_spans.is_empty() {
-                sec_spans.push(json!({"start": 0.0, "end": duration, "label": "Section 1"}));
-            }
-            ((a.bpm * 100.0).round() / 100.0, b_times, db_times, sec_spans)
-        }
-        Err(_) => {
-            // Short or percussive-free clips still get a clean 120 BPM reference grid.
-            let bpm = 120.0;
-            let period = 0.5;
-            let count = (duration / period).floor() as usize;
-            let b_times: Vec<f64> = (0..count).map(|i| i as f64 * period).collect();
-            let db_times: Vec<f64> = b_times.iter().step_by(4).copied().collect();
-            let spans = vec![json!({"start": 0.0, "end": duration.max(0.5), "label": "Section 1"})];
-            (bpm, b_times, db_times, spans)
-        }
-    };
+    let analysis = filmcraft_audio_dsp::remix::analyze(&refs, sr).map_err(|e| {
+        bad(format!(
+            "FilmCraft beat analysis failed: {e}; no beat grid was generated"
+        ))
+    })?;
+    let beat_times: Vec<f64> = analysis
+        .beats
+        .iter()
+        .map(|&sample| sample as f64 / sr as f64)
+        .collect();
 
     let item = json!({
         "audio": {
@@ -258,12 +173,9 @@ pub(crate) fn analyze_music_native(dir: &Path, audio: &Path) -> Result<Value> {
                 "true_peak_dbtp": true_peak_dbtp.is_finite().then_some(true_peak_dbtp),
             }
         },
-        "bpm": { "value": bpm },
+        "bpm": { "value": analysis.bpm },
         "beats": { "times": beat_times },
-        "downbeats": { "times": downbeat_times },
-        "onsets": { "times": beat_times },
-        "moments": { "times": downbeat_times },
-        "sections": { "spans": spans }
+        "unavailable": ["downbeats", "onsets", "moments", "sections"]
     });
     let report = json!({
         "ok": true,
@@ -373,7 +285,7 @@ pub fn cmd_song_timing(s: &mut Session, _: &Value) -> Result<Value> {
         .unwrap_or("song")
         .to_owned();
     let item = song_item(&dir, &film, &audio)?;
-    let (transcript_file, new) = transcript(&dir, &film, &audio, item, &name)?;
+    let (transcript_file, new) = transcript(&dir, &film, item, &name)?;
     let beat = analyze_music_native(&dir, &audio)?;
     crate::film::link(s, &film)?;
     let loaded_into_film = sync_film_tracks(&dir, &film, item, &transcript_file, &beat)?;
@@ -383,7 +295,7 @@ pub fn cmd_song_timing(s: &mut Session, _: &Value) -> Result<Value> {
         "loaded_into_film": loaded_into_film, "bpm": beat["bpm"]["value"],
         "loudness": beat["audio"]["loudness"],
         "beats": beat["beats"]["times"].as_array().map_or(0, Vec::len),
-        "downbeats": beat["downbeats"]["times"].as_array().map_or(0, Vec::len),
+        "downbeats": beat["downbeats"]["times"].as_array().map(Vec::len),
         "sections": beat["sections"]["spans"], "beats_file": dir.join(BEATS_FILE)}),
     )
 }
