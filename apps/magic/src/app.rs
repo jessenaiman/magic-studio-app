@@ -15,16 +15,22 @@ use std::sync::{
 mod project_list;
 mod project_view;
 mod storyboard_view;
+mod animation_view;
+mod lyrics_view;
 
 use project_list::{ProjectList, ProjectListAction};
 use project_view::{ProjectViewAction, ProjectViewState};
 use storyboard_view::{StoryboardAction, StoryboardViewState};
+use animation_view::{AnimationAction, AnimationViewState};
+use lyrics_view::{LyricsAction, LyricsViewState};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AppView {
     ProjectList,
     ProjectView,
     StoryboardView,
+    AnimationView,
+    LyricsView,
 }
 
 impl AppView {
@@ -33,6 +39,8 @@ impl AppView {
             AppView::ProjectList => "projects",
             AppView::ProjectView => "project",
             AppView::StoryboardView => "storyboard",
+            AppView::AnimationView => "animation",
+            AppView::LyricsView => "lyrics",
         }
     }
 }
@@ -50,6 +58,8 @@ pub struct magicApp {
     project_list: ProjectList,
     project_view: ProjectViewState,
     storyboard_view: StoryboardViewState,
+    animation_view: AnimationViewState,
+    lyrics_view: LyricsViewState,
     status: Option<String>,
     error: Option<String>,
     socket_path: Option<PathBuf>,
@@ -84,6 +94,8 @@ impl magicApp {
             project_list: ProjectList::new(),
             project_view: ProjectViewState::default(),
             storyboard_view: StoryboardViewState::default(),
+            animation_view: AnimationViewState::default(),
+            lyrics_view: LyricsViewState::default(),
             status: None,
             error,
             socket_path,
@@ -169,6 +181,22 @@ impl eframe::App for magicApp {
                     {
                         self.storyboard_view.reload(&engine);
                         view = AppView::StoryboardView;
+                        self.set_view(view);
+                    }
+                    if ui
+                        .selectable_label(view == AppView::AnimationView, "Animation")
+                        .clicked()
+                    {
+                        self.animation_view.refresh(&mut engine);
+                        view = AppView::AnimationView;
+                        self.set_view(view);
+                    }
+                    if ui
+                        .selectable_label(view == AppView::LyricsView, "Lyrics")
+                        .clicked()
+                    {
+                        self.lyrics_view.refresh(&mut engine);
+                        view = AppView::LyricsView;
                         self.set_view(view);
                     }
                 });
@@ -266,6 +294,22 @@ impl eframe::App for magicApp {
                     self.status = Some(msg);
                 }
                 StoryboardAction::Error(e) => self.error = Some(e),
+            },
+            AppView::AnimationView => match self.animation_view.ui(ui, &mut engine) {
+                AnimationAction::None => {}
+                AnimationAction::Status(msg) => {
+                    self.error = None;
+                    self.status = Some(msg);
+                }
+                AnimationAction::Error(e) => self.error = Some(e),
+            },
+            AppView::LyricsView => match self.lyrics_view.ui(ui, &mut engine) {
+                LyricsAction::None => {}
+                LyricsAction::Status(msg) => {
+                    self.error = None;
+                    self.status = Some(msg);
+                }
+                LyricsAction::Error(e) => self.error = Some(e),
             },
         });
     }
