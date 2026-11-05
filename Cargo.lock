@@ -5365,17 +5365,13 @@ checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
 name = "magic"
 version = "0.17.0"
 dependencies = [
- "cairo-rs",
  "clap",
- "gio",
- "gtk",
  "magic-engine",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "webkit2gtk",
 ]
 
 [[package]]

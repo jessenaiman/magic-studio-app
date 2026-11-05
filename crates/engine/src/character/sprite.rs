@@ -32,7 +32,7 @@ fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32)) -> Result<Vec<PathBuf
     for i in 0..cols * rows {
         let file = frames.join(format!("frame_{:04}.png", i + 1));
         let crop = json!({"x": (i % cols) * cw, "y": (i / cols) * ch, "width": cw, "height": ch});
-        crate::photocraft::run(
+        crate::character::cut::photocraft_run(
             sheet,
             &[
                 ("image.crop", crop),

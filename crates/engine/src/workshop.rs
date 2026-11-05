@@ -50,7 +50,7 @@ pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
         return Some(duration);
     }
     let fcproj = video_project_path(dir)?;
-    let seq = crate::filmcraft::execute(&fcproj, "sequence.inspect", json!({})).ok()?;
+    let seq = crate::film::execute(&fcproj, "sequence.inspect", json!({})).ok()?;
     seq.get("duration")
         .and_then(Value::as_f64)
         .map(|t| t / SEQUENCE_TICKS_PER_SECOND)
@@ -496,6 +496,13 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         .clone()
         .or_else(|| active_target_path.clone());
     let diag = diagnose_video_setup(s, &dir);
+    let mut storyboard = loaded_board.clone();
+    if let Some(deck) = storyboard.get("deck").and_then(Value::as_str) {
+        let deck_path = Path::new(deck);
+        if !deck_path.is_absolute() {
+            storyboard["deck"] = json!(dir.join(deck_path));
+        }
+    }
     Ok(json!({
         "ok": true,
         "project_dir": dir,
@@ -503,6 +510,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         "video_target": target,
         "targets": targets,
         "film_timeline": crate::film::timeline_file(s)?,
+        "storyboard": storyboard,
         "asset_files": assets.iter().map(|p| file_chip(p)).collect::<Vec<_>>(),
         "studio": {"name": studio_info.name, "intent": studio_info.intent, "source": studio_info.source},
         "video_project_path": effective_video_project,

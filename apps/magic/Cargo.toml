@@ -24,9 +24,3 @@ tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tauri-plugin-dialog = { version = "2" }
 clap = { version = "4.6", features = ["derive", "env"] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-# Multi-webview shell: one GTK box holds project + Studio webviews.
-gtk = "0.18"
-webkit2gtk = "2.0"
-cairo-rs = { version = "0.18", features = ["png"] }
-gio = "0.18"

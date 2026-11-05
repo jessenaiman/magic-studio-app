@@ -398,7 +398,7 @@ fn build_breakout_record(
                         json!({"path": out_png, "overwrite": true}),
                     ),
                 ];
-                match crate::photocraft::run(src, &steps, Some(&out_pcraft)) {
+                match crate::character::cut::photocraft_run(src, &steps, Some(&out_pcraft)) {
                     Ok(_) => {
                         let exported = collect_files_with_ext(&layers_dir, &["png"], 1);
                         json!({
@@ -564,7 +564,18 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         .or_else(|| current["primary_glb"].as_str().map(PathBuf::from));
     let tc_report = model_path
         .as_deref()
-        .map(crate::texturecraft::mesh_info)
+        .map(|path| -> Result<Value> {
+            let imported = texturecraft_formats::import_mesh(path).map_err(|e| {
+                crate::EngineError::ExternalTool("texturecraft-formats".into(), e.to_string())
+            })?;
+            let mesh = &imported.mesh;
+            Ok(json!({
+                "path": path.display().to_string(),
+                "vertices": mesh.positions.len(),
+                "triangles": mesh.indices.len() / 3,
+                "hasTangents": mesh.tangents.len() == mesh.positions.len(),
+            }))
+        })
         .transpose()?
         .unwrap_or(Value::Null);
     let (riggable, precheck) =
@@ -834,7 +845,7 @@ fn build_effectcraft_3d_comp(
     if super::effectcraft(clips_dir, None, &steps).is_err() {
         return (Value::Null, Value::Null);
     }
-    let rendered = crate::effectcraft::frame(
+    let rendered = crate::character::effectcraft_frame(
         &ec_path,
         &comp_name,
         (duration * 0.5).min(1.0),

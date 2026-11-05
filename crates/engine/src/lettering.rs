@@ -634,12 +634,12 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     std::fs::write(&commands, jsonl)?;
     let mut native_steps = steps;
     native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
-    crate::effectcraft::run(&dir, None, &native_steps)?;
+    crate::character::effectcraft(&dir, None, &native_steps)?;
     let render = if p["render"] == false {
         None
     } else {
         let movie = out.join("lyrics.mov");
-        crate::effectcraft::render(
+        crate::character::effectcraft_render(
             &project,
             json!({
                 "comp": COMP, "output": movie, "format": "prores", "proresProfile": "4444", "channels": "rgba"

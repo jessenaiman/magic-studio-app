@@ -7,11 +7,11 @@
       "species": "cat",
       "role": "artwork",
       "poses": {
-        "rest": "media/companions/gaffer-cat-rest.svg",
-        "work": "media/companions/gaffer-cat-work.svg",
-        "sniff": "media/companions/gaffer-cat-sniff.svg",
-        "alert": "media/companions/gaffer-cat-alert.svg",
-        "asleep": "media/companions/gaffer-cat-asleep.svg"
+        "rest": "gaffer-cat-rest.svg",
+        "work": "gaffer-cat-work.svg",
+        "sniff": "gaffer-cat-sniff.svg",
+        "alert": "gaffer-cat-alert.svg",
+        "asleep": "gaffer-cat-asleep.svg"
       }
     },
     "sproket": {
@@ -19,11 +19,11 @@
       "species": "dog",
       "role": "issue/chat",
       "poses": {
-        "rest": "media/companions/sproket-dog-rest.svg",
-        "work": "media/companions/sproket-dog-work.svg",
-        "sniff": "media/companions/sproket-dog-sniff.svg",
-        "alert": "media/companions/sproket-dog-alert.svg",
-        "asleep": "media/companions/sproket-dog-asleep.svg"
+        "rest": "sproket-dog-rest.svg",
+        "work": "sproket-dog-work.svg",
+        "sniff": "sproket-dog-sniff.svg",
+        "alert": "sproket-dog-alert.svg",
+        "asleep": "sproket-dog-asleep.svg"
       }
     }
   }

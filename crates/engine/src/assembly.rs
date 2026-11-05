@@ -22,7 +22,7 @@ pub(crate) fn run(_dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> 
         body = earlier + &body;
     }
     std::fs::write(&file, &body)?;
-    crate::filmcraft::run(project, fresh, steps)
+    crate::film::run(project, fresh, steps)
 }
 
 pub(crate) fn ids(result: &Value, field: &str) -> Vec<u64> {
@@ -288,7 +288,7 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
     let exports = dir.join("exports");
     std::fs::create_dir_all(&exports)?;
     let out = exports.join(format!("{name}.mp4"));
-    crate::filmcraft::export(project, &out, false)?;
+    crate::film::export(project, &out, false)?;
     Ok(out)
 }
 

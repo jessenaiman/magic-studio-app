@@ -325,7 +325,7 @@ fn crop_panels(
             let n = r * columns + c + 1;
             let out = out_dir.join(format!("panel-{n:02}.png"));
             let rect = json!({"x": c * cw + inset, "y": r * ch + inset, "width": cw - 2 * inset, "height": ch - 2 * inset});
-            crate::photocraft::run(image, &[("image.crop", rect)], Some(&out))?;
+            crate::character::cut::photocraft_run(image, &[("image.crop", rect)], Some(&out))?;
             panels.push(out);
         }
     }

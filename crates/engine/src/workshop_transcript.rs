@@ -188,38 +188,7 @@ pub(crate) fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
 
 /// Supplies a transcript made earlier instead of transcribing again.
 pub fn cmd_workshop_import_transcript(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
-    let mut adjusted = params.clone();
-    let mut received = std::fs::read(dir.join("intake-state.json"))
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .and_then(|v| v["received"].as_array().cloned())
-        .unwrap_or_default();
-    for (key, original) in [
-        ("path", "original_source"),
-        ("captions", "original_captions"),
-        ("audiomap", "original_audiomap"),
-    ] {
-        if let Some(raw) = params[key].as_str() {
-            let source = resolve_workspace_path(s, raw);
-            let record = crate::command_center::receive(&dir, &source)?;
-            adjusted[original] = json!(source);
-            adjusted[key] = record["path"].clone();
-            if !received.iter().any(|v| v["path"] == record["path"]) {
-                received.push(record);
-            }
-        }
-    }
-    let result = import_transcript_inner(s, &adjusted);
-    let errors = match &result {
-        Ok(_) => vec![],
-        Err(e) => vec![e.to_string()],
-    };
-    crate::command_center::write_state(
-        &dir,
-        &json!({"received":received,"problems":errors,"valid":result.is_ok(),"command":"workshop.import_transcript","manual":"magic-cli commands workshop.import_transcript; crates/engine/src/workshop.rs"}),
-    )?;
-    result
+    import_transcript_inner(s, params)
 }
 
 fn read_transcript_source(s: &Session, params: &Value) -> Result<(PathBuf, Value)> {
@@ -319,7 +288,7 @@ fn mapped_duration(s: &Session, params: &Value) -> Option<f64> {
 
 /// Unknown duration is retained as a warning by the transcript importer.
 fn probed_duration(s: &Session) -> Option<f64> {
-    crate::filmcraft::media_duration(s.song_audio.as_deref()?, false).ok()
+    crate::film::media_duration(s.song_audio.as_deref()?, false).ok()
 }
 
 /// What the recording's duration is, where it came from, and anything that contradicts it.

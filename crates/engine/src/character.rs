@@ -5,7 +5,7 @@
 //! `<id>-<view>.pcraft`, `<id>-<view>.ecproj` and rendered `frames/`.
 
 mod action;
-mod cut;
+pub(crate) mod cut;
 mod mark;
 mod meta;
 pub mod review;
@@ -97,13 +97,151 @@ impl View {
     }
 }
 
+fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
+    if !matches!(
+        id,
+        "file.open" | "file.save" | "file.saveAs" | "file.import" | "layer.newModel"
+    ) {
+        return params.clone();
+    }
+    let mut out = params.clone();
+    if let Some(p) = out
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        let path = Path::new(p);
+        let full = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base.join(path)
+        };
+        out["path"] = json!(full);
+    }
+    if let Some(paths) = out.get("paths").and_then(Value::as_array) {
+        let resolved: Vec<Value> = paths
+            .iter()
+            .map(|v| match v.as_str() {
+                Some(s) if !s.is_empty() => {
+                    let path = Path::new(s);
+                    let full = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        base.join(path)
+                    };
+                    json!(full)
+                }
+                _ => v.clone(),
+            })
+            .collect();
+        out["paths"] = json!(resolved);
+    }
+    out
+}
+
+fn open_effectcraft(project: &Path) -> Result<effectcraft_engine::Session> {
+    let mut session = effectcraft_host::session();
+    let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    session
+        .execute_checked("file.open", json!({"path": path}))
+        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    Ok(session)
+}
+
 /// Run EffectCraft's native registry in-process; no CLI or temporary command file.
 pub(crate) fn effectcraft(
     dir: &Path,
     project: Option<&Path>,
     steps: &[Value],
 ) -> Result<Vec<Value>> {
-    crate::effectcraft::run(dir, project, steps)
+    let base = project.and_then(Path::parent).unwrap_or(dir);
+    let mut session = match project {
+        Some(path) => open_effectcraft(path)?,
+        None => effectcraft_host::session(),
+    };
+    let mut out = Vec::with_capacity(steps.len());
+    for step in steps {
+        let id = step["id"]
+            .as_str()
+            .or_else(|| step["command"].as_str())
+            .ok_or_else(|| bad(format!("missing command id in {step}")))?;
+        let raw_params = step.get("params").cloned().unwrap_or_else(|| json!({}));
+        let params = resolve_effectcraft_params(base, id, &raw_params);
+        let value = session.execute_checked(id, params).map_err(|e| {
+            EngineError::ExternalTool("effectcraft-engine".into(), format!("{id}: {e}"))
+        })?;
+        out.push(value);
+    }
+    if let Some(path) = project {
+        session
+            .execute_checked("file.saveAs", json!({"path": path}))
+            .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    }
+    Ok(out)
+}
+
+pub(crate) fn effectcraft_frame(
+    project: &Path,
+    comp: &str,
+    seconds: f64,
+    max_side: u32,
+    output: &Path,
+) -> Result<()> {
+    let session = open_effectcraft(project)?;
+    let comp = session
+        .resolve_comp(Some(&json!(comp)))
+        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    let time = effectcraft_engine::time::Tick::from_seconds_f64(seconds.max(0.0));
+    let (w, h, rgba) = session
+        .render_rgba8_alpha(comp, time, max_side, true)
+        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    image::save_buffer(output, &rgba, w, h, image::ColorType::Rgba8)?;
+    Ok(())
+}
+
+pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value> {
+    let mut session = open_effectcraft(project)?;
+    let existing: Vec<u64> = session.project.render_queue.iter().map(|i| i.id).collect();
+    for id in existing {
+        let _ = session.execute("renderQueue.setRender", json!({"id": id, "render": false}));
+    }
+    let added = session
+        .execute_checked("renderQueue.add", params)
+        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    let item_id = added["id"].as_u64().ok_or_else(|| {
+        EngineError::ExternalTool(
+            "effectcraft-engine".into(),
+            format!("renderQueue.add returned no id: {added}"),
+        )
+    })?;
+    session
+        .start_render(true)
+        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    while session.is_rendering() {
+        session.poll_render();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let item = session
+        .project
+        .render_queue
+        .iter()
+        .find(|i| i.id == item_id)
+        .ok_or_else(|| {
+            EngineError::ExternalTool(
+                "effectcraft-engine".into(),
+                format!("render queue item {item_id} missing after render"),
+            )
+        })?;
+    if item.status != effectcraft_engine::project::render_queue::RenderStatus::Done {
+        return Err(EngineError::ExternalTool(
+            "effectcraft-engine".into(),
+            format!("render status: {:?}", item.status),
+        ));
+    }
+    Ok(added)
 }
 
 pub(crate) fn path_arg(path: &Path) -> String {
@@ -200,7 +338,7 @@ pub fn cmd_character_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let frames = view.dir.join("frames");
     std::fs::create_dir_all(&frames)?;
     let out = frames.join(format!("{}-{:07.3}.png", view.comp(), time));
-    crate::effectcraft::frame(&project, &view.comp(), time, side as u32, &out)?;
+    effectcraft_frame(&project, &view.comp(), time, side as u32, &out)?;
     Ok(json!({"ok": true, "frame": out, "time": time, "project": project}))
 }
 
@@ -257,7 +395,7 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         (dir.clone(), dir.join("frame.png"))
     };
     std::fs::create_dir_all(&dir)?;
-    crate::effectcraft::render(
+    effectcraft_render(
         &project,
         json!({
             "comp": comp, "output": out, "start": start, "end": end, "frameRate": fps,

@@ -284,7 +284,7 @@ pub(crate) fn ensure_video_target_project(
 
 pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> Result<f64> {
     audio.map_or(Ok(30.0), |path| {
-        crate::filmcraft::media_duration(path, false)
+        crate::film::media_duration(path, false)
     })
 }
 
@@ -1449,7 +1449,7 @@ fn render_video(
             ),
         ));
     }
-    let duration = match crate::filmcraft::media_duration(&staged, true) {
+    let duration = match crate::film::media_duration(&staged, true) {
         Ok(value) => value,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&stage);

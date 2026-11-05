@@ -128,7 +128,7 @@ pub fn cmd_character_shot(s: &mut Session, p: &Value) -> Result<Value> {
     steps.push(step("file.saveAs", json!({"path": project})));
     effectcraft(&dir, None, &steps)?;
     let clip = dir.join(format!("{name}.mov"));
-    crate::effectcraft::render(
+    crate::character::effectcraft_render(
         &project,
         json!({
             "comp": name, "output": clip, "format": "prores", "proresProfile": "4444", "channels": "rgba"

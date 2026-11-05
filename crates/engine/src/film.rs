@@ -80,12 +80,129 @@ pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
 
+fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session> {
+    let mut session = filmcraft_engine::Session::default();
+    let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    session
+        .execute("file.open", json!({"path": path}))
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    Ok(session)
+}
+
+pub(crate) fn execute(project: &Path, id: &str, params: Value) -> Result<Value> {
+    open_filmcraft(project)?
+        .execute(id, params)
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))
+}
+
+pub(crate) fn run(project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
+    let mut session = if !fresh && project.is_file() {
+        open_filmcraft(project)?
+    } else {
+        filmcraft_engine::Session::default()
+    };
+    let mut out = Vec::with_capacity(steps.len());
+    for step in steps {
+        let id = step["id"]
+            .as_str()
+            .or_else(|| step["command"].as_str())
+            .ok_or_else(|| bad(format!("missing command id in {step}")))?;
+        let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
+        let value = session.execute(id, params).map_err(|e| {
+            EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}"))
+        })?;
+        out.push(value);
+    }
+    session
+        .execute("file.saveAs", json!({"path": project}))
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    Ok(out)
+}
+
+pub(crate) fn export(project: &Path, output: &Path, draft: bool) -> Result<()> {
+    let mut session = open_filmcraft(project)?;
+    let mut params = json!({"path": output, "format": "h264", "wait": true});
+    if draft {
+        params["scale"] = json!(0.5);
+        params["quality"] = json!(60);
+    }
+    let result = session
+        .execute("file.exportMedia", params)
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    if let Some(offline) = result["offlineMedia"]
+        .as_array()
+        .filter(|items| !items.is_empty())
+    {
+        return Err(EngineError::ExternalTool(
+            "filmcraft-engine".into(),
+            format!("export blocked by offline media: {offline:?}"),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn frame(project: &Path, seconds: f64, output: &Path) -> Result<()> {
+    let session = open_filmcraft(project)?;
+    let (frame, offline) = session
+        .try_render_program_with_offline_at(0.5, filmcraft_engine::commands::secs(seconds))
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    if !offline.is_empty() {
+        return Err(EngineError::ExternalTool(
+            "filmcraft-engine".into(),
+            format!("frame blocked by offline media: {offline:?}"),
+        ));
+    }
+    let rgba = frame.over_black_rgba8();
+    image::save_buffer(
+        output,
+        &rgba,
+        frame.w as u32,
+        frame.h as u32,
+        image::ColorType::Rgba8,
+    )?;
+    Ok(())
+}
+
+pub(crate) fn media_duration(filename: &Path, require_video: bool) -> Result<f64> {
+    let session = filmcraft_engine::Session::default();
+    let source = session
+        .media
+        .probe_file(&filename.to_string_lossy(), &*session.services)
+        .map_err(|e| {
+            EngineError::InvalidParams(format!("cannot inspect {}: {e}", filename.display()))
+        })?;
+    let info = source.info();
+    if require_video && info.kind != filmcraft_media::MediaKind::Movie {
+        return Err(EngineError::InvalidParams(format!(
+            "{} has no video stream",
+            filename.display()
+        )));
+    }
+    if !require_video
+        && info.audio_streams.is_empty()
+        && info.kind != filmcraft_media::MediaKind::Movie
+    {
+        return Err(EngineError::InvalidParams(format!(
+            "{} has no audio stream",
+            filename.display()
+        )));
+    }
+    let duration = info.duration.seconds();
+    if !duration.is_finite() || duration <= 0.0 {
+        return Err(EngineError::InvalidParams(format!(
+            "{} has invalid duration {duration}",
+            filename.display()
+        )));
+    }
+    Ok(duration)
+}
+
 /// Export the active sequence with FilmCraft; `scale` and `quality` make a quick draft.
 fn export_with(f: &Film, out: &Path, draft: bool) -> Result<()> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    crate::filmcraft::export(f.require()?, out, draft)?;
+    export(f.require()?, out, draft)?;
     Ok(())
 }
 
@@ -130,7 +247,7 @@ pub fn cmd_video_frame(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    crate::filmcraft::frame(f.require()?, seconds, &out)?;
+    frame(f.require()?, seconds, &out)?;
     Ok(json!({"ok": true, "frame": out, "seconds": seconds}))
 }
 
@@ -169,7 +286,7 @@ fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
 /// The timeline's tracks and clips (in seconds) as FilmCraft holds them, for Studio's layer view.
 pub fn cmd_video_timeline(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
-    let seq = crate::filmcraft::execute(f.require()?, "sequence.inspect", json!({}))?;
+    let seq = execute(f.require()?, "sequence.inspect", json!({}))?;
     let mut tracks = track_rows(&seq["video"], "video");
     tracks.reverse();
     tracks.extend(track_rows(&seq["audio"], "audio"));

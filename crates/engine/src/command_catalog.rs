@@ -238,12 +238,6 @@ fn specs_backstage() -> Vec<CommandSpec> {
             crate::skills_registry::cmd_skills_add
         ),
         query!(
-            "backstage.observe",
-            "Observe a Saved Project Without Changing Its Session",
-            "{\"path\":\"absolute existing .magic project path\"}",
-            crate::command_center::observe_saved_project
-        ),
-        query!(
             "backstage.changes",
             "Discover Saved-Project Change Notifications",
             "{}",
@@ -256,22 +250,10 @@ fn specs_backstage() -> Vec<CommandSpec> {
             crate::activity::events
         ),
         query!(
-            "backstage.status",
-            "Backstage — Live Production Status",
-            "{\"trace\":false}",
-            crate::command_center::status
-        ),
-        query!(
             "booth.events",
             "Recent Activity Receipts (alias of backstage.events)",
             "{\"after\":0,\"limit\":20,\"project\":\"optional absolute project filter\"}",
             crate::activity::events
-        ),
-        query!(
-            "booth.status",
-            "Backstage (alias of backstage.status)",
-            "{\"trace\":false}",
-            crate::command_center::status
         ),
         query!(
             "center.events",
@@ -282,25 +264,31 @@ fn specs_backstage() -> Vec<CommandSpec> {
     ]
 }
 
+fn requires_ui(_: &mut crate::Session, _: &serde_json::Value) -> crate::Result<serde_json::Value> {
+    Err(crate::EngineError::InvalidParams(
+        "requires a live Magic Studio window".into(),
+    ))
+}
+
 fn specs_ui_controls() -> Vec<CommandSpec> {
     vec![
         query!(
             "ui.state",
             "Live window state",
             "{}",
-            crate::command_center::requires_ui
+            requires_ui
         ),
         query!(
             "ui.elements",
             "Visible controls",
             "{\"region\":\"optional CSS selector\"}",
-            crate::command_center::requires_ui
+            requires_ui
         ),
         query!(
             "ui.unconfigured",
             "Unconfigured controls",
             "{}",
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.click",
@@ -309,7 +297,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"id\":\"element ID\",\"instance\":0,\"files\":[]}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.set",
@@ -318,7 +306,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"id\":\"element ID\",\"value\":\"value\",\"instance\":0}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.text_edit",
@@ -327,7 +315,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"action\":\"edit.undo, edit.redo, edit.cut, edit.copy, edit.paste or edit.select_all\"}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.menu",
@@ -336,7 +324,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"menu\":\"file or text\",\"x\":0,\"y\":48}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.key",
@@ -345,7 +333,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"key\":\"key name\",\"id\":\"optional element ID\"}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.drag",
@@ -354,7 +342,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"id\":\"optional element ID\",\"from\":[],\"to\":[]}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.look",
@@ -363,7 +351,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"output\":\"optional PNG path\",\"region\":\"optional CSS selector\",\"click\":\"optional element ID\"}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.screenshot",
@@ -372,7 +360,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             None,
             "{\"output\":\"optional PNG path\"}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
     ]
 }
@@ -386,7 +374,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             None,
             "{\"animation_only\":\"optional true: also show only the Animation workspace\"}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.eval",
@@ -395,7 +383,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             None,
             "{\"js\":\"JavaScript body\"}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "app.quit",
@@ -404,25 +392,25 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             None,
             "{}",
             always,
-            crate::command_center::requires_ui
+            requires_ui
         ),
         query!(
             "ui.feedback",
             "Live Studio Feedback",
             "{\"project\":\"optional canonical project path\"}",
-            crate::command_center::requires_ui
+            requires_ui
         ),
         query!(
             "ui.components",
             "Rendered Studio Components",
             "{\"region\":\"#view-project\",\"filter\":\"optional ID filter\",\"limit\":30}",
-            crate::command_center::requires_ui
+            requires_ui
         ),
         query!(
             "ui.controls",
             "Studio control telemetry",
             "{\"region\":\"optional region\",\"offset\":0,\"limit\":64}",
-            crate::command_center::requires_ui
+            requires_ui
         ),
         cmd!(
             "ui.attention",
@@ -431,13 +419,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             None,
             "{\"project\":\"exact open .magic path\",\"id\":\"registered panel id\",\"reason\":\"what needs attention\",\"clear\":false}",
             always,
-            crate::command_center::requires_ui
-        ),
-        query!(
-            "center.status",
-            "Backstage (alias of backstage.status)",
-            "{\"trace\":false}",
-            crate::command_center::status
+            requires_ui
         ),
         query!(
             "studio.cues",
@@ -455,13 +437,13 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             crate::project::cmd_project_migrate
         ),
         cmd!(
-            "project.intake",
-            "New / Resume Project Intake",
+            "workspace.open",
+            "Open a File in Its Craft Editor",
             ["File"],
             None,
-            "{\"path\":\"optional explicit .magic override\",\"root\":\"optional per-request root override; defaults to project.root\",\"name\":\"song name\",\"audio\":\"optional existing audio; analyzed only without valid existing timing\",\"transcript\":\"optional existing JSON\",\"captions\":\"optional original SRT\",\"audiomap\":\"optional existing audiomap.json\",\"materials\":[\"optional notes/reference file\"],\"skills\":[{\"id\":\"skill id\",\"name\":\"display name\",\"description\":\"what it does\",\"status\":\"researching|implemented|not_implemented\",\"source\":\"url or reference\",\"implemented_at\":[\"command ids\"],\"implemented_in\":[\"file paths\"],\"integration_notes\":\"where it plugs in\"}],\"resume\":false,\"replace_transcript\":false,\"resolve_video_cli\":\"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
+            "{\"path\":\"file path\"}",
             always,
-            crate::command_center::intake
+            crate::workspace::cmd_workspace_open
         ),
     ]
 }

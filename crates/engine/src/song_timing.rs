@@ -106,7 +106,7 @@ fn song_item(dir: &Path, film: &Path, audio: &Path) -> Result<u64> {
         let sequence = json!({"id": "file.newSequence", "params": {"name": "Film", "fps": 30}});
         crate::assembly::run(dir, film, true, &[sequence])?;
     }
-    let project = crate::filmcraft::execute(film, "project.inspect", json!({}))?;
+    let project = crate::film::execute(film, "project.inspect", json!({}))?;
     let name = audio
         .file_name()
         .and_then(|n| n.to_str())
@@ -159,7 +159,7 @@ pub fn cmd_song_timing(s: &mut Session, _: &Value) -> Result<Value> {
     let beat = beats(&dir, &audio)?;
     let item = song_item(&dir, &film, &audio)?;
     crate::film::link(s, &film)?;
-    let held = crate::filmcraft::execute(&film, "transcript.inspect", json!({}))?;
+    let held = crate::film::execute(&film, "transcript.inspect", json!({}))?;
     let loaded = held["items"]
         .as_array()
         .into_iter()

@@ -113,6 +113,33 @@ pub(crate) fn open_editor(app: &str, document: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Open a project file in the Craft app that owns its format, or the system opener.
+pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Value> {
+    let raw = params["path"]
+        .as_str()
+        .filter(|p| !p.trim().is_empty())
+        .ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
+    let path = resolve_workspace_path(s, raw);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let app = match ext.as_str() {
+        "deckcraft" | "potx" | "pptx" => "deckcraft",
+        "fcproj" => "filmcraft",
+        "ecproj" => "effectcraft",
+        "pcraft" | "psd" => "photocraft",
+        "vcraft" | "svg" => "vectorcraft",
+        "tcraft" => "texturecraft",
+        "mcraft" => "materialcraft",
+        "blend" => "blender",
+        _ => "xdg-open",
+    };
+    open_editor(app, &path)?;
+    Ok(serde_json::json!({"ok": true, "app": app, "path": path}))
+}
+
 /// Resolve an installed tool executable from `<TOOL_NAME>` env override,
 /// `~/.config/magic/settings.json` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
 pub fn resolve_tool(name: &str) -> String {

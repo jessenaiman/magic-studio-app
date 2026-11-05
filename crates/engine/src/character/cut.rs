@@ -42,9 +42,56 @@ fn cut_part(args: &mut Vec<(&'static str, Value)>, part: &Value, root: &str) -> 
     Ok(())
 }
 
+fn open_photocraft(input: &std::path::Path) -> Result<photocraft_engine::Session> {
+    let mut session = photocraft_engine::Session::new();
+    let path = std::fs::canonicalize(input).unwrap_or_else(|_| input.to_path_buf());
+    session
+        .execute("file.openAs", json!({"path": path}))
+        .map_err(|e| crate::EngineError::ExternalTool("photocraft-engine".into(), e.to_string()))?;
+    Ok(session)
+}
+
+pub(crate) fn photocraft_run(
+    input: &std::path::Path,
+    steps: &[(&str, Value)],
+    output: Option<&std::path::Path>,
+) -> Result<()> {
+    let mut session = open_photocraft(input)?;
+    for (id, params) in steps {
+        if photocraft_engine::actions_cmds::noop_step(&session, id, params) {
+            continue;
+        }
+        let value = session.execute(id, params.clone()).map_err(|e| {
+            crate::EngineError::ExternalTool("photocraft-engine".into(), format!("{id}: {e}"))
+        })?;
+        if let Some(detail) = photocraft_engine::actions_cmds::nested_failure(id, &value) {
+            return Err(crate::EngineError::ExternalTool(
+                "photocraft-engine".into(),
+                detail,
+            ));
+        }
+    }
+    if let Some(path) = output {
+        if photocraft_engine::file_cmds::same_file(input, path) {
+            return Err(crate::EngineError::InvalidParams(format!(
+                "refusing to overwrite input {}",
+                input.display()
+            )));
+        }
+        session
+            .execute("file.saveACopy", json!({"path": path}))
+            .map_err(|e| {
+                crate::EngineError::ExternalTool("photocraft-engine".into(), e.to_string())
+            })?;
+    }
+    Ok(())
+}
+
 /// Each layer's bounds `[x, y, w, h]` from the saved PSD, by layer name.
 fn layer_bounds(psd: &std::path::Path) -> Result<serde_json::Map<String, Value>> {
-    let doc = crate::photocraft::inspect(psd)?;
+    let doc = open_photocraft(psd)?
+        .execute("document.inspect", json!({}))
+        .map_err(|e| crate::EngineError::ExternalTool("photocraft-engine".into(), e.to_string()))?;
     let mut out = serde_json::Map::new();
     for layer in doc["layers"].as_array().into_iter().flatten() {
         if let (Some(name), Some(bounds)) = (layer["name"].as_str(), layer.get("bounds")) {
@@ -64,7 +111,7 @@ fn export_layers(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<S
     let mut args = Vec::new();
     let params = json!({"dir": dir, "format": "png", "prefix": "", "trim": true});
     cmd(&mut args, "file.export.layersToFiles", Some(params));
-    crate::photocraft::run(psd, &args, None)?;
+    photocraft_run(psd, &args, None)?;
     let mut out = serde_json::Map::new();
     for entry in std::fs::read_dir(&dir)?.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -105,7 +152,7 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         "file.saveACopy",
         Some(json!({"path": psd, "overwrite": true})),
     );
-    crate::photocraft::run(&image, &args, Some(&pcraft))?;
+    photocraft_run(&image, &args, Some(&pcraft))?;
     let bounds = layer_bounds(&psd)?;
     let files = export_layers(&view, &psd)?;
     for part in parts["parts"].as_array_mut().into_iter().flatten() {
