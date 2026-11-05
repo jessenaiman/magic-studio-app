@@ -68,6 +68,7 @@ pub mod change_marker;
 pub mod character;
 pub mod command_catalog;
 pub mod commands;
+mod craft_cli;
 mod creation_loop;
 pub mod crew;
 pub mod doctor;

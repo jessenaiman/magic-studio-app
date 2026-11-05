@@ -309,7 +309,11 @@ pub fn cmd_video_exec(s: &mut Session, p: &Value) -> Result<Value> {
         .execute(id, params)
         .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))?;
     if save {
-        let _ = session.execute("file.saveAs", json!({"path": project}));
+        session
+            .execute("file.saveAs", json!({"path": project}))
+            .map_err(|e| {
+                EngineError::ExternalTool("filmcraft-engine".into(), format!("file.saveAs: {e}"))
+            })?;
     }
     Ok(json!({"ok": true, "timeline": project, "id": id, "result": result}))
 }

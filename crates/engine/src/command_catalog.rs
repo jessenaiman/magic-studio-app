@@ -25,6 +25,7 @@ const fn is_long_running_id(id: &str) -> bool {
     matches!(
         id.as_bytes(),
         b"project.intake"
+            | b"craft.cli"
             | b"agent.send"
             | b"ui.eval"
             | b"words.design"
@@ -439,6 +440,15 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             "{\"path\":\"file path\"}",
             always,
             crate::workspace::cmd_workspace_open
+        ),
+        cmd!(
+            "craft.cli",
+            "Run an Installed Craft CLI",
+            ["File"],
+            None,
+            "{\"app\":\"filmcraft|effectcraft|vectorcraft|photocraft|wordcraft\",\"args\":[\"--help\"],\"cwd\":\"optional working directory; defaults to project folder or process directory. Arguments are literal; stdin is closed. Returns stdout, stderr, exit_code and parsed JSON result; nonzero exit is an error.\"}",
+            always,
+            crate::craft_cli::execute
         ),
         cmd!(
             "photo.exec",
