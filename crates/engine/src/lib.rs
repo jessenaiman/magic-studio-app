@@ -16,7 +16,7 @@
 //! Inspect the registry without opening a project or invoking a production tool:
 //!
 //! ```no_run
-//! use magic_engine::{Session, command_specs, find_command};
+//! use magic::{Session, command_specs, find_command};
 //!
 //! let session = Session::default();
 //! for command in command_specs() {

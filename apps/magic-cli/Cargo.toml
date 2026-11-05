@@ -1,6 +1,6 @@
 [package]
 name = "magic-cli"
-description = "Magic Studio CLI: headless command-line over magic-engine"
+description = "Magic Studio CLI: headless command-line over magic"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { workspace = true }
-magic-engine = { workspace = true }
+magic = { workspace = true }
 magic-mcp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

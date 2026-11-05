@@ -1,6 +1,6 @@
 [package]
-name = "magic"
-description = "Magic Studio desktop app (eframe + magic-ui-egui + magic-engine)"
+name = "magic-gui"
+description = "Magic Studio desktop app (eframe + magic-ui-egui + magic)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,7 +19,7 @@ clap = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "clipboard", "wayland", "x11"] }
 egui = { workspace = true }
 log = { workspace = true }
-magic-engine = { workspace = true }
+magic = { workspace = true }
 magic-ui-egui = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

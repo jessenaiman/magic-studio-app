@@ -16,7 +16,7 @@
     )
 )]
 
-use magic_engine::Session;
+use magic::Session;
 use magic_ui_egui::MagicApp;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;

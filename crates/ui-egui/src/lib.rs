@@ -1,7 +1,7 @@
 //! Magic Studio egui frontend (`magic-ui-egui`).
 //!
-//! Shared across the native desktop binary (`apps/magic`) and the browser WASM shell
-//! (`apps/magic-web`). All domain state and persistence live in [`magic_engine::Session`].
+//! Shared across the native desktop binary (`apps/magic-gui`) and the browser WASM shell
+//! (`apps/magic-web`). All domain state and persistence live in [`magic::Session`].
 
 #![cfg_attr(
     not(test),
@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use egui::{ColorImage, Context, CornerRadius, RichText, ScrollArea, Sense, Stroke, TextureHandle, Ui};
-use magic_engine::Session;
+use magic::Session;
 use serde_json::{Value, json};
 
 use crate::assistant::{AssistantDrawer, AssistantTab};
@@ -343,7 +343,7 @@ impl MagicApp {
     /// Execute an engine command, running long-running commands on a background thread when
     /// `project_path` is open so the UI remains responsive.
     pub fn run_command(&mut self, ctx: &Context, id: &str, params: Value) {
-        let is_long = magic_engine::find_command(id).is_some_and(|c| c.long_running);
+        let is_long = magic::find_command(id).is_some_and(|c| c.long_running);
         if is_long && self.busy_command.is_none() {
             let mut bg_session = Session::default();
             bg_session.project_path = self.session.project_path.clone();
@@ -823,17 +823,17 @@ impl MagicApp {
         }
 
         // Left Rail: Storyboard Pages & Scenes
-        egui::SidePanel::left("storyboard_left_rail")
+        egui::Panel::left("storyboard_left_rail")
             .resizable(true)
-            .default_width(250.0)
-            .min_width(200.0)
+            .default_size(250.0)
+            .min_size(200.0)
             .frame(
                 egui::Frame::new()
                     .fill(BG_PANEL)
                     .inner_margin(egui::Margin::same(8))
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("PAGES & SCENES")
@@ -935,17 +935,17 @@ impl MagicApp {
             });
 
         // Right Rail: Slot Inspector for selected page
-        egui::SidePanel::right("storyboard_right_inspector")
+        egui::Panel::right("storyboard_right_inspector")
             .resizable(true)
-            .default_width(310.0)
-            .min_width(250.0)
+            .default_size(310.0)
+            .min_size(250.0)
             .frame(
                 egui::Frame::new()
                     .fill(BG_PANEL)
                     .inner_margin(egui::Margin::same(8))
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 let page_meta = self.storyboard_pages.get(self.selected_page).cloned();
                 let current_scene = page_meta
                     .as_ref()
@@ -1100,7 +1100,7 @@ impl MagicApp {
                     .fill(BG_DEEP)
                     .inner_margin(egui::Margin::same(12)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!(
@@ -1270,16 +1270,16 @@ impl MagicApp {
         }
 
         // Left Rail: Characters & Project Assets
-        egui::SidePanel::left("animation_left_rail")
+        egui::Panel::left("animation_left_rail")
             .resizable(true)
-            .default_width(240.0)
+            .default_size(240.0)
             .frame(
                 egui::Frame::new()
                     .fill(BG_PANEL)
                     .inner_margin(egui::Margin::same(8))
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("CHARACTERS & ASSETS")
@@ -1336,16 +1336,16 @@ impl MagicApp {
             });
 
         // Right Inspector: Pipeline & Keyframes
-        egui::SidePanel::right("animation_right_inspector")
+        egui::Panel::right("animation_right_inspector")
             .resizable(true)
-            .default_width(290.0)
+            .default_size(290.0)
             .frame(
                 egui::Frame::new()
                     .fill(BG_PANEL)
                     .inner_margin(egui::Margin::same(8))
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 if section_header(ui, "2D Puppet Pipeline", true) {
                     ui.add_space(4.0);
                     card_frame().show(ui, |ui| {
@@ -1505,7 +1505,7 @@ impl MagicApp {
                     .fill(BG_DEEP)
                     .inner_margin(egui::Margin::same(12)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("EffectCraft Puppet Stage")
@@ -1568,7 +1568,7 @@ impl MagicApp {
                     .fill(BG_DEEP)
                     .inner_margin(egui::Margin::same(12)),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Studio · FilmCraft Timeline & Assembly");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1632,7 +1632,9 @@ impl MagicApp {
 }
 
 impl eframe::App for MagicApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
         if !self.theme_applied {
             theme::apply(ctx);
             self.theme_applied = true;
@@ -1641,28 +1643,28 @@ impl eframe::App for MagicApp {
         self.poll_control(ctx);
 
         // Top Navigation & Assistant Bar
-        egui::TopBottomPanel::top("magic_top_bar")
-            .exact_height(40.0)
+        egui::Panel::top("magic_top_bar")
+            .exact_size(40.0)
             .frame(
                 egui::Frame::new()
                     .fill(BG_PANEL)
                     .inner_margin(egui::Margin::symmetric(12, 6))
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 self.show_top_bar(ctx, ui);
             });
 
         // Bottom Status Bar
-        egui::TopBottomPanel::bottom("magic_status_bar")
-            .exact_height(24.0)
+        egui::Panel::bottom("magic_status_bar")
+            .exact_size(24.0)
             .frame(
                 egui::Frame::new()
                     .fill(BG_PANEL)
                     .inner_margin(egui::Margin::symmetric(12, 3))
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if let Some(busy) = &self.busy_command {
                         ui.spinner();
@@ -1695,17 +1697,17 @@ impl eframe::App for MagicApp {
             let mut queued_cmd = None;
             let assets = self.session.project_assets.clone();
             let busy = self.busy_command.is_some();
-            egui::SidePanel::right("magic_assistant_drawer")
+            egui::Panel::right("magic_assistant_drawer")
                 .resizable(true)
-                .default_width(390.0)
-                .min_width(320.0)
+                .default_size(390.0)
+                .min_size(320.0)
                 .frame(
                     egui::Frame::new()
                         .fill(BG_PANEL)
                         .inner_margin(egui::Margin::same(10))
                         .stroke(Stroke::new(1.0, BORDER_STRONG)),
                 )
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     queued_cmd = self.assistant.show(ui, &assets, busy);
                 });
             if let Some((cmd_id, cmd_params)) = queued_cmd {
@@ -1720,7 +1722,7 @@ impl eframe::App for MagicApp {
                     .fill(BG_DEEP)
                     .inner_margin(egui::Margin::same(8)),
             )
-            .show(ctx, |ui| match self.view {
+            .show(ui, |ui| match self.view {
                 ViewMode::Projects => self.show_projects_view(ctx, ui),
                 ViewMode::Storyboard => self.show_storyboard_view(ctx, ui),
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui),

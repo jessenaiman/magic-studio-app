@@ -11,6 +11,6 @@ workspace = true
 
 [dependencies]
 log = { workspace = true }
-magic-engine = { workspace = true }
+magic = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

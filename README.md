@@ -124,14 +124,14 @@ unverified. Before building, install:
 - A native compiler and the platform libraries required by the Rust workspace.
 
 A fresh build downloads missing Rust dependencies. The native Rust UI rewrite
-is underway in `apps/magic/`; preserve the retired frontend's deletion.
+is underway in `apps/magic-gui/`; preserve the retired frontend's deletion.
 
 ### Build and install the app and CLI
 
 ```sh
 # Existing checkout: build, run, and rerun checks without installing
-cargo build -p magic --locked
-cargo run -p magic
+cargo build -p magic-gui -p magic-cli --locked
+cargo run -p magic-gui
 cargo xtask ci
 cargo xtask layers
 cargo xtask assets
@@ -141,7 +141,7 @@ Asset rights metadata is pending; SonarCloud, WASM and translations are not conf
 ```sh
 git clone https://github.com/jessenaiman/magic-app.git
 cd magic-app
-cargo build -p magic --release --locked
+cargo build -p magic-gui -p magic-cli --release --locked
 cargo xtask install --profile release
 ```
 
@@ -166,7 +166,7 @@ An installed app opens without a provider key. Supported Craft document operatio
 use linked Rust libraries. Opening a separate native editor requires its installed
 application. HyperFrames and FFmpeg remain external runtimes. See the
 [production guide](magic.md).
-The [setup guide](apps/magic/README.md) covers installer
+The [setup guide](apps/magic-gui/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
@@ -181,7 +181,7 @@ magic-cli commands project
 magic-cli studio open /absolute/path/Song.magic
 ```
 
-The [Magic command guide](apps/magic/SKILL.md) explains project targeting
+The [Magic command guide](apps/magic-gui/SKILL.md) explains project targeting
 and independent session bindings. Craft document operations use their linked
 Rust libraries where integrated. Magic retains its genuine command-line interface.
 
@@ -189,7 +189,7 @@ Rust libraries where integrated. Magic retains its genuine command-line interfac
 
 Focused fixes, documentation improvements, and reproducible bug reports are
 welcome. Start with [CONTRIBUTING](CONTRIBUTING.md) and the
-[command architecture](apps/magic/MAGIC.md). Keep changes scoped and report
+[command architecture](apps/magic-gui/MAGIC.md). Keep changes scoped and report
 the resulting behaviour, checks actually performed, and remaining limitations.
 Use the source setup guide for development; rebuild after editing embedded UI.
 

@@ -3,7 +3,7 @@
 //! Exposes Magic Studio's two specialized Craft AI roles:
 //! 1. **Fidget (`RoleId("fidget")`, `text.complete`)**: Prompt & Markdown Template Architect that
 //!    reworks requests into YAML-frontmatter Markdown (`---` tags + `save_command`) and includes
-//!    the mandatory single-line [`magic_engine::fidget::FIDGET_NOTE`].
+//!    the mandatory single-line [`magic::fidget::FIDGET_NOTE`].
 //! 2. **Scribbles (`RoleId("scribbles")`, `image.generate`)**: Template-gated Codex / Craft AI
 //!    image generator that requires a template (`new`, `image`, `sheet`, `poses`, `actions`,
 //!    `storyboard_hero`, `storyboard_sketch`, `custom`), supports multi-item loops (`count` 1..=4),
@@ -86,7 +86,7 @@ impl Default for AssistantDrawer {
 }
 
 impl AssistantDrawer {
-    pub fn refresh_from_session(&mut self, session: &mut magic_engine::Session) {
+    pub fn refresh_from_session(&mut self, session: &mut magic::Session) {
         if let Ok(tpl) = session.execute("scribbles.templates", json!({})) {
             self.craft_ai_status = tpl.get("craft_ai").cloned().unwrap_or_else(|| json!({}));
             if let Some(kinds) = tpl["kinds"].as_object() {
@@ -171,7 +171,7 @@ impl AssistantDrawer {
     pub fn show(
         &mut self,
         ui: &mut Ui,
-        project_assets: &[magic_engine::ProjectAsset],
+        project_assets: &[magic::ProjectAsset],
         busy: bool,
     ) -> Option<(String, Value)> {
         let mut command_to_run: Option<(String, Value)> = None;
@@ -222,7 +222,7 @@ impl AssistantDrawer {
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
                 ui.label(
-                    RichText::new(magic_engine::fidget::FIDGET_NOTE)
+                    RichText::new(magic::fidget::FIDGET_NOTE)
                         .size(10.5)
                         .color(ACCENT_AMBER),
                 );
@@ -319,7 +319,7 @@ impl AssistantDrawer {
     fn show_parameters_section(
         &mut self,
         ui: &mut Ui,
-        project_assets: &[magic_engine::ProjectAsset],
+        project_assets: &[magic::ProjectAsset],
     ) {
         if section_header(ui, "2. Template Parameters & Save Target", true) {
             ui.add_space(4.0);
@@ -474,7 +474,7 @@ impl AssistantDrawer {
     fn show_fidget_tab(
         &mut self,
         ui: &mut Ui,
-        project_assets: &[magic_engine::ProjectAsset],
+        project_assets: &[magic::ProjectAsset],
         busy: bool,
     ) -> Option<(String, Value)> {
         let mut cmd = None;
@@ -540,7 +540,7 @@ impl AssistantDrawer {
     fn show_scribbles_tab(
         &mut self,
         ui: &mut Ui,
-        project_assets: &[magic_engine::ProjectAsset],
+        project_assets: &[magic::ProjectAsset],
         busy: bool,
     ) -> Option<(String, Value)> {
         let mut cmd = None;

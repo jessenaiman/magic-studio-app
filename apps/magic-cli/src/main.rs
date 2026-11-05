@@ -1,4 +1,4 @@
-//! `magic-cli`: thin headless CLI over `magic_engine::Session` (modeled on `filmcraft-cli`).
+//! `magic-cli`: thin headless CLI over `magic::Session` (modeled on `filmcraft-cli`).
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 use std::io::BufRead;
@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(
     name = "magic-cli",
-    about = "Drive Magic Studio from the shell via magic-engine"
+    about = "Drive Magic Studio from the shell via magic"
 )]
 pub struct Cli {
     /// Open this .magic project first (or use the last opened project from session file)
@@ -490,7 +490,7 @@ fn parse_params(tokens: &[String], raw: Option<&str>) -> Result<Value, String> {
 }
 
 fn exec_one(
-    s: &mut magic_engine::Session,
+    s: &mut magic::Session,
     id: &str,
     params: Value,
     dry: bool,
@@ -523,7 +523,7 @@ fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String>
             _ => Ok(("project.catalog".into(), vec![])),
         };
     }
-    let known: Vec<&str> = magic_engine::command_specs().iter().map(|c| c.id).collect();
+    let known: Vec<&str> = magic::command_specs().iter().map(|c| c.id).collect();
     let words: Vec<&String> = tokens
         .iter()
         .take_while(|t| !t.contains('=') && !t.starts_with('-') && !t.starts_with('{'))
@@ -546,7 +546,7 @@ fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String>
 
 fn main() {
     let cli = Cli::parse();
-    let mut session = magic_engine::Session::user_session();
+    let mut session = magic::Session::user_session();
     if let Some(proj) = cli.project.clone().or_else(load_saved_project)
         && std::path::Path::new(&proj).is_file()
     {
@@ -570,7 +570,7 @@ fn main() {
                 )?);
             }
             Some(Cmd::Describe { id }) => {
-                let v = magic_engine::find_command(&id)
+                let v = magic::find_command(&id)
                     .map(|c| c.describe())
                     .ok_or_else(|| format!("Unknown command '{id}'"))?;
                 emit(&v);
@@ -635,7 +635,7 @@ fn main() {
             Some(Cmd::Registry(tokens)) => {
                 let (id, rest) = resolve_shorthand(&tokens)?;
                 if rest.iter().any(|t| t == "--help" || t == "-h")
-                    && let Some(c) = magic_engine::find_command(&id)
+                    && let Some(c) = magic::find_command(&id)
                 {
                     emit(&c.describe());
                     return Ok(());

@@ -6393,32 +6393,6 @@ checksum = "f1c46f3fcd2e888afdb01a07efc071cb21300e07c68d32c3e8b01b5c8cb1fcaa"
 name = "magic"
 version = "0.17.0"
 dependencies = [
- "clap",
- "eframe",
- "egui",
- "log",
- "magic-engine",
- "magic-ui-egui",
- "serde",
- "serde_json",
- "subtle",
-]
-
-[[package]]
-name = "magic-cli"
-version = "0.17.0"
-dependencies = [
- "clap",
- "magic-engine",
- "magic-mcp",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "magic-engine"
-version = "0.17.0"
-dependencies = [
  "craft-ai-client",
  "craft-ai-core",
  "craft-ai-declarative",
@@ -6453,11 +6427,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "magic-cli"
+version = "0.17.0"
+dependencies = [
+ "clap",
+ "magic",
+ "magic-mcp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "magic-gui"
+version = "0.17.0"
+dependencies = [
+ "clap",
+ "eframe",
+ "egui",
+ "log",
+ "magic",
+ "magic-ui-egui",
+ "serde",
+ "serde_json",
+ "subtle",
+]
+
+[[package]]
 name = "magic-mcp"
 version = "0.17.0"
 dependencies = [
  "log",
- "magic-engine",
+ "magic",
  "serde",
  "serde_json",
 ]
@@ -6476,7 +6476,7 @@ dependencies = [
  "egui_extras",
  "image",
  "log",
- "magic-engine",
+ "magic",
  "open",
  "rfd",
  "serde",
@@ -6491,7 +6491,7 @@ dependencies = [
  "eframe",
  "egui",
  "log",
- "magic-engine",
+ "magic",
  "magic-ui-egui",
  "serde_json",
  "wasm-bindgen",

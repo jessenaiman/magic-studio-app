@@ -8,7 +8,7 @@ for the separate source-code history and unresolved Cargo license declaration.
 
 | Asset | Verified local origin | Asset-specific rights record |
 |---|---|---|
-| `apps/magic/icons/icon.png` | Byte-identical to `apps/src-tauri/icons/icon.png` in Git commit `b6350c5ad59759233631f30e258f570fc708da8d`; retained by the native rewrite. | Not established. |
+| `apps/magic-gui/icons/icon.png` | Byte-identical to `apps/src-tauri/icons/icon.png` in Git commit `b6350c5ad59759233631f30e258f570fc708da8d`; retained by the native rewrite. | Not established. |
 | `references/backstage/mayhem-pr30.png` | Tracked path last changed in commit `95acaf75a71695fd8c8efb9984d610864bb8af0f`. | Not established. |
 | `references/backstage/mops-pr22.png` | Tracked path last changed in commit `95acaf75a71695fd8c8efb9984d610864bb8af0f`. | Not established. |
 | `references/backstage/mops-task-handoff-v2.png` | Tracked path last changed in commit `88d71aa2df1f0bc48f29e5d247c30120255039b0`. | Not established. |

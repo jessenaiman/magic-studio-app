@@ -1,6 +1,6 @@
-//! Native `eframe` desktop shell for Magic Studio (`apps/magic`).
+//! Native `eframe` desktop shell for Magic Studio (`apps/magic-gui`).
 //!
-//! Mounts [`magic_ui_egui::MagicApp`] over [`magic_engine::Session`] and exposes an optional
+//! Mounts [`magic_ui_egui::MagicApp`] over [`magic::Session`] and exposes an optional
 //! loopback JSON-lines control channel (`magic --control 7985`) so `magic-cli` and `magic-mcp`
 //! can inspect or drive a live window.
 
@@ -21,7 +21,7 @@ use std::net::TcpListener;
 use std::sync::mpsc::{Sender, channel};
 
 use clap::Parser;
-use magic_engine::Session;
+use magic::Session;
 use magic_ui_egui::{ControlRequest, MagicApp, ViewMode};
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq;

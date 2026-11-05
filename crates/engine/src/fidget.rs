@@ -145,7 +145,7 @@ pub fn format_fidget_markdown(
         return trimmed.to_owned();
     }
     let tags_str = if tags.is_empty() {
-        format!("[magic-studio, fidget, {template}]")
+        format!("[magic, fidget, {template}]")
     } else {
         format!("[{}]", tags.join(", "))
     };

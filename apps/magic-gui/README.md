@@ -11,8 +11,8 @@ magic-cli --help
 magic-cli commands
 ```
 
-`magic` opens the native desktop application. `magic-cli` is
-an installed alias for the same executable in CLI mode.
+`magic` opens the native egui desktop application. `magic-cli` is
+a separate headless executable backed by the same engine.
 See [the Magic skill](SKILL.md) for project selection and CLI usage.
 
 An existing installation does not need a source checkout, provider-key setup,
@@ -26,12 +26,12 @@ Run these commands from the repository root, with Rust/Cargo compatible with
 `Cargo.toml`, the native platform libraries required by the Rust workspace and Git available:
 
 ```sh
-cargo build -p magic --locked
+cargo build -p magic-gui -p magic-cli
 cargo xtask install
 ```
 
-`cargo xtask install` (source in `xtask/`) requires the built magic executable.
-It copies the executable and the tracked runtime resources under
+`cargo xtask install` (source in `xtask/`) requires both built executables.
+It copies the executables and the tracked runtime resources under
 `~/.local/share/magic`, links `magic` and `magic-cli` in `~/.local/bin`, and writes the desktop entry and icon. It
 removes what earlier installs left behind: `magic-shell`,
 `python-magic-cli` and the retired Python CLI's environment. Ensure
@@ -40,11 +40,11 @@ removes what earlier installs left behind: `magic-shell`,
 For a release build, use matching profiles:
 
 ```sh
-cargo build -p magic --release --locked
+cargo build -p magic-gui -p magic-cli --release --locked
 cargo xtask install --profile release
 ```
 
-The native Rust UI rewrite is in `apps/magic/`. Preserve the retired
+The native Rust UI rewrite is in `apps/magic-gui/`. Preserve the retired
 frontend setup deletion; do not restore its dependencies or withdrawn checks.
 `cargo xtask install --help` lists `--prefix`. Rebuild and reinstall after native
 changes when authorized. These commands install Magic Studio only; they do not

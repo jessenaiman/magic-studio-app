@@ -4,7 +4,7 @@
   "album": "Test Album (no such record)",
   "artist": "Fictional Folk — test fixture",
   "source": {
-    "path": "/run/media/jesse/Speedy/magic-studio/crates/engine/tests/fixtures/fictional-song/fictional-song.lyrics.json",
+    "path": "crates/engine/tests/fixtures/fictional-song/fictional-song.lyrics.json",
     "description": "Fictional test fixture; no such song exists"
   },
   "artist_note_verbatim": "A fictional song written to exercise the storyboard tooling.",

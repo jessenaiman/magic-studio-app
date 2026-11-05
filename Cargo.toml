@@ -12,7 +12,7 @@ repository = "https://github.com/jessenaiman/magic-studio-app"
 
 [workspace.dependencies]
 # Magic's own engine, MCP server, and egui frontend
-magic-engine = { path = "crates/engine" }
+magic = { path = "crates/engine" }
 magic-mcp = { path = "crates/mcp" }
 magic-ui-egui = { path = "crates/ui-egui" }
 
@@ -64,7 +64,7 @@ sha2 = "0.10"
 thiserror = "2"
 ureq = { version = "3.5.0", default-features = false, features = ["rustls", "json"] }
 
-# Desktop & Web egui UI packages (`crates/ui-egui`, `apps/magic`, `apps/magic-web`)
+# Desktop & Web egui UI packages (`crates/ui-egui`, `apps/magic-gui`, `apps/magic-web`)
 eframe = { version = "0.37", default-features = false }
 egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
 egui_extras = { version = "0.37", default-features = false }

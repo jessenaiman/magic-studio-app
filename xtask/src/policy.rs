@@ -67,10 +67,10 @@ const LAYERS: &[(&str, u8)] = &[
     ("cli", 6),
     ("web", 6),
     // Magic composes the L4 document engines through native services; its frontend is L6.
-    ("magic-engine", 5),
+    ("magic", 5),
     ("magic-ui-egui", 5),
     ("magic-mcp", 5),
-    ("magic", 6),
+    ("magic-gui", 6),
     ("magic-cli", 6),
     ("magic-web", 6),
 ];
@@ -92,8 +92,8 @@ const SAME_LAYER: &[(&str, &str)] = &[
     ("gpu", "render"),
     ("cli", "filmcraft"),
     ("tts", "tts-text"),
-    ("magic-ui-egui", "magic-engine"),
-    ("magic-mcp", "magic-engine"),
+    ("magic-ui-egui", "magic"),
+    ("magic-mcp", "magic"),
 ];
 
 /// Crates that must not appear below L5 (UI toolkits, windowing, OS audio/menus).
@@ -163,7 +163,7 @@ pub(crate) fn layers() -> Result<()> {
             continue;
         };
         for d in deps {
-            if (l < 5 || name == "magic-engine") && UI_ONLY.contains(&d.as_str()) {
+            if (l < 5 || name == "magic") && UI_ONLY.contains(&d.as_str()) {
                 errors.push(format!("{name} (L{l}) depends on UI/OS crate `{d}`"));
             }
             // Keep FilmCraft's checks and include every edge within Magic's workspace.

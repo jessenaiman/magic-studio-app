@@ -26,9 +26,7 @@ pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(34, 38, 50);
 pub const BORDER_STRONG: Color32 = Color32::from_rgb(47, 53, 69);
 
 pub fn apply(ctx: &Context) {
-    craft_ui::apply_theme(ctx);
-
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     style.text_styles.insert(
         TextStyle::Heading,
         FontId::new(15.5, FontFamily::Proportional),
@@ -54,6 +52,18 @@ pub fn apply(ctx: &Context) {
     style.spacing.interact_size = egui::vec2(36.0, 24.0);
 
     let mut v = Visuals::dark();
+    craft_ui::theme::WidgetPalette {
+        noninteractive: BG_PANEL,
+        inactive: BG_INPUT,
+        hovered: BG_HOVER,
+        active: BG_ACTIVE,
+        open: BG_HOVER,
+    }
+    .apply_to(
+        &mut v.widgets,
+        CornerRadius::same(5),
+        Stroke::new(1.0, TEXT_PRIMARY),
+    );
     v.panel_fill = BG_PANEL;
     v.window_fill = BG_ELEVATED;
     v.faint_bg_color = BG_DEEP;
@@ -91,5 +101,5 @@ pub fn apply(ctx: &Context) {
     v.selection.stroke = Stroke::new(1.0, ACCENT_TEAL);
 
     style.visuals = v;
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }

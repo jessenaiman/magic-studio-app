@@ -26,7 +26,7 @@ Backstage → explicit bounded observations → saved references and native evid
 
 Start with the repository's
 [documentation index](https://github.com/jessenaiman/magic-app/blob/HEAD/docs/README.md),
-[command architecture](https://github.com/jessenaiman/magic-app/blob/HEAD/apps/magic/MAGIC.md),
+[command architecture](https://github.com/jessenaiman/magic-app/blob/HEAD/apps/magic-gui/MAGIC.md),
 and [project context](https://github.com/jessenaiman/magic-app/blob/HEAD/PROJECT_CONTEXT.md).
 Those explain ownership and command boundaries. Rustdoc
 does not infer an architecture graph or document TypeScript/JavaScript APIs.
@@ -36,7 +36,7 @@ at those links until this documentation commit merges.
 ## Scope and provenance
 
 The standard reference follows the selected Rust packages. The native Rust UI
-rewrite is in `apps/magic/`; do not restore the retired web shell to
+rewrite is in `apps/magic-gui/`; do not restore the retired web shell to
 satisfy stale documentation or checks.
 
 See [build instructions and coverage](https://github.com/jessenaiman/magic-app/blob/HEAD/docs/RUSTDOC.md),

@@ -19,7 +19,7 @@ error, not a fallback to a different writer; when exactly one window has the pin
 after a restart, the binding follows it. Explicit project selection is the only other rebind
 path. The binding file is replaced atomically and never touches the `.magic` document.
 
-UI project actions use the native Rust app in `apps/magic/` and the
+UI project actions use the native Rust app in `apps/magic-gui/` and the
 shared engine. Preserve existing project persistence and command ownership
 while the Rust UI rewrite is underway.
 

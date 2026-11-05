@@ -1,10 +1,10 @@
 //! Magic Studio's MCP server (`magic-mcp`).
 //!
 //! Model Context Protocol over stdio (newline-delimited JSON-RPC 2.0, no async runtime).
-//! Exposes [`magic_engine::command_specs`] and [`magic_engine::Session::execute`] as MCP tools
+//! Exposes [`magic::command_specs`] and [`magic::Session::execute`] as MCP tools
 //! and resources, forwarding to either:
 //! - [`Remote`]: a running `magic --control <port>` desktop window over loopback TCP, or
-//! - [`Headless`]: an in-process [`magic_engine::Session`].
+//! - [`Headless`]: an in-process [`magic::Session`].
 
 #![cfg_attr(
     not(test),
@@ -22,7 +22,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-use magic_engine::{Session, command_specs, find_command};
+use magic::{Session, command_specs, find_command};
 use serde_json::{Value, json};
 
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -224,7 +224,7 @@ impl<B: Backend> Server<B> {
                         "uri": "magic://commands",
                         "name": "Magic Studio Command Registry",
                         "mimeType": "application/json",
-                        "description": "All registered magic-engine commands and parameter schemas"
+                        "description": "All registered magic commands and parameter schemas"
                     },
                     {
                         "uri": "magic://scribbles/templates",
@@ -362,6 +362,6 @@ mod tests {
         assert_eq!(call["result"]["isError"], json!(false));
         let text = call["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("save_command"));
-        assert!(text.contains(magic_engine::fidget::FIDGET_NOTE));
+        assert!(text.contains(magic::fidget::FIDGET_NOTE));
     }
 }

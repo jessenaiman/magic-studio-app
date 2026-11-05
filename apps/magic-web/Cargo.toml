@@ -20,7 +20,7 @@ craft-web-host = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
 egui = { workspace = true }
 log = { workspace = true }
-magic-engine = { workspace = true }
+magic = { workspace = true }
 magic-ui-egui = { workspace = true }
 serde_json = { workspace = true }
 wasm-bindgen = "0.2"
