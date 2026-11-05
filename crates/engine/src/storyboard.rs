@@ -238,6 +238,12 @@ impl Board {
         Ok(())
     }
 
+    /// Lock a frame so it cannot be edited afterwards.
+    fn lock(&mut self, frame: u64) -> Result<()> {
+        self.run("object.setFlags", json!({"ids": [frame], "locked": true}))?;
+        Ok(())
+    }
+
     fn set_image(&mut self, frame: u64, hint: Option<u64>, path: &str) -> Result<()> {
         self.run("place.load", json!({"path": path}))?;
         self.run("place.drop", json!({"x": 0, "y": 0, "frame": frame}))?;
@@ -332,17 +338,27 @@ impl Board {
 }
 
 /// Slot rectangles `[x0, y0, x1, y1]` for the contact strip with `n` pictures, and its band.
-fn strip_layout(n: usize) -> ([f64; 4], Vec<[f64; 4]>) {
-    let (x0, x1, pad, gap) = (846.0, 1556.0, 10.0, 6.0);
+fn strip_layout(n: usize, strip_bounds: Option<[f64; 4]>) -> ([f64; 4], Vec<[f64; 4]>) {
+    let [x0, base_y0, x1, base_y1] = strip_bounds
+        .filter(|b| b[2] > b[0] && b[3] > b[1])
+        .unwrap_or([846.0, 800.0, 1556.0, 912.0]);
+    let (pad, gap) = (10.0, 6.0);
     let single = n <= 6;
     let (band, cols, top, bottom) = if single {
-        ([x0, 800.0, x1, 912.0], n.max(1), 814.0, 898.0)
-    } else {
         (
-            [x0, 792.0, x1, 918.0],
+            [x0, base_y0, x1, base_y1],
+            n.max(1),
+            base_y0 + 14.0,
+            base_y1 - 14.0,
+        )
+    } else {
+        let y0 = base_y0 - 8.0;
+        let y1 = base_y1 + 6.0;
+        (
+            [x0, y0, x1, y1],
             if n > 8 { 6 } else { 4 },
-            808.0,
-            918.0 - 16.0,
+            y0 + 16.0,
+            y1 - 16.0,
         )
     };
     let rows = n.div_ceil(cols).max(1);
@@ -367,11 +383,16 @@ fn place_rect(b: &mut Board, frame: u64, r: [f64; 4]) -> Result<()> {
     Ok(())
 }
 
-fn fill_refs(b: &mut Board, frames: &Labels, refs: &[String]) -> Result<()> {
+fn fill_refs(
+    b: &mut Board,
+    frames: &Labels,
+    strip_bounds: Option<[f64; 4]>,
+    refs: &[String],
+) -> Result<()> {
     if refs.len() > MAX_REFS {
         return Err(bad("at most 12 `refs`"));
     }
-    let (band, slots) = strip_layout(refs.len());
+    let (band, slots) = strip_layout(refs.len(), strip_bounds);
     if let Some(&strip) = frames.get("contact_strip") {
         place_rect(b, strip, band)?;
     }
@@ -390,7 +411,13 @@ fn fill_refs(b: &mut Board, frames: &Labels, refs: &[String]) -> Result<()> {
 }
 
 /// Apply `fields`, `images` and `refs` from `p` to the scene whose frames are `frames`.
-fn fill_scene(b: &mut Board, frames: &Labels, p: &Value) -> Result<()> {
+fn fill_scene(
+    s: &Session,
+    b: &mut Board,
+    page: &PageSlots,
+    frames: &Labels,
+    p: &Value,
+) -> Result<()> {
     for (label, value) in p
         .get("fields")
         .and_then(Value::as_object)
@@ -404,6 +431,10 @@ fn fill_scene(b: &mut Board, frames: &Labels, p: &Value) -> Result<()> {
             .get(label)
             .ok_or_else(|| bad(&format!("this page has no slot labelled `{label}`")))?;
         b.set_text(frame, text)?;
+        // A field written from a source is locked, so the document keeps it read-only.
+        if p.get("lock").and_then(Value::as_bool).unwrap_or(false) {
+            b.lock(frame)?;
+        }
     }
     for (label, value) in p
         .get("images")
@@ -411,20 +442,32 @@ fn fill_scene(b: &mut Board, frames: &Labels, p: &Value) -> Result<()> {
         .into_iter()
         .flatten()
     {
-        let path = value
+        let raw = value
             .as_str()
             .ok_or_else(|| bad("`images` values are file paths"))?;
+        let resolved = crate::workspace::resolve_workspace_path(s, raw);
         let frame = *frames
             .get(label)
             .ok_or_else(|| bad(&format!("this page has no slot labelled `{label}`")))?;
-        b.set_image(frame, frames.get(&format!("{label}_hint")).copied(), path)?;
+        b.set_image(
+            frame,
+            frames.get(&format!("{label}_hint")).copied(),
+            &resolved.to_string_lossy(),
+        )?;
     }
     if let Some(refs) = p.get("refs").and_then(Value::as_array) {
         let refs: Vec<String> = refs
             .iter()
-            .filter_map(|r| r.as_str().map(str::to_string))
+            .filter_map(|r| {
+                r.as_str().map(|raw| {
+                    crate::workspace::resolve_workspace_path(s, raw)
+                        .to_string_lossy()
+                        .into_owned()
+                })
+            })
             .collect();
-        fill_refs(b, frames, &refs)?;
+        let strip_bounds = page.slot("contact_strip").and_then(|sl| sl.bounds);
+        fill_refs(b, frames, strip_bounds, &refs)?;
     }
     Ok(())
 }
@@ -476,6 +519,382 @@ fn page_index(pages: &[PageSlots], p: &Value) -> Result<usize> {
     ))
 }
 
+/// A section of the song is verse or chorus. Everything else (spoken parts, outros) is
+/// never pulled from a recording.
+fn is_verse_or_chorus(section: &str) -> bool {
+    let s = section.to_ascii_lowercase();
+    s.starts_with("verse") || s.starts_with("chorus")
+}
+
+/// Read a JSON document from a path resolved against the workspace.
+fn read_json(s: &Session, raw: &str) -> Result<Value> {
+    let path = crate::workspace::resolve_workspace_path(s, raw);
+    let text =
+        std::fs::read_to_string(&path).map_err(|e| bad(&format!("{}: {e}", path.display())))?;
+    serde_json::from_str(&text).map_err(|e| bad(&format!("{}: {e}", path.display())))
+}
+
+/// `storyboard.cues`: the song's verse and chorus, with the timing of each line.
+///
+/// The words come from the canonical lyrics sheet (the artist's printed words). The timings
+/// come from the transcript, and each printed line takes its **first** occurrence: a recording
+/// that sings the chorus twice contributes one set of lines, not two.
+pub fn cmd_storyboard_cues(s: &mut Session, p: &Value) -> Result<Value> {
+    let lyrics = p
+        .get("lyrics")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("give `lyrics` (the canonical lyrics sheet .json)"))?;
+    let sheet = read_json(s, lyrics)?;
+    let wanted: Option<Vec<String>> = p.get("sections").and_then(Value::as_str).map(|list| {
+        list.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    });
+    // The sheet's printed structure gives the order.
+    let structure: Vec<String> = sheet["structure_as_printed"]
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let lines = sheet["lines"].as_array().cloned().unwrap_or_default();
+    // Timings: the first time the recording says each printed line.
+    let mut timings: HashMap<String, (f64, f64)> = HashMap::new();
+    if let Some(transcript) = p.get("transcript").and_then(Value::as_str) {
+        for para in read_json(s, transcript)?["paragraphs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let text = para["text"].as_str().unwrap_or_default().trim().to_string();
+            let (Some(start), Some(end)) = (para["start"].as_f64(), para["end"].as_f64()) else {
+                continue;
+            };
+            timings.entry(text).or_insert((start, end));
+        }
+    }
+    let mut sections = Vec::new();
+    for section in &structure {
+        match &wanted {
+            Some(list) if !list.iter().any(|s| s == section) => continue,
+            None if !is_verse_or_chorus(section) => continue,
+            _ => {}
+        }
+        let section_lines: Vec<Value> = lines
+            .iter()
+            .filter(|l| l["section"].as_str() == Some(section.as_str()))
+            .map(|l| {
+                let text = l["text"].as_str().unwrap_or_default();
+                let timing = timings.get(text.trim()).copied();
+                json!({
+                    "id": l["id"],
+                    "text": text,
+                    "start": timing.map(|t| t.0),
+                    "end": timing.map(|t| t.1),
+                })
+            })
+            .collect();
+        sections.push(json!({"section": section, "lines": section_lines}));
+    }
+    // Scene cues: consecutive lines of a section, the way the storyboard's scenes group them.
+    let per = p.get("per").and_then(Value::as_u64).unwrap_or(1).max(1) as usize;
+    let mut cues = Vec::new();
+    for section in &sections {
+        let section_lines = section["lines"].as_array().cloned().unwrap_or_default();
+        for chunk in section_lines.chunks(per) {
+            cues.push(json!({
+                "section": section["section"],
+                "text": chunk.iter().filter_map(|l| l["text"].as_str()).collect::<Vec<_>>().join(" / "),
+                "start": chunk.first().and_then(|l| l["start"].as_f64()),
+                "end": chunk.last().and_then(|l| l["end"].as_f64()),
+            }));
+        }
+    }
+    Ok(json!({
+        "ok": true,
+        "lyrics": lyrics,
+        "sections": sections,
+        "cues": cues,
+        "as_printed": sheet["structure_as_printed"],
+        "as_sung": sheet["structure_as_sung"],
+        "as_sung_source": sheet["structure_as_sung_source"],
+    }))
+}
+
+/// The template's slot texts, by label: what a field still holds before anyone fills it.
+///
+/// A template default in brackets ("[Project title]") is a slot waiting for content. A plain
+/// default ("MATERIAL & SCALE") is a heading that is meant to stay.
+fn template_defaults() -> Result<HashMap<String, String>> {
+    let dir =
+        std::env::temp_dir().join(format!("magic-storyboard-template-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("storyboard.designcraft");
+    craft_atomic::atomic_write(&path, TEMPLATE)?;
+    let pages = {
+        let mut board = Board::open(&path)?;
+        board.pages()?
+    };
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut defaults = HashMap::new();
+    for page in pages {
+        for slot in page.slots {
+            let Some(text) = slot.text else { continue };
+            let text = text.trim();
+            if text.starts_with('[') && text.ends_with(']') {
+                defaults.insert(slot.label, text.to_string());
+            }
+        }
+    }
+    Ok(defaults)
+}
+
+/// The command that fills one slot, for an agent that has to fix it.
+fn fix_command(label: &str) -> String {
+    format!("magic-cli storyboard set --label {label} --text {label}=<text>")
+}
+
+/// `storyboard.check`: the fields that still hold the template's default.
+///
+/// A slot whose text is still the template's bracketed default has never been filled. A hidden
+/// hint is not one of them: the hint is hidden once its image is placed. The command that
+/// fills a slot is reported with it, so a missing block traces straight to the CLI call that
+/// changes it.
+pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let pages = b.pages()?;
+    let defaults = template_defaults()?;
+    let mut report = Vec::new();
+    let mut count = 0usize;
+    for page in &pages {
+        let mut unfilled = Vec::new();
+        for slot in &page.slots {
+            // A hidden slot holds no visible content; a hidden hint means its image is placed.
+            if slot.hidden {
+                continue;
+            }
+            let (Some(text), Some(default)) = (&slot.text, defaults.get(&slot.label)) else {
+                continue;
+            };
+            if text.trim() != default {
+                continue;
+            }
+            // An image slot shows its placeholder in a companion hint; the fix places the image.
+            let (label, fix) = match slot.label.strip_suffix("_hint") {
+                Some(base) if defaults.contains_key(&format!("{base}_hint")) => (
+                    base.to_string(),
+                    format!("magic-cli storyboard set --label {base} --image {base}=<path>"),
+                ),
+                _ => (slot.label.clone(), fix_command(&slot.label)),
+            };
+            unfilled.push(json!({
+                "label": label,
+                "kind": slot.kind,
+                "text": text.trim(),
+                "fix": fix,
+            }));
+            count += 1;
+        }
+        report.push(json!({
+            "page": page.index,
+            "archetype": page.archetype,
+            "section": page.section,
+            "unfilled": unfilled,
+        }));
+    }
+    Ok(json!({"ok": true, "path": b.path, "count": count, "pages": report}))
+}
+
+/// `storyboard.run`: run a command script against the storyboard.
+///
+/// The script is DesignCraft's script format: a JSON array of steps, JSON lines, or compact
+/// `command.id {json}` lines. A later step can use an earlier result with `$0.path`.
+///
+/// A `storyboard.` command is addressed by label (`storyboard.set {"page": 1, "fields": …}`);
+/// any other command id is DesignCraft's own, run on the open document. The document is written
+/// only when every step succeeded, so a failed script leaves it as it was.
+pub fn cmd_storyboard_run(s: &mut Session, p: &Value) -> Result<Value> {
+    let text = match p
+        .get("script_file")
+        .and_then(Value::as_str)
+        .filter(|path| !path.trim().is_empty())
+    {
+        Some(path) => {
+            let resolved = crate::workspace::resolve_workspace_path(s, path);
+            std::fs::read_to_string(&resolved).map_err(|e| bad(&format!("{}: {e}", resolved.display())))?
+        }
+        None => p
+            .get("script")
+            .and_then(Value::as_str)
+            .ok_or_else(|| bad("give `script` (the script text) or `script_file`"))?
+            .to_string(),
+    };
+    let steps = designcraft_engine::script::parse(&text).map_err(|e| bad(&e))?;
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let session: &Session = s;
+    let report = designcraft_engine::script::run(&steps, |command, params| {
+        match command.strip_prefix("storyboard.") {
+            Some("set") => storyboard_step_set(session, &mut b, &params),
+            _ => b.dc.execute(command, &params).map_err(|e| e.to_string()),
+        }
+    });
+    // A failed step leaves the document unwritten.
+    if report.failed.is_none() {
+        b.save()?;
+    }
+    let mut out = report.to_json();
+    out["ok"] = json!(report.failed.is_none());
+    out["path"] = json!(b.path);
+    Ok(out)
+}
+
+/// One `storyboard.set` step of a script: text and images, addressed by label.
+fn storyboard_step_set(
+    s: &Session,
+    b: &mut Board,
+    params: &Value,
+) -> std::result::Result<Value, String> {
+    let pages = b.pages().map_err(|e| e.to_string())?;
+    let index = page_index(&pages, params).map_err(|e| e.to_string())?;
+    let labels = pages[index].labels();
+    fill_scene(s, b, &pages[index], &labels, params).map_err(|e| e.to_string())?;
+    Ok(json!({"page": index, "archetype": pages[index].archetype}))
+}
+
+/// `storyboard.lyrics`: insert the song's lyrics into the scene pages, locked.
+///
+/// The lyrics sheet is the source of the words and the transcript the source of their timing.
+/// **Both are read only**: this command never writes to them. What it puts in the storyboard is
+/// locked, so the lyrics in the document stay a read-only projection of the source.
+///
+/// Only verse and chorus sections are pulled, and each printed line takes its first occurrence
+/// in the recording, so a song that repeats its chorus contributes one set of lines.
+pub fn cmd_storyboard_lyrics(s: &mut Session, p: &Value) -> Result<Value> {
+    let lyrics = p
+        .get("lyrics")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("give `lyrics` (the canonical lyrics sheet .json)"))?;
+    let sheet = read_json(s, lyrics)?;
+    let wanted: Option<Vec<String>> = p.get("sections").and_then(Value::as_str).map(|list| {
+        list.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    });
+    // The first time the recording says each printed line.
+    let mut timings: HashMap<String, (f64, f64)> = HashMap::new();
+    if let Some(transcript) = p.get("transcript").and_then(Value::as_str) {
+        for para in read_json(s, transcript)?["paragraphs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let text = para["text"].as_str().unwrap_or_default().trim().to_string();
+            let (Some(start), Some(end)) = (para["start"].as_f64(), para["end"].as_f64()) else {
+                continue;
+            };
+            timings.entry(text).or_insert((start, end));
+        }
+    }
+    let structure: Vec<String> = sheet["structure_as_printed"]
+        .as_array()
+        .map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
+    let lines = sheet["lines"].as_array().cloned().unwrap_or_default();
+    let per = p.get("per").and_then(Value::as_u64).unwrap_or(1).max(1) as usize;
+    // The cues, in the printed order.
+    let mut cues: Vec<Value> = Vec::new();
+    for section in &structure {
+        match &wanted {
+            Some(list) if !list.iter().any(|s| s == section) => continue,
+            None if !is_verse_or_chorus(section) => continue,
+            _ => {}
+        }
+        let section_lines: Vec<&Value> = lines
+            .iter()
+            .filter(|l| l["section"].as_str() == Some(section.as_str()))
+            .collect();
+        for chunk in section_lines.chunks(per) {
+            let text = chunk
+                .iter()
+                .filter_map(|l| l["text"].as_str())
+                .map(|t| t.trim_end_matches(['.', ',']))
+                .collect::<Vec<_>>()
+                .join(" / ");
+            let start = chunk
+                .iter()
+                .filter_map(|l| l["text"].as_str())
+                .filter_map(|t| timings.get(t.trim()))
+                .map(|t| t.0)
+                .next();
+            let end = chunk
+                .iter()
+                .filter_map(|l| l["text"].as_str())
+                .filter_map(|t| timings.get(t.trim()))
+                .map(|t| t.1)
+                .next_back();
+            cues.push(json!({
+                "section": section,
+                "text": text,
+                "start": start,
+                "end": end,
+                "timecode": match (start, end) {
+                    (Some(a), Some(b)) => format!("{} – {}", clock(a), clock(b)),
+                    _ => String::new(),
+                },
+            }));
+        }
+    }
+    // The scene pages, in document order, take the cues in order.
+    let mut b = Board::open(&doc_path(s, p)?)?;
+    let pages = b.pages()?;
+    let scene_pages: Vec<usize> = pages
+        .iter()
+        .filter(|pg| pg.archetype == "scene")
+        .map(|pg| pg.index)
+        .collect();
+    let mut written = Vec::new();
+    for (n, index) in scene_pages.iter().enumerate() {
+        let Some(cue) = cues.get(n) else { break };
+        let mut fields = serde_json::Map::new();
+        fields.insert("cue".into(), json!(format!("\u{201c}{}\u{201d}", cue["text"])));
+        if !cue["timecode"].as_str().unwrap_or_default().is_empty() {
+            fields.insert("time".into(), json!(cue["timecode"]));
+        }
+        let request = json!({"fields": Value::Object(fields), "lock": true});
+        let labels = pages[*index].labels();
+        fill_scene(s, &mut b, &pages[*index], &labels, &request)?;
+        written.push(json!({
+            "page": index,
+            "scene": n + 1,
+            "section": cue["section"],
+            "cue": cue["text"],
+            "time": cue["timecode"],
+        }));
+    }
+    b.save()?;
+    Ok(json!({
+        "ok": true,
+        "path": b.path,
+        "lyrics": lyrics,
+        "cues": cues.len(),
+        "written": written,
+    }))
+}
+
+/// A time in seconds as `m:ss.ss`.
+fn clock(seconds: f64) -> String {
+    let m = (seconds / 60.0).floor() as u64;
+    let s = seconds - (m as f64) * 60.0;
+    format!("{m}:{:05.2}", s)
+}
+
 /// `storyboard.new`: a new storyboard from the embedded neutral template.
 pub fn cmd_storyboard_new(s: &mut Session, p: &Value) -> Result<Value> {
     let path = doc_path(s, p)?;
@@ -488,8 +907,18 @@ pub fn cmd_storyboard_new(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(&path, TEMPLATE)?;
+    craft_atomic::atomic_write(&path, TEMPLATE)?;
     Ok(json!({"ok": true, "path": path, "scenes": 1}))
+}
+
+fn scene_number_for(pages: &[PageSlots], index: usize) -> Option<usize> {
+    (pages.get(index)?.archetype == "scene").then(|| {
+        pages
+            .iter()
+            .filter(|pg| pg.archetype == "scene")
+            .position(|pg| pg.index == index)
+            .map(|n| n + 1)
+    })?
 }
 
 /// `storyboard.scenes`: every scene with its text fields.
@@ -522,6 +951,7 @@ pub fn cmd_storyboard_slots(s: &mut Session, p: &Value) -> Result<Value> {
         "ok": true,
         "path": b.path,
         "page": page.index,
+        "scene": scene_number_for(&pages, index),
         "archetype": page.archetype,
         "section": page.section,
         "slots": page.slots_json(),
@@ -534,10 +964,16 @@ pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
     let pages = b.pages()?;
     let index = page_index(&pages, p)?;
     let labels = pages[index].labels();
-    fill_scene(&mut b, &labels, p)?;
+    fill_scene(s, &mut b, &pages[index], &labels, p)?;
     b.save()?;
     let page = &pages[index];
-    Ok(json!({"ok": true, "page": page.index, "archetype": page.archetype, "path": b.path}))
+    Ok(json!({
+        "ok": true,
+        "page": page.index,
+        "scene": scene_number_for(&pages, index),
+        "archetype": page.archetype,
+        "path": b.path
+    }))
 }
 
 /// The leaf numbers a page carries, when the document numbers two leaves per page.
@@ -556,8 +992,12 @@ fn leaf_numbers(pages: &[PageSlots], index: usize) -> Option<(String, String)> {
         .iter()
         .find(|s| s.label.ends_with("page_no_right"))
         .and_then(|s| s.text.as_deref())?;
-    (left.trim() == "01" && right.trim() == "02")
-        .then(|| (format!("{:02}", 2 * index + 1), format!("{:02}", 2 * index + 2)))
+    (left.trim() == "01" && right.trim() == "02").then(|| {
+        (
+            format!("{:02}", 2 * index + 1),
+            format!("{:02}", 2 * index + 2),
+        )
+    })
 }
 
 /// `storyboard.add`: copy a template page (default: the last one of that kind) and fill it.
@@ -568,29 +1008,30 @@ pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
         .get("archetype")
         .and_then(Value::as_str)
         .unwrap_or("scene");
-    // The last page of that kind is the one being worked on, so a new page continues from it.
-    let from = match p.get("from").and_then(Value::as_u64) {
-        Some(n) => {
-            let index = n as usize;
-            if index < pages.len() {
-                index
-            } else {
-                return Err(bad(&format!(
-                    "no page {n}; the storyboard has {} pages",
-                    pages.len()
-                )));
-            }
+    // Accept `page`, `scene`, or `label` via `page_index`, or `from` (0-based spread index).
+    let from = if p.get("page").is_some() || p.get("scene").is_some() || p.get("label").is_some() {
+        page_index(&pages, p)?
+    } else if let Some(n) = p.get("from").and_then(Value::as_u64) {
+        let index = n as usize;
+        if index < pages.len() {
+            index
+        } else {
+            return Err(bad(&format!(
+                "no page {n}; the storyboard has {} pages",
+                pages.len()
+            )));
         }
-        None => pages
+    } else {
+        pages
             .iter()
             .filter(|pg| pg.archetype == archetype)
             .map(|pg| pg.index)
-            .last()
+            .next_back()
             .ok_or_else(|| {
                 bad(&format!(
                     "this storyboard has no `{archetype}` page to copy"
                 ))
-            })?,
+            })?
     };
     // Duplicate and place in one undo step: `to` is the page index the copy moves to.
     let mut params = json!({"spread": from});
@@ -603,39 +1044,45 @@ pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
         .as_u64()
         .ok_or_else(|| fail("no page index from duplicateSpread"))? as usize;
     let pages = b.pages()?;
-    let labels = pages
+    let page = pages
         .get(index)
-        .map(PageSlots::labels)
         .ok_or_else(|| fail("the new page was not found"))?;
-    fill_scene(&mut b, &labels, p)?;
+    let labels = page.labels();
+    fill_scene(s, &mut b, page, &labels, p)?;
     // A copied scene must not claim to be the scene it came from.
     let asked_for = |label: &str| {
         p.get("fields")
             .and_then(Value::as_object)
             .is_some_and(|f| f.contains_key(label))
     };
-    if archetype == "scene" && !asked_for("scene_id") {
-        let number = pages
-            .iter()
-            .filter(|pg| pg.archetype == "scene")
-            .position(|pg| pg.index == index)
-            .map(|n| n + 1);
-        if let (Some(number), Some(id)) = (number, labels.get("scene_id")) {
-            b.set_text(*id, &format!("SCENE {number:02}"))?;
-        }
+    let scene_number = scene_number_for(&pages, index);
+    if archetype == "scene"
+        && !asked_for("scene_id")
+        && let (Some(number), Some(id)) = (scene_number, labels.get("scene_id"))
+    {
+        b.set_text(*id, &format!("SCENE {number:02}"))?;
     }
     // The new page carries its own leaf numbers, when the document numbers them that way.
     if let Some((left, right)) = leaf_numbers(&pages, index) {
         for (suffix, text) in [("page_no_left", &left), ("page_no_right", &right)] {
-            if !asked_for(suffix) {
-                if let Some(slot) = pages[index].slots.iter().find(|s| s.label.ends_with(suffix)) {
-                    b.set_text(slot.id, text)?;
-                }
+            if !asked_for(suffix)
+                && let Some(slot) = pages[index]
+                    .slots
+                    .iter()
+                    .find(|s| s.label.ends_with(suffix))
+            {
+                b.set_text(slot.id, text)?;
             }
         }
     }
     b.save()?;
-    Ok(json!({"ok": true, "page": index, "archetype": archetype, "path": b.path}))
+    Ok(json!({
+        "ok": true,
+        "page": index,
+        "scene": scene_number,
+        "archetype": archetype,
+        "path": b.path
+    }))
 }
 
 /// `storyboard.section`: add a section (a parent page) and apply it to pages.
@@ -687,6 +1134,7 @@ pub fn cmd_storyboard_overlay(s: &mut Session, p: &Value) -> Result<Value> {
         .get("image")
         .and_then(Value::as_str)
         .ok_or_else(|| bad("give `image` (a file path)"))?;
+    let resolved_image = crate::workspace::resolve_workspace_path(s, image);
     let slot = pages[index]
         .slot(label)
         .ok_or_else(|| bad(&format!("page {index} has no slot `{label}`")))?;
@@ -700,7 +1148,7 @@ pub fn cmd_storyboard_overlay(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(id) = layer_id {
         b.run("layer.activate", json!({"id": id}))?;
     }
-    b.run("place.load", json!({"path": image}))?;
+    b.run("place.load", json!({"path": resolved_image}))?;
     let placed = b.run("place.drop", json!({"spread": index, "rect": bounds}))?;
     let overlay = placed["id"].as_u64();
     // The original stays in the document; hide it so the revision reads, unhide it to review.
@@ -735,42 +1183,77 @@ fn render_png(b: &mut Board, page: usize, scale: f64) -> Result<Vec<u8>> {
     Ok(img.to_png())
 }
 
-/// `storyboard.thumbnail`: one page as a PNG.
+/// `storyboard.thumbnail`: render one page (`out`) or all scene thumbnails (`out_dir`) as PNG.
 pub fn cmd_storyboard_thumbnail(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
     let pages = b.pages()?;
+    let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(0.5);
+    if let Some(raw_dir) = p
+        .get("out_dir")
+        .and_then(Value::as_str)
+        .filter(|d| !d.trim().is_empty())
+    {
+        let out_dir = crate::workspace::resolve_workspace_path(s, raw_dir);
+        std::fs::create_dir_all(&out_dir)?;
+        let mut files = Vec::new();
+        for (scene_idx, pg) in pages
+            .iter()
+            .filter(|pg| pg.archetype == "scene")
+            .enumerate()
+        {
+            let scene_no = scene_idx + 1;
+            let file_path = out_dir.join(format!("thumb-{scene_no}.png"));
+            let png = render_png(&mut b, pg.index, scale)?;
+            craft_atomic::atomic_write(&file_path, &png)?;
+            files.push(file_path.to_string_lossy().into_owned());
+        }
+        return Ok(json!({
+            "ok": true,
+            "out_dir": out_dir,
+            "count": files.len(),
+            "files": files,
+        }));
+    }
     let index = page_index(&pages, p)?;
-    let out = p
+    let raw_out = p
         .get("out")
         .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `out` .png path"))?;
-    let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(0.5);
+        .ok_or_else(|| bad("missing `out` .png path (or `out_dir`)"))?;
+    let out = crate::workspace::resolve_workspace_path(s, raw_out);
     let png = render_png(&mut b, index, scale)?;
-    if let Some(dir) = Path::new(out).parent() {
+    if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(out, png)?;
-    Ok(json!({"ok": true, "page": index, "archetype": pages[index].archetype, "out": out}))
+    craft_atomic::atomic_write(&out, &png)?;
+    Ok(json!({
+        "ok": true,
+        "page": index,
+        "scene": scene_number_for(&pages, index),
+        "archetype": pages[index].archetype,
+        "out": out
+    }))
 }
 
 /// `storyboard.export`: the whole storyboard as a PDF, and optionally every spread as a PNG.
 pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
     let mut done = serde_json::Map::new();
-    if let Some(pdf) = p.get("pdf").and_then(Value::as_str) {
+    if let Some(raw_pdf) = p.get("pdf").and_then(Value::as_str) {
+        let pdf = crate::workspace::resolve_workspace_path(s, raw_pdf);
+        if let Some(dir) = pdf.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
         b.run("file.exportPdf", json!({"path": pdf}))?;
         done.insert("pdf".into(), json!(pdf));
     }
-    if let Some(dir) = p.get("png_dir").and_then(Value::as_str) {
-        std::fs::create_dir_all(dir)?;
+    if let Some(raw_dir) = p.get("png_dir").and_then(Value::as_str) {
+        let dir = crate::workspace::resolve_workspace_path(s, raw_dir);
+        std::fs::create_dir_all(&dir)?;
         let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(1.0);
         let pages = b.frames(&[])?.len();
         for page in 0..pages {
             let png = render_png(&mut b, page, scale)?;
-            std::fs::write(
-                Path::new(dir).join(format!("page-{:03}.png", page + 1)),
-                png,
-            )?;
+            craft_atomic::atomic_write(&dir.join(format!("page-{:03}.png", page + 1)), &png)?;
         }
         done.insert("png_dir".into(), json!(dir));
     }
@@ -778,4 +1261,80 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("give `pdf` and/or `png_dir`"));
     }
     Ok(json!({"ok": true, "exported": done}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_board_path(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "magic-storyboard-test-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("storyboard.designcraft")
+    }
+
+    #[test]
+    fn storyboard_new_pages_set_add_and_thumbnails_roundtrip() {
+        let path = temp_board_path("roundtrip");
+        let path_str = path.to_str().unwrap();
+        let mut s = Session::default();
+
+        // 1. Create storyboard from embedded template
+        let created = cmd_storyboard_new(&mut s, &json!({"path": path_str})).unwrap();
+        assert_eq!(created["ok"], true);
+        assert!(path.exists());
+
+        // 2. Inspect pages & archetypes
+        let pages = cmd_storyboard_pages(&mut s, &json!({"path": path_str})).unwrap();
+        let page_list = pages["pages"].as_array().unwrap();
+        assert_eq!(page_list.len(), 4);
+        assert_eq!(page_list[0]["archetype"], "cover");
+        assert_eq!(page_list[3]["archetype"], "scene");
+
+        // 3. Edit Scene 1 text fields
+        let updated = cmd_storyboard_set(
+            &mut s,
+            &json!({
+                "path": path_str,
+                "scene": 1,
+                "fields": {"title": "Opening Sunrise", "cue": "Morning light"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(updated["page"], 3);
+        assert_eq!(updated["scene"], 1);
+
+        // 4. Add Scene 2 from Scene 1 (using 1-based `scene` index)
+        let added = cmd_storyboard_add(&mut s, &json!({"path": path_str, "scene": 1})).unwrap();
+        assert_eq!(added["page"], 4);
+        assert_eq!(added["scene"], 2);
+        assert_eq!(added["archetype"], "scene");
+
+        // Verify Scene 2 received incremented SCENE 02 and leaf numbers 09/10
+        let slots = cmd_storyboard_slots(&mut s, &json!({"path": path_str, "scene": 2})).unwrap();
+        let slot_list = slots["slots"].as_array().unwrap();
+        let scene_id = slot_list
+            .iter()
+            .find(|sl| sl["label"] == "scene_id")
+            .and_then(|sl| sl["text"].as_str())
+            .unwrap();
+        assert_eq!(scene_id, "SCENE 02");
+
+        // 5. Batch render scene thumbnails in one pass
+        let thumb_dir = path.parent().unwrap().join("cache/storyboard");
+        let thumbs = cmd_storyboard_thumbnail(
+            &mut s,
+            &json!({"path": path_str, "out_dir": thumb_dir.to_str().unwrap(), "scale": 0.1}),
+        )
+        .unwrap();
+        assert_eq!(thumbs["count"], 2);
+        assert!(thumb_dir.join("thumb-1.png").exists());
+        assert!(thumb_dir.join("thumb-2.png").exists());
+
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
 }

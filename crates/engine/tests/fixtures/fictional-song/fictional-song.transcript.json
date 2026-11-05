@@ -1,0 +1,1171 @@
+{
+  "paragraphs": [
+    {
+      "start": 2.2,
+      "end": 4.1,
+      "text": "The bay is wide and the water is grey,"
+    },
+    {
+      "start": 4.6,
+      "end": 6.4,
+      "text": "and the boats are small and far away."
+    },
+    {
+      "start": 7.0,
+      "end": 9.2,
+      "text": "I climb the cliff with the wind in my coat,"
+    },
+    {
+      "start": 9.7,
+      "end": 11.6,
+      "text": "counting the steps I have walked by the note."
+    },
+    {
+      "start": 51.0,
+      "end": 52.8,
+      "text": "The harbour hums with an iron chain,"
+    },
+    {
+      "start": 53.3,
+      "end": 55.2,
+      "text": "and the gulls cry out the weather's refrain."
+    },
+    {
+      "start": 55.8,
+      "end": 58.1,
+      "text": "The storm comes up like a wall of glass,"
+    },
+    {
+      "start": 58.6,
+      "end": 60.4,
+      "text": "and every lamp in the town goes dark as it passes."
+    },
+    {
+      "start": 61.0,
+      "end": 62.8,
+      "text": "And I light the lantern, I light it again,"
+    },
+    {
+      "start": 63.2,
+      "end": 65.0,
+      "text": "I light it for the boats and for the rain."
+    },
+    {
+      "start": 65.6,
+      "end": 67.7,
+      "text": "Turn my face to the weather, turn my face to the sea,"
+    },
+    {
+      "start": 68.2,
+      "end": 70.0,
+      "text": "keep a light on the headland and a light on me."
+    },
+    {
+      "start": 61.0,
+      "end": 62.8,
+      "text": "And I light the lantern, I light it again,"
+    },
+    {
+      "start": 63.2,
+      "end": 65.0,
+      "text": "I light it for the boats and for the rain."
+    },
+    {
+      "start": 65.6,
+      "end": 67.7,
+      "text": "Turn my face to the weather, turn my face to the sea,"
+    },
+    {
+      "start": 68.2,
+      "end": 70.0,
+      "text": "keep a light on the headland and a light on me."
+    }
+  ],
+  "words": [
+    {
+      "id": "w0",
+      "start": 2.2,
+      "end": 2.41,
+      "text": "The",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w1",
+      "start": 2.41,
+      "end": 2.62,
+      "text": "bay",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w2",
+      "start": 2.62,
+      "end": 2.83,
+      "text": "is",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w3",
+      "start": 2.83,
+      "end": 3.04,
+      "text": "wide",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w4",
+      "start": 3.04,
+      "end": 3.26,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w5",
+      "start": 3.26,
+      "end": 3.47,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w6",
+      "start": 3.47,
+      "end": 3.68,
+      "text": "water",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w7",
+      "start": 3.68,
+      "end": 3.89,
+      "text": "is",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w8",
+      "start": 3.89,
+      "end": 4.1,
+      "text": "grey,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w9",
+      "start": 4.6,
+      "end": 4.82,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w10",
+      "start": 4.82,
+      "end": 5.05,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w11",
+      "start": 5.05,
+      "end": 5.28,
+      "text": "boats",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w12",
+      "start": 5.28,
+      "end": 5.5,
+      "text": "are",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w13",
+      "start": 5.5,
+      "end": 5.72,
+      "text": "small",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w14",
+      "start": 5.72,
+      "end": 5.95,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w15",
+      "start": 5.95,
+      "end": 6.18,
+      "text": "far",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w16",
+      "start": 6.18,
+      "end": 6.4,
+      "text": "away.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w17",
+      "start": 7.0,
+      "end": 7.22,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w18",
+      "start": 7.22,
+      "end": 7.44,
+      "text": "climb",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w19",
+      "start": 7.44,
+      "end": 7.66,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w20",
+      "start": 7.66,
+      "end": 7.88,
+      "text": "cliff",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w21",
+      "start": 7.88,
+      "end": 8.1,
+      "text": "with",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w22",
+      "start": 8.1,
+      "end": 8.32,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w23",
+      "start": 8.32,
+      "end": 8.54,
+      "text": "wind",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w24",
+      "start": 8.54,
+      "end": 8.76,
+      "text": "in",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w25",
+      "start": 8.76,
+      "end": 8.98,
+      "text": "my",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w26",
+      "start": 8.98,
+      "end": 9.2,
+      "text": "coat,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w27",
+      "start": 9.7,
+      "end": 9.91,
+      "text": "counting",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w28",
+      "start": 9.91,
+      "end": 10.12,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w29",
+      "start": 10.12,
+      "end": 10.33,
+      "text": "steps",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w30",
+      "start": 10.33,
+      "end": 10.54,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w31",
+      "start": 10.54,
+      "end": 10.76,
+      "text": "have",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w32",
+      "start": 10.76,
+      "end": 10.97,
+      "text": "walked",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w33",
+      "start": 10.97,
+      "end": 11.18,
+      "text": "by",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w34",
+      "start": 11.18,
+      "end": 11.39,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w35",
+      "start": 11.39,
+      "end": 11.6,
+      "text": "note.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w36",
+      "start": 51.0,
+      "end": 51.26,
+      "text": "The",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w37",
+      "start": 51.26,
+      "end": 51.51,
+      "text": "harbour",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w38",
+      "start": 51.51,
+      "end": 51.77,
+      "text": "hums",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w39",
+      "start": 51.77,
+      "end": 52.03,
+      "text": "with",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w40",
+      "start": 52.03,
+      "end": 52.29,
+      "text": "an",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w41",
+      "start": 52.29,
+      "end": 52.54,
+      "text": "iron",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w42",
+      "start": 52.54,
+      "end": 52.8,
+      "text": "chain,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w43",
+      "start": 53.3,
+      "end": 53.54,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w44",
+      "start": 53.54,
+      "end": 53.77,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w45",
+      "start": 53.77,
+      "end": 54.01,
+      "text": "gulls",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w46",
+      "start": 54.01,
+      "end": 54.25,
+      "text": "cry",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w47",
+      "start": 54.25,
+      "end": 54.49,
+      "text": "out",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w48",
+      "start": 54.49,
+      "end": 54.72,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w49",
+      "start": 54.72,
+      "end": 54.96,
+      "text": "weather's",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w50",
+      "start": 54.96,
+      "end": 55.2,
+      "text": "refrain.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w51",
+      "start": 55.8,
+      "end": 56.06,
+      "text": "The",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w52",
+      "start": 56.06,
+      "end": 56.31,
+      "text": "storm",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w53",
+      "start": 56.31,
+      "end": 56.57,
+      "text": "comes",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w54",
+      "start": 56.57,
+      "end": 56.82,
+      "text": "up",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w55",
+      "start": 56.82,
+      "end": 57.08,
+      "text": "like",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w56",
+      "start": 57.08,
+      "end": 57.33,
+      "text": "a",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w57",
+      "start": 57.33,
+      "end": 57.59,
+      "text": "wall",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w58",
+      "start": 57.59,
+      "end": 57.84,
+      "text": "of",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w59",
+      "start": 57.84,
+      "end": 58.1,
+      "text": "glass,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w60",
+      "start": 58.6,
+      "end": 58.76,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w61",
+      "start": 58.76,
+      "end": 58.93,
+      "text": "every",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w62",
+      "start": 58.93,
+      "end": 59.09,
+      "text": "lamp",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w63",
+      "start": 59.09,
+      "end": 59.25,
+      "text": "in",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w64",
+      "start": 59.25,
+      "end": 59.42,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w65",
+      "start": 59.42,
+      "end": 59.58,
+      "text": "town",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w66",
+      "start": 59.58,
+      "end": 59.75,
+      "text": "goes",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w67",
+      "start": 59.75,
+      "end": 59.91,
+      "text": "dark",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w68",
+      "start": 59.91,
+      "end": 60.07,
+      "text": "as",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w69",
+      "start": 60.07,
+      "end": 60.24,
+      "text": "it",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w70",
+      "start": 60.24,
+      "end": 60.4,
+      "text": "passes.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w71",
+      "start": 61.0,
+      "end": 61.2,
+      "text": "And",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w72",
+      "start": 61.2,
+      "end": 61.4,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w73",
+      "start": 61.4,
+      "end": 61.6,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w74",
+      "start": 61.6,
+      "end": 61.8,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w75",
+      "start": 61.8,
+      "end": 62.0,
+      "text": "lantern,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w76",
+      "start": 62.0,
+      "end": 62.2,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w77",
+      "start": 62.2,
+      "end": 62.4,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w78",
+      "start": 62.4,
+      "end": 62.6,
+      "text": "it",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w79",
+      "start": 62.6,
+      "end": 62.8,
+      "text": "again,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w80",
+      "start": 63.2,
+      "end": 63.38,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w81",
+      "start": 63.38,
+      "end": 63.56,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w82",
+      "start": 63.56,
+      "end": 63.74,
+      "text": "it",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w83",
+      "start": 63.74,
+      "end": 63.92,
+      "text": "for",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w84",
+      "start": 63.92,
+      "end": 64.1,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w85",
+      "start": 64.1,
+      "end": 64.28,
+      "text": "boats",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w86",
+      "start": 64.28,
+      "end": 64.46,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w87",
+      "start": 64.46,
+      "end": 64.64,
+      "text": "for",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w88",
+      "start": 64.64,
+      "end": 64.82,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w89",
+      "start": 64.82,
+      "end": 65.0,
+      "text": "rain.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w90",
+      "start": 65.6,
+      "end": 65.77,
+      "text": "Turn",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w91",
+      "start": 65.77,
+      "end": 65.95,
+      "text": "my",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w92",
+      "start": 65.95,
+      "end": 66.12,
+      "text": "face",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w93",
+      "start": 66.12,
+      "end": 66.3,
+      "text": "to",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w94",
+      "start": 66.3,
+      "end": 66.47,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w95",
+      "start": 66.47,
+      "end": 66.65,
+      "text": "weather,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w96",
+      "start": 66.65,
+      "end": 66.82,
+      "text": "turn",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w97",
+      "start": 66.82,
+      "end": 67.0,
+      "text": "my",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w98",
+      "start": 67.0,
+      "end": 67.17,
+      "text": "face",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w99",
+      "start": 67.17,
+      "end": 67.35,
+      "text": "to",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w100",
+      "start": 67.35,
+      "end": 67.52,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w101",
+      "start": 67.52,
+      "end": 67.7,
+      "text": "sea,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w102",
+      "start": 68.2,
+      "end": 68.36,
+      "text": "keep",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w103",
+      "start": 68.36,
+      "end": 68.53,
+      "text": "a",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w104",
+      "start": 68.53,
+      "end": 68.69,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w105",
+      "start": 68.69,
+      "end": 68.85,
+      "text": "on",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w106",
+      "start": 68.85,
+      "end": 69.02,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w107",
+      "start": 69.02,
+      "end": 69.18,
+      "text": "headland",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w108",
+      "start": 69.18,
+      "end": 69.35,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w109",
+      "start": 69.35,
+      "end": 69.51,
+      "text": "a",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w110",
+      "start": 69.51,
+      "end": 69.67,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w111",
+      "start": 69.67,
+      "end": 69.84,
+      "text": "on",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w112",
+      "start": 69.84,
+      "end": 70.0,
+      "text": "me.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w113",
+      "start": 61.0,
+      "end": 61.2,
+      "text": "And",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w114",
+      "start": 61.2,
+      "end": 61.4,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w115",
+      "start": 61.4,
+      "end": 61.6,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w116",
+      "start": 61.6,
+      "end": 61.8,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w117",
+      "start": 61.8,
+      "end": 62.0,
+      "text": "lantern,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w118",
+      "start": 62.0,
+      "end": 62.2,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w119",
+      "start": 62.2,
+      "end": 62.4,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w120",
+      "start": 62.4,
+      "end": 62.6,
+      "text": "it",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w121",
+      "start": 62.6,
+      "end": 62.8,
+      "text": "again,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w122",
+      "start": 63.2,
+      "end": 63.38,
+      "text": "I",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w123",
+      "start": 63.38,
+      "end": 63.56,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w124",
+      "start": 63.56,
+      "end": 63.74,
+      "text": "it",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w125",
+      "start": 63.74,
+      "end": 63.92,
+      "text": "for",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w126",
+      "start": 63.92,
+      "end": 64.1,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w127",
+      "start": 64.1,
+      "end": 64.28,
+      "text": "boats",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w128",
+      "start": 64.28,
+      "end": 64.46,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w129",
+      "start": 64.46,
+      "end": 64.64,
+      "text": "for",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w130",
+      "start": 64.64,
+      "end": 64.82,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w131",
+      "start": 64.82,
+      "end": 65.0,
+      "text": "rain.",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w132",
+      "start": 65.6,
+      "end": 65.77,
+      "text": "Turn",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w133",
+      "start": 65.77,
+      "end": 65.95,
+      "text": "my",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w134",
+      "start": 65.95,
+      "end": 66.12,
+      "text": "face",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w135",
+      "start": 66.12,
+      "end": 66.3,
+      "text": "to",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w136",
+      "start": 66.3,
+      "end": 66.47,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w137",
+      "start": 66.47,
+      "end": 66.65,
+      "text": "weather,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w138",
+      "start": 66.65,
+      "end": 66.82,
+      "text": "turn",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w139",
+      "start": 66.82,
+      "end": 67.0,
+      "text": "my",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w140",
+      "start": 67.0,
+      "end": 67.17,
+      "text": "face",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w141",
+      "start": 67.17,
+      "end": 67.35,
+      "text": "to",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w142",
+      "start": 67.35,
+      "end": 67.52,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w143",
+      "start": 67.52,
+      "end": 67.7,
+      "text": "sea,",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w144",
+      "start": 68.2,
+      "end": 68.36,
+      "text": "keep",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w145",
+      "start": 68.36,
+      "end": 68.53,
+      "text": "a",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w146",
+      "start": 68.53,
+      "end": 68.69,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w147",
+      "start": 68.69,
+      "end": 68.85,
+      "text": "on",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w148",
+      "start": 68.85,
+      "end": 69.02,
+      "text": "the",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w149",
+      "start": 69.02,
+      "end": 69.18,
+      "text": "headland",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w150",
+      "start": 69.18,
+      "end": 69.35,
+      "text": "and",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w151",
+      "start": 69.35,
+      "end": 69.51,
+      "text": "a",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w152",
+      "start": 69.51,
+      "end": 69.67,
+      "text": "light",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w153",
+      "start": 69.67,
+      "end": 69.84,
+      "text": "on",
+      "timing_method": "fixture: even spread across the line"
+    },
+    {
+      "id": "w154",
+      "start": 69.84,
+      "end": 70.0,
+      "text": "me.",
+      "timing_method": "fixture: even spread across the line"
+    }
+  ]
+}

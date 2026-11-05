@@ -23,6 +23,11 @@ fn saved_path(path: &Path, project: &Path) -> PathBuf {
 }
 
 fn opened_path(path: &str, project: &Path) -> PathBuf {
+    if let Ok(resolved) = craft_docpath::resolve_absolute(path, Some(project))
+        && resolved.exists()
+    {
+        return resolved;
+    }
     let parent = project.parent().unwrap_or(Path::new("."));
     let raw = Path::new(path);
     if raw.is_absolute() {

@@ -57,7 +57,21 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
         "processes": null,
         "video_server": video_server_state,
         "tools": tools,
-        "in_process_libraries": ["effectcraft-engine", "effectcraft-host", "filmcraft-engine", "photocraft-engine", "deckcraft-engine", "texturecraft-formats"],
+        "in_process_libraries": [
+            "craft-ai-core",
+            "craft-atomic",
+            "craft-doc",
+            "craft-docpath",
+            "craft-settings",
+            "designcraft-engine",
+            "designcraft-render",
+            "effectcraft-engine",
+            "effectcraft-host",
+            "filmcraft-engine",
+            "photocraft-engine",
+            "texturecraft-formats",
+            "vectorcraft-engine"
+        ],
         "ponytail_candidates": null,
         "recommendations": [],
     }))

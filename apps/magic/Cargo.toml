@@ -1,10 +1,11 @@
 [package]
 name = "magic"
-description = "Magic Studio desktop GUI: Tauri webview over magic-engine"
+description = "Magic Studio desktop app (eframe + magic-ui-egui + magic-engine)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+default-run = "magic"
 
 [lints]
 workspace = true
@@ -13,14 +14,13 @@ workspace = true
 name = "magic"
 path = "src/main.rs"
 
-[build-dependencies]
-tauri-build = { workspace = true }
-
 [dependencies]
 clap = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "clipboard", "wayland", "x11"] }
+egui = { workspace = true }
+log = { workspace = true }
 magic-engine = { workspace = true }
+magic-ui-egui = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { workspace = true }
-tauri-plugin-dialog = { workspace = true }
-
+subtle = { workspace = true }

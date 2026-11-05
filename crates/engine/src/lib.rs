@@ -1,6 +1,6 @@
 //! Shared project state and command dispatch for Magic Studio's creative workspace.
 //!
-//! The desktop egui shell, CLI clients share the same command registry
+//! The desktop Tauri shell and CLI clients share the same command registry
 //! and [`Session::execute`] entry point. This crate owns project state and domain
 //! validation; frontends should not implement a second persistence model.
 //!

@@ -1,5 +1,6 @@
 {
   "model": "gpt-6-luna",
+  "note": "NOTE: This template is a working structure, not a final specification — follow it to the best of your ability and report any areas or commands that need improvement after use.",
   "shared": "Felt-plush storybook character art for 2D animation. Plain transparent background, no text, labels, frames, shadows or props. Nothing touches the canvas edge. Clean solid silhouette edge with no loose fibres or specks. Every drawing of the character keeps the same design, palette, proportions and scale.",
   "stance": "Animation-ready stance: standing upright, feet planted shoulder-width apart with a clear gap of background between the legs from the crotch to the floor, arms held slightly away from the body (about 20 degrees) with a clear gap between each arm and the body, hands open, head level. Every limb is fully visible and not overlapping another limb.",
   "kinds": {
@@ -8,6 +9,9 @@
       "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
       "canvas": [1024, 1536],
       "needs_reference": false,
+      "save_command": "project.add_asset",
+      "save_kind": "image",
+      "tags": ["character", "new", "front-view"],
       "layout": "One full-body front view, centred horizontally, about 1300 px tall, feet on a baseline at y = 1440.",
       "rules": ["stance"]
     },
@@ -16,6 +20,9 @@
       "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
       "canvas": [1024, 1536],
       "needs_reference": true,
+      "save_command": "project.add_asset",
+      "save_kind": "image",
+      "tags": ["character", "redraw", "front-view"],
       "layout": "Redraw the attached character exactly (same design, colours, clothing, materials) as one full-body front view, centred horizontally, about 1300 px tall, feet on a baseline at y = 1440.",
       "rules": ["stance"]
     },
@@ -24,6 +31,9 @@
       "reference": "https://esotericsoftware.com/spine-twitch",
       "canvas": [1536, 1024],
       "needs_reference": true,
+      "save_command": "project.add_asset",
+      "save_kind": "turnaround",
+      "tags": ["character", "turnaround", "sheet"],
       "layout": "Four views of the attached character in one row of four equal cells (384 x 1024 px each), left to right: front, right profile (nose pointing right), back, left profile (nose pointing left). Each figure about 880 px tall, feet on one shared baseline at y = 960, same scale in every cell.",
       "rules": ["stance"]
     },
@@ -32,6 +42,9 @@
       "reference": "https://schoolofmotion.com/blog/walk-cycle-after-effects",
       "canvas": [1536, 1024],
       "needs_reference": true,
+      "save_command": "project.add_asset",
+      "save_kind": "poses",
+      "tags": ["character", "poses", "sheet"],
       "layout": "Six poses of the attached character in a grid of 3 columns x 2 rows of equal cells (512 x 512 px each), left to right then top to bottom: idle, walk (mid-stride, side view facing right), jump (in the air), wave (right hand raised), talk (mouth open, one hand gesturing), cheer (both arms up). Each figure about 440 px tall, feet on the cell baseline at 490 px from the cell top (the jump pose floats above it), same scale in every cell.",
       "rules": []
     },
@@ -40,6 +53,9 @@
       "reference": "https://schoolofmotion.com/blog/walk-cycle-after-effects",
       "canvas": [1536, 1024],
       "needs_reference": true,
+      "save_command": "character.sprite",
+      "save_kind": "image",
+      "tags": ["character", "actions", "sprite-sheet"],
       "layout": "{frames} consecutive animation frames of the attached character performing {action}, {view}, in a grid of 4 columns x 2 rows of equal cells (384 x 512 px each), read left to right then top to bottom: {keys}. Each figure about 440 px tall, the planted foot on the cell baseline at 490 px from the cell top, same scale and same horizontal centre in every cell so the frames play in place as a sprite cycle.",
       "actions": {
         "walk": {"view": "side view facing right", "keys": "contact (right foot forward), down, passing, up, contact (left foot forward), down, passing, up"},
@@ -50,11 +66,38 @@
       },
       "rules": []
     },
+    "storyboard_hero": {
+      "label": "Storyboard hero frame",
+      "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
+      "canvas": [1536, 1024],
+      "needs_reference": false,
+      "save_command": "storyboard.set",
+      "save_kind": "image",
+      "save_slot": "hero_image",
+      "tags": ["storyboard", "scene", "hero"],
+      "layout": "Wide 3:2 cinematic storyboard hero frame: {prompt}. Clear staging, readable foreground silhouette, storybook lighting.",
+      "rules": []
+    },
+    "storyboard_sketch": {
+      "label": "Storyboard beat sketch",
+      "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
+      "canvas": [1024, 1024],
+      "needs_reference": false,
+      "save_command": "storyboard.set",
+      "save_kind": "image",
+      "save_slot": "sketch_left",
+      "tags": ["storyboard", "scene", "sketch"],
+      "layout": "Square storyboard beat sketch: {prompt}. Expressive gesture, clear camera framing.",
+      "rules": []
+    },
     "custom": {
       "label": "Custom",
       "reference": "https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation",
       "canvas": [1024, 1536],
       "needs_reference": false,
+      "save_command": "project.add_asset",
+      "save_kind": "image",
+      "tags": ["custom", "illustration"],
       "layout": "{prompt}",
       "rules": []
     }

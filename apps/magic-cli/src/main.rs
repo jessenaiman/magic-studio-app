@@ -2,7 +2,7 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 use std::io::BufRead;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
@@ -41,8 +41,23 @@ enum Cmd {
         #[arg(default_value = "-")]
         file: String,
     },
+    /// Serve the Model Context Protocol (JSON-RPC 2.0 over stdio)
+    Mcp {
+        /// Optional loopback `--control` address of a running `magic` desktop window
+        #[arg(long)]
+        connect: Option<String>,
+        /// Optional bearer token for the `--control` channel
+        #[arg(long)]
+        token: Option<String>,
+    },
     /// Work on a storyboard document built from the neutral template
     Storyboard {
+        /// The project whose storyboard is the underlying document
+        #[arg(long, global = true)]
+        project: Option<String>,
+        /// The document itself, instead of the project's storyboard
+        #[arg(long, global = true)]
+        document: Option<String>,
         #[command(subcommand)]
         command: SbCmd,
     },
@@ -65,6 +80,31 @@ enum SbCmd {
     },
     /// List the pages, their archetype, section and slots
     Pages {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// The song's verse and chorus, with each line's timing
+    Cues {
+        /// The canonical lyrics sheet (.json) — the artist's printed words
+        #[arg(long)]
+        lyrics: String,
+        /// The transcript (.json) the timings come from
+        #[arg(long)]
+        transcript: Option<String>,
+        /// Sections to pull, comma separated (default: every verse* and chorus* section)
+        #[arg(long)]
+        sections: Option<String>,
+        /// Lines per scene cue
+        #[arg(long, default_value_t = 1)]
+        per: usize,
+    },
+    /// Run a command script against the storyboard
+    Run {
+        /// The script file, `-` for stdin, or the script text itself
+        script: Option<String>,
+    },
+    /// List the fields still holding the template default, with the command to fill each
+    Check {
         #[arg(long)]
         path: Option<String>,
     },
@@ -182,7 +222,13 @@ enum SbCmd {
 }
 
 /// The engine command and parameters a storyboard request maps to.
-fn storyboard_params(command: &SbCmd) -> (String, Value) {
+///
+/// `document` is the storyboard itself, given once for the whole `storyboard` group; a command's
+/// own `--path` wins over it.
+fn storyboard_params(
+    command: &SbCmd,
+    document: Option<&str>,
+) -> Result<(String, Value), String> {
     let mut p = serde_json::Map::new();
     let mut put = |key: &str, value: Option<Value>| {
         if let Some(value) = value {
@@ -209,6 +255,43 @@ fn storyboard_params(command: &SbCmd) -> (String, Value) {
         }
         SbCmd::Pages { path } => {
             id = "storyboard.pages".into();
+            put("path", path.clone().map(Value::String));
+        }
+        SbCmd::Cues {
+            lyrics,
+            transcript,
+            sections,
+            per,
+        } => {
+            id = "storyboard.cues".into();
+            put("lyrics", Some(Value::String(lyrics.clone())));
+            put("transcript", transcript.clone().map(Value::String));
+            put("sections", sections.clone().map(Value::String));
+            put("per", Some(json!(per)));
+        }
+        SbCmd::Run { script } => {
+            id = "storyboard.run".into();
+            let script = match script {
+                Some(s) if s == "-" => {
+                    let mut text = String::new();
+                    std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                        .map_err(|e| format!("stdin: {e}"))?;
+                    text
+                }
+                Some(s) => {
+                    let path = Path::new(&s);
+                    if path.is_file() {
+                        std::fs::read_to_string(path).map_err(|e| format!("{s}: {e}"))?
+                    } else {
+                        s.clone()
+                    }
+                }
+                None => String::new(),
+            };
+            put("script", Some(Value::String(script)));
+        }
+        SbCmd::Check { path } => {
+            id = "storyboard.check".into();
             put("path", path.clone().map(Value::String));
         }
         SbCmd::Slots {
@@ -341,7 +424,13 @@ fn storyboard_params(command: &SbCmd) -> (String, Value) {
             put("scale", Some(json!(scale)));
         }
     }
-    (id, Value::Object(p))
+    // The document given once for the group applies to every command that did not name one.
+    if !p.contains_key("path")
+        && let Some(document) = document
+    {
+        p.insert("path".into(), Value::String(document.to_string()));
+    }
+    Ok((id, Value::Object(p)))
 }
 
 fn session_file() -> PathBuf {
@@ -519,8 +608,28 @@ fn main() {
                     println!("{}", json!({ "line": n + 1, "ok": true, "result": res }));
                 }
             }
-            Some(Cmd::Storyboard { command }) => {
-                let (id, params) = storyboard_params(&command);
+            Some(Cmd::Mcp { connect, token }) => {
+                if let Some(addr) = connect {
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(addr, token));
+                    srv.serve().map_err(|e| e.to_string())?;
+                } else {
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Headless::new(session));
+                    srv.serve().map_err(|e| e.to_string())?;
+                }
+            }
+            Some(Cmd::Storyboard {
+                project,
+                document,
+                command,
+            }) => {
+                // A project named here applies to this invocation only: it is not written to
+                // the session file, so the next command still works on the same project.
+                if let Some(proj) = project.as_deref()
+                    && Path::new(proj).is_file()
+                {
+                    let _ = session.execute("project.open", json!({ "path": proj }));
+                }
+                let (id, params) = storyboard_params(&command, document.as_deref())?;
                 emit(&exec_one(&mut session, &id, params, cli.dry_run)?);
             }
             Some(Cmd::Registry(tokens)) => {

@@ -1,10 +1,20 @@
-//! Fidget prepares inspectable drawing requests; Scribbles owns image generation.
+//! Fidget prepares inspectable drawing requests and structured Markdown briefs; Scribbles owns image generation.
+//!
+//! Both Fidget (`RoleId("fidget")`, `text.complete`) and Scribbles (`RoleId("scribbles")`,
+//! `image.generate`) are declared as [`craft_ai_core::Role`]s on the shared Craft AI client
+//! ([`craft_ai_client::AiClient`] + [`craft_ai_client::ToolDesk`]).
 
+use craft_ai_client::{AiClient, RoleStatus};
+use craft_ai_core::{AppId, CapabilityId, InputRole, Role, RoleId};
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
 const TEMPLATES: &str = include_str!("scribbles/templates.json");
+
+/// Mandatory single-line notice included in every Fidget Markdown template so downstream agents
+/// treat templates as working structures and report areas or commands needing improvement.
+pub const FIDGET_NOTE: &str = "NOTE: This template is a working structure, not a final specification — follow it to the best of your ability and report any areas or commands that need improvement after use.";
 
 fn bad(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -12,6 +22,169 @@ fn bad(message: impl Into<String>) -> EngineError {
 
 pub(crate) fn templates() -> Result<Value> {
     serde_json::from_str(TEMPLATES).map_err(|e| bad(format!("scribbles templates: {e}")))
+}
+
+/// Declare Fidget (`text.complete`) as a Craft AI role.
+pub fn fidget_role() -> Result<Role> {
+    Ok(Role {
+        id: RoleId::new("fidget").map_err(|e| bad(e.to_string()))?,
+        label: "Fidget (Prompt & Markdown Template Architect)".into(),
+        capability: CapabilityId::parse("text.complete").map_err(|e| bad(e.to_string()))?,
+        inputs: vec![InputRole::Prompt, InputRole::System],
+    })
+}
+
+/// Declare Scribbles (`image.generate`) as a Craft AI role.
+pub fn scribbles_role() -> Result<Role> {
+    Ok(Role {
+        id: RoleId::new("scribbles").map_err(|e| bad(e.to_string()))?,
+        label: "Scribbles (Template-Gated Character & Storyboard Artist)".into(),
+        capability: CapabilityId::parse("image.generate").map_err(|e| bad(e.to_string()))?,
+        inputs: vec![InputRole::Prompt, InputRole::Reference],
+    })
+}
+
+/// Declare Scribbles Mark (`image.detect`) as a Craft AI role.
+pub fn scribbles_mark_role() -> Result<Role> {
+    Ok(Role {
+        id: RoleId::new("scribbles-mark").map_err(|e| bad(e.to_string()))?,
+        label: "Scribbles Mark (Part & Joint Detector)".into(),
+        capability: CapabilityId::parse("image.detect").map_err(|e| bad(e.to_string()))?,
+        inputs: vec![InputRole::Prompt, InputRole::Source],
+    })
+}
+
+/// All Craft AI roles declared by Magic Studio.
+pub fn magic_ai_roles() -> Result<Vec<Role>> {
+    Ok(vec![
+        fidget_role()?,
+        scribbles_role()?,
+        scribbles_mark_role()?,
+    ])
+}
+
+/// Inspect the live Craft AI status (`AiClient::standard` + `ToolDesk`) for Magic Studio's roles.
+pub fn craft_ai_status() -> Value {
+    let roles = match magic_ai_roles() {
+        Ok(r) => r,
+        Err(e) => return json!({ "ok": false, "error": e.to_string() }),
+    };
+    let app_id = match AppId::new("magic") {
+        Ok(id) => id,
+        Err(e) => return json!({ "ok": false, "error": e.to_string() }),
+    };
+    let role_reports: Vec<Value> = match AiClient::standard(app_id) {
+        Ok(client) => roles
+            .iter()
+            .map(|role| {
+                let status = match client.status(role) {
+                    RoleStatus::Ready(ready) => json!({
+                        "state": "ready",
+                        "connection_id": ready.connection.as_str(),
+                        "connection_label": ready.connection_label,
+                        "model": ready.model.as_str(),
+                        "model_label": ready.model_label,
+                        "locality": format!("{:?}", ready.locality),
+                        "billing": format!("{:?}", ready.billing),
+                    }),
+                    RoleStatus::Unavailable { reason } => json!({
+                        "state": "unavailable",
+                        "reason": reason.to_string(),
+                    }),
+                };
+                json!({
+                    "id": role.id.as_str(),
+                    "label": role.label,
+                    "capability": role.capability.as_str(),
+                    "status": status,
+                })
+            })
+            .collect(),
+        Err(e) => roles
+            .iter()
+            .map(|role| {
+                json!({
+                    "id": role.id.as_str(),
+                    "label": role.label,
+                    "capability": role.capability.as_str(),
+                    "status": { "state": "unavailable", "reason": e.to_string() },
+                })
+            })
+            .collect(),
+    };
+    let builtin_features: Vec<Value> = craft_ai_features::builtin()
+        .iter()
+        .filter_map(|f| {
+            let role = f.role()?;
+            Some(json!({
+                "role": role.id.as_str(),
+                "label": role.label,
+                "capability": role.capability.as_str(),
+            }))
+        })
+        .collect();
+    json!({
+        "ok": true,
+        "app_id": "magic",
+        "roles": role_reports,
+        "builtin_features_count": builtin_features.len(),
+    })
+}
+
+/// Format any Fidget prompt or response as Markdown with YAML frontmatter and the mandatory
+/// single-line `NOTE:` sentence.
+pub fn format_fidget_markdown(
+    template: &str,
+    save_command: &str,
+    tags: &[String],
+    canvas: Option<[u64; 2]>,
+    body: &str,
+) -> String {
+    let trimmed = body.trim();
+    if trimmed.starts_with("---\n") && trimmed.contains(FIDGET_NOTE) {
+        return trimmed.to_owned();
+    }
+    let tags_str = if tags.is_empty() {
+        format!("[magic-studio, fidget, {template}]")
+    } else {
+        format!("[{}]", tags.join(", "))
+    };
+    let canvas_line = canvas
+        .map(|[w, h]| format!("canvas: [{w}, {h}]\n"))
+        .unwrap_or_default();
+    format!(
+        "---\n\
+         role: fidget\n\
+         template: {template}\n\
+         version: 1\n\
+         status: working-draft\n\
+         tags: {tags_str}\n\
+         save_command: {save_command}\n\
+         {canvas_line}---\n\
+         > {FIDGET_NOTE}\n\n\
+         {trimmed}\n\n\
+         ## Save Command\n\
+         Save and register the output using `magic-cli exec {save_command}`.\n"
+    )
+}
+
+/// Extract the `template:` field from YAML frontmatter (`---` ... `---`), if present.
+pub fn parse_frontmatter_template(text: &str) -> Option<String> {
+    let trimmed = text.trim_start();
+    let rest = trimmed.strip_prefix("---\n")?;
+    let end = rest.find("\n---")?;
+    let frontmatter = &rest[..end];
+    for line in frontmatter.lines() {
+        if let Some((k, v)) = line.split_once(':')
+            && k.trim() == "template"
+        {
+            let value = v.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_owned());
+            }
+        }
+    }
+    None
 }
 
 /// `{frames}`, `{action}`, `{view}`, `{keys}` and `{prompt}` filled from the request.
@@ -57,6 +230,10 @@ fn compose(all: &Value, kind: &Value, p: &Value) -> Result<String> {
         parts.push(all[rule].as_str().unwrap_or_default().to_string());
     }
     if kind["layout"].as_str() != Some("{prompt}")
+        && !kind["layout"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("{prompt}")
         && let Some(prompt) = p["prompt"].as_str().filter(|t| !t.trim().is_empty())
     {
         parts.push(format!("Character: {prompt}"));
@@ -113,37 +290,74 @@ impl PreparedDrawing {
             return Err(bad("new needs prompt=<the character to draw>"));
         }
         let prompt = compose(&all, kind, p)?;
+        let save_command = kind["save_command"]
+            .as_str()
+            .unwrap_or("project.add_asset")
+            .to_owned();
+        let save_kind = kind["save_kind"].as_str().unwrap_or("image").to_owned();
+        let save_slot = kind["save_slot"].as_str().map(str::to_owned);
+        let tags: Vec<String> = kind["tags"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect();
+        let canvas = [
+            kind["canvas"][0].as_u64().unwrap_or(1024),
+            kind["canvas"][1].as_u64().unwrap_or(1536),
+        ];
+        let markdown = format_fidget_markdown(name, &save_command, &tags, Some(canvas), &prompt);
         let mut request = json!({
+            "kind": name,
             "prompt": prompt,
-            "transparent_background": true,
+            "markdown": markdown,
+            "transparent_background": !matches!(name, "storyboard_hero" | "storyboard_sketch"),
             "timeout_s": p["timeout_s"].as_u64().unwrap_or(900),
             "name": p["name"].as_str().map(str::to_owned).unwrap_or_else(|| format!("scribbles-{name}"))
         });
         if !references.is_empty() {
             request["references"] = json!(references);
         }
-        for key in ["provider", "model", "character", "project"] {
+        for key in ["provider", "model", "character", "project", "scene", "action", "count"] {
             if let Some(value) = p.get(key) {
                 request[key] = value.clone();
             }
         }
         Ok(Self {
             request,
-            fidget: json!({"kind": name, "label": kind["label"],
-                "reference": kind["reference"], "canvas": kind["canvas"], "prompt": prompt}),
+            fidget: json!({
+                "role": "fidget",
+                "kind": name,
+                "label": kind["label"],
+                "reference": kind["reference"],
+                "canvas": kind["canvas"],
+                "tags": tags,
+                "save_command": save_command,
+                "save_kind": save_kind,
+                "save_slot": save_slot,
+                "note": FIDGET_NOTE,
+                "prompt": prompt,
+                "markdown": markdown,
+            }),
         })
     }
 }
 
-/// Return a final prompt and references for `scribbles.generate --params JSON`.
+/// Return a final prompt, Markdown brief with YAML frontmatter + `NOTE:`, and references for
+/// `scribbles.generate --params JSON`.
 pub fn cmd_fidget_prepare(_: &mut Session, p: &Value) -> Result<Value> {
-    let name = p["kind"].as_str().unwrap_or("custom");
+    let name = p["kind"]
+        .as_str()
+        .or_else(|| p["template"].as_str())
+        .unwrap_or("custom");
     let prepared = PreparedDrawing::prepare(p, name)?;
     let mut request = prepared.request;
     request["ok"] = json!(true);
     request["fidget"] = prepared.fidget;
     Ok(request)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +382,31 @@ mod tests {
         .unwrap();
         assert!(prompt.contains("clear gap of background between the legs"));
         assert!(prompt.contains("Character: a felt bunny"));
+    }
+
+    #[test]
+    fn fidget_prepare_emits_yaml_frontmatter_note_and_save_command() {
+        let prepared = PreparedDrawing::prepare(
+            &json!({"prompt": "a clockwork owl"}),
+            "new",
+        )
+        .unwrap();
+        let md = prepared.fidget["markdown"].as_str().unwrap();
+        assert!(md.starts_with("---\nrole: fidget\ntemplate: new\n"));
+        assert!(md.contains("save_command: project.add_asset"));
+        assert!(md.contains(&format!("> {FIDGET_NOTE}")));
+        assert_eq!(parse_frontmatter_template(md).as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn craft_ai_roles_declare_fidget_and_scribbles() {
+        let roles = magic_ai_roles().unwrap();
+        assert_eq!(roles.len(), 3);
+        assert_eq!(roles[0].id.as_str(), "fidget");
+        assert_eq!(roles[0].capability.as_str(), "text.complete");
+        assert_eq!(roles[1].id.as_str(), "scribbles");
+        assert_eq!(roles[1].capability.as_str(), "image.generate");
+        let status = craft_ai_status();
+        assert_eq!(status["ok"], json!(true));
     }
 }

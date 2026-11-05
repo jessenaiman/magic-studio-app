@@ -88,6 +88,31 @@ magic-cli storyboard overlay --path /absolute/storyboard.designcraft --page 4 \
   --slot hero_image --image /absolute/revision.png --layer "Revision 01"
 ```
 
+Pull the song's words from the canonical lyrics sheet — the artist's printed
+lyrics — not from a recording. A transcript only supplies timing, and each
+printed line takes its first occurrence, so a recording that sings the chorus
+twice contributes one set of lines, not two. Only verse and chorus sections are
+pulled:
+
+```bash
+magic-cli storyboard cues --lyrics /absolute/nelly.lyrics.json \
+  --transcript /absolute/nelly.transcript.json --per 2
+```
+
+The output carries the sheet's printed structure, the timing of every line, and
+the cues grouped the way the storyboard's scenes group them. The recording's
+own repeated structure is reported separately as `as_sung`; it is never pulled
+into the lines.
+
+Find the content a page is still missing before editing it. A field that
+still holds the template's default has never been filled; each one is reported
+with the command that fills it, so a missing block traces straight to the CLI
+call that changes it:
+
+```bash
+magic-cli storyboard check --path /absolute/storyboard.designcraft
+```
+
 Render a page to look at it, and export the document when it is finished:
 
 ```bash

@@ -13,54 +13,14 @@ fn invalid(message: &str) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
-const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
 fn base64_encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk[0],
-            *chunk.get(1).unwrap_or(&0),
-            *chunk.get(2).unwrap_or(&0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        out.push(BASE64[(n >> 18) as usize & 63] as char);
-        out.push(BASE64[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 {
-            BASE64[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            BASE64[n as usize & 63] as char
-        } else {
-            '='
-        });
-    }
-    out
+    craft_ai_core::payload::base64_encode(bytes)
 }
 
 fn base64_decode(text: &str) -> Result<Vec<u8>> {
-    let mut buffer = 0u32;
-    let mut bits = 0u32;
-    let mut out = Vec::new();
-    for ch in text.chars() {
-        if ch == '=' || ch.is_ascii_whitespace() {
-            continue;
-        }
-        let value = BASE64
-            .iter()
-            .position(|c| *c as char == ch)
-            .ok_or_else(|| invalid("Configured image endpoint returned data that is not base64"))?
-            as u32;
-        buffer = (buffer << 6) | value;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push(((buffer >> bits) & 0xff) as u8);
-        }
-    }
-    Ok(out)
+    let cleaned: String = text.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    craft_ai_core::payload::base64_decode(&cleaned)
+        .ok_or_else(|| invalid("Configured image endpoint returned data that is not base64"))
 }
 
 #[derive(Clone, Debug)]
@@ -103,16 +63,15 @@ fn resolve_config(p: &Value) -> Result<ImageConfig> {
         .or_else(|| env_nonempty("magic_IMAGE_MODEL"))
         .or_else(|| nonempty_str(img_settings.get("model")));
     if let Some(ref m) = model {
-        let ok = m.len() <= 160
-            && m.bytes().all(|b| {
-                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'/' | b':')
-            });
-        if !ok {
-            return Err(invalid("Invalid model identifier"));
-        }
+        craft_ai_core::ModelId::new(m.as_str())
+            .map_err(|_| invalid("Invalid model identifier"))?;
     }
     let endpoint =
         env_nonempty("magic_IMAGE_ENDPOINT").or_else(|| nonempty_str(img_settings.get("endpoint")));
+    if let Some(ref ep) = endpoint {
+        craft_ai_core::endpoint::Endpoint::parse(ep)
+            .map_err(|e| invalid(&format!("Invalid image endpoint: {e}")))?;
+    }
     let api_key_env = env_nonempty("magic_IMAGE_API_KEY_ENV")
         .or_else(|| nonempty_str(img_settings.get("api_key_env")));
     Ok(ImageConfig {

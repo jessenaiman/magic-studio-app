@@ -1,11 +1,27 @@
 //! One production project root, independent of navigation history and per-intake overrides.
 use crate::{EngineError, Result, Session};
+use craft_settings::{Location, Settings, SettingsStore};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     fs::{self, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
+
+#[derive(Serialize, Deserialize, Default, Clone, PartialEq)]
+#[serde(default)]
+struct MagicPrefs {
+    projects_root: Option<String>,
+    characters_root: Option<String>,
+    tools: BTreeMap<String, String>,
+}
+
+impl Settings for MagicPrefs {
+    const APP_ID: &'static str = "magic";
+    const SCHEMA_VERSION: u32 = 1;
+}
 
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -47,15 +63,19 @@ fn absolute(value: &str) -> Result<PathBuf> {
 }
 
 fn configured_root(settings: &Value) -> Result<PathBuf> {
-    match settings.get("projects_root") {
-        Some(v) => absolute(
+    if let Some(v) = settings.get("projects_root") {
+        return absolute(
             v.as_str()
                 .ok_or_else(|| invalid("Saved projects_root must be a string"))?,
-        ),
-        None => crate::workspace::user_data_dir()
-            .map(|root| root.join("magic/projects"))
-            .ok_or_else(|| invalid("Project root unavailable; configure XDG_DATA_HOME or HOME")),
+        );
     }
+    let (store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
+    if let Some(ref root) = store.get().projects_root {
+        return absolute(root);
+    }
+    crate::workspace::user_data_dir()
+        .map(|root| root.join("magic/projects"))
+        .ok_or_else(|| invalid("Project root unavailable; configure XDG_DATA_HOME or HOME"))
 }
 
 pub fn root() -> Result<PathBuf> {
@@ -64,13 +84,29 @@ pub fn root() -> Result<PathBuf> {
 
 /// Read the saved Magic Studio settings object (`~/.config/magic/settings.json`), or `{}`.
 pub(crate) fn stored_settings() -> Value {
-    stored().unwrap_or_else(|_| json!({}))
+    let mut val = stored().unwrap_or_else(|_| json!({}));
+    let (store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
+    let prefs = store.get();
+    if val.get("projects_root").is_none()
+        && let Some(ref root) = prefs.projects_root
+    {
+        val["projects_root"] = json!(root);
+    }
+    if val.get("characters_root").is_none()
+        && let Some(ref chars) = prefs.characters_root
+    {
+        val["characters_root"] = json!(chars);
+    }
+    if !prefs.tools.is_empty() && val.get("tools").is_none() {
+        val["tools"] = json!(prefs.tools);
+    }
+    val
 }
 
-/// A folder path saved under `key` in `settings.json`; GUI windows launched by the desktop
-/// do not inherit a terminal's environment, so this is where they look.
+/// A folder path saved under `key` in `settings.json` or `config.toml`; GUI windows launched by
+/// the desktop do not inherit a terminal's environment, so this is where they look.
 pub fn saved_path(key: &str) -> Option<PathBuf> {
-    stored().ok()?.get(key)?.as_str().map(PathBuf::from)
+    stored_settings().get(key)?.as_str().map(PathBuf::from)
 }
 
 /// Optional external character library. Its location belongs to the user's configuration.
@@ -127,7 +163,13 @@ fn persist_root(value: &Value) -> Result<()> {
     output.lock()?;
     let mut settings = read_settings_file(&mut output)?;
     settings["projects_root"] = json!(root);
-    write_settings_file(&mut output, &settings)
+    write_settings_file(&mut output, &settings)?;
+    let (mut store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
+    store.update(|prefs| {
+        prefs.projects_root = Some(root.to_string_lossy().into_owned());
+    });
+    let _ = store.flush();
+    Ok(())
 }
 
 /// Without `root`, inspect the setting. Only this explicit command changes it.

@@ -41,6 +41,11 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
 
 /// Resolve a potentially relative path against the session workspace root.
 pub fn resolve_workspace_path(s: &crate::Session, raw: &str) -> PathBuf {
+    if let Ok(resolved) = craft_docpath::resolve_absolute(raw, s.project_path.as_deref())
+        && resolved.exists()
+    {
+        return resolved;
+    }
     let p = Path::new(raw);
     if p.is_absolute() {
         return p.to_path_buf();
@@ -113,6 +118,17 @@ pub(crate) fn open_editor(app: &str, document: &Path) -> Result<()> {
     Ok(())
 }
 
+fn craft_doc_info(path: &Path) -> Option<Value> {
+    let bytes = std::fs::read(path).ok()?;
+    let info = craft_doc::info(&bytes, &craft_doc::Limits::default()).ok()?;
+    Some(serde_json::json!({
+        "kind": info.kind.extension(),
+        "version": info.version,
+        "generator": info.generator,
+        "supported": info.supported,
+    }))
+}
+
 /// Open a project file in the Craft app that owns its format, or the system opener.
 pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Value> {
     let raw = params["path"]
@@ -120,22 +136,37 @@ pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Valu
         .filter(|p| !p.trim().is_empty())
         .ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
     let path = resolve_workspace_path(s, raw);
+    let sniffed = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| craft_doc::sniff(&bytes))
+        .map(|kind| match kind {
+            craft_doc::Kind::PhotoCraft => "photocraft",
+            craft_doc::Kind::VectorCraft => "vectorcraft",
+            craft_doc::Kind::EffectCraft => "effectcraft",
+            _ => "xdg-open",
+        });
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    let app = match ext.as_str() {
+    let app = sniffed.unwrap_or(match ext.as_str() {
+        "cadcraft" | "dxf" | "dwg" => "cadcraft",
         "deckcraft" | "potx" | "pptx" => "deckcraft",
-        "fcproj" => "filmcraft",
+        "designcraft" | "idml" => "designcraft",
         "ecproj" => "effectcraft",
-        "pcraft" | "psd" => "photocraft",
-        "vcraft" | "svg" => "vectorcraft",
-        "tcraft" => "texturecraft",
+        "fcproj" => "filmcraft",
         "mcraft" => "materialcraft",
+        "pcraft" | "psd" => "photocraft",
+        "pdfcraft" => "pdfcraft",
+        "solidcraft" | "step" | "stp" => "solidcraft",
+        "soundcraft" => "soundcraft",
+        "tcraft" => "texturecraft",
+        "vectorcraft" | "drawcraft" | "vcraft" | "svg" => "vectorcraft",
+        "wordcraft" | "docx" => "wordcraft",
         "blend" => "blender",
         _ => "xdg-open",
-    };
+    });
     open_editor(app, &path)?;
     Ok(serde_json::json!({"ok": true, "app": app, "path": path}))
 }
@@ -177,16 +208,7 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let info = save
         .as_deref()
         .or(Some(path.as_path()))
-        .and_then(|p| std::fs::read(p).ok())
-        .and_then(|bytes| craft_doc::info(&bytes, &craft_doc::Limits::default()).ok())
-        .map(|i| {
-            serde_json::json!({
-                "kind": i.kind.extension(),
-                "version": i.version,
-                "generator": i.generator,
-                "supported": i.supported,
-            })
-        });
+        .and_then(craft_doc_info);
     Ok(serde_json::json!({"ok": true, "path": path, "pcraft": save, "info": info}))
 }
 
@@ -216,7 +238,8 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
         steps.push(serde_json::json!({"id": "file.saveAs", "params": {"path": path}}));
     }
     let results = crate::character::effectcraft(dir, existing, &steps)?;
-    Ok(serde_json::json!({"ok": true, "path": path, "results": results}))
+    let info = craft_doc_info(&path);
+    Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results}))
 }
 
 /// Run VectorCraft operations in-process via `vectorcraft_engine::Session`, saving edited vector
@@ -266,7 +289,11 @@ pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
             .execute("file.saveAs", &serde_json::json!({"path": out_path}))
             .map_err(|e| EngineError::ExternalTool("vectorcraft-engine".into(), e.to_string()))?;
     }
-    Ok(serde_json::json!({"ok": true, "path": path, "vectorcraft": save, "results": results}))
+    let info = save
+        .as_deref()
+        .or(Some(path.as_path()))
+        .and_then(craft_doc_info);
+    Ok(serde_json::json!({"ok": true, "path": path, "vectorcraft": save, "info": info, "results": results}))
 }
 
 /// Resolve an installed tool executable from `<TOOL_NAME>` env override,

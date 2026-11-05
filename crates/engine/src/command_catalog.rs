@@ -1311,6 +1311,36 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             crate::storyboard::cmd_storyboard_scenes
         ),
         query!(
+            "storyboard.cues",
+            "The Song's Verse and Chorus, With Each Line's Timing",
+            "{\"lyrics\":\"canonical lyrics sheet .json\",\"transcript\":\"optional transcript .json for timings\",\"sections\":\"optional comma list; default every verse* and chorus* section\",\"per\":1}",
+            crate::storyboard::cmd_storyboard_cues
+        ),
+        cmd!(
+            "storyboard.lyrics",
+            "Insert the Song's Lyrics Into the Scene Pages, Locked",
+            ["Storyboard"],
+            None,
+            "{\"path\":\"optional storyboard.designcraft\",\"lyrics\":\"canonical lyrics sheet .json\",\"transcript\":\"optional transcript .json for timings\",\"sections\":\"optional comma list; default every verse* and chorus* section\",\"per\":1}",
+            always,
+            crate::storyboard::cmd_storyboard_lyrics
+        ),
+        cmd!(
+            "storyboard.run",
+            "Run a Command Script Against the Storyboard",
+            ["Storyboard"],
+            None,
+            "{\"path\":\"optional storyboard.designcraft\",\"script\":\"script text\",\"script_file\":\"optional script file\"}",
+            always,
+            crate::storyboard::cmd_storyboard_run
+        ),
+        query!(
+            "storyboard.check",
+            "Fields Still Holding the Template Default, With the Command to Fill Each",
+            "{\"path\":\"optional storyboard.designcraft\"}",
+            crate::storyboard::cmd_storyboard_check
+        ),
+        query!(
             "storyboard.pages",
             "Storyboard Pages, Their Archetype, Section and Slots",
             "{\"path\":\"optional storyboard.designcraft\"}",
