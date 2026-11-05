@@ -9,7 +9,11 @@ fn main() {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    println!("cargo:rustc-env=magic_BUILD_ID={}-{}", revision.trim(), now);
+    println!(
+        "cargo:rustc-env=MAGICSTUDIO_BUILD_ID={}-{}",
+        revision.trim(),
+        now
+    );
     // Recompute runtime identity after local commits, including named worktrees.
     let branch = std::process::Command::new("git")
         .args(["symbolic-ref", "-q", "HEAD"])
@@ -19,7 +23,7 @@ fn main() {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .unwrap_or_default();
     println!(
-        "cargo:rustc-env=magic_BUILD_BRANCH={}",
+        "cargo:rustc-env=MAGICSTUDIO_BUILD_BRANCH={}",
         branch
             .trim()
             .strip_prefix("refs/heads/")
@@ -40,4 +44,5 @@ fn main() {
             );
         }
     }
+    tauri_build::build();
 }

@@ -245,3 +245,4 @@ assets/
 # Templates the code bundles are the exceptions.
 !/pipeline/templates/*.deckcraft
 !/references/storyboard/*.potx
+apps/magic/gen/

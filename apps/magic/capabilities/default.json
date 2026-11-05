@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.tauri.app/v2/capability.schema.json",
+  "identifier": "default",
+  "description": "Default capability set for Magic Studio",
+  "windows": ["main"],
+  "permissions": [
+    "core:app:default",
+    "core:window:allow-close",
+    "core:window:allow-center",
+    "core:window:allow-create",
+    "core:window:allow-hide",
+    "core:window:allow-maximize",
+    "core:window:allow-minimize",
+    "core:window:allow-show",
+    "core:window:allow-start-dragging",
+    "core:window:allow-unmaximize",
+    "core:window:allow-unminimize",
+    "core:path:allow-join",
+    "core:path:allow-resolve",
+    "core:app:allow-exit",
+    "dialog:default"
+  ]
+}
