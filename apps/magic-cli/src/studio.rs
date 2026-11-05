@@ -57,7 +57,7 @@ pub fn shell_binary() -> Result<PathBuf, String> {
 }
 
 fn socket_dir() -> Option<PathBuf> {
-    studio_sessions::runtime_dir().map(|r| r.join("magic-studio"))
+    studio_sessions::runtime_dir().map(|r| r.join("magic"))
 }
 
 fn socket_path(endpoint: &str) -> Result<&Path, String> {

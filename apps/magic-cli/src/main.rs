@@ -5,13 +5,13 @@ mod project;
 mod session;
 mod studio;
 
-use clap::{Args, Subcommand};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use session::Session;
 use std::io::BufRead;
 use std::path::PathBuf;
 
-#[derive(Args)]
+#[derive(Parser)]
 pub struct CommandArgs {
     /// JSON output (also the default)
     #[arg(long, global = true)]
@@ -360,6 +360,12 @@ pub fn run(cli: CommandArgs, mut help: clap::Command) -> Result<(), String> {
         None => help.print_help().map_err(|e| e.to_string()),
         Some(command) => run_command(help.get_name(), &mut s, command, cli.dry_run),
     }
+}
+
+fn main() {
+    let cli = CommandArgs::parse();
+    let help = clap::Command::new("magic-cli");
+    finish("magic-cli", run(cli, help));
 }
 
 fn shell_word(arg: &str) -> String {

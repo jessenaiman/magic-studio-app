@@ -11,8 +11,9 @@ workspace = true
 [dependencies]
 magic-engine = { workspace = true }
 serde_json = { workspace = true }
-eframe = { workspace = true }
+eframe = { workspace = true, features = ["glow"] }
 egui = { workspace = true }
 rfd = { workspace = true }
 image = { workspace = true }
 clap = { version = "4.6", features = ["derive", "env"] }
+winit = { version = "0.30", default-features = false, features = ["wayland"] }

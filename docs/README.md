@@ -13,7 +13,6 @@ Magic Studio brings storyboard, animation, lyrics, and song-video composition us
 | Understand how the pieces fit | [Project context](../PROJECT_CONTEXT.md) |
 | Browse Rust modules, types, and source | [Build the Rust API reference](RUSTDOC.md) |
 | Use CLI or MCP commands | [Command architecture](../apps/magic/MAGIC.md) and [Magic skill](../apps/magic/SKILL.md) |
-| Understand Backstage and its limits | [Observer guide](../apps/backstage/README.md) |
 | Contribute safely | [Contribution and acceptance policy](../CONTRIBUTING.md) |
 
 

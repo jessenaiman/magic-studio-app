@@ -163,7 +163,7 @@ pub fn request_within(
 #[cfg(unix)]
 fn sessions_dir() -> Result<Option<PathBuf>, String> {
     let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
-    let dir = runtime.join("magic-studio");
+    let dir = runtime.join("magic");
     if !dir.exists() {
         return Ok(None);
     }
@@ -420,7 +420,7 @@ pub fn open_with_options(
         return Ok(existing);
     }
     let runtime = runtime_dir().ok_or("XDG_RUNTIME_DIR unavailable and no /run/user/<uid>")?;
-    let dir = runtime.join("magic-studio");
+    let dir = runtime.join("magic");
     let executable = live_executable(executable);
     let mut command = launch_command(&executable, project.as_deref(), launch);
     let mut child = command

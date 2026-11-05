@@ -1,12 +1,26 @@
 //! `cargo xtask doctor`: report which workspace apps are configured, which are not,
 //! and where the app breaks. Outputs a structured report for CI and pre-commit to consume.
 
+use std::path::PathBuf;
 use std::process::Command;
 
 use crate::Result;
 
+/// Patterns that indicate stale references to deleted source files.
+const DELETED_FILE_PATTERNS: &[&str] = &[
+    "apps/magic-cli/src/mcp.rs",
+    "apps/magic-cli/src/doctor.rs",
+    "apps/backstage/",
+];
+
+/// Patterns that indicate inline MCP hacks that should go through the registry.
+const MCP_HACK_PATTERNS: &[&str] = &["control_call", "invoke_menu", "ui_control", "app_quit"];
+
+/// Path strings that should use `magic` instead of `magic-studio`.
+const STALE_PATH_PATTERNS: &[&str] = &["magic-studio"];
+
 /// Run the doctor report: inventory workspace packages, check configuration,
-/// run cargo check, and print a structured report.
+/// run cargo check, scan for stale references, and print a structured report.
 pub(crate) fn doctor() -> Result<()> {
     let cargo = env!("CARGO");
 
@@ -32,7 +46,10 @@ pub(crate) fn doctor() -> Result<()> {
     let check = run_cargo_check(&cargo)?;
     let broken_packages = parse_broken_packages(&check);
 
-    // 4. Print structured report.
+    // 4. Scan source for stale references (deleted files, MCP hacks, old paths).
+    let stale_references = scan_stale_references()?;
+
+    // 5. Print structured report.
     println!("=== Magic doctor report ===");
     println!();
 
@@ -72,7 +89,24 @@ pub(crate) fn doctor() -> Result<()> {
     }
 
     println!();
-    let total_issues = unconfigured.len() + broken_packages.len();
+    println!("Stale reference scan:");
+    if stale_references.is_empty() {
+        println!("  clean");
+    } else {
+        println!("  FOUND {} stale reference(s):", stale_references.len());
+        for (file, line_no, pattern, line) in &stale_references {
+            println!(
+                "    {}:{}: pattern `{}` — {}",
+                file.display(),
+                line_no,
+                pattern,
+                line.trim()
+            );
+        }
+    }
+
+    println!();
+    let total_issues = unconfigured.len() + broken_packages.len() + stale_references.len();
     if total_issues == 0 {
         println!("doctor: no issues found");
         Ok(())
@@ -80,6 +114,124 @@ pub(crate) fn doctor() -> Result<()> {
         println!("doctor: {total_issues} issue(s) found");
         Err(format!("doctor: {total_issues} issue(s) found").into())
     }
+}
+
+/// Scan tracked source files for stale references to deleted files, MCP hacks,
+/// and old `magic-studio` path strings.
+fn scan_stale_references() -> Result<Vec<(PathBuf, usize, String, String)>> {
+    let root = std::env::var("CARGO_MANIFEST_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .map(|p| p.join(".."))
+        .and_then(|p| p.canonicalize().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let git_files = Command::new("git")
+        .args(["ls-files", "--cached"])
+        .current_dir(&root)
+        .output()
+        .map_err(|e| format!("git ls-files: {e}"))?;
+    if !git_files.status.success() {
+        return Err(String::from_utf8_lossy(&git_files.stderr).into());
+    }
+
+    let mut findings = Vec::new();
+    for line in String::from_utf8_lossy(&git_files.stdout).lines() {
+        let path = root.join(line);
+        if !path.is_file() {
+            continue;
+        }
+        // Skip this file itself (its constants match the patterns it scans for).
+        if path.ends_with("xtask/src/doctor.rs") {
+            continue;
+        }
+        // Skip skill documentation — those describe other Craft apps' MCP interfaces,
+        // not Magic's stale code.
+        if path.starts_with(root.join(".agents/skills")) {
+            continue;
+        }
+        // Only scan source/config files.
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !matches!(ext, "rs" | "toml" | "md" | "yml" | "yaml" | "json") {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        for (line_no, line) in contents.lines().enumerate() {
+            let trimmed = line.trim();
+            // Skip comments and URLs.
+            if trimmed.starts_with("//")
+                || trimmed.contains("http://")
+                || trimmed.contains("https://")
+            {
+                continue;
+            }
+            for pattern in DELETED_FILE_PATTERNS {
+                if line.contains(pattern) {
+                    findings.push((
+                        path.clone(),
+                        line_no + 1,
+                        pattern.to_string(),
+                        line.to_string(),
+                    ));
+                }
+            }
+            for pattern in MCP_HACK_PATTERNS {
+                if line_contains_mcp_call(trimmed, pattern) {
+                    findings.push((
+                        path.clone(),
+                        line_no + 1,
+                        pattern.to_string(),
+                        line.to_string(),
+                    ));
+                }
+            }
+            for pattern in STALE_PATH_PATTERNS {
+                if line.contains(pattern) && !line.contains("magicstudio") {
+                    findings.push((
+                        path.clone(),
+                        line_no + 1,
+                        pattern.to_string(),
+                        line.to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    findings.sort();
+    findings.dedup();
+    Ok(findings)
+}
+
+/// Check whether an MCP pattern appears as an actual call invocation
+/// (e.g. `control_call {`, `"ui_control"`, `method":"app_quit"`), not as a
+/// substring of a larger identifier like `specs_ui_controls`.
+fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
+    let mut start = 0;
+    while let Some(pos) = line[start..].find(pattern) {
+        let abs = start + pos;
+        let end = abs + pattern.len();
+        // Word boundary before: not alphanumeric/underscore, or start of line.
+        let before_ok = abs == 0
+            || !line[abs - 1..abs]
+                .chars()
+                .next()
+                .map_or(true, |c| c.is_alphanumeric() || c == '_');
+        // Word boundary after: not alphanumeric/underscore, or end of line.
+        let after_ok = end >= line.len()
+            || !line[end..end + 1]
+                .chars()
+                .next()
+                .map_or(true, |c| c.is_alphanumeric() || c == '_');
+        if before_ok && after_ok {
+            return true;
+        }
+        start = end;
+    }
+    false
 }
 
 /// Parse cargo metadata JSON and return (package_name, dependency_names) pairs.

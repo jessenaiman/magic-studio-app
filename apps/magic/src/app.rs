@@ -280,7 +280,7 @@ fn start_socket_listener(
     use std::os::unix::net::UnixListener;
 
     let runtime = magic_engine::studio_sessions::runtime_dir()?;
-    let dir = runtime.join("magic-studio");
+    let dir = runtime.join("magic");
     std::fs::create_dir_all(&dir).ok()?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).ok()?;
 
