@@ -106,7 +106,11 @@ pub(crate) fn doctor() -> Result<()> {
     }
 
     println!();
-    let total_issues = unconfigured.len() + broken_packages.len() + stale_references.len();
+    let unclassified_build_failure = usize::from(!check.status && broken_packages.is_empty());
+    let total_issues = unconfigured.len()
+        + broken_packages.len()
+        + stale_references.len()
+        + unclassified_build_failure;
     if total_issues == 0 {
         println!("doctor: no issues found");
         Ok(())
