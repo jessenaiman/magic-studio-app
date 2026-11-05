@@ -50,7 +50,7 @@ fn record_rest(view: &View, project: &std::path::Path, mut parts: Value) -> Resu
             json!({"layer": id, "path": "transform/position", "time": 0}),
         ));
     }
-    let out = effectcraft(&view.dir, Some(project), &steps)?;
+    let out = effectcraft(&view.dir, Some(project), &steps, true)?;
     let values: Vec<Value> = out.into_iter().skip(1).collect();
     if values.len() != layers.len() {
         return Err(bad(format!(
@@ -106,7 +106,7 @@ pub fn cmd_character_rig(s: &mut Session, p: &Value) -> Result<Value> {
         ));
     }
     steps.push(step("file.saveAs", json!({"path": project})));
-    effectcraft(&view.dir, None, &steps)?;
+    effectcraft(&view.dir, None, &steps, true)?;
     record_rest(&view, &project, parts)?;
     Ok(
         json!({"ok": true, "ecproj": project, "comp": view.comp(), "layers": list.len() + 1,

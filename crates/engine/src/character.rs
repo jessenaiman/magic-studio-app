@@ -153,15 +153,6 @@ pub(crate) fn effectcraft(
     dir: &Path,
     project: Option<&Path>,
     steps: &[Value],
-) -> Result<Vec<Value>> {
-    effectcraft_with_save(dir, project, steps, true)
-}
-
-/// Run EffectCraft commands, optionally saving the opened project after the steps.
-pub(crate) fn effectcraft_with_save(
-    dir: &Path,
-    project: Option<&Path>,
-    steps: &[Value],
     save: bool,
 ) -> Result<Vec<Value>> {
     let base = project.and_then(Path::parent).unwrap_or(dir);
@@ -452,6 +443,7 @@ pub fn cmd_character_set(s: &mut Session, p: &Value) -> Result<Value> {
             step("comp.open", json!({"comp": view.comp()})),
             step("prop.addKey", key),
         ],
+        true,
     )?;
     Ok(json!({"ok": true, "project": project, "part": part, "prop": prop, "time": time}))
 }

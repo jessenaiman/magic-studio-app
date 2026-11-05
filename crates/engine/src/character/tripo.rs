@@ -842,7 +842,7 @@ fn build_effectcraft_3d_comp(
         ),
         super::step("file.saveAs", json!({"path": ec_path})),
     ];
-    if super::effectcraft(clips_dir, None, &steps).is_err() {
+    if super::effectcraft(clips_dir, None, &steps, true).is_err() {
         return (Value::Null, Value::Null);
     }
     let rendered = crate::character::effectcraft_frame(

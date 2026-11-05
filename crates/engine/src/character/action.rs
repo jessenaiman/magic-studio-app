@@ -158,7 +158,7 @@ pub fn cmd_character_action(s: &mut Session, p: &Value) -> Result<Value> {
     ));
     steps.push(step("keys.selectAll", json!({})));
     steps.push(step("keys.easyEase", json!({})));
-    effectcraft(&view.dir, Some(&project), &steps)?;
+    effectcraft(&view.dir, Some(&project), &steps, true)?;
     parts["actions"][name] = json!({"start": when.at, "end": end, "times": when.times});
     view.write_parts(&parts)?;
     Ok(

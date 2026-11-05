@@ -97,7 +97,7 @@ pub fn cmd_character_sprite(s: &mut Session, p: &Value) -> Result<Value> {
         ));
     }
     steps.push(step("file.saveAs", json!({"path": project})));
-    effectcraft(&dir, None, &steps)?;
+    effectcraft(&dir, None, &steps, true)?;
     let meta = json!({"character": id, "sprite": name, "action": action, "sheet": dir.join("sheet.png"),
         "source_sheet": sheet, "frames": frames.len(), "fps": fps, "cycle_seconds": frames.len() as f64 / fps as f64,
         "duration": duration, "mirror": p["mirror"] == true, "comp": comp, "ecproj": project});

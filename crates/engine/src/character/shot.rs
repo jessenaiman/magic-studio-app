@@ -126,7 +126,7 @@ pub fn cmd_character_shot(s: &mut Session, p: &Value) -> Result<Value> {
     let project = dir.join(format!("{name}.ecproj"));
     let mut steps = shot_steps(&sprite_project, &sprite_comp, &name, &at);
     steps.push(step("file.saveAs", json!({"path": project})));
-    effectcraft(&dir, None, &steps)?;
+    effectcraft(&dir, None, &steps, true)?;
     let clip = dir.join(format!("{name}.mov"));
     crate::character::effectcraft_render(
         &project,
