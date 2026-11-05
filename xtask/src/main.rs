@@ -215,31 +215,24 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
         Profile::Release => ("release", " --release"),
     };
     let build = root.join("target").join(folder);
-    if build.join("magic").is_file() {
+    if build.join("magic").is_file() && build.join("magic-cli").is_file() {
         Ok(build)
     } else {
-        Err(format!("Build first: cargo build -p magic{flag}"))
+        Err(format!("Build first: cargo build -p magic -p magic-cli{flag}"))
     }
 }
 
 /// Place each binary under PREFIX/share/magic/bin with a PREFIX/bin link; `magic`
-/// opens the app, so it is the app under its short name.
+/// opens the app and `magic-cli` runs the headless CLI.
 fn install_binaries(build: &Path, prefix: &Path) -> Result<PathBuf> {
     let bin = prefix.join("share/magic/bin");
     let links = prefix.join("bin");
     io(bin.display(), std::fs::create_dir_all(&bin))?;
     io(links.display(), std::fs::create_dir_all(&links))?;
-    let app = bin.join("magic");
-    replace_file(&build.join("magic"), &app)?;
-    link(&app, &links.join("magic"))?;
-    // Older installations stored a separate CLI binary in our private bin directory.
-    let old_cli = bin.join("magic-cli");
-    if old_cli.is_file() && !old_cli.is_symlink() {
-        io(old_cli.display(), std::fs::remove_file(&old_cli))?;
-    }
-    for alias in ["magic", "magic-cli"] {
-        link(&app, &bin.join(alias))?;
-        link(&bin.join(alias), &links.join(alias))?;
+    for name in ["magic", "magic-cli"] {
+        let installed = bin.join(name);
+        replace_file(&build.join(name), &installed)?;
+        link(&installed, &links.join(name))?;
     }
     Ok(bin)
 }

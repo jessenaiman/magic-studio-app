@@ -4,7 +4,6 @@ use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::{
     fs,
-    io::Write,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -76,29 +75,12 @@ fn marker_token() -> String {
 }
 
 fn write_marker(dir: &std::path::Path, token: &str) -> Result<()> {
-    let temp = dir.join(format!(".changes-{token}.tmp"));
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(&temp)?;
-    let result = (|| -> Result<()> {
-        file.write_all(
-            serde_json::to_string(&json!({"version":1,"token":token}))
-                .map_err(|e| EngineError::InvalidParams(e.to_string()))?
-                .as_bytes(),
-        )?;
-        file.sync_all()?;
-        fs::rename(&temp, dir.join("changes.json"))?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temp);
-    }
-    result
+    let payload = serde_json::to_string(&json!({"version":1,"token":token}))
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    craft_atomic::WriteOptions::default()
+        .with_new_file_permissions(craft_atomic::NewFilePermissions::Private)
+        .atomic_write(&dir.join("changes.json"), payload.as_bytes())?;
+    Ok(())
 }
 
 /// Best-effort publication must not turn a completed project save into an apparent failure.

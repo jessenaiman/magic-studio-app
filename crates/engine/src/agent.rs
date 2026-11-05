@@ -645,17 +645,8 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .parent()
         .ok_or_else(|| invalid("Chat state path has no parent directory"))?;
     fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name().and_then(|n| n.to_str()).unwrap_or("chat"),
-        stamp()
-    ));
-    fs::write(&temporary, bytes)?;
-    fs::rename(&temporary, path).map_err(|e| {
-        let _ = fs::remove_file(&temporary);
-        invalid(format!("Cannot publish chat state: {e}"))
-    })?;
-    Ok(())
+    craft_atomic::atomic_write(path, bytes)
+        .map_err(|e| invalid(format!("Cannot publish chat state: {e}")))
 }
 
 fn log_push(s: &Session, entry: Value) -> Result<()> {

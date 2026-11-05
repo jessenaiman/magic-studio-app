@@ -445,6 +445,33 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             always,
             crate::workspace::cmd_workspace_open
         ),
+        cmd!(
+            "photo.exec",
+            "Run PhotoCraft Commands In-Process (.pcraft, .psd, .png, .webp)",
+            ["File"],
+            None,
+            "{\"path\":\"image or .pcraft/.psd\",\"id\":\"document.inspect|image.imageRotation.*|image.adjustments.*|layer.*\",\"params\":{},\"save\":\"optional output path\"}",
+            always,
+            crate::workspace::cmd_photo_exec
+        ),
+        cmd!(
+            "effect.exec",
+            "Run EffectCraft Commands In-Process (.ecproj)",
+            ["Animation"],
+            None,
+            "{\"path\":\".ecproj path\",\"id\":\"comp.settings|comp.workArea|layer.newText|layer.newShape|edit.splitLayer|edit.history.list\",\"params\":{},\"save\":true}",
+            always,
+            crate::workspace::cmd_effect_exec
+        ),
+        cmd!(
+            "vector.exec",
+            "Run VectorCraft Info, Convert, or Commands (.svg, .vectorcraft, .ai, .pdf, .png)",
+            ["File"],
+            None,
+            "{\"path\":\"asset path\",\"mode\":\"info|convert|run\",\"out\":\"optional output path\",\"scale\":2,\"outline_text\":false,\"id\":\"optional command\",\"params\":{}}",
+            always,
+            crate::workspace::cmd_vector_exec
+        ),
     ]
 }
 
@@ -1355,6 +1382,15 @@ fn specs_film() -> Vec<CommandSpec> {
             "{\"clip\":\"rendered .mov\",\"from\":0,\"track\":\"V2\",\"width\":\"animation study's first clip starts the film: 1920\",\"height\":1080,\"fps\":30}",
             always,
             crate::film::cmd_video_place_clip
+        ),
+        cmd!(
+            "video.exec",
+            "Execute Any FilmCraft Command on the Linked .fcproj",
+            ["Studio"],
+            None,
+            "{\"id\":\"file.exportInterchange|file.projectManager|graphics.newFromFile|sequence.inspect|project.items\",\"params\":{},\"save\":true}",
+            always,
+            crate::film::cmd_video_exec
         ),
     ]
 }

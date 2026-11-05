@@ -133,55 +133,28 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
     problems
 }
 
-/// `HH:MM:SS,mmm` (or `SS`-less variants) to seconds; anything malformed or out of range is None.
-fn parse_srt_time(raw: &str) -> Option<f64> {
-    let value = raw.trim().replace(',', ".");
-    let parts = value
-        .split(':')
-        .map(str::parse::<f64>)
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .ok()?;
-    if parts.len() != 3
-        || parts.iter().any(|n| !n.is_finite() || *n < 0.0)
-        || parts[1] >= 60.0
-        || parts[2] >= 60.0
-    {
-        return None;
-    }
-    Some(parts[0] * 3600.0 + parts[1] * 60.0 + parts[2])
-}
-
-/// One subtitle block: its timing line and the text that follows it.
-fn parse_cue(block: &str) -> Result<(f64, f64, String)> {
-    let lines = block.lines().collect::<Vec<_>>();
-    let timing = lines.iter().position(|l| l.contains("-->")).and_then(|i| {
-        let (a, b) = lines[i].split_once("-->")?;
-        Some((
-            parse_srt_time(a)?,
-            parse_srt_time(b)?,
-            lines[i + 1..].join(" "),
-        ))
-    });
-    timing.ok_or_else(|| EngineError::InvalidParams("invalid SRT cue timing".into()))
-}
-
-/// Preserve externally authored cue boundaries; never invent word timing from subtitle lines.
+/// Preserve externally authored cue boundaries using `filmcraft_captions::parse`; never invent word timing from subtitle lines.
 pub(crate) fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
-    let mut cues = Vec::new();
+    let fmt = filmcraft_captions::detect(text.as_bytes(), Some("srt"))
+        .unwrap_or(filmcraft_captions::Format::Srt);
+    let doc = filmcraft_captions::parse(text.as_bytes(), fmt)
+        .map_err(|e| EngineError::InvalidParams(format!("invalid caption file: {e}")))?;
+    if doc.cues.is_empty() {
+        return Err(EngineError::InvalidParams("caption file is empty".into()));
+    }
+    let mut cues = Vec::with_capacity(doc.cues.len());
     let mut previous = 0.0;
-    let normalized = text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
-    for block in normalized.split("\n\n").filter(|b| !b.trim().is_empty()) {
-        let (start, end, text) = parse_cue(block)?;
-        if start < previous || end < start || text.trim().is_empty() {
+    for cue in doc.cues {
+        let start = cue.start.seconds();
+        let end = cue.end.seconds();
+        let clean = cue.text.replace('\n', " ").trim().to_string();
+        if start < previous - 1e-6 || end < start || clean.is_empty() {
             return Err(EngineError::InvalidParams(
                 "SRT cues must be ordered, timed and nonempty".into(),
             ));
         }
         previous = start;
-        cues.push(json!({"text":text,"start":start,"end":end}));
-    }
-    if cues.is_empty() {
-        return Err(EngineError::InvalidParams("caption file is empty".into()));
+        cues.push(json!({"text": clean, "start": start, "end": end}));
     }
     Ok(cues)
 }
@@ -234,35 +207,29 @@ fn prepare_document(
     Ok((caption_text, grouping))
 }
 
-fn srt_stamp(v: f64) -> String {
-    let ms = (v * 1000.0).round() as u64;
-    format!(
-        "{:02}:{:02}:{:02},{:03}",
-        ms / 3600000,
-        (ms / 60000) % 60,
-        (ms / 1000) % 60,
-        ms % 1000
-    )
-}
-
-/// The captions to write when none were supplied: the document's own paragraph timing.
-fn srt_from_paragraphs(doc: &Value) -> Option<String> {
+/// The captions to write when none were supplied: the document's own paragraph timing via `filmcraft_captions::write`.
+pub(crate) fn srt_from_paragraphs(doc: &Value) -> Option<String> {
     let paragraphs = doc["paragraphs"].as_array()?;
-    Some(
-        paragraphs
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                format!(
-                    "{}\n{} --> {}\n{}\n\n",
-                    i + 1,
-                    srt_stamp(p["start"].as_f64().unwrap_or(0.0)),
-                    srt_stamp(p["end"].as_f64().unwrap_or(0.0)),
-                    p["text"].as_str().unwrap_or_default()
-                )
-            })
-            .collect::<String>(),
-    )
+    let cues: Vec<filmcraft_captions::Cue> = paragraphs
+        .iter()
+        .map(|p| filmcraft_captions::Cue {
+            start: filmcraft_time::Tick::from_seconds_f64(p["start"].as_f64().unwrap_or(0.0)),
+            end: filmcraft_time::Tick::from_seconds_f64(p["end"].as_f64().unwrap_or(0.0)),
+            text: p["text"].as_str().unwrap_or_default().to_string(),
+            ..Default::default()
+        })
+        .collect();
+    let cap_doc = filmcraft_captions::Document {
+        language: Some("en".into()),
+        cues,
+        ..Default::default()
+    };
+    let bytes = filmcraft_captions::write(
+        &cap_doc,
+        filmcraft_captions::Format::Srt,
+        filmcraft_captions::WriteOptions::default(),
+    );
+    String::from_utf8(bytes).ok()
 }
 
 fn audio_mismatch(doc: &Value, song: Option<&PathBuf>) -> Option<String> {
@@ -487,6 +454,21 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
     write_provenance(&dir, &source, params, &facts, grouping)?;
     // Native captions are generated before the status is read, so the summary reflects them.
     let captions = captions_status(s, &dir)?;
+    if let Some(audio) = s.song_audio.clone().filter(|p| p.is_file())
+        && let Ok(film) = crate::film::film_path(s)
+        && let Ok(item) = crate::song_timing::song_item(&dir, &film, &audio)
+    {
+        let beat = crate::song_timing::analyze_music_native(&dir, &audio)
+            .unwrap_or_else(|_| json!({"downbeats":{"times":[]},"sections":{"spans":[]}}));
+        let _ = crate::song_timing::sync_film_tracks(
+            &dir,
+            &film,
+            item,
+            &dir.join("hyperframes/transcript.json"),
+            &beat,
+        );
+        let _ = crate::film::link(s, &film);
+    }
     let mut status = workshop_status(s)?;
     status["captions"] = captions;
     status["imported"] = json!(copied);
@@ -676,14 +658,89 @@ fn transcript_word_count(
         .map_or(0, Vec::len))
 }
 
-/// Use HyperFrames transcription and music analysis on the selected original recording.
+/// Pure-Rust transcription (`filmcraft-speech`), SRT export (`filmcraft-captions`), and beat/loudness
+/// analysis (`filmcraft-audio-dsp`), with FilmCraft `.fcproj` (`A1` audio + `C1` timed lyrics) sync.
+fn analyze_with_filmcraft(
+    s: &mut Session,
+    params: &Value,
+    dir: &Path,
+    hf: &Path,
+    audio: &Path,
+    overwrite: bool,
+    model: &str,
+) -> Result<Value> {
+    std::fs::create_dir_all(hf)?;
+    let transcript = hf.join("transcript.json");
+    let srt = hf.join("transcript.srt");
+    let film = crate::film::film_path(s)?;
+    let item = crate::song_timing::song_item(dir, &film, audio)?;
+    let mut ran = Vec::new();
+    if overwrite || !transcript.is_file() {
+        let (doc, _) = crate::song_timing::native_transcribe(dir, &film, audio, item, Some(model))?;
+        let bytes = serde_json::to_vec_pretty(&doc)
+            .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+        craft_atomic::atomic_write(&transcript, &bytes)?;
+        ran.push("filmcraft-speech transcribe → transcript.json");
+    }
+    let doc = transcript_document(&transcript)?;
+    if overwrite || !srt.is_file() {
+        if let Some(srt_text) = srt_from_paragraphs(&doc) {
+            craft_atomic::atomic_write(&srt, srt_text.as_bytes())?;
+            ran.push("filmcraft-captions write → transcript.srt");
+        }
+    }
+    let beat_item = crate::song_timing::analyze_music_native(dir, audio)?;
+    let analysis = json!({"ok": true, "engine": "filmcraft-audio-dsp", "items": [beat_item.clone()]});
+    let analysis_bytes = serde_json::to_vec_pretty(&analysis)
+        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    craft_atomic::atomic_write(&hf.join("audio-analysis.json"), &analysis_bytes)?;
+    let beats_dir = hf.join("beats");
+    std::fs::create_dir_all(&beats_dir)?;
+    craft_atomic::atomic_write(&beats_dir.join("beats.json"), &analysis_bytes)?;
+    ran.push("filmcraft-audio-dsp → audio-analysis.json & beats/beats.json");
+
+    let mut trace = crate::audio_trace::AudioTrace::new(dir, audio, params)?;
+    let word_count = transcript_word_count(&mut trace, &transcript)?;
+    trace.import(
+        s,
+        json!({"path": transcript, "captions": srt, "replace": overwrite}),
+    )?;
+    let _ = crate::song_timing::sync_film_tracks(dir, &film, item, &transcript, &beat_item);
+    let _ = crate::film::link(s, &film);
+    Ok(json!({
+        "ok": true,
+        "target": s.video_target,
+        "engine": "filmcraft",
+        "ran": ran,
+        "analysis_attempt": trace.data,
+        "provenance_receipt": dir.join("transcript-provenance.json"),
+        "words": word_count,
+        "film": film,
+        "files": {
+            "audio": audio,
+            "transcript": transcript,
+            "captions": srt,
+            "audio_analysis": hf.join("audio-analysis.json"),
+            "beats_dir": beats_dir,
+            "film": film,
+        },
+        "music_analysis": analysis,
+        "next": ["Review the words against the recording (`words.plan`), then add reference art (`project.add_asset`)"]
+    }))
+}
+
+/// Transcribe and analyze the selected original recording. Uses an explicit `resolve_video_cli`
+/// when given, or pure-Rust `filmcraft-speech` + `filmcraft-captions` + `filmcraft-audio-dsp`.
 pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let audio = analysis_audio(s, params)?;
     let dir = project_dir(s)?;
     let hf = dir.join("hyperframes");
-    let runtime = hyperframes_runtime(params, &hf)?;
     let overwrite = params["overwrite"].as_bool().unwrap_or(false);
-    let model = params["model"].as_str().unwrap_or("large-v3").to_string();
+    let model = params["model"].as_str().unwrap_or("whisper-base").to_string();
+    if params["resolve_video_cli"].as_str().is_none() && params["engine"].as_str() != Some("hyperframes") {
+        return analyze_with_filmcraft(s, params, &dir, &hf, &audio, overwrite, &model);
+    }
+    let runtime = hyperframes_runtime(params, &hf)?;
     std::fs::create_dir_all(&hf)?;
     let transcript = hf.join("transcript.json");
     let srt = hf.join("transcript.srt");

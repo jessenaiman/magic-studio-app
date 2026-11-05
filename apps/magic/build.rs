@@ -44,5 +44,15 @@ fn main() {
             );
         }
     }
+    println!("cargo:rerun-if-changed=ui");
+    println!("cargo:rerun-if-changed=index.html");
+    println!("cargo:rerun-if-changed=package.json");
+    println!("cargo:rerun-if-changed=tsconfig.json");
+    println!("cargo:rerun-if-changed=vite.config.ts");
+    let status = std::process::Command::new("bun")
+        .args(["run", "build"])
+        .status()
+        .expect("failed to execute `bun run build` in apps/magic");
+    assert!(status.success(), "`bun run build` (tsc && vite build) failed");
     tauri_build::build();
 }

@@ -140,6 +140,135 @@ pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Valu
     Ok(serde_json::json!({"ok": true, "app": app, "path": path}))
 }
 
+/// Run PhotoCraft commands (`document.inspect`, `image.imageRotation.*`, `image.adjustments.*`,
+/// `layer.*`) directly in-process via `photocraft_engine::Session`. Edited images default to
+/// saving a native `.pcraft` project file alongside the source image.
+pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
+    let raw = p["path"]
+        .as_str()
+        .ok_or_else(|| EngineError::InvalidParams("path is required".into()))?;
+    let path = resolve_workspace_path(s, raw);
+    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
+        arr.clone()
+    } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
+        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+    } else {
+        vec![serde_json::json!({"id": "document.inspect", "params": {}})]
+    };
+    let is_query = steps.len() == 1
+        && matches!(
+            steps[0]["id"].as_str(),
+            Some("document.inspect" | "session.inspect" | "command.list")
+        );
+    let save = p["save"]
+        .as_str()
+        .map(|out| resolve_workspace_path(s, out))
+        .or_else(|| (!is_query).then(|| path.with_extension("pcraft")));
+    let mut pairs: Vec<(&str, Value)> = Vec::with_capacity(steps.len());
+    for step in &steps {
+        let id = step["id"]
+            .as_str()
+            .or_else(|| step["command"].as_str())
+            .ok_or_else(|| EngineError::InvalidParams("step missing command id".into()))?;
+        let params = step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
+        pairs.push((id, params));
+    }
+    crate::character::cut::photocraft_run(&path, &pairs, save.as_deref())?;
+    let info = save
+        .as_deref()
+        .or(Some(path.as_path()))
+        .and_then(|p| std::fs::read(p).ok())
+        .and_then(|bytes| craft_doc::info(&bytes, &craft_doc::Limits::default()).ok())
+        .map(|i| {
+            serde_json::json!({
+                "kind": i.kind.extension(),
+                "version": i.version,
+                "generator": i.generator,
+                "supported": i.supported,
+            })
+        });
+    Ok(serde_json::json!({"ok": true, "path": path, "pcraft": save, "info": info}))
+}
+
+/// Run EffectCraft commands (`comp.settings`, `comp.workArea`, `comp.addMarker`, `comp.setSwitch`,
+/// `layer.newText`, `layer.newShape`, `edit.splitLayer`, `edit.history.list`) in-process.
+pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
+    let raw = p["path"]
+        .as_str()
+        .ok_or_else(|| EngineError::InvalidParams("path=<.ecproj> is required".into()))?;
+    let path = resolve_workspace_path(s, raw);
+    let save = p["save"].as_bool().unwrap_or(true);
+    let mut steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
+        arr.clone()
+    } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
+        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+    } else {
+        return Err(EngineError::InvalidParams(
+            "id=<effectcraft command> or steps=[...] is required".into(),
+        ));
+    };
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let existing = path.is_file().then_some(path.as_path());
+    if save && existing.is_none() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        steps.push(serde_json::json!({"id": "file.saveAs", "params": {"path": path}}));
+    }
+    let results = crate::character::effectcraft(dir, existing, &steps)?;
+    Ok(serde_json::json!({"ok": true, "path": path, "results": results}))
+}
+
+/// Run VectorCraft operations in-process via `vectorcraft_engine::Session`, saving edited vector
+/// assets as native `.vectorcraft` project files.
+pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
+    let raw = p["path"]
+        .as_str()
+        .ok_or_else(|| EngineError::InvalidParams("path is required".into()))?;
+    let path = resolve_workspace_path(s, raw);
+    let mut session = vectorcraft_engine::Session::new();
+    if path.is_file() {
+        session
+            .execute("file.open", &serde_json::json!({"path": path}))
+            .map_err(|e| EngineError::ExternalTool("vectorcraft-engine".into(), e.to_string()))?;
+    }
+    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
+        arr.clone()
+    } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
+        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+    } else {
+        vec![serde_json::json!({"id": "document.inspect", "params": {}})]
+    };
+    let is_query = steps.len() == 1
+        && matches!(
+            steps[0]["id"].as_str(),
+            Some("document.inspect" | "session.inspect" | "command.list")
+        );
+    let mut results = Vec::with_capacity(steps.len());
+    for step in &steps {
+        let id = step["id"]
+            .as_str()
+            .or_else(|| step["command"].as_str())
+            .ok_or_else(|| EngineError::InvalidParams("step missing command id".into()))?;
+        let params = step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
+        let res = session
+            .execute(id, &params)
+            .map_err(|e| EngineError::ExternalTool("vectorcraft-engine".into(), format!("{id}: {e}")))?;
+        results.push(res);
+    }
+    let save = p["save"]
+        .as_str()
+        .or_else(|| p["out"].as_str())
+        .map(|out| resolve_workspace_path(s, out))
+        .or_else(|| (!is_query).then(|| path.with_extension("vectorcraft")));
+    if let Some(ref out_path) = save {
+        session
+            .execute("file.saveAs", &serde_json::json!({"path": out_path}))
+            .map_err(|e| EngineError::ExternalTool("vectorcraft-engine".into(), e.to_string()))?;
+    }
+    Ok(serde_json::json!({"ok": true, "path": path, "vectorcraft": save, "results": results}))
+}
+
 /// Resolve an installed tool executable from `<TOOL_NAME>` env override,
 /// `~/.config/magic/settings.json` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
 pub fn resolve_tool(name: &str) -> String {

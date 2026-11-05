@@ -80,7 +80,7 @@ pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
 
-fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session> {
+pub(crate) fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session> {
     let mut session = filmcraft_engine::Session::default();
     let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
     session
@@ -120,11 +120,46 @@ pub(crate) fn run(project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Va
 }
 
 pub(crate) fn export(project: &Path, output: &Path, draft: bool) -> Result<()> {
+    export_with_options(project, output, draft, &json!({}))
+}
+
+pub(crate) fn export_with_options(
+    project: &Path,
+    output: &Path,
+    draft: bool,
+    options: &Value,
+) -> Result<()> {
     let mut session = open_filmcraft(project)?;
     let mut params = json!({"path": output, "format": "h264", "wait": true});
     if draft {
         params["scale"] = json!(0.5);
         params["quality"] = json!(60);
+    }
+    if let (Some(dst), Some(src)) = (params.as_object_mut(), options.as_object()) {
+        for key in [
+            "preset",
+            "format",
+            "audioCodec",
+            "scale",
+            "quality",
+            "audio",
+            "burnCaptions",
+            "captionSidecar",
+            "loudnessLufs",
+            "range",
+            "startSeconds",
+            "endSeconds",
+            "hardwareEncoding",
+            "proresProfile",
+            "dnxProfile",
+            "bitrateKbps",
+            "crf",
+            "alpha",
+        ] {
+            if let Some(val) = src.get(key).filter(|v| !v.is_null()) {
+                dst.insert(key.into(), val.clone());
+            }
+        }
     }
     let result = session
         .execute("file.exportMedia", params)
@@ -142,7 +177,18 @@ pub(crate) fn export(project: &Path, output: &Path, draft: bool) -> Result<()> {
 }
 
 pub(crate) fn frame(project: &Path, seconds: f64, output: &Path) -> Result<()> {
-    let session = open_filmcraft(project)?;
+    let mut session = open_filmcraft(project)?;
+    let ticks = filmcraft_engine::commands::secs(seconds).0;
+    if session
+        .execute(
+            "file.exportFrame",
+            json!({"path": output, "format": "png", "target": "program", "time": ticks}),
+        )
+        .is_ok()
+        && output.is_file()
+    {
+        return Ok(());
+    }
     let (frame, offline) = session
         .try_render_program_with_offline_at(0.5, filmcraft_engine::commands::secs(seconds))
         .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
@@ -198,11 +244,11 @@ pub(crate) fn media_duration(filename: &Path, require_video: bool) -> Result<f64
 }
 
 /// Export the active sequence with FilmCraft; `scale` and `quality` make a quick draft.
-fn export_with(f: &Film, out: &Path, draft: bool) -> Result<()> {
+fn export_with(f: &Film, out: &Path, draft: bool, options: &Value) -> Result<()> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    export(f.require()?, out, draft)?;
+    export_with_options(f.require()?, out, draft, options)?;
     Ok(())
 }
 
@@ -221,34 +267,75 @@ pub fn cmd_video_film(s: &mut Session, _: &Value) -> Result<Value> {
 }
 
 /// A half-size draft of the whole film with sound, to watch in Studio before exporting.
-pub fn cmd_video_preview(s: &mut Session, _: &Value) -> Result<Value> {
+pub fn cmd_video_preview(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
     let out = f.preview();
-    export_with(&f, &out, true)?;
+    export_with(&f, &out, true, p)?;
     Ok(json!({"ok": true, "preview": out, "timeline": f.project}))
 }
 
-/// The final film: full size, `exports/<song>.mp4`.
-pub fn cmd_video_export(s: &mut Session, _: &Value) -> Result<Value> {
+/// The final film: full size, `exports/<song>.mp4` (or custom format/preset/options).
+pub fn cmd_video_export(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
-    let out = f.export();
-    export_with(&f, &out, false)?;
+    let ext = match p["format"].as_str() {
+        Some("prores" | "dnxhr") => "mov",
+        Some("gif") => "gif",
+        Some("wav") => "wav",
+        Some("flac") => "flac",
+        Some("aac") => "aac",
+        _ => "mp4",
+    };
+    let out = p["path"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| f.dir.join("exports").join(format!("{}.{ext}", f.name)));
+    export_with(&f, &out, false, p)?;
     Ok(json!({"ok": true, "export": out, "timeline": f.project}))
 }
 
-/// One program frame of the timeline at `seconds`, as FilmCraft renders it.
+/// Execute any FilmCraft command (`file.exportInterchange`, `file.projectManager`,
+/// `graphics.newFromFile`, `sequence.inspect`, `project.items`, etc.) on the song's `.fcproj`.
+pub fn cmd_video_exec(s: &mut Session, p: &Value) -> Result<Value> {
+    let f = film(s)?;
+    let project = f.require()?.to_path_buf();
+    let id = p["id"]
+        .as_str()
+        .or_else(|| p["command"].as_str())
+        .ok_or_else(|| bad("id=<filmcraft command> is required"))?;
+    let params = p.get("params").cloned().unwrap_or_else(|| json!({}));
+    let save = p["save"].as_bool().unwrap_or(true);
+    let mut session = open_filmcraft(&project)?;
+    let result = session
+        .execute(id, params)
+        .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))?;
+    if save {
+        let _ = session.execute("file.saveAs", json!({"path": project}));
+    }
+    Ok(json!({"ok": true, "timeline": project, "id": id, "result": result}))
+}
+
+/// Render one program frame of the film at `seconds` (`time` or `seconds`, default `0.0`).
 pub fn cmd_video_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
-    let seconds = p["seconds"].as_f64().unwrap_or(0.0).max(0.0);
-    let out = f
-        .dir
-        .join("film/frames")
-        .join(format!("{}-{seconds:08.3}.png", f.name));
-    if let Some(dir) = out.parent() {
-        std::fs::create_dir_all(dir)?;
+    let project = f.require()?.to_path_buf();
+    let seconds = p["seconds"]
+        .as_f64()
+        .or_else(|| p["time"].as_f64())
+        .unwrap_or(0.0)
+        .max(0.0);
+    let out = p["path"]
+        .as_str()
+        .map(|raw| crate::workspace::resolve_workspace_path(s, raw))
+        .unwrap_or_else(|| {
+            f.dir
+                .join("film/frames")
+                .join(format!("{}-{seconds:07.3}.png", f.name))
+        });
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
     }
-    frame(f.require()?, seconds, &out)?;
-    Ok(json!({"ok": true, "frame": out, "seconds": seconds}))
+    frame(&project, seconds, &out)?;
+    Ok(json!({"ok": true, "frame": out, "seconds": seconds, "timeline": project}))
 }
 
 /// Open the timeline in FilmCraft (the installed app the launcher registered) for hand edits.
@@ -264,20 +351,34 @@ const TICKS: f64 = 254_016_000_000.0;
 
 fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
     let secs = |v: &Value| v.as_f64().map(|t| t / TICKS);
+    let prefix = match kind {
+        "video" => "V",
+        "caption" => "C",
+        _ => "A",
+    };
     tracks
         .as_array()
         .into_iter()
         .flatten()
         .enumerate()
         .map(|(i, t)| {
-            let clips: Vec<Value> = t["items"]
+            let items_key = if kind == "caption" { "captions" } else { "items" };
+            let clips: Vec<Value> = t[items_key]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|c| json!({"clip": c["clip"], "item": c["item"], "name": c["name"],
-                    "start": secs(&c["start"]), "end": secs(&c["end"]), "enabled": c["enabled"]}))
+                .map(|c| {
+                    json!({
+                        "clip": c.get("clip").or_else(|| c.get("id")).cloned().unwrap_or(Value::Null),
+                        "item": c.get("item").cloned().unwrap_or(Value::Null),
+                        "name": c.get("name").or_else(|| c.get("text")).cloned().unwrap_or(Value::Null),
+                        "start": secs(&c["start"]),
+                        "end": secs(&c["end"]),
+                        "enabled": c.get("enabled").cloned().unwrap_or(json!(true)),
+                    })
+                })
                 .collect();
-            let label = format!("{}{}", if kind == "video" { "V" } else { "A" }, i + 1);
+            let label = format!("{prefix}{}", i + 1);
             json!({"id": t["id"], "label": label, "kind": kind, "enabled": t["enabled"], "clips": clips})
         })
         .collect()
@@ -287,8 +388,10 @@ fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
 pub fn cmd_video_timeline(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
     let seq = execute(f.require()?, "sequence.inspect", json!({}))?;
-    let mut tracks = track_rows(&seq["video"], "video");
-    tracks.reverse();
+    let mut tracks = track_rows(&seq["captions"], "caption");
+    let mut video = track_rows(&seq["video"], "video");
+    video.reverse();
+    tracks.extend(video);
     tracks.extend(track_rows(&seq["audio"], "audio"));
     Ok(
         json!({"ok": true, "timeline": f.project, "name": seq["name"],

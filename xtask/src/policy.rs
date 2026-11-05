@@ -69,6 +69,7 @@ const LAYERS: &[(&str, u8)] = &[
     // Magic composes the L4 document engines through native services; its frontend is L6.
     ("magic-engine", 5),
     ("magic", 6),
+    ("magic-cli", 6),
 ];
 
 /// L0 crates that are not codecs/containers (no `bitstream`-only restriction).

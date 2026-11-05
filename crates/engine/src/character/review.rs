@@ -132,12 +132,8 @@ pub fn cmd_save_revision(s: &mut Session, p: &Value) -> Result<Value> {
         .push(entry.clone());
     doc["revision"] = json!(revision);
     let out = path(s)?;
-    let tmp = out.with_extension("json.tmp");
-    std::fs::write(
-        &tmp,
-        serde_json::to_vec_pretty(&doc).map_err(|e| bad(e.to_string()))?,
-    )?;
-    std::fs::rename(tmp, &out)?;
+    let payload = serde_json::to_vec_pretty(&doc).map_err(|e| bad(e.to_string()))?;
+    craft_atomic::atomic_write(&out, &payload)?;
     Ok(json!({"ok":true,"file":out,"revision":revision,"entry":entry}))
 }
 fn number(p: &Value, key: &str, min: f64, max: f64) -> Result<f64> {

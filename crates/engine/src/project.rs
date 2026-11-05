@@ -1015,7 +1015,7 @@ pub fn cmd_project_update_asset(s: &mut Session, params: &Value) -> Result<Value
     cmd_project_list_assets(s, params)
 }
 
-/// Read an image's size; an app document (`.pcraft`, `.ecproj`, ...) is registered as a file only.
+/// Read an image's size or a Craft document's (`craft_doc::info`) canvas size.
 fn loaded_asset(entry: &crate::ProjectAsset, path: &Path) -> Result<crate::Asset> {
     let mut asset = crate::Asset {
         id: entry.id.clone(),
@@ -1029,6 +1029,18 @@ fn loaded_asset(entry: &crate::ProjectAsset, path: &Path) -> Result<crate::Asset
         asset.width = image.width();
         asset.height = image.height();
         asset.has_alpha = image.color().has_alpha();
+    } else if let Ok(bytes) = std::fs::read(path)
+        && craft_doc::sniff(&bytes).is_some()
+    {
+        if let Ok(outline) = craft_doc::outline(&bytes, &craft_doc::Limits::default()) {
+            if let Some(c) = outline.canvas {
+                asset.width = c.width;
+                asset.height = c.height;
+            } else if let Some(page) = outline.pages.first() {
+                asset.width = page.width.round() as u32;
+                asset.height = page.height.round() as u32;
+            }
+        }
     } else if !path.exists() {
         return Err(EngineError::InvalidParams(format!(
             "project asset file is missing: {}",

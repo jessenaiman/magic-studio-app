@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     fs::{self, OpenOptions},
-    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -215,24 +214,7 @@ fn write_cast_file(file: &Path, markdown: &str) -> Result<()> {
         file.parent()
             .ok_or_else(|| invalid("Missing cast directory"))?,
     )?;
-    let tmp = file.with_extension(format!(
-        "{}.{}.tmp",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let result = (|| -> std::io::Result<()> {
-        let mut out = OpenOptions::new().create_new(true).write(true).open(&tmp)?;
-        out.write_all(markdown.as_bytes())?;
-        out.sync_all()?;
-        fs::rename(&tmp, file)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    result?;
+    craft_atomic::atomic_write(file, markdown.as_bytes())?;
     Ok(())
 }
 

@@ -880,12 +880,8 @@ fn write_words_doc(dir: &Path, doc: &Value) -> Result<()> {
         path.parent()
             .ok_or_else(|| invalid("Output path has no parent"))?,
     )?;
-    let temporary = path.with_extension("tmp");
-    fs::write(
-        &temporary,
-        serde_json::to_vec_pretty(doc).map_err(|e| invalid(e.to_string()))?,
-    )?;
-    fs::rename(&temporary, &path)?;
+    let payload = serde_json::to_vec_pretty(doc).map_err(|e| invalid(e.to_string()))?;
+    craft_atomic::atomic_write(&path, &payload)?;
     Ok(())
 }
 

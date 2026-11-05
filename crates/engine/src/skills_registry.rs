@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
-    io::Write,
     net::{IpAddr, ToSocketAddrs},
     path::{Path, PathBuf},
     process::Command,
@@ -247,24 +246,7 @@ pub fn cmd_skills_info(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok":true,"skill":rendered(s,ident,record)?}))
 }
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let tmp = path.with_extension(format!(
-        "{}.{}.tmp",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let result = (|| {
-        let mut f = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        fs::rename(&tmp, path)
-    })(); // same-directory rename
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    result.map_err(Into::into)
+    craft_atomic::atomic_write(path, bytes).map_err(Into::into)
 }
 fn title(md: &str) -> Option<&str> {
     let mut lines = md.trim_start_matches('\u{feff}').lines().peekable();

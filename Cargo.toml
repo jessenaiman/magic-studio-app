@@ -17,26 +17,18 @@ magic-engine = { path = "crates/engine" }
 # Craft engines
 photocraft-engine = { git = "https://github.com/storytold/photocraft" }
 vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft" }
-filmcraft-engine = { git = "https://github.com/storytold/filmcraft" }
-lightcraft-engine = { git = "https://github.com/storytold/lightcraft" }
-pdfcraft-engine = { git = "https://github.com/storytold/pdfcraft" }
+filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
-designcraft-engine = { git = "https://github.com/storytold/designcraft" }
-figcraft-engine = { git = "https://github.com/storytold/figcraft" }
-wordcraft-engine = { git = "https://github.com/storytold/wordcraft" }
-soundcraft-engine = { git = "https://github.com/storytold/soundcraft" }
 deckcraft-engine = { git = "https://github.com/storytold/deckcraft" }
-cadcraft-engine = { git = "https://github.com/storytold/cadcraft" }
-gridcraft-engine = { git = "https://github.com/storytold/gridcraft" }
-texturecraft-engine = { git = "https://github.com/storytold/texturecraft" }
-materialcraft-engine = { git = "https://github.com/storytold/materialcraft" }
-craft-anything-engine = { git = "https://github.com/storytold/craft-anything" }
-solidcraft-engine = { git = "https://github.com/tangency-labs/solidcraft" }
 
-# Additional Craft crates used or declared by Magic
+# Additional Craft crates used directly in-process by Magic
+filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-project = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-speech = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "download"] }
+filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
 effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
-effectcraft-ui-egui = { git = "https://github.com/storytold/effectcraft" }
 texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
 
 # Shared foundations
@@ -52,15 +44,16 @@ roxmltree = "0.21"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 glam = "0.24"
 
-# Shared Craft and UI libraries
-craft-docpath = { git = "https://github.com/storytold/craft-libs", version = "0.1.0" }
-craft-media = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", default-features = false }
-craft-ui = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", features = ["serde", "native-windows"] }
-craft-update = { git = "https://github.com/storytold/craft-libs", version = "0.1.0", features = ["egui"] }
-egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
-eframe = { version = "0.37", default-features = false }
-egui_kittest = "0.37"
-rfd = "0.17"
+# Shared Craft libraries (version-independent git tracking)
+craft-atomic = { git = "https://github.com/storytold/craft-libs" }
+craft-doc = { git = "https://github.com/storytold/craft-libs" }
+craft-docpath = { git = "https://github.com/storytold/craft-libs" }
+craft-ecproj-format = { git = "https://github.com/storytold/craft-libs" }
+craft-media = { git = "https://github.com/storytold/craft-libs", default-features = false }
+craft-pcraft-format = { git = "https://github.com/storytold/craft-libs" }
+craft-settings = { git = "https://github.com/storytold/craft-libs" }
+craft-update = { git = "https://github.com/storytold/craft-libs" }
+craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -85,21 +78,9 @@ lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
-ecolor = { git = "https://github.com/storytold/egui.git" }
-emath = { git = "https://github.com/storytold/egui.git" }
-epaint = { git = "https://github.com/storytold/egui.git" }
-epaint_default_fonts = { git = "https://github.com/storytold/egui.git" }
-egui = { git = "https://github.com/storytold/egui.git" }
-egui-winit = { git = "https://github.com/storytold/egui.git" }
-egui-wgpu = { git = "https://github.com/storytold/egui.git" }
-egui_glow = { git = "https://github.com/storytold/egui.git" }
-egui_extras = { git = "https://github.com/storytold/egui.git" }
-egui_kittest = { git = "https://github.com/storytold/egui.git" }
-egui_system_font_provider = { git = "https://github.com/storytold/egui.git" }
-eframe = { git = "https://github.com/storytold/egui.git" }
-egui_demo_lib = { git = "https://github.com/storytold/egui.git" }
-egui_inspection = { git = "https://github.com/storytold/egui.git" }
-winit = { git = "https://github.com/storytold/winit.git" }
-krilla = { git = "https://github.com/storytold/craft-libs", version = "0.8.2" }
-hayro-syntax = { git = "https://github.com/storytold/craft-libs", version = "0.7.2" }
-hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", version = "0.3.0" }
+epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+krilla = { git = "https://github.com/storytold/craft-libs" }
+hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
+hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }
+# Note: egui-based Craft apps also patch ecolor/emath/epaint/egui/eframe/winit from storytold/egui.git & storytold/winit.git
