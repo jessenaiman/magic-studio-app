@@ -363,6 +363,155 @@ pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
 
 const EFFECT_KINDS: &[(&str, &str)] = &[("text", "word by word text reveal")];
 
+fn runtime_effectcraft_tools() -> Value {
+    let mut ec = effectcraft_host::session();
+    let mut get_data = |cmd: &str| {
+        ec.execute_checked(cmd, json!({}))
+            .ok()
+            .map(|v| v.get("data").cloned().unwrap_or(v))
+            .unwrap_or(Value::Null)
+    };
+    let as_list = |v: Value, key: &str| {
+        if v.is_array() {
+            v
+        } else {
+            v.get(key).cloned().unwrap_or_else(|| json!([]))
+        }
+    };
+    let text_presets = as_list(get_data("text.presets"), "presets");
+    let animator_properties = as_list(get_data("text.animatorProperties"), "properties");
+    let paint_presets = as_list(get_data("paint.presets"), "presets");
+    let effects: Vec<Value> = get_data("effect.list")
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|fx| {
+            json!({
+                "id": fx.get("id").or_else(|| fx.get("match_name")).unwrap_or(&Value::Null),
+                "match_name": fx.get("match_name").or_else(|| fx.get("id")).unwrap_or(&Value::Null),
+                "name": fx["name"],
+                "category": fx["category"],
+                "gpu": fx["gpu"]
+            })
+        })
+        .collect();
+    json!({
+        "text_presets": text_presets,
+        "animator_properties": animator_properties,
+        "paint_presets": paint_presets,
+        "effects": effects
+    })
+}
+
+fn runtime_filmcraft_tools() -> Value {
+    let mut fc = filmcraft_engine::Session::default();
+    let effects: Vec<Value> = fc
+        .execute("effects.list", json!({}))
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .into_iter()
+        .flatten()
+        .map(|fx| {
+            json!({
+                "id": fx["id"],
+                "name": fx["name"],
+                "category": fx.get("folder").or_else(|| fx.get("category")).unwrap_or(&Value::Null),
+                "kind": fx["kind"]
+            })
+        })
+        .collect();
+    let presets = fc
+        .execute("presets.list", json!({}))
+        .ok()
+        .unwrap_or(Value::Null);
+    json!({
+        "effects": effects,
+        "presets": if presets.is_array() { presets } else { json!([]) }
+    })
+}
+
+pub(crate) fn runtime_words_tools(lib: &Value) -> Value {
+    let move_meta = |m: &'static str| -> (&'static str, &'static str, &'static str, &'static str) {
+        match m {
+            "quiet" => ("quiet", "Quiet", "Fades in and holds", "•"),
+            "sleep" => ("sleep", "Sleep", "Letters sink one by one", "☾"),
+            "settle" => (
+                "settle",
+                "Sparkle Settle",
+                "Drops and squashes into place",
+                "★",
+            ),
+            "fall" => ("fall", "Kinetic Tilt", "Drops down angled", "📐"),
+            "pop" => ("pop", "Bounce / Pop", "A quick swell on the beat", "⚡"),
+            "rise" => ("rise", "Fire / Impact", "Arcs up and away", "🔥"),
+            "east" => ("east", "Neon Drift", "Slides right", "✨"),
+            "west" => ("west", "Slide West", "Slides left", "←"),
+            "loop" => ("loop", "Wave / Loop", "Makes one continuous loop", "〰"),
+            _ => (m, m, "Motion act", "⚡"),
+        }
+    };
+    let moves: Vec<Value> = [
+        "quiet", "pop", "loop", "fall", "rise", "east", "west", "settle", "sleep",
+    ]
+    .into_iter()
+    .map(|key| {
+        let (id, name, does, icon) = move_meta(key);
+        let desc = lib["acts"][id]["does"].as_str().unwrap_or(does);
+        json!({"id": id, "name": name, "does": desc, "icon": icon})
+    })
+    .collect();
+    let letterings = json!([
+        {"id": "song", "name": "Song font", "does": "The video's own lettering", "font": "song", "weight": 400, "italic": false},
+        {"id": "song-bold", "name": "Song bold", "does": "The video's lettering, heavy", "font": "song", "weight": 700, "italic": false},
+        {"id": "serif-italic", "name": "Serif italic", "does": "A hero word, expressive", "font": "serif", "weight": 400, "italic": true},
+        {"id": "serif-bold", "name": "Serif bold", "does": "A hero word, strong", "font": "serif", "weight": 700, "italic": false},
+        {"id": "sans", "name": "Sans, quiet", "does": "Context words, small and calm", "font": "sans", "weight": 400, "italic": false}
+    ]);
+    let strokes: Vec<Value> = lib["strokes"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(id, s)| {
+            json!({
+                "id": id,
+                "name": s["name"],
+                "does": s["does"],
+                "track": s["track"].as_str().unwrap_or("graphics"),
+                "view_box": s["view_box"],
+                "w": s["width"].as_f64().unwrap_or(320.0),
+                "h": s["height"].as_f64().unwrap_or(90.0),
+                "draw": s["draw"].as_f64().unwrap_or(0.9),
+                "d": s["d"]
+            })
+        })
+        .collect();
+    let choreographies = json!([
+        {"id": "cascade", "preview": "cascade", "name": "Cascade", "does": "Diagonal staircase"},
+        {"id": "scatter", "preview": "scatter", "name": "Spiral / Scatter", "does": "Tilted dynamic spread"},
+        {"id": "poster", "preview": "giant", "name": "Zoom Blast", "does": "Hero word giant & tilted"},
+        {"id": "stack", "preview": "stack", "name": "Stack", "does": "Vertical stepped column"},
+        {"id": "plain", "preview": "karaoke", "name": "Plain", "does": "Clean horizontal row"}
+    ]);
+    let easings = json!([
+        {"id": "spring-out", "name": "Spring Out", "does": "Elastic overshoot settle"},
+        {"id": "elastic-pop", "name": "Elastic Pop", "does": "Snappy beat bounce"},
+        {"id": "cubic-bezier", "name": "Cubic Bezier", "does": "Smooth cinematic ease"},
+        {"id": "step-hold", "name": "Step Hold", "does": "Posterized frame hold"}
+    ]);
+    json!({
+        "moves": moves,
+        "letterings": letterings,
+        "strokes": strokes,
+        "choreographies": choreographies,
+        "easings": easings,
+        "actions": ACTIONS,
+        "entrances": ENTRANCES,
+        "exits": EXITS,
+        "effectcraft": runtime_effectcraft_tools(),
+        "filmcraft": runtime_filmcraft_tools()
+    })
+}
+
 pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let hf = dir.join("hyperframes");
@@ -414,7 +563,13 @@ pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
             json!({"query":query,"tier":found["tier"],"effects":effects}),
         );
     }
-    Ok(json!({"source":"hyperframes registry","kinds":kinds}))
+    let kinetic_library: Value =
+        serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
+    Ok(json!({
+        "source": "hyperframes registry + craft engines",
+        "kinds": kinds,
+        "tools": runtime_words_tools(&kinetic_library)
+    }))
 }
 
 fn append_kinetic_cues(
@@ -624,6 +779,7 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
         .collect();
     let kinetic_library: Value =
         serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
+    let tools = runtime_words_tools(&kinetic_library);
     let graphics = graphic_cues(&doc, &kinetic_library, &studio_times(s));
     let images = project_backdrop_images(s, &dir);
     Ok(json!({
@@ -636,7 +792,8 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
         "document": doc,
         "in_video": in_video,
         "fonts": video_fonts(&dir.join("hyperframes"), &video),
-        "kinetic_library": kinetic_library
+        "kinetic_library": kinetic_library,
+        "tools": tools
     }))
 }
 

@@ -1,9 +1,0 @@
-{
-  "name": "magic-lyrics-view",
-  "private": true,
-  "scripts": {
-    "build:lyrics": "NODE_PATH=./node_modules esbuild lyrics-entry.jsx --bundle --minify --global-name=MagicLyrics --outfile=ui/lyrics-built/app.js && tailwindcss -i lyrics.css -o ui/lyrics-built/app.css --content '../../references/magic_studio_kinetic_lyric_editor.tsx' --minify"
-  },
-  "dependencies": { "react": "18.3.1", "react-dom": "18.3.1", "lucide-react": "0.468.0" },
-  "devDependencies": { "esbuild": "0.25.0", "tailwindcss": "3.4.17" }
-}

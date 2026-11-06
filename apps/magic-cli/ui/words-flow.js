@@ -311,11 +311,9 @@ class WordsFlowController {
     svg.style.setProperty("--arrows-width", `${view.scrollWidth}px`);
     svg.style.setProperty("--arrows-height", `${view.scrollHeight}px`);
     this.appendCueArrows(view, svg, box, frames, lines);
-    if (wordsPanel.mode === "timing") {
-      const stageTether = this.buildStageTetherGroup(view, box);
-      if (stageTether)
-        svg.appendChild(stageTether);
-    }
+    const stageTether = this.buildStageTetherGroup(view, box);
+    if (stageTether)
+      svg.appendChild(stageTether);
     view.appendChild(svg);
     this.animateFlow(view, wordsPanel.time);
   }
@@ -333,6 +331,7 @@ class WordsFlowController {
     };
     const lane = (key, name, blocks) => el("div", { class: "lane", "data-track": key }, el("span", { class: "lane-name" }, name), el("div", { class: "lane-track" }, ...blocks, el("span", { class: "lane-head" })));
     const accent = (it) => words.find((w) => w.word_id === it.accent);
+    const moveList = wordsMoves();
     wordsPanel.lanes = el("div", { class: "words-lanes", "aria-label": "Line timing" }, lane("text", "Sung words", words.map((w) => {
       const clip = wordsClip(w.word_id);
       return block(w.text, wordsAt(w), clip?.duration ?? +w.end - +w.start, () => {
@@ -340,7 +339,7 @@ class WordsFlowController {
         wordsCanvasDraw();
         this.now(wordsPanel.time);
       });
-    })), lane("motion", "Accents", design.items.flatMap((it, i) => it.motion === "quiet" || !accent(it) ? [] : [block(String(WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] || it.motion), wordsAt(accent(it)), 0.65, () => {
+    })), lane("motion", "Accents", design.items.flatMap((it, i) => it.motion === "quiet" || !accent(it) ? [] : [block(String(moveList.find((m) => m[0] === it.motion)?.[1] || it.motion), wordsAt(accent(it)), 0.65, () => {
       wordsPanel.item = i;
       wordsPanel.tab = "move";
       wordsRender();
@@ -715,9 +714,10 @@ class WordsStageController {
   }
   buildTokenPill(anim, line, words, it, idx, activeIdx) {
     const label = it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ");
-    const move = it.motion && it.motion !== "quiet" ? WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] || it.motion : null;
+    const moveEntry = wordsMoves().find((m) => m[0] === it.motion);
+    const move = it.motion && it.motion !== "quiet" ? moveEntry?.[1] || it.motion : null;
     const on = idx === activeIdx;
-    const icon = it.motion === "pop" ? "\uD83D\uDD25" : it.motion === "rise" ? "↗" : it.motion === "fall" ? "↘" : it.motion === "loop" ? "↻" : "⚡";
+    const icon = moveEntry?.[3] || (it.motion === "pop" ? "\uD83D\uDD25" : it.motion === "rise" ? "↗" : it.motion === "fall" ? "↘" : it.motion === "loop" ? "↻" : "⚡");
     return el("button", {
       class: `chip words-line-word${on ? " active" : ""}${move ? " has-act" : ""}`,
       "data-token-index": String(idx),
@@ -751,7 +751,23 @@ class WordsStageController {
     const design = wordsDesign(anim, line.id), words = wordsLineWords(anim, line.id);
     const activeIdx = this.resolveActiveItemIndex(design, picked);
     const hasGrouped = (design.items || []).some((it) => (it.word_ids?.length || 0) > 1);
-    return el("div", { class: "words-selection-bar", role: "region", "aria-label": "Selected line tokens" }, el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "["), el("div", { class: "words-selection-words" }, ...(design.items || []).map((it, idx) => this.buildTokenPill(anim, line, words, it, idx, activeIdx))), el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "]"), el("div", { class: "words-selection-actions" }, hasGrouped ? el("button", {
+    const drawPills = (design.draws || []).map((d, dIdx) => el("button", {
+      class: "chip words-draw-pill",
+      title: `${d.name} · Click to remove this motion drawing from the line`,
+      onclick: () => wordsDesignEdit(anim, line.id, (next) => {
+        next.draws.splice(dIdx, 1);
+      })
+    }, `✎ ${d.name} ×`));
+    const sketchBtn = el("button", {
+      class: `chip words-sketch-pill${wordsPanel.drawMode ? " active" : ""}`,
+      title: "Toggle freehand stage drawing mode or open Motion Drawings & Craft FX",
+      onclick: () => {
+        wordsPanel.drawMode = !wordsPanel.drawMode;
+        wordsPanel.inspectorTab = "draw";
+        wordsRender();
+      }
+    }, "+ Sketch");
+    return el("div", { class: "words-selection-bar", role: "region", "aria-label": "Selected line tokens" }, el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "["), el("div", { class: "words-selection-words" }, ...(design.items || []).map((it, idx) => this.buildTokenPill(anim, line, words, it, idx, activeIdx))), el("span", { class: "words-token-bracket", "aria-hidden": "true" }, "]"), el("div", { class: "words-selection-drawings" }, el("span", { class: "muted" }, "Drawings:"), ...drawPills, sketchBtn), el("div", { class: "words-selection-actions" }, hasGrouped ? el("button", {
       class: "ghost",
       title: "Split grouped phrase into individual draggable word tokens",
       onclick: () => wordsDesignController.splitLineTokens(anim, line.id)
@@ -776,36 +792,33 @@ class WordsStageController {
     }, wordsPanel.loopLine ? "⟳ Looping" : "⟳ Loop")));
   }
   colChoreography(anim, lineId) {
-    const layouts = [
-      ["cascade", "cascade", "Cascade", "Diagonal staircase"],
-      ["scatter", "scatter", "Spiral / Scatter", "Tilted dynamic spread"],
-      ["poster", "giant", "Zoom Blast", "Hero word giant & tilted"],
-      ["stack", "stack", "Stack", "Vertical stepped column"],
-      ["plain", "karaoke", "Plain", "Clean horizontal row"]
-    ];
-    return el("div", { class: "words-engine-col", "aria-label": "Choreography layouts" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Choreography")), el("div", { class: "words-choreo-grid" }, ...layouts.map(([kind, previewKey, name, does], idx) => {
-      const card = wordsCard(idx === (wordsPanel.choreoIdx ?? 0), name, does, () => {
+    const layouts = wordsChoreographies();
+    const easings = wordsEasings();
+    return el("div", { class: "words-engine-col", "aria-label": "Choreography layouts" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Choreography & Easing")), el("div", { class: "words-choreo-grid" }, ...layouts.map((c, idx) => {
+      const card = wordsCard(idx === (wordsPanel.choreoIdx ?? 0), c.name, c.does, () => {
         wordsPanel.choreoIdx = idx;
         wordsDesignEdit(anim, lineId, (d) => {
-          d.items = wordsLayout(anim, lineId, kind).items;
+          d.items = wordsLayout(anim, lineId, c.id).items;
         });
       });
       card.classList.add("words-diagram-card");
-      card.prepend(this.optionPreview("layouts", previewKey));
+      card.prepend(this.optionPreview("layouts", c.preview || c.id));
       return card;
-    })));
+    })), easings.length ? el("div", { class: "words-typeface-pills" }, ...easings.map((e) => el("button", {
+      class: `chip words-type-pill${wordsPanel.easing === e.id ? " active" : ""}`,
+      "aria-pressed": String(wordsPanel.easing === e.id),
+      title: `${e.name} · ${e.does}`,
+      onclick: () => {
+        wordsPanel.easing = e.id;
+        wordsRender();
+      }
+    }, `∿ ${e.name}`))) : null);
   }
   colMotionAndMarks(anim, lineId, design, activeIdx) {
     const it = design.items?.[activeIdx] || design.items?.[0];
-    const moves = [
-      ["pop", "⚡", "Bounce / Pop", "Burst on beat"],
-      ["loop", "〰", "Wave / Loop", "Continuous sway"],
-      ["fall", "\uD83D\uDCD0", "Kinetic Tilt", "Drop in angled"],
-      ["rise", "\uD83D\uDD25", "Fire / Impact", "Ignite upward"],
-      ["east", "✨", "Neon Drift", "Glide right"],
-      ["settle", "★", "Sparkle Settle", "Soft landing"]
-    ];
-    return el("div", { class: "words-engine-col", "aria-label": "Motion styles and shaders" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Motion Styles & Shaders")), el("div", { class: "words-motion-grid" }, ...moves.map(([key, icon, name, does]) => el("button", {
+    const moves = wordsMoves();
+    const ecPresets = wordsEffectCraftTools().text_presets || [];
+    return el("div", { class: "words-engine-col", "aria-label": "Motion styles and shaders" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Motion Styles & EffectCraft Presets")), el("div", { class: "words-motion-grid" }, ...moves.map(([key, name, does, icon]) => el("button", {
       class: `effect words-shader-card${it?.motion === key ? " active" : ""}`,
       role: "radio",
       "aria-checked": String(it?.motion === key),
@@ -818,7 +831,22 @@ class WordsStageController {
         if (key !== "quiet" && !target.accent)
           target.accent = target.word_ids.at(-1);
       })
-    }, el("span", { class: "words-shader-icon" }, icon), el("strong", {}, name)))));
+    }, el("span", { class: "words-shader-icon" }, icon || "⚡"), el("strong", {}, name)))), ecPresets.length ? el("div", { class: "words-typeface-pills" }, ...ecPresets.slice(0, 6).map((preset) => {
+      const mapped = preset.id?.includes("pop") ? "pop" : preset.id?.includes("drop") ? "fall" : preset.id?.includes("fade") ? "rise" : "settle";
+      return el("button", {
+        class: `chip words-type-pill${it?.preset === preset.id ? " active" : ""}`,
+        title: `EffectCraft Text Preset: ${preset.name} (${preset.category}) · ${preset.description || ""}`,
+        onclick: () => wordsDesignEdit(anim, lineId, (d) => {
+          const target = d.items[activeIdx] || d.items[0];
+          if (!target)
+            return;
+          target.preset = preset.id;
+          target.motion = mapped;
+          if (!target.accent)
+            target.accent = target.word_ids.at(-1);
+        })
+      }, `✦ ${preset.name}`);
+    })) : null);
   }
   buildTokenSliders(lineId, design, it, activeIdx) {
     const slider = (label, key, min, max, unit) => {
@@ -853,8 +881,9 @@ class WordsStageController {
     if (!it)
       return el("div", { class: "words-engine-col" }, el("p", { class: "muted" }, "Select a token to style."));
     const words = wordsLineWords(anim, lineId);
-    const curLook = WORDS_LETTERING.find((l) => l[3] === (it.font || "song") && l[4] === it.weight && l[5] === it.italic)?.[0] || "song";
-    const strokeQuick = WORDS_STROKES.filter((s) => ["Underline", "Rising swoop", "Loop", "Arrow down"].includes(s.name));
+    const letterings = wordsLetterings();
+    const curLook = letterings.find((l) => l[3] === (it.font || "song") && l[4] === it.weight && l[5] === it.italic)?.[0] || "song";
+    const strokeQuick = wordsStrokes();
     const fill = el("input", {
       type: "color",
       "aria-label": "Token fill colour",
@@ -882,7 +911,7 @@ class WordsStageController {
       })
     });
     outlineOn.checked = outlineOn.defaultChecked = !!it.outline;
-    return el("div", { class: "words-engine-col", "aria-label": "Lettering and drawn marks" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Lettering & Drawn Marks")), el("div", { class: "words-typeface-pills" }, ...WORDS_LETTERING.map(([key, name, does, font, weight, italic]) => el("button", {
+    return el("div", { class: "words-engine-col", "aria-label": "Lettering and drawn marks" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Lettering & Drawn Marks")), el("div", { class: "words-typeface-pills" }, ...letterings.map(([key, name, does, font, weight, italic]) => el("button", {
       class: `chip words-type-pill${curLook === key ? " active" : ""}`,
       "aria-pressed": String(curLook === key),
       title: `${name} · ${does}`,
@@ -918,6 +947,86 @@ class WordsStageController {
       }, `✎ ${s.name}`);
     })), el("div", { class: "words-style-toggles" }, el("label", { class: "field-row" }, "Fill", fill), el("label", { class: "field-row" }, outlineOn, "Outline", outlineColor)));
   }
+  colBrushPresets() {
+    const brushes = wordsEffectCraftTools().paint_presets || [];
+    const activeId = wordsPanel.activeBrush || brushes[0]?.id;
+    const sizeSlider = el("input", {
+      type: "range",
+      min: "2",
+      max: "28",
+      step: "1",
+      "aria-label": "Brush width",
+      oninput: (e) => {
+        wordsPanel.brushSize = Number(e.target.value);
+      }
+    });
+    sizeSlider.value = sizeSlider.defaultValue = String(wordsPanel.brushSize || 8);
+    const brushColor = el("input", {
+      type: "color",
+      "aria-label": "Brush colour",
+      onchange: (e) => {
+        wordsPanel.brushColor = e.target.value;
+      }
+    });
+    brushColor.value = brushColor.defaultValue = wordsPanel.brushColor || "#f59e0b";
+    return el("div", { class: "words-engine-col", "aria-label": "EffectCraft brush presets" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "EffectCraft Paint Brushes")), el("div", { class: "words-motion-grid" }, ...brushes.map((b) => el("button", {
+      class: `effect words-shader-card${activeId === b.id ? " active" : ""}`,
+      title: `${b.name} · Diameter ${b.diameter}px · Hardness ${b.hardness}%`,
+      onclick: () => {
+        wordsPanel.activeBrush = b.id;
+        wordsPanel.brushSize = b.diameter || 8;
+        wordsPanel.drawMode = true;
+        wordsRender();
+      }
+    }, el("span", { class: "words-shader-icon" }, "🖌"), el("strong", {}, b.name)))), el("div", { class: "words-style-toggles" }, el("label", { class: "field-row" }, "Ink", brushColor), el("label", { class: "field-row" }, "Width", sizeSlider)));
+  }
+  colDoodleStamps(anim, lineId, design, activeIdx) {
+    const strokes = wordsStrokes();
+    const words = wordsLineWords(anim, lineId);
+    return el("div", { class: "words-engine-col", "aria-label": "Animated doodle stamps" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Animated SVG Doodle Stamps")), el("div", { class: "words-choreo-grid" }, ...strokes.map((s) => {
+      const active = (design.draws || []).some((d) => d.name === s.name);
+      const card = wordsCard(active, s.name, s.does, () => wordsDesignEdit(anim, lineId, (d) => {
+        const existingIdx = (d.draws || []).findIndex((x) => x.name === s.name);
+        if (existingIdx >= 0) {
+          d.draws.splice(existingIdx, 1);
+          return;
+        }
+        const near = d.items[activeIdx] || d.items[0] || { x: 400, y: 480, size: 160, color: wordsPanel.brushColor || "#f59e0b", accent: null };
+        const accentWord = words.find((w) => w.word_id === near.accent);
+        const start = Math.max(0, (accentWord ? wordsAt(accentWord) : wordsLineSpan(anim, lineId).start) - wordsLineSpan(anim, lineId).start);
+        d.draws.push({
+          name: s.name,
+          view_box: s.view_box,
+          x: Math.round(near.x),
+          y: Math.round((near.y || 480) + (near.size || 140) * 1.02),
+          w: s.w,
+          h: s.h,
+          paths: [{ d: s.d, stroke: wordsPanel.brushColor || near.color || "#f59e0b", width: wordsPanel.brushSize || 8, from: +start.toFixed(2), to: +(start + s.draw).toFixed(2) }]
+        });
+      }));
+      const svg = wordsStroke(s);
+      svg.setAttribute("class", "words-stroke-sample");
+      card.prepend(svg);
+      return card;
+    })));
+  }
+  colRuntimeEffects(anim) {
+    const ecEffects = wordsEffectCraftTools().effects || [];
+    const fcEffects = wordsFilmCraftTools().effects || [];
+    const libOverlays = Object.entries(wordsPanel.read?.kinetic_library?.overlays || {});
+    const curOverlay = anim.kinetic?.overlay || "none";
+    return el("div", { class: "words-engine-col", "aria-label": "Runtime EffectCraft and FilmCraft effects" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Craft Engine Effects & Overlays")), el("div", { class: "words-typeface-pills" }, ...libOverlays.map(([key, item]) => el("button", {
+      class: `chip words-type-pill${curOverlay === key ? " active" : ""}`,
+      title: `Atmosphere overlay: ${item.name} · ${item.does}`,
+      onclick: () => wordsKinetic({ overlay: key })
+    }, `✧ ${item.name}`))), el("div", { class: "words-marks-bar" }, ...ecEffects.slice(0, 8).map((fx) => el("span", {
+      class: "chip words-engine-fx-badge",
+      title: `EffectCraft GPU/Layer Effect (${fx.category}): ${fx.match_name}`
+    }, `EC · ${fx.name}`)), ...fcEffects.slice(0, 6).map((fx) => el("span", {
+      class: "chip words-engine-fx-badge",
+      title: `FilmCraft Timeline Effect (${fx.category}): ${fx.id}`
+    }, `FC · ${fx.name}`))));
+  }
   upperTracks(anim) {
     const lib = wordsPanel.read?.kinetic_library || {}, k = anim?.kinetic;
     if (!k)
@@ -940,7 +1049,27 @@ class WordsStageController {
     const it = design.items?.[activeIdx] || design.items?.[0];
     const words = lineId ? wordsLineWords(anim, lineId) : [];
     const tokenLabel = it ? it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ").toUpperCase() : "TOKEN";
-    return el("section", { class: "words-layers words-lower-tracks", "aria-label": `${wordsLabel(anim)} animation engine inspector` }, this.selectionBar(anim, lib, k, picked), el("div", { class: "words-engine-panel", role: "group", "aria-label": "Advanced Animation Engine" }, el("div", { class: "words-engine-header" }, el("div", { class: "words-engine-title" }, el("strong", {}, "ADVANCED ANIMATION ENGINE"), el("span", { class: "words-editing-token" }, `— Editing token: "${tokenLabel}"`)), it ? this.buildTokenSliders(lineId, design, it, activeIdx) : null), el("div", { class: "words-engine-grid" }, this.colChoreography(anim, lineId), this.colMotionAndMarks(anim, lineId, design, activeIdx), this.colTokenStyle(anim, lineId, design, activeIdx))));
+    const tab = wordsPanel.inspectorTab || "word";
+    const tabBar = el("div", { class: "segmented words-inspector-tabs", role: "tablist", "aria-label": "Animation Engine Mode" }, el("button", {
+      role: "tab",
+      "aria-selected": String(tab === "word"),
+      onclick: () => {
+        wordsPanel.inspectorTab = "word";
+        wordsPanel.drawMode = false;
+        wordsRender();
+      }
+    }, "✥ Word Choreography"), el("button", {
+      role: "tab",
+      "aria-selected": String(tab === "draw"),
+      onclick: () => {
+        wordsPanel.inspectorTab = "draw";
+        wordsRender();
+      }
+    }, "✎ Motion Drawings & Craft FX"));
+    const cols = tab === "draw"
+      ? [this.colBrushPresets(), this.colDoodleStamps(anim, lineId, design, activeIdx), this.colRuntimeEffects(anim)]
+      : [this.colChoreography(anim, lineId), this.colMotionAndMarks(anim, lineId, design, activeIdx), this.colTokenStyle(anim, lineId, design, activeIdx)];
+    return el("section", { class: "words-layers words-lower-tracks", "aria-label": `${wordsLabel(anim)} animation engine inspector` }, this.selectionBar(anim, lib, k, picked), el("div", { class: "words-engine-panel", role: "group", "aria-label": "Advanced Animation Engine" }, el("div", { class: "words-engine-header" }, el("div", { class: "words-engine-title" }, tabBar, el("span", { class: "words-editing-token" }, `— Editing token: "${tokenLabel}"`)), it ? this.buildTokenSliders(lineId, design, it, activeIdx) : null), el("div", { class: "words-engine-grid" }, ...cols)));
   }
   async apply(use) {
     const anim = wordsCurrent();

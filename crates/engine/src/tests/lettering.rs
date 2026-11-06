@@ -165,3 +165,31 @@ fn recipe_hero_stroke_emits_svg_trim_shape_layer() {
     assert_eq!(trim_item["params"]["layer"], "l1_stroke");
     assert_eq!(trim_item["params"]["kind"], "trim");
 }
+
+#[test]
+fn runtime_words_tools_queries_effectcraft_and_filmcraft_catalogs() {
+    let lib: Value = serde_json::from_str(crate::cmd::words::KINETIC_LIBRARY).unwrap();
+    let tools = crate::cmd::words::stage::runtime_words_tools(&lib);
+    assert!(tools["moves"].as_array().is_some_and(|a| !a.is_empty()));
+    assert!(tools["strokes"].as_array().is_some_and(|a| !a.is_empty()));
+    assert!(
+        tools["effectcraft"]["text_presets"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    );
+    assert!(
+        tools["effectcraft"]["paint_presets"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    );
+    assert!(
+        tools["effectcraft"]["effects"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    );
+    assert!(
+        tools["filmcraft"]["effects"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty())
+    );
+}

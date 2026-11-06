@@ -50,7 +50,7 @@ function wordsMountMain(view, anim, animations, end, parts) {
   return wordsViewController.mountMain(view, anim, animations, end, parts);
 }
 function wordsRender() {
-  return wordsOpen();
+  return wordsViewController.render();
 }
 function wordsFitClock(view) {
   return wordsViewController.fitClock(view);
@@ -223,7 +223,8 @@ async function wordsShuffle(kinetic = true) {
 
 class WordsViewController {
   buildLookOptions(lineId, design, it, picks, itemText, edit, each) {
-    const look = WORDS_LETTERING.find((l) => l[3] === (it.font || "song") && l[4] === it.weight && l[5] === it.italic)?.[0];
+    const letterings = wordsLetterings();
+    const look = letterings.find((l) => l[3] === (it.font || "song") && l[4] === it.weight && l[5] === it.italic)?.[0];
     const range = (label, key, min, max, unit = "") => {
       const input = el("input", {
         type: "range",
@@ -258,7 +259,7 @@ class WordsViewController {
     outlined.checked = outlined.defaultChecked = !!it.outline;
     return [
       el("div", { class: "group-label" }, `Lettering for “${picks.map((i) => itemText(design.items[i])).join(" ")}”`),
-      el("div", { class: "words-effects" }, ...WORDS_LETTERING.map(([key, name, does, font, weight, italic]) => wordsCard(look === key, String(name), String(does), () => edit((d) => each(d, (x) => Object.assign(x, { font, weight, italic })))))),
+      el("div", { class: "words-effects" }, ...letterings.map(([key, name, does, font, weight, italic]) => wordsCard(look === key, String(name), String(does), () => edit((d) => each(d, (x) => Object.assign(x, { font, weight, italic })))))),
       el("div", { class: "words-head" }, el("label", { class: "field-row" }, "Colour", colour), el("label", { class: "field-row" }, outlined, "Outline", outline), range("Size", "size", 8, 600, "px"), range("Tilt", "rotate", -45, 45, "°"))
     ];
   }
@@ -267,6 +268,8 @@ class WordsViewController {
     const itemText = (x) => x.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ");
     const edit = (change) => wordsDesignEdit(anim, lineId, change);
     const tab = wordsPanel.tab;
+    const moves = wordsMoves();
+    const strokes = wordsStrokes();
     if (tab === "look" && !it)
       return [el("div", { class: "group-label" }, "Line designs"), el("div", { class: "words-effects" }, wordsCard(false, "Plain line", "Every word along the bottom, quiet", () => edit((d) => Object.assign(d, wordsLayout(anim, lineId, "plain")))), wordsCard(false, "Poster", "The longest word big and italic, the rest small around it", () => edit((d) => Object.assign(d, wordsLayout(anim, lineId, "poster")))), wordsCard(false, "Stack", "One word per row, the last one bold and settling", () => edit((d) => Object.assign(d, wordsLayout(anim, lineId, "stack")))), anim.design?.[lineId] || wordsPanel.designs.has(lineId) ? wordsCard(false, "Clear the design", "Back to a plain line when saved", () => {
         wordsPanel.designs.set(lineId, null);
@@ -277,7 +280,7 @@ class WordsViewController {
     if (tab === "look")
       return this.buildLookOptions(lineId, design, it, picks, itemText, edit, each);
     if (tab === "move" && !it)
-      return [el("div", { class: "group-label" }, "Moves in this line"), el("div", { class: "words-effects" }, ...design.items.map((x, i) => wordsCard(false, `“${itemText(x)}”`, x.motion === "quiet" ? "Quiet" : `${WORDS_MOVES.find((m) => m[0] === x.motion)?.[1]} on “${words.find((w) => w.word_id === x.accent)?.text ?? itemText(x)}”`, () => {
+      return [el("div", { class: "group-label" }, "Moves in this line"), el("div", { class: "words-effects" }, ...design.items.map((x, i) => wordsCard(false, `“${itemText(x)}”`, x.motion === "quiet" ? "Quiet" : `${moves.find((m) => m[0] === x.motion)?.[1]} on “${words.find((w) => w.word_id === x.accent)?.text ?? itemText(x)}”`, () => {
         wordsPanel.item = i;
         wordsRender();
       })))];
@@ -288,7 +291,7 @@ class WordsViewController {
       accent.value = it.accent || "";
       return [
         el("div", { class: "group-label" }, `How “${itemText(it)}” moves`),
-        el("div", { class: "words-effects" }, ...WORDS_MOVES.map(([key, name, does]) => wordsCard(it.motion === key, String(name), String(does), () => edit((d) => {
+        el("div", { class: "words-effects" }, ...moves.map(([key, name, does]) => wordsCard(it.motion === key, String(name), String(does), () => edit((d) => {
           const x = d.items[wordsPanel.item];
           x.motion = key;
           if (key !== "quiet" && !x.accent)
@@ -304,7 +307,7 @@ class WordsViewController {
         x.draws.splice(i, 1);
       }))), design.draws.length ? null : el("p", { class: "muted" }, "No drawings yet.")),
       el("div", { class: "group-label" }, `Add a drawing ${it ? `by “${itemText(it)}”` : "to this line"}`),
-      el("div", { class: "words-effects" }, ...WORDS_STROKES.map((s) => wordsCard(false, s.name, s.does, () => edit((d) => {
+      el("div", { class: "words-effects" }, ...strokes.map((s) => wordsCard(false, s.name, s.does, () => edit((d) => {
         const accentWord = words.find((w) => w.word_id === near.accent), start = (accentWord ? wordsAt(accentWord) : wordsLineSpan(anim, lineId).start) - wordsLineSpan(anim, lineId).start;
         d.draws.push({
           name: s.name,
@@ -649,7 +652,22 @@ class WordsViewController {
     }
     const left = wordsPanel.leftEl ||= el("aside", { id: "words-lyrics" });
     const right = wordsPanel.rightEl ||= el("aside", { id: "words-film" });
-    left.replaceChildren(new PanelHeader({ id: "words-lyrics-head", title: "Lyrics" }).element, wordsTimeline(animations, end));
+    const searchInput = el("input", {
+      type: "search",
+      class: "field words-search-input",
+      placeholder: "Filter lyrics…",
+      "aria-label": "Filter lyrics",
+      oninput: (e) => {
+        wordsPanel.searchQuery = e.target.value;
+        const q = (wordsPanel.searchQuery || "").trim().toLowerCase();
+        for (const card of left.querySelectorAll(".words-line")) {
+          const text = card.textContent?.toLowerCase() || "";
+          card.classList.toggle("search-dimmed", !!q && !text.includes(q));
+        }
+      }
+    });
+    searchInput.value = wordsPanel.searchQuery || "";
+    left.replaceChildren(new PanelHeader({ id: "words-lyrics-head", title: "Lyrics", actions: [searchInput] }).element, wordsTimeline(animations, end));
     right.replaceChildren(new PanelHeader({ id: "words-film-head", title: "Visual cues" }).element, wordsRoll(animations, end));
     for (const [node, id] of [[main, "words-main"], [left, "words-lyrics"], [right, "words-film"]])
       registerElement(node, id);
