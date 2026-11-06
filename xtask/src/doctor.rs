@@ -44,6 +44,10 @@ pub(crate) fn doctor() -> Result<()> {
 
     // 3. Run cargo check and capture per-package breakage.
     let check = run_cargo_check(cargo)?;
+    if !check.status {
+        print!("{}", check.stdout);
+        eprint!("{}", check.stderr);
+    }
     let broken_packages = parse_broken_packages(&check);
 
     // 4. Scan source for stale references (deleted files, MCP hacks, old paths).
