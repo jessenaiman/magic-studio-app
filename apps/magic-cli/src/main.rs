@@ -24,6 +24,12 @@ pub struct Cli {
     /// JSON output (default)
     #[arg(long, global = true)]
     pub json: bool,
+    /// Run an engine or UI command by ID, like the exec subcommand
+    #[arg(long = "command")]
+    command_id: Option<String>,
+    /// JSON parameters for --command
+    #[arg(long, requires = "command_id")]
+    params: Option<String>,
     #[command(subcommand)]
     command: Option<Cmd>,
 }
@@ -64,6 +70,11 @@ enum Cmd {
         action: Option<String>,
         /// Optional argument for `ui focus <id>` or `ui view <mode>`
         target: Option<String>,
+        /// JSON parameters for the live UI action
+        #[arg(long)]
+        params: Option<String>,
+        /// Additional parameters as key=value pairs
+        arguments: Vec<String>,
         /// Loopback port to serve on when launching the web UI
         #[arg(long, default_value_t = 8765)]
         port: u16,
@@ -642,6 +653,49 @@ fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Resul
     Ok(res)
 }
 
+fn dispatch(
+    session: &mut magic::Session,
+    bridge: Option<&str>,
+    id: &str,
+    params: Value,
+    dry: bool,
+) -> Result<Value, String> {
+    if dry || !(bridge.is_some() || id.starts_with("ui.")) {
+        exec_one(session, id, params, dry)
+    } else {
+        call_live_control(bridge, id, params)
+    }
+}
+
+fn ui_action(
+    action: &str,
+    target: Option<String>,
+    mut args: Vec<String>,
+    raw: Option<&str>,
+) -> Result<(String, Value), String> {
+    let method = match action {
+        "inspect" | "state" => "ui.state".into(),
+        "feedback" | "look" => "ui.feedback".into(),
+        "unconfigured" | "empty" => "ui.unconfigured".into(),
+        "view" => "ui.set_view".into(),
+        "quit" => "app.quit".into(),
+        id if id.contains('.') => id.to_owned(),
+        id => format!("ui.{id}"),
+    };
+    if let Some(target) = target {
+        match method.as_str() {
+            "ui.focus" | "ui.click" if !target.contains('=') && !target.starts_with('{') => {
+                args.insert(0, format!("id={target}"))
+            }
+            "ui.set_view" if !target.contains('=') && !target.starts_with('{') => {
+                args.insert(0, format!("view={target}"))
+            }
+            _ => args.insert(0, target),
+        }
+    }
+    Ok((method, parse_params(&args, raw)?))
+}
+
 fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String> {
     if tokens.first().map(String::as_str) == Some("studio") {
         return match tokens.get(1).map(String::as_str) {
@@ -689,6 +743,15 @@ fn main() {
         }
     }
     let outcome: Result<(), String> = (|| {
+        let bridge = cli.bridge.as_deref();
+        if let Some(id) = cli.command_id.as_deref() {
+            if cli.command.is_some() {
+                return Err("Use --command or a subcommand, not both.".into());
+            }
+            let params = parse_params(&[], cli.params.as_deref())?;
+            emit(&dispatch(&mut session, bridge, id, params, cli.dry_run)?);
+            return Ok(());
+        }
         match cli.command {
             None => {
                 Cli::command().print_help().map_err(|e| e.to_string())?;
@@ -714,11 +777,7 @@ fn main() {
                 arguments,
             }) => {
                 let p = parse_params(&arguments, params.as_deref())?;
-                let out = if cli.bridge.is_some() || command.starts_with("ui.") {
-                    call_live_control(cli.bridge.as_deref(), &command, p)?
-                } else {
-                    exec_one(&mut session, &command, p, cli.dry_run)?
-                };
+                let out = dispatch(&mut session, bridge, &command, p, cli.dry_run)?;
                 emit(&out);
             }
             Some(Cmd::Run { file }) => {
@@ -742,7 +801,7 @@ fn main() {
                         .or_else(|| item["command"].as_str())
                         .unwrap_or_default();
                     let params = item.get("params").cloned().unwrap_or_else(|| json!({}));
-                    let res = exec_one(&mut session, id, params, cli.dry_run)?;
+                    let res = dispatch(&mut session, bridge, id, params, cli.dry_run)?;
                     println!("{}", json!({ "line": n + 1, "ok": true, "result": res }));
                 }
             }
@@ -769,21 +828,18 @@ fn main() {
             Some(Cmd::Ui {
                 action,
                 target,
+                params,
+                arguments,
                 port,
                 no_open,
             }) => {
                 if let Some(act) = action {
-                    let (method, params) = match act.as_str() {
-                        "inspect" | "state" => ("ui.state", json!({})),
-                        "feedback" | "look" => ("ui.feedback", json!({})),
-                        "unconfigured" | "empty" => ("ui.unconfigured", json!({})),
-                        "elements" => ("ui.elements", json!({})),
-                        "focus" => ("ui.focus", json!({ "id": target.unwrap_or_default() })),
-                        "view" => ("ui.set_view", json!({ "view": target.unwrap_or_default() })),
-                        "quit" => ("app.quit", json!({})),
-                        other => (other, json!({})),
+                    let (method, params) = ui_action(&act, target, arguments, params.as_deref())?;
+                    let res = if cli.dry_run {
+                        exec_one(&mut session, &method, params, true)?
+                    } else {
+                        call_live_control(bridge, &method, params)?
                     };
-                    let res = call_live_control(cli.bridge.as_deref(), method, params)?;
                     emit(&res);
                 } else {
                     ui_server::serve(&mut session, port, !no_open)?;
@@ -802,7 +858,7 @@ fn main() {
                     let _ = session.execute("project.open", json!({ "path": proj }));
                 }
                 let (id, params) = storyboard_params(&command, document.as_deref())?;
-                emit(&exec_one(&mut session, &id, params, cli.dry_run)?);
+                emit(&dispatch(&mut session, bridge, &id, params, cli.dry_run)?);
             }
             Some(Cmd::Registry(tokens)) => {
                 let (id, rest) = resolve_shorthand(&tokens)?;
@@ -825,7 +881,7 @@ fn main() {
                     }
                 }
                 let p = parse_params(&kv, raw.as_deref())?;
-                emit(&exec_one(&mut session, &id, p, cli.dry_run)?);
+                emit(&dispatch(&mut session, bridge, &id, p, cli.dry_run)?);
             }
         }
         Ok(())

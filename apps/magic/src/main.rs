@@ -51,6 +51,12 @@ struct Cli {
     /// Start on the Lyrics view (same as `--view lyrics`)
     #[arg(long)]
     lyrics: bool,
+    /// Run an engine or UI command in the new desktop session
+    #[arg(long)]
+    command: Option<String>,
+    /// JSON parameters for --command
+    #[arg(long, requires = "command")]
+    params: Option<String>,
     /// Loopback TCP port or `127.0.0.1:PORT` for the live `--control` JSON-lines bridge
     #[arg(long)]
     control: Option<String>,
@@ -224,6 +230,22 @@ fn main() -> eframe::Result {
             .exec();
     }
     let cli = Cli::parse();
+    let startup = cli
+        .command
+        .map(|method| {
+            let params = match cli.params.as_deref() {
+                Some(raw) => {
+                    serde_json::from_str::<Value>(raw).map_err(|error| error.to_string())?
+                }
+                None => json!({}),
+            };
+            if !params.is_object() {
+                return Err("--params must be a JSON object".to_owned());
+            }
+            Ok((method, params))
+        })
+        .transpose()
+        .map_err(|error| eframe::Error::AppCreation(Box::new(std::io::Error::other(error))))?;
 
     let mut session = Session::user_session();
     if let Some(path) = cli.project.as_deref().or(cli.file.as_deref()) {
@@ -238,6 +260,22 @@ fn main() -> eframe::Result {
 
     let (tx, control_rx) = channel();
     let wake: WakeHandle = Arc::new(Mutex::new(None));
+    if let Some((method, params)) = startup {
+        let (reply, result) = channel();
+        tx.send(ControlRequest {
+            method,
+            params,
+            reply,
+        })
+        .map_err(|error| {
+            eframe::Error::AppCreation(Box::new(std::io::Error::other(error.to_string())))
+        })?;
+        std::thread::spawn(move || match result.recv() {
+            Ok(Ok(value)) => println!("{value}"),
+            Ok(Err(error)) => eprintln!("{}", json!({ "ok": false, "error": error })),
+            Err(_) => {}
+        });
+    }
     #[cfg(feature = "lyrics-webview")]
     let lyrics_host = {
         let ui_root = magic::workspace::workspace_root(&session).join("apps/magic-cli/ui");
