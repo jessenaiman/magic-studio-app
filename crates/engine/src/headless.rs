@@ -127,12 +127,7 @@ fn attach_or_open_project(
 ) -> Result<(), String> {
     if matches!(
         id,
-        "project.open"
-            | "project.new"
-            | "project.intake"
-            | "project.attach"
-            | "project.migrate"
-            | "project.identity"
+        "project.open" | "project.new" | "project.intake" | "project.attach" | "project.identity"
     ) {
         return Ok(());
     }

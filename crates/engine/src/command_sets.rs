@@ -423,15 +423,6 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             crate::cmd::film::studio_cues::cues
         ),
         cmd!(
-            "project.migrate",
-            "Migrate a Legacy .acproj to .magic",
-            ["File"],
-            None,
-            "{\"path\":\"legacy .acproj file\"}",
-            always,
-            crate::project::cmd_project_migrate
-        ),
-        cmd!(
             "workspace.open",
             "Open a File in Its Craft Editor",
             ["File"],
