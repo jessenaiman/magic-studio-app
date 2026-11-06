@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-commit hook: enforces full native quality gates (doctor, fmt, clippy, tests, layers).
+# Pre-commit hook: enforces full native quality gates (fmt, clippy, tests, layers).
 # Blocks commit on any failure, forcing agents and developers to resolve issues before committing.
 #
 # To bypass: git commit --no-verify

@@ -25,9 +25,9 @@ enum Task {
     Ci,
     /// Report which workspace apps are configured, which are not, and where the app breaks.
     Doctor,
-    /// Check the workspace against FilmCraft's declared dependency layers.
+    /// Check Magic's crates against the layers in docs/architecture.md.
     Layers,
-    /// Check repository asset attribution using FilmCraft's requirements.
+    /// Check that every asset has an attribution sidecar and an ATTRIBUTION.md entry.
     Assets,
     /// Install the built app, CLI, resources and desktop entry under PREFIX.
     Install {

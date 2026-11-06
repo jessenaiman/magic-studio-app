@@ -67,7 +67,7 @@ Methods (handlers in `crates/ui-egui/src/control.rs`):
 
 For `ui.click` and `ui.drag`, omitted or null counts/steps use the defaults. Out-of-range or
 non-integer values return `{"ok": false, "error": "…"}` before queuing any pointer input.
-These limits also apply to the MCP bridge's `ui_click` and `ui_drag` tools.
+These limits also apply to the MCP bridge's `ui_click`, `ui_drag` and `ui_control` tools.
 
 **Selection or explicit targets.** A command that acts on the selection is "not available right now" when
 nothing is selected. When `params` name the targets under a key the command documents (`page`,
@@ -120,7 +120,7 @@ Drawers: `fidget` and `scribbles` (`ui.set {drawer}`); Scribbles commands are `s
 `magic-cli mcp` serves MCP on stdio: headless (in-process session; `--project p.magic`)
 or `--bridge 127.0.0.1:9876` to drive the running app. Tools: `command_list`, `command_run`,
 `command_batch`, `doc_inspect`, `render_preview`, `project_inspect`, `ui_inspect`, `ui_elements`,
-`ui_click`, `ui_drag`, `ui_key`, `ui_type`, `ui_screenshot`; resources `magic://document`
+`ui_click`, `ui_drag`, `ui_key`, `ui_type`, `ui_screenshot`, `ui_control`; resources `magic://document`
 and `magic://commands`.
 
 ## Panel docking commands
