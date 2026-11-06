@@ -141,9 +141,6 @@ pub struct MagicApp {
     pub song_audio_path: String,
     pub lyrics_sections: Vec<Value>,
     pub words_doc: Value,
-    pub words_tools: Value,
-    pub selected_words_section: usize,
-    pub selected_words_line: usize,
 
     // Animation state
     pub characters: Vec<Value>,
@@ -227,9 +224,6 @@ impl MagicApp {
             song_audio_path: String::new(),
             lyrics_sections: Vec::new(),
             words_doc: json!({}),
-            words_tools: json!({}),
-            selected_words_section: 0,
-            selected_words_line: 0,
             characters: Vec::new(),
             selected_character: String::new(),
             selected_view: "front".into(),
@@ -426,13 +420,6 @@ impl MagicApp {
         }
         if let Ok(wr) = self.session.execute("words.read", json!({})) {
             self.words_doc = wr["document"].clone();
-            self.words_tools = wr["tools"].clone();
-            let sec_count = self.words_doc["animations"]
-                .as_array()
-                .map_or(0, std::vec::Vec::len);
-            if self.selected_words_section >= sec_count {
-                self.selected_words_section = 0;
-            }
         }
     }
 
