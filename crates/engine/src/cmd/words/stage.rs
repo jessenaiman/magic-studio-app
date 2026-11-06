@@ -1,6 +1,6 @@
 //! Words stage views, reading, saving, and drawing link management.
 use super::compose::{kinetic_design, line_design, text_effect};
-use crate::words::{
+use crate::cmd::words::{
     ACTIONS, ENTRANCES, EXITS, KINETIC_LIBRARY, aligned, default_document, document_path,
     fill_untimed, invalid, load, reference, save, studio_times, tag_attr, timing,
     with_sung_sections, word_time_key,

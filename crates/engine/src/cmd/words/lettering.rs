@@ -571,7 +571,7 @@ fn build_steps_with_designs(
 }
 
 fn words_designs(dir: &Path) -> Value {
-    let path = crate::words::document_path(dir);
+    let path = crate::cmd::words::document_path(dir);
     let Ok(bytes) = std::fs::read(path) else {
         return json!({});
     };
@@ -611,7 +611,7 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
                 recipe_path.display()
             ))
         })?;
-    let all = lines(&crate::words::aligned_in(&dir)?);
+    let all = lines(&crate::cmd::words::aligned_in(&dir)?);
     if all.is_empty() {
         return Err(invalid(
             "No timed lyric lines: import the transcript and the artist's lyric sheet first",
@@ -649,5 +649,5 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "tests/lettering.rs"]
+#[path = "../../tests/lettering.rs"]
 mod tests;

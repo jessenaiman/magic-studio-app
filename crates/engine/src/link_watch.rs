@@ -5,7 +5,7 @@
 //! an unedited document reloads, an edited one refuses to save over the newer file — never a
 //! silent overwrite.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 
 use crate::{EngineError, Result};
@@ -69,6 +69,6 @@ pub fn stamp_of(path: &Path) -> Option<FileStamp> {
 }
 
 /// Convenience for `DocState`-shaped callers: does this (path, stamp) pair have outside changes?
-pub fn is_changed(path: &PathBuf, stamp: Option<FileStamp>) -> bool {
+pub fn is_changed(path: &Path, stamp: Option<FileStamp>) -> bool {
     changed_on_disk(path, stamp)
 }

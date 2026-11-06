@@ -647,7 +647,7 @@ fn specs_workshop_and_lyrics() -> Vec<CommandSpec> {
             "song.lyrics",
             "Song Lyrics (Artist Sheet or Transcript)",
             "{}",
-            crate::lyrics::cmd_song_lyrics
+            crate::cmd::words::lyrics::cmd_song_lyrics
         ),
         cmd!(
             "song.save",
@@ -667,19 +667,19 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             "words.align",
             "Artist Words vs Timing Reference",
             "{}",
-            crate::words::cmd_words_align
+            crate::cmd::words::cmd_words_align
         ),
         query!(
             "words.read",
             "Words Animations",
             "{\"animation_id\":\"optional\"}",
-            crate::words::cmd_words_read
+            crate::cmd::words::cmd_words_read
         ),
         query!(
             "words.studio_track",
             "Lyric Clips in the Video",
             "{}",
-            crate::words::cmd_words_studio_track
+            crate::cmd::words::cmd_words_studio_track
         ),
         cmd!(
             "words.lyrics_view",
@@ -688,13 +688,13 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             None,
             "{\"show\":\"still (one saved scene image plus audio and lyrics; requires animation_id), stage, lyrics or scene\"}",
             always,
-            crate::words::cmd_words_lyrics_view
+            crate::cmd::words::cmd_words_lyrics_view
         ),
         query!(
             "words.effects",
             "Effects from the HyperFrames Registry",
             "{\"kind\":\"optional: text, drawing or background\"}",
-            crate::words::cmd_words_effects
+            crate::cmd::words::cmd_words_effects
         ),
         cmd!(
             "words.effect_install",
@@ -703,7 +703,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             None,
             "{\"name\":\"per-word-rise\"}",
             always,
-            crate::words::cmd_words_effect_install
+            crate::cmd::words::cmd_words_effect_install
         ),
         cmd!(
             "words.captions",
@@ -712,7 +712,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             None,
             "{\"by\":\"section (default) or line\",\"out\":\"optional .srt path; default lyrics.captions.srt in the project\",\"to\":\"video: the video's caption track shows the printed lines (earlier source kept as captions.vN.html)\"}",
             always,
-            crate::words::cmd_words_captions
+            crate::cmd::words::cmd_words_captions
         ),
         cmd!(
             "words.track",
@@ -721,7 +721,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             None,
             "{}",
             always,
-            crate::words::cmd_words_track
+            crate::cmd::words::cmd_words_track
         ),
         cmd!(
             "words.design",
@@ -730,7 +730,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             None,
             "{\"recipe\":\"optional; default lyrics-design.json in the project (palette, band, hero words and their moves)\",\"apply\":\"true (default) uses each section in the video\",\"section\":\"optional animation id\",\"layout\":\"optional kinetic layout\",\"entrance\":\"optional kinetic entrance\",\"overlay\":\"optional overlay layer\",\"seed\":\"varies layouts and entrances per section\",\"kinetic\":\"false keeps static line designs\"}",
             always,
-            crate::words::cmd_words_design
+            crate::cmd::words::cmd_words_design
         ),
     ]
 }
@@ -753,7 +753,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             None,
             "{\"recipe\":\"optional; default lyrics-design.json in the project\",\"render\":\"true (default) renders lettering/lyrics.mov with transparency\"}",
             always,
-            crate::lettering::cmd_words_letter
+            crate::cmd::words::lettering::cmd_words_letter
         ),
         cmd!(
             "words.apply",
@@ -762,7 +762,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             None,
             "{\"animation_id\":\"words-chorus-1\",\"use\":true}",
             always,
-            crate::words::cmd_words_apply
+            crate::cmd::words::cmd_words_apply
         ),
         cmd!(
             "edit.undo",
@@ -789,7 +789,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             None,
             "{\"animation_id\":\"words-chorus-1\",\"expected_source_revision\":0,\"style\":{\"size\":120},\"words\":[{\"word_id\":\"ch1-l1/w5\",\"action\":\"cry\",\"emphasis\":true}]}",
             always,
-            crate::words::cmd_words_save
+            crate::cmd::words::cmd_words_save
         ),
         cmd!(
             "words.link",
@@ -798,7 +798,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             None,
             "{\"animation_id\":\"source section\",\"index\":0,\"word_id\":\"target word ID\",\"target_animation_id\":\"optional target section\",\"expected_source_revision\":0,\"expected_target_revision\":0}",
             always,
-            crate::words::cmd_words_link
+            crate::cmd::words::cmd_words_link
         ),
         cmd!(
             "words.compose",
@@ -807,7 +807,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             None,
             "{\"animation_id\":\"words-chorus-1\",\"instance_id\":\"optional: isolated composition for a repeated placement\"}",
             always,
-            crate::words::cmd_words_compose
+            crate::cmd::words::cmd_words_compose
         ),
     ];
     out.extend(specs_workshop_queries());

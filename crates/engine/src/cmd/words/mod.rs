@@ -12,6 +12,10 @@ use std::{
 };
 
 pub mod compose;
+// The lyrics, layout and lettering modules live here with the words domain.
+pub mod lettering;
+pub mod lyrics;
+pub(crate) mod lyrics_layout;
 pub(crate) mod stage;
 pub(crate) mod validate;
 
@@ -29,7 +33,7 @@ pub(crate) const FONTS: &[&str] = &["song", "serif", "sans"];
 const LEAD_IN: f64 = 0.4;
 pub(crate) const HOLD: f64 = 1.0;
 pub(crate) const KINETIC_LIBRARY: &str =
-    include_str!("../../../../pipeline/templates/kinetic-library.json");
+    include_str!("../../../../../pipeline/templates/kinetic-library.json");
 
 pub(crate) fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -185,7 +189,7 @@ pub(crate) fn aligned(s: &mut Session) -> Result<Value> {
 /// The artist's words in sung order with transcript timing, for a project folder.
 pub(crate) fn aligned_in(dir: &Path) -> Result<Value> {
     let dir = dir.to_path_buf();
-    let lyrics = crate::lyrics::song_lyrics_in(&dir)?;
+    let lyrics = crate::cmd::words::lyrics::song_lyrics_in(&dir)?;
     if lyrics["source"] != "canonical" {
         return Err(invalid(
             "No artist lyric sheet; Words needs the artist's canonical lines",
@@ -460,7 +464,7 @@ pub fn cmd_words_studio_track(s: &mut Session, params: &Value) -> Result<Value> 
     let html = fs::read_to_string(&path)
         .map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
     let clips = parse_lyric_word_clips(&html);
-    let lyrics = crate::lyrics::cmd_song_lyrics(s, &json!({}))?;
+    let lyrics = crate::cmd::words::lyrics::cmd_song_lyrics(s, &json!({}))?;
     let mut used = vec![false; clips.len()];
     let mut sections = Vec::new();
     for section in lyrics["sections"].as_array().into_iter().flatten() {

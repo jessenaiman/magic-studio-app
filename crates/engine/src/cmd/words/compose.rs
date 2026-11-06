@@ -27,7 +27,7 @@ fn kinetic_composition(
     let lib: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let data = json!({"width":width,"height":height,"duration":duration,"layer":layer,"words":words,"kinetic":anim["kinetic"],"style":anim["kinetic"]["style"],"library":lib});
     Ok(
-        include_str!("../../../../pipeline/templates/words-kinetic.html")
+        include_str!("../../../../../pipeline/templates/words-kinetic.html")
             .replace("__COMPOSITION_ID__", composition_id)
             .replace("__WIDTH__", &width.to_string())
             .replace("__HEIGHT__", &height.to_string())
@@ -170,7 +170,7 @@ fn design_composition(
     let data = json!({"composition_id":composition_id,"duration":duration,"font":style["font"],"size":style["size"].as_f64().unwrap_or(96.0),
         "color":style["color"].as_str().unwrap_or("#fff6e0"),"lines":out});
     Ok(
-        include_str!("../../../../pipeline/templates/words-design.html")
+        include_str!("../../../../../pipeline/templates/words-design.html")
             .replace("__COMPOSITION_ID__", composition_id)
             .replace("__WIDTH__", &width.to_string())
             .replace("__HEIGHT__", &height.to_string())
@@ -286,7 +286,10 @@ fn run_lyrics_layout(
         serde_json::to_vec(&json!({"animations":animations}))
             .map_err(|e| invalid(e.to_string()))?,
     )?;
-    Ok(crate::lyrics_layout::designs(recipe_doc, &animations))
+    Ok(crate::cmd::words::lyrics_layout::designs(
+        recipe_doc,
+        &animations,
+    ))
 }
 
 fn design_one_section(
@@ -869,7 +872,7 @@ fn render_section_html(
         effect_composition(anim, composition_id, width, height, duration, local)
     } else {
         Ok(
-            include_str!("../../../../pipeline/templates/words-composition.html")
+            include_str!("../../../../../pipeline/templates/words-composition.html")
                 .replace("__COMPOSITION_ID__", composition_id)
                 .replace("__WIDTH__", &width.to_string())
                 .replace("__HEIGHT__", &height.to_string())
