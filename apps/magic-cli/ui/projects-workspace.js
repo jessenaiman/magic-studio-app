@@ -70,7 +70,7 @@ async function createProject() {
     await projectCommand("project.new", {
       path: `${root.replace(/\/+$/, "")}/${name}/${name}.magic`,
       mode: projectMode,
-      ...(projectMode === "project" && media ? { audio: media } : {}),
+      ...(projectMode === "project" && media ? { audio: media, process_audio: false } : {}),
     });
     if (projectMode === "animation") {
       if (media) await projectCommand("project.add_asset", { path: media, character: name, name });
