@@ -18,6 +18,8 @@
 pub mod assistant;
 pub mod automation;
 mod control;
+#[cfg(not(target_arch = "wasm32"))]
+mod storyboard_workspace;
 pub mod theme;
 pub mod widgets;
 
@@ -114,6 +116,7 @@ struct WorkerResult {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WebWorkspacePage {
     Projects,
+    Storyboard,
     Lyrics,
     Motion,
     Studio,
@@ -611,6 +614,11 @@ impl MagicApp {
         if self.session.project_path != previous_project {
             self.selected_character.clear();
             self.character_frame_path = None;
+            self.selected_page = 0;
+            self.storyboard_pages.clear();
+            self.storyboard_scenes.clear();
+            self.unfilled_checks.clear();
+            self.preview_image_path = None;
             #[cfg(not(target_arch = "wasm32"))]
             {
                 self.effectcraft_animation = None;
@@ -821,7 +829,7 @@ impl MagicApp {
             #[cfg(not(target_arch = "wasm32"))]
             if matches!(
                 req.method.as_str(),
-                "ui.projects.pick" | "ui.animation.pick_drawing"
+                "ui.projects.pick" | "ui.animation.pick_drawing" | "ui.storyboard.pick_image"
             ) {
                 self.open_web_project_picker(req);
                 continue;
@@ -835,11 +843,10 @@ impl MagicApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn open_web_project_picker(&mut self, req: ControlRequest) {
         use craft_dialogs::FileDialog;
-        let animation = req.method == "ui.animation.pick_drawing";
-        let expected_view = if animation {
-            ViewMode::Animation
-        } else {
-            ViewMode::Projects
+        let (expected_view, kind) = match req.method.as_str() {
+            "ui.animation.pick_drawing" => (ViewMode::Animation, Some("image")),
+            "ui.storyboard.pick_image" => (ViewMode::Storyboard, Some("image")),
+            _ => (ViewMode::Projects, req.params["kind"].as_str()),
         };
         if self.view != expected_view || self.web_project_picker.is_some() {
             let _ = req
@@ -847,11 +854,6 @@ impl MagicApp {
                 .send(Err("The file picker is unavailable.".into()));
             return;
         }
-        let kind = if animation {
-            Some("image")
-        } else {
-            req.params["kind"].as_str()
-        };
         let dialog = match kind {
             Some("project") => FileDialog::open()
                 .title("Open Magic Studio project")
@@ -987,6 +989,10 @@ impl MagicApp {
             #[cfg(not(target_arch = "wasm32"))]
             "ui.animation.controls" if self.view == ViewMode::Animation => {
                 self.animation_workspace_command(ctx, &params)
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.storyboard.workspace" if self.view == ViewMode::Storyboard => {
+                self.storyboard_workspace_command(&params)
             }
             #[cfg(not(target_arch = "wasm32"))]
             "ui.studio.import_animation" if self.view == ViewMode::Studio => {
@@ -1348,12 +1354,30 @@ impl MagicApp {
             });
     }
 
-    fn show_storyboard_view(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn show_storyboard_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
             empty_state(
                 ui,
                 "Open a Project First",
                 "Switch to the Projects tab to open or create a .magic project.",
+            );
+            return;
+        }
+
+        if let Some(host) = self.lyrics_host.as_mut() {
+            let project = self
+                .session
+                .project_path
+                .as_ref()
+                .map(|path| path.to_string_lossy());
+            let rect = ui.available_rect_before_wrap();
+            ui.allocate_rect(rect, Sense::hover());
+            host.show(
+                frame,
+                ctx,
+                rect,
+                project.as_deref().unwrap_or_default(),
+                WebWorkspacePage::Storyboard,
             );
             return;
         }
@@ -2630,7 +2654,7 @@ impl eframe::App for MagicApp {
             )
             .show(ui, |ui| match self.view {
                 ViewMode::Projects => self.show_projects_view(ctx, ui, frame),
-                ViewMode::Storyboard => self.show_storyboard_view(ctx, ui),
+                ViewMode::Storyboard => self.show_storyboard_view(ctx, ui, frame),
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
                 ViewMode::Animation => self.show_animation_view(ctx, ui, frame),
                 ViewMode::Motion => self.show_motion_view(ctx, ui, frame),
