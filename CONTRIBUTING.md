@@ -128,14 +128,12 @@ cargo xtask ci
 ```
 
 `cargo xtask ci` combines formatting, Clippy, tests (nextest when available,
-otherwise cargo test), doctests, layers and assets. Run focused tests while
+otherwise cargo test), doctests and layers; assets run with `CHECK_ASSETS` set. Run focused tests while
 iterating. Record actual final gate results; a skipped or failing gate is not a
 pass. Documentation-only changes need accurate paths and commands, not synthetic
 code tests.
 
-The current pre-commit hook runs **`cargo xtask doctor`**, which checks workspace
-configuration, compilation and stale references. It does **not** run the full
-`ci` suite. Do not describe a passing commit hook as passing all quality gates.
+The pre-commit hook (`.githooks/pre-commit`) runs `cargo xtask ci`.
 Magic has no `cargo xtask wasm` subcommand; do not copy that upstream command as
 though it exists here. Changes affecting the web target must verify the supported
 web build separately and report any limitations.

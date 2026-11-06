@@ -20,6 +20,9 @@ pub mod automation;
 pub mod theme;
 pub mod widgets;
 
+#[cfg(test)]
+mod control_conformance;
+
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};

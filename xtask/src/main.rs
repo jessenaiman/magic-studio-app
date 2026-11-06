@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod ci;
-mod doctor;
 mod policy;
 
 #[derive(Parser)]
@@ -23,8 +22,6 @@ struct Cli {
 enum Task {
     /// Check formatting, Clippy, workspace tests and doctests using Craft's native gates.
     Ci,
-    /// Report which workspace apps are configured, which are not, and where the app breaks.
-    Doctor,
     /// Check Magic's crates against the layers in docs/architecture.md.
     Layers,
     /// Check that every asset has an attribution sidecar and an ATTRIBUTION.md entry.
@@ -264,7 +261,6 @@ fn install(prefix: Option<PathBuf>, profile: Profile) -> Result<()> {
 fn main() {
     let result = match Cli::parse().task {
         Task::Ci => ci::ci(),
-        Task::Doctor => doctor::doctor(),
         Task::Layers => policy::layers(),
         Task::Assets => policy::assets(),
         Task::Install { prefix, profile } => install(prefix, profile),

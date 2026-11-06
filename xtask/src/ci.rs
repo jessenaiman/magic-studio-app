@@ -1,4 +1,4 @@
-//! `cargo xtask ci`: fmt, Clippy, tests, doctests and layers. Assets run with `CHECK_ASSETS` set.
+//! `cargo xtask ci`: fmt, Clippy, tests, doctests, control-protocol conformance and layers. Assets run with `CHECK_ASSETS` set.
 use std::process::Command;
 
 use crate::Result;
@@ -48,6 +48,16 @@ pub(crate) fn ci() -> Result<()> {
         "warnings",
     ]))?;
     tests()?;
+    run(Command::new(cargo).args([
+        "test",
+        "-p",
+        "magic-ui-egui",
+        "--lib",
+        "control_conformance",
+        "--",
+        "--ignored",
+        "--nocapture",
+    ]))?;
     crate::policy::layers()?;
     if std::env::var("CHECK_ASSETS").is_ok() {
         crate::policy::assets()?;
