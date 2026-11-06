@@ -7,13 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::words::{
+pub use super::validate::cmd_words_effect_install;
+pub(crate) use super::validate::{kinetic_design, line_design, text_effect};
+use super::{
     HOLD, KINETIC_LIBRARY, aligned, captions_to_video, cmd_words_read, cmd_words_save,
     cmd_words_studio_track, fill_untimed, invalid, printed_caption_words, studio_times, tag_attr,
     timing, word_time_key,
 };
-pub use crate::words_validate::cmd_words_effect_install;
-pub(crate) use crate::words_validate::{kinetic_design, line_design, text_effect};
 
 fn kinetic_composition(
     anim: &Value,
@@ -27,7 +27,7 @@ fn kinetic_composition(
     let lib: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let data = json!({"width":width,"height":height,"duration":duration,"layer":layer,"words":words,"kinetic":anim["kinetic"],"style":anim["kinetic"]["style"],"library":lib});
     Ok(
-        include_str!("../../../pipeline/templates/words-kinetic.html")
+        include_str!("../../../../pipeline/templates/words-kinetic.html")
             .replace("__COMPOSITION_ID__", composition_id)
             .replace("__WIDTH__", &width.to_string())
             .replace("__HEIGHT__", &height.to_string())
@@ -170,7 +170,7 @@ fn design_composition(
     let data = json!({"composition_id":composition_id,"duration":duration,"font":style["font"],"size":style["size"].as_f64().unwrap_or(96.0),
         "color":style["color"].as_str().unwrap_or("#fff6e0"),"lines":out});
     Ok(
-        include_str!("../../../pipeline/templates/words-design.html")
+        include_str!("../../../../pipeline/templates/words-design.html")
             .replace("__COMPOSITION_ID__", composition_id)
             .replace("__WIDTH__", &width.to_string())
             .replace("__HEIGHT__", &height.to_string())
@@ -636,7 +636,7 @@ fn mount_section_backdrop(
         return None;
     }
     let asset_id = anim["background_asset"].as_str()?;
-    let name = crate::words_stage::stage_backdrop_file(s, dir, asset_id).ok()?;
+    let name = super::stage::stage_backdrop_file(s, dir, asset_id).ok()?;
     let (start, duration) = section_backdrop_span(track, &anim["scope"], composed, html);
     html.insert_str(
         root,
@@ -869,7 +869,7 @@ fn render_section_html(
         effect_composition(anim, composition_id, width, height, duration, local)
     } else {
         Ok(
-            include_str!("../../../pipeline/templates/words-composition.html")
+            include_str!("../../../../pipeline/templates/words-composition.html")
                 .replace("__COMPOSITION_ID__", composition_id)
                 .replace("__WIDTH__", &width.to_string())
                 .replace("__HEIGHT__", &height.to_string())

@@ -3,7 +3,7 @@ use crate::{Result, Session};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
-use super::words::{FONTS, KINETIC_LIBRARY, MOVES, invalid, one_of};
+use super::{FONTS, KINETIC_LIBRARY, MOVES, invalid, one_of};
 
 /// `words.effect_install`: install one HyperFrames registry effect into the project with the
 /// pinned HyperFrames (`hyperframes add`). Needs the network; already-installed effects are left as they are.

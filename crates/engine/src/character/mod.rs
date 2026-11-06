@@ -28,7 +28,7 @@ pub use shot::cmd_character_shot;
 pub use sprite::cmd_character_sprite;
 pub use tripo::{cmd_tripo_animate, cmd_tripo_breakout, cmd_tripo_catalog, cmd_tripo_rig};
 /// The shared skeleton and its key poses, applied to every character.
-pub(crate) const POSES: &str = include_str!("character/poses.json");
+pub(crate) const POSES: &str = include_str!("poses.json");
 
 fn bad(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())

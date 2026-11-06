@@ -7382,6 +7382,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "magic-tui"
+version = "0.17.0"
+dependencies = [
+ "clap",
+ "magic",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "magic-ui-egui"
 version = "0.17.0"
 dependencies = [

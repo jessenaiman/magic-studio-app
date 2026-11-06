@@ -1,10 +1,10 @@
 //! Words stage views, reading, saving, and drawing link management.
+use super::compose::{kinetic_design, line_design, text_effect};
 use crate::words::{
     ACTIONS, ENTRANCES, EXITS, KINETIC_LIBRARY, aligned, default_document, document_path,
     fill_untimed, invalid, load, reference, studio_times, tag_attr, timing, with_sung_sections,
     word_time_key,
 };
-use crate::words_compose::{kinetic_design, line_design, text_effect};
 use crate::{Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

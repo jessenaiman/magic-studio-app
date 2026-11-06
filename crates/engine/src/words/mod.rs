@@ -11,7 +11,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub use crate::words_compose::{
+pub mod compose;
+pub(crate) mod stage;
+pub(crate) mod validate;
+
+pub use compose::{
     cmd_words_apply, cmd_words_compose, cmd_words_design, cmd_words_effect_install, cmd_words_track,
 };
 
@@ -25,7 +29,7 @@ pub(crate) const FONTS: &[&str] = &["song", "serif", "sans"];
 const LEAD_IN: f64 = 0.4;
 pub(crate) const HOLD: f64 = 1.0;
 pub(crate) const KINETIC_LIBRARY: &str =
-    include_str!("../../../pipeline/templates/kinetic-library.json");
+    include_str!("../../../../pipeline/templates/kinetic-library.json");
 
 pub(crate) fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -510,8 +514,8 @@ pub fn cmd_words_overlaps(s: &mut Session, p: &Value) -> Result<Value> {
     }))
 }
 
-pub(crate) use crate::words_stage::one_of;
-pub use crate::words_stage::{
+pub(crate) use stage::one_of;
+pub use stage::{
     cmd_words_effects, cmd_words_link, cmd_words_lyrics_view, cmd_words_read, cmd_words_save,
 };
 

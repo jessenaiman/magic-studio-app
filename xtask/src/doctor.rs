@@ -278,7 +278,10 @@ fn workspace_packages(md: &serde_json::Value) -> Result<Vec<(String, Vec<String>
 /// Heuristic: a package is an "app" if it's a binary target or the name
 /// suggests a standalone app (magic, magic-cli, etc.).
 fn is_app(name: &str) -> bool {
-    matches!(name, "magic-gui" | "magic-cli" | "magic" | "xtask")
+    matches!(
+        name,
+        "magic-gui" | "magic-cli" | "magic-tui" | "magic" | "xtask"
+    )
 }
 
 /// Check whether an app package appears configured: its manifest directory
@@ -318,8 +321,9 @@ fn manifest_dir_for(name: &str) -> Option<std::path::PathBuf> {
     let root = std::env::var("CARGO_MANIFEST_DIR").ok()?;
     let root = std::path::Path::new(&root);
     match name {
-        "magic-gui" => Some(root.join("../apps/magic-gui")),
+        "magic-gui" => Some(root.join("../apps/magic")),
         "magic-cli" => Some(root.join("../apps/magic-cli")),
+        "magic-tui" => Some(root.join("../apps/magic-tui")),
         "magic" => Some(root.join("../crates/engine")),
         "xtask" => Some(root.join(".")),
         _ => None,

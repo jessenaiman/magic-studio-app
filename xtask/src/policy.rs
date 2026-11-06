@@ -72,6 +72,7 @@ const LAYERS: &[(&str, u8)] = &[
     ("magic-mcp", 5),
     ("magic-gui", 6),
     ("magic-cli", 6),
+    ("magic-tui", 6),
     ("magic-web", 6),
 ];
 
