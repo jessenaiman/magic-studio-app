@@ -656,7 +656,7 @@ fn specs_workshop_and_lyrics() -> Vec<CommandSpec> {
             None,
             "{\"title\":\"optional text\",\"album\":\"optional text\",\"track_number\":\"optional positive integer or null to clear\",\"lyrics\":\"optional plain text, separate from timed or artist lyrics\",\"notes\":\"optional text\"}",
             always,
-            crate::song_metadata::save
+            crate::cmd::song::song_metadata::save
         ),
     ]
 }

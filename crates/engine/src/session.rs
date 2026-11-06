@@ -40,7 +40,7 @@ pub struct Session {
     /// The selected recording; uploads use the copy inside the contained HyperFrames project.
     pub song_audio: Option<PathBuf>,
     /// Editable song details, stored only in this project's `.magic` document.
-    pub song: crate::song_metadata::SongMetadata,
+    pub song: crate::cmd::song::song_metadata::SongMetadata,
     /// Whether the user approved the workshop draft PDF.
     pub draft_approved: bool,
     /// The contained HyperFrames video project.
@@ -75,7 +75,7 @@ impl Default for Session {
             agent_selection: None,
             project_owner: None,
             song_audio: None,
-            song: crate::song_metadata::SongMetadata::default(),
+            song: crate::cmd::song::song_metadata::SongMetadata::default(),
             draft_approved: false,
             video_target: "hyperframes".into(),
             active_asset: None,

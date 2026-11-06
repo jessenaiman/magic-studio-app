@@ -62,7 +62,6 @@
 pub mod activity;
 pub mod agent;
 mod agent_run;
-pub(crate) mod audio_trace;
 pub mod change_marker;
 pub mod cmd;
 pub mod command_catalog;
@@ -89,7 +88,6 @@ pub(crate) mod read_only_file;
 pub mod scribbles;
 pub mod session;
 pub mod skills_registry;
-pub mod song_metadata;
 pub mod workshop;
 pub mod workshop_intake;
 pub mod workshop_transcript;

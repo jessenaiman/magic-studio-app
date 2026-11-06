@@ -493,7 +493,7 @@ fn hyperframes_runtime(params: &Value, hf: &Path) -> Result<String> {
 }
 
 fn transcribe_recording(
-    trace: &mut crate::audio_trace::AudioTrace,
+    trace: &mut crate::cmd::song::audio_trace::AudioTrace,
     runtime: &str,
     hf: &Path,
     audio: &Path,
@@ -523,7 +523,7 @@ fn transcribe_recording(
 }
 
 fn export_captions(
-    trace: &mut crate::audio_trace::AudioTrace,
+    trace: &mut crate::cmd::song::audio_trace::AudioTrace,
     runtime: &str,
     hf: &Path,
     transcript: &Path,
@@ -552,7 +552,7 @@ fn export_captions(
 
 /// Transcribe the recording and export captions, reusing whichever artifacts already exist.
 fn transcribe_steps(
-    trace: &mut crate::audio_trace::AudioTrace,
+    trace: &mut crate::cmd::song::audio_trace::AudioTrace,
     runtime: &str,
     hf: &Path,
     audio: &Path,
@@ -589,7 +589,7 @@ fn transcribe_steps(
 /// Sections, onsets and moments for the recording; Null when the caller opts out.
 fn beat_analysis(
     params: &Value,
-    trace: &mut crate::audio_trace::AudioTrace,
+    trace: &mut crate::cmd::song::audio_trace::AudioTrace,
     runtime: &str,
     hf: &Path,
     audio: &Path,
@@ -635,7 +635,7 @@ fn beat_analysis(
 }
 
 fn transcript_word_count(
-    trace: &mut crate::audio_trace::AudioTrace,
+    trace: &mut crate::cmd::song::audio_trace::AudioTrace,
     transcript: &Path,
 ) -> Result<usize> {
     let words = trace.read_json("read_transcript", transcript)?;
@@ -672,7 +672,7 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     std::fs::create_dir_all(&hf)?;
     let transcript = hf.join("transcript.json");
     let srt = hf.join("transcript.srt");
-    let mut trace = crate::audio_trace::AudioTrace::new(&dir, &audio, params)?;
+    let mut trace = crate::cmd::song::audio_trace::AudioTrace::new(&dir, &audio, params)?;
     let mut ran = transcribe_steps(
         &mut trace,
         &runtime,

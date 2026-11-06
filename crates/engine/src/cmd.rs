@@ -4,5 +4,6 @@
 
 pub mod character;
 pub mod film;
+pub mod song;
 pub mod storyboard;
 pub mod words;
