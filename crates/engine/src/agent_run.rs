@@ -29,7 +29,6 @@ pub(crate) struct AgentRun {
     pub(crate) stderr: String,
     pub(crate) code: Option<i32>,
     pub(crate) timed_out: bool,
-    pub(crate) stopped_after_image: bool,
 }
 
 impl AgentRun {
@@ -55,18 +54,31 @@ pub(crate) fn run_agent(
     cwd: &Path,
     timeout_s: u64,
 ) -> Result<AgentRun> {
-    run_agent_inner(program, args, cwd, timeout_s, false)
-}
-
-/// Image bytes are already staged when the native success receipt arrives. Stop this one-shot
-/// agent before it can retry generation while trying to reconstruct/copy binary tool output.
-pub(crate) fn run_image_agent(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    timeout_s: u64,
-) -> Result<AgentRun> {
-    run_agent_inner(program, args, cwd, timeout_s, true)
+    let mut command = std::process::Command::new(program);
+    let mut child = command
+        .current_dir(cwd)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| EngineError::ExternalTool(program.to_string(), e.to_string()))?;
+    let rx_out = spawn_stdout_reader(child.stdout.take());
+    let rx_err = spawn_stderr_reader(child.stderr.take());
+    let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
+    let (code, timed_out) = wait_for_agent_child(&mut child, deadline);
+    let stdout = rx_out
+        .recv_timeout(Duration::from_secs(15))
+        .unwrap_or_default();
+    let stderr = rx_err
+        .recv_timeout(Duration::from_secs(15))
+        .unwrap_or_default();
+    Ok(AgentRun {
+        stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&stderr).trim().to_string(),
+        code,
+        timed_out,
+    })
 }
 
 fn spawn_stdout_reader(
@@ -86,57 +98,22 @@ fn spawn_stdout_reader(
 
 fn spawn_stderr_reader(
     pipe: Option<std::process::ChildStderr>,
-    stop_on_image: bool,
-) -> (
-    std::sync::mpsc::Receiver<Vec<u8>>,
-    std::sync::mpsc::Receiver<()>,
-) {
+) -> std::sync::mpsc::Receiver<Vec<u8>> {
     let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
-    let (image_tx, image_rx) = std::sync::mpsc::channel::<()>();
     if let Some(mut pipe) = pipe {
         std::thread::spawn(move || {
-            use std::io::{BufRead, BufReader};
-            let mut reader = BufReader::new(&mut pipe);
+            use std::io::Read;
             let mut buf = Vec::new();
-            let mut line = Vec::new();
-            let mut signalled = false;
-            loop {
-                line.clear();
-                match reader.read_until(b'\n', &mut line) {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {}
-                }
-                buf.extend_from_slice(&line);
-                if stop_on_image
-                    && !signalled
-                    && crate::image_generation::native_image_success(&String::from_utf8_lossy(
-                        &line,
-                    ))
-                {
-                    signalled = true;
-                    let _ = image_tx.send(());
-                }
-            }
+            let _ = pipe.read_to_end(&mut buf);
             let _ = tx_err.send(buf);
         });
     }
-    (rx_err, image_rx)
+    rx_err
 }
 
-fn wait_for_agent_child(
-    child: &mut std::process::Child,
-    deadline: Instant,
-    stop_on_image: bool,
-    image_rx: &std::sync::mpsc::Receiver<()>,
-) -> (Option<i32>, bool, bool) {
+fn wait_for_agent_child(child: &mut std::process::Child, deadline: Instant) -> (Option<i32>, bool) {
     let mut timed_out = false;
-    let mut stopped_after_image = false;
     let code = loop {
-        if stop_on_image && image_rx.try_recv().is_ok() {
-            stopped_after_image = true;
-            let _ = child.kill();
-            break child.wait().ok().and_then(|status| status.code());
-        }
         match child.try_wait() {
             Ok(Some(status)) => break status.code(),
             Ok(None) => {}
@@ -149,46 +126,5 @@ fn wait_for_agent_child(
         }
         std::thread::sleep(Duration::from_millis(150));
     };
-    (code, timed_out, stopped_after_image)
-}
-
-fn run_agent_inner(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    timeout_s: u64,
-    stop_on_image: bool,
-) -> Result<AgentRun> {
-    let mut command = std::process::Command::new(program);
-    // `codex exec` defaults to error-only stderr. The native image importer needs
-    // its INFO tool receipt to correlate staged bytes; never rely on the parent's log level.
-    if stop_on_image {
-        command.env("RUST_LOG", "error,codex_otel=info");
-    }
-    let mut child = command
-        .current_dir(cwd)
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| EngineError::ExternalTool(program.to_string(), e.to_string()))?;
-    let rx_out = spawn_stdout_reader(child.stdout.take());
-    let (rx_err, image_rx) = spawn_stderr_reader(child.stderr.take(), stop_on_image);
-    let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
-    let (code, timed_out, stopped_after_image) =
-        wait_for_agent_child(&mut child, deadline, stop_on_image, &image_rx);
-    let stdout = rx_out
-        .recv_timeout(Duration::from_secs(15))
-        .unwrap_or_default();
-    let stderr = rx_err
-        .recv_timeout(Duration::from_secs(15))
-        .unwrap_or_default();
-    Ok(AgentRun {
-        stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
-        stderr: String::from_utf8_lossy(&stderr).trim().to_string(),
-        code,
-        timed_out,
-        stopped_after_image,
-    })
+    (code, timed_out)
 }
