@@ -15,7 +15,10 @@ const wordsChoreographies = () => wordsTools().choreographies || [];
 const wordsEasings = () => wordsTools().easings || [];
 const wordsEffectCraftTools = () => wordsTools().effectcraft || { text_presets: [], paint_presets: [], effects: [], animator_properties: [] };
 const wordsFilmCraftTools = () => wordsTools().filmcraft || { effects: [], presets: [] };
-const wordsCommand = (command, params = {}) => invoke("engine_command", { id: command, params });
+const wordsCommand = (command, params = {}) => invoke("engine_command", {
+  id: command,
+  params: state.lyricsOnly ? { _expected_project: state.project, ...params } : params,
+});
 const wordsSongPath = () => state.data?.status?.stages?.find((s) => s.id === "song")?.inputs?.[0]?.path;
 const wordsCurrent = () => wordsPanel.read?.document?.animations?.find((a) => a.animation_id === wordsPanel.selected);
 const wordsStudioSection = (anim) => wordsPanel.studio?.sections?.find((s) => s.section === anim?.scope?.section && s.occurrence === anim?.scope?.occurrence);
@@ -105,7 +108,7 @@ class WordsDesignController {
     return `${name[0].toUpperCase()}${name.slice(1)}${s.section === "chorus" || s.occurrence > 1 ? ` ${s.occurrence}` : ""}`;
   }
   async bootstrapStudio(studio) {
-    if (studio?.sections?.length)
+    if (studio?.sections?.length || state.lyricsOnly)
       return studio;
     await wordsCommand("words.track").catch(() => {});
     return wordsCommand("words.studio_track", { preview_status: true }).catch((error) => ({ error: String(error).replace(/^.*?: /, "") }));

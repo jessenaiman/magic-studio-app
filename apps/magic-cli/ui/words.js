@@ -609,9 +609,9 @@ class WordsViewController {
       class: "ghost",
       title: "Build EffectCraft project (lettering/lyrics.ecproj) and render transparent lyrics.mov",
       onclick: () => wordsStageController.renderLettering()
-    }, "Render Lettering"), el("button", {
+    }, "Render Lettering"), state.lyricsOnly ? null : el("button", {
       class: "start",
-      title: "Assemble scene backgrounds, audio and lettering in FilmCraft and export MP4",
+      title: "Export the saved FilmCraft timeline or assemble a new one",
       onclick: () => wordsStageController.exportFilm()
     }, "Export Film"));
   }

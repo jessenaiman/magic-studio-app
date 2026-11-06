@@ -655,6 +655,12 @@ fn specs_workshop_and_lyrics() -> Vec<CommandSpec> {
 fn specs_words_part1() -> Vec<CommandSpec> {
     vec![
         query!(
+            "words.workspace",
+            "Open or Inspect a Standalone Lyrics Folder",
+            "{\"path\":\"optional directory containing a canonical lyric sheet and timed transcript\",\"audio\":\"optional audio file\"}",
+            crate::cmd::words::cmd_words_workspace
+        ),
+        query!(
             "words.align",
             "Artist Words vs Timing Reference",
             "{}",

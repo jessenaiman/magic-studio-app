@@ -52,6 +52,11 @@ On Unix, `magic-cli mcp --follow-window` uses the one open Magic window, includi
 `magic --lyrics`, and uses a headless session when no window is open. For an
 explicit target, start Magic with `--control PORT` and pass
 `magic-cli mcp --connect 127.0.0.1:PORT`.
+
+`magic --lyrics` opens the Lyrics editor and offers a folder picker. Pass the
+song folder directly as `magic --lyrics /path/to/song`. The folder must contain
+its canonical lyric sheet and timed transcript. A `.magic` file is optional.
+
 `cargo xtask install --help` lists `--prefix`. Rebuild and reinstall after native
 changes when authorized. These commands install Magic Studio only; they do not
 install other creative apps, production providers, or GPU models.

@@ -23,6 +23,73 @@ pub use compose::{
     cmd_words_apply, cmd_words_compose, cmd_words_design, cmd_words_effect_install, cmd_words_track,
 };
 
+pub(crate) fn workspace_dir(s: &Session) -> Result<PathBuf> {
+    if let Some(folder) = &s.lyrics_workspace {
+        return Ok(folder.clone());
+    }
+    crate::workshop::project_dir(s)
+}
+
+/// Select an existing lyrics folder without opening or writing a `.magic` project file.
+pub fn cmd_words_workspace(s: &mut Session, params: &Value) -> Result<Value> {
+    if let Some(raw) = params["path"].as_str() {
+        if s.project_path.is_some() {
+            return Err(invalid(
+                "Close the Magic project before opening a standalone lyrics folder",
+            ));
+        }
+        let folder = crate::workspace::resolve_workspace_path(s, raw).canonicalize()?;
+        if !folder.is_dir() {
+            return Err(invalid("Choose a lyrics folder"));
+        }
+        let sheet = lyrics::song_lyrics_in(&folder)?;
+        let path = sheet["sheet"]
+            .as_str()
+            .ok_or_else(|| invalid("This folder has no canonical lyric sheet"))?;
+        let (_, _, words) = reference(&folder)?;
+        if words.is_empty() {
+            return Err(invalid("This folder has no words in its timed transcript"));
+        }
+        let audio = if let Some(raw) = params["audio"].as_str() {
+            Some(crate::workspace::song_audio_path(s, raw)?)
+        } else {
+            crate::cmd::film::video_target::discover_contained_audio(&folder).or_else(|| {
+                let files = [&folder, &folder.join("audio")]
+                    .into_iter()
+                    .flat_map(|dir| fs::read_dir(dir).into_iter().flatten().flatten())
+                    .map(|entry| entry.path())
+                    .filter(|path| {
+                        path.is_file()
+                            && path
+                                .extension()
+                                .and_then(|ext| ext.to_str())
+                                .is_some_and(|ext| {
+                                    matches!(
+                                        ext.to_ascii_lowercase().as_str(),
+                                        "mp3" | "wav" | "flac" | "m4a" | "ogg" | "aac"
+                                    )
+                                })
+                    })
+                    .collect::<Vec<_>>();
+                (files.len() == 1).then(|| files[0].clone())
+            })
+        };
+        if s.lyrics_workspace.as_ref() != Some(&folder) {
+            let lease = fs::File::open(path)?;
+            lease.try_lock().map_err(|_| {
+                invalid("This lyric sheet is already open in another standalone window")
+            })?;
+            s.close_documents();
+            s.project_owner = Some(std::sync::Arc::new(lease));
+            s.lyrics_workspace = Some(folder);
+        }
+        s.song_audio = audio;
+    }
+    Ok(
+        json!({"ok":true,"standalone":s.lyrics_workspace.is_some(),"path":s.lyrics_workspace,"audio":s.song_audio}),
+    )
+}
+
 pub(crate) const ACTIONS: &[&str] = &["none", "wave", "tiny", "swim", "no", "cry", "big", "float"];
 pub(crate) const ENTRANCES: &[&str] = &["pop", "fade", "rise", "none"];
 pub(crate) const EXITS: &[&str] = &["fade", "drop", "none"];
@@ -183,7 +250,7 @@ fn attach_reference_timing(
 }
 
 pub(crate) fn aligned(s: &mut Session) -> Result<Value> {
-    aligned_in(&crate::workshop::project_dir(s)?)
+    aligned_in(&crate::cmd::words::workspace_dir(s)?)
 }
 
 /// The artist's words in sung order with transcript timing, for a project folder.
@@ -459,7 +526,7 @@ fn detect_design_overlaps(html: &str, sections: &[Value]) -> Vec<Value> {
 }
 
 pub fn cmd_words_studio_track(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let path = dir.join("hyperframes/index.html");
     let html = fs::read_to_string(&path)
         .map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
@@ -938,7 +1005,7 @@ fn format_srt_cues(cues: &[(String, Vec<&Value>)]) -> String {
 }
 
 pub fn cmd_words_captions(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let aligned = aligned(s)?;
     let (_, _, heard) = reference(&dir)?;
     let by_line = match p["by"].as_str().unwrap_or("section") {

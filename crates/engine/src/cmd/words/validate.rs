@@ -8,7 +8,7 @@ use super::{FONTS, KINETIC_LIBRARY, MOVES, invalid, one_of};
 /// `words.effect_install`: install one HyperFrames registry effect into the project with the
 /// pinned HyperFrames (`hyperframes add`). Needs the network; already-installed effects are left as they are.
 pub fn cmd_words_effect_install(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let hf = dir.join("hyperframes");
     let name = p["name"]
         .as_str()

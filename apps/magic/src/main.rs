@@ -42,13 +42,13 @@ struct Cli {
     /// Open this `.magic` project at launch
     #[arg(long)]
     project: Option<String>,
-    /// Positional `.magic` project path (used by `.desktop` launcher `magic %f`)
+    /// `.magic` project, or a song folder when using `--lyrics`
     #[arg()]
     file: Option<String>,
     /// Start on a specific view (`projects`, `storyboard`, `lyrics`, `animation`, `motion`, `studio`)
     #[arg(long)]
     view: Option<String>,
-    /// Start on the Lyrics view (same as `--view lyrics`)
+    /// Open Lyrics. Give a song folder to work without a `.magic` project
     #[arg(long)]
     lyrics: bool,
     /// Run an engine or UI command in the new desktop session
@@ -249,8 +249,14 @@ fn main() -> eframe::Result {
 
     let mut session = Session::user_session();
     if let Some(path) = cli.project.as_deref().or(cli.file.as_deref()) {
+        let input = std::path::Path::new(path);
+        let command = if cli.lyrics && input.is_dir() {
+            "words.workspace"
+        } else {
+            "project.open"
+        };
         session
-            .execute("project.open", json!({ "path": path }))
+            .execute(command, json!({ "path": path }))
             .map_err(|error| {
                 eframe::Error::AppCreation(Box::new(std::io::Error::other(format!(
                     "Open {path}: {error}"

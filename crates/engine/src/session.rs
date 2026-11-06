@@ -26,6 +26,8 @@ pub struct Session {
     pub project_assets: Vec<ProjectAsset>,
     /// The open `.magic` file; `None` until `project.new` or `project.open`.
     pub project_path: Option<PathBuf>,
+    /// Folder opened directly by the standalone Lyrics editor.
+    pub lyrics_workspace: Option<PathBuf>,
     /// Where the final video project lives (HyperFrames/Remotion/FilmCraft). Single source of truth.
     pub video_project_path: Option<PathBuf>,
     /// `Some("animation")` for a character study (Animation only, no song or
@@ -35,7 +37,7 @@ pub struct Session {
     pub record_user_state: bool,
     /// Active chat selection belongs to this engine/window, never to project serialization.
     pub agent_selection: Option<Value>,
-    /// Exclusive writer lease on the canonical project file for the live Studio session.
+    /// Exclusive lease on the project file or standalone canonical lyric sheet.
     pub project_owner: Option<std::sync::Arc<std::fs::File>>,
     /// The selected recording; uploads use the copy inside the contained HyperFrames project.
     pub song_audio: Option<PathBuf>,
@@ -69,6 +71,7 @@ impl Default for Session {
             assets: HashMap::new(),
             project_assets: Vec::new(),
             project_path: None,
+            lyrics_workspace: None,
             video_project_path: None,
             project_mode: None,
             record_user_state: false,
@@ -96,6 +99,7 @@ impl Clone for Session {
             assets: self.assets.clone(),
             project_assets: self.project_assets.clone(),
             project_path: self.project_path.clone(),
+            lyrics_workspace: self.lyrics_workspace.clone(),
             video_project_path: self.video_project_path.clone(),
             project_mode: self.project_mode.clone(),
             record_user_state: self.record_user_state,

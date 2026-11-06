@@ -334,7 +334,7 @@ fn design_one_section(
 
 /// `words.design`: every sung line designed from the project's lyric recipe (`lyrics-design.json`).
 pub fn cmd_words_design(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let recipe = p["recipe"]
         .as_str()
         .map(PathBuf::from)
@@ -395,7 +395,7 @@ pub fn cmd_words_design(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// `words.track`: the song's lyric line in the video, one clip per printed word at its sung time.
 pub fn cmd_words_track(s: &mut Session, _: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let index = dir.join("hyperframes/index.html");
     let html = fs::read_to_string(&index)
         .map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
@@ -681,7 +681,7 @@ fn insert_section_hide_style(
 }
 
 pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let index = dir.join("hyperframes/index.html");
     let id = p["animation_id"]
         .as_str()
@@ -1002,7 +1002,7 @@ fn write_section_composition_file(hf: &Path, composition_id: &str, html: &str) -
 
 /// `words.compose`: write the derived, untrimmed HyperFrames sub-composition for one animation.
 pub fn cmd_words_compose(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let hf = dir.join("hyperframes");
     if !hf.join("index.html").is_file() {
         return Err(invalid(

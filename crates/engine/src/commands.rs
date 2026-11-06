@@ -90,6 +90,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "ui.controls"
         | "ui.unconfigured" => true,
         "project.root" => params.get("root").is_none_or(Value::is_null),
+        "words.workspace" => params.get("path").is_none_or(Value::is_null),
         "skills.limits" => {
             params.get("max_words").is_none_or(Value::is_null)
                 && params.get("max_steps").is_none_or(Value::is_null)

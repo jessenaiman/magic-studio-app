@@ -272,7 +272,7 @@ fn build_backdrop_tags(
 }
 
 fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let full = cmd_words_read(s, &json!({}))?;
     let animations = full["document"]["animations"]
         .as_array()
@@ -324,7 +324,7 @@ fn write_if_changed(file: &Path, content: &str) -> Result<bool> {
 }
 
 pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let hf = dir.join("hyperframes");
     let html = fs::read_to_string(hf.join("index.html"))
         .map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
@@ -513,7 +513,7 @@ pub(crate) fn runtime_words_tools(lib: &Value) -> Value {
 }
 
 pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let hf = dir.join("hyperframes");
     let cli = crate::cmd::film::video_target::resolve_video_cli(
         p["resolve_video_cli"].as_str(),
@@ -756,7 +756,7 @@ fn apply_display_text_for_read(doc: &mut Value) {
 }
 
 pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let (mut doc, saved) = load_or_default_doc(s, &dir)?;
     let (_, current_sha, _) = reference(&dir)?;
     let stale = saved && doc["reference"]["sha256"].as_str() != Some(current_sha.as_str());
@@ -999,7 +999,7 @@ fn apply_save_payload(
 }
 
 pub fn cmd_words_save(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let id = p["animation_id"]
         .as_str()
         .ok_or_else(|| invalid("animation_id is required"))?;
@@ -1178,7 +1178,7 @@ fn find_source_cue_start(
 }
 
 pub fn cmd_words_link(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let mut doc = load(s, &dir)?.ok_or_else(|| invalid("Save this lyric design first"))?;
     let (source, target, word, index) = parse_link_request(p)?;
     let (si, ti) = find_section_indices(&doc, source, target)?;

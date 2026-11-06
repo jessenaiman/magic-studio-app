@@ -592,7 +592,7 @@ fn words_designs(dir: &Path) -> Value {
 /// `words.letter`: build `lettering/lyrics.ecproj` from the approved recipe and the aligned
 /// lyrics, then render it with transparency unless `render` is false.
 pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::workshop::project_dir(s)?;
+    let dir = crate::cmd::words::workspace_dir(s)?;
     let designs = words_designs(&dir);
     let recipe_path = p["recipe"]
         .as_str()

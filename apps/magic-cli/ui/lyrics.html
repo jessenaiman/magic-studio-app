@@ -34,9 +34,16 @@
     window.addEventListener("DOMContentLoaded", async () => {
       state.view = "design";
       try {
-        const st = await invoke("project_state", {});
-        state.project = st?.project || st?.status?.project || state.project;
-        state.data = st;
+        const workspace = await nativeInvoke("execute_command", { id: "words.workspace", params: {} });
+        if (workspace?.standalone) {
+          state.lyricsOnly = true;
+          state.project = workspace.path;
+          state.data = { status: { stages: [{ id: "song", inputs: [{ path: workspace.audio }] }] } };
+        } else {
+          const st = await invoke("project_state", {});
+          state.project = st?.project || st?.status?.project || state.project;
+          state.data = st;
+        }
       } catch {}
       await wordsOpen();
     });

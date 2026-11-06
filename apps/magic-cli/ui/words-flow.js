@@ -1131,9 +1131,16 @@ class WordsStageController {
     try {
       if (!await this.flushPendingEdits(anim))
         return;
-      toast("Rendering EffectCraft lettering & assembling FilmCraft MP4…");
-      await wordsCommand("words.letter", { render: true });
-      const res = await wordsCommand("video.assemble", { export: true });
+      const film = await wordsCommand("video.film");
+      let res;
+      if (film.timeline?.exists) {
+        toast("Exporting the saved FilmCraft timeline…");
+        res = await wordsCommand("video.export");
+      } else {
+        toast("Rendering EffectCraft lettering & assembling FilmCraft MP4…");
+        await wordsCommand("words.letter", { render: true });
+        res = await wordsCommand("video.assemble", { export: true });
+      }
       await wordsOpen();
       toast(`Film exported: ${res.export || res.project}`);
     } catch (error) {

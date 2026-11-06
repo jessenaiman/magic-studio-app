@@ -148,7 +148,7 @@ fn sections(sheet: &Value, timed: Option<&Value>) -> Vec<Value> {
 
 /// `song.lyrics`: what to show as the song's words, with honest provenance. No writes.
 pub fn cmd_song_lyrics(s: &mut Session, _: &Value) -> Result<Value> {
-    let mut lyrics = song_lyrics_in(&crate::workshop::project_dir(s)?)?;
+    let mut lyrics = song_lyrics_in(&crate::cmd::words::workspace_dir(s)?)?;
     lyrics["metadata"] = json!(s.song);
     Ok(lyrics)
 }

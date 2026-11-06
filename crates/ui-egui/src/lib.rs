@@ -142,6 +142,7 @@ pub trait LyricsHost {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DialogAction {
     OpenProject,
+    OpenLyricsFolder,
     CreateProjectFolder,
     SongAudio,
     StoryboardHeroImage { scene: usize },
@@ -355,6 +356,8 @@ impl MagicApp {
             self.refresh_lyrics();
             self.refresh_animation();
             self.refresh_studio();
+        } else if self.session.lyrics_workspace.is_some() {
+            self.refresh_lyrics();
         }
     }
 
@@ -754,6 +757,13 @@ impl MagicApp {
                             DialogAction::OpenProject => {
                                 self.run_command(ctx, "project.open", json!({ "path": display }));
                             }
+                            DialogAction::OpenLyricsFolder => {
+                                self.run_command(
+                                    ctx,
+                                    "words.workspace",
+                                    json!({ "path": display }),
+                                );
+                            }
                             DialogAction::CreateProjectFolder => {
                                 self.new_project_path = display;
                             }
@@ -879,6 +889,9 @@ impl MagicApp {
     pub fn unconfigured_panels(&self) -> Vec<Value> {
         let mut out = Vec::new();
         if self.session.project_path.is_none() {
+            if self.session.lyrics_workspace.is_some() {
+                return out;
+            }
             out.push(
                 json!({ "id": "project", "reason": "No project open", "fix": "project.open" }),
             );
@@ -914,6 +927,7 @@ impl MagicApp {
                 "ok": true,
                 "view": self.view.id(),
                 "project": self.session.project_path,
+                "lyrics_workspace": self.session.lyrics_workspace,
                 "assistant_open": self.assistant.open,
                 "assistant_tab": format!("{:?}", self.assistant.active_tab),
                 "selected_page": self.selected_page,
@@ -1030,6 +1044,12 @@ impl MagicApp {
                         self.assistant.active_tab = AssistantTab::Scribbles;
                     }
                     #[cfg(not(target_arch = "wasm32"))]
+                    "lyrics-open-folder"
+                        if self.view == ViewMode::Lyrics && self.session.project_path.is_none() =>
+                    {
+                        self.open_lyrics_folder_dialog();
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
                     "animation-send-to-studio" if self.view == ViewMode::Animation => {
                         self.send_active_animation_to_studio(ctx)?;
                     }
@@ -1068,6 +1088,18 @@ impl MagicApp {
                 Ok(json!({ "ok": true, "quitting": true }))
             }
             other => {
+                if other.starts_with("words.")
+                    && let Some(expected) = params["_expected_project"].as_str()
+                    && self
+                        .session
+                        .project_path
+                        .as_ref()
+                        .or(self.session.lyrics_workspace.as_ref())
+                        .and_then(|path| path.to_str())
+                        != Some(expected)
+                {
+                    return Err("The open Lyrics source changed.".into());
+                }
                 let res = self.execute_session_command(other, params)?;
                 self.handle_command_success(other, res.clone());
                 Ok(res)
@@ -1123,6 +1155,12 @@ impl MagicApp {
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("project");
+                status_badge(ui, name, ACCENT_TEAL);
+            } else if let Some(folder) = &self.session.lyrics_workspace {
+                let name = folder
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Lyrics folder");
                 status_badge(ui, name, ACCENT_TEAL);
             } else {
                 status_badge(ui, "No project open", TEXT_MUTED);
@@ -1717,17 +1755,45 @@ impl MagicApp {
             });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_lyrics_folder_dialog(&mut self) {
+        self.dialogs.ask(
+            craft_dialogs::FileDialog::folder().title("Open Lyrics Folder"),
+            DialogAction::OpenLyricsFolder,
+        );
+    }
+
     fn show_lyrics_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
-        let Some(project) = self.session.project_path.clone() else {
+        let standalone = self.session.lyrics_workspace.is_some();
+        let document = self
+            .session
+            .project_path
+            .as_ref()
+            .or(self.session.lyrics_workspace.as_ref())
+            .cloned();
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.session.project_path.is_none() {
+            let label = if standalone {
+                "Change Lyrics Folder…"
+            } else {
+                "Open Lyrics Folder…"
+            };
+            let open = secondary_button(ui, label);
+            self.auto.add_response("lyrics-open-folder", &open, label);
+            if open.clicked() {
+                self.open_lyrics_folder_dialog();
+            }
+        }
+        let Some(project) = document else {
             empty_state(
                 ui,
-                "Open a Project First",
-                "Switch to Projects to open a .magic song project.",
+                "Open Lyrics",
+                "Choose a song folder with its lyric sheet and timed transcript, or open a Magic project.",
             );
             return;
         };
-        if self.lyrics_host.is_some() && !self.lyrics_song_details {
-            if secondary_button(ui, "Song details…").clicked() {
+        if self.lyrics_host.is_some() && (standalone || !self.lyrics_song_details) {
+            if !standalone && secondary_button(ui, "Song details…").clicked() {
                 self.lyrics_song_details = true;
             }
             let rect = ui.available_rect_before_wrap();
