@@ -24,6 +24,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-dialogs = { workspace = true }
 craft-update = { workspace = true }
 open = { workspace = true }
-rfd = { workspace = true }
+raw-window-handle = { workspace = true }

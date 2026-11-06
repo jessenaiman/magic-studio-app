@@ -643,7 +643,6 @@ fn transcript_word_count(
         .map_or(0, Vec::len))
 }
 
-
 /// Transcribe and analyze the selected original recording. Uses an explicit `resolve_video_cli`
 /// when given, or pure-Rust `filmcraft-speech` + `filmcraft-captions` + `filmcraft-audio-dsp`.
 pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
@@ -651,13 +650,21 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let hf = dir.join("hyperframes");
     let overwrite = params["overwrite"].as_bool().unwrap_or(false);
-    let model = params["model"].as_str().unwrap_or("whisper-base").to_string();
-    if params["resolve_video_cli"].as_str().is_none() && params["engine"].as_str() != Some("hyperframes") {
-        return crate::film::cmd_video_exec(s, &json!({
-            "id": "transcript.generate",
-            "params": {"model": model, "language": "auto"},
-            "save": true
-        }));
+    let model = params["model"]
+        .as_str()
+        .unwrap_or("whisper-base")
+        .to_string();
+    if params["resolve_video_cli"].as_str().is_none()
+        && params["engine"].as_str() != Some("hyperframes")
+    {
+        return crate::film::cmd_video_exec(
+            s,
+            &json!({
+                "id": "transcript.generate",
+                "params": {"model": model, "language": "auto"},
+                "save": true
+            }),
+        );
     }
     let runtime = hyperframes_runtime(params, &hf)?;
     std::fs::create_dir_all(&hf)?;

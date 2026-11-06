@@ -22,15 +22,19 @@ pub mod widgets;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::{Arc, OnceLock};
 
-use egui::{ColorImage, Context, CornerRadius, RichText, ScrollArea, Sense, Stroke, TextureHandle, Ui};
+use egui::{
+    ColorImage, Context, CornerRadius, RichText, ScrollArea, Sense, Stroke, TextureHandle, Ui,
+};
 use magic::Session;
 use serde_json::{Value, json};
 
 use crate::assistant::{AssistantDrawer, AssistantTab};
 use crate::theme::{
-    ACCENT, ACCENT_AMBER, ACCENT_GREEN, ACCENT_RED, ACCENT_TEAL, ACCENT_VIOLET, BG_DEEP,
-    BG_ELEVATED, BG_PANEL, BORDER_STRONG, BORDER_SUBTLE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
+    ACCENT, ACCENT_AMBER, ACCENT_RED, ACCENT_TEAL, ACCENT_VIOLET, BG_DEEP, BG_ELEVATED, BG_PANEL,
+    BORDER_STRONG, BORDER_SUBTLE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
 };
 use crate::widgets::{
     card_frame, draw_spark_icon, empty_state, frame_outline, hot_number, pill_toggle,
@@ -91,6 +95,16 @@ struct WorkerResult {
     outcome: Result<Value, String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DialogAction {
+    OpenProject,
+    CreateProjectFolder,
+    SongAudio,
+    StoryboardHeroImage { scene: usize },
+    AddProjectAsset,
+    AssistantReferenceImage,
+}
+
 pub struct MagicApp {
     pub session: Session,
     pub view: ViewMode,
@@ -147,6 +161,14 @@ pub struct MagicApp {
     // Optional loopback `--control` receiver
     control_rx: Option<Receiver<ControlRequest>>,
     quit_requested: bool,
+
+    // Non-blocking native file dialogs (`craft-dialogs`)
+    #[cfg(not(target_arch = "wasm32"))]
+    dialogs: craft_dialogs::Dialogs<DialogAction>,
+    #[cfg(not(target_arch = "wasm32"))]
+    repaint_ctx: Arc<OnceLock<Context>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_storyboard_slot: Option<String>,
 }
 
 impl MagicApp {
@@ -159,6 +181,17 @@ impl MagicApp {
         };
         let mut assistant = AssistantDrawer::default();
         assistant.refresh_from_session(&mut session);
+        #[cfg(not(target_arch = "wasm32"))]
+        let repaint_ctx: Arc<OnceLock<Context>> = Arc::new(OnceLock::new());
+        #[cfg(not(target_arch = "wasm32"))]
+        let dialogs = {
+            let wake_ctx = Arc::clone(&repaint_ctx);
+            craft_dialogs::Dialogs::new(Arc::new(move || {
+                if let Some(ctx) = wake_ctx.get() {
+                    ctx.request_repaint();
+                }
+            }))
+        };
         let mut app = Self {
             session,
             view: initial_view,
@@ -199,6 +232,12 @@ impl MagicApp {
             busy_command: None,
             control_rx: None,
             quit_requested: false,
+            #[cfg(not(target_arch = "wasm32"))]
+            dialogs,
+            #[cfg(not(target_arch = "wasm32"))]
+            repaint_ctx,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_storyboard_slot: None,
         };
         app.refresh_all();
         app
@@ -345,9 +384,11 @@ impl MagicApp {
     pub fn run_command(&mut self, ctx: &Context, id: &str, params: Value) {
         let is_long = magic::find_command(id).is_some_and(|c| c.long_running);
         if is_long && self.busy_command.is_none() {
-            let mut bg_session = Session::default();
-            bg_session.project_path = self.session.project_path.clone();
-            bg_session.project_assets = self.session.project_assets.clone();
+            let mut bg_session = Session {
+                project_path: self.session.project_path.clone(),
+                project_assets: self.session.project_assets.clone(),
+                ..Session::default()
+            };
             let tx = self.worker_tx.clone();
             let ctx_clone = ctx.clone();
             let id_owned = id.to_owned();
@@ -402,23 +443,23 @@ impl MagicApp {
                     self.assistant.prepared_markdown = md.to_owned();
                 }
             }
-            "scribbles.generate"
-            | "scribbles.new"
-            | "scribbles.image"
-            | "scribbles.sheet"
-            | "scribbles.poses"
-            | "scribbles.actions"
-            | "scribbles.custom" => {
+            "scribbles.generate" | "scribbles.new" | "scribbles.image" | "scribbles.sheet"
+            | "scribbles.poses" | "scribbles.actions" | "scribbles.custom" => {
                 self.assistant.last_receipt = Some(val);
                 if let Some(path) = self.session.project_path.clone() {
-                    let _ = self.session.execute("project.open", json!({ "path": path }));
+                    let _ = self
+                        .session
+                        .execute("project.open", json!({ "path": path }));
                 }
                 self.refresh_all();
             }
             cmd if cmd.starts_with("storyboard.") => {
                 self.refresh_storyboard();
             }
-            cmd if cmd.starts_with("song.") || cmd.starts_with("words.") || cmd.starts_with("workshop.") => {
+            cmd if cmd.starts_with("song.")
+                || cmd.starts_with("words.")
+                || cmd.starts_with("workshop.") =>
+            {
                 self.refresh_lyrics();
                 self.refresh_storyboard();
             }
@@ -444,6 +485,48 @@ impl MagicApp {
             }
             _ => {
                 self.refresh_all();
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn poll_dialogs(&mut self, ctx: &Context) {
+        for (action, answer) in self.dialogs.take_answers() {
+            match answer {
+                craft_dialogs::Answer::Paths(paths) => {
+                    if let Some(path) = paths.into_iter().next() {
+                        let display = path.display().to_string();
+                        match action {
+                            DialogAction::OpenProject => {
+                                self.run_command(ctx, "project.open", json!({ "path": display }));
+                            }
+                            DialogAction::CreateProjectFolder => {
+                                self.new_project_path = display;
+                            }
+                            DialogAction::SongAudio => {
+                                self.song_audio_path = display;
+                            }
+                            DialogAction::StoryboardHeroImage { scene: _ } => {
+                                let slot = self
+                                    .pending_storyboard_slot
+                                    .take()
+                                    .unwrap_or_else(|| "hero_image".into());
+                                self.slot_images.insert(slot, display);
+                            }
+                            DialogAction::AddProjectAsset => {
+                                self.new_project_audio = display;
+                            }
+                            DialogAction::AssistantReferenceImage => {
+                                self.assistant.reference_path = display;
+                            }
+                        }
+                    }
+                }
+                craft_dialogs::Answer::Unavailable(why) => {
+                    self.last_error = Some(why.clone());
+                    self.status_line = format!("File dialog unavailable: {why}");
+                }
+                craft_dialogs::Answer::Cancelled | craft_dialogs::Answer::Message(_) => {}
             }
         }
     }
@@ -527,7 +610,9 @@ impl MagicApp {
                         return Err(format!("Unknown UI element `{target}`"));
                     }
                 }
-                Ok(json!({ "ok": true, "view": self.view.id(), "assistant_open": self.assistant.open }))
+                Ok(
+                    json!({ "ok": true, "view": self.view.id(), "assistant_open": self.assistant.open }),
+                )
             }
             "ui.set" => {
                 let id = params["id"].as_str().unwrap_or_default();
@@ -550,7 +635,10 @@ impl MagicApp {
                 Ok(json!({ "ok": true, "quitting": true }))
             }
             other => {
-                let res = self.session.execute(other, params).map_err(|e| e.to_string())?;
+                let res = self
+                    .session
+                    .execute(other, params)
+                    .map_err(|e| e.to_string())?;
                 self.handle_command_success(other, res.clone());
                 Ok(res)
             }
@@ -574,7 +662,8 @@ impl MagicApp {
         let bytes = std::fs::read(path).ok()?;
         let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
         let size = [decoded.width() as usize, decoded.height() as usize];
-        let color_image = ColorImage::from_rgba_unmultiplied(size, decoded.as_flat_samples().as_slice());
+        let color_image =
+            ColorImage::from_rgba_unmultiplied(size, decoded.as_flat_samples().as_slice());
         let handle = ctx.load_texture(
             path.to_string_lossy(),
             color_image,
@@ -673,15 +762,12 @@ impl MagicApp {
                     ui.heading(RichText::new("Projects").size(18.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         #[cfg(not(target_arch = "wasm32"))]
-                        if primary_button(ui, "Open .magic Project…").clicked()
-                            && let Some(file) = rfd::FileDialog::new()
-                                .add_filter("Magic Studio Project", &["magic"])
-                                .pick_file()
-                        {
-                            self.run_command(
-                                ctx,
-                                "project.open",
-                                json!({ "path": file.display().to_string() }),
+                        if primary_button(ui, "Open .magic Project…").clicked() {
+                            self.dialogs.ask(
+                                craft_dialogs::FileDialog::open()
+                                    .title("Open Magic Studio Project")
+                                    .filter("Magic Studio Project", &["magic"]),
+                                DialogAction::OpenProject,
                             );
                         }
                         if secondary_button(ui, "Refresh Catalog").clicked() {
@@ -697,13 +783,14 @@ impl MagicApp {
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Project File", |ui| {
                             #[cfg(not(target_arch = "wasm32"))]
-                            if secondary_button(ui, "Save As…").clicked()
-                                && let Some(file) = rfd::FileDialog::new()
-                                    .set_file_name("song.magic")
-                                    .add_filter("Magic Project", &["magic"])
-                                    .save_file()
-                            {
-                                self.new_project_path = file.display().to_string();
+                            if secondary_button(ui, "Save As…").clicked() {
+                                self.dialogs.ask(
+                                    craft_dialogs::FileDialog::save()
+                                        .title("Create Magic Project")
+                                        .file_name("song.magic")
+                                        .filter("Magic Project", &["magic"]),
+                                    DialogAction::CreateProjectFolder,
+                                );
                             }
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.new_project_path)
@@ -712,7 +799,7 @@ impl MagicApp {
                             );
                         });
                         prop_row(ui, "Mode", |ui| {
-                            egui::ComboBox::from_id_salt("new_project_mode_combo")
+                            craft_ui::ComboBox::from_id_salt("new_project_mode_combo")
                                 .selected_text(&self.new_project_mode)
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(
@@ -729,12 +816,13 @@ impl MagicApp {
                         });
                         prop_row(ui, "Audio (opt)", |ui| {
                             #[cfg(not(target_arch = "wasm32"))]
-                            if secondary_button(ui, "Browse…").clicked()
-                                && let Some(file) = rfd::FileDialog::new()
-                                    .add_filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"])
-                                    .pick_file()
-                            {
-                                self.new_project_audio = file.display().to_string();
+                            if secondary_button(ui, "Browse…").clicked() {
+                                self.dialogs.ask(
+                                    craft_dialogs::FileDialog::open()
+                                        .title("Select Project Audio")
+                                        .filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"]),
+                                    DialogAction::AddProjectAsset,
+                                );
                             }
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.new_project_audio)
@@ -786,9 +874,7 @@ impl MagicApp {
                                                 .strong()
                                                 .color(TEXT_PRIMARY),
                                         );
-                                        ui.label(
-                                            RichText::new(&path).size(11.0).color(TEXT_MUTED),
-                                        );
+                                        ui.label(RichText::new(&path).size(11.0).color(TEXT_MUTED));
                                     });
                                     ui.with_layout(
                                         egui::Layout::right_to_left(egui::Align::Center),
@@ -843,7 +929,9 @@ impl MagicApp {
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if secondary_button(ui, "+ Scene")
-                            .on_hover_text("Add a new scene page from the template (`storyboard.add`)")
+                            .on_hover_text(
+                                "Add a new scene page from the template (`storyboard.add`)",
+                            )
                             .clicked()
                         {
                             self.run_command(
@@ -1048,14 +1136,16 @@ impl MagicApp {
                                                     );
                                                 }
                                                 #[cfg(not(target_arch = "wasm32"))]
-                                                if ui.small_button("Browse…").clicked()
-                                                    && let Some(file) = rfd::FileDialog::new()
-                                                        .add_filter("Image", &["png", "jpg", "jpeg"])
-                                                        .pick_file()
-                                                    && let Some(slot_val) =
-                                                        self.slot_images.get_mut(&k)
-                                                {
-                                                    *slot_val = file.display().to_string();
+                                                if ui.small_button("Browse…").clicked() {
+                                                    self.pending_storyboard_slot = Some(k.clone());
+                                                    self.dialogs.ask(
+                                                        craft_dialogs::FileDialog::open()
+                                                            .title("Select Storyboard Image")
+                                                            .filter("Image", &["png", "jpg", "jpeg"]),
+                                                        DialogAction::StoryboardHeroImage {
+                                                            scene: current_scene.unwrap_or(1),
+                                                        },
+                                                    );
                                                 }
                                             },
                                         );
@@ -1198,12 +1288,13 @@ impl MagicApp {
                                 );
                             }
                             #[cfg(not(target_arch = "wasm32"))]
-                            if secondary_button(ui, "Browse…").clicked()
-                                && let Some(file) = rfd::FileDialog::new()
-                                    .add_filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"])
-                                    .pick_file()
-                            {
-                                self.song_audio_path = file.display().to_string();
+                            if secondary_button(ui, "Browse…").clicked() {
+                                self.dialogs.ask(
+                                    craft_dialogs::FileDialog::open()
+                                        .title("Select Song Audio")
+                                        .filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"]),
+                                    DialogAction::SongAudio,
+                                );
                             }
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.song_audio_path)
@@ -1212,13 +1303,18 @@ impl MagicApp {
                         });
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
-                            if secondary_button(ui, "Analyze Song Beats (`audio.analyze`)").clicked() {
+                            if secondary_button(ui, "Analyze Song Beats (`audio.analyze`)")
+                                .clicked()
+                            {
                                 self.run_command(ctx, "audio.analyze", json!({}));
                             }
-                            if secondary_button(ui, "Design Sung Lines (`words.design`)").clicked() {
+                            if secondary_button(ui, "Design Sung Lines (`words.design`)").clicked()
+                            {
                                 self.run_command(ctx, "words.design", json!({}));
                             }
-                            if secondary_button(ui, "Letter in EffectCraft (`words.letter`)").clicked() {
+                            if secondary_button(ui, "Letter in EffectCraft (`words.letter`)")
+                                .clicked()
+                            {
                                 self.run_command(ctx, "words.letter", json!({}));
                             }
                         });
@@ -1353,7 +1449,7 @@ impl MagicApp {
                             );
                         });
                         prop_row(ui, "View", |ui| {
-                            egui::ComboBox::from_id_salt("char_view_combo")
+                            craft_ui::ComboBox::from_id_salt("char_view_combo")
                                 .selected_text(&self.selected_view)
                                 .show_ui(ui, |ui| {
                                     for v in ["front", "back", "side"] {
@@ -1412,7 +1508,7 @@ impl MagicApp {
                     ui.add_space(4.0);
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Action", |ui| {
-                            egui::ComboBox::from_id_salt("char_action_combo")
+                            craft_ui::ComboBox::from_id_salt("char_action_combo")
                                 .selected_text(&self.anim_action)
                                 .show_ui(ui, |ui| {
                                     for a in [
@@ -1425,11 +1521,7 @@ impl MagicApp {
                                         "turn",
                                         "wave",
                                     ] {
-                                        ui.selectable_value(
-                                            &mut self.anim_action,
-                                            a.to_owned(),
-                                            a,
-                                        );
+                                        ui.selectable_value(&mut self.anim_action, a.to_owned(), a);
                                     }
                                 });
                         });
@@ -1629,13 +1721,17 @@ impl MagicApp {
 }
 
 impl eframe::App for MagicApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = self.repaint_ctx.set(ctx.clone());
         let ctx = &ctx;
         if !self.theme_applied {
             theme::apply(ctx);
             self.theme_applied = true;
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.poll_dialogs(ctx);
         self.poll_worker();
         self.poll_control(ctx);
 
@@ -1710,6 +1806,16 @@ impl eframe::App for MagicApp {
             if let Some((cmd_id, cmd_params)) = queued_cmd {
                 self.run_command(ctx, &cmd_id, cmd_params);
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            if self.assistant.browse_reference_requested {
+                self.assistant.browse_reference_requested = false;
+                self.dialogs.ask(
+                    craft_dialogs::FileDialog::open()
+                        .title("Select Reference PNG")
+                        .filter("PNG Image", &["png"]),
+                    DialogAction::AssistantReferenceImage,
+                );
+            }
         }
 
         // Main Workspace View
@@ -1726,5 +1832,8 @@ impl eframe::App for MagicApp {
                 ViewMode::Animation => self.show_animation_view(ctx, ui),
                 ViewMode::Studio => self.show_studio_view(ctx, ui),
             });
+
+        #[cfg(not(target_arch = "wasm32"))]
+        self.dialogs.show_pending(Some(&*frame));
     }
 }

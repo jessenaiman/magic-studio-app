@@ -26,8 +26,7 @@ pub fn section_header(ui: &mut Ui, title: &str, default_open: bool) -> bool {
     } else {
         BG_ELEVATED
     };
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(4), bg);
+    ui.painter().rect_filled(rect, CornerRadius::same(4), bg);
 
     // Draw chevron with Painter line primitives
     let cx = rect.left() + 11.0;
@@ -74,8 +73,11 @@ pub fn prop_row<R>(ui: &mut Ui, label: &str, add_contents: impl FnOnce(&mut Ui) 
                 ui.label(RichText::new(label).color(TEXT_SECONDARY).size(11.5));
             },
         );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add_contents)
-            .inner
+        ui.with_layout(
+            egui::Layout::right_to_left(egui::Align::Center),
+            add_contents,
+        )
+        .inner
     })
     .inner
 }
@@ -110,9 +112,11 @@ pub fn hot_number(
 
 /// Compact pill toggle button used for mode switchers and drawers.
 pub fn pill_toggle(ui: &mut Ui, selected: bool, label: &str, accent: Color32) -> Response {
-    let text = RichText::new(label)
-        .size(12.0)
-        .color(if selected { Color32::WHITE } else { TEXT_PRIMARY });
+    let text = RichText::new(label).size(12.0).color(if selected {
+        Color32::WHITE
+    } else {
+        TEXT_PRIMARY
+    });
     let btn = egui::Button::new(text)
         .fill(if selected {
             accent.gamma_multiply(0.35)

@@ -49,7 +49,11 @@ enum Profile {
 const RETIRED: &[&str] = &["magic-shell", "python-magic-cli"];
 /// Tracked runtime resources the app reads at run time.
 const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/", "apps/magic-cli/ui/"];
-const RESOURCE_FILES: &[&str] = &["apps/magic-gui/agent.md", "SOURCE-ATTRIBUTION.md", "LICENSE"];
+const RESOURCE_FILES: &[&str] = &[
+    "apps/magic-gui/agent.md",
+    "SOURCE-ATTRIBUTION.md",
+    "LICENSE",
+];
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -218,7 +222,9 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
     if build.join("magic").is_file() && build.join("magic-cli").is_file() {
         Ok(build)
     } else {
-        Err(format!("Build first: cargo build -p magic-gui -p magic-cli{flag}"))
+        Err(format!(
+            "Build first: cargo build -p magic-gui -p magic-cli{flag}"
+        ))
     }
 }
 

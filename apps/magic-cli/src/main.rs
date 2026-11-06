@@ -236,10 +236,7 @@ enum SbCmd {
 ///
 /// `document` is the storyboard itself, given once for the whole `storyboard` group; a command's
 /// own `--path` wins over it.
-fn storyboard_params(
-    command: &SbCmd,
-    document: Option<&str>,
-) -> Result<(String, Value), String> {
+fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String, Value), String> {
     let mut p = serde_json::Map::new();
     let mut put = |key: &str, value: Option<Value>| {
         if let Some(value) = value {
@@ -500,12 +497,7 @@ fn parse_params(tokens: &[String], raw: Option<&str>) -> Result<Value, String> {
     Ok(params)
 }
 
-fn exec_one(
-    s: &mut magic::Session,
-    id: &str,
-    params: Value,
-    dry: bool,
-) -> Result<Value, String> {
+fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Result<Value, String> {
     if dry {
         return Ok(json!({ "dry_run": true, "id": id, "params": params }));
     }

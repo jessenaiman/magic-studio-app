@@ -283,9 +283,7 @@ pub(crate) fn ensure_video_target_project(
 }
 
 pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> Result<f64> {
-    audio.map_or(Ok(30.0), |path| {
-        crate::film::media_duration(path, false)
-    })
+    audio.map_or(Ok(30.0), |path| crate::film::media_duration(path, false))
 }
 
 /// The official caption component bound to timed words (`{text,start,end}`) shown in the given index groups.

@@ -32,6 +32,7 @@ vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft", default
 
 # Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking)
 craft-atomic = { git = "https://github.com/storytold/craft-libs" }
+craft-dialogs = { git = "https://github.com/storytold/craft-libs" }
 craft-doc = { git = "https://github.com/storytold/craft-libs" }
 craft-docpath = { git = "https://github.com/storytold/craft-libs" }
 craft-ecproj-format = { git = "https://github.com/storytold/craft-libs" }
@@ -41,16 +42,11 @@ craft-settings = { git = "https://github.com/storytold/craft-libs" }
 craft-ui = { git = "https://github.com/storytold/craft-libs", features = ["serde", "native-windows"] }
 craft-update = { git = "https://github.com/storytold/craft-libs", features = ["egui"] }
 craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs" }
-craft-web-host = { git = "https://github.com/storytold/craft-libs" }
 
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
 craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }
 craft-ai-core = { git = "https://github.com/storytold/craft-ai-integrations" }
-craft-ai-declarative = { git = "https://github.com/storytold/craft-ai-integrations" }
 craft-ai-egui = { git = "https://github.com/storytold/craft-ai-integrations" }
-craft-ai-features = { git = "https://github.com/storytold/craft-ai-integrations" }
-craft-ai-native = { git = "https://github.com/storytold/craft-ai-integrations" }
-craft-ai-openai = { git = "https://github.com/storytold/craft-ai-integrations" }
 
 # CLI, TUI, MCP, and system foundations
 clap = { version = "4.6", features = ["derive", "env"] }
@@ -64,11 +60,12 @@ sha2 = "0.10"
 thiserror = "2"
 ureq = { version = "3.5.0", default-features = false, features = ["rustls", "json"] }
 
-# Desktop & Web egui UI packages (`crates/ui-egui`, `apps/magic-gui`, `apps/magic-web`)
+# Desktop & Web egui UI packages (`crates/ui-egui`, `apps/magic`, `apps/magic-web`)
 eframe = { version = "0.37", default-features = false }
 egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
 egui_extras = { version = "0.37", default-features = false }
 open = "5"
+raw-window-handle = "0.6"
 rfd = "0.17"
 subtle = "2.6"
 

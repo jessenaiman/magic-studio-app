@@ -63,8 +63,7 @@ fn resolve_config(p: &Value) -> Result<ImageConfig> {
         .or_else(|| env_nonempty("magic_IMAGE_MODEL"))
         .or_else(|| nonempty_str(img_settings.get("model")));
     if let Some(ref m) = model {
-        craft_ai_core::ModelId::new(m.as_str())
-            .map_err(|_| invalid("Invalid model identifier"))?;
+        craft_ai_core::ModelId::new(m.as_str()).map_err(|_| invalid("Invalid model identifier"))?;
     }
     let endpoint =
         env_nonempty("magic_IMAGE_ENDPOINT").or_else(|| nonempty_str(img_settings.get("endpoint")));

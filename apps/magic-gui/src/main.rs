@@ -30,7 +30,10 @@ use subtle::ConstantTimeEq;
 mod lyrics;
 
 #[derive(Parser)]
-#[command(name = "magic", about = "Magic Studio desktop app (Craft egui edition)")]
+#[command(
+    name = "magic",
+    about = "Magic Studio desktop app (Craft egui edition)"
+)]
 struct Cli {
     /// Open this `.magic` project at launch
     #[arg(long)]

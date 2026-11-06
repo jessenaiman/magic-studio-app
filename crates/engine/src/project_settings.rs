@@ -13,9 +13,15 @@ use std::{
 #[derive(Serialize, Deserialize, Default, Clone, PartialEq)]
 #[serde(default)]
 struct MagicPrefs {
+    paths: PathsSection,
+    tools: BTreeMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, PartialEq)]
+#[serde(default)]
+struct PathsSection {
     projects_root: Option<String>,
     characters_root: Option<String>,
-    tools: BTreeMap<String, String>,
 }
 
 impl Settings for MagicPrefs {
@@ -70,7 +76,7 @@ fn configured_root(settings: &Value) -> Result<PathBuf> {
         );
     }
     let (store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
-    if let Some(ref root) = store.get().projects_root {
+    if let Some(ref root) = store.get().paths.projects_root {
         return absolute(root);
     }
     crate::workspace::user_data_dir()
@@ -88,12 +94,12 @@ pub(crate) fn stored_settings() -> Value {
     let (store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
     let prefs = store.get();
     if val.get("projects_root").is_none()
-        && let Some(ref root) = prefs.projects_root
+        && let Some(ref root) = prefs.paths.projects_root
     {
         val["projects_root"] = json!(root);
     }
     if val.get("characters_root").is_none()
-        && let Some(ref chars) = prefs.characters_root
+        && let Some(ref chars) = prefs.paths.characters_root
     {
         val["characters_root"] = json!(chars);
     }
@@ -166,7 +172,7 @@ fn persist_root(value: &Value) -> Result<()> {
     write_settings_file(&mut output, &settings)?;
     let (mut store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
     store.update(|prefs| {
-        prefs.projects_root = Some(root.to_string_lossy().into_owned());
+        prefs.paths.projects_root = Some(root.to_string_lossy().into_owned());
     });
     let _ = store.flush();
     Ok(())
