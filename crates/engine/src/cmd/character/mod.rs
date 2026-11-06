@@ -379,7 +379,26 @@ fn render_target(s: &Session, p: &Value) -> Result<(PathBuf, PathBuf, String)> {
 /// Render a time range as a PNG sequence (canvas playback) or a ProRes 4444 clip with alpha
 /// (for the film), in one EffectCraft render.
 pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
-    let (base, project, comp) = render_target(s, p)?;
+    let external = p["effectcraft_project"].as_str();
+    let (base, project, name, comp) = if let Some(path) = external {
+        let dir = crate::workshop::project_dir(s)?;
+        let project = dir.join(path).canonicalize()?;
+        if !project
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
+        {
+            return Err(bad("Choose an EffectCraft .ecproj file"));
+        }
+        let name = project
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("animation");
+        let name = crate::workspace::sanitize_asset_id(name);
+        (dir.join("film"), project, name, p["comp"].clone())
+    } else {
+        let (base, project, comp) = render_target(s, p)?;
+        (base, project, comp.clone(), json!(comp))
+    };
     let start = p["start"].as_f64().unwrap_or(0.0).max(0.0);
     let end = p["end"]
         .as_f64()
@@ -387,7 +406,15 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         .unwrap_or(start + 1.0);
     let fps = p["fps"].as_u64().unwrap_or(24).clamp(1, 60);
     let clip = p["format"].as_str() == Some("clip");
-    let name = format!("{comp}-{start:.2}-{end:.2}");
+    let name = if external.is_some() {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| bad(error.to_string()))?
+            .as_nanos();
+        format!("{name}-{timestamp}")
+    } else {
+        format!("{name}-{start:.2}-{end:.2}")
+    };
     let (dir, out) = if clip {
         let dir = base.join("clips");
         (dir.clone(), dir.join(format!("{name}.mov")))

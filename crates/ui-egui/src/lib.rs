@@ -180,6 +180,8 @@ pub struct MagicApp {
     studio_open_error: Option<(PathBuf, String)>,
     #[cfg(not(target_arch = "wasm32"))]
     studio_rendered_animation: Option<(PathBuf, PathBuf)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pending_studio_render: Option<PathBuf>,
 
     // Texture cache (`path` -> `(mtime_len, TextureHandle)`)
     textures: HashMap<PathBuf, (u64, TextureHandle)>,
@@ -272,6 +274,8 @@ impl MagicApp {
             studio_open_error: None,
             #[cfg(not(target_arch = "wasm32"))]
             studio_rendered_animation: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            pending_studio_render: None,
             textures: HashMap::new(),
             worker_tx,
             worker_rx,
@@ -577,14 +581,20 @@ impl MagicApp {
             }
             cmd if cmd.starts_with("character.") || cmd.starts_with("animation.") => {
                 #[cfg(not(target_arch = "wasm32"))]
-                if id == "character.render"
-                    && let Some(project) = self.session.project_path.as_ref()
-                    && let Some(clip) = val["clip"].as_str().map(PathBuf::from)
-                    && project
-                        .parent()
-                        .is_some_and(|parent| clip.starts_with(parent))
-                {
-                    self.studio_rendered_animation = Some((project.clone(), clip));
+                if id == "character.render" {
+                    let pending = self.pending_studio_render.take();
+                    if let Some(project) = self.session.project_path.as_ref()
+                        && let Some(clip) = val["clip"].as_str().map(PathBuf::from)
+                        && project
+                            .parent()
+                            .is_some_and(|parent| clip.starts_with(parent))
+                    {
+                        self.studio_rendered_animation = Some((project.clone(), clip.clone()));
+                        if pending.as_ref() == Some(project) {
+                            let result = self.import_studio_animation(&clip);
+                            self.set_studio_status(result);
+                        }
+                    }
                 }
                 if let Some(frame_path) = val["path"]
                     .as_str()
@@ -666,6 +676,10 @@ impl MagicApp {
             match done.outcome {
                 Ok(val) => self.handle_command_success(&done.id, val),
                 Err(err) => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if done.id == "character.render" {
+                        self.pending_studio_render = None;
+                    }
                     self.last_error = Some(err.clone());
                     self.status_line = format!("{} failed: {err}", done.id);
                 }
@@ -814,6 +828,10 @@ impl MagicApp {
                     "drawer-scribbles" | "scribbles" => {
                         self.assistant.open = true;
                         self.assistant.active_tab = AssistantTab::Scribbles;
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    "animation-send-to-studio" if self.view == ViewMode::Animation => {
+                        self.send_active_animation_to_studio(ctx)?;
                     }
                     id if self.view == ViewMode::Animation
                         && id.starts_with("animation-asset-") =>
@@ -1679,7 +1697,27 @@ impl MagicApp {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn effectcraft_animation_toolbar(&mut self, ui: &mut Ui) {
+    fn send_active_animation_to_studio(&mut self, ctx: &Context) -> Result<(), String> {
+        if self.busy_command.is_some() {
+            return Err("Wait for the current operation before rendering.".into());
+        }
+        let params = self
+            .effectcraft_animation
+            .as_ref()
+            .ok_or("Open an EffectCraft project first.")?
+            .studio_render_request()?;
+        self.pending_studio_render = Some(
+            self.session
+                .project_path
+                .clone()
+                .ok_or("Open a Magic project first.")?,
+        );
+        self.run_command(ctx, "character.render", params);
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn effectcraft_animation_toolbar(&mut self, ctx: &Context, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             let open = secondary_button(ui, "Open EffectCraft Project…");
             self.auto.add_response(
@@ -1744,6 +1782,14 @@ impl MagicApp {
                     };
                 }
                 ui.label(composition.name());
+                let send = secondary_button(ui, "Render to Studio");
+                self.auto
+                    .add_response("animation-send-to-studio", &send, "Render to Studio");
+                if send.clicked()
+                    && let Err(error) = self.send_active_animation_to_studio(ctx)
+                {
+                    self.set_studio_status(Err(error));
+                }
             }
         });
     }
@@ -2017,7 +2063,7 @@ impl MagicApp {
             .show(ui, |ui| {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    self.effectcraft_animation_toolbar(ui);
+                    self.effectcraft_animation_toolbar(ctx, ui);
                     if let Some(composition) = self.effectcraft_animation.as_mut() {
                         composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Composition);
                         return;
@@ -2150,6 +2196,14 @@ impl MagicApp {
 }
 
 impl eframe::App for MagicApp {
+    fn on_exit(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.effectcraft_animation.take();
+            self.studio_film.take();
+        }
+    }
+
     fn raw_input_hook(&mut self, _ctx: &Context, raw_input: &mut egui::RawInput) {
         raw_input.events.append(&mut self.synthetic);
     }

@@ -84,6 +84,9 @@ impl StudioFilmcraft {
     }
 
     pub fn import_animation(&mut self, clip: &Path) -> Result<(), String> {
+        if self.is_dirty() {
+            return Err("Save the FilmCraft project before adding an animation.".into());
+        }
         if self.changed_on_disk() {
             return Err("FilmCraft project changed on disk. Reopen it before importing.".into());
         }
@@ -119,6 +122,12 @@ impl StudioFilmcraft {
 
     pub fn show_dialogs(&mut self, ctx: &Context) {
         panels::dialogs::show(&mut self.app, ctx);
+    }
+}
+
+impl Drop for StudioFilmcraft {
+    fn drop(&mut self) {
+        eframe::App::on_exit(&mut self.app);
     }
 }
 

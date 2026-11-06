@@ -1159,7 +1159,7 @@ fn specs_character() -> Vec<CommandSpec> {
             "Render Frames or a Clip (EffectCraft)",
             ["Animation"],
             None,
-            "{\"character\":\"id\",\"view\":\"front|back|side\",\"sprite\":\"optional sprite name instead of view\",\"start\":0,\"end\":1,\"fps\":24,\"format\":\"frames|clip\"}",
+            "{\"character\":\"id\",\"view\":\"front|back|side\",\"sprite\":\"optional sprite name instead of view\",\"effectcraft_project\":\"optional .ecproj instead of character\",\"comp\":\"optional EffectCraft composition ID or name\",\"start\":0,\"end\":1,\"fps\":24,\"format\":\"frames|clip\"}",
             always,
             crate::cmd::character::cmd_character_render
         ),
