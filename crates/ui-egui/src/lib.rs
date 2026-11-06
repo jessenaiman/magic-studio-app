@@ -115,6 +115,7 @@ pub enum WebWorkspacePage {
     Projects,
     Lyrics,
     Motion,
+    Studio,
 }
 
 /// The native webview host. egui reserves the rectangle and handles navigation.
@@ -526,6 +527,8 @@ impl MagicApp {
             let mut bg_session = Session {
                 project_path: self.session.project_path.clone(),
                 project_assets: self.session.project_assets.clone(),
+                video_project_path: self.session.video_project_path.clone(),
+                song_audio: self.session.song_audio.clone(),
                 ..Session::default()
             };
             let tx = self.worker_tx.clone();
@@ -918,6 +921,10 @@ impl MagicApp {
                     self.view = view;
                 }
                 Ok(result)
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.studio.toolbar" if self.view == ViewMode::Studio => {
+                self.studio_toolbar_command(ctx, &params)
             }
             #[cfg(not(target_arch = "wasm32"))]
             "ui.studio.import_animation" if self.view == ViewMode::Studio => {
@@ -2296,7 +2303,7 @@ impl MagicApp {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui, _frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
             empty_state(
                 ui,
@@ -2517,7 +2524,7 @@ impl eframe::App for MagicApp {
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
                 ViewMode::Animation => self.show_animation_view(ctx, ui),
                 ViewMode::Motion => self.show_motion_view(ctx, ui, frame),
-                ViewMode::Studio => self.show_studio_view(ctx, ui),
+                ViewMode::Studio => self.show_studio_view(ctx, ui, frame),
             });
 
         if !self.lyrics_visible

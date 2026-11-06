@@ -241,6 +241,7 @@ fn page_url(base: &str, page: WebWorkspacePage) -> String {
         WebWorkspacePage::Projects => "projects.html",
         WebWorkspacePage::Lyrics => "lyrics.html",
         WebWorkspacePage::Motion => "motion.html",
+        WebWorkspacePage::Studio => "studio.html",
     };
     format!("{base}/{file}")
 }

@@ -3,10 +3,10 @@ use std::time::SystemTime;
 
 use egui::{Context, Ui};
 use filmcraft_ui_egui::{FilmcraftApp, dock::PanelKind, panels};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{
-    DialogAction, MagicApp,
+    DialogAction, MagicApp, WebWorkspacePage,
     widgets::{empty_state, secondary_button},
 };
 
@@ -191,6 +191,120 @@ impl MagicApp {
         };
     }
 
+    pub(crate) fn studio_toolbar_command(
+        &mut self,
+        ctx: &Context,
+        params: &Value,
+    ) -> Result<Value, String> {
+        let project = self
+            .session
+            .project_path
+            .as_deref()
+            .ok_or("Open a Magic project first.")?;
+        let path = self
+            .studio_film_path()
+            .ok_or("No FilmCraft project path.")?;
+        let action = params["action"].as_str().unwrap_or("state");
+        let dirty = self
+            .studio_film
+            .as_ref()
+            .is_some_and(StudioFilmcraft::is_dirty);
+        if action == "state" {
+            return Ok(json!({
+                "project": project, "path": path, "exists": path.is_file(), "dirty": dirty,
+                "reload": self.studio_open_error.is_some(), "busy": self.busy_command,
+                "last_render": self.studio_rendered_animation.as_ref().is_some_and(|(owner, _)| owner == project),
+                "preview": self.film_state["preview"], "error": self.last_error, "status": self.status_line,
+            }));
+        }
+        if params["project"].as_str() != project.to_str() {
+            return Err("The open Magic project changed.".into());
+        }
+        if self.busy_command.is_some() {
+            return Err("Wait for the current operation to finish.".into());
+        }
+        let message = match action {
+            "create" => {
+                self.load_studio_film(&path, true)?;
+                self.refresh_studio();
+                "FilmCraft project ready."
+            }
+            "reload" => {
+                self.load_studio_film(&path, false)?;
+                "FilmCraft project reloaded."
+            }
+            "save" => {
+                self.studio_film
+                    .as_mut()
+                    .ok_or("No FilmCraft project open.")?
+                    .save()?;
+                self.refresh_studio();
+                "FilmCraft project saved."
+            }
+            "import" => {
+                if dirty {
+                    return Err("Save the FilmCraft project before importing an animation.".into());
+                }
+                self.dialogs.ask(
+                    craft_dialogs::FileDialog::open()
+                        .title("Import Rendered Animation")
+                        .filter("Video", &["mov", "mp4", "mkv", "webm"]),
+                    DialogAction::ImportStudioAnimation,
+                );
+                return Ok(json!({"ok": true}));
+            }
+            "add-last" => {
+                let clip = self
+                    .studio_rendered_animation
+                    .as_ref()
+                    .filter(|(owner, _)| owner == project)
+                    .map(|(_, clip)| clip.clone())
+                    .ok_or("No animation rendered for this project.")?;
+                let message = self.import_studio_animation(&clip)?;
+                self.set_status_result(Ok(message.clone()));
+                return Ok(json!({"ok": true, "status": message}));
+            }
+            "assemble" if !path.is_file() && !dirty => {
+                let result =
+                    self.execute_session_command("video.assemble", json!({"export": false}))?;
+                self.handle_command_success("video.assemble", result);
+                "FilmCraft timeline assembled."
+            }
+            "assemble" => return Err("This project already has a FilmCraft timeline.".into()),
+            "open" | "preview" | "export" => {
+                if dirty {
+                    return Err("Save the FilmCraft project first.".into());
+                }
+                if !path.is_file() {
+                    return Err("Create or assemble the FilmCraft project first.".into());
+                }
+                let command = match action {
+                    "open" => "video.open",
+                    "preview" => "video.preview",
+                    _ => "video.export",
+                };
+                if action == "open" {
+                    self.execute_session_command(command, json!({}))?;
+                    "Opened in FilmCraft."
+                } else {
+                    self.run_command(ctx, command, json!({}));
+                    return Ok(json!({"ok": true, "busy": self.busy_command}));
+                }
+            }
+            "open-preview" => {
+                let preview = self.film_state["preview"]["path"]
+                    .as_str()
+                    .filter(|path| Path::new(path).is_file())
+                    .ok_or("Render a film preview first.")?;
+                self.execute_session_command("workspace.open", json!({"path": preview}))?;
+                "Opened film preview."
+            }
+            _ => return Err(format!("Unknown Studio action `{action}`.")),
+        };
+        self.set_status_result(Ok(message.into()));
+        Ok(json!({"ok": true, "status": message}))
+    }
+
     fn studio_film_toolbar(&mut self, ui: &mut Ui, path: &Path) {
         ui.horizontal_wrapped(|ui| {
             if !path.is_file() && secondary_button(ui, "Create FilmCraft Project").clicked() {
@@ -229,7 +343,7 @@ impl MagicApp {
         });
     }
 
-    pub(crate) fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui) {
+    pub(crate) fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
             empty_state(
                 ui,
@@ -255,7 +369,26 @@ impl MagicApp {
         {
             self.studio_open_error = Some((path.clone(), error));
         }
-        self.studio_film_toolbar(ui, &path);
+        if let Some(host) = self.lyrics_host.as_mut() {
+            let rect = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 58.0), egui::Sense::hover())
+                .0;
+            let project = self
+                .session
+                .project_path
+                .as_ref()
+                .map(|path| path.to_string_lossy());
+            host.show(
+                frame,
+                ctx,
+                rect,
+                project.as_deref().unwrap_or_default(),
+                WebWorkspacePage::Studio,
+            );
+            self.lyrics_visible = true;
+        } else {
+            self.studio_film_toolbar(ui, &path);
+        }
         if let Some((failed, error)) = self.studio_open_error.as_ref()
             && failed == &path
         {
