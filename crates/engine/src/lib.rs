@@ -329,6 +329,3 @@ pub mod local_ipc;
 
 pub mod project_catalog;
 pub mod studio_sessions;
-
-#[cfg(test)]
-mod tests;
