@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::cmd::film::video_target::ensure_video_target_project;
-use crate::project::cmd_project_add_asset;
-use crate::workshop::{
+use crate::cmd::project::cmd_project_add_asset;
+use crate::cmd::project::workshop::{
     ASSETS_DIR, IMAGE_EXTENSIONS, STORYBOARD_DIR, STORYBOARD_PDF, VIDEO_TARGETS, files_in,
     panel_files, project_dir, transcript_files, video_project_path, workshop_asset_files,
     workshop_status,
@@ -95,7 +95,7 @@ fn hyperframes_setup(s: &mut Session, params: &Value) -> Result<Value> {
         s,
         &json!({"resolve_video_cli":params["resolve_video_cli"]}),
     )?;
-    crate::project::write_project_file(s)?;
+    crate::cmd::project::write_project_file(s)?;
     Ok(json!({"ok":true,"video":video,"preview":preview}))
 }
 
@@ -126,7 +126,7 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
     let setup = hyperframes_setup(s, params);
     if setup.is_err() {
         restore_audio_state(s, previous);
-        crate::project::write_project_file(s)?;
+        crate::cmd::project::write_project_file(s)?;
     }
     setup
 }
@@ -145,7 +145,7 @@ pub fn cmd_workshop_set_target(s: &mut Session, params: &Value) -> Result<Value>
     s.video_target = target.into();
     // The new target's project replaces the old one; failing to scaffold it leaves none, never the previous target's.
     s.video_project_path = ensure_video_target_project(s, &dir, target).ok();
-    crate::project::write_project_file(s)?;
+    crate::cmd::project::write_project_file(s)?;
     workshop_status(s)
 }
 
@@ -264,7 +264,7 @@ fn connect_subjects(
             connected.push(id.to_string());
         }
     }
-    crate::project::write_project_file(s)?;
+    crate::cmd::project::write_project_file(s)?;
     Ok(connected)
 }
 
@@ -408,7 +408,7 @@ pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Val
         .and_then(Value::as_bool)
         .unwrap_or(true);
     s.draft_approved = approved;
-    crate::project::write_project_file(s)?;
+    crate::cmd::project::write_project_file(s)?;
     workshop_status(s)
 }
 
@@ -500,7 +500,7 @@ pub fn cmd_workshop_remove(s: &mut Session, params: &Value) -> Result<Value> {
     let path = resolve_workspace_path(s, raw);
     if s.song_audio.as_ref() == Some(&path) {
         s.song_audio = None;
-        crate::project::write_project_file(s)?;
+        crate::cmd::project::write_project_file(s)?;
         let mut status = workshop_status(s)?;
         status["unlinked"] = json!(path);
         return Ok(status);
@@ -523,7 +523,7 @@ pub fn cmd_workshop_remove(s: &mut Session, params: &Value) -> Result<Value> {
     )?;
     if path == dir.join(STORYBOARD_DIR).join(STORYBOARD_PDF) {
         s.draft_approved = false;
-        crate::project::write_project_file(s)?;
+        crate::cmd::project::write_project_file(s)?;
     }
     let mut status = workshop_status(s)?;
     status["trashed"] = json!(path);

@@ -1,5 +1,11 @@
 //! Project lifecycle: `.magic` create/open/save/close and connect/load/remove/update assets.
 
+pub mod catalog;
+pub mod intake;
+pub mod settings;
+pub mod transcript;
+pub mod workshop;
+
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -196,7 +202,7 @@ pub(crate) fn project_file_path(s: &Session, params: &Value) -> Result<PathBuf> 
         .and_then(Value::as_str)
         .filter(|p| !p.trim().is_empty())
         .ok_or_else(|| EngineError::InvalidParams("missing project 'path'".into()))?;
-    let mut path = super::workspace::resolve_workspace_path(s, raw);
+    let mut path = crate::workspace::resolve_workspace_path(s, raw);
     if path
         .extension()
         .is_none_or(|e| !e.eq_ignore_ascii_case("magic"))
@@ -251,10 +257,10 @@ fn recent_warning(s: &Session, path: &Path, requested: bool) -> Vec<Value> {
     if !s.record_user_state || !requested {
         return Vec::new();
     }
-    match crate::project_catalog::record(&path.to_string_lossy()) {
+    match crate::cmd::project::catalog::record(&path.to_string_lossy()) {
         Ok(()) => Vec::new(),
         Err(error) => vec![
-            json!({"code":"recent_history_unavailable","stage":"update_recent_projects","path":crate::project_catalog::file(),"error":error,"project":path,"effect":"Project is available; Home recent history was not updated","next_action":"Continue using the returned project path; repair only the named navigation-history location if needed"}),
+            json!({"code":"recent_history_unavailable","stage":"update_recent_projects","path":crate::cmd::project::catalog::file(),"error":error,"project":path,"effect":"Project is available; Home recent history was not updated","next_action":"Continue using the returned project path; repair only the named navigation-history location if needed"}),
         ],
     }
 }
@@ -341,7 +347,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
     if params["skip_audio_setup"] == true {
         return steps;
     }
-    match super::workshop::cmd_workshop_set_audio(s, &json!({"path": raw_audio, "resolve_video_cli": params["resolve_video_cli"]})) {
+    match crate::cmd::project::workshop::cmd_workshop_set_audio(s, &json!({"path": raw_audio, "resolve_video_cli": params["resolve_video_cli"]})) {
         Ok(_) => steps.push(json!({"command": "workshop.set_audio", "status": "complete; HyperFrames initialized and audio linked"})),
         Err(e) => {
             steps.push(json!({"command": "workshop.set_audio", "status": "failed", "error": e.to_string()}));
@@ -353,7 +359,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
         .and_then(Value::as_str)
         .filter(|v| !v.is_empty())
     {
-        let _ = super::workshop::cmd_workshop_import_transcript(
+        let _ = crate::cmd::project::workshop::cmd_workshop_import_transcript(
             s,
             &json!({"path": t, "captions": params["captions"], "audiomap": params["audiomap"], "replace": true}),
         );
@@ -368,7 +374,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
             .get("model")
             .and_then(Value::as_str)
             .unwrap_or("large-v3");
-        match super::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]})) {
+        match crate::cmd::project::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]})) {
             Ok(_) => steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"})),
             Err(e) => steps.push(json!({"command": "audio.analyze", "status": "failed", "error": e.to_string()})),
         }
@@ -388,7 +394,7 @@ fn check_overwrite(path: &Path, overwrite: bool) -> Result<()> {
 
 fn project_audio_source(s: &Session, params: &Value) -> Result<Option<PathBuf>> {
     match params.get("audio").and_then(Value::as_str) {
-        Some(raw) => Ok(Some(super::workspace::song_audio_path(s, raw)?)),
+        Some(raw) => Ok(Some(crate::workspace::song_audio_path(s, raw)?)),
         None => Ok(None),
     }
 }
@@ -435,7 +441,7 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     };
     write_project_file(s)?;
     let warnings = recent_warning(s, &path, true);
-    let workshop = super::workshop::workshop_status(s)?;
+    let workshop = crate::cmd::project::workshop::workshop_status(s)?;
     Ok(json!({
         "ok": true,
         "project": path,
@@ -508,7 +514,7 @@ fn apply_opened_state(
     if let Some(target) = doc
         .pointer("/workshop/target")
         .and_then(Value::as_str)
-        .filter(|t| super::workshop::VIDEO_TARGETS.contains(t))
+        .filter(|t| crate::cmd::project::workshop::VIDEO_TARGETS.contains(t))
     {
         s.video_target = target.into();
     }
@@ -545,7 +551,7 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     apply_opened_state(s, &path, &doc, assets, owner)?;
     repair_opened_workshop_links(s, &path);
     let warnings = recent_warning(s, &path, params["record_recent"] != false);
-    let workshop = super::workshop::workshop_status(s)?;
+    let workshop = crate::cmd::project::workshop::workshop_status(s)?;
     Ok(json!({
         "ok": true,
         "project": path,
@@ -679,7 +685,7 @@ pub fn ensure_default_asset_project(s: &mut Session) -> Result<PathBuf> {
     if let Some(existing) = &s.project_path {
         return Ok(existing.clone());
     }
-    let root = super::workspace::workspace_root(s).join("exports/isolated_assets");
+    let root = crate::workspace::workspace_root(s).join("exports/isolated_assets");
     std::fs::create_dir_all(&root)?;
     let default_proj = root.join("isolated_assets.magic");
     if default_proj.is_file() {
@@ -717,7 +723,7 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
         .get("path")
         .or_else(|| params.get("manifest"))
         .and_then(Value::as_str)
-        .map(|p| super::workspace::resolve_workspace_path(s, p))
+        .map(|p| crate::workspace::resolve_workspace_path(s, p))
         .ok_or_else(|| EngineError::InvalidParams("missing 'path' parameter".into()))?;
     if !path.exists() {
         return Err(EngineError::InvalidParams(format!(
@@ -761,7 +767,7 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
     let explicit_id = params
         .get("id")
         .and_then(Value::as_str)
-        .and_then(super::workspace::try_sanitize_asset_id);
+        .and_then(crate::workspace::try_sanitize_asset_id);
     Ok(AssetRequest {
         path: Some(path),
         kind: kind.to_owned(),
@@ -951,8 +957,8 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     }
     let base_id = explicit_id
         .clone()
-        .or_else(|| super::workspace::try_sanitize_asset_id(&name))
-        .unwrap_or_else(|| super::workspace::sanitize_asset_id(&stem));
+        .or_else(|| crate::workspace::try_sanitize_asset_id(&name))
+        .unwrap_or_else(|| crate::workspace::sanitize_asset_id(&stem));
     // With a project open, an image from outside it is copied to its destination in the workshop
     // layout: a character's parts or a background. No destination, no copy: the asset is refused.
     let copy_into = copy_destination(s, params, &path)?;

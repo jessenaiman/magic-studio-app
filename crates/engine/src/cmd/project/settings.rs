@@ -34,7 +34,7 @@ fn invalid(message: impl Into<String>) -> EngineError {
 }
 
 fn file() -> Result<PathBuf> {
-    crate::project_catalog::file()
+    crate::cmd::project::catalog::file()
         .and_then(|p| p.parent().map(|p| p.join("settings.json")))
         .ok_or_else(|| {
             invalid("Magic Studio config directory unavailable; no recent-project fallback used")

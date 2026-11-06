@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::cmd::film::video_target::ensure_video_target_project;
-use crate::workshop::{project_dir, transcript_files, workshop_status};
+use crate::cmd::project::workshop::{project_dir, transcript_files, workshop_status};
 use crate::workspace::resolve_workspace_path;
 use crate::{EngineError, Result, Session};
 

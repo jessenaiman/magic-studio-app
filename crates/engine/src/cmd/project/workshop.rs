@@ -2,8 +2,8 @@
 //! studio intent, and unified project search.
 //!
 //! Related workshop submodules:
-//! - [`crate::workshop_intake`]: Audio/target linking, file intake, panel splitting, draft approval, and file catalog
-//! - [`crate::workshop_transcript`]: Stage 2 transcript validation, SRT captions, and HyperFrames audio/beat analysis
+//! - [`crate::cmd::project::intake`]: Audio/target linking, file intake, panel splitting, draft approval, and file catalog
+//! - [`crate::cmd::project::transcript`]: Stage 2 transcript validation, SRT captions, and HyperFrames audio/beat analysis
 //! - [`crate::cmd::storyboard`]: Storyboard chapters and DeckCraft PDF generation
 //! - [`crate::cmd::film::video_target`]: Video target scaffolding and preview servers
 
@@ -21,12 +21,12 @@ pub use crate::cmd::film::video_target::{
     cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start,
     cmd_video_server_stop, cmd_video_snapshot,
 };
-pub use crate::workshop_intake::{
+pub use crate::cmd::project::intake::{
     cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_remove,
     cmd_workshop_set_audio, cmd_workshop_set_target, cmd_workshop_split_panels,
 };
-pub use crate::workshop_transcript::{cmd_audio_analyze, cmd_workshop_import_transcript};
-pub(crate) use crate::workshop_transcript::{transcript_document, transcript_problems};
+pub use crate::cmd::project::transcript::{cmd_audio_analyze, cmd_workshop_import_transcript};
+pub(crate) use crate::cmd::project::transcript::{transcript_document, transcript_problems};
 
 /// Image file extensions recognized by the workshop.
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];

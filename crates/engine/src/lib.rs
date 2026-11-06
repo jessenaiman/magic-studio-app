@@ -82,21 +82,23 @@ pub mod image_generation;
 pub mod link_watch;
 mod mayhem;
 pub mod panels;
-pub mod project;
-pub mod project_settings;
 pub(crate) mod read_only_file;
 pub mod scribbles;
 pub mod session;
 pub mod skills_registry;
-pub mod workshop;
-pub mod workshop_intake;
-pub mod workshop_transcript;
 pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
 pub use craft_hub::{CraftHub, CraftTarget};
 pub use error::{EngineError, Result};
 pub use session::{Asset, ProjectAsset, Session};
+// Backwards-compatible re-exports for the project domain now under `cmd::project`.
+pub use cmd::project;
+pub use cmd::project::catalog as project_catalog;
+pub use cmd::project::intake as workshop_intake;
+pub use cmd::project::settings as project_settings;
+pub use cmd::project::transcript as workshop_transcript;
+pub use cmd::project::workshop;
 
 use serde_json::Value;
 
@@ -133,5 +135,4 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
 
 pub mod local_ipc;
 
-pub mod project_catalog;
 pub mod studio_sessions;

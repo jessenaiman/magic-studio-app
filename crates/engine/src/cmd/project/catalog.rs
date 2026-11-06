@@ -150,15 +150,17 @@ fn readiness(path: &Path) -> Value {
     let audio = doc["workshop"]["audio"]
         .as_str()
         .is_some_and(|a| !a.is_empty() && (dir.join(a).is_file() || Path::new(a).is_file()));
-    let transcript = crate::workshop::transcript_files(dir).iter().any(|path| {
-        crate::workshop::transcript_document(path)
-            .ok()
-            .is_some_and(|document| {
-                document["words"]
-                    .as_array()
-                    .is_some_and(|words| !words.is_empty())
-            })
-    });
+    let transcript = crate::cmd::project::workshop::transcript_files(dir)
+        .iter()
+        .any(|path| {
+            crate::cmd::project::workshop::transcript_document(path)
+                .ok()
+                .is_some_and(|document| {
+                    document["words"]
+                        .as_array()
+                        .is_some_and(|words| !words.is_empty())
+                })
+        });
     let editor_ready = dir.join("hyperframes/index.html").is_file()
         || doc["workshop"]["video_project"]
             .as_str()
