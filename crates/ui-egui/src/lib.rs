@@ -545,14 +545,52 @@ impl MagicApp {
             });
             return;
         }
-        match self.session.execute(id, params) {
+        match self.execute_session_command(id, params) {
             Ok(val) => self.handle_command_success(id, val),
             Err(err) => {
-                let msg = err.to_string();
-                self.last_error = Some(msg.clone());
-                self.status_line = format!("{id} failed: {msg}");
+                self.status_line = format!("{id} failed: {err}");
+                self.last_error = Some(err);
             }
         }
+    }
+
+    fn execute_session_command(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        let previous_project = self.session.project_path.clone();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let switches_project = matches!(id, "project.new" | "project.open" | "project.close")
+                || (id == "project.save" && params["path"].is_string());
+            if switches_project {
+                if self
+                    .effectcraft_animation
+                    .as_ref()
+                    .is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty)
+                {
+                    return Err(
+                        "Save the open EffectCraft composition before changing projects.".into(),
+                    );
+                }
+                if self
+                    .studio_film
+                    .as_ref()
+                    .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty)
+                {
+                    return Err("Save the open FilmCraft project before changing projects.".into());
+                }
+            }
+        }
+        let result = self.session.execute(id, params).map_err(|e| e.to_string());
+        if self.session.project_path != previous_project {
+            self.selected_character.clear();
+            self.character_frame_path = None;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.effectcraft_animation = None;
+                self.studio_film = None;
+                self.studio_open_error = None;
+            }
+        }
+        result
     }
 
     fn handle_command_success(&mut self, id: &str, val: Value) {
@@ -615,7 +653,7 @@ impl MagicApp {
                         self.studio_rendered_animation = Some((project.clone(), clip.clone()));
                         if pending.as_ref() == Some(project) {
                             let result = self.import_studio_animation(&clip);
-                            self.set_studio_status(result);
+                            self.set_status_result(result);
                         }
                     }
                 }
@@ -688,11 +726,12 @@ impl MagicApp {
                                 self.assistant.reference_path = display;
                             }
                             DialogAction::OpenEffectcraftComposition => {
-                                self.open_effectcraft_composition(&path);
+                                let result = self.open_effectcraft_composition(&path);
+                                self.set_status_result(result);
                             }
                             DialogAction::ImportStudioAnimation => {
                                 let result = self.import_studio_animation(&path);
-                                self.set_studio_status(result);
+                                self.set_status_result(result);
                             }
                             DialogAction::WebProjectPicker => {}
                         }
@@ -923,9 +962,7 @@ impl MagicApp {
                         && id.starts_with("animation-asset-") =>
                     {
                         let asset = id.trim_start_matches("animation-asset-");
-                        if !self.select_animation_asset(asset) {
-                            return Err(format!("Unknown Animation asset `{asset}`"));
-                        }
+                        self.select_animation_asset(asset)?;
                     }
                     _ => {
                         return Err(format!("Unknown UI element `{target}`"));
@@ -956,10 +993,7 @@ impl MagicApp {
                 Ok(json!({ "ok": true, "quitting": true }))
             }
             other => {
-                let res = self
-                    .session
-                    .execute(other, params)
-                    .map_err(|e| e.to_string())?;
+                let res = self.execute_session_command(other, params)?;
                 self.handle_command_success(other, res.clone());
                 Ok(res)
             }
@@ -1764,47 +1798,40 @@ impl MagicApp {
             });
     }
 
-    fn select_animation_asset(&mut self, id: &str) -> bool {
-        let Some(asset) = self
+    fn select_animation_asset(&mut self, id: &str) -> Result<(), String> {
+        let asset = self
             .session
             .project_assets
             .iter()
             .find(|asset| asset.id == id)
-        else {
-            return false;
-        };
-        self.selected_character = id.into();
+            .ok_or_else(|| format!("Unknown Animation asset `{id}`"))?;
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = asset.path.clone()
             && path
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
         {
-            self.open_effectcraft_composition(&path);
+            let message = self.open_effectcraft_composition(&path)?;
+            self.set_status_result(Ok(message));
+            return Ok(());
         }
-        true
+        self.selected_character.clone_from(&asset.id);
+        Ok(())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn open_effectcraft_composition(&mut self, path: &Path) {
+    fn open_effectcraft_composition(&mut self, path: &Path) -> Result<String, String> {
         if self
             .effectcraft_animation
             .as_ref()
             .is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty)
         {
-            self.status_line = "Save the open EffectCraft composition first.".into();
-            return;
+            return Err("Save the open EffectCraft composition first.".into());
         }
-        match animation_effectcraft::AnimationEffectcraft::open(path) {
-            Ok(composition) => {
-                self.effectcraft_animation = Some(composition);
-                self.status_line = format!("Opened {}", path.display());
-            }
-            Err(error) => {
-                self.status_line = format!("Open {}: {error}", path.display());
-                self.last_error = Some(self.status_line.clone());
-            }
-        }
+        let composition = animation_effectcraft::AnimationEffectcraft::open(path)
+            .map_err(|error| format!("Open {}: {error}", path.display()))?;
+        self.effectcraft_animation = Some(composition);
+        Ok(format!("Opened {}", path.display()))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1867,11 +1894,12 @@ impl MagicApp {
                                         .then(|| view["ecproj"].as_str())
                                         .flatten()
                                 });
-                        if let Some(path) = rig {
-                            self.open_effectcraft_composition(Path::new(path));
+                        let result = if let Some(path) = rig {
+                            self.open_effectcraft_composition(Path::new(path))
                         } else {
-                            self.status_line = "This character view has no EffectCraft rig.".into();
-                        }
+                            Err("This character view has no EffectCraft rig.".into())
+                        };
+                        self.set_status_result(result);
                     }
                     Err(error) => self.status_line = error.to_string(),
                 }
@@ -1899,7 +1927,7 @@ impl MagicApp {
                 if send.clicked()
                     && let Err(error) = self.send_active_animation_to_studio(ctx)
                 {
-                    self.set_studio_status(Err(error));
+                    self.set_status_result(Err(error));
                 }
             }
         });
@@ -2018,14 +2046,25 @@ impl MagicApp {
                                 );
                                 ui.horizontal(|ui| {
                                     status_badge(ui, &asset.kind, ACCENT);
-                                    let select = ui.small_button("Select");
+                                    let is_composition = asset.path.as_ref().is_some_and(|path| {
+                                        path.extension().is_some_and(|extension| {
+                                            extension.eq_ignore_ascii_case("ecproj")
+                                        })
+                                    });
+                                    let select = ui.small_button(if is_composition {
+                                        "Open Composition"
+                                    } else {
+                                        "Select"
+                                    });
                                     self.auto.add_response(
                                         &format!("animation-asset-{}", asset.id),
                                         &select,
                                         &asset.name,
                                     );
-                                    if select.clicked() {
-                                        self.select_animation_asset(&asset.id);
+                                    if select.clicked()
+                                        && let Err(error) = self.select_animation_asset(&asset.id)
+                                    {
+                                        self.last_error = Some(error);
                                     }
                                 });
                             });
@@ -2249,8 +2288,8 @@ impl MagicApp {
                 } else {
                     empty_state(
                         ui,
-                        "Select a Character and Sample Frame",
-                        "Use Scribbles to draw a turnaround/pose sheet or click 'Sample Frame' to preview the EffectCraft rig.",
+                        "Open an Animation",
+                        "Open an EffectCraft composition from the asset list, or select a character and open its rig.",
                     );
                 }
             });

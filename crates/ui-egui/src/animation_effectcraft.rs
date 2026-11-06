@@ -100,3 +100,37 @@ impl Drop for AnimationEffectcraft {
         eframe::App::on_exit(&mut self.app);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MagicApp;
+
+    #[test]
+    fn project_close_keeps_dirty_composition_and_clears_clean_composition() {
+        let mut app = MagicApp::new(magic::Session::default());
+        let project = Path::new("animation-test.magic");
+        app.session.project_path = Some(project.into());
+        let mut effect = effectcraft_host::session();
+        effect.execute_checked("comp.new", json!({})).unwrap();
+        app.effectcraft_animation = Some(AnimationEffectcraft {
+            app: EffectcraftApp::new(effect),
+            preview_configured: false,
+        });
+        let ctx = Context::default();
+        let error = app
+            .handle_control_request(&ctx, "project.close", json!({}))
+            .unwrap_err();
+        assert!(error.contains("Save the open EffectCraft composition"));
+        assert_eq!(app.session.project_path.as_deref(), Some(project));
+
+        app.effectcraft_animation = Some(AnimationEffectcraft {
+            app: EffectcraftApp::new(effectcraft_host::session()),
+            preview_configured: false,
+        });
+        app.handle_control_request(&ctx, "project.close", json!({}))
+            .unwrap();
+        assert!(app.effectcraft_animation.is_none());
+        assert!(app.session.project_path.is_none());
+    }
+}

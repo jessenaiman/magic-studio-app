@@ -178,7 +178,7 @@ impl MagicApp {
         ))
     }
 
-    pub(crate) fn set_studio_status(&mut self, result: Result<String, String>) {
+    pub(crate) fn set_status_result(&mut self, result: Result<String, String>) {
         self.status_line = match result {
             Ok(message) => {
                 self.last_error = None;
@@ -197,7 +197,7 @@ impl MagicApp {
                 let result = self
                     .load_studio_film(path, true)
                     .map(|()| "Created FilmCraft project.".into());
-                self.set_studio_status(result);
+                self.set_status_result(result);
                 self.refresh_studio();
             }
             if self.studio_open_error.is_some() && secondary_button(ui, "Reload").clicked() {
@@ -208,7 +208,7 @@ impl MagicApp {
                 && secondary_button(ui, "Save FilmCraft Project").clicked()
             {
                 let result = document.save().map(|()| "Saved FilmCraft project.".into());
-                self.set_studio_status(result);
+                self.set_status_result(result);
             }
             if secondary_button(ui, "Import Rendered Animation…").clicked() {
                 self.dialogs.ask(
@@ -223,7 +223,7 @@ impl MagicApp {
                 && secondary_button(ui, "Add Last Animation Render").clicked()
             {
                 let result = self.import_studio_animation(&clip);
-                self.set_studio_status(result);
+                self.set_status_result(result);
             }
             ui.label(path.display().to_string());
         });
