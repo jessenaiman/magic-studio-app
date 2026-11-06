@@ -148,4 +148,4 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
 
 // ---------- command registry (every id maps to one handler above) ----------
 
-pub use crate::command_catalog::build;
+pub use crate::command_sets::build;

@@ -1,4 +1,4 @@
-const wordsPanel = { mode: "lyrics", topShelf: "scene", shelf: "acts", links: { color: null, front: false, pulse: true, hidden: false }, linkDrag: null, cue: null, cueDrag: null, previewRange: null, autoPlay: false, loopLine: false, stageDirty: false, pendingSeek: null, read: null, align: null, studio: null, selected: null, line: null, item: null, picked: [], designs: new Map, styleEdits: {}, stage: null, time: 0, playing: false, size: { width: 1920, height: 1080 }, lanes: null, view: "design", tab: "look", scene: true, sceneAt: null, followed: null, canvas: null, audio: null, drag: null, server: null, player: null, show: "still", offset: 0, timeLabel: null, effects: null };
+const wordsPanel = { mode: "lyrics", topShelf: "scene", shelf: "acts", inspectorTab: "word", activeBrush: null, brushSize: 8, brushColor: "#f59e0b", drawMode: false, searchQuery: "", easing: "spring-out", links: { color: null, front: false, pulse: true, hidden: false }, linkDrag: null, cue: null, cueDrag: null, previewRange: null, autoPlay: false, loopLine: false, stageDirty: false, pendingSeek: null, read: null, align: null, studio: null, selected: null, line: null, item: null, picked: [], designs: new Map, styleEdits: {}, stage: null, time: 0, playing: false, size: { width: 1920, height: 1080 }, lanes: null, view: "design", tab: "look", scene: true, sceneAt: null, followed: null, canvas: null, audio: null, drag: null, server: null, player: null, show: "still", offset: 0, timeLabel: null, effects: null };
 try {
   const links = JSON.parse(localStorage.getItem("magicstudio.lyrics.links") || "{}");
   if (/^#[0-9a-f]{6}$/i.test(links.color))
@@ -7,33 +7,14 @@ try {
     if (typeof links[key] === "boolean")
       wordsPanel.links[key] = links[key];
 } catch {}
-const WORDS_MOVES = [
-  ["quiet", "Quiet", "Fades in and holds"],
-  ["sleep", "Sleep", "Letters sink one by one"],
-  ["settle", "Settle", "Drops and squashes into place"],
-  ["fall", "Fall", "Drops down"],
-  ["pop", "Pop", "A quick swell on the beat"],
-  ["rise", "Rise", "Arcs up and away"],
-  ["east", "East", "Slides right"],
-  ["west", "West", "Slides left"],
-  ["loop", "Loop", "Makes one loop"]
-];
-const WORDS_LETTERING = [
-  ["song", "Song font", "The video's own lettering", "song", 400, false],
-  ["song-bold", "Song bold", "The video's lettering, heavy", "song", 700, false],
-  ["serif-italic", "Serif italic", "A hero word, expressive", "serif", 400, true],
-  ["serif-bold", "Serif bold", "A hero word, strong", "serif", 700, false],
-  ["sans", "Sans, quiet", "Context words, small and calm", "sans", 400, false]
-];
-const WORDS_STROKES = [
-  { name: "Arrow down", does: "A wandering arrow pointing down", view_box: "0 0 160 330", w: 130, h: 300, draw: 1.3, d: "M 73 13 C 27 67 104 129 66 196 Q 47 231 61 289 M 30 264 L 61 294 L 87 260" },
-  { name: "Arrow right", does: "Travels right", view_box: "0 0 670 65", w: 520, h: 52, draw: 0.9, d: "M 15 33 Q 208 17 409 30 T 650 26 M 625 6 L 655 26 L 626 49" },
-  { name: "Arrow left", does: "Travels left", view_box: "0 0 670 65", w: 520, h: 52, draw: 0.9, d: "M 655 33 Q 462 17 261 30 T 20 26 M 45 6 L 15 26 L 44 49" },
-  { name: "Rising swoop", does: "A flight trail from low to high", view_box: "0 0 790 160", w: 600, h: 120, draw: 1.8, d: "M 10 145 Q 126 170 217 93 T 438 58 Q 578 29 756 7 M 730 5 L 761 5 L 746 29" },
-  { name: "Loop", does: "One playful loop", view_box: "0 0 620 110", w: 500, h: 90, draw: 2.1, d: "M 15 20 C 110 95 425 95 455 40 C 485 -4 350 -3 352 37 C 355 95 515 85 602 50 M 579 33 L 608 49 L 586 73" },
-  { name: "Underline", does: "Comes to rest under a word", view_box: "0 0 280 30", w: 280, h: 30, draw: 0.55, d: "M 5 14 Q 61 5 125 13 T 269 10" },
-  { name: "Hill", does: "A rounded hill beneath the words", view_box: "0 0 410 95", w: 410, h: 95, draw: 1.7, d: "M 7 77 Q 73 72 118 32 Q 171 -8 228 31 Q 279 75 400 76" }
-];
+const wordsTools = () => wordsPanel.read?.tools || wordsPanel.effects?.tools || {};
+const wordsMoves = () => (wordsTools().moves || []).map((m) => [m.id, m.name, m.does, m.icon || "⚡"]);
+const wordsLetterings = () => (wordsTools().letterings || []).map((l) => [l.id, l.name, l.does, l.font, l.weight, l.italic]);
+const wordsStrokes = () => wordsTools().strokes || [];
+const wordsChoreographies = () => wordsTools().choreographies || [];
+const wordsEasings = () => wordsTools().easings || [];
+const wordsEffectCraftTools = () => wordsTools().effectcraft || { text_presets: [], paint_presets: [], effects: [], animator_properties: [] };
+const wordsFilmCraftTools = () => wordsTools().filmcraft || { effects: [], presets: [] };
 const wordsCommand = (command, params = {}) => invoke("engine_command", { id: command, params });
 const wordsSongPath = () => state.data?.status?.stages?.find((s) => s.id === "song")?.inputs?.[0]?.path;
 const wordsCurrent = () => wordsPanel.read?.document?.animations?.find((a) => a.animation_id === wordsPanel.selected);
@@ -320,8 +301,9 @@ class WordsDesignController {
   }
   layout(anim, lineId, kind) {
     const words = wordsLineWords(anim, lineId), [W, H] = wordsWorld();
+    const letterings = wordsLetterings();
     const item = (ws, x, y, size, look = "song", motion = "quiet", rotate = 0) => {
-      const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look);
+      const [, , , font, weight, italic] = letterings.find((l) => l[0] === look) || ["song", "Song font", "", "song", 400, false];
       return {
         word_ids: ws.map((w) => w.word_id),
         x: Math.round(x),
@@ -397,7 +379,7 @@ class WordsDesignController {
     });
   }
   measure(anim, text, size, look) {
-    const [, , , font, weight, italic] = WORDS_LETTERING.find((l) => l[0] === look);
+    const [, , , font, weight, italic] = wordsLetterings().find((l) => l[0] === look) || ["song", "Song font", "", "song", 400, false];
     wordsMeasurer.font = `${italic ? "italic " : ""}${weight} ${size}px ${font === "song" ? JSON.stringify(wordsSongFont(anim)) : font === "serif" ? "serif" : "sans-serif"}`;
     return wordsMeasurer.measureText(text).width;
   }
@@ -699,33 +681,114 @@ class WordsTimelineController {
     const list = typeof wordsAvailableBackdrops === "function" ? wordsAvailableBackdrops() : [];
     return list.find((b) => b.id === anim?.background_asset) || list[0] || null;
   }
+  bindStageDraw(box, world, anim) {
+    let pts = [];
+    let liveSvg = null;
+    box.onpointerdown = (e) => {
+      if (!wordsPanel.drawMode || e.target.closest(".lyric-stage-modes"))
+        return;
+      e.preventDefault();
+      box.setPointerCapture(e.pointerId);
+      const [W, H] = wordsWorld(), r = world.getBoundingClientRect();
+      const pt = (ev) => [
+        Math.round(Math.max(0, Math.min(W, (ev.clientX - r.left) * W / Math.max(1, r.width)))),
+        Math.round(Math.max(0, Math.min(H, (ev.clientY - r.top) * H / Math.max(1, r.height))))
+      ];
+      pts = [pt(e)];
+      liveSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      liveSvg.setAttribute("class", "lyric-draw");
+      liveSvg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      for (const [k, v] of [["--x", 0], ["--y", 0], ["--dw", W], ["--dh", H]])
+        liveSvg.style.setProperty(k, `${v}px`);
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", wordsPanel.brushColor || "#f59e0b");
+      path.setAttribute("stroke-width", String(wordsPanel.brushSize || 8));
+      path.setAttribute("stroke-linecap", "round");
+      liveSvg.appendChild(path);
+      world.appendChild(liveSvg);
+      box.onpointermove = (ev) => {
+        if (!liveSvg)
+          return;
+        const p = pt(ev), last = pts.at(-1);
+        if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 3) {
+          pts.push(p);
+          path.setAttribute("d", pts.map((c, idx) => `${idx ? "L" : "M"} ${c[0]} ${c[1]}`).join(" "));
+        }
+      };
+      box.onpointerup = () => {
+        box.onpointermove = null;
+        box.onpointerup = null;
+        if (pts.length > 1) {
+          const lid = wordsPanel.line || wordsLines(anim)[0]?.id;
+          const brush = wordsEffectCraftTools().paint_presets?.find((b) => b.id === wordsPanel.activeBrush);
+          if (lid) {
+            wordsDesignEdit(anim, lid, (d) => {
+              d.draws.push({
+                name: brush?.name || "Freehand Sketch",
+                view_box: `0 0 ${W} ${H}`,
+                x: 0,
+                y: 0,
+                w: W,
+                h: H,
+                paths: [{
+                  d: pts.map((c, idx) => `${idx ? "L" : "M"} ${c[0]} ${c[1]}`).join(" "),
+                  stroke: wordsPanel.brushColor || "#f59e0b",
+                  width: wordsPanel.brushSize || brush?.diameter || 8,
+                  from: 0,
+                  to: 0.75
+                }]
+              });
+            });
+          }
+        } else if (liveSvg) {
+          liveSvg.remove();
+        }
+        liveSvg = null;
+      };
+    };
+  }
   canvas(anim) {
     const world = el("div", { class: "lyric-world" });
     const bg = wordsPanel.scene ? this.activeBackdrop(anim) : null;
     const bgImg = bg ? el("img", { class: "lyric-scene-bg", src: convertFileSrc(bg.path), alt: bg.name }) : null;
     const stageModes = el("div", { class: "lyric-stage-modes" }, el("button", {
-      class: "lyric-mode-pill active",
+      class: `lyric-mode-pill${!wordsPanel.drawMode ? " active" : ""}`,
       title: "Drag, scale & tilt word tokens directly on the 16:9 stage",
       onclick: () => {
+        wordsPanel.drawMode = false;
+        wordsPanel.inspectorTab = "word";
         const lid = wordsPanel.line || wordsLines(anim)[0]?.id;
         if (lid)
           wordsDesignController.splitLineTokens(anim, lid);
+        else
+          wordsRender();
       }
     }, "✥ Kinetic Motion"), el("button", {
+      class: `lyric-mode-pill draw${wordsPanel.drawMode ? " active" : ""}`,
+      title: "Draw freehand motion overlays & EffectCraft paint strokes directly on the 16:9 stage",
+      onclick: () => {
+        wordsPanel.drawMode = !wordsPanel.drawMode;
+        if (wordsPanel.drawMode)
+          wordsPanel.inspectorTab = "draw";
+        wordsRender();
+      }
+    }, "✎ Draw Motion Overlay"), el("button", {
       class: "lyric-mode-pill warp",
       title: "Cycle spatial trajectory choreography across the stage",
       onclick: () => {
         const lid = wordsPanel.line || wordsLines(anim)[0]?.id;
         if (!lid)
           return;
-        const order = ["cascade", "scatter", "poster", "stack", "plain"];
+        const order = (wordsChoreographies().map((c) => c.id).length ? wordsChoreographies().map((c) => c.id) : ["cascade", "scatter", "poster", "stack", "plain"]);
         wordsPanel.choreoIdx = ((wordsPanel.choreoIdx || 0) + 1) % order.length;
         wordsPanel.designs.set(lid, wordsDesignController.layout(anim, lid, order[wordsPanel.choreoIdx]));
         wordsRender();
       }
     }, "⤴ Warp Path"));
-    const hint = el("div", { class: "lyric-stage-hint" }, "Drag any word to adjust spatial trajectory · Click token below to choreograph");
-    const box = el("div", { class: `lyric-canvas${bgImg ? " has-scene-bg" : ""}`, "aria-label": "Line designer" }, bgImg, world, stageModes, hint);
+    const hint = el("div", { class: "lyric-stage-hint" }, wordsPanel.drawMode ? "Draw Mode Active: Click & drag on stage to sketch freehand SVG motion overlays" : "Drag any word to adjust spatial trajectory · Click token below to choreograph");
+    const box = el("div", { class: `lyric-canvas${bgImg ? " has-scene-bg" : ""}${wordsPanel.drawMode ? " draw-mode" : ""}`, "aria-label": "Line designer" }, bgImg, world, stageModes, hint);
+    this.bindStageDraw(box, world, anim);
     wordsPanel.canvas = { box, world, bgImg };
     wordsFitter.observe(box);
     return box;
@@ -929,7 +992,7 @@ class WordsTimelineController {
     const design = wordsDesign(anim, w.line_id), index = design.items.findIndex((it) => it.word_ids.includes(w.word_id)), it = design.items[index];
     const isPicked = wordsPanel.picked.includes(w.word_id) || !wordsPanel.picked.length && wordsPanel.item === index;
     const on = anim.animation_id === wordsPanel.selected && wordsPanel.line === w.line_id && isPicked;
-    const move = it && it.motion !== "quiet" ? WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] : "";
+    const move = it && it.motion !== "quiet" ? wordsMoves().find((m) => m[0] === it.motion)?.[1] : "";
     const at = wordsAt(w), clip = wordsClip(w.word_id, anim), dur = clip?.duration ?? Math.max(0.2, (+w.end || at + 0.35) - at);
     const chip = el("button", {
       class: `word lettered${on ? " active" : ""}`,
@@ -957,17 +1020,20 @@ class WordsTimelineController {
     return gaps.map(([a, b]) => wordsPlace(el("div", { class: "words-gap", title: `No singing from ${wordsClock(a)} to ${wordsClock(b)}` }, el("span", {}, "Instrumental"), el("span", { class: "meta" }, `${wordsClock(a)} – ${wordsClock(b)}`)), a, b - a));
   }
   buildLineCard(a, j, line, at, len) {
+    const q = (wordsPanel.searchQuery || "").trim().toLowerCase();
+    const matchesSearch = !q || line.words.some((w) => String(w.text || "").toLowerCase().includes(q));
     const design = wordsDesign(a, line.id);
     const active = a.animation_id === wordsPanel.selected && wordsPanel.line === line.id;
     const bg = this.activeBackdrop(a);
-    const moves = [...new Set((design.items || []).filter((it) => it.motion && it.motion !== "quiet").map((it) => WORDS_MOVES.find((m) => m[0] === it.motion)?.[1] || it.motion))];
+    const moveList = wordsMoves();
+    const moves = [...new Set((design.items || []).filter((it) => it.motion && it.motion !== "quiet").map((it) => moveList.find((m) => m[0] === it.motion)?.[1] || it.motion))];
     const strokes = [...new Set((design.draws || []).map((d) => d.name))];
     const pills = [
       ...moves.slice(0, 2).map((m, idx) => el("span", { class: `words-line-pill ${idx ? "trail-pill" : "move-pill"}` }, `${idx ? "⇉" : "\uD83D\uDD25"} ${m}`)),
       ...strokes.slice(0, 1).map((s) => el("span", { class: "words-line-pill stroke-pill" }, `✎ ${s}`))
     ];
     return wordsPlace(el("div", {
-      class: `words-line${j ? "" : " first"}${active ? " active" : ""}`,
+      class: `words-line${j ? "" : " first"}${active ? " active" : ""}${matchesSearch ? "" : " search-dimmed"}`,
       "data-kind": a.scope?.section === "chorus" ? "chorus" : "verse",
       "data-animation-id": a.animation_id,
       "data-line-id": line.id,
@@ -1048,7 +1114,7 @@ class WordsTimelineController {
           start: span.start,
           end: Math.max(span.start + 1.2, span.end - 0.15),
           color: hero.color || "#35e1c0",
-          stroke: WORDS_STROKES[1]
+          stroke: wordsStrokes()[1] || wordsStrokes()[0] || { view_box: "0 0 280 30", d: "M 5 14 Q 61 5 125 13 T 269 10" }
         });
       }
     }

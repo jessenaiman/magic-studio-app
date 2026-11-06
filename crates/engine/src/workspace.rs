@@ -182,7 +182,9 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
         arr.clone()
     } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+        vec![
+            serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))}),
+        ]
     } else {
         vec![serde_json::json!({"id": "document.inspect", "params": {}})]
     };
@@ -201,10 +203,13 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
             .as_str()
             .or_else(|| step["command"].as_str())
             .ok_or_else(|| EngineError::InvalidParams("step missing command id".into()))?;
-        let params = step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
+        let params = step
+            .get("params")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
         pairs.push((id, params));
     }
-    crate::character::cut::photocraft_run(&path, &pairs, save.as_deref())?;
+    crate::cmd::character::cut::photocraft_run(&path, &pairs, save.as_deref())?;
     let info = save
         .as_deref()
         .or(Some(path.as_path()))
@@ -223,7 +228,9 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let mut steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
         arr.clone()
     } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+        vec![
+            serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))}),
+        ]
     } else {
         return Err(EngineError::InvalidParams(
             "id=<effectcraft command> or steps=[...] is required".into(),
@@ -237,7 +244,7 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
         }
         steps.push(serde_json::json!({"id": "file.saveAs", "params": {"path": path}}));
     }
-    let results = crate::character::effectcraft(dir, existing, &steps)?;
+    let results = crate::cmd::character::effectcraft(dir, existing, &steps, save)?;
     let info = craft_doc_info(&path);
     Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results}))
 }
@@ -258,7 +265,9 @@ pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
         arr.clone()
     } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+        vec![
+            serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))}),
+        ]
     } else {
         vec![serde_json::json!({"id": "document.inspect", "params": {}})]
     };
@@ -273,10 +282,13 @@ pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
             .as_str()
             .or_else(|| step["command"].as_str())
             .ok_or_else(|| EngineError::InvalidParams("step missing command id".into()))?;
-        let params = step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
-        let res = session
-            .execute(id, &params)
-            .map_err(|e| EngineError::ExternalTool("vectorcraft-engine".into(), format!("{id}: {e}")))?;
+        let params = step
+            .get("params")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let res = session.execute(id, &params).map_err(|e| {
+            EngineError::ExternalTool("vectorcraft-engine".into(), format!("{id}: {e}"))
+        })?;
         results.push(res);
     }
     let save = p["save"]
@@ -293,7 +305,9 @@ pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
         .as_deref()
         .or(Some(path.as_path()))
         .and_then(craft_doc_info);
-    Ok(serde_json::json!({"ok": true, "path": path, "vectorcraft": save, "info": info, "results": results}))
+    Ok(
+        serde_json::json!({"ok": true, "path": path, "vectorcraft": save, "info": info, "results": results}),
+    )
 }
 
 /// Resolve an installed tool executable from `<TOOL_NAME>` env override,
@@ -462,26 +476,5 @@ pub fn asset_id_for_import(typed_name: Option<&str>, path: &Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::launcher_app;
-
-    /// The launcher's desktop entry names the installed build; a stale link elsewhere is ignored.
-    #[test]
-    fn desktop_apps_resolve_through_the_launcher_entry() {
-        let home = std::env::temp_dir().join(format!("magic-launcher-test-{}", std::process::id()));
-        let apps = home.join(".local/share/applications");
-        std::fs::create_dir_all(&apps).unwrap();
-        let build = home.join("photocraft-9.9.9.AppImage");
-        std::fs::write(&build, b"").unwrap();
-        std::fs::write(
-            apps.join("ai.storyteller.photocraft.desktop"),
-            format!("[Desktop Entry]\nExec=\"{}\" %F\n", build.display()),
-        )
-        .unwrap();
-        let found = launcher_app(&home, "photocraft");
-        let missing = launcher_app(&home, "vectorcraft");
-        std::fs::remove_dir_all(&home).unwrap();
-        assert_eq!(found.as_deref(), Some(build.to_str().unwrap()));
-        assert_eq!(missing, None);
-    }
-}
+#[path = "tests/workspace.rs"]
+mod tests;

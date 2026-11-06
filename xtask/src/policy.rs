@@ -1,124 +1,52 @@
-//! FilmCraft layer and asset gates, preserving its required configuration and diagnostics.
-//! https://github.com/storytold/filmcraft/blob/2508f5420eec2a6b7873f216beadbce2930b530b/xtask/src/main.rs#L32-L251
-//! Magic's native orchestration/frontend mapping is documented in docs/architecture.md.
+//! Layer and asset gates: Magic's crate layers from docs/architecture.md › Layers, and asset
+//! attribution sidecars.
 use crate::Result;
 use serde_json::Value;
 use std::process::Command;
 
-/// (crate name without the `filmcraft-` prefix, layer).
+/// Magic's own crates and their layers (docs/architecture.md › Layers).
 const LAYERS: &[(&str, u8)] = &[
-    ("testkit", 0),
-    ("time", 0),
-    ("geom", 0),
-    ("color", 0),
-    ("bitstream", 0),
-    ("isobmff", 0),
-    ("avi", 0),
-    ("matroska", 0),
-    ("mxf", 0),
-    ("cfb", 0),
-    ("mpegts", 0),
-    ("mpeg2v", 0),
-    ("ac3", 0),
-    ("mpa", 0),
-    ("ogg", 0),
-    ("riff", 0),
-    ("h264", 0),
-    ("h264enc", 0),
-    ("hevc", 0),
-    ("vp8", 0),
-    ("vp9", 0),
-    ("prores", 0),
-    ("mjpeg", 0),
-    ("dnx", 0),
-    ("apv", 0),
-    ("dng", 0),
-    ("av1", 0),
-    ("aac", 0),
-    ("flac", 0),
-    ("opus", 0),
-    ("frame", 1),
-    ("media", 1),
-    ("project", 1),
-    ("audio-dsp", 1),
-    ("text", 1),
-    ("edit", 2),
-    ("codecs", 2),
-    ("keyframe", 2),
-    ("effects", 2),
-    ("audio", 2),
-    ("captions", 2),
-    ("speech", 2),
-    ("tts", 2),
-    ("tts-text", 2),
-    ("interchange", 2),
-    ("render", 3),
-    ("gpu", 3),
-    ("golden", 3),
-    ("scopes", 3),
-    ("playback", 3),
-    ("export", 3),
-    ("format", 3),
-    ("engine", 4),
-    ("platform", 5),
-    ("ui-egui", 5),
-    ("automation", 5),
-    ("filmcraft", 6),
-    ("cli", 6),
-    ("web", 6),
-    // Magic composes the L4 document engines through native services; its frontend is L6.
     ("magic", 5),
-    ("magic-ui-egui", 5),
-    ("magic-mcp", 5),
-    ("magic-gui", 6),
-    ("magic-cli", 6),
-    ("magic-web", 6),
+    ("magic-ui-egui", 6),
+    ("magic-mcp", 6),
+    ("magic-gui", 7),
+    ("magic-cli", 7),
+    ("magic-tui", 7),
+    ("xtask", 7),
 ];
 
-/// L0 crates that are not codecs/containers (no `bitstream`-only restriction).
-const L0_FOUNDATION: &[&str] = &["time", "geom", "color", "bitstream", "testkit"];
-
-/// Allowed same-layer edges (from, to).
-const SAME_LAYER: &[(&str, &str)] = &[
-    ("media", "frame"),
-    ("project", "media"),
-    ("project", "frame"),
-    ("effects", "keyframe"),
-    ("audio", "keyframe"),
-    ("playback", "render"),
-    ("playback", "gpu"),
-    ("export", "render"),
-    ("scopes", "gpu"),
-    ("gpu", "render"),
-    ("cli", "filmcraft"),
-    ("tts", "tts-text"),
-    ("magic-ui-egui", "magic"),
-    ("magic-mcp", "magic"),
+/// Craft backends (L0–L4): maintained dependencies Magic drives, never edited here.
+const CRAFT_PREFIXES: &[&str] = &[
+    "designcraft-",
+    "effectcraft-",
+    "filmcraft-",
+    "photocraft-",
+    "vectorcraft-",
+    "texturecraft-",
+    "craft-",
 ];
 
-/// Crates that must not appear below L5 (UI toolkits, windowing, OS audio/menus).
+/// Crates that must not appear below L6 (UI toolkits, windowing, OS dialogs).
 const UI_ONLY: &[&str] = &[
     "craft-ui",
+    "craft-ai-egui",
     "egui",
     "eframe",
     "egui-wgpu",
     "winit",
     "rfd",
-    "cpal",
-    "muda",
     "tauri",
     "tauri-plugin-dialog",
 ];
 
-fn short(name: &str) -> &str {
-    name.strip_prefix("filmcraft-").unwrap_or(name)
-}
-
 fn layer_of(name: &str) -> Option<u8> {
-    LAYERS
+    if let Some((_, l)) = LAYERS.iter().find(|(n, _)| *n == name) {
+        return Some(*l);
+    }
+    CRAFT_PREFIXES
         .iter()
-        .find(|(n, _)| *n == short(name))
-        .map(|(_, l)| *l)
+        .any(|p| name.starts_with(p))
+        .then_some(4)
 }
 
 fn metadata() -> Result<Value> {
@@ -158,29 +86,18 @@ pub(crate) fn layers() -> Result<()> {
     for (name, deps) in &crates {
         let Some(l) = layer_of(name) else {
             errors.push(format!(
-                "{name}: not assigned a layer (add it to xtask LAYERS and docs/architecture.md §1)"
+                "{name}: not assigned a layer (add it to xtask LAYERS and docs/architecture.md › Layers)"
             ));
             continue;
         };
         for d in deps {
-            if (l < 5 || name == "magic") && UI_ONLY.contains(&d.as_str()) {
-                errors.push(format!("{name} (L{l}) depends on UI/OS crate `{d}`"));
-            }
-            // Keep FilmCraft's checks and include every edge within Magic's workspace.
-            if !d.starts_with("filmcraft-") && !crates.iter().any(|(name, _)| name == d) {
-                continue;
+            if l < 6 && UI_ONLY.contains(&d.as_str()) {
+                errors.push(format!("{name} (L{l}) depends on UI crate `{d}`"));
             }
             let Some(dl) = layer_of(d) else { continue };
-            let (a, b) = (short(name), short(d));
-            if l == 0 && !L0_FOUNDATION.contains(&a) && b != "bitstream" {
+            if dl >= l {
                 errors.push(format!(
-                    "{a} (L0 codec/container) may depend only on bitstream, found {b}"
-                ));
-            } else if dl > l {
-                errors.push(format!("{a} (L{l}) depends upward on {b} (L{dl})"));
-            } else if dl == l && l > 0 && !SAME_LAYER.contains(&(a, b)) {
-                errors.push(format!(
-                    "{a} → {b}: same-layer edge (L{l}) not in the allowed list"
+                    "{name} (L{l}) depends on {d} (L{dl}): edges must go down"
                 ));
             }
         }

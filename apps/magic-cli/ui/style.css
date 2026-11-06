@@ -1129,3 +1129,11 @@ svg.lyric-flow-arrows .lyric-flow-dot { fill: var(--depth-gold); stroke: var(--b
 #storyboard-rail nav button { text-align:left; padding:.45rem .6rem; }
 #storyboard-rail [aria-current=page] { border-color:var(--accent);color:var(--accent); }
 #storyboard-rail section { border-top:1px solid var(--line);padding:.75rem .5rem; }
+.words-search-input { width:7.5rem;padding:.2rem .45rem;font-size:.74rem;border-radius:var(--r-sm);background:var(--bg);border:1px solid var(--line);color:var(--text); }
+.words-line.search-dimmed { opacity:.25;filter:grayscale(.8); }
+.lyric-canvas.draw-mode { cursor:crosshair;outline:2px dashed var(--amber);outline-offset:-3px; }
+.words-selection-drawings { display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;margin-left:.35rem;font-size:.74rem; }
+.words-draw-pill, .words-sketch-pill { font-size:.72rem;padding:.15rem .45rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--amber) 55%,var(--line));color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,var(--panel)); }
+.words-sketch-pill.active, .lyric-mode-pill.draw.active { background:var(--amber);color:var(--accent-ink);font-weight:700; }
+.words-engine-fx-badge { font-size:.68rem;padding:.12rem .4rem;opacity:.85;border:1px dashed var(--line-2); }
+.words-inspector-tabs { margin-right:.35rem; }

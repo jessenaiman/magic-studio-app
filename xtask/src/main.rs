@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod ci;
-mod doctor;
 mod policy;
 
 #[derive(Parser)]
@@ -23,11 +22,9 @@ struct Cli {
 enum Task {
     /// Check formatting, Clippy, workspace tests and doctests using Craft's native gates.
     Ci,
-    /// Report which workspace apps are configured, which are not, and where the app breaks.
-    Doctor,
-    /// Check the workspace against FilmCraft's declared dependency layers.
+    /// Check Magic's crates against the layers in docs/architecture.md.
     Layers,
-    /// Check repository asset attribution using FilmCraft's requirements.
+    /// Check that every asset has an attribution sidecar and an ATTRIBUTION.md entry.
     Assets,
     /// Install the built app, CLI, resources and desktop entry under PREFIX.
     Install {
@@ -49,7 +46,7 @@ enum Profile {
 const RETIRED: &[&str] = &["magic-shell", "python-magic-cli"];
 /// Tracked runtime resources the app reads at run time.
 const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/", "apps/magic-cli/ui/"];
-const RESOURCE_FILES: &[&str] = &["apps/magic-gui/agent.md", "SOURCE-ATTRIBUTION.md", "LICENSE"];
+const RESOURCE_FILES: &[&str] = &["apps/magic/agent.md", "SOURCE-ATTRIBUTION.md", "LICENSE"];
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -218,7 +215,9 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
     if build.join("magic").is_file() && build.join("magic-cli").is_file() {
         Ok(build)
     } else {
-        Err(format!("Build first: cargo build -p magic-gui -p magic-cli{flag}"))
+        Err(format!(
+            "Build first: cargo build -p magic-gui -p magic-cli{flag}"
+        ))
     }
 }
 
@@ -262,7 +261,6 @@ fn install(prefix: Option<PathBuf>, profile: Profile) -> Result<()> {
 fn main() {
     let result = match Cli::parse().task {
         Task::Ci => ci::ci(),
-        Task::Doctor => doctor::doctor(),
         Task::Layers => policy::layers(),
         Task::Assets => policy::assets(),
         Task::Install { prefix, profile } => install(prefix, profile),
@@ -296,7 +294,7 @@ mod tests {
     #[test]
     fn runtime_resources_exclude_tests_and_unlisted_files() {
         assert!(wanted_resource("pipeline/templates/words-kinetic.html"));
-        assert!(wanted_resource("apps/magic-gui/agent.md"));
+        assert!(wanted_resource("apps/magic/agent.md"));
         assert!(!wanted_resource("pipeline/tests/test_layout.rs"));
         assert!(!wanted_resource("lib/test_helpers.rs"));
         assert!(!wanted_resource("apps/magic-gui/src/main.rs"));

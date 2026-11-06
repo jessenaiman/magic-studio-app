@@ -59,6 +59,7 @@ pub struct AssistantDrawer {
     pub last_receipt: Option<Value>,
     pub craft_ai_status: Value,
     pub agent_config: Value,
+    pub browse_reference_requested: bool,
 }
 
 impl Default for AssistantDrawer {
@@ -81,6 +82,7 @@ impl Default for AssistantDrawer {
             last_receipt: None,
             craft_ai_status: json!({}),
             agent_config: json!({}),
+            browse_reference_requested: false,
         }
     }
 }
@@ -296,11 +298,7 @@ impl AssistantDrawer {
                         });
                         if selected {
                             ui.add_space(2.0);
-                            ui.label(
-                                RichText::new(&tpl.layout)
-                                    .size(10.5)
-                                    .color(TEXT_SECONDARY),
-                            );
+                            ui.label(RichText::new(&tpl.layout).size(10.5).color(TEXT_SECONDARY));
                         }
                     })
                     .response
@@ -316,11 +314,7 @@ impl AssistantDrawer {
         }
     }
 
-    fn show_parameters_section(
-        &mut self,
-        ui: &mut Ui,
-        project_assets: &[magic::ProjectAsset],
-    ) {
+    fn show_parameters_section(&mut self, ui: &mut Ui, project_assets: &[magic::ProjectAsset]) {
         if section_header(ui, "2. Template Parameters & Save Target", true) {
             ui.add_space(4.0);
             card_frame().show(ui, |ui| {
@@ -351,7 +345,7 @@ impl AssistantDrawer {
                 if self.selected_template == "actions" {
                     ui.add_space(4.0);
                     prop_row(ui, "Action Cycle", |ui| {
-                        egui::ComboBox::from_id_salt("scribbles_action_combo")
+                        craft_ui::ComboBox::from_id_salt("scribbles_action_combo")
                             .selected_text(&self.selected_action)
                             .show_ui(ui, |ui| {
                                 for act in ["walk", "run", "jump", "wave", "turn"] {
@@ -368,12 +362,8 @@ impl AssistantDrawer {
                 ui.add_space(4.0);
                 prop_row(ui, "Reference PNG", |ui| {
                     #[cfg(not(target_arch = "wasm32"))]
-                    if secondary_button(ui, "Browse…").clicked()
-                        && let Some(file) = rfd::FileDialog::new()
-                            .add_filter("PNG Image", &["png"])
-                            .pick_file()
-                    {
-                        self.reference_path = file.display().to_string();
+                    if secondary_button(ui, "Browse…").clicked() {
+                        self.browse_reference_requested = true;
                     }
                     ui.add(
                         egui::TextEdit::singleline(&mut self.reference_path)
@@ -410,7 +400,7 @@ impl AssistantDrawer {
                         }
                     });
                     prop_row(ui, "Target Slot", |ui| {
-                        egui::ComboBox::from_id_salt("scribbles_slot_combo")
+                        craft_ui::ComboBox::from_id_salt("scribbles_slot_combo")
                             .selected_text(&self.target_slot)
                             .show_ui(ui, |ui| {
                                 for slot in [
@@ -509,7 +499,11 @@ impl AssistantDrawer {
         });
 
         ui.add_space(6.0);
-        if section_header(ui, "3. Fidget Markdown Output (YAML Frontmatter + NOTE)", true) {
+        if section_header(
+            ui,
+            "3. Fidget Markdown Output (YAML Frontmatter + NOTE)",
+            true,
+        ) {
             ui.add_space(4.0);
             card_frame().show(ui, |ui| {
                 if self.prepared_markdown.is_empty() {
@@ -596,7 +590,11 @@ impl AssistantDrawer {
             if section_header(ui, "Last Scribbles Save Receipt", true) {
                 card_frame().show(ui, |ui| {
                     if let Some(img) = receipt["image"].as_str() {
-                        ui.label(RichText::new(format!("Saved PNG: {img}")).size(11.0).color(ACCENT_GREEN));
+                        ui.label(
+                            RichText::new(format!("Saved PNG: {img}"))
+                                .size(11.0)
+                                .color(ACCENT_GREEN),
+                        );
                     }
                     if let Some(save_cmd) = receipt["scribbles"]["save_command"].as_str() {
                         ui.label(

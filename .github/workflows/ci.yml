@@ -1,7 +1,6 @@
 name: CI
 
-# Quality gates for every push to main and every pull request (`cargo xtask ci`), through the
-# suite's shared gate workflow in craft-common-actions.
+# Fast quality gates with Cargo caching, running doctor, layers, clippy and tests in a single runner.
 on:
   push:
     branches: [main]
@@ -11,40 +10,34 @@ on:
 permissions:
   contents: read
 
-# A newer push to a PR branch cancels its older run; every push to main runs to the end.
+# A newer push to a PR branch cancels its older run.
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  doctor:
-    # Report which workspace apps are configured, which are not, and where the app breaks.
-    # Runs on every push/PR so delegates get a fix list even when the shared gate fails.
+  ci:
+    name: Quality Gates
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev \
             libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev \
             libfreetype-dev mesa-vulkan-drivers libasound2-dev
-      - name: Run magic doctor report
-        run: cargo xtask doctor
 
-  gate:
-    # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
-    needs: doctor
-    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
-    with:
-      # Same craft-fonts commit as release.yml.
-      craft-fonts-ref: b076417b5880bd4154bd22f00695b1d28c6bea83
-      timeout-minutes: 120
-      # Magic has only native targets; FilmCraft also checks its WASM crates.
-      targets: ""
-      packages: >-
-        pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxcursor-dev
-        libxrandr-dev libxi-dev libfontconfig1-dev libfreetype-dev mesa-vulkan-drivers
-        libasound2-dev
+      - name: Native quality gates
+        run: cargo xtask ci

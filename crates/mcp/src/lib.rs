@@ -70,8 +70,8 @@ impl Remote {
 
 impl Backend for Remote {
     fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
-        let mut stream = TcpStream::connect(&self.addr)
-            .map_err(|e| format!("connect {}: {e}", self.addr))?;
+        let mut stream =
+            TcpStream::connect(&self.addr).map_err(|e| format!("connect {}: {e}", self.addr))?;
         let _ = stream.set_read_timeout(Some(Duration::from_secs(300)));
         let req_id = self.next_id;
         self.next_id += 1;
@@ -255,7 +255,10 @@ impl<B: Backend> Server<B> {
         let name = params["name"]
             .as_str()
             .ok_or_else(|| (-32602, "Missing tool `name`".into()))?;
-        let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+        let args = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
         let outcome = match name {
             "magic_exec" => {
                 let cmd = args["command"]
@@ -268,7 +271,9 @@ impl<B: Backend> Server<B> {
                 let filter = args["filter"].as_str().unwrap_or_default();
                 let list: Vec<Value> = command_specs()
                     .iter()
-                    .filter(|c| filter.is_empty() || c.id.contains(filter) || c.label.contains(filter))
+                    .filter(|c| {
+                        filter.is_empty() || c.id.contains(filter) || c.label.contains(filter)
+                    })
                     .map(|c| c.describe())
                     .collect();
                 Ok(json!({ "ok": true, "commands": list }))

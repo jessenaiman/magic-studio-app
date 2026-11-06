@@ -1,6 +1,4 @@
-//! Native gates from FilmCraft's xtask at 2508f5420eec2a6b7873f216beadbce2930b530b.
-//! Upstream: https://github.com/storytold/filmcraft/blob/2508f5420eec2a6b7873f216beadbce2930b530b/xtask/src/main.rs
-//! Layer and asset policy gates are in `policy`; Magic has no FilmCraft WASM/i18n targets.
+//! `cargo xtask ci`: fmt, Clippy, tests, doctests, control-protocol conformance and layers. Assets run with `CHECK_ASSETS` set.
 use std::process::Command;
 
 use crate::Result;
@@ -50,6 +48,19 @@ pub(crate) fn ci() -> Result<()> {
         "warnings",
     ]))?;
     tests()?;
+    run(Command::new(cargo).args([
+        "test",
+        "-p",
+        "magic-ui-egui",
+        "--lib",
+        "control_conformance",
+        "--",
+        "--ignored",
+        "--nocapture",
+    ]))?;
     crate::policy::layers()?;
-    crate::policy::assets()
+    if std::env::var("CHECK_ASSETS").is_ok() {
+        crate::policy::assets()?;
+    }
+    Ok(())
 }

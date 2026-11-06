@@ -15,6 +15,9 @@ pub struct Cli {
     /// Open this .magic project first (or use the last opened project from session file)
     #[arg(long, global = true)]
     pub project: Option<String>,
+    /// Connect to a running `magic --control <PORT>` window (or auto-discover Unix socket)
+    #[arg(long, global = true)]
+    pub bridge: Option<String>,
     /// Preview mutations without applying them
     #[arg(long, global = true)]
     pub dry_run: bool,
@@ -52,9 +55,13 @@ enum Cmd {
         #[arg(long)]
         token: Option<String>,
     },
-    /// Open the Magic web UI (lyrics, animation, storyboard) in the browser, served on loopback
+    /// Open the Magic web UI (or inspect a live desktop window: `magic-cli ui inspect|state|feedback|unconfigured|elements`)
     Ui {
-        /// Loopback port to serve on
+        /// Optional live window action (`inspect`, `state`, `feedback`, `unconfigured`, `elements`, `focus`, `view`, `quit`)
+        action: Option<String>,
+        /// Optional argument for `ui focus <id>` or `ui view <mode>`
+        target: Option<String>,
+        /// Loopback port to serve on when launching the web UI
         #[arg(long, default_value_t = 8765)]
         port: u16,
         /// Print the address instead of opening the browser
@@ -236,10 +243,7 @@ enum SbCmd {
 ///
 /// `document` is the storyboard itself, given once for the whole `storyboard` group; a command's
 /// own `--path` wins over it.
-fn storyboard_params(
-    command: &SbCmd,
-    document: Option<&str>,
-) -> Result<(String, Value), String> {
+fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String, Value), String> {
     let mut p = serde_json::Map::new();
     let mut put = |key: &str, value: Option<Value>| {
         if let Some(value) = value {
@@ -500,12 +504,79 @@ fn parse_params(tokens: &[String], raw: Option<&str>) -> Result<Value, String> {
     Ok(params)
 }
 
-fn exec_one(
-    s: &mut magic::Session,
-    id: &str,
-    params: Value,
-    dry: bool,
-) -> Result<Value, String> {
+fn discover_unix_socket() -> Option<PathBuf> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("magic");
+    let mut socks: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("sock"))
+        .collect();
+    socks.sort();
+    socks.pop()
+}
+
+fn call_live_control(bridge: Option<&str>, method: &str, params: Value) -> Result<Value, String> {
+    use std::io::Write;
+    let payload = format!(
+        "{}\n",
+        json!({ "id": 1, "method": method, "params": params })
+    );
+    let reply_line = if let Some(spec) = bridge {
+        let addr = if spec.contains(':') {
+            spec.to_owned()
+        } else {
+            format!("127.0.0.1:{spec}")
+        };
+        let mut stream =
+            std::net::TcpStream::connect(&addr).map_err(|e| format!("connect {addr}: {e}"))?;
+        stream
+            .write_all(payload.as_bytes())
+            .map_err(|e| e.to_string())?;
+        stream.flush().map_err(|e| e.to_string())?;
+        let mut reader = std::io::BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).map_err(|e| e.to_string())?;
+        line
+    } else {
+        #[cfg(unix)]
+        {
+            let sock = discover_unix_socket().ok_or_else(|| {
+                "No running Magic desktop window found (start `magic` or pass `--bridge <PORT>`)"
+                    .to_string()
+            })?;
+            let mut stream = std::os::unix::net::UnixStream::connect(&sock)
+                .map_err(|e| format!("connect {}: {e}", sock.display()))?;
+            stream
+                .write_all(payload.as_bytes())
+                .map_err(|e| e.to_string())?;
+            stream.flush().map_err(|e| e.to_string())?;
+            let mut reader = std::io::BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).map_err(|e| e.to_string())?;
+            line
+        }
+        #[cfg(not(unix))]
+        {
+            return Err("Pass `--bridge <PORT>` to connect to a running Magic window".into());
+        }
+    };
+    let parsed: Value =
+        serde_json::from_str(reply_line.trim()).map_err(|e| format!("invalid reply: {e}"))?;
+    if parsed["ok"].as_bool() == Some(true) {
+        Ok(parsed["result"].clone())
+    } else {
+        Err(parsed["error"]
+            .as_str()
+            .unwrap_or("control request failed")
+            .to_owned())
+    }
+}
+
+fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Result<Value, String> {
     if dry {
         return Ok(json!({ "dry_run": true, "id": id, "params": params }));
     }
@@ -592,7 +663,12 @@ fn main() {
                 arguments,
             }) => {
                 let p = parse_params(&arguments, params.as_deref())?;
-                emit(&exec_one(&mut session, &command, p, cli.dry_run)?);
+                let out = if cli.bridge.is_some() || command.starts_with("ui.") {
+                    call_live_control(cli.bridge.as_deref(), &command, p)?
+                } else {
+                    exec_one(&mut session, &command, p, cli.dry_run)?
+                };
+                emit(&out);
             }
             Some(Cmd::Run { file }) => {
                 let reader: Box<dyn BufRead> = if file == "-" {
@@ -628,7 +704,29 @@ fn main() {
                     srv.serve().map_err(|e| e.to_string())?;
                 }
             }
-            Some(Cmd::Ui { port, no_open }) => ui_server::serve(&mut session, port, !no_open)?,
+            Some(Cmd::Ui {
+                action,
+                target,
+                port,
+                no_open,
+            }) => {
+                if let Some(act) = action {
+                    let (method, params) = match act.as_str() {
+                        "inspect" | "state" => ("ui.state", json!({})),
+                        "feedback" | "look" => ("ui.feedback", json!({})),
+                        "unconfigured" | "empty" => ("ui.unconfigured", json!({})),
+                        "elements" => ("ui.elements", json!({})),
+                        "focus" => ("ui.focus", json!({ "id": target.unwrap_or_default() })),
+                        "view" => ("ui.set_view", json!({ "view": target.unwrap_or_default() })),
+                        "quit" => ("app.quit", json!({})),
+                        other => (other, json!({})),
+                    };
+                    let res = call_live_control(cli.bridge.as_deref(), method, params)?;
+                    emit(&res);
+                } else {
+                    ui_server::serve(&mut session, port, !no_open)?;
+                }
+            }
             Some(Cmd::Storyboard {
                 project,
                 document,
