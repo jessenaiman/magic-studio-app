@@ -83,6 +83,7 @@ pub mod herdr;
 pub mod history;
 pub mod image_generation;
 pub mod lettering;
+pub mod link_watch;
 pub mod lyrics;
 pub(crate) mod lyrics_layout;
 mod mayhem;

@@ -2,33 +2,17 @@
 //!
 //! Views, the CLI, MCP and the control channel read and edit this copy through commands; the file is
 //! written only by [`DocState::save`]. The file's stamp at load time lets the session notice a change
-//! made by another app or agent ([`DocState::changed_on_disk`]): an unedited document reloads, an edited
+//! made by another app or agent (see [`crate::link_watch`]): an unedited document reloads, an edited
 //! one refuses to save over the newer file.
 
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 use serde_json::Value;
 
 use crate::{EngineError, Result};
 
-/// The file's identity when the document last matched it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FileStamp {
-    pub len: u64,
-    pub modified: Option<SystemTime>,
-}
-
-impl FileStamp {
-    /// The stamp of `path` now, or `None` when the file does not exist.
-    pub fn of(path: &Path) -> Option<Self> {
-        let meta = std::fs::metadata(path).ok()?;
-        Some(Self {
-            len: meta.len(),
-            modified: meta.modified().ok(),
-        })
-    }
-}
+/// Backwards-compatible alias: the stamp type lives in [`crate::link_watch`].
+pub use crate::link_watch::FileStamp;
 
 #[derive(Clone, Debug)]
 pub struct DocState {
@@ -41,7 +25,7 @@ pub struct DocState {
     /// Edited since it was loaded or saved.
     pub dirty: bool,
     /// The file as it was when the document last matched it (`None`: no file yet).
-    pub stamp: Option<FileStamp>,
+    pub stamp: Option<crate::link_watch::FileStamp>,
 }
 
 impl DocState {
@@ -61,7 +45,7 @@ impl DocState {
             value,
             revision: 0,
             dirty: false,
-            stamp: FileStamp::of(path),
+            stamp: crate::link_watch::FileStamp::of(path),
         }))
     }
 
@@ -79,7 +63,7 @@ impl DocState {
 
     /// Whether another writer changed the file since the document last matched it.
     pub fn changed_on_disk(&self) -> bool {
-        FileStamp::of(&self.path) != self.stamp
+        crate::link_watch::changed_on_disk(&self.path, self.stamp)
     }
 
     /// Replace the document's content as one edit.
@@ -92,19 +76,14 @@ impl DocState {
     /// Write the document atomically. Refuses when another writer changed the file since the
     /// document last matched it, so their work is never silently overwritten.
     pub fn save(&mut self) -> Result<()> {
-        if self.changed_on_disk() {
-            return Err(EngineError::InvalidParams(format!(
-                "{} changed outside this session; reload it before saving",
-                self.path.display()
-            )));
-        }
+        crate::link_watch::save_guard(&self.path, self.stamp)?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let payload = serde_json::to_vec_pretty(&self.value)
             .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
         craft_atomic::atomic_write(&self.path, &payload)?;
-        self.stamp = FileStamp::of(&self.path);
+        self.stamp = crate::link_watch::FileStamp::of(&self.path);
         self.dirty = false;
         Ok(())
     }

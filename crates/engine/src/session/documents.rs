@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use crate::doc_state::DocState;
+use crate::link_watch::{ReloadDecision, decide};
 use crate::{EngineError, Result, Session};
 
 impl Session {
@@ -19,16 +20,19 @@ impl Session {
             .iter()
             .position(|d| d.kind == kind && d.path == path);
         let reload = match open {
-            Some(i) if self.docs[i].changed_on_disk() => {
-                if self.docs[i].dirty {
-                    return Err(EngineError::InvalidParams(format!(
-                        "{} changed outside this session while it had unsaved edits",
-                        path.display()
-                    )));
+            Some(i) => {
+                let doc = &self.docs[i];
+                match decide(doc.dirty, doc.changed_on_disk()) {
+                    ReloadDecision::Refuse => {
+                        return Err(EngineError::InvalidParams(format!(
+                            "{} changed outside this session while it had unsaved edits",
+                            path.display()
+                        )));
+                    }
+                    ReloadDecision::Reload => true,
+                    ReloadDecision::Keep => false,
                 }
-                true
             }
-            Some(_) => false,
             None => true,
         };
         if reload {
