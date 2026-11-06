@@ -1320,19 +1320,19 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"/absolute/storyboard.designcraft; default storyboard.designcraft beside the open project\",\"overwrite\":false}",
             always,
-            crate::storyboard::cmd_storyboard_new
+            crate::cmd::storyboard::cmd_storyboard_new
         ),
         query!(
             "storyboard.scenes",
             "Storyboard Scenes and Their Text Fields",
             "{\"path\":\"optional storyboard.designcraft\"}",
-            crate::storyboard::cmd_storyboard_scenes
+            crate::cmd::storyboard::cmd_storyboard_scenes
         ),
         query!(
             "storyboard.cues",
             "The Song's Verse and Chorus, With Each Line's Timing",
             "{\"lyrics\":\"canonical lyrics sheet .json\",\"transcript\":\"optional transcript .json for timings\",\"sections\":\"optional comma list; default every verse* and chorus* section\",\"per\":1}",
-            crate::storyboard::cmd_storyboard_cues
+            crate::cmd::storyboard::cmd_storyboard_cues
         ),
         cmd!(
             "storyboard.lyrics",
@@ -1341,7 +1341,7 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"optional storyboard.designcraft\",\"lyrics\":\"canonical lyrics sheet .json\",\"transcript\":\"optional transcript .json for timings\",\"sections\":\"optional comma list; default every verse* and chorus* section\",\"per\":1}",
             always,
-            crate::storyboard::cmd_storyboard_lyrics
+            crate::cmd::storyboard::cmd_storyboard_lyrics
         ),
         cmd!(
             "storyboard.run",
@@ -1350,25 +1350,25 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"optional storyboard.designcraft\",\"script\":\"script text\",\"script_file\":\"optional script file\"}",
             always,
-            crate::storyboard::cmd_storyboard_run
+            crate::cmd::storyboard::cmd_storyboard_run
         ),
         query!(
             "storyboard.check",
             "Fields Still Holding the Template Default, With the Command to Fill Each",
             "{\"path\":\"optional storyboard.designcraft\"}",
-            crate::storyboard::cmd_storyboard_check
+            crate::cmd::storyboard::cmd_storyboard_check
         ),
         query!(
             "storyboard.pages",
             "Storyboard Pages, Their Archetype, Section and Slots",
             "{\"path\":\"optional storyboard.designcraft\"}",
-            crate::storyboard::cmd_storyboard_pages
+            crate::cmd::storyboard::cmd_storyboard_pages
         ),
         query!(
             "storyboard.slots",
             "The Labelled Slots of One Storyboard Page",
             "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1}",
-            crate::storyboard::cmd_storyboard_slots
+            crate::cmd::storyboard::cmd_storyboard_slots
         ),
         cmd!(
             "storyboard.set",
@@ -1377,7 +1377,7 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1,\"fields\":{\"label\":\"text for the slot, e.g. running_title, cue, world_heading\"},\"images\":{\"label\":\"file for hero_image, source_image, result_image, sketch_left, sketch_right\"},\"refs\":[\"1 to 12 image files for the contact strip\"]}",
             always,
-            crate::storyboard::cmd_storyboard_set
+            crate::cmd::storyboard::cmd_storyboard_set
         ),
         cmd!(
             "storyboard.add",
@@ -1386,7 +1386,7 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"optional\",\"archetype\":\"scene\",\"at\":0,\"fields\":{},\"images\":{},\"refs\":[]}",
             always,
-            crate::storyboard::cmd_storyboard_add
+            crate::cmd::storyboard::cmd_storyboard_add
         ),
         cmd!(
             "storyboard.section",
@@ -1395,7 +1395,7 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"optional\",\"name\":\"B\",\"based_on\":\"A-Parent\",\"pages\":[0,1]}",
             always,
-            crate::storyboard::cmd_storyboard_section
+            crate::cmd::storyboard::cmd_storyboard_section
         ),
         cmd!(
             "storyboard.overlay",
@@ -1404,19 +1404,19 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             None,
             "{\"path\":\"optional\",\"page\":0,\"slot\":\"hero_image\",\"image\":\"/absolute/new.png\",\"layer\":\"Revision\",\"hide_original\":true}",
             always,
-            crate::storyboard::cmd_storyboard_overlay
+            crate::cmd::storyboard::cmd_storyboard_overlay
         ),
         query!(
             "storyboard.thumbnail",
             "Render One Storyboard Page to PNG",
             "{\"path\":\"optional\",\"page\":0,\"scene\":1,\"out\":\"/absolute/scene.png\",\"scale\":0.5}",
-            crate::storyboard::cmd_storyboard_thumbnail
+            crate::cmd::storyboard::cmd_storyboard_thumbnail
         ),
         query!(
             "storyboard.export",
             "Export Storyboard to PDF and/or PNG Spreads",
             "{\"path\":\"optional\",\"pdf\":\"/absolute/storyboard.pdf\",\"png_dir\":\"/absolute/dir\",\"scale\":1.0}",
-            crate::storyboard::cmd_storyboard_export
+            crate::cmd::storyboard::cmd_storyboard_export
         ),
     ]
 }

@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-const TEMPLATE: &[u8] = include_bytes!("../templates/storyboard.designcraft");
+const TEMPLATE: &[u8] = include_bytes!("../../../templates/storyboard.designcraft");
 const MAX_REFS: usize = 12;
 
 /// The page archetypes the template defines, each identified by one marker label.
@@ -1273,5 +1273,5 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "tests/storyboard.rs"]
+#[path = "../../tests/storyboard.rs"]
 mod tests;

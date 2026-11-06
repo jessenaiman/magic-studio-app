@@ -93,7 +93,6 @@ pub mod scribbles;
 pub mod session;
 pub mod skills_registry;
 pub mod song_metadata;
-pub mod storyboard;
 pub mod studio_cues;
 pub mod video_target;
 pub mod workshop;

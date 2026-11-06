@@ -4,7 +4,7 @@
 //! Related workshop submodules:
 //! - [`crate::workshop_intake`]: Audio/target linking, file intake, panel splitting, draft approval, and file catalog
 //! - [`crate::workshop_transcript`]: Stage 2 transcript validation, SRT captions, and HyperFrames audio/beat analysis
-//! - [`crate::storyboard`]: Storyboard chapters and DeckCraft PDF generation
+//! - [`crate::cmd::storyboard`]: Storyboard chapters and DeckCraft PDF generation
 //! - [`crate::video_target`]: Video target scaffolding and preview servers
 
 use std::path::{Path, PathBuf};
