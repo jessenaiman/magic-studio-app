@@ -236,7 +236,7 @@ fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
 /// Parse cargo metadata JSON and return (package_name, dependency_names) pairs.
 fn cargo_metadata(cargo: &str) -> Result<serde_json::Value> {
     let out = Command::new(cargo)
-        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .args(["metadata", "--locked", "--format-version", "1", "--no-deps"])
         .output()
         .map_err(|e| format!("cargo metadata: {e}"))?;
     if !out.status.success() {
@@ -334,7 +334,7 @@ struct CheckResult {
 
 fn run_cargo_check(cargo: &str) -> Result<CheckResult> {
     let out = Command::new(cargo)
-        .args(["check", "--workspace", "--all-targets"])
+        .args(["check", "--locked", "--workspace", "--all-targets"])
         .output()
         .map_err(|e| format!("cargo check: {e}"))?;
     Ok(CheckResult {

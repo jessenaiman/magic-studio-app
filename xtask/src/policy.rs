@@ -124,7 +124,7 @@ fn layer_of(name: &str) -> Option<u8> {
 
 fn metadata() -> Result<Value> {
     let out = Command::new(env!("CARGO"))
-        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .args(["metadata", "--locked", "--format-version", "1", "--no-deps"])
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {

@@ -120,7 +120,8 @@ where applicable. Verify Magic Studio production provenance before adding it. --
 The current source-installation path is for **Linux**; other platforms remain
 unverified. Before building, install:
 
-- Git and Rust/Cargo **1.95 or newer**.
+- Git and rustup. The checkout uses the Rust **1.95.0** toolchain pinned in
+  [rust-toolchain.toml](rust-toolchain.toml).
 - Node.js 26 and npm for the default Lyrics webview.
 - A native compiler, WebKitGTK 4.1 development headers, and the platform
   libraries listed in [the Linux CI workflow](.github/workflows/ci.yml).
