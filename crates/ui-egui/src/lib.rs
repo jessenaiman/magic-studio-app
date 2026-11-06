@@ -425,9 +425,9 @@ impl MagicApp {
             }
         }
         if let Ok(wr) = self.session.execute("words.read", json!({})) {
-            self.words_doc = wr["words"].clone();
+            self.words_doc = wr["document"].clone();
             self.words_tools = wr["tools"].clone();
-            let sec_count = self.words_doc["sections"]
+            let sec_count = self.words_doc["animations"]
                 .as_array()
                 .map_or(0, std::vec::Vec::len);
             if self.selected_words_section >= sec_count {
@@ -1524,6 +1524,15 @@ impl MagicApp {
                 }
 
                 ui.add_space(8.0);
+                if section_header(
+                    ui,
+                    "Kinetic Words & Lyric Choreography (`words.read` / `words.save`)",
+                    true,
+                ) {
+                    self.show_words_choreography_card(ctx, ui);
+                }
+
+                ui.add_space(8.0);
                 if section_header(ui, "Song Metadata & Lyrics Sheet", true) {
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Song Title", |ui| {
@@ -1565,20 +1574,11 @@ impl MagicApp {
                         );
                     });
                 }
-
-                ui.add_space(8.0);
-                if section_header(
-                    ui,
-                    "Kinetic Words & Lyric Choreography (`words.read` / `words.save`)",
-                    true,
-                ) {
-                    self.show_words_choreography_card(ctx, ui);
-                }
             });
     }
 
     fn show_words_choreography_card(&mut self, ctx: &Context, ui: &mut Ui) {
-        let sections = self.words_doc["sections"]
+        let animations = self.words_doc["animations"]
             .as_array()
             .cloned()
             .unwrap_or_default();
@@ -1599,7 +1599,7 @@ impl MagicApp {
                 ui.label(
                     RichText::new(format!(
                         "{} sung sections · {} EffectCraft text presets · {} paint brushes · {} FilmCraft timeline FX",
-                        sections.len(),
+                        animations.len(),
                         text_presets.len(),
                         paint_presets.len(),
                         film_fx_count
@@ -1616,13 +1616,13 @@ impl MagicApp {
                     );
                     if save_words.clicked() {
                         let doc = self.words_doc.clone();
-                        self.run_command(ctx, "words.save", json!({ "words": doc }));
+                        self.run_command(ctx, "words.save", json!({ "document": doc }));
                     }
                 });
             });
             ui.add_space(6.0);
 
-            if sections.is_empty() {
+            if animations.is_empty() {
                 ui.label(
                     RichText::new("No timed words sheet yet — click 'Design Sung Lines (`words.design`)' above to generate.")
                         .color(TEXT_MUTED),
@@ -1631,27 +1631,29 @@ impl MagicApp {
             }
 
             ui.columns(2, |cols| {
-                // Left column: Section tabs & timed lines
+                // Left column: Section tabs & timed words
                 cols[0].label(
-                    RichText::new("Sung Sections & Timed Lines")
+                    RichText::new("Sung Sections & Timed Words")
                         .strong()
                         .size(12.0),
                 );
                 cols[0].add_space(4.0);
                 cols[0].horizontal_wrapped(|ui| {
-                    for (idx, sec) in sections.iter().enumerate() {
-                        let label = sec["label"]
+                    for (idx, anim) in animations.iter().enumerate() {
+                        let label = anim["scope"]["section"]
                             .as_str()
-                            .or_else(|| sec["id"].as_str())
+                            .or_else(|| anim["animation_id"].as_str())
                             .unwrap_or("Section");
+                        let occ = anim["scope"]["occurrence"].as_u64().unwrap_or(1);
+                        let chip = format!("{label} #{occ}");
                         let resp = pill_toggle(
                             ui,
                             self.selected_words_section == idx,
-                            label,
+                            &chip,
                             ACCENT,
                         );
                         self.auto
-                            .add_response(&format!("words-sec-{idx}"), &resp, label);
+                            .add_response(&format!("words-sec-{idx}"), &resp, &chip);
                         if resp.clicked() {
                             self.selected_words_section = idx;
                             self.selected_words_line = 0;
@@ -1660,57 +1662,54 @@ impl MagicApp {
                 });
                 cols[0].add_space(6.0);
 
-                if let Some(sec) = sections.get(self.selected_words_section)
-                    && let Some(lines) = sec["lines"].as_array()
+                if let Some(anim) = animations.get(self.selected_words_section)
+                    && let Some(words) = anim["words"].as_array()
                 {
-                    for (l_idx, line) in lines.iter().enumerate() {
-                        let text = line["text"].as_str().unwrap_or_default();
-                        let start = line["start"].as_f64().unwrap_or(0.0);
-                        let end = line["end"].as_f64().unwrap_or(0.0);
-                        let layout = line["choreography"]["layout"]
-                            .as_str()
-                            .or_else(|| line["layout"].as_str())
-                            .unwrap_or("cascade");
-                        let motion = line["choreography"]["act"]
-                            .as_str()
-                            .or_else(|| line["act"].as_str())
-                            .unwrap_or("pop");
-                        let selected = self.selected_words_line == l_idx;
-                        let row_label =
-                            format!("{start:.1}s–{end:.1}s  [{layout}/{motion}]  {text}");
-                        let resp = cols[0].selectable_label(selected, row_label);
-                        self.auto
-                            .add_response(&format!("words-line-{l_idx}"), &resp, text);
-                        if resp.clicked() {
-                            self.selected_words_line = l_idx;
+                    cols[0].horizontal_wrapped(|ui| {
+                        for (w_idx, w) in words.iter().enumerate() {
+                            let text = w["text"].as_str().unwrap_or_default();
+                            let start = w["start"].as_f64().unwrap_or(0.0);
+                            let word_id = w["word_id"].as_str().unwrap_or_default();
+                            let act = anim["kinetic"]["acts"][word_id]
+                                .as_str()
+                                .or_else(|| w["action"].as_str())
+                                .filter(|a| *a != "none");
+                            let chip = match act {
+                                Some(a) => format!("{text} ({start:.1}s · {a})"),
+                                None => format!("{text} ({start:.1}s)"),
+                            };
+                            let selected = self.selected_words_line == w_idx;
+                            let resp = pill_toggle(ui, selected, &chip, ACCENT_TEAL);
+                            self.auto
+                                .add_response(&format!("words-tok-{w_idx}"), &resp, text);
+                            if resp.clicked() {
+                                self.selected_words_line = w_idx;
+                            }
                         }
-                    }
+                    });
                 }
 
-                // Right column: Choreography & EffectCraft Inspector for selected line
+                // Right column: Choreography & EffectCraft Inspector for selected section/word
                 cols[1].label(
-                    RichText::new("Line Choreography & EffectCraft Preset")
+                    RichText::new("Section Choreography & EffectCraft Preset")
                         .strong()
                         .size(12.0),
                 );
                 cols[1].add_space(4.0);
 
-                if let Some(sec_mut) = self.words_doc["sections"]
+                if let Some(anim_mut) = self.words_doc["animations"]
                     .as_array_mut()
                     .and_then(|s| s.get_mut(self.selected_words_section))
-                    && let Some(line_mut) = sec_mut["lines"]
-                        .as_array_mut()
-                        .and_then(|l| l.get_mut(self.selected_words_line))
                 {
-                    if !line_mut["choreography"].is_object() {
-                        line_mut["choreography"] = json!({
+                    if !anim_mut["kinetic"].is_object() {
+                        anim_mut["kinetic"] = json!({
                             "layout": "cascade",
-                            "act": "pop",
+                            "entrance": "pop",
                             "preset": "clean_lower_third",
                             "brush": "Marker",
                         });
                     }
-                    let cur_layout = line_mut["choreography"]["layout"]
+                    let cur_layout = anim_mut["kinetic"]["layout"]
                         .as_str()
                         .unwrap_or("cascade")
                         .to_owned();
@@ -1722,34 +1721,34 @@ impl MagicApp {
                     cols[1].horizontal_wrapped(|ui| {
                         for (id, label) in [
                             ("cascade", "Cascade"),
-                            ("spiral", "Spiral / Scatter"),
-                            ("zoom_blast", "Zoom Blast"),
+                            ("scatter", "Spiral / Scatter"),
+                            ("poster", "Zoom Blast"),
                             ("stack", "Vertical Stack"),
-                            ("plain", "Plain"),
+                            ("karaoke", "Karaoke Row"),
                         ] {
                             let resp = pill_toggle(ui, cur_layout == id, label, ACCENT);
                             self.auto
                                 .add_response(&format!("choreo-layout-{id}"), &resp, label);
                             if resp.clicked() {
-                                line_mut["choreography"]["layout"] = json!(id);
+                                anim_mut["kinetic"]["layout"] = json!(id);
                             }
                         }
                     });
 
                     cols[1].add_space(6.0);
-                    let cur_act = line_mut["choreography"]["act"]
+                    let cur_act = anim_mut["kinetic"]["entrance"]
                         .as_str()
                         .unwrap_or("pop")
                         .to_owned();
                     cols[1].label(
-                        RichText::new("Kinetic Motion Act")
+                        RichText::new("Kinetic Motion Entrance")
                             .size(11.0)
                             .color(TEXT_SECONDARY),
                     );
                     cols[1].horizontal_wrapped(|ui| {
                         for (id, label) in [
                             ("pop", "Bounce / Pop"),
-                            ("wave", "Wave / Loop"),
+                            ("rise", "Wave / Rise"),
                             ("tilt", "Kinetic Tilt"),
                             ("fire", "Fire / Impact"),
                             ("neon", "Neon Drift"),
@@ -1759,13 +1758,13 @@ impl MagicApp {
                             self.auto
                                 .add_response(&format!("choreo-act-{id}"), &resp, label);
                             if resp.clicked() {
-                                line_mut["choreography"]["act"] = json!(id);
+                                anim_mut["kinetic"]["entrance"] = json!(id);
                             }
                         }
                     });
 
                     cols[1].add_space(6.0);
-                    let cur_preset = line_mut["choreography"]["preset"]
+                    let cur_preset = anim_mut["kinetic"]["preset"]
                         .as_str()
                         .unwrap_or("clean_lower_third")
                         .to_owned();
@@ -1782,13 +1781,13 @@ impl MagicApp {
                             self.auto
                                 .add_response(&format!("choreo-preset-{pid}"), &resp, pname);
                             if resp.clicked() {
-                                line_mut["choreography"]["preset"] = json!(pid);
+                                anim_mut["kinetic"]["preset"] = json!(pid);
                             }
                         }
                     });
 
                     cols[1].add_space(6.0);
-                    let cur_brush = line_mut["choreography"]["brush"]
+                    let cur_brush = anim_mut["kinetic"]["brush"]
                         .as_str()
                         .unwrap_or("Marker")
                         .to_owned();
@@ -1804,7 +1803,7 @@ impl MagicApp {
                             self.auto
                                 .add_response(&format!("choreo-brush-{bname}"), &resp, bname);
                             if resp.clicked() {
-                                line_mut["choreography"]["brush"] = json!(bname);
+                                anim_mut["kinetic"]["brush"] = json!(bname);
                             }
                         }
                     });
