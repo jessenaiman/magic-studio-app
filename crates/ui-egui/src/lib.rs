@@ -351,7 +351,7 @@ impl MagicApp {
 
     pub fn refresh_lyrics(&mut self) {
         if let Ok(lyr) = self.session.execute("song.lyrics", json!({})) {
-            let sheet = if lyr.get("sheet").is_some() {
+            let sheet = if lyr["sheet"].is_object() {
                 &lyr["sheet"]
             } else {
                 &lyr
@@ -368,6 +368,7 @@ impl MagicApp {
                 .to_owned();
             self.song_notes = sheet["notes"]
                 .as_str()
+                .or_else(|| sheet["artist_note"].as_str())
                 .map(str::to_owned)
                 .or_else(|| {
                     sheet["notes"].as_array().map(|arr| {
@@ -384,7 +385,11 @@ impl MagicApp {
             } else if !self.lyrics_sections.is_empty() {
                 let mut blocks = Vec::new();
                 for sec in &self.lyrics_sections {
-                    let sec_id = sec["id"].as_str().unwrap_or("section");
+                    let sec_id = sec["label"]
+                        .as_str()
+                        .or_else(|| sec["section"].as_str())
+                        .or_else(|| sec["id"].as_str())
+                        .unwrap_or("section");
                     let lines: Vec<String> = sec["lines"]
                         .as_array()
                         .into_iter()
@@ -653,7 +658,10 @@ impl MagicApp {
                 "selected_page": self.selected_page,
                 "selected_character": self.selected_character,
                 "song_title": self.song_title,
+                "song_album": self.song_album,
                 "song_audio_path": self.song_audio_path,
+                "lyrics_len": self.song_lyrics_text.len(),
+                "lyrics_preview": self.song_lyrics_text.lines().take(5).collect::<Vec<_>>().join(" / "),
                 "lyrics_sections_count": self.lyrics_sections.len(),
                 "storyboard_pages_count": self.storyboard_pages.len(),
                 "characters_count": self.characters.len(),
@@ -661,6 +669,8 @@ impl MagicApp {
                 "status": self.status_line,
                 "last_error": self.last_error,
                 "unconfigured": unconf,
+                "empty_fields": self.auto.unconfigured(),
+                "element_count": self.auto.list().len(),
                 "widgets": self.auto.list(),
             })),
             "ui.feedback" => {
@@ -828,7 +838,10 @@ impl MagicApp {
                 ViewMode::Animation,
                 ViewMode::Studio,
             ] {
-                if pill_toggle(ui, self.view == mode, mode.label(), ACCENT).clicked() {
+                let resp = pill_toggle(ui, self.view == mode, mode.label(), ACCENT);
+                self.auto
+                    .add_response(&format!("nav-{}", mode.id()), &resp, mode.label());
+                if resp.clicked() {
                     self.view = mode;
                 }
             }
@@ -837,10 +850,11 @@ impl MagicApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let scribbles_active =
                     self.assistant.open && self.assistant.active_tab == AssistantTab::Scribbles;
-                if pill_toggle(ui, scribbles_active, "✨ Scribbles", ACCENT_TEAL)
-                    .on_hover_text("Open Scribbles template-gated image generator")
-                    .clicked()
-                {
+                let scrib_resp = pill_toggle(ui, scribbles_active, "✨ Scribbles", ACCENT_TEAL)
+                    .on_hover_text("Open Scribbles template-gated image generator");
+                self.auto
+                    .add_response("drawer-scribbles", &scrib_resp, "Scribbles");
+                if scrib_resp.clicked() {
                     if scribbles_active {
                         self.assistant.open = false;
                     } else {
@@ -851,10 +865,11 @@ impl MagicApp {
 
                 let fidget_active =
                     self.assistant.open && self.assistant.active_tab == AssistantTab::Fidget;
-                if pill_toggle(ui, fidget_active, "⚙ Fidget", ACCENT_VIOLET)
-                    .on_hover_text("Open Fidget Markdown frontmatter prompt architect")
-                    .clicked()
-                {
+                let fidget_resp = pill_toggle(ui, fidget_active, "⚙ Fidget", ACCENT_VIOLET)
+                    .on_hover_text("Open Fidget Markdown frontmatter prompt architect");
+                self.auto
+                    .add_response("drawer-fidget", &fidget_resp, "Fidget");
+                if fidget_resp.clicked() {
                     if fidget_active {
                         self.assistant.open = false;
                     } else {
@@ -863,10 +878,13 @@ impl MagicApp {
                     }
                 }
 
-                if self.session.project_path.is_some()
-                    && secondary_button(ui, "Save Project").clicked()
-                {
-                    self.run_command(ctx, "project.save", json!({}));
+                if self.session.project_path.is_some() {
+                    let save_resp = secondary_button(ui, "Save Project");
+                    self.auto
+                        .add_response("btn-save-project", &save_resp, "Save Project");
+                    if save_resp.clicked() {
+                        self.run_command(ctx, "project.save", json!({}));
+                    }
                 }
             });
         });
@@ -1379,7 +1397,10 @@ impl MagicApp {
                 ui.horizontal(|ui| {
                     ui.heading("Song Audio, Lyrics & Kinetic Words");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if primary_button(ui, "Save Song Details (`song.save`)").clicked() {
+                        let save_resp = primary_button(ui, "Save Song Details (`song.save`)");
+                        self.auto
+                            .add_response("btn-save-song", &save_resp, "Save Song Details");
+                        if save_resp.clicked() {
                             self.run_command(
                                 ctx,
                                 "song.save",
@@ -1391,6 +1412,26 @@ impl MagicApp {
                                 }),
                             );
                         }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let studio_resp =
+                                secondary_button(ui, "✨ Open Kinetic Lyric Studio (`--lyrics`)");
+                            self.auto.add_response(
+                                "btn-open-lyrics-studio",
+                                &studio_resp,
+                                "Open Kinetic Lyric Studio",
+                            );
+                            if studio_resp.clicked()
+                                && let Ok(exe) = std::env::current_exe()
+                            {
+                                let mut cmd = std::process::Command::new(exe);
+                                cmd.arg("--lyrics");
+                                if let Some(p) = &self.session.project_path {
+                                    cmd.arg("--project").arg(p);
+                                }
+                                let _ = cmd.spawn();
+                            }
+                        }
                     });
                 });
                 ui.add_space(6.0);
@@ -1398,9 +1439,10 @@ impl MagicApp {
                 if section_header(ui, "Song Audio (`workshop.set_audio`)", true) {
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Audio File", |ui| {
-                            if primary_button(ui, "Link Audio").clicked()
-                                && !self.song_audio_path.trim().is_empty()
-                            {
+                            let link_resp = primary_button(ui, "Link Audio");
+                            self.auto
+                                .add_response("btn-link-audio", &link_resp, "Link Audio");
+                            if link_resp.clicked() && !self.song_audio_path.trim().is_empty() {
                                 self.run_command(
                                     ctx,
                                     "workshop.set_audio",
@@ -1416,25 +1458,47 @@ impl MagicApp {
                                     DialogAction::SongAudio,
                                 );
                             }
-                            ui.add(
+                            let audio_resp = ui.add(
                                 egui::TextEdit::singleline(&mut self.song_audio_path)
                                     .desired_width(300.0),
+                            );
+                            self.auto.add_field(
+                                "song.audio",
+                                &audio_resp,
+                                "Audio File",
+                                &self.song_audio_path,
                             );
                         });
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
-                            if secondary_button(ui, "Analyze Song Beats (`audio.analyze`)")
-                                .clicked()
-                            {
+                            let beats_resp =
+                                secondary_button(ui, "Analyze Song Beats (`audio.analyze`)");
+                            self.auto.add_response(
+                                "btn-analyze-beats",
+                                &beats_resp,
+                                "Analyze Song Beats",
+                            );
+                            if beats_resp.clicked() {
                                 self.run_command(ctx, "audio.analyze", json!({}));
                             }
-                            if secondary_button(ui, "Design Sung Lines (`words.design`)").clicked()
-                            {
+                            let design_resp =
+                                secondary_button(ui, "Design Sung Lines (`words.design`)");
+                            self.auto.add_response(
+                                "btn-design-lines",
+                                &design_resp,
+                                "Design Sung Lines",
+                            );
+                            if design_resp.clicked() {
                                 self.run_command(ctx, "words.design", json!({}));
                             }
-                            if secondary_button(ui, "Letter in EffectCraft (`words.letter`)")
-                                .clicked()
-                            {
+                            let letter_resp =
+                                secondary_button(ui, "Letter in EffectCraft (`words.letter`)");
+                            self.auto.add_response(
+                                "btn-letter-effectcraft",
+                                &letter_resp,
+                                "Letter in EffectCraft",
+                            );
+                            if letter_resp.clicked() {
                                 self.run_command(ctx, "words.letter", json!({}));
                             }
                         });
@@ -1445,16 +1509,24 @@ impl MagicApp {
                 if section_header(ui, "Song Metadata & Lyrics Sheet", true) {
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Song Title", |ui| {
-                            ui.add(
+                            let resp = ui.add(
                                 egui::TextEdit::singleline(&mut self.song_title)
                                     .desired_width(320.0),
                             );
+                            self.auto.add_field(
+                                "song.title",
+                                &resp,
+                                "Song Title",
+                                &self.song_title,
+                            );
                         });
                         prop_row(ui, "Album", |ui| {
-                            ui.add(
+                            let resp = ui.add(
                                 egui::TextEdit::singleline(&mut self.song_album)
                                     .desired_width(320.0),
                             );
+                            self.auto
+                                .add_field("song.album", &resp, "Album", &self.song_album);
                         });
                         ui.add_space(4.0);
                         ui.label(
@@ -1462,10 +1534,16 @@ impl MagicApp {
                                 .size(11.5)
                                 .color(TEXT_SECONDARY),
                         );
-                        ui.add(
+                        let lyr_resp = ui.add(
                             egui::TextEdit::multiline(&mut self.song_lyrics_text)
                                 .desired_rows(12)
                                 .desired_width(f32::INFINITY),
+                        );
+                        self.auto.add_field(
+                            "song.lyrics",
+                            &lyr_resp,
+                            "Canonical Artist Lyrics",
+                            &self.song_lyrics_text,
                         );
                     });
                 }
@@ -1842,6 +1920,7 @@ impl MagicApp {
 
 impl eframe::App for MagicApp {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        self.auto.begin_frame();
         let ctx = ui.ctx().clone();
         #[cfg(not(target_arch = "wasm32"))]
         let _ = self.repaint_ctx.set(ctx.clone());
