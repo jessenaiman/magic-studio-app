@@ -21,27 +21,27 @@ designcraft-engine = { git = "https://github.com/storytold/designcraft" }
 designcraft-render = { git = "https://github.com/storytold/designcraft" }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
-filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
-filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft", rev = "7322aad72491a294a06a26a63fb65a3fc30ac242" }
+filmcraft-captions = { git = "https://github.com/storytold/filmcraft", rev = "7322aad72491a294a06a26a63fb65a3fc30ac242" }
+filmcraft-engine = { git = "https://github.com/storytold/filmcraft", rev = "7322aad72491a294a06a26a63fb65a3fc30ac242", features = ["whisper", "speech-download"] }
+filmcraft-media = { git = "https://github.com/storytold/filmcraft", rev = "7322aad72491a294a06a26a63fb65a3fc30ac242" }
+filmcraft-time = { git = "https://github.com/storytold/filmcraft", rev = "7322aad72491a294a06a26a63fb65a3fc30ac242" }
 photocraft-engine = { git = "https://github.com/storytold/photocraft" }
 texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
 vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft", default-features = false }
 
-# Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking)
-craft-atomic = { git = "https://github.com/storytold/craft-libs" }
-craft-dialogs = { git = "https://github.com/storytold/craft-libs" }
-craft-doc = { git = "https://github.com/storytold/craft-libs" }
-craft-docpath = { git = "https://github.com/storytold/craft-libs" }
-craft-ecproj-format = { git = "https://github.com/storytold/craft-libs" }
-craft-media = { git = "https://github.com/storytold/craft-libs", default-features = false }
-craft-pcraft-format = { git = "https://github.com/storytold/craft-libs" }
-craft-settings = { git = "https://github.com/storytold/craft-libs" }
-craft-ui = { git = "https://github.com/storytold/craft-libs", features = ["serde", "native-windows"] }
-craft-update = { git = "https://github.com/storytold/craft-libs", features = ["egui"] }
-craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs" }
+# Keep Magic's Craft libraries and the PDF patches below on the same revision.
+craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-doc = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-docpath = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-ecproj-format = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-media = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c", default-features = false }
+craft-pcraft-format = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c", features = ["serde", "native-windows"] }
+craft-update = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c", features = ["egui"] }
+craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
 
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
 craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }
@@ -98,11 +98,11 @@ lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
-krilla = { git = "https://github.com/storytold/craft-libs" }
-hayro = { git = "https://github.com/storytold/craft-libs" }
-hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
-hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
-hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }
+krilla = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+hayro = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+hayro-interpret = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+hayro-syntax = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
@@ -112,9 +112,5 @@ egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc7996
 egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_extras = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
