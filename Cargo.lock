@@ -7314,6 +7314,34 @@ checksum = "f1c46f3fcd2e888afdb01a07efc071cb21300e07c68d32c3e8b01b5c8cb1fcaa"
 name = "magic"
 version = "0.17.0"
 dependencies = [
+ "clap",
+ "eframe",
+ "egui",
+ "log",
+ "magic-engine",
+ "magic-ui-egui",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
+name = "magic-cli"
+version = "0.17.0"
+dependencies = [
+ "clap",
+ "magic-engine",
+ "magic-mcp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "magic-engine"
+version = "0.17.0"
+dependencies = [
  "craft-ai-client",
  "craft-ai-core",
  "craft-atomic 0.1.0 (git+https://github.com/storytold/craft-libs)",
@@ -7344,39 +7372,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "magic-cli"
-version = "0.17.0"
-dependencies = [
- "clap",
- "magic",
- "magic-mcp",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "magic-gui"
-version = "0.17.0"
-dependencies = [
- "clap",
- "eframe",
- "egui",
- "log",
- "magic",
- "magic-ui-egui",
- "serde",
- "serde_json",
- "subtle",
- "tauri",
- "tauri-build",
-]
-
-[[package]]
 name = "magic-mcp"
 version = "0.17.0"
 dependencies = [
  "log",
- "magic",
+ "magic-engine",
  "serde",
  "serde_json",
 ]
@@ -7386,7 +7386,7 @@ name = "magic-tui"
 version = "0.17.0"
 dependencies = [
  "clap",
- "magic",
+ "magic-engine",
  "serde",
  "serde_json",
 ]
@@ -7406,7 +7406,7 @@ dependencies = [
  "egui_extras",
  "image",
  "log",
- "magic",
+ "magic-engine",
  "open",
  "raw-window-handle",
  "serde",

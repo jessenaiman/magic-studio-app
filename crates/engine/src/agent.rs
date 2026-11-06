@@ -426,7 +426,7 @@ fn apply_selection_patch(value: &mut Value, patch: &Value) -> Result<()> {
 
 fn decorate_config(s: &Session, value: &mut Value) {
     let root = crate::workspace::workspace_root(s);
-    value["instructions"] = json!(root.join("apps/magic-gui/agent.md").to_string_lossy());
+    value["instructions"] = json!(root.join("apps/magic/agent.md").to_string_lossy());
     if let (Some(base), Value::Object(catalog)) = (value.as_object_mut(), agent_catalog()) {
         for (key, val) in catalog {
             base.insert(key, val);
@@ -771,8 +771,8 @@ fn chat_message(params: &Value) -> Result<String> {
 }
 
 fn chat_instructions(s: &Session) -> Result<String> {
-    fs::read_to_string(crate::workspace::workspace_root(s).join("apps/magic-gui/agent.md"))
-        .map_err(|_|invalid("Cannot read apps/magic-gui/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))
+    fs::read_to_string(crate::workspace::workspace_root(s).join("apps/magic/agent.md"))
+        .map_err(|_| invalid("Cannot read apps/magic/agent.md; restore or edit the Markdown instructions before sending. No prompt sent"))
 }
 
 fn chat_task(params: &Value) -> Result<String> {

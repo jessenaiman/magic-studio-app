@@ -2,7 +2,7 @@
 //! `cargo xtask install`: install this built checkout's Magic Studio app, `magic-cli`,
 //! runtime resources and desktop entry for the current user. It installs Magic
 //! only; it never installs or configures other Craft apps. Build first:
-//!   cargo build -p magic-gui -p magic-cli [--release]
+//!   cargo build -p magic -p magic-cli [--release]
 use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -184,11 +184,11 @@ fn install_desktop_entry(root: &Path, prefix: &Path) -> Result<()> {
     )?;
     io(
         icon.display(),
-        std::fs::copy(root.join("apps/magic-gui/icons/icon.png"), &icon),
+        std::fs::copy(root.join("apps/magic/icons/icon.png"), &icon),
     )?;
     let template = io(
         "magic.desktop",
-        std::fs::read_to_string(root.join("apps/magic-gui/magic.desktop")),
+        std::fs::read_to_string(root.join("apps/magic/magic.desktop")),
     )?;
     let launcher = prefix.join("bin/magic");
     let entry = template
@@ -216,7 +216,7 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
         Ok(build)
     } else {
         Err(format!(
-            "Build first: cargo build -p magic-gui -p magic-cli{flag}"
+            "Build first: cargo build -p magic -p magic-cli{flag}"
         ))
     }
 }
@@ -297,6 +297,6 @@ mod tests {
         assert!(wanted_resource("apps/magic/agent.md"));
         assert!(!wanted_resource("pipeline/tests/test_layout.rs"));
         assert!(!wanted_resource("lib/test_helpers.rs"));
-        assert!(!wanted_resource("apps/magic-gui/src/main.rs"));
+        assert!(!wanted_resource("apps/magic/src/main.rs"));
     }
 }

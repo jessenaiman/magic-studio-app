@@ -132,7 +132,5 @@ to immutable revisions.
 |---|---|
 | `apps/magic` builds an optional Tauri webview and runs `npm` for the Lyrics design (`lyrics-webview` feature) | #97 |
 | `apps/magic-cli/ui` (retired web UI), `ui_server.rs` (`magic-cli ui`), and npm files in `apps/magic-cli` | #93 |
-| engine package is `magic` and `apps/magic` holds package `magic-gui`; the craft rule is `magic-engine` and `magic` | #91 |
-| `xtask/src/policy.rs` is FilmCraft's layer table, not Magic's | #91 |
 | craft git dependencies without `rev` (8 craft-libs revisions in `Cargo.lock`) | #91 |
 | egui views are stand-ins without the accepted design; Animation lacks the EffectCraft canvas | #102 |

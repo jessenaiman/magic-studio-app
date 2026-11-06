@@ -12,7 +12,7 @@ repository = "https://github.com/jessenaiman/magic-studio-app"
 
 [workspace.dependencies]
 # Magic's own engine, MCP server, and egui frontend
-magic = { path = "crates/engine" }
+magic = { package = "magic-engine", path = "crates/engine" }
 magic-mcp = { path = "crates/mcp" }
 magic-ui-egui = { path = "crates/ui-egui" }
 

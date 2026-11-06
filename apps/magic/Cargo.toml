@@ -1,6 +1,6 @@
 [package]
-name = "magic-gui"
-description = "Magic Studio desktop app (eframe + magic-ui-egui + magic)"
+name = "magic"
+description = "Magic Studio desktop app (eframe + magic-ui-egui + magic-engine)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -6,10 +6,10 @@ use std::process::Command;
 
 /// Magic's own crates and their layers (docs/architecture.md › Layers).
 const LAYERS: &[(&str, u8)] = &[
-    ("magic", 5),
+    ("magic-engine", 5),
     ("magic-ui-egui", 6),
     ("magic-mcp", 6),
-    ("magic-gui", 7),
+    ("magic", 7),
     ("magic-cli", 7),
     ("magic-tui", 7),
     ("xtask", 7),

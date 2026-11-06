@@ -1,10 +1,13 @@
 [package]
-name = "magic"
+name = "magic-engine"
 description = "Magic Studio engine: command registry and session for 2D/3D turnaround animation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[lib]
+name = "magic"
 
 [lints]
 workspace = true

@@ -35,10 +35,10 @@ a suggested command from one actually run. Drafting a brief does not execute it.
 
 ## One application, one live session
 
-Application: `apps/magic-gui` in the current Magic Studio checkout.
+Application: `apps/magic` in the current Magic Studio checkout.
 The native Rust UI rewrite is active. Preserve the retired web UI deletion;
 do not restore frontend dependencies or run the withdrawn checks.
-Read [the command contract](../../apps/magic-gui/MAGIC.md). The UI, Rust engine and CLI adapters
+Read [the command contract](MAGIC.md). The UI, Rust engine and CLI adapters
 share the Rust command registry and the window's engine session. New/Open and project
 workflow controls enter the guarded native dispatch directly; do not add a CLI subprocess loop.
 
@@ -106,7 +106,7 @@ Work only on assigned files and coordinate ownership before editing. Read the re
 guidelines. Preserve unrelated changes. Use the existing model unless asked to switch; if Codex is
 chosen, the user permits Sol 6.1 only. Learn and observe regardless of model strength.
 
-Build `cargo build -p magic-gui` after UI edits (assets are embedded). Before restarting the shared shell,
+Build `cargo build -p magic` after UI edits (assets are embedded). Before restarting the shared shell,
 inspect pending/dirty state and preserve unsaved edits. After every visible change run
 `magic-cli --project /absolute/Project.magic ui look` and inspect the PNG. With a project open, captures
 default to `<project>/.agent/looks/`. Keep project outputs inside the project.

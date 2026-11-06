@@ -123,15 +123,15 @@ unverified. Before building, install:
 - Git and Rust/Cargo **1.95 or newer**.
 - A native compiler and the platform libraries required by the Rust workspace.
 
-A fresh build downloads missing Rust dependencies. The native Rust UI rewrite
-is underway in `apps/magic-gui/`; preserve the retired frontend's deletion.
+Cargo fetches the workspace's Rust dependencies during a fresh build.
+The native desktop package is `magic` and the engine package is `magic-engine`.
 
 ### Build and install the app and CLI
 
 ```sh
 # Existing checkout: build, run, and rerun checks without installing
-cargo build -p magic-gui -p magic-cli --locked
-cargo run -p magic-gui
+cargo build -p magic -p magic-cli --locked
+cargo run -p magic
 cargo xtask ci
 cargo xtask layers
 cargo xtask assets
@@ -139,14 +139,13 @@ cargo xtask assets
 Asset rights metadata is pending; SonarCloud, WASM and translations are not configured.
 
 ```sh
-git clone https://github.com/jessenaiman/magic-app.git
-cd magic-app
-cargo build -p magic-gui -p magic-cli --release --locked
+git clone https://github.com/jessenaiman/magic-studio-app.git
+cd magic-studio-app
+cargo build -p magic -p magic-cli --release --locked
 cargo xtask install --profile release
 ```
 
-This installs one **Magic Studio** executable with `magic` and `magic-cli` aliases.
-The installer installs:
+The installer places the `magic` desktop app and the `magic-cli` executable in:
 
 - Commands under `~/.local/bin`.
 - App and runtime resources: `~/.local/share/magic`.
@@ -166,7 +165,7 @@ An installed app opens without a provider key. Supported Craft document operatio
 use linked Rust libraries. Opening a separate native editor requires its installed
 application. HyperFrames and FFmpeg remain external runtimes. See the
 [production guide](magic.md).
-The [setup guide](apps/magic-gui/README.md) covers installer
+The [setup guide](apps/magic/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
@@ -181,7 +180,7 @@ magic-cli commands project
 magic-cli studio open /absolute/path/Song.magic
 ```
 
-The [Magic command guide](apps/magic-gui/SKILL.md) explains project targeting
+The [Magic command guide](apps/magic/SKILL.md) explains project targeting
 and independent session bindings. Craft document operations use their linked
 Rust libraries where integrated. Magic retains its genuine command-line interface.
 
@@ -189,7 +188,7 @@ Rust libraries where integrated. Magic retains its genuine command-line interfac
 
 Focused fixes, documentation improvements, and reproducible bug reports are
 welcome. Start with [CONTRIBUTING](CONTRIBUTING.md) and the
-[command architecture](apps/magic-gui/MAGIC.md). Keep changes scoped and report
+[command architecture](apps/magic/MAGIC.md). Keep changes scoped and report
 the resulting behaviour, checks actually performed, and remaining limitations.
 Use the source setup guide for development; rebuild after editing embedded UI.
 

@@ -1,7 +1,7 @@
 //! Example: Inspect Magic Studio engine command registry.
 //!
 //! Run with:
-//!     cargo run -p magic --example inspect_registry
+//!     cargo run -p magic-engine --example inspect_registry
 
 use magic::{Session, command_specs, find_command};
 
