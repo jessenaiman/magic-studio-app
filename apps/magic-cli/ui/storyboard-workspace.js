@@ -21,7 +21,7 @@ function updateBoardDraft() {
 }
 
 function pageTitle(page) {
-  return page.title || ({ cover: "Cover", world: "World", character: "Character Study" }[page.archetype]) ||
+  return page.title || ({ cover: "Cover", world: "World", char: "Character Study" }[page.archetype]) ||
     (page.archetype === "scene" ? page.scene_id || "Scene" : `Page ${page.page + 1}`);
 }
 

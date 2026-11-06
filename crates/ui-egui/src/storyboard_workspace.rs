@@ -106,7 +106,7 @@ impl MagicApp {
             .storyboard_pages
             .iter()
             .map(|page| {
-                let title = ["title", "cover_title", "world_heading", "character_name"]
+                let title = ["title", "cover_title", "world_heading", "char_heading"]
                     .into_iter()
                     .filter_map(|label| field(page, label))
                     .find(|text| !text.is_empty() && !text.starts_with('['));

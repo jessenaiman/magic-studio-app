@@ -27,6 +27,13 @@ fn storyboard_new_pages_set_add_and_thumbnails_roundtrip() {
     assert_eq!(page_list.len(), 4);
     assert_eq!(page_list[0]["archetype"], "cover");
     assert_eq!(page_list[3]["archetype"], "scene");
+    let cover = page_list[0]["slots"].as_array().unwrap();
+    let key_art = cover
+        .iter()
+        .find(|slot| slot["label"] == "cover_key_art")
+        .unwrap();
+    assert_eq!(key_art["kind"], "image");
+    assert!(key_art["image"].is_null());
 
     // 3. Edit Scene 1 text fields
     let updated = cmd_storyboard_set(

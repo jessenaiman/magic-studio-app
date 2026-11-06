@@ -321,6 +321,11 @@ impl Board {
                     hidden: item.hidden,
                 });
             }
+            for slot in &mut slots {
+                if slot.kind == "other" && labels.contains_key(&format!("{}_hint", slot.label)) {
+                    slot.kind = "image";
+                }
+            }
             let section = spread
                 .pages
                 .first()
