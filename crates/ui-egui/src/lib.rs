@@ -779,6 +779,14 @@ impl MagicApp {
                         self.assistant.open = true;
                         self.assistant.active_tab = AssistantTab::Scribbles;
                     }
+                    id if self.view == ViewMode::Animation
+                        && id.starts_with("animation-asset-") =>
+                    {
+                        let asset = id.trim_start_matches("animation-asset-");
+                        if !self.select_animation_asset(asset) {
+                            return Err(format!("Unknown Animation asset `{asset}`"));
+                        }
+                    }
                     _ => {
                         return Err(format!("Unknown UI element `{target}`"));
                     }
@@ -1591,6 +1599,27 @@ impl MagicApp {
             });
     }
 
+    fn select_animation_asset(&mut self, id: &str) -> bool {
+        let Some(asset) = self
+            .session
+            .project_assets
+            .iter()
+            .find(|asset| asset.id == id)
+        else {
+            return false;
+        };
+        self.selected_character = id.into();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = asset.path.clone()
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
+        {
+            self.open_effectcraft_composition(&path);
+        }
+        true
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn open_effectcraft_composition(&mut self, path: &Path) {
         if self
@@ -1693,6 +1722,18 @@ impl MagicApp {
             return;
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(composition) = self.effectcraft_animation.as_mut() {
+            egui::Panel::bottom("animation_effectcraft_timeline")
+                .resizable(true)
+                .default_size(280.0)
+                .min_size(240.0)
+                .show(ui, |ui| {
+                    ui.set_min_height(ui.available_height());
+                    composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Timeline);
+                });
+        }
+
         // Left Rail: Characters & Project Assets
         egui::Panel::left("animation_left_rail")
             .resizable(true)
@@ -1762,15 +1803,7 @@ impl MagicApp {
                                         &asset.name,
                                     );
                                     if select.clicked() {
-                                        self.selected_character = asset.id.clone();
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        if let Some(path) = asset.path.as_deref()
-                                            && path.extension().is_some_and(|ext| {
-                                                ext.eq_ignore_ascii_case("ecproj")
-                                            })
-                                        {
-                                            self.open_effectcraft_composition(path);
-                                        }
+                                        self.select_animation_asset(&asset.id);
                                     }
                                 });
                             });
@@ -1950,7 +1983,7 @@ impl MagicApp {
                 {
                     self.effectcraft_animation_toolbar(ui);
                     if let Some(composition) = self.effectcraft_animation.as_mut() {
-                        composition.show(ui);
+                        composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Composition);
                         return;
                     }
                 }

@@ -21,6 +21,7 @@ designcraft-engine = { git = "https://github.com/storytold/designcraft" }
 designcraft-render = { git = "https://github.com/storytold/designcraft" }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
+effectcraft-ui-egui = { git = "https://github.com/storytold/effectcraft" }
 filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }

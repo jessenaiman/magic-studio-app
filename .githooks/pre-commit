@@ -6,6 +6,13 @@
 
 set -e
 
+# Nothing the gates build or read changed (docs, scripts, web UI assets): skip the slow part.
+if ! git diff --cached --name-only \
+    | grep -qE '\.(rs|toml|lock)$|^\.githooks/|^\.github/workflows/|^docs/control-protocol\.md$'; then
+    echo "No Rust-affecting changes staged; skipping cargo xtask ci (CI still runs it)."
+    exit 0
+fi
+
 echo "Running Magic Studio native quality gates (cargo xtask ci)..."
 cargo xtask ci
 

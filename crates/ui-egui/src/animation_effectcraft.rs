@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use effectcraft_ui_egui::{EffectcraftApp, dock::PanelKind, panels};
-use egui::{Context, Rect, Ui, pos2};
+use egui::{Context, Ui};
 use serde_json::json;
 
 pub(crate) struct AnimationEffectcraft(EffectcraftApp);
@@ -40,13 +40,9 @@ impl AnimationEffectcraft {
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui) {
+    pub fn show(&mut self, ui: &mut Ui, panel: PanelKind) {
         let rect = ui.available_rect_before_wrap();
-        let split = rect.top() + rect.height() * 0.60;
-        let composition = Rect::from_min_max(rect.min, pos2(rect.right(), split));
-        let timeline = Rect::from_min_max(pos2(rect.left(), split), rect.max);
-        panels::show(&mut self.0, ui, PanelKind::Composition, composition);
-        panels::show(&mut self.0, ui, PanelKind::Timeline, timeline);
+        panels::show(&mut self.0, ui, panel, rect);
     }
 
     pub fn show_dialogs(&mut self, ctx: &Context) {
