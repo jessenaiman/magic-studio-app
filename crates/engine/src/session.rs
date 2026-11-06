@@ -10,6 +10,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod documents;
+mod edit;
+mod execute;
+pub mod undo;
+
 /// The engine session. All project changes go through [`Session::execute`].
 #[derive(Debug)]
 pub struct Session {
@@ -48,6 +53,12 @@ pub struct Session {
     pub project_saves: std::sync::atomic::AtomicU64,
     /// Successful journaled commands since the project file was last written.
     pub edits_since_save: u64,
+    /// The open project's documents (`session/documents.rs`).
+    pub docs: Vec<crate::doc_state::DocState>,
+    /// Undo and redo steps over the open documents (`session/undo.rs`).
+    pub history: crate::history::History,
+    /// The current command's documents as they were before its first edit to each (the undo step).
+    pub step_base: Vec<crate::doc_state::DocState>,
 }
 
 impl Default for Session {
@@ -71,6 +82,9 @@ impl Default for Session {
             last_result: None,
             project_saves: std::sync::atomic::AtomicU64::new(0),
             edits_since_save: 0,
+            docs: Vec::new(),
+            history: crate::history::History::default(),
+            step_base: Vec::new(),
         }
     }
 }
@@ -98,6 +112,9 @@ impl Clone for Session {
                     .load(std::sync::atomic::Ordering::Relaxed),
             ),
             edits_since_save: self.edits_since_save,
+            docs: self.docs.clone(),
+            history: self.history.clone(),
+            step_base: Vec::new(),
             // A copy does not own the apps this session opened.
         }
     }

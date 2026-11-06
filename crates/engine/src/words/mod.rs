@@ -709,14 +709,19 @@ pub(crate) fn timing(anim: &mut Value) {
     }
 }
 
-pub(crate) fn load(dir: &Path) -> Result<Option<Value>> {
-    match fs::read(document_path(dir)) {
-        Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes).map_err(|e| {
-            invalid(format!("design/words.json is not valid JSON: {e}"))
-        })?)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.into()),
-    }
+/// The session document kind of the lyric design (`design/words.json`).
+pub(crate) const WORDS_DOC: &str = "words";
+
+/// The lyric design from the session's open documents, loaded on first use and reloaded when
+/// another writer changed the file (`session/documents.rs`).
+pub(crate) fn load(s: &mut Session, dir: &Path) -> Result<Option<Value>> {
+    Ok(s.document(WORDS_DOC, &document_path(dir))?
+        .map(|d| d.value.clone()))
+}
+
+/// Store the lyric design as a session edit and write it.
+pub(crate) fn save(s: &mut Session, dir: &Path, doc: &Value) -> Result<()> {
+    s.save_document(WORDS_DOC, &document_path(dir), doc.clone())
 }
 
 fn group_caption_lines(src: &[&Value]) -> Vec<[usize; 2]> {

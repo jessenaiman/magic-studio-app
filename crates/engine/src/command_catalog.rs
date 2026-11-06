@@ -765,6 +765,24 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             crate::words::cmd_words_apply
         ),
         cmd!(
+            "edit.undo",
+            "Undo",
+            ["Edit"],
+            Some("Cmd+Z"),
+            "{}",
+            always,
+            crate::session::undo::cmd_edit_undo
+        ),
+        cmd!(
+            "edit.redo",
+            "Redo",
+            ["Edit"],
+            Some("Cmd+Shift+Z"),
+            "{}",
+            always,
+            crate::session::undo::cmd_edit_redo
+        ),
+        cmd!(
             "words.save",
             "Save Words Animation",
             ["Design"],

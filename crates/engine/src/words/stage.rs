@@ -2,8 +2,8 @@
 use super::compose::{kinetic_design, line_design, text_effect};
 use crate::words::{
     ACTIONS, ENTRANCES, EXITS, KINETIC_LIBRARY, aligned, default_document, document_path,
-    fill_untimed, invalid, load, reference, studio_times, tag_attr, timing, with_sung_sections,
-    word_time_key,
+    fill_untimed, invalid, load, reference, save, studio_times, tag_attr, timing,
+    with_sung_sections, word_time_key,
 };
 use crate::{Result, Session};
 use serde_json::{Value, json};
@@ -574,7 +574,7 @@ fn graphic_cues(
 }
 
 fn load_or_default_doc(s: &mut Session, dir: &Path) -> Result<(Value, bool)> {
-    let (mut doc, saved) = match load(dir)? {
+    let (mut doc, saved) = match load(s, dir)? {
         Some(doc) => (with_sung_sections(doc, &aligned(s)?)?, true),
         None => (default_document(&aligned(s)?)?, false),
     };
@@ -870,19 +870,8 @@ pub fn cmd_words_save(s: &mut Session, p: &Value) -> Result<Value> {
         .cloned()
         .unwrap_or(json!("magic"));
     let saved = anim.clone();
-    write_words_doc(&dir, &doc)?;
+    save(s, &dir, &doc)?;
     Ok(json!({"ok":true,"conflict":false,"path":document_path(&dir),"animation":saved}))
-}
-
-fn write_words_doc(dir: &Path, doc: &Value) -> Result<()> {
-    let path = document_path(dir);
-    fs::create_dir_all(
-        path.parent()
-            .ok_or_else(|| invalid("Output path has no parent"))?,
-    )?;
-    let payload = serde_json::to_vec_pretty(doc).map_err(|e| invalid(e.to_string()))?;
-    craft_atomic::atomic_write(&path, &payload)?;
-    Ok(())
 }
 
 fn find_section_indices(doc: &Value, source: &str, target: &str) -> Result<(usize, usize)> {
@@ -1030,7 +1019,7 @@ fn find_source_cue_start(
 
 pub fn cmd_words_link(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
-    let mut doc = load(&dir)?.ok_or_else(|| invalid("Save this lyric design first"))?;
+    let mut doc = load(s, &dir)?.ok_or_else(|| invalid("Save this lyric design first"))?;
     let (source, target, word, index) = parse_link_request(p)?;
     let (si, ti) = find_section_indices(&doc, source, target)?;
     if !check_link_revisions(&doc, si, ti, p)? {
@@ -1041,7 +1030,7 @@ pub fn cmd_words_link(s: &mut Session, p: &Value) -> Result<Value> {
     let (cue_start, at) = find_source_cue_start(s, &doc, source, index, ti, word)?;
     let drawing = prepare_relinked_drawing(&doc, si, index, word, cue_start, at)?;
     let target_index = move_drawing_between_sections(&mut doc, si, ti, index, drawing)?;
-    write_words_doc(&dir, &doc)?;
+    save(s, &dir, &doc)?;
     Ok(json!({
         "ok": true,
         "conflict": false,
