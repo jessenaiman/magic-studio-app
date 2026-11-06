@@ -16,6 +16,7 @@
 )]
 
 pub mod assistant;
+pub mod automation;
 pub mod theme;
 pub mod widgets;
 
@@ -109,6 +110,7 @@ pub struct MagicApp {
     pub session: Session,
     pub view: ViewMode,
     pub assistant: AssistantDrawer,
+    pub auto: automation::Registry,
     pub status_line: String,
     pub last_error: Option<String>,
     theme_applied: bool,
@@ -196,6 +198,7 @@ impl MagicApp {
             session,
             view: initial_view,
             assistant,
+            auto: automation::Registry::default(),
             status_line: "Ready".into(),
             last_error: None,
             theme_applied: false,
@@ -345,16 +348,65 @@ impl MagicApp {
 
     pub fn refresh_lyrics(&mut self) {
         if let Ok(lyr) = self.session.execute("song.lyrics", json!({})) {
-            self.song_title = lyr["title"].as_str().unwrap_or_default().to_owned();
-            self.song_album = lyr["album"].as_str().unwrap_or_default().to_owned();
-            self.song_lyrics_text = lyr["lyrics"].as_str().unwrap_or_default().to_owned();
-            self.song_notes = lyr["notes"].as_str().unwrap_or_default().to_owned();
-            self.lyrics_sections = lyr["sections"].as_array().cloned().unwrap_or_default();
+            let sheet = if lyr.get("sheet").is_some() {
+                &lyr["sheet"]
+            } else {
+                &lyr
+            };
+            self.song_title = sheet["song"]["title"]
+                .as_str()
+                .or_else(|| sheet["title"].as_str())
+                .unwrap_or_default()
+                .to_owned();
+            self.song_album = sheet["song"]["album"]
+                .as_str()
+                .or_else(|| sheet["album"].as_str())
+                .unwrap_or_default()
+                .to_owned();
+            self.song_notes = sheet["notes"]
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| {
+                    sheet["notes"].as_array().map(|arr| {
+                        arr.iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                })
+                .unwrap_or_default();
+            self.lyrics_sections = sheet["sections"].as_array().cloned().unwrap_or_default();
+            if let Some(raw) = sheet["lyrics"].as_str() {
+                self.song_lyrics_text = raw.to_owned();
+            } else if !self.lyrics_sections.is_empty() {
+                let mut blocks = Vec::new();
+                for sec in &self.lyrics_sections {
+                    let sec_id = sec["id"].as_str().unwrap_or("section");
+                    let lines: Vec<String> = sec["lines"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|l| l["text"].as_str().or_else(|| l.as_str()))
+                        .map(str::to_owned)
+                        .collect();
+                    blocks.push(format!("[{sec_id}]\n{}", lines.join("\n")));
+                }
+                self.song_lyrics_text = blocks.join("\n\n");
+            }
         }
-        if let Ok(ws) = self.session.execute("workshop.status", json!({}))
-            && let Some(audio) = ws["audio"]["path"].as_str()
-        {
-            self.song_audio_path = audio.to_owned();
+        if let Ok(ws) = self.session.execute("workshop.status", json!({})) {
+            let audio = ws["audio"]["path"].as_str().or_else(|| {
+                ws["stages"]
+                    .as_array()?
+                    .iter()
+                    .find(|s| s["id"] == "song")?["inputs"]
+                    .as_array()?
+                    .first()?["path"]
+                    .as_str()
+            });
+            if let Some(a) = audio {
+                self.song_audio_path = a.to_owned();
+            }
         }
     }
 
@@ -558,14 +610,38 @@ impl MagicApp {
         }
     }
 
+    pub fn unconfigured_panels(&self) -> Vec<Value> {
+        let mut out = Vec::new();
+        if self.session.project_path.is_none() {
+            out.push(
+                json!({ "id": "project", "reason": "No project open", "fix": "project.open" }),
+            );
+            return out;
+        }
+        if self.song_audio_path.trim().is_empty() {
+            out.push(json!({ "id": "song.audio", "reason": "Audio file path is empty", "fix": "workshop.set_audio" }));
+        }
+        if self.song_lyrics_text.trim().is_empty() && self.lyrics_sections.is_empty() {
+            out.push(json!({ "id": "song.lyrics", "reason": "Canonical lyrics sheet is empty", "fix": "song.save" }));
+        }
+        if self.storyboard_pages.is_empty() {
+            out.push(json!({ "id": "storyboard.pages", "reason": "No storyboard pages loaded", "fix": "storyboard.new" }));
+        }
+        if self.characters.is_empty() {
+            out.push(json!({ "id": "animation.characters", "reason": "No character rigs in project", "fix": "character.intake" }));
+        }
+        out
+    }
+
     fn handle_control_request(
         &mut self,
         ctx: &Context,
         method: &str,
         params: Value,
     ) -> Result<Value, String> {
+        let unconf = self.unconfigured_panels();
         match method {
-            "ui.state" => Ok(json!({
+            "ui.state" | "ui.inspect" => Ok(json!({
                 "ok": true,
                 "view": self.view.id(),
                 "project": self.session.project_path,
@@ -573,13 +649,38 @@ impl MagicApp {
                 "assistant_tab": format!("{:?}", self.assistant.active_tab),
                 "selected_page": self.selected_page,
                 "selected_character": self.selected_character,
+                "song_title": self.song_title,
+                "song_audio_path": self.song_audio_path,
+                "lyrics_sections_count": self.lyrics_sections.len(),
+                "storyboard_pages_count": self.storyboard_pages.len(),
+                "characters_count": self.characters.len(),
                 "busy": self.busy_command,
                 "status": self.status_line,
                 "last_error": self.last_error,
+                "unconfigured": unconf,
+                "widgets": self.auto.list(),
+            })),
+            "ui.feedback" => {
+                let mut fb = self
+                    .session
+                    .execute("ui.feedback", json!({}))
+                    .unwrap_or_else(|_| json!({}));
+                fb["view"] = json!(self.view.id());
+                fb["unconfigured"] = json!(unconf);
+                fb["widgets_count"] = json!(self.auto.list().len());
+                fb["song_audio_path"] = json!(self.song_audio_path);
+                fb["lyrics_sections_count"] = json!(self.lyrics_sections.len());
+                Ok(fb)
+            }
+            "ui.unconfigured" => Ok(json!({
+                "ok": true,
+                "view": self.view.id(),
+                "unconfigured": unconf,
             })),
             "ui.elements" | "ui.components" | "ui.controls" => Ok(json!({
                 "ok": true,
                 "view": self.view.id(),
+                "widgets": self.auto.list(),
                 "elements": [
                     { "id": "nav-projects", "label": "Projects" },
                     { "id": "nav-storyboard", "label": "Storyboard" },
@@ -590,6 +691,22 @@ impl MagicApp {
                     { "id": "drawer-scribbles", "label": "Scribbles" }
                 ]
             })),
+            "ui.focus" => {
+                let id = params["id"].as_str().unwrap_or_default();
+                let found = self.auto.focus(ctx, id);
+                Ok(json!({ "ok": found, "id": id }))
+            }
+            "ui.set_view" => {
+                let target = params["view"]
+                    .as_str()
+                    .or_else(|| params["id"].as_str())
+                    .unwrap_or_default();
+                let Some(v) = ViewMode::from_name(target) else {
+                    return Err(format!("Unknown view `{target}`"));
+                };
+                self.view = v;
+                Ok(json!({ "ok": true, "view": self.view.id() }))
+            }
             "ui.click" => {
                 let target = params["id"].as_str().unwrap_or_default();
                 match target {
