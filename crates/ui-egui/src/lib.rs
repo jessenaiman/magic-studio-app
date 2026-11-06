@@ -57,6 +57,7 @@ pub enum ViewMode {
     Storyboard,
     Lyrics,
     Animation,
+    Motion,
     Studio,
 }
 
@@ -67,6 +68,7 @@ impl ViewMode {
             Self::Storyboard => "storyboard",
             Self::Lyrics => "lyrics",
             Self::Animation => "animation",
+            Self::Motion => "motion",
             Self::Studio => "studio",
         }
     }
@@ -77,6 +79,7 @@ impl ViewMode {
             Self::Storyboard => "Storyboard",
             Self::Lyrics => "Lyrics",
             Self::Animation => "Animation",
+            Self::Motion => "Motion",
             Self::Studio => "Studio",
         }
     }
@@ -87,6 +90,7 @@ impl ViewMode {
             "storyboard" | "project" => Some(Self::Storyboard),
             "lyrics" | "words" | "design" => Some(Self::Lyrics),
             "animation" | "character" => Some(Self::Animation),
+            "motion" => Some(Self::Motion),
             "studio" | "film" | "video" => Some(Self::Studio),
             _ => None,
         }
@@ -105,11 +109,24 @@ struct WorkerResult {
     outcome: Result<Value, String>,
 }
 
-/// The Lyrics designer (`apps/magic-cli/ui/lyrics.html`) hosted by the desktop binary as a native
-/// webview child of this window. egui only reserves the rectangle for it.
+/// Pages served by the desktop's shared web workspace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WebWorkspacePage {
+    Lyrics,
+    Motion,
+}
+
+/// The native webview host. egui reserves the rectangle and handles navigation.
 pub trait LyricsHost {
     /// Show the designer inside `rect` (egui points); reload it when `project` changes.
-    fn show(&mut self, frame: &eframe::Frame, ctx: &Context, rect: egui::Rect, project: &str);
+    fn show(
+        &mut self,
+        frame: &eframe::Frame,
+        ctx: &Context,
+        rect: egui::Rect,
+        project: &str,
+        page: WebWorkspacePage,
+    );
     /// Hide the designer while another tab is showing.
     fn hide(&mut self);
 }
@@ -785,6 +802,7 @@ impl MagicApp {
                     { "id": "nav-storyboard", "label": "Storyboard" },
                     { "id": "nav-lyrics", "label": "Lyrics" },
                     { "id": "nav-animation", "label": "Animation" },
+                    { "id": "nav-motion", "label": "Motion" },
                     { "id": "nav-studio", "label": "Studio" },
                     { "id": "drawer-fidget", "label": "Fidget" },
                     { "id": "drawer-scribbles", "label": "Scribbles" }
@@ -820,6 +838,7 @@ impl MagicApp {
                     "nav-storyboard" | "storyboard" => self.view = ViewMode::Storyboard,
                     "nav-lyrics" | "lyrics" => self.view = ViewMode::Lyrics,
                     "nav-animation" | "animation" => self.view = ViewMode::Animation,
+                    "nav-motion" | "motion" => self.view = ViewMode::Motion,
                     "nav-studio" | "studio" => self.view = ViewMode::Studio,
                     "drawer-fidget" | "fidget" => {
                         self.assistant.open = true;
@@ -941,6 +960,7 @@ impl MagicApp {
                 ViewMode::Storyboard,
                 ViewMode::Lyrics,
                 ViewMode::Animation,
+                ViewMode::Motion,
                 ViewMode::Studio,
             ] {
                 let resp = pill_toggle(ui, self.view == mode, mode.label(), ACCENT);
@@ -1502,7 +1522,13 @@ impl MagicApp {
             let rect = ui.available_rect_before_wrap();
             ui.allocate_rect(rect, Sense::hover());
             if let Some(host) = self.lyrics_host.as_mut() {
-                host.show(frame, ctx, rect, &project.display().to_string());
+                host.show(
+                    frame,
+                    ctx,
+                    rect,
+                    &project.display().to_string(),
+                    WebWorkspacePage::Lyrics,
+                );
                 self.lyrics_visible = true;
             }
             return;
@@ -1792,6 +1818,35 @@ impl MagicApp {
                 }
             }
         });
+    }
+
+    fn show_motion_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
+        let Some(project) = self.session.project_path.as_ref() else {
+            empty_state(
+                ui,
+                "Open a Project First",
+                "Open a .magic project to view its motion compositions.",
+            );
+            return;
+        };
+        let Some(host) = self.lyrics_host.as_mut() else {
+            empty_state(
+                ui,
+                "Motion Webview Unavailable",
+                "Open Motion in the desktop build with webview support.",
+            );
+            return;
+        };
+        let rect = ui.available_rect_before_wrap();
+        ui.allocate_rect(rect, Sense::hover());
+        host.show(
+            frame,
+            ctx,
+            rect,
+            &project.display().to_string(),
+            WebWorkspacePage::Motion,
+        );
+        self.lyrics_visible = true;
     }
 
     fn show_animation_view(&mut self, ctx: &Context, ui: &mut Ui) {
@@ -2337,6 +2392,7 @@ impl eframe::App for MagicApp {
                 ViewMode::Storyboard => self.show_storyboard_view(ctx, ui),
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
                 ViewMode::Animation => self.show_animation_view(ctx, ui),
+                ViewMode::Motion => self.show_motion_view(ctx, ui, frame),
                 ViewMode::Studio => self.show_studio_view(ctx, ui),
             });
 

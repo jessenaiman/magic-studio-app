@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Magic Studio — Motion</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { margin: 0; background: var(--bg); color: var(--text); overflow: auto; }
+    #motion-workspace { max-width: 1240px; padding: 24px; margin: 0 auto; }
+    #motion-workspace header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    #motion-workspace h1 { margin: 0; }
+    #motion-workspace header p, #motion-status { color: var(--muted); }
+    #motion-layout { display: grid; grid-template-columns: minmax(170px, 235px) minmax(0, 1fr); gap: 16px; }
+    #motion-assets, #motion-stage { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+    #motion-assets { display: grid; align-content: start; gap: 6px; }
+    #motion-assets button { text-align: left; }
+    #motion-assets button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+    #motion-player { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius); background: var(--bg); }
+    #motion-player[hidden] { display: none; }
+    #motion-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
+    @media (max-width: 650px) { #motion-layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div id="motion-workspace">
+    <header><h1>Motion</h1><p>EffectCraft compositions and their rendered previews</p></header>
+    <div id="motion-layout">
+      <aside id="motion-assets" aria-label="Motion compositions"></aside>
+      <section id="motion-stage" aria-label="Composition preview">
+        <video id="motion-player" controls playsinline preload="metadata" hidden></video>
+        <div id="motion-actions">
+          <span id="motion-status" role="status"></span>
+          <button id="motion-open" class="start" type="button" disabled>Open in EffectCraft</button>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script src="tauri-shim.js"></script>
+  <script src="motion-workspace.js"></script>
+</body>
+</html>

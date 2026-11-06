@@ -45,7 +45,7 @@ struct Cli {
     /// Positional `.magic` project path (used by `.desktop` launcher `magic %f`)
     #[arg()]
     file: Option<String>,
-    /// Start on a specific view (`projects`, `storyboard`, `lyrics`, `animation`, `studio`)
+    /// Start on a specific view (`projects`, `storyboard`, `lyrics`, `animation`, `motion`, `studio`)
     #[arg(long)]
     view: Option<String>,
     /// Start on the Lyrics view (same as `--view lyrics`)

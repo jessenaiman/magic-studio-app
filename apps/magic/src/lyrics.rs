@@ -11,7 +11,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
-use magic_ui_egui::{ControlRequest, LyricsHost};
+use magic_ui_egui::{ControlRequest, LyricsHost, WebWorkspacePage};
 use serde_json::{Value, json};
 
 use crate::WakeHandle;
@@ -197,7 +197,7 @@ fn decode_uri(s: &str) -> String {
 /// The Lyrics webview, created on first show as a child of the egui window.
 pub struct LyricsWebView {
     bridge: Option<Bridge>,
-    view: Option<(wry::WebView, String, String)>,
+    view: Option<(wry::WebView, String, String, WebWorkspacePage)>,
 }
 
 impl LyricsWebView {
@@ -213,6 +213,7 @@ impl LyricsWebView {
         frame: &eframe::Frame,
         bounds: wry::Rect,
         project: &str,
+        page: WebWorkspacePage,
     ) -> Result<(), String> {
         // GTK starts only now: initialised before the egui window exists it breaks winit's GLX setup.
         gtk::gdk::set_allowed_backends("x11");
@@ -220,11 +221,11 @@ impl LyricsWebView {
         let bridge = self.bridge.take().ok_or("Lyrics webview unavailable")?;
         let url = spawn_bridge(bridge).ok_or("Lyrics bridge could not bind a port")?;
         let view = wry::WebViewBuilder::new()
-            .with_url(format!("{url}/lyrics.html"))
+            .with_url(page_url(&url, page))
             .with_bounds(bounds)
             .build_as_child(frame)
             .map_err(|e| e.to_string())?;
-        self.view = Some((view, url, project.to_owned()));
+        self.view = Some((view, url, project.to_owned(), page));
         Ok(())
     }
 }
@@ -235,6 +236,14 @@ fn pump_gtk() {
     }
 }
 
+fn page_url(base: &str, page: WebWorkspacePage) -> String {
+    let file = match page {
+        WebWorkspacePage::Lyrics => "lyrics.html",
+        WebWorkspacePage::Motion => "motion.html",
+    };
+    format!("{base}/{file}")
+}
+
 impl LyricsHost for LyricsWebView {
     fn show(
         &mut self,
@@ -242,6 +251,7 @@ impl LyricsHost for LyricsWebView {
         ctx: &egui::Context,
         rect: egui::Rect,
         project: &str,
+        page: WebWorkspacePage,
     ) {
         let bounds = wry::Rect {
             position: wry::dpi::LogicalPosition::new(f64::from(rect.min.x), f64::from(rect.min.y))
@@ -250,16 +260,17 @@ impl LyricsHost for LyricsWebView {
                 .into(),
         };
         if self.view.is_none()
-            && let Err(error) = self.create(frame, bounds, project)
+            && let Err(error) = self.create(frame, bounds, project, page)
         {
             eprintln!("magic: Lyrics webview: {error}");
         }
-        if let Some((view, url, shown)) = self.view.as_mut() {
+        if let Some((view, url, shown, shown_page)) = self.view.as_mut() {
             let _ = view.set_bounds(bounds);
             let _ = view.set_visible(true);
-            if shown != project {
-                let _ = view.load_url(&format!("{url}/lyrics.html"));
+            if shown != project || *shown_page != page {
+                let _ = view.load_url(&page_url(url, page));
                 project.clone_into(shown);
+                *shown_page = page;
             }
         }
         pump_gtk();
