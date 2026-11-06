@@ -5,9 +5,10 @@
 //! backdrops behave exactly as in `magic-cli ui`. wry's child webview needs X11, so `main` runs
 //! the window through XWayland when the desktop is Wayland.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
@@ -25,9 +26,14 @@ struct Bridge {
 fn spawn_bridge(bridge: Bridge) -> Option<String> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).ok()?;
     let url = format!("http://{}", listener.local_addr().ok()?);
+    let bridge = Arc::new(bridge);
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            let _ = handle(&bridge, stream);
+            let bridge = Arc::clone(&bridge);
+            std::thread::spawn(move || {
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+                let _ = handle(&bridge, stream);
+            });
         }
     });
     Some(url)
@@ -40,18 +46,30 @@ fn handle(bridge: &Bridge, mut stream: TcpStream) -> std::io::Result<()> {
     let mut parts = line.split_whitespace();
     let (method, target) = (parts.next().unwrap_or(""), parts.next().unwrap_or("/"));
     let mut length = 0usize;
+    let mut range = None;
     loop {
         let mut header = String::new();
         if reader.read_line(&mut header)? == 0 || header.trim().is_empty() {
             break;
         }
-        if let Some((name, value)) = header.split_once(':')
-            && name.eq_ignore_ascii_case("content-length")
-        {
-            length = value.trim().parse().unwrap_or(0);
+        if let Some((name, value)) = header.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                length = value.trim().parse().unwrap_or(0);
+            } else if name.eq_ignore_ascii_case("range") {
+                range = Some(value.trim().to_owned());
+            }
         }
     }
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    if path == "/file" && matches!(method, "GET" | "HEAD") {
+        let file = param(query, "p");
+        return local_file(
+            &mut stream,
+            Path::new(&file),
+            method == "HEAD",
+            range.as_deref(),
+        );
+    }
     let (status, kind, body) = match (method, path) {
         ("OPTIONS", _) => ("204 No Content", "text/plain", Vec::new()),
         ("POST", "/exec") => {
@@ -63,16 +81,24 @@ fn handle(bridge: &Bridge, mut stream: TcpStream) -> std::io::Result<()> {
                 exec(bridge, &raw).into_bytes(),
             )
         }
-        ("GET", "/file") => local_file(&param(query, "p")),
         ("GET", _) => static_file(&bridge.ui_root, path),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
     };
-    let head = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(head.as_bytes())?;
+    write_response_head(&mut stream, status, kind, body.len() as u64, "")?;
     stream.write_all(&body)
+}
+
+fn write_response_head(
+    stream: &mut TcpStream,
+    status: &str,
+    kind: &str,
+    length: u64,
+    extra: &str,
+) -> std::io::Result<()> {
+    write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {length}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nCache-Control: no-store\r\nConnection: close\r\n{extra}\r\n"
+    )
 }
 
 fn exec(bridge: &Bridge, raw: &[u8]) -> String {
@@ -126,12 +152,72 @@ fn static_file(root: &Path, path: &str) -> (&'static str, &'static str, Vec<u8>)
     }
 }
 
-fn local_file(path: &str) -> (&'static str, &'static str, Vec<u8>) {
-    let file = PathBuf::from(path);
-    match std::fs::read(&file) {
-        Ok(bytes) if file.is_file() => ("200 OK", content_type(&file), bytes),
-        _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
+fn local_file(
+    stream: &mut TcpStream,
+    path: &Path,
+    head_only: bool,
+    range: Option<&str>,
+) -> std::io::Result<()> {
+    let Ok(mut file) = std::fs::File::open(path).and_then(|file| {
+        if file.metadata()?.is_file() {
+            Ok(file)
+        } else {
+            Err(std::io::ErrorKind::NotFound.into())
+        }
+    }) else {
+        write_response_head(stream, "404 Not Found", "text/plain", 9, "")?;
+        return if head_only {
+            Ok(())
+        } else {
+            stream.write_all(b"not found")
+        };
+    };
+    let total = file.metadata()?.len();
+    let kind = content_type(path);
+    let (start, length) = if let Some(range) = range.filter(|_| !head_only) {
+        let Some((start, end)) = byte_range(range, total) else {
+            return write_response_head(
+                stream,
+                "416 Range Not Satisfiable",
+                kind,
+                0,
+                &format!("Accept-Ranges: bytes\r\nContent-Range: bytes */{total}\r\n"),
+            );
+        };
+        let length = end - start + 1;
+        write_response_head(
+            stream,
+            "206 Partial Content",
+            kind,
+            length,
+            &format!("Accept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{total}\r\n"),
+        )?;
+        (start, length)
+    } else {
+        write_response_head(stream, "200 OK", kind, total, "Accept-Ranges: bytes\r\n")?;
+        (0, total)
+    };
+    if !head_only {
+        file.seek(SeekFrom::Start(start))?;
+        std::io::copy(&mut file.take(length), stream)?;
     }
+    Ok(())
+}
+
+fn byte_range(header: &str, length: u64) -> Option<(u64, u64)> {
+    let last = length.checked_sub(1)?;
+    let (first, end) = header.strip_prefix("bytes=")?.split_once('-')?;
+    if first.is_empty() {
+        let count: u64 = end.parse().ok()?;
+        return (count != 0).then_some((length.saturating_sub(count), last));
+    }
+    let first = first.parse().ok()?;
+    let end = if end.is_empty() {
+        last
+    } else {
+        end.parse::<u64>().ok()?.min(last)
+    };
+    (first <= end).then_some((first, end))
 }
 
 fn content_type(path: &std::path::Path) -> &'static str {
@@ -325,5 +411,20 @@ impl LyricsHost for LyricsWebView {
         if self.url.is_some() {
             pump_gtk();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::byte_range;
+
+    #[test]
+    fn media_ranges_handle_seeks_suffixes_and_end_of_file() {
+        assert_eq!(byte_range("bytes=40-49", 80), Some((40, 49)));
+        assert_eq!(byte_range("bytes=40-", 80), Some((40, 79)));
+        assert_eq!(byte_range("bytes=-8", 80), Some((72, 79)));
+        assert_eq!(byte_range("bytes=78-900", 80), Some((78, 79)));
+        assert_eq!(byte_range("bytes=80-", 80), None);
+        assert_eq!(byte_range("bytes=0-", 0), None);
     }
 }
