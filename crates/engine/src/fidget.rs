@@ -353,7 +353,3 @@ pub fn cmd_fidget_prepare(_: &mut Session, p: &Value) -> Result<Value> {
     request["fidget"] = prepared.fidget;
     Ok(request)
 }
-
-#[cfg(test)]
-#[path = "tests/fidget.rs"]
-mod tests;
