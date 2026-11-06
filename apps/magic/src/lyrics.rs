@@ -238,6 +238,7 @@ fn pump_gtk() {
 
 fn page_url(base: &str, page: WebWorkspacePage) -> String {
     let file = match page {
+        WebWorkspacePage::Projects => "projects.html",
         WebWorkspacePage::Lyrics => "lyrics.html",
         WebWorkspacePage::Motion => "motion.html",
     };

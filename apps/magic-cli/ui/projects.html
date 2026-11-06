@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Magic Studio — Projects</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="global.css" />
+  <style>
+    body { margin: 0; overflow: auto; }
+    #view-home { display: flex; justify-content: center; }
+    #new-form { margin-bottom: var(--space-4); }
+    #new-form[hidden] { display: none; }
+  </style>
+</head>
+<body class="at-home">
+  <section class="view active" id="view-home" aria-label="Projects">
+    <div class="home">
+      <div class="home-hero">
+        <svg class="home-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.6" /></svg>
+        <div><h1>Magic Studio</h1><p class="muted">Songs into animated films.</p></div>
+        <div class="home-actions">
+          <button class="start" id="home-new" type="button" title="New song project (Ctrl+N)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New song</span><kbd>Ctrl+N</kbd></button>
+          <button class="ghost" id="home-new-animation" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span>New animation</span></button>
+          <button class="ghost" id="home-open" type="button" title="Open a project (Ctrl+O)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Open…</span><kbd>Ctrl+O</kbd></button>
+        </div>
+      </div>
+      <form class="panel-body" id="new-form" aria-label="New project" hidden>
+        <label class="field-row">Name<input class="field" id="new-name" placeholder="Bumble Bee" autocomplete="off" required /></label>
+        <label class="field-row"><span id="new-media-label">Audio</span>
+          <span class="field-row"><input class="field" id="new-media" placeholder="Audio file…" />
+            <button type="button" class="ghost" id="new-media-pick">Choose…</button></span>
+        </label>
+        <label class="field-row">Folder
+          <span class="field-row"><input class="field" id="new-root" required />
+            <button type="button" class="ghost" id="new-root-pick">Choose…</button></span>
+        </label>
+        <div class="field-row">
+          <button type="button" class="ghost" id="new-cancel">Cancel</button>
+          <button type="submit" class="start" id="new-create">Create</button>
+        </div>
+      </form>
+      <div class="group-label">Recent</div>
+      <div class="recent" id="recent"></div>
+      <p id="home-status" class="muted" role="status"></p>
+    </div>
+  </section>
+  <script src="tauri-shim.js"></script>
+  <script src="workspace-elements.js"></script>
+  <script src="project-card.js"></script>
+  <script src="projects-workspace.js"></script>
+</body>
+</html>

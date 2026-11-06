@@ -112,6 +112,7 @@ struct WorkerResult {
 /// Pages served by the desktop's shared web workspace.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WebWorkspacePage {
+    Projects,
     Lyrics,
     Motion,
 }
@@ -141,6 +142,7 @@ pub enum DialogAction {
     AssistantReferenceImage,
     OpenEffectcraftComposition,
     ImportStudioAnimation,
+    WebProjectPicker,
 }
 
 pub struct MagicApp {
@@ -224,6 +226,8 @@ pub struct MagicApp {
     repaint_ctx: Arc<OnceLock<Context>>,
     #[cfg(not(target_arch = "wasm32"))]
     pending_storyboard_slot: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    web_project_picker: Option<Sender<Result<Value, String>>>,
 }
 
 impl MagicApp {
@@ -309,6 +313,8 @@ impl MagicApp {
             repaint_ctx,
             #[cfg(not(target_arch = "wasm32"))]
             pending_storyboard_slot: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            web_project_picker: None,
         };
         app.refresh_all();
         app
@@ -641,6 +647,19 @@ impl MagicApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn poll_dialogs(&mut self, ctx: &Context) {
         for (action, answer) in self.dialogs.take_answers() {
+            if action == DialogAction::WebProjectPicker {
+                if let Some(reply) = self.web_project_picker.take() {
+                    let result = match answer {
+                        craft_dialogs::Answer::Paths(paths) => Ok(json!({ "path": paths.first() })),
+                        craft_dialogs::Answer::Unavailable(error) => Err(error),
+                        craft_dialogs::Answer::Cancelled | craft_dialogs::Answer::Message(_) => {
+                            Ok(json!({ "path": null }))
+                        }
+                    };
+                    let _ = reply.send(result);
+                }
+                continue;
+            }
             match answer {
                 craft_dialogs::Answer::Paths(paths) => {
                     if let Some(path) = paths.into_iter().next() {
@@ -675,6 +694,7 @@ impl MagicApp {
                                 let result = self.import_studio_animation(&path);
                                 self.set_studio_status(result);
                             }
+                            DialogAction::WebProjectPicker => {}
                         }
                     }
                 }
@@ -712,10 +732,46 @@ impl MagicApp {
             }
         }
         for req in pending {
+            #[cfg(not(target_arch = "wasm32"))]
+            if req.method == "ui.projects.pick" {
+                self.open_web_project_picker(req);
+                continue;
+            }
             let reply = self.handle_control_request(ctx, &req.method, req.params);
             let _ = req.reply.send(reply);
             ctx.request_repaint();
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_web_project_picker(&mut self, req: ControlRequest) {
+        use craft_dialogs::FileDialog;
+        if self.view != ViewMode::Projects || self.web_project_picker.is_some() {
+            let _ = req
+                .reply
+                .send(Err("The Projects file picker is unavailable.".into()));
+            return;
+        }
+        let dialog = match req.params["kind"].as_str() {
+            Some("project") => FileDialog::open()
+                .title("Open Magic Studio project")
+                .filter("Magic project", &["magic"]),
+            Some("audio") => FileDialog::open()
+                .title("Choose song audio")
+                .filter("Audio", &["wav", "mp3", "flac", "m4a", "ogg", "aac"]),
+            Some("image") => FileDialog::open()
+                .title("Choose approved character art")
+                .filter("Image", &["png", "webp", "jpg", "jpeg", "psd"]),
+            Some("folder") => FileDialog::folder().title("Choose project folder"),
+            _ => {
+                let _ = req
+                    .reply
+                    .send(Err("Choose project, audio, image, or folder.".into()));
+                return;
+            }
+        };
+        self.web_project_picker = Some(req.reply);
+        self.dialogs.ask(dialog, DialogAction::WebProjectPicker);
     }
 
     pub fn unconfigured_panels(&self) -> Vec<Value> {
@@ -812,6 +868,17 @@ impl MagicApp {
                 let id = params["id"].as_str().unwrap_or_default();
                 let found = self.auto.focus(ctx, id);
                 Ok(json!({ "ok": found, "id": id }))
+            }
+            "ui.projects.open" if self.view == ViewMode::Projects => {
+                let path = params["path"]
+                    .as_str()
+                    .ok_or("A project path is required.")?;
+                let result =
+                    self.handle_control_request(ctx, "project.open", json!({ "path": path }))?;
+                if let Some(view) = params["view"].as_str().and_then(ViewMode::from_name) {
+                    self.view = view;
+                }
+                Ok(result)
             }
             #[cfg(not(target_arch = "wasm32"))]
             "ui.studio.import_animation" if self.view == ViewMode::Studio => {
@@ -1015,7 +1082,25 @@ impl MagicApp {
         });
     }
 
-    fn show_projects_view(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn show_projects_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
+        if let Some(host) = self.lyrics_host.as_mut() {
+            let project = self
+                .session
+                .project_path
+                .as_ref()
+                .map(|path| path.to_string_lossy());
+            let rect = ui.available_rect_before_wrap();
+            ui.allocate_rect(rect, Sense::hover());
+            host.show(
+                frame,
+                ctx,
+                rect,
+                project.as_deref().unwrap_or_default(),
+                WebWorkspacePage::Projects,
+            );
+            self.lyrics_visible = true;
+            return;
+        }
         ScrollArea::vertical()
             .id_salt("projects_view_scroll")
             .auto_shrink([false, false])
@@ -2388,7 +2473,7 @@ impl eframe::App for MagicApp {
                     .inner_margin(egui::Margin::same(8)),
             )
             .show(ui, |ui| match self.view {
-                ViewMode::Projects => self.show_projects_view(ctx, ui),
+                ViewMode::Projects => self.show_projects_view(ctx, ui, frame),
                 ViewMode::Storyboard => self.show_storyboard_view(ctx, ui),
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
                 ViewMode::Animation => self.show_animation_view(ctx, ui),
