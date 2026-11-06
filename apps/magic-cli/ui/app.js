@@ -648,9 +648,9 @@ async function openProject(path, start = {}) {
 async function applyOpenedProject(opened, start = {}) {
   return appShell.applyOpenedProject(opened, start);
 }
-$("target").addEventListener("click", () => setView("studio"));
-$("footer-server").addEventListener("click", () => setView("studio"));
-$("footer-instance").addEventListener("click", async () => {
+$("target")?.addEventListener("click", () => setView("studio"));
+$("footer-server")?.addEventListener("click", () => setView("studio"));
+$("footer-instance")?.addEventListener("click", async () => {
   if (!state.project) {
     toast("Open a project to copy its command");
     return;
@@ -664,8 +664,11 @@ $("footer-instance").addEventListener("click", async () => {
 });
 window.addEventListener("resize", placeInk);
 placeInk();
-window.addEventListener("DOMContentLoaded", () => load().catch((e) => {
-  toast(String(e));
-  acFeedback.errors.push({ message: String(e).slice(0, 300) });
-  acFeedback.report("error");
-}));
+window.addEventListener("DOMContentLoaded", () => {
+  if (!document.querySelector(".app-bar")) return;
+  load().catch((e) => {
+    toast(String(e));
+    acFeedback.errors.push({ message: String(e).slice(0, 300) });
+    acFeedback.report("error");
+  });
+});

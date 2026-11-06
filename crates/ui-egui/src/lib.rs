@@ -140,6 +140,10 @@ pub struct MagicApp {
     pub song_notes: String,
     pub song_audio_path: String,
     pub lyrics_sections: Vec<Value>,
+    pub words_doc: Value,
+    pub words_tools: Value,
+    pub selected_words_section: usize,
+    pub selected_words_line: usize,
 
     // Animation state
     pub characters: Vec<Value>,
@@ -222,6 +226,10 @@ impl MagicApp {
             song_notes: String::new(),
             song_audio_path: String::new(),
             lyrics_sections: Vec::new(),
+            words_doc: json!({}),
+            words_tools: json!({}),
+            selected_words_section: 0,
+            selected_words_line: 0,
             characters: Vec::new(),
             selected_character: String::new(),
             selected_view: "front".into(),
@@ -414,6 +422,16 @@ impl MagicApp {
             });
             if let Some(a) = audio {
                 self.song_audio_path = a.to_owned();
+            }
+        }
+        if let Ok(wr) = self.session.execute("words.read", json!({})) {
+            self.words_doc = wr["words"].clone();
+            self.words_tools = wr["tools"].clone();
+            let sec_count = self.words_doc["sections"]
+                .as_array()
+                .map_or(0, std::vec::Vec::len);
+            if self.selected_words_section >= sec_count {
+                self.selected_words_section = 0;
             }
         }
     }
@@ -1547,7 +1565,252 @@ impl MagicApp {
                         );
                     });
                 }
+
+                ui.add_space(8.0);
+                if section_header(
+                    ui,
+                    "Kinetic Words & Lyric Choreography (`words.read` / `words.save`)",
+                    true,
+                ) {
+                    self.show_words_choreography_card(ctx, ui);
+                }
             });
+    }
+
+    fn show_words_choreography_card(&mut self, ctx: &Context, ui: &mut Ui) {
+        let sections = self.words_doc["sections"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let text_presets = self.words_tools["effectcraft"]["text_presets"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let paint_presets = self.words_tools["effectcraft"]["paint_presets"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let film_fx_count = self.words_tools["filmcraft"]["effects"]
+            .as_array()
+            .map_or(0, std::vec::Vec::len);
+
+        card_frame().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!(
+                        "{} sung sections · {} EffectCraft text presets · {} paint brushes · {} FilmCraft timeline FX",
+                        sections.len(),
+                        text_presets.len(),
+                        paint_presets.len(),
+                        film_fx_count
+                    ))
+                    .size(11.5)
+                    .color(TEXT_SECONDARY),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let save_words = primary_button(ui, "Save Choreography (`words.save`)");
+                    self.auto.add_response(
+                        "btn-save-words",
+                        &save_words,
+                        "Save Choreography",
+                    );
+                    if save_words.clicked() {
+                        let doc = self.words_doc.clone();
+                        self.run_command(ctx, "words.save", json!({ "words": doc }));
+                    }
+                });
+            });
+            ui.add_space(6.0);
+
+            if sections.is_empty() {
+                ui.label(
+                    RichText::new("No timed words sheet yet — click 'Design Sung Lines (`words.design`)' above to generate.")
+                        .color(TEXT_MUTED),
+                );
+                return;
+            }
+
+            ui.columns(2, |cols| {
+                // Left column: Section tabs & timed lines
+                cols[0].label(
+                    RichText::new("Sung Sections & Timed Lines")
+                        .strong()
+                        .size(12.0),
+                );
+                cols[0].add_space(4.0);
+                cols[0].horizontal_wrapped(|ui| {
+                    for (idx, sec) in sections.iter().enumerate() {
+                        let label = sec["label"]
+                            .as_str()
+                            .or_else(|| sec["id"].as_str())
+                            .unwrap_or("Section");
+                        let resp = pill_toggle(
+                            ui,
+                            self.selected_words_section == idx,
+                            label,
+                            ACCENT,
+                        );
+                        self.auto
+                            .add_response(&format!("words-sec-{idx}"), &resp, label);
+                        if resp.clicked() {
+                            self.selected_words_section = idx;
+                            self.selected_words_line = 0;
+                        }
+                    }
+                });
+                cols[0].add_space(6.0);
+
+                if let Some(sec) = sections.get(self.selected_words_section)
+                    && let Some(lines) = sec["lines"].as_array()
+                {
+                    for (l_idx, line) in lines.iter().enumerate() {
+                        let text = line["text"].as_str().unwrap_or_default();
+                        let start = line["start"].as_f64().unwrap_or(0.0);
+                        let end = line["end"].as_f64().unwrap_or(0.0);
+                        let layout = line["choreography"]["layout"]
+                            .as_str()
+                            .or_else(|| line["layout"].as_str())
+                            .unwrap_or("cascade");
+                        let motion = line["choreography"]["act"]
+                            .as_str()
+                            .or_else(|| line["act"].as_str())
+                            .unwrap_or("pop");
+                        let selected = self.selected_words_line == l_idx;
+                        let row_label =
+                            format!("{start:.1}s–{end:.1}s  [{layout}/{motion}]  {text}");
+                        let resp = cols[0].selectable_label(selected, row_label);
+                        self.auto
+                            .add_response(&format!("words-line-{l_idx}"), &resp, text);
+                        if resp.clicked() {
+                            self.selected_words_line = l_idx;
+                        }
+                    }
+                }
+
+                // Right column: Choreography & EffectCraft Inspector for selected line
+                cols[1].label(
+                    RichText::new("Line Choreography & EffectCraft Preset")
+                        .strong()
+                        .size(12.0),
+                );
+                cols[1].add_space(4.0);
+
+                if let Some(sec_mut) = self.words_doc["sections"]
+                    .as_array_mut()
+                    .and_then(|s| s.get_mut(self.selected_words_section))
+                    && let Some(line_mut) = sec_mut["lines"]
+                        .as_array_mut()
+                        .and_then(|l| l.get_mut(self.selected_words_line))
+                {
+                    if !line_mut["choreography"].is_object() {
+                        line_mut["choreography"] = json!({
+                            "layout": "cascade",
+                            "act": "pop",
+                            "preset": "clean_lower_third",
+                            "brush": "Marker",
+                        });
+                    }
+                    let cur_layout = line_mut["choreography"]["layout"]
+                        .as_str()
+                        .unwrap_or("cascade")
+                        .to_owned();
+                    cols[1].label(
+                        RichText::new("Layout Mode")
+                            .size(11.0)
+                            .color(TEXT_SECONDARY),
+                    );
+                    cols[1].horizontal_wrapped(|ui| {
+                        for (id, label) in [
+                            ("cascade", "Cascade"),
+                            ("spiral", "Spiral / Scatter"),
+                            ("zoom_blast", "Zoom Blast"),
+                            ("stack", "Vertical Stack"),
+                            ("plain", "Plain"),
+                        ] {
+                            let resp = pill_toggle(ui, cur_layout == id, label, ACCENT);
+                            self.auto
+                                .add_response(&format!("choreo-layout-{id}"), &resp, label);
+                            if resp.clicked() {
+                                line_mut["choreography"]["layout"] = json!(id);
+                            }
+                        }
+                    });
+
+                    cols[1].add_space(6.0);
+                    let cur_act = line_mut["choreography"]["act"]
+                        .as_str()
+                        .unwrap_or("pop")
+                        .to_owned();
+                    cols[1].label(
+                        RichText::new("Kinetic Motion Act")
+                            .size(11.0)
+                            .color(TEXT_SECONDARY),
+                    );
+                    cols[1].horizontal_wrapped(|ui| {
+                        for (id, label) in [
+                            ("pop", "Bounce / Pop"),
+                            ("wave", "Wave / Loop"),
+                            ("tilt", "Kinetic Tilt"),
+                            ("fire", "Fire / Impact"),
+                            ("neon", "Neon Drift"),
+                            ("sparkle", "Sparkle Settle"),
+                        ] {
+                            let resp = pill_toggle(ui, cur_act == id, label, ACCENT_VIOLET);
+                            self.auto
+                                .add_response(&format!("choreo-act-{id}"), &resp, label);
+                            if resp.clicked() {
+                                line_mut["choreography"]["act"] = json!(id);
+                            }
+                        }
+                    });
+
+                    cols[1].add_space(6.0);
+                    let cur_preset = line_mut["choreography"]["preset"]
+                        .as_str()
+                        .unwrap_or("clean_lower_third")
+                        .to_owned();
+                    cols[1].label(
+                        RichText::new("EffectCraft Text Preset (Runtime)")
+                            .size(11.0)
+                            .color(TEXT_SECONDARY),
+                    );
+                    cols[1].horizontal_wrapped(|ui| {
+                        for preset in &text_presets {
+                            let pid = preset["id"].as_str().unwrap_or_default();
+                            let pname = preset["name"].as_str().unwrap_or(pid);
+                            let resp = pill_toggle(ui, cur_preset == pid, pname, ACCENT_TEAL);
+                            self.auto
+                                .add_response(&format!("choreo-preset-{pid}"), &resp, pname);
+                            if resp.clicked() {
+                                line_mut["choreography"]["preset"] = json!(pid);
+                            }
+                        }
+                    });
+
+                    cols[1].add_space(6.0);
+                    let cur_brush = line_mut["choreography"]["brush"]
+                        .as_str()
+                        .unwrap_or("Marker")
+                        .to_owned();
+                    cols[1].label(
+                        RichText::new("EffectCraft Paint Brush (Runtime)")
+                            .size(11.0)
+                            .color(TEXT_SECONDARY),
+                    );
+                    cols[1].horizontal_wrapped(|ui| {
+                        for brush in paint_presets.iter().take(8) {
+                            let bname = brush["name"].as_str().unwrap_or_default();
+                            let resp = pill_toggle(ui, cur_brush == bname, bname, ACCENT_AMBER);
+                            self.auto
+                                .add_response(&format!("choreo-brush-{bname}"), &resp, bname);
+                            if resp.clicked() {
+                                line_mut["choreography"]["brush"] = json!(bname);
+                            }
+                        }
+                    });
+                }
+            });
+        });
     }
 
     fn show_animation_view(&mut self, ctx: &Context, ui: &mut Ui) {

@@ -33,9 +33,9 @@
     window.addEventListener("DOMContentLoaded", async () => {
       state.view = "design";
       try {
-        const opened = await invoke("engine_command", { id: "project.status", params: {} });
-        state.project = opened?.project?.path || state.project;
-        state.data = { status: opened };
+        const st = await invoke("project_state", {});
+        state.project = st?.project || st?.status?.project || state.project;
+        state.data = st;
       } catch {}
       await wordsOpen();
     });
