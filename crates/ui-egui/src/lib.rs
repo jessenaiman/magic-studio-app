@@ -17,8 +17,12 @@
 
 pub mod assistant;
 pub mod automation;
+mod control;
 pub mod theme;
 pub mod widgets;
+
+#[cfg(not(target_arch = "wasm32"))]
+mod animation_effectcraft;
 
 #[cfg(test)]
 mod control_conformance;
@@ -116,6 +120,7 @@ pub enum DialogAction {
     StoryboardHeroImage { scene: usize },
     AddProjectAsset,
     AssistantReferenceImage,
+    OpenEffectcraftComposition,
 }
 
 pub struct MagicApp {
@@ -158,6 +163,8 @@ pub struct MagicApp {
     pub anim_time: f32,
     pub anim_action: String,
     pub character_frame_path: Option<PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    effectcraft_animation: Option<animation_effectcraft::AnimationEffectcraft>,
 
     // Studio / Film state
     pub film_state: Value,
@@ -177,6 +184,7 @@ pub struct MagicApp {
     control_rx: Option<Receiver<ControlRequest>>,
     quit_requested: bool,
 
+    synthetic: Vec<egui::Event>,
     lyrics_host: Option<Box<dyn LyricsHost>>,
     lyrics_visible: bool,
     lyrics_song_details: bool,
@@ -243,6 +251,8 @@ impl MagicApp {
             anim_time: 0.0,
             anim_action: "walk_right".into(),
             character_frame_path: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            effectcraft_animation: None,
             film_state: json!({}),
             film_timeline: json!({}),
             studio_playhead: 0.0,
@@ -253,6 +263,7 @@ impl MagicApp {
             busy_command: None,
             control_rx: None,
             quit_requested: false,
+            synthetic: Vec::new(),
             lyrics_host: None,
             lyrics_visible: false,
             lyrics_song_details: false,
@@ -605,6 +616,9 @@ impl MagicApp {
                             DialogAction::AssistantReferenceImage => {
                                 self.assistant.reference_path = display;
                             }
+                            DialogAction::OpenEffectcraftComposition => {
+                                self.open_effectcraft_composition(&path);
+                            }
                         }
                     }
                 }
@@ -673,6 +687,9 @@ impl MagicApp {
         method: &str,
         params: Value,
     ) -> Result<Value, String> {
+        if let Some(reply) = self.handle_protocol(ctx, method, &params) {
+            return reply;
+        }
         let unconf = self.unconfigured_panels();
         match method {
             "ui.state" | "ui.inspect" => Ok(json!({
@@ -1574,6 +1591,98 @@ impl MagicApp {
             });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_effectcraft_composition(&mut self, path: &Path) {
+        if self
+            .effectcraft_animation
+            .as_ref()
+            .is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty)
+        {
+            self.status_line = "Save the open EffectCraft composition first.".into();
+            return;
+        }
+        match animation_effectcraft::AnimationEffectcraft::open(path) {
+            Ok(composition) => {
+                self.effectcraft_animation = Some(composition);
+                self.status_line = format!("Opened {}", path.display());
+            }
+            Err(error) => {
+                self.status_line = format!("Open {}: {error}", path.display());
+                self.last_error = Some(self.status_line.clone());
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn effectcraft_animation_toolbar(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            let open = secondary_button(ui, "Open EffectCraft Project…");
+            self.auto.add_response(
+                "animation-open-effectcraft",
+                &open,
+                "Open EffectCraft Project",
+            );
+            if open.clicked() {
+                self.dialogs.ask(
+                    craft_dialogs::FileDialog::open()
+                        .title("Open EffectCraft Project")
+                        .filter("EffectCraft Project", &["ecproj"]),
+                    DialogAction::OpenEffectcraftComposition,
+                );
+            }
+            let rig_button = ui.add_enabled(
+                !self.selected_character.is_empty(),
+                egui::Button::new("Open Character Rig"),
+            );
+            self.auto.add_response(
+                "animation-open-character-rig",
+                &rig_button,
+                "Open Character Rig",
+            );
+            if rig_button.clicked() {
+                let params = json!({ "character": self.selected_character });
+                match self.session.execute("character.meta", params) {
+                    Ok(metadata) => {
+                        let rig =
+                            metadata["views"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .find_map(|view| {
+                                    (view["view"].as_str() == Some(self.selected_view.as_str()))
+                                        .then(|| view["ecproj"].as_str())
+                                        .flatten()
+                                });
+                        if let Some(path) = rig {
+                            self.open_effectcraft_composition(Path::new(path));
+                        } else {
+                            self.status_line = "This character view has no EffectCraft rig.".into();
+                        }
+                    }
+                    Err(error) => self.status_line = error.to_string(),
+                }
+            }
+            if let Some(composition) = self.effectcraft_animation.as_mut() {
+                let save = ui.add_enabled(
+                    composition.is_dirty(),
+                    egui::Button::new("Save EffectCraft Project"),
+                );
+                self.auto.add_response(
+                    "animation-save-effectcraft",
+                    &save,
+                    "Save EffectCraft Project",
+                );
+                if save.clicked() {
+                    self.status_line = match composition.save() {
+                        Ok(()) => "Saved EffectCraft project.".into(),
+                        Err(error) => format!("Save EffectCraft project: {error}"),
+                    };
+                }
+                ui.label(composition.name());
+            }
+        });
+    }
+
     fn show_animation_view(&mut self, ctx: &Context, ui: &mut Ui) {
         if self.session.project_path.is_none() {
             empty_state(
@@ -1619,7 +1728,13 @@ impl MagicApp {
                         for ch in &self.characters {
                             let id = ch["id"].as_str().unwrap_or_default().to_owned();
                             let selected = self.selected_character == id;
-                            if pill_toggle(ui, selected, &id, ACCENT_TEAL).clicked() {
+                            let button = pill_toggle(ui, selected, &id, ACCENT_TEAL);
+                            self.auto.add_response(
+                                &format!("animation-character-{id}"),
+                                &button,
+                                &id,
+                            );
+                            if button.clicked() {
                                 self.selected_character = id;
                             }
                         }
@@ -1640,8 +1755,22 @@ impl MagicApp {
                                 );
                                 ui.horizontal(|ui| {
                                     status_badge(ui, &asset.kind, ACCENT);
-                                    if ui.small_button("Select").clicked() {
+                                    let select = ui.small_button("Select");
+                                    self.auto.add_response(
+                                        &format!("animation-asset-{}", asset.id),
+                                        &select,
+                                        &asset.name,
+                                    );
+                                    if select.clicked() {
                                         self.selected_character = asset.id.clone();
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        if let Some(path) = asset.path.as_deref()
+                                            && path.extension().is_some_and(|ext| {
+                                                ext.eq_ignore_ascii_case("ecproj")
+                                            })
+                                        {
+                                            self.open_effectcraft_composition(path);
+                                        }
                                     }
                                 });
                             });
@@ -1817,6 +1946,14 @@ impl MagicApp {
                     .inner_margin(egui::Margin::same(12)),
             )
             .show(ui, |ui| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    self.effectcraft_animation_toolbar(ui);
+                    if let Some(composition) = self.effectcraft_animation.as_mut() {
+                        composition.show(ui);
+                        return;
+                    }
+                }
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("EffectCraft Puppet Stage")
@@ -1943,6 +2080,10 @@ impl MagicApp {
 }
 
 impl eframe::App for MagicApp {
+    fn raw_input_hook(&mut self, _ctx: &Context, raw_input: &mut egui::RawInput) {
+        raw_input.events.append(&mut self.synthetic);
+    }
+
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         self.auto.begin_frame();
         let ctx = ui.ctx().clone();
@@ -1958,6 +2099,13 @@ impl eframe::App for MagicApp {
         self.poll_worker();
         self.poll_control(ctx);
         self.lyrics_visible = false;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(composition) = self.effectcraft_animation.as_mut()
+            && (self.view == ViewMode::Animation || ctx.input(|i| i.viewport().close_requested()))
+        {
+            composition.tick(ctx, frame);
+        }
 
         // Top Navigation & Assistant Bar
         egui::Panel::top("magic_top_bar")
@@ -2064,6 +2212,11 @@ impl eframe::App for MagicApp {
         }
 
         #[cfg(not(target_arch = "wasm32"))]
-        self.dialogs.show_pending(Some(&*frame));
+        {
+            if let Some(composition) = self.effectcraft_animation.as_mut() {
+                composition.show_dialogs(ctx);
+            }
+            self.dialogs.show_pending(Some(&*frame));
+        }
     }
 }

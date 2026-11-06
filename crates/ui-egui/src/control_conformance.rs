@@ -9,7 +9,7 @@ use crate::MagicApp;
 const PROTOCOL: &str = include_str!("../../../docs/control-protocol.md");
 
 /// Methods answered when this check was added; raise it as methods are implemented.
-const ANSWERED_MIN: usize = 9;
+const ANSWERED_MIN: usize = 21;
 
 /// Method names from the first column of the "Methods" table.
 fn documented_methods() -> Vec<String> {
