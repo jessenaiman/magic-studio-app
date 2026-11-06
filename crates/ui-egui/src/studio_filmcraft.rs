@@ -100,10 +100,13 @@ impl StudioFilmcraft {
     }
 
     pub fn tick(&mut self, ctx: &Context) {
-        let magic_style = self.first_tick.then(|| ctx.style());
+        let magic_style = self.first_tick.then(|| {
+            let theme = ctx.theme();
+            (theme, ctx.style_of(theme))
+        });
         self.app.logic_inner(ctx);
-        if let Some(style) = magic_style {
-            ctx.set_style(style);
+        if let Some((theme, style)) = magic_style {
+            ctx.set_style_of(theme, style);
             self.first_tick = false;
         }
     }
