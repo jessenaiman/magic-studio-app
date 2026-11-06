@@ -121,7 +121,9 @@ The current source-installation path is for **Linux**; other platforms remain
 unverified. Before building, install:
 
 - Git and Rust/Cargo **1.95 or newer**.
-- A native compiler and the platform libraries required by the Rust workspace.
+- Node.js 26 and npm for the default Lyrics webview.
+- A native compiler, WebKitGTK 4.1 development headers, and the platform
+  libraries listed in [the Linux CI workflow](.github/workflows/ci.yml).
 
 A fresh build downloads missing Rust dependencies. The native Rust UI rewrite
 is underway in `apps/magic-gui/`; preserve the retired frontend's deletion.
@@ -130,6 +132,7 @@ is underway in `apps/magic-gui/`; preserve the retired frontend's deletion.
 
 ```sh
 # Existing checkout: build, run, and rerun checks without installing
+npm ci --prefix apps/magic-cli
 cargo build -p magic-gui -p magic-cli --locked
 cargo run -p magic-gui
 cargo xtask ci
@@ -141,6 +144,7 @@ Asset rights metadata is pending; SonarCloud, WASM and translations are not conf
 ```sh
 git clone https://github.com/jessenaiman/magic-app.git
 cd magic-app
+npm ci --prefix apps/magic-cli
 cargo build -p magic-gui -p magic-cli --release --locked
 cargo xtask install --profile release
 ```
