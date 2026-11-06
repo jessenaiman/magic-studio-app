@@ -106,6 +106,7 @@ pub struct ControlRequest {
 
 struct WorkerResult {
     id: String,
+    project: Option<PathBuf>,
     outcome: Result<Value, String>,
 }
 
@@ -116,6 +117,8 @@ pub enum WebWorkspacePage {
     Lyrics,
     Motion,
     Studio,
+    AnimationAssets,
+    AnimationInspector,
 }
 
 /// The native webview host. egui reserves the rectangle and handles navigation.
@@ -129,8 +132,8 @@ pub trait LyricsHost {
         project: &str,
         page: WebWorkspacePage,
     );
-    /// Hide the designer while another tab is showing.
-    fn hide(&mut self);
+    /// Hide any webview that did not receive a layout this frame.
+    fn finish_frame(&mut self);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -181,6 +184,9 @@ pub struct MagicApp {
 
     // Animation state
     pub characters: Vec<Value>,
+    animation_revision: u64,
+    #[cfg(not(target_arch = "wasm32"))]
+    animation_artwork_request: u64,
     pub selected_character: String,
     pub selected_view: String,
     pub anim_time: f32,
@@ -217,7 +223,6 @@ pub struct MagicApp {
 
     synthetic: Vec<egui::Event>,
     lyrics_host: Option<Box<dyn LyricsHost>>,
-    lyrics_visible: bool,
     lyrics_song_details: bool,
 
     // Non-blocking native file dialogs (`craft-dialogs`)
@@ -279,6 +284,9 @@ impl MagicApp {
             lyrics_sections: Vec::new(),
             words_doc: json!({}),
             characters: Vec::new(),
+            animation_revision: 0,
+            #[cfg(not(target_arch = "wasm32"))]
+            animation_artwork_request: 0,
             selected_character: String::new(),
             selected_view: "front".into(),
             anim_time: 0.0,
@@ -306,7 +314,6 @@ impl MagicApp {
             quit_requested: false,
             synthetic: Vec::new(),
             lyrics_host: None,
-            lyrics_visible: false,
             lyrics_song_details: false,
             #[cfg(not(target_arch = "wasm32"))]
             dialogs,
@@ -500,6 +507,7 @@ impl MagicApp {
 
     pub fn refresh_animation(&mut self) {
         if let Ok(chars) = self.session.execute("character.list", json!({})) {
+            self.animation_revision = self.animation_revision.wrapping_add(1);
             self.characters = chars["characters"].as_array().cloned().unwrap_or_default();
             if self.selected_character.is_empty()
                 && let Some(first) = self.characters.first()
@@ -524,28 +532,7 @@ impl MagicApp {
     pub fn run_command(&mut self, ctx: &Context, id: &str, params: Value) {
         let is_long = magic::find_command(id).is_some_and(|c| c.long_running);
         if is_long && self.busy_command.is_none() {
-            let mut bg_session = Session {
-                project_path: self.session.project_path.clone(),
-                project_assets: self.session.project_assets.clone(),
-                video_project_path: self.session.video_project_path.clone(),
-                song_audio: self.session.song_audio.clone(),
-                ..Session::default()
-            };
-            let tx = self.worker_tx.clone();
-            let ctx_clone = ctx.clone();
-            let id_owned = id.to_owned();
-            self.busy_command = Some(id_owned.clone());
-            self.status_line = format!("Running {id}…");
-            std::thread::spawn(move || {
-                let outcome = bg_session
-                    .execute(&id_owned, params)
-                    .map_err(|e| e.to_string());
-                let _ = tx.send(WorkerResult {
-                    id: id_owned,
-                    outcome,
-                });
-                ctx_clone.request_repaint();
-            });
+            self.start_command_worker(ctx, id, params, None);
             return;
         }
         match self.execute_session_command(id, params) {
@@ -555,6 +542,44 @@ impl MagicApp {
                 self.last_error = Some(err);
             }
         }
+    }
+
+    fn start_command_worker(
+        &mut self,
+        ctx: &Context,
+        id: &str,
+        params: Value,
+        follow_up: Option<&'static str>,
+    ) {
+        let mut bg_session = Session {
+            project_path: self.session.project_path.clone(),
+            project_assets: self.session.project_assets.clone(),
+            video_project_path: self.session.video_project_path.clone(),
+            song_audio: self.session.song_audio.clone(),
+            ..Session::default()
+        };
+        let project = bg_session.project_path.clone();
+        let tx = self.worker_tx.clone();
+        let ctx = ctx.clone();
+        let mut id = id.to_owned();
+        self.busy_command = Some(id.clone());
+        self.last_error = None;
+        self.status_line = format!("Running {id}…");
+        std::thread::spawn(move || {
+            let mut outcome = bg_session.execute(&id, params.clone());
+            if let Some(next) = follow_up
+                && outcome.is_ok()
+            {
+                next.clone_into(&mut id);
+                outcome = bg_session.execute(next, params);
+            }
+            let _ = tx.send(WorkerResult {
+                id,
+                project,
+                outcome: outcome.map_err(|error| error.to_string()),
+            });
+            ctx.request_repaint();
+        });
     }
 
     fn execute_session_command(&mut self, id: &str, params: Value) -> Result<Value, String> {
@@ -644,6 +669,18 @@ impl MagicApp {
                 self.refresh_storyboard();
             }
             cmd if cmd.starts_with("character.") || cmd.starts_with("animation.") => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if self.view == ViewMode::Animation
+                    && let Some(path) = match id {
+                        "character.rig" | "character.action" => val["ecproj"].as_str(),
+                        "animation.prepare_motion" => val["project"].as_str(),
+                        _ => None,
+                    }
+                {
+                    let result = self
+                        .open_effectcraft_composition_at(Path::new(path), val["start"].as_f64());
+                    self.set_status_result(result);
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 if id == "character.render" {
                     let pending = self.pending_studio_render.take();
@@ -752,6 +789,13 @@ impl MagicApp {
     fn poll_worker(&mut self) {
         while let Ok(done) = self.worker_rx.try_recv() {
             self.busy_command = None;
+            if self.session.project_path != done.project {
+                #[cfg(not(target_arch = "wasm32"))]
+                if done.id == "character.render" {
+                    self.pending_studio_render = None;
+                }
+                continue;
+            }
             match done.outcome {
                 Ok(val) => self.handle_command_success(&done.id, val),
                 Err(err) => {
@@ -775,7 +819,10 @@ impl MagicApp {
         }
         for req in pending {
             #[cfg(not(target_arch = "wasm32"))]
-            if req.method == "ui.projects.pick" {
+            if matches!(
+                req.method.as_str(),
+                "ui.projects.pick" | "ui.animation.pick_drawing"
+            ) {
                 self.open_web_project_picker(req);
                 continue;
             }
@@ -788,13 +835,24 @@ impl MagicApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn open_web_project_picker(&mut self, req: ControlRequest) {
         use craft_dialogs::FileDialog;
-        if self.view != ViewMode::Projects || self.web_project_picker.is_some() {
+        let animation = req.method == "ui.animation.pick_drawing";
+        let expected_view = if animation {
+            ViewMode::Animation
+        } else {
+            ViewMode::Projects
+        };
+        if self.view != expected_view || self.web_project_picker.is_some() {
             let _ = req
                 .reply
-                .send(Err("The Projects file picker is unavailable.".into()));
+                .send(Err("The file picker is unavailable.".into()));
             return;
         }
-        let dialog = match req.params["kind"].as_str() {
+        let kind = if animation {
+            Some("image")
+        } else {
+            req.params["kind"].as_str()
+        };
+        let dialog = match kind {
             Some("project") => FileDialog::open()
                 .title("Open Magic Studio project")
                 .filter("Magic project", &["magic"]),
@@ -925,6 +983,10 @@ impl MagicApp {
             #[cfg(not(target_arch = "wasm32"))]
             "ui.studio.toolbar" if self.view == ViewMode::Studio => {
                 self.studio_toolbar_command(ctx, &params)
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.animation.controls" if self.view == ViewMode::Animation => {
+                self.animation_workspace_command(ctx, &params)
             }
             #[cfg(not(target_arch = "wasm32"))]
             "ui.studio.import_animation" if self.view == ViewMode::Studio => {
@@ -1139,7 +1201,6 @@ impl MagicApp {
                 project.as_deref().unwrap_or_default(),
                 WebWorkspacePage::Projects,
             );
-            self.lyrics_visible = true;
             return;
         }
         ScrollArea::vertical()
@@ -1655,7 +1716,6 @@ impl MagicApp {
                     &project.display().to_string(),
                     WebWorkspacePage::Lyrics,
                 );
-                self.lyrics_visible = true;
             }
             return;
         }
@@ -1828,6 +1888,15 @@ impl MagicApp {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn open_effectcraft_composition(&mut self, path: &Path) -> Result<String, String> {
+        self.open_effectcraft_composition_at(path, None)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_effectcraft_composition_at(
+        &mut self,
+        path: &Path,
+        seconds: Option<f64>,
+    ) -> Result<String, String> {
         if self
             .effectcraft_animation
             .as_ref()
@@ -1835,8 +1904,11 @@ impl MagicApp {
         {
             return Err("Save the open EffectCraft composition first.".into());
         }
-        let composition = animation_effectcraft::AnimationEffectcraft::open(path)
+        let mut composition = animation_effectcraft::AnimationEffectcraft::open(path)
             .map_err(|error| format!("Open {}: {error}", path.display()))?;
+        if let Some(seconds) = seconds {
+            composition.seek(seconds)?;
+        }
         self.effectcraft_animation = Some(composition);
         Ok(format!("Opened {}", path.display()))
     }
@@ -1966,10 +2038,9 @@ impl MagicApp {
             &project.display().to_string(),
             WebWorkspacePage::Motion,
         );
-        self.lyrics_visible = true;
     }
 
-    fn show_animation_view(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn show_animation_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
             empty_state(
                 ui,
@@ -1991,6 +2062,44 @@ impl MagicApp {
                 });
         }
 
+        if let Some(host) = self.lyrics_host.as_mut() {
+            let project = self
+                .session
+                .project_path
+                .as_ref()
+                .map(|path| path.to_string_lossy());
+            let project = project.as_deref().unwrap_or_default();
+            egui::Panel::left("animation_assets_web")
+                .resizable(true)
+                .default_size(210.0)
+                .min_size(165.0)
+                .show(ui, |ui| {
+                    let rect = ui.available_rect_before_wrap();
+                    ui.allocate_rect(rect, Sense::hover());
+                    host.show(frame, ctx, rect, project, WebWorkspacePage::AnimationAssets);
+                });
+            egui::Panel::right("animation_inspector_web")
+                .resizable(true)
+                .default_size(290.0)
+                .min_size(215.0)
+                .show(ui, |ui| {
+                    let rect = ui.available_rect_before_wrap();
+                    ui.allocate_rect(rect, Sense::hover());
+                    host.show(
+                        frame,
+                        ctx,
+                        rect,
+                        project,
+                        WebWorkspacePage::AnimationInspector,
+                    );
+                });
+        } else {
+            self.show_animation_fallback_rails(ctx, ui);
+        }
+        self.show_animation_stage(ctx, ui);
+    }
+
+    fn show_animation_fallback_rails(&mut self, ctx: &Context, ui: &mut Ui) {
         // Left Rail: Characters & Project Assets
         egui::Panel::left("animation_left_rail")
             .resizable(true)
@@ -2238,8 +2347,9 @@ impl MagicApp {
                     });
                 }
             });
+    }
 
-        // Center Stage Preview
+    fn show_animation_stage(&mut self, ctx: &Context, ui: &mut Ui) {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
@@ -2408,7 +2518,6 @@ impl eframe::App for MagicApp {
         self.poll_dialogs(ctx);
         self.poll_worker();
         self.poll_control(ctx);
-        self.lyrics_visible = false;
 
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(composition) = self.effectcraft_animation.as_mut()
@@ -2451,29 +2560,30 @@ impl eframe::App for MagicApp {
                     .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
             )
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if let Some(busy) = &self.busy_command {
-                        ui.spinner();
-                        ui.label(
-                            RichText::new(format!("Running `{busy}`…"))
-                                .size(11.0)
-                                .color(ACCENT_TEAL),
-                        );
-                    } else if let Some(err) = &self.last_error {
-                        ui.label(RichText::new(err).size(11.0).color(ACCENT_RED));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        RichText::new("Fidget (text.complete) · Scribbles (image.generate)")
+                            .size(10.5)
+                            .color(TEXT_MUTED),
+                    );
+                    let running;
+                    let (status, color) = if let Some(busy) = &self.busy_command {
+                        running = format!("Running {busy}…");
+                        (running.as_str(), ACCENT_TEAL)
+                    } else if let Some(error) = &self.last_error {
+                        (error.as_str(), ACCENT_RED)
                     } else {
-                        ui.label(
-                            RichText::new(&self.status_line)
-                                .size(11.0)
-                                .color(TEXT_SECONDARY),
-                        );
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            RichText::new("Fidget (text.complete) · Scribbles (image.generate)")
-                                .size(10.5)
-                                .color(TEXT_MUTED),
-                        );
+                        (self.status_line.as_str(), TEXT_SECONDARY)
+                    };
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        if self.busy_command.is_some() {
+                            ui.spinner();
+                        }
+                        ui.add(
+                            egui::Label::new(RichText::new(status).size(11.0).color(color))
+                                .truncate(),
+                        )
+                        .on_hover_text(status);
                     });
                 });
             });
@@ -2522,15 +2632,13 @@ impl eframe::App for MagicApp {
                 ViewMode::Projects => self.show_projects_view(ctx, ui, frame),
                 ViewMode::Storyboard => self.show_storyboard_view(ctx, ui),
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
-                ViewMode::Animation => self.show_animation_view(ctx, ui),
+                ViewMode::Animation => self.show_animation_view(ctx, ui, frame),
                 ViewMode::Motion => self.show_motion_view(ctx, ui, frame),
                 ViewMode::Studio => self.show_studio_view(ctx, ui, frame),
             });
 
-        if !self.lyrics_visible
-            && let Some(host) = self.lyrics_host.as_mut()
-        {
-            host.hide();
+        if let Some(host) = self.lyrics_host.as_mut() {
+            host.finish_frame();
         }
 
         #[cfg(not(target_arch = "wasm32"))]

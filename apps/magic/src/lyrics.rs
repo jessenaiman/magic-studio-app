@@ -194,17 +194,28 @@ fn decode_uri(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// The Lyrics webview, created on first show as a child of the egui window.
+struct WorkspaceView {
+    view: wry::WebView,
+    project: String,
+    page: WebWorkspacePage,
+    visible: bool,
+}
+
+/// Child webviews sharing the live Magic bridge.
 pub struct LyricsWebView {
     bridge: Option<Bridge>,
-    view: Option<(wry::WebView, String, String, WebWorkspacePage)>,
+    url: Option<String>,
+    views: [Option<WorkspaceView>; 2],
+    shown: [bool; 2],
 }
 
 impl LyricsWebView {
     pub fn new(tx: Sender<ControlRequest>, wake: WakeHandle, ui_root: PathBuf) -> Self {
         Self {
             bridge: Some(Bridge { tx, wake, ui_root }),
-            view: None,
+            url: None,
+            views: [None, None],
+            shown: [false; 2],
         }
     }
 
@@ -212,21 +223,24 @@ impl LyricsWebView {
         &mut self,
         frame: &eframe::Frame,
         bounds: wry::Rect,
-        project: &str,
         page: WebWorkspacePage,
-    ) -> Result<(), String> {
+    ) -> Result<wry::WebView, String> {
         // GTK starts only now: initialised before the egui window exists it breaks winit's GLX setup.
         gtk::gdk::set_allowed_backends("x11");
         gtk::init().map_err(|e| e.to_string())?;
-        let bridge = self.bridge.take().ok_or("Lyrics webview unavailable")?;
-        let url = spawn_bridge(bridge).ok_or("Lyrics bridge could not bind a port")?;
-        let view = wry::WebViewBuilder::new()
-            .with_url(page_url(&url, page))
+        if self.url.is_none() {
+            let bridge = self.bridge.take().ok_or("Workspace webview unavailable")?;
+            self.url = spawn_bridge(bridge);
+        }
+        let url = self
+            .url
+            .as_deref()
+            .ok_or("Workspace bridge could not bind a port")?;
+        wry::WebViewBuilder::new()
+            .with_url(page_url(url, page))
             .with_bounds(bounds)
             .build_as_child(frame)
-            .map_err(|e| e.to_string())?;
-        self.view = Some((view, url, project.to_owned(), page));
-        Ok(())
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -242,6 +256,8 @@ fn page_url(base: &str, page: WebWorkspacePage) -> String {
         WebWorkspacePage::Lyrics => "lyrics.html",
         WebWorkspacePage::Motion => "motion.html",
         WebWorkspacePage::Studio => "studio.html",
+        WebWorkspacePage::AnimationAssets => "animation-controls.html#assets",
+        WebWorkspacePage::AnimationInspector => "animation-controls.html#inspector",
     };
     format!("{base}/{file}")
 }
@@ -261,27 +277,52 @@ impl LyricsHost for LyricsWebView {
             size: wry::dpi::LogicalSize::new(f64::from(rect.width()), f64::from(rect.height()))
                 .into(),
         };
-        if self.view.is_none()
-            && let Err(error) = self.create(frame, bounds, project, page)
-        {
-            eprintln!("magic: Lyrics webview: {error}");
-        }
-        if let Some((view, url, shown, shown_page)) = self.view.as_mut() {
-            let _ = view.set_bounds(bounds);
-            let _ = view.set_visible(true);
-            if shown != project || *shown_page != page {
-                let _ = view.load_url(&page_url(url, page));
-                project.clone_into(shown);
-                *shown_page = page;
+        let index = usize::from(page == WebWorkspacePage::AnimationInspector);
+        if let Some(slot) = self.views[index].as_mut() {
+            let _ = slot.view.set_bounds(bounds);
+            if (!slot.visible || slot.page != page)
+                && let Some(url) = self.url.as_deref()
+            {
+                let _ = slot.view.load_url(&page_url(url, page));
+            } else if slot.project != project {
+                let _ = slot.view.reload();
+            }
+            if !slot.visible {
+                let _ = slot.view.set_visible(true);
+            }
+            slot.visible = true;
+            slot.page = page;
+            project.clone_into(&mut slot.project);
+        } else {
+            match self.create(frame, bounds, page) {
+                Ok(view) => {
+                    self.views[index] = Some(WorkspaceView {
+                        view,
+                        project: project.into(),
+                        page,
+                        visible: true,
+                    })
+                }
+                Err(error) => eprintln!("magic: Workspace webview: {error}"),
             }
         }
-        pump_gtk();
+        self.shown[index] = true;
         ctx.request_repaint_after(Duration::from_millis(16));
     }
 
-    fn hide(&mut self) {
-        if let Some((view, ..)) = &self.view {
-            let _ = view.set_visible(false);
+    fn finish_frame(&mut self) {
+        for (slot, shown) in self.views.iter_mut().zip(&mut self.shown) {
+            if let Some(slot) = slot.as_mut()
+                && slot.visible
+                && !*shown
+            {
+                let _ = slot.view.set_visible(false);
+                let _ = slot.view.load_url("about:blank");
+                slot.visible = false;
+            }
+            *shown = false;
+        }
+        if self.url.is_some() {
             pump_gtk();
         }
     }

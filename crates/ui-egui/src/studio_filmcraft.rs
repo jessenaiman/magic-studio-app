@@ -385,7 +385,6 @@ impl MagicApp {
                 project.as_deref().unwrap_or_default(),
                 WebWorkspacePage::Studio,
             );
-            self.lyrics_visible = true;
         } else {
             self.studio_film_toolbar(ui, &path);
         }
