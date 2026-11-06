@@ -222,19 +222,10 @@ fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
     while let Some(pos) = line[start..].find(pattern) {
         let abs = start + pos;
         let end = abs + pattern.len();
-        // Word boundary before: not alphanumeric/underscore, or start of line.
-        let before_ok = abs == 0
-            || !line[abs - 1..abs]
-                .chars()
-                .next()
-                .is_none_or(|c| c.is_alphanumeric() || c == '_');
-        // Word boundary after: not alphanumeric/underscore, or end of line.
-        let after_ok = end >= line.len()
-            || !line[end..end + 1]
-                .chars()
-                .next()
-                .is_none_or(|c| c.is_alphanumeric() || c == '_');
-        if before_ok && after_ok {
+        let word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let before = line[..abs].chars().next_back();
+        let after = line[end..].chars().next();
+        if !before.is_some_and(word_char) && !after.is_some_and(word_char) {
             return true;
         }
         start = end;
