@@ -73,6 +73,7 @@ mod creation_loop;
 pub mod crew;
 pub mod doc_state;
 pub mod doctor;
+pub mod error;
 pub mod feedback_state;
 pub mod fidget;
 pub mod film;
@@ -104,29 +105,10 @@ pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
 pub use craft_hub::{CraftHub, CraftTarget};
+pub use error::{EngineError, Result};
 pub use session::{Asset, ProjectAsset, Session};
 
 use serde_json::Value;
-
-#[derive(Debug, thiserror::Error)]
-pub enum EngineError {
-    #[error("unknown command `{0}`")]
-    UnknownCommand(String),
-    #[error("command `{0}` failed: {1}")]
-    CommandFailed(String, String),
-    #[error("invalid parameters: {0}")]
-    InvalidParams(String),
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("image error: {0}")]
-    Image(#[from] image::ImageError),
-    #[error("external tool `{0}` failed: {1}")]
-    ExternalTool(String, String),
-    #[error("not yet implemented")]
-    NotImplemented,
-}
-
-pub type Result<T> = std::result::Result<T, EngineError>;
 
 /// Rejects a parameter whose JSON type differs from the example value in the command's `params`
 /// description (e.g. `"auto_cut": "true"` where the description says `false`). Every caller (CLI,
