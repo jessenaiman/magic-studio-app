@@ -209,7 +209,7 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
             .unwrap_or_else(|| serde_json::json!({}));
         pairs.push((id, params));
     }
-    crate::character::cut::photocraft_run(&path, &pairs, save.as_deref())?;
+    crate::cmd::character::cut::photocraft_run(&path, &pairs, save.as_deref())?;
     let info = save
         .as_deref()
         .or(Some(path.as_path()))
@@ -244,7 +244,7 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
         }
         steps.push(serde_json::json!({"id": "file.saveAs", "params": {"path": path}}));
     }
-    let results = crate::character::effectcraft(dir, existing, &steps, save)?;
+    let results = crate::cmd::character::effectcraft(dir, existing, &steps, save)?;
     let info = craft_doc_info(&path);
     Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results}))
 }

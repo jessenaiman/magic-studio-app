@@ -398,7 +398,7 @@ fn build_breakout_record(
                         json!({"path": out_png, "overwrite": true}),
                     ),
                 ];
-                match crate::character::cut::photocraft_run(src, &steps, Some(&out_pcraft)) {
+                match crate::cmd::character::cut::photocraft_run(src, &steps, Some(&out_pcraft)) {
                     Ok(_) => {
                         let exported = collect_files_with_ext(&layers_dir, &["png"], 1);
                         json!({
@@ -845,7 +845,7 @@ fn build_effectcraft_3d_comp(
     if super::effectcraft(clips_dir, None, &steps, true).is_err() {
         return (Value::Null, Value::Null);
     }
-    let rendered = crate::character::effectcraft_frame(
+    let rendered = crate::cmd::character::effectcraft_frame(
         &ec_path,
         &comp_name,
         (duration * 0.5).min(1.0),

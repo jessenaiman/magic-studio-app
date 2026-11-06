@@ -1044,7 +1044,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"sprite\":\"sprite name\",\"name\":\"optional shot name\",\"duration\":4,\"from\":[960,780],\"to\":[960,780],\"scale\":100,\"mirror\":false,\"hop_period\":\"optional seconds per jump (the sprite cycle)\",\"height\":140}",
             always,
-            crate::character::cmd_character_shot
+            crate::cmd::character::cmd_character_shot
         ),
         cmd!(
             "character.sprite",
@@ -1053,13 +1053,13 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"action\":\"walk|run|jump|wave|turn\",\"sheet\":\"Scribbles action sheet PNG\",\"name\":\"optional sprite name; default the action\",\"columns\":4,\"rows\":2,\"fps\":12,\"duration\":4,\"mirror\":false}",
             always,
-            crate::character::cmd_character_sprite
+            crate::cmd::character::cmd_character_sprite
         ),
         query!(
             "animation.motion_options",
             "Single-Subject EffectCraft Motion Options",
             "{}",
-            crate::character::review::cmd_motion_options
+            crate::cmd::character::review::cmd_motion_options
         ),
         cmd!(
             "animation.prepare_motion",
@@ -1068,7 +1068,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             r#"{"character":"id","clip":"exact GLB clip","option":"baseline|paced","duration":3}"#,
             always,
-            crate::character::review::cmd_prepare_motion
+            crate::cmd::character::review::cmd_prepare_motion
         ),
         query!(
             "motion.theatre.read",
@@ -1089,7 +1089,7 @@ fn specs_character() -> Vec<CommandSpec> {
             "animation.review",
             "Animation Review Models and Saved Revisions",
             "{}",
-            crate::character::review::cmd_review
+            crate::cmd::character::review::cmd_review
         ),
         cmd!(
             "animation.save_revision",
@@ -1098,13 +1098,13 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             r#"{"expected_project":"absolute .magic path","expected_revision":0,"character":"id","clip":"clip name","parent":null,"draft":{"trim_start":0,"trim_end":1,"speed":1,"loop":false,"in_place":true,"keys":[],"issues":[],"notes":"","status":"needs-visual-review"}}"#,
             always,
-            crate::character::review::cmd_save_revision
+            crate::cmd::character::review::cmd_save_revision
         ),
         query!(
             "character.meta",
             "Character Views, Parts and Actions",
             "{\"character\":\"id\"}",
-            crate::character::cmd_character_meta
+            crate::cmd::character::cmd_character_meta
         ),
         cmd!(
             "character.save_marks",
@@ -1113,19 +1113,19 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"parts\":[{\"id\":\"arm_L\",\"parent\":\"torso\",\"joint\":[0,0],\"outline\":[[0,0]]}]}",
             always,
-            crate::character::cmd_character_save_marks
+            crate::cmd::character::cmd_character_save_marks
         ),
         query!(
             "character.list",
             "Characters and Their App Files",
             "{}",
-            crate::character::cmd_character_list
+            crate::cmd::character::cmd_character_list
         ),
         query!(
             "character.actions",
             "Actions in the Shared Pose Table",
             "{}",
-            crate::character::cmd_character_actions
+            crate::cmd::character::cmd_character_actions
         ),
         cmd!(
             "character.mark",
@@ -1134,7 +1134,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"image\":\"drawing.png\",\"timeout_s\":600}",
             always,
-            crate::character::cmd_character_mark
+            crate::cmd::character::cmd_character_mark
         ),
         cmd!(
             "character.cut",
@@ -1143,7 +1143,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\"}",
             always,
-            crate::character::cmd_character_cut
+            crate::cmd::character::cmd_character_cut
         ),
         cmd!(
             "character.rig",
@@ -1152,7 +1152,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\"}",
             always,
-            crate::character::cmd_character_rig
+            crate::cmd::character::cmd_character_rig
         ),
         cmd!(
             "character.action",
@@ -1161,7 +1161,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"action\":\"idle|walk_down|walk_up|walk_left|walk_right|jump|turn|wave\",\"at\":0,\"times\":1}",
             always,
-            crate::character::cmd_character_action
+            crate::cmd::character::cmd_character_action
         ),
         cmd!(
             "character.render",
@@ -1170,13 +1170,13 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"sprite\":\"optional sprite name instead of view\",\"start\":0,\"end\":1,\"fps\":24,\"format\":\"frames|clip\"}",
             always,
-            crate::character::cmd_character_render
+            crate::cmd::character::cmd_character_render
         ),
         query!(
             "character.frame",
             "Render a Frame (EffectCraft)",
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"time\":0,\"max_side\":900}",
-            crate::character::cmd_character_frame
+            crate::cmd::character::cmd_character_frame
         ),
         cmd!(
             "character.set",
@@ -1185,19 +1185,19 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"part\":\"layer\",\"prop\":\"position|rotation|scale|anchor|opacity\",\"value\":0,\"time\":0}",
             always,
-            crate::character::cmd_character_set
+            crate::cmd::character::cmd_character_set
         ),
         query!(
             "character.open",
             "Open in EffectCraft, PhotoCraft or Blender",
             "{\"character\":\"id\",\"view\":\"front|back|side\",\"app\":\"effectcraft|photocraft|blender\"}",
-            crate::character::cmd_character_open
+            crate::cmd::character::cmd_character_open
         ),
         query!(
             "character.tripo.catalog",
             "Tripo 3D Breakout Templates, Rig Specs and 101 Animation Presets",
             "{\"category\":\"optional basic|interactive|scene_specific|emotional|combat\"}",
-            crate::character::cmd_tripo_catalog
+            crate::cmd::character::cmd_tripo_catalog
         ),
         cmd!(
             "character.tripo.breakout",
@@ -1206,7 +1206,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"kind\":\"character_extraction|asset_extraction|t_pose|character_completion|head_extraction|3d_enhance|split_image|multiview_images|upscale_image|ai_segmentation|mesh_completion\",\"provider\":\"tripo|google_flow|codex_luna\",\"reference\":\"optional source image\",\"prompt\":\"optional prompt\",\"granularity\":\"low|medium|high\",\"completion_mode\":\"quick_cap|ai_completion\"}",
             always,
-            crate::character::cmd_tripo_breakout
+            crate::cmd::character::cmd_tripo_breakout
         ),
         cmd!(
             "character.tripo.rig",
@@ -1215,7 +1215,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"rig_type\":\"biped|quadruped|hexapod|octopod|avian|serpentine|aquatic|others\",\"skeleton_preset\":\"mixamo|actorcore|unreal|vrm|unity\",\"topology\":\"quad|triangle\",\"face_count\":10000,\"t_pose_ready\":true,\"model\":\"optional .glb path\"}",
             always,
-            crate::character::cmd_tripo_rig
+            crate::cmd::character::cmd_tripo_rig
         ),
         cmd!(
             "character.tripo.animate",
@@ -1224,7 +1224,7 @@ fn specs_character() -> Vec<CommandSpec> {
             None,
             "{\"character\":\"id\",\"preset\":\"optional preset name (e.g. wave_goodbye_01, idle, walk, bow)\",\"prompt\":\"optional AI text-to-motion prompt\",\"stages\":[{\"name\":\"Start\",\"prompt\":\"action\",\"duration_seconds\":2,\"waypoints\":[[0,0],[0,0]]}],\"name\":\"optional clip name\",\"rig_type\":\"biped\",\"animate_in_place\":true,\"fbx_preset\":\"blender|3dsmax|maya|unreal|unity\",\"format\":\"fbx|glb\",\"texture_size\":\"2K\",\"glb\":\"optional .glb\",\"fbx\":\"optional .fbx\",\"blend\":\"optional .blend\",\"preview\":\"optional .mp4\"}",
             always,
-            crate::character::cmd_tripo_animate
+            crate::cmd::character::cmd_tripo_animate
         ),
     ]
 }
