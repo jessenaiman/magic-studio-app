@@ -86,6 +86,14 @@ pub(crate) fn doctor() -> Result<()> {
         if broken_packages.is_empty() {
             println!("  (no per-package breakdown available)");
         }
+        for line in check
+            .stderr
+            .lines()
+            .chain(check.stdout.lines())
+            .filter(|l| !l.trim().is_empty())
+        {
+            println!("    {line}");
+        }
     }
 
     println!();
@@ -220,16 +228,16 @@ fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
         let end = abs + pattern.len();
         // Word boundary before: not alphanumeric/underscore, or start of line.
         let before_ok = abs == 0
-            || !line[abs - 1..abs]
+            || !line[..abs]
                 .chars()
-                .next()
-                .is_none_or(|c| c.is_alphanumeric() || c == '_');
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
         // Word boundary after: not alphanumeric/underscore, or end of line.
         let after_ok = end >= line.len()
-            || !line[end..end + 1]
+            || !line[end..]
                 .chars()
                 .next()
-                .is_none_or(|c| c.is_alphanumeric() || c == '_');
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
         if before_ok && after_ok {
             return true;
         }

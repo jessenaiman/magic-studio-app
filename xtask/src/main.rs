@@ -49,11 +49,7 @@ enum Profile {
 const RETIRED: &[&str] = &["magic-shell", "python-magic-cli"];
 /// Tracked runtime resources the app reads at run time.
 const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/", "apps/magic-cli/ui/"];
-const RESOURCE_FILES: &[&str] = &[
-    "apps/magic-gui/agent.md",
-    "SOURCE-ATTRIBUTION.md",
-    "LICENSE",
-];
+const RESOURCE_FILES: &[&str] = &["apps/magic/agent.md", "SOURCE-ATTRIBUTION.md", "LICENSE"];
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -302,7 +298,7 @@ mod tests {
     #[test]
     fn runtime_resources_exclude_tests_and_unlisted_files() {
         assert!(wanted_resource("pipeline/templates/words-kinetic.html"));
-        assert!(wanted_resource("apps/magic-gui/agent.md"));
+        assert!(wanted_resource("apps/magic/agent.md"));
         assert!(!wanted_resource("pipeline/tests/test_layout.rs"));
         assert!(!wanted_resource("lib/test_helpers.rs"));
         assert!(!wanted_resource("apps/magic-gui/src/main.rs"));

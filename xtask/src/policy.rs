@@ -73,7 +73,6 @@ const LAYERS: &[(&str, u8)] = &[
     ("magic-gui", 6),
     ("magic-cli", 6),
     ("magic-tui", 6),
-    ("magic-web", 6),
 ];
 
 /// L0 crates that are not codecs/containers (no `bitstream`-only restriction).
