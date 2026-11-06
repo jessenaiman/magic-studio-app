@@ -99,6 +99,15 @@ struct WorkerResult {
     outcome: Result<Value, String>,
 }
 
+/// The Lyrics designer (`apps/magic-cli/ui/lyrics.html`) hosted by the desktop binary as a native
+/// webview child of this window. egui only reserves the rectangle for it.
+pub trait LyricsHost {
+    /// Show the designer inside `rect` (egui points); reload it when `project` changes.
+    fn show(&mut self, frame: &eframe::Frame, ctx: &Context, rect: egui::Rect, project: &str);
+    /// Hide the designer while another tab is showing.
+    fn hide(&mut self);
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DialogAction {
     OpenProject,
@@ -167,6 +176,10 @@ pub struct MagicApp {
     // Optional loopback `--control` receiver
     control_rx: Option<Receiver<ControlRequest>>,
     quit_requested: bool,
+
+    lyrics_host: Option<Box<dyn LyricsHost>>,
+    lyrics_visible: bool,
+    lyrics_song_details: bool,
 
     // Non-blocking native file dialogs (`craft-dialogs`)
     #[cfg(not(target_arch = "wasm32"))]
@@ -240,6 +253,9 @@ impl MagicApp {
             busy_command: None,
             control_rx: None,
             quit_requested: false,
+            lyrics_host: None,
+            lyrics_visible: false,
+            lyrics_song_details: false,
             #[cfg(not(target_arch = "wasm32"))]
             dialogs,
             #[cfg(not(target_arch = "wasm32"))]
@@ -253,6 +269,11 @@ impl MagicApp {
 
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
         self.control_rx = Some(rx);
+        self
+    }
+
+    pub fn with_lyrics_host(mut self, host: Box<dyn LyricsHost>) -> Self {
+        self.lyrics_host = Some(host);
         self
     }
 
@@ -1386,13 +1407,25 @@ impl MagicApp {
             });
     }
 
-    fn show_lyrics_view(&mut self, ctx: &Context, ui: &mut Ui) {
-        if self.session.project_path.is_none() {
+    fn show_lyrics_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
+        let Some(project) = self.session.project_path.clone() else {
             empty_state(
                 ui,
                 "Open a Project First",
                 "Switch to Projects to open a .magic song project.",
             );
+            return;
+        };
+        if self.lyrics_host.is_some() && !self.lyrics_song_details {
+            if secondary_button(ui, "Song details…").clicked() {
+                self.lyrics_song_details = true;
+            }
+            let rect = ui.available_rect_before_wrap();
+            ui.allocate_rect(rect, Sense::hover());
+            if let Some(host) = self.lyrics_host.as_mut() {
+                host.show(frame, ctx, rect, &project.display().to_string());
+                self.lyrics_visible = true;
+            }
             return;
         }
         ScrollArea::vertical()
@@ -1418,25 +1451,10 @@ impl MagicApp {
                                 }),
                             );
                         }
-                        #[cfg(not(target_arch = "wasm32"))]
+                        if self.lyrics_host.is_some()
+                            && secondary_button(ui, "◂ Lyrics designer").clicked()
                         {
-                            let studio_resp =
-                                secondary_button(ui, "✨ Open Lyrics Window (`--lyrics`)");
-                            self.auto.add_response(
-                                "btn-open-lyrics-studio",
-                                &studio_resp,
-                                "Open Lyrics Window",
-                            );
-                            if studio_resp.clicked()
-                                && let Ok(exe) = std::env::current_exe()
-                            {
-                                let mut cmd = std::process::Command::new(exe);
-                                cmd.arg("--lyrics");
-                                if let Some(p) = &self.session.project_path {
-                                    cmd.arg("--project").arg(p);
-                                }
-                                let _ = cmd.spawn();
-                            }
+                            self.lyrics_song_details = false;
                         }
                     });
                 });
@@ -1508,19 +1526,6 @@ impl MagicApp {
                                 self.run_command(ctx, "words.letter", json!({}));
                             }
                         });
-                    });
-                }
-
-                ui.add_space(8.0);
-                if section_header(ui, "Kinetic Lyrics Designer", true) {
-                    card_frame().show(ui, |ui| {
-                        ui.label(
-                            RichText::new(
-                                "Kinetic lyrics live in the Tauri Lyrics window (`magic --lyrics`), not in egui. Use the button above to open it; this tab keeps song audio, metadata, and the canonical lyrics sheet.",
-                            )
-                            .size(11.5)
-                            .color(TEXT_SECONDARY),
-                        );
                     });
                 }
 
@@ -1952,6 +1957,7 @@ impl eframe::App for MagicApp {
         self.poll_dialogs(ctx);
         self.poll_worker();
         self.poll_control(ctx);
+        self.lyrics_visible = false;
 
         // Top Navigation & Assistant Bar
         egui::Panel::top("magic_top_bar")
@@ -2046,10 +2052,16 @@ impl eframe::App for MagicApp {
             .show(ui, |ui| match self.view {
                 ViewMode::Projects => self.show_projects_view(ctx, ui),
                 ViewMode::Storyboard => self.show_storyboard_view(ctx, ui),
-                ViewMode::Lyrics => self.show_lyrics_view(ctx, ui),
+                ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
                 ViewMode::Animation => self.show_animation_view(ctx, ui),
                 ViewMode::Studio => self.show_studio_view(ctx, ui),
             });
+
+        if !self.lyrics_visible
+            && let Some(host) = self.lyrics_host.as_mut()
+        {
+            host.hide();
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         self.dialogs.show_pending(Some(&*frame));

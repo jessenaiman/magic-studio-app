@@ -48,7 +48,7 @@ struct Cli {
     /// Start on a specific view (`projects`, `storyboard`, `lyrics`, `animation`, `studio`)
     #[arg(long)]
     view: Option<String>,
-    /// Open the Tauri Kinetic Lyrics Designer window directly
+    /// Start on the Lyrics view (same as `--view lyrics`)
     #[arg(long)]
     lyrics: bool,
     /// Loopback TCP port or `127.0.0.1:PORT` for the live `--control` JSON-lines bridge
@@ -212,6 +212,17 @@ impl Drop for ControlSocket {
 }
 
 fn main() -> eframe::Result {
+    // WebKit's dmabuf renderer renders the Lyrics webview blank under X11; restart once without it.
+    #[cfg(all(unix, feature = "lyrics-webview"))]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+        && let Ok(exe) = std::env::current_exe()
+    {
+        use std::os::unix::process::CommandExt;
+        let _ = std::process::Command::new(exe)
+            .args(std::env::args_os().skip(1))
+            .env("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+            .exec();
+    }
     let cli = Cli::parse();
 
     let mut session = Session::user_session();
@@ -227,6 +238,11 @@ fn main() -> eframe::Result {
 
     let (tx, control_rx) = channel();
     let wake: WakeHandle = Arc::new(Mutex::new(None));
+    #[cfg(feature = "lyrics-webview")]
+    let lyrics_host = {
+        let ui_root = magic::workspace::workspace_root(&session).join("apps/magic-cli/ui");
+        (tx.clone(), Arc::clone(&wake), ui_root)
+    };
 
     #[cfg(unix)]
     let _control_socket = spawn_unix_control_socket(tx.clone(), Arc::clone(&wake));
@@ -238,13 +254,15 @@ fn main() -> eframe::Result {
         }
     }
 
-    #[cfg(feature = "lyrics-webview")]
-    if cli.lyrics || cli.view.as_deref() == Some("lyrics") {
-        return lyrics::run(session, control_rx)
-            .map_err(|error| eframe::Error::AppCreation(Box::new(error)));
-    }
+    let initial_view = if cli.lyrics {
+        Some(ViewMode::Lyrics)
+    } else {
+        cli.view.as_deref().and_then(ViewMode::from_name)
+    };
 
-    let initial_view = cli.view.as_deref().and_then(ViewMode::from_name);
+    // wry hosts the Lyrics webview as a child window, which needs X11 (XWayland on Wayland).
+    #[cfg(feature = "lyrics-webview")]
+    let x11 = std::env::var_os("DISPLAY").is_some();
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -252,6 +270,13 @@ fn main() -> eframe::Result {
             .with_app_id("ai.storyteller.magic")
             .with_inner_size([1380.0, 860.0])
             .with_min_inner_size([960.0, 620.0]),
+        #[cfg(feature = "lyrics-webview")]
+        event_loop_builder: x11.then(|| -> eframe::EventLoopBuilderHook {
+            Box::new(|builder| {
+                use winit::platform::x11::EventLoopBuilderExtX11;
+                builder.with_x11();
+            })
+        }),
         ..Default::default()
     };
 
@@ -266,6 +291,11 @@ fn main() -> eframe::Result {
             let mut app = MagicApp::new(session).with_control(control_rx);
             if let Some(view) = initial_view {
                 app.view = view;
+            }
+            #[cfg(feature = "lyrics-webview")]
+            if x11 {
+                let (tx, wake, ui_root) = lyrics_host;
+                app = app.with_lyrics_host(Box::new(lyrics::LyricsWebView::new(tx, wake, ui_root)));
             }
             Ok(Box::new(app))
         }),

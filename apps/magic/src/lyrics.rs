@@ -1,29 +1,39 @@
-//! Tauri host for the Lyrics Designer view (`magic --lyrics` / `magic --view lyrics`),
-//! backed by a live [`magic::Session`] over loopback so `words.read`, `words.save`,
-//! and local backdrop images work identically in the standalone Tauri window and in `magic-cli ui`.
+//! The Lyrics designer (`apps/magic-cli/ui/lyrics.html`) as a native webview inside the Magic window.
+//!
+//! The page is served on loopback and runs every engine command through the live egui session (the
+//! same `ControlRequest` channel `--control` uses), so `words.read`, `words.save` and local
+//! backdrops behave exactly as in `magic-cli ui`. wry's child webview needs X11, so `main` runs
+//! the window through XWayland when the desktop is Wayland.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, mpsc::Receiver};
+use std::path::{Component, Path, PathBuf};
+use std::sync::mpsc::{Sender, channel};
+use std::time::Duration;
 
-use magic::Session;
-use magic_ui_egui::ControlRequest;
+use magic_ui_egui::{ControlRequest, LyricsHost};
 use serde_json::{Value, json};
 
-fn spawn_session_bridge(session: Arc<Mutex<Session>>) -> Option<String> {
+use crate::WakeHandle;
+
+struct Bridge {
+    tx: Sender<ControlRequest>,
+    wake: WakeHandle,
+    ui_root: PathBuf,
+}
+
+fn spawn_bridge(bridge: Bridge) -> Option<String> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).ok()?;
-    let addr = listener.local_addr().ok()?;
-    let url = format!("http://{addr}");
+    let url = format!("http://{}", listener.local_addr().ok()?);
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            let _ = handle(&session, stream);
+            let _ = handle(&bridge, stream);
         }
     });
     Some(url)
 }
 
-fn handle(session: &Mutex<Session>, mut stream: TcpStream) -> std::io::Result<()> {
+fn handle(bridge: &Bridge, mut stream: TcpStream) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
     reader.read_line(&mut line)?;
@@ -50,16 +60,11 @@ fn handle(session: &Mutex<Session>, mut stream: TcpStream) -> std::io::Result<()
             (
                 "200 OK",
                 "application/json",
-                session
-                    .lock()
-                    .map(|mut session| exec(&mut session, &raw))
-                    .unwrap_or_else(|_| {
-                        json!({ "error": "Lyrics session unavailable" }).to_string()
-                    })
-                    .into_bytes(),
+                exec(bridge, &raw).into_bytes(),
             )
         }
         ("GET", "/file") => local_file(&param(query, "p")),
+        ("GET", _) => static_file(&bridge.ui_root, path),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
     };
     let head = format!(
@@ -70,20 +75,54 @@ fn handle(session: &Mutex<Session>, mut stream: TcpStream) -> std::io::Result<()
     stream.write_all(&body)
 }
 
-fn exec(session: &mut Session, raw: &[u8]) -> String {
+fn exec(bridge: &Bridge, raw: &[u8]) -> String {
     let request: Value = match serde_json::from_slice(raw) {
         Ok(v) => v,
         Err(e) => return json!({ "error": format!("bad request: {e}") }).to_string(),
     };
-    let id = request["id"].as_str().unwrap_or_default();
+    let method = request["id"].as_str().unwrap_or_default().to_owned();
     let params = request
         .get("params")
         .cloned()
         .filter(|p| !p.is_null())
         .unwrap_or_else(|| json!({}));
-    match session.execute(id, params) {
-        Ok(result) => json!({ "result": result }).to_string(),
-        Err(e) => json!({ "error": e.to_string() }).to_string(),
+    let (reply, outcome) = channel();
+    if bridge
+        .tx
+        .send(ControlRequest {
+            method,
+            params,
+            reply,
+        })
+        .is_err()
+    {
+        return json!({ "error": "window closed" }).to_string();
+    }
+    if let Ok(guard) = bridge.wake.lock()
+        && let Some(ctx) = guard.as_ref()
+    {
+        ctx.request_repaint();
+    }
+    match outcome.recv() {
+        Ok(Ok(result)) => json!({ "result": result }).to_string(),
+        Ok(Err(error)) => json!({ "error": error }).to_string(),
+        Err(_) => json!({ "error": "window closed" }).to_string(),
+    }
+}
+
+fn static_file(root: &Path, path: &str) -> (&'static str, &'static str, Vec<u8>) {
+    let relative = Path::new(path.trim_start_matches('/'));
+    let safe = relative
+        .components()
+        .all(|c| matches!(c, Component::Normal(_)));
+    let file = if relative.as_os_str().is_empty() {
+        root.join("lyrics.html")
+    } else {
+        root.join(relative)
+    };
+    match std::fs::read(&file) {
+        Ok(bytes) if safe && file.is_file() => ("200 OK", content_type(&file), bytes),
+        _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
     }
 }
 
@@ -103,6 +142,10 @@ fn content_type(path: &std::path::Path) -> &'static str {
         .to_ascii_lowercase()
         .as_str()
     {
+        "html" => "text/html; charset=utf-8",
+        "css" => "text/css",
+        "js" => "text/javascript",
+        "json" => "application/json",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
@@ -151,58 +194,82 @@ fn decode_uri(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub fn run(session: Session, control_rx: Receiver<ControlRequest>) -> tauri::Result<()> {
-    let session = Arc::new(Mutex::new(session));
-    let bridge = spawn_session_bridge(Arc::clone(&session));
-    let exit_code = tauri::Builder::default()
-        .setup(move |app| {
-            let mut builder = tauri::WebviewWindowBuilder::new(
-                app,
-                "lyrics",
-                tauri::WebviewUrl::App("lyrics.html".into()),
-            )
-            .title("Magic Studio — Lyrics")
-            .inner_size(1440.0, 960.0);
-            if let Some(url) = &bridge {
-                builder = builder.initialization_script(format!(
-                    "window.__MAGIC_BRIDGE_URL__ = {};",
-                    json!(url)
-                ));
-            }
-            let window = builder.build()?;
-            std::thread::spawn(move || {
-                for request in control_rx {
-                    if request.method == "app.quit" {
-                        let result = window
-                            .close()
-                            .map(|()| json!({ "ok": true, "quitting": true }))
-                            .map_err(|error| error.to_string());
-                        let _ = request.reply.send(result);
-                        continue;
-                    }
-                    let result = session
-                        .lock()
-                        .map_err(|_| "Lyrics session unavailable".to_owned())
-                        .and_then(|mut session| match request.method.as_str() {
-                            "ui.state" | "ui.inspect" => Ok(json!({
-                                "ok": true,
-                                "view": "lyrics",
-                                "project": session.project_path,
-                            })),
-                            method => session
-                                .execute(method, request.params)
-                                .map_err(|e| e.to_string()),
-                        });
-                    let _ = request.reply.send(result);
-                }
-            });
-            Ok(())
-        })
-        .build(tauri::generate_context!())?
-        .run_return(|_, _| {});
-    if exit_code == 0 {
+/// The Lyrics webview, created on first show as a child of the egui window.
+pub struct LyricsWebView {
+    bridge: Option<Bridge>,
+    view: Option<(wry::WebView, String, String)>,
+}
+
+impl LyricsWebView {
+    pub fn new(tx: Sender<ControlRequest>, wake: WakeHandle, ui_root: PathBuf) -> Self {
+        Self {
+            bridge: Some(Bridge { tx, wake, ui_root }),
+            view: None,
+        }
+    }
+
+    fn create(
+        &mut self,
+        frame: &eframe::Frame,
+        bounds: wry::Rect,
+        project: &str,
+    ) -> Result<(), String> {
+        // GTK starts only now: initialised before the egui window exists it breaks winit's GLX setup.
+        gtk::gdk::set_allowed_backends("x11");
+        gtk::init().map_err(|e| e.to_string())?;
+        let bridge = self.bridge.take().ok_or("Lyrics webview unavailable")?;
+        let url = spawn_bridge(bridge).ok_or("Lyrics bridge could not bind a port")?;
+        let view = wry::WebViewBuilder::new()
+            .with_url(format!("{url}/lyrics.html"))
+            .with_bounds(bounds)
+            .build_as_child(frame)
+            .map_err(|e| e.to_string())?;
+        self.view = Some((view, url, project.to_owned()));
         Ok(())
-    } else {
-        Err(std::io::Error::other(format!("Lyrics window exited with status {exit_code}")).into())
+    }
+}
+
+fn pump_gtk() {
+    while gtk::events_pending() {
+        gtk::main_iteration_do(false);
+    }
+}
+
+impl LyricsHost for LyricsWebView {
+    fn show(
+        &mut self,
+        frame: &eframe::Frame,
+        ctx: &egui::Context,
+        rect: egui::Rect,
+        project: &str,
+    ) {
+        let bounds = wry::Rect {
+            position: wry::dpi::LogicalPosition::new(f64::from(rect.min.x), f64::from(rect.min.y))
+                .into(),
+            size: wry::dpi::LogicalSize::new(f64::from(rect.width()), f64::from(rect.height()))
+                .into(),
+        };
+        if self.view.is_none()
+            && let Err(error) = self.create(frame, bounds, project)
+        {
+            eprintln!("magic: Lyrics webview: {error}");
+        }
+        if let Some((view, url, shown)) = self.view.as_mut() {
+            let _ = view.set_bounds(bounds);
+            let _ = view.set_visible(true);
+            if shown != project {
+                let _ = view.load_url(&format!("{url}/lyrics.html"));
+                project.clone_into(shown);
+            }
+        }
+        pump_gtk();
+        ctx.request_repaint_after(Duration::from_millis(16));
+    }
+
+    fn hide(&mut self) {
+        if let Some((view, ..)) = &self.view {
+            let _ = view.set_visible(false);
+            pump_gtk();
+        }
     }
 }
