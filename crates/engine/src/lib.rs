@@ -64,7 +64,7 @@ pub mod agent;
 mod agent_run;
 pub mod change_marker;
 pub mod cmd;
-pub mod command_catalog;
+pub mod command_sets;
 pub mod commands;
 pub mod craft_hub;
 mod creation_loop;
