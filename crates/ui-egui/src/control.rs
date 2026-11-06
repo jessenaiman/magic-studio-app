@@ -5,6 +5,8 @@
 use egui::{Context, Event, Modifiers, Pos2};
 use serde_json::{Value, json};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::ViewMode;
 use crate::{AssistantTab, MagicApp};
 
 /// Synthetic input is consumed once per frame; bound what a client can queue ahead of that.
@@ -127,6 +129,14 @@ impl MagicApp {
                 Ok(json!({ "ok": true, "panel": panel, "open": self.assistant.open }))
             }
             "ui.move" | "ui.scroll" | "ui.type" => self.synthetic_input(method, p),
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.playback" if self.view == ViewMode::Animation => self
+                .effectcraft_animation
+                .as_mut()
+                .ok_or_else(|| "Open an EffectCraft composition first.".to_owned())
+                .and_then(|composition| {
+                    composition.preview(p["action"].as_str().unwrap_or("state"))
+                }),
             "ui.playback" => Err(
                 "ui.playback: the Magic views have no transport; preview runs through the `video.preview` command"
                     .into(),

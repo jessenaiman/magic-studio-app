@@ -44,6 +44,34 @@ impl AnimationEffectcraft {
             .map_err(|error| error.to_string())
     }
 
+    pub fn is_playing(&self) -> bool {
+        self.app.playback.playing
+    }
+
+    pub fn stop_preview(&mut self) {
+        self.app.stop();
+    }
+
+    pub fn preview(&mut self, action: &str) -> Result<Value, String> {
+        if self.app.session.active_comp_id().is_none() {
+            return Err("Open an EffectCraft composition first.".into());
+        }
+        let was_playing = self.is_playing();
+        let play = match action {
+            "state" => was_playing,
+            "play" => true,
+            "stop" => false,
+            "toggle" => !was_playing,
+            _ => return Err("Choose play, stop, toggle, or state.".into()),
+        };
+        match (was_playing, play) {
+            (false, true) => self.app.play(self.app.now()),
+            (true, false) => self.stop_preview(),
+            _ => {}
+        }
+        Ok(json!({ "playing": self.is_playing(), "time": self.app.session.time().seconds() }))
+    }
+
     pub fn studio_render_request(&self) -> Result<Value, String> {
         if self.is_dirty() {
             return Err("Save the EffectCraft project before rendering to Studio.".into());
@@ -282,6 +310,31 @@ impl MagicApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animation_playback_controls_the_embedded_preview() {
+        let mut app = MagicApp::new(magic::Session::default());
+        app.view = crate::ViewMode::Animation;
+        let ctx = Context::default();
+        let playback = |app: &mut MagicApp, action| {
+            app.handle_control_request(&ctx, "ui.playback", json!({ "action": action }))
+        };
+        assert!(playback(&mut app, "play").is_err());
+
+        let mut effect = effectcraft_host::session();
+        effect.execute_checked("comp.new", json!({})).unwrap();
+        app.effectcraft_animation = Some(AnimationEffectcraft {
+            app: EffectcraftApp::new(effect),
+            preview_configured: false,
+        });
+
+        assert_eq!(playback(&mut app, "play").unwrap()["playing"], true);
+        assert_eq!(playback(&mut app, "play").unwrap()["playing"], true);
+        assert!(playback(&mut app, "invalid").is_err());
+        assert_eq!(playback(&mut app, "stop").unwrap()["playing"], false);
+        assert_eq!(playback(&mut app, "toggle").unwrap()["playing"], true);
+        assert_eq!(playback(&mut app, "toggle").unwrap()["playing"], false);
+    }
 
     #[test]
     fn project_close_keeps_dirty_composition_and_clears_clean_composition() {

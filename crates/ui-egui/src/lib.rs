@@ -1053,6 +1053,14 @@ impl MagicApp {
                     "animation-send-to-studio" if self.view == ViewMode::Animation => {
                         self.send_active_animation_to_studio(ctx)?;
                     }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    "animation-preview" if self.view == ViewMode::Animation => {
+                        self.handle_control_request(
+                            ctx,
+                            "ui.playback",
+                            json!({"action":"toggle"}),
+                        )?;
+                    }
                     id if self.view == ViewMode::Animation
                         && id.starts_with("animation-asset-") =>
                     {
@@ -2074,6 +2082,19 @@ impl MagicApp {
                 }
             }
             if let Some(composition) = self.effectcraft_animation.as_mut() {
+                let preview_label = if composition.is_playing() {
+                    "Pause Preview"
+                } else {
+                    "Play Preview"
+                };
+                let preview = secondary_button(ui, preview_label);
+                self.auto
+                    .add_response("animation-preview", &preview, preview_label);
+                if preview.clicked()
+                    && let Err(error) = composition.preview("toggle")
+                {
+                    self.status_line = error;
+                }
                 let save = ui.add_enabled(
                     composition.is_dirty(),
                     egui::Button::new("Save EffectCraft Project"),
@@ -2610,10 +2631,13 @@ impl eframe::App for MagicApp {
         self.poll_control(ctx);
 
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(composition) = self.effectcraft_animation.as_mut()
-            && (self.view == ViewMode::Animation || ctx.input(|i| i.viewport().close_requested()))
-        {
-            composition.tick(ctx, frame);
+        if let Some(composition) = self.effectcraft_animation.as_mut() {
+            if self.view != ViewMode::Animation && composition.is_playing() {
+                composition.stop_preview();
+            }
+            if self.view == ViewMode::Animation || ctx.input(|i| i.viewport().close_requested()) {
+                composition.tick(ctx, frame);
+            }
         }
         #[cfg(not(target_arch = "wasm32"))]
         if ctx.input(|input| input.viewport().close_requested())
