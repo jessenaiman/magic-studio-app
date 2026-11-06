@@ -32,6 +32,24 @@ Each app folder holds the package of the same name (`apps/magic` → package `ma
 `magic-cli`), and the engine is `magic-engine`, as in every craft app (`apps/vectorcraft` → `vectorcraft`,
 `crates/engine` → `vectorcraft-engine`).
 
+## Engine shape
+
+The engine follows the craft engine layout (VectorCraft `crates/engine`):
+
+| Module | Role |
+|---|---|
+| `session.rs`, `session/documents.rs`, `doc_state.rs` | the open project and its documents (lyric design, storyboard, cast, film) live in the session; views, CLI, MCP and the control channel all read and edit that one copy |
+| `session/execute.rs`, `session/edit.rs` | one execution path: command → document edit → dirty → views redraw; files are written only by saving the document |
+| `session/undo.rs`, `history.rs` | undo and redo for every journaled edit |
+| `journal.rs`, `steps.rs` | the record of executed commands; batches whose steps reference earlier results |
+| `link_watch.rs` | a file of the open project changed by another app or agent is reloaded, never silently overwritten |
+| `guard.rs` | a panic inside a command rolls the document back; frontends never crash |
+| `file_access.rs` | the folders automation may read and write |
+| `cmd/<domain>/`, `command_sets.rs` | commands grouped by domain (`words`, `storyboard`, `character`, `film`, `song`, `project`), registered in one place |
+
+A view never keeps its own copy of document state, and a command never writes a project file behind the
+session's back.
+
 ## Everything is a command
 
 Every user-visible action is a `CommandSpec` in the engine's command registry (id, label, menu path,
@@ -72,3 +90,4 @@ to immutable revisions.
 | `xtask/src/policy.rs` is FilmCraft's layer table, not Magic's | #91 |
 | craft git dependencies without `rev` (8 craft-libs revisions in `Cargo.lock`) | #91 |
 | egui views are stand-ins without the accepted design; Animation lacks the EffectCraft canvas | #102 |
+| engine has no document model, undo, link watch or guard; commands write files directly and views keep their own copies | #103 |
