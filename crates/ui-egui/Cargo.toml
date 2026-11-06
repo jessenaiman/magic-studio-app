@@ -31,5 +31,7 @@ craft-dialogs = { workspace = true }
 craft-update = { workspace = true }
 effectcraft-host = { workspace = true }
 effectcraft-ui-egui = { workspace = true }
+filmcraft-engine = { workspace = true }
+filmcraft-ui-egui = { workspace = true }
 open = { workspace = true }
 raw-window-handle = { workspace = true }

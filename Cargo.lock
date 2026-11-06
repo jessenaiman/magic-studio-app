@@ -353,7 +353,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -1558,6 +1558,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "417bef24afe1460300965a25ff4a24b8b45ad011948302ec221e8a0a81eb2c79"
 
 [[package]]
+name = "cpu-time"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9e393a7668fe1fad3075085b86c781883000b4ede868f43627b34a87c8b7ded"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "cpubits"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1901,12 +1911,40 @@ source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13af
 [[package]]
 name = "craft-fonts-build"
 version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+
+[[package]]
+name = "craft-fonts-build"
+version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs#e653048a187036d30fd912f35f14b32ab4084e5c"
 
 [[package]]
 name = "craft-i18n"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
+dependencies = [
+ "fixed_decimal",
+ "icu_decimal",
+ "icu_locale_core",
+ "icu_locale_fallback",
+ "icu_normalizer",
+ "icu_plurals",
+ "icu_properties",
+ "icu_provider",
+ "icu_provider_adapters",
+ "icu_provider_blob",
+ "log",
+ "objc2-foundation 0.3.2",
+ "sys-locale",
+ "unicode-bidi",
+ "windows-registry",
+ "writeable",
+]
+
+[[package]]
+name = "craft-i18n"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
 dependencies = [
  "fixed_decimal",
  "icu_decimal",
@@ -2078,6 +2116,27 @@ source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13af
 dependencies = [
  "craft-fonts-build 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
  "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "egui",
+ "epaint",
+ "js-sys",
+ "log",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "serde",
+ "skrifa 0.44.0",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "craft-ui"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7#c5a1cbfb5f9049f9270955caffb5bee5997aebf7"
+dependencies = [
+ "craft-fonts-build 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "craft-i18n 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
  "egui",
  "epaint",
  "js-sys",
@@ -2733,7 +2792,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3765,7 +3824,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4308,6 +4367,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "filmcraft-gpu"
+version = "0.17.0"
+source = "git+https://github.com/storytold/filmcraft#7322aad72491a294a06a26a63fb65a3fc30ac242"
+dependencies = [
+ "filmcraft-color 0.17.0",
+ "filmcraft-frame 0.17.0",
+ "filmcraft-geom 0.17.0",
+ "filmcraft-project 0.17.0",
+ "filmcraft-render",
+ "filmcraft-time 0.17.0",
+ "log",
+ "pollster 1.0.1",
+ "rayon",
+ "wgpu",
+]
+
+[[package]]
 name = "filmcraft-h264"
 version = "0.8.0"
 source = "git+https://github.com/storytold/filmcraft?rev=09aaf9bf15d510eda1c413c0ccabb1d7e08b41c5#09aaf9bf15d510eda1c413c0ccabb1d7e08b41c5"
@@ -4678,6 +4754,43 @@ source = "git+https://github.com/storytold/filmcraft#7322aad72491a294a06a26a63fb
 dependencies = [
  "serde",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "filmcraft-ui-egui"
+version = "0.17.0"
+source = "git+https://github.com/storytold/filmcraft#7322aad72491a294a06a26a63fb65a3fc30ac242"
+dependencies = [
+ "cpu-time",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "craft-update 0.1.0 (git+https://github.com/storytold/craft-libs?rev=c5a1cbfb5f9049f9270955caffb5bee5997aebf7)",
+ "eframe",
+ "egui",
+ "filmcraft-audio-dsp",
+ "filmcraft-captions",
+ "filmcraft-color 0.17.0",
+ "filmcraft-edit",
+ "filmcraft-engine",
+ "filmcraft-export",
+ "filmcraft-frame 0.17.0",
+ "filmcraft-geom 0.17.0",
+ "filmcraft-gpu",
+ "filmcraft-media 0.17.0",
+ "filmcraft-project 0.17.0",
+ "filmcraft-render",
+ "filmcraft-scopes",
+ "filmcraft-text",
+ "filmcraft-time 0.17.0",
+ "filmcraft-tts",
+ "image",
+ "log",
+ "rayon",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "toml 1.2.0+spec-1.1.0",
+ "unicode-bidi",
+ "web-time",
 ]
 
 [[package]]
@@ -7137,6 +7250,8 @@ dependencies = [
  "egui",
  "egui_extras",
  "egui_kittest",
+ "filmcraft-engine",
+ "filmcraft-ui-egui",
  "image",
  "log",
  "magic-engine",
@@ -7983,7 +8098,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -9110,7 +9225,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9670,7 +9785,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9729,7 +9844,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -11031,7 +11146,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -13004,7 +13119,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

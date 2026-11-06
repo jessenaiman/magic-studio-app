@@ -27,6 +27,7 @@ filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
 filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-ui-egui = { git = "https://github.com/storytold/filmcraft" }
 photocraft-engine = { git = "https://github.com/storytold/photocraft" }
 texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
 vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft", default-features = false }

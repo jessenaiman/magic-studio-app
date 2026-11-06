@@ -23,6 +23,8 @@ pub mod widgets;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod animation_effectcraft;
+#[cfg(not(target_arch = "wasm32"))]
+mod studio_filmcraft;
 
 #[cfg(test)]
 mod control_conformance;
@@ -121,6 +123,7 @@ pub enum DialogAction {
     AddProjectAsset,
     AssistantReferenceImage,
     OpenEffectcraftComposition,
+    ImportStudioAnimation,
 }
 
 pub struct MagicApp {
@@ -171,6 +174,12 @@ pub struct MagicApp {
     pub film_timeline: Value,
     pub studio_playhead: f32,
     pub studio_frame_path: Option<PathBuf>,
+    #[cfg(not(target_arch = "wasm32"))]
+    studio_film: Option<studio_filmcraft::StudioFilmcraft>,
+    #[cfg(not(target_arch = "wasm32"))]
+    studio_open_error: Option<(PathBuf, String)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    studio_rendered_animation: Option<(PathBuf, PathBuf)>,
 
     // Texture cache (`path` -> `(mtime_len, TextureHandle)`)
     textures: HashMap<PathBuf, (u64, TextureHandle)>,
@@ -257,6 +266,12 @@ impl MagicApp {
             film_timeline: json!({}),
             studio_playhead: 0.0,
             studio_frame_path: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            studio_film: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            studio_open_error: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            studio_rendered_animation: None,
             textures: HashMap::new(),
             worker_tx,
             worker_rx,
@@ -561,6 +576,16 @@ impl MagicApp {
                 self.refresh_storyboard();
             }
             cmd if cmd.starts_with("character.") || cmd.starts_with("animation.") => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if id == "character.render"
+                    && let Some(project) = self.session.project_path.as_ref()
+                    && let Some(clip) = val["clip"].as_str().map(PathBuf::from)
+                    && project
+                        .parent()
+                        .is_some_and(|parent| clip.starts_with(parent))
+                {
+                    self.studio_rendered_animation = Some((project.clone(), clip));
+                }
                 if let Some(frame_path) = val["path"]
                     .as_str()
                     .or_else(|| val["image"].as_str())
@@ -618,6 +643,10 @@ impl MagicApp {
                             }
                             DialogAction::OpenEffectcraftComposition => {
                                 self.open_effectcraft_composition(&path);
+                            }
+                            DialogAction::ImportStudioAnimation => {
+                                let result = self.import_studio_animation(&path);
+                                self.set_studio_status(result);
                             }
                         }
                     }
@@ -751,6 +780,13 @@ impl MagicApp {
                 let id = params["id"].as_str().unwrap_or_default();
                 let found = self.auto.focus(ctx, id);
                 Ok(json!({ "ok": found, "id": id }))
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.studio.import_animation" if self.view == ViewMode::Studio => {
+                let path = params["path"].as_str().ok_or("path is required")?;
+                let result = self.import_studio_animation(Path::new(path))?;
+                self.status_line = result.clone();
+                Ok(json!({ "ok": true, "status": result }))
             }
             "ui.set_view" => {
                 let target = params["view"]
@@ -2034,6 +2070,7 @@ impl MagicApp {
             });
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui) {
         if self.session.project_path.is_none() {
             empty_state(
@@ -2138,6 +2175,17 @@ impl eframe::App for MagicApp {
             && (self.view == ViewMode::Animation || ctx.input(|i| i.viewport().close_requested()))
         {
             composition.tick(ctx, frame);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if ctx.input(|input| input.viewport().close_requested())
+            && self
+                .studio_film
+                .as_ref()
+                .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty)
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.view = ViewMode::Studio;
+            self.status_line = "Save the open FilmCraft project before closing Magic.".into();
         }
 
         // Top Navigation & Assistant Bar
