@@ -47,12 +47,18 @@ enum Profile {
 
 /// Names earlier installs left behind: the old app name and the retired Python CLI.
 const RETIRED: &[&str] = &["magic-shell", "python-magic-cli"];
+const BINARIES: &[&str] = &["magic", "magic-cli"];
 /// Tracked runtime resources the app reads at run time.
 const RESOURCE_PREFIXES: &[&str] = &["pipeline/", ".agents/skills/", "apps/magic-cli/ui/"];
 const RESOURCE_FILES: &[&str] = &[
-    "apps/magic-gui/agent.md",
-    "SOURCE-ATTRIBUTION.md",
+    "apps/magic/agent.md",
+    "apps/magic/MAGIC.md",
+    "ATTRIBUTION.md",
     "LICENSE",
+];
+const LYRICS_BUNDLE: &[&str] = &[
+    "apps/magic-cli/ui/lyrics-built/app.js",
+    "apps/magic-cli/ui/lyrics-built/app.css",
 ];
 
 type Result<T> = std::result::Result<T, String>;
@@ -94,32 +100,39 @@ fn wanted_resource(name: &str) -> bool {
         && !tested
 }
 
-/// Copy tracked runtime resources and record which source and app build they came from.
-fn install_resources(root: &Path, prefix: &Path, app: &Path) -> Result<()> {
-    let runtime = prefix.join("share/magic/runtime");
-    for subdir in ["pipeline", ".agents/skills", "apps/magic-cli/ui"] {
-        let dir = runtime.join(subdir);
-        if dir.is_dir() {
-            io(dir.display(), std::fs::remove_dir_all(&dir))?;
-        }
-    }
+struct Resource {
+    name: String,
+    data: Vec<u8>,
+    permissions: std::fs::Permissions,
+}
+
+fn load_resources(root: &Path) -> Result<Vec<Resource>> {
     let tracked = git(root, &["ls-files", "-z"])?;
-    for name in tracked
+    let include_lyrics = LYRICS_BUNDLE.iter().any(|name| root.join(name).exists());
+    tracked
         .split('\0')
         .filter(|n| wanted_resource(n) && !RESOURCE_FILES.contains(n))
         .chain(RESOURCE_FILES.iter().copied())
-    {
-        let source = root.join(name);
-        if !source.is_file() || source.is_symlink() {
-            continue;
-        }
-        let target = runtime.join(name);
-        io(
-            target.display(),
-            std::fs::create_dir_all(target.parent().expect("file has a folder")),
-        )?;
-        io(target.display(), std::fs::copy(&source, &target))?;
-    }
+        .chain(LYRICS_BUNDLE.iter().copied().filter(|_| include_lyrics))
+        .map(|name| {
+            let source = root.join(name);
+            let metadata = io(source.display(), std::fs::symlink_metadata(&source))?;
+            if !metadata.is_file() {
+                return Err(format!(
+                    "{}: expected a regular runtime file",
+                    source.display()
+                ));
+            }
+            Ok(Resource {
+                name: name.to_owned(),
+                data: io(source.display(), std::fs::read(&source))?,
+                permissions: metadata.permissions(),
+            })
+        })
+        .collect()
+}
+
+fn installation_record(root: &Path, app: &Path) -> Result<String> {
     let revision = git(root, &["rev-parse", "HEAD"])?.trim().to_owned();
     let dirty: Vec<String> = git(root, &["diff", "--name-only", "HEAD"])?
         .lines()
@@ -130,10 +143,32 @@ fn install_resources(root: &Path, prefix: &Path, app: &Path) -> Result<()> {
         Sha256::digest(io(app.display(), std::fs::read(app))?)
     );
     let record = serde_json::json!({"source_revision": revision, "modified_source_files": dirty, "native_sha256": native});
-    let text = serde_json::to_string_pretty(&record).map_err(|e| e.to_string())?;
+    serde_json::to_string_pretty(&record).map_err(|e| e.to_string())
+}
+
+fn install_resources(prefix: &Path, resources: Vec<Resource>, record: &str) -> Result<()> {
+    let runtime = prefix.join("share/magic/runtime");
+    for subdir in RESOURCE_PREFIXES {
+        let dir = runtime.join(subdir.trim_end_matches('/'));
+        if dir.is_dir() {
+            io(dir.display(), std::fs::remove_dir_all(&dir))?;
+        }
+    }
+    for resource in resources {
+        let target = runtime.join(resource.name);
+        io(
+            target.display(),
+            std::fs::create_dir_all(target.parent().expect("file has a folder")),
+        )?;
+        io(target.display(), std::fs::write(&target, resource.data))?;
+        io(
+            target.display(),
+            std::fs::set_permissions(&target, resource.permissions),
+        )?;
+    }
     io(
         "installation.json",
-        std::fs::write(runtime.join("installation.json"), text),
+        std::fs::write(runtime.join("installation.json"), record),
     )
 }
 
@@ -183,20 +218,13 @@ fn remove_retired(prefix: &Path, bin: &Path) -> Result<Vec<PathBuf>> {
     Ok(removed)
 }
 
-fn install_desktop_entry(root: &Path, prefix: &Path) -> Result<()> {
+fn install_desktop_entry(prefix: &Path, icon_data: &[u8], template: &str) -> Result<()> {
     let icon = prefix.join("share/icons/hicolor/256x256/apps/ai.storyteller.magic.png");
     io(
         icon.display(),
         std::fs::create_dir_all(icon.parent().expect("icon folder")),
     )?;
-    io(
-        icon.display(),
-        std::fs::copy(root.join("apps/magic-gui/icons/icon.png"), &icon),
-    )?;
-    let template = io(
-        "magic.desktop",
-        std::fs::read_to_string(root.join("apps/magic-gui/magic.desktop")),
-    )?;
+    io(icon.display(), std::fs::write(&icon, icon_data))?;
     let launcher = prefix.join("bin/magic");
     let entry = template
         .replace("Name=Magic Studio", "Name=Magic ✨")
@@ -228,17 +256,12 @@ fn built(root: &Path, profile: Profile) -> Result<PathBuf> {
     }
 }
 
-/// Place each binary under PREFIX/share/magic/bin with a PREFIX/bin link; `magic`
-/// opens the app and `magic-cli` runs the headless CLI.
+/// Place each binary under PREFIX/share/magic/bin before publishing either launcher.
 fn install_binaries(build: &Path, prefix: &Path) -> Result<PathBuf> {
     let bin = prefix.join("share/magic/bin");
-    let links = prefix.join("bin");
     io(bin.display(), std::fs::create_dir_all(&bin))?;
-    io(links.display(), std::fs::create_dir_all(&links))?;
-    for name in ["magic", "magic-cli"] {
-        let installed = bin.join(name);
-        replace_file(&build.join(name), &installed)?;
-        link(&installed, &links.join(name))?;
+    for name in BINARIES {
+        replace_file(&build.join(name), &bin.join(name))?;
     }
     Ok(bin)
 }
@@ -250,11 +273,35 @@ fn install(prefix: Option<PathBuf>, profile: Profile) -> Result<()> {
         .map(PathBuf::from)
         .ok_or("HOME is not set")?;
     let prefix = prefix.unwrap_or_else(|| home.join(".local"));
+    let prefix = io(prefix.display(), std::path::absolute(&prefix))?;
     let build = built(&root, profile)?;
-    install_resources(&root, &prefix, &build.join("magic"))?;
+    let resources = load_resources(&root)?;
+    let record = installation_record(&root, &build.join("magic"))?;
+    let icon = root.join("apps/magic/icons/icon.png");
+    let icon = io(icon.display(), std::fs::read(&icon))?;
+    let template = root.join("apps/magic/magic.desktop");
+    let template = io(template.display(), std::fs::read_to_string(&template))?;
+    let links = prefix.join("bin");
+    for name in BINARIES {
+        let source = build.join(name);
+        io(source.display(), std::fs::File::open(&source))?;
+        let target = links.join(name);
+        if target.exists() && !target.is_symlink() {
+            return Err(format!(
+                "Refusing to replace an unrelated executable: {}",
+                target.display()
+            ));
+        }
+    }
+
+    install_resources(&prefix, resources, &record)?;
     let removed = remove_retired(&prefix, &prefix.join("share/magic/bin"))?;
-    install_binaries(&build, &prefix)?;
-    install_desktop_entry(&root, &prefix)?;
+    let bin = install_binaries(&build, &prefix)?;
+    install_desktop_entry(&prefix, &icon, &template)?;
+    io(links.display(), std::fs::create_dir_all(&links))?;
+    for name in BINARIES {
+        link(&bin.join(name), &links.join(name))?;
+    }
     println!(
         "Installed Magic app, magic-cli and desktop entry under {}",
         prefix.display()
@@ -302,9 +349,9 @@ mod tests {
     #[test]
     fn runtime_resources_exclude_tests_and_unlisted_files() {
         assert!(wanted_resource("pipeline/templates/words-kinetic.html"));
-        assert!(wanted_resource("apps/magic-gui/agent.md"));
+        assert!(wanted_resource("apps/magic/agent.md"));
         assert!(!wanted_resource("pipeline/tests/test_layout.rs"));
         assert!(!wanted_resource("lib/test_helpers.rs"));
-        assert!(!wanted_resource("apps/magic-gui/src/main.rs"));
+        assert!(!wanted_resource("apps/magic/src/main.rs"));
     }
 }

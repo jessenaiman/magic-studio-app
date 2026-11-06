@@ -22,11 +22,12 @@ folder rather than in this source tree.
 
 ## Build and install from source
 
-Run these commands from the repository root, with Rust/Cargo compatible with
-`Cargo.toml`, the native platform libraries required by the Rust workspace and Git available:
+Follow the [Linux prerequisites](../../README.md#install) and run these commands
+from the repository root:
 
 ```sh
-cargo build -p magic-gui -p magic-cli
+npm ci --prefix apps/magic-cli
+cargo build --locked -p magic-gui -p magic-cli
 cargo xtask install
 ```
 
@@ -44,8 +45,6 @@ cargo build -p magic-gui -p magic-cli --release --locked
 cargo xtask install --profile release
 ```
 
-The native Rust UI rewrite is in `apps/magic-gui/`. Preserve the retired
-frontend setup deletion; do not restore its dependencies or withdrawn checks.
 `cargo xtask install --help` lists `--prefix`. Rebuild and reinstall after native
 changes when authorized. These commands install Magic Studio only; they do not
 install other creative apps, production providers, or GPU models.
