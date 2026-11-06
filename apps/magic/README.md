@@ -47,6 +47,11 @@ cargo xtask install --profile release
 `cargo add -p magic <crate>` declares a desktop dependency. Cargo fetches and
 compiles project dependencies during the build. Use `cargo install` for standalone
 Rust executables and `cargo xtask install` for Magic's binaries and desktop resources.
+
+On Unix, `magic-cli mcp --follow-window` uses the one open Magic window, including
+`magic --lyrics`, and uses a headless session when no window is open. For an
+explicit target, start Magic with `--control PORT` and pass
+`magic-cli mcp --connect 127.0.0.1:PORT`.
 `cargo xtask install --help` lists `--prefix`. Rebuild and reinstall after native
 changes when authorized. These commands install Magic Studio only; they do not
 install other creative apps, production providers, or GPU models.

@@ -1,7 +1,7 @@
 //! `magic-cli`: thin headless CLI over `magic::Session` (modeled on `filmcraft-cli`).
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
-use std::io::BufRead;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 
 mod ui_server;
@@ -54,6 +54,9 @@ enum Cmd {
         /// Optional bearer token for the `--control` channel
         #[arg(long)]
         token: Option<String>,
+        /// Follow a live local Magic window on Unix, or use a headless session when none is open
+        #[arg(long, conflicts_with_all = ["connect", "bridge", "project"])]
+        follow_window: bool,
     },
     /// Open the Magic web UI (or inspect a live desktop window: `magic-cli ui inspect|state|feedback|unconfigured|elements`)
     Ui {
@@ -504,66 +507,102 @@ fn parse_params(tokens: &[String], raw: Option<&str>) -> Result<Value, String> {
     Ok(params)
 }
 
-fn discover_unix_socket() -> Option<PathBuf> {
+#[cfg(unix)]
+fn connect_live_socket() -> Result<Option<std::os::unix::net::UnixStream>, String> {
+    use std::io::ErrorKind::{ConnectionRefused, NotFound};
+    use std::os::unix::net::UnixStream;
+
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
         .join("magic");
-    let mut socks: Vec<PathBuf> = std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("sock"))
-        .collect();
-    socks.sort();
-    socks.pop()
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == NotFound => return Ok(None),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut live = None;
+    for entry in entries {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("sock") {
+            continue;
+        }
+        match UnixStream::connect(&path) {
+            Ok(_) if live.is_some() => {
+                return Err(
+                    "Multiple Magic windows are open. Select one with an explicit control address."
+                        .into(),
+                );
+            }
+            Ok(stream) => live = Some(stream),
+            Err(error) if matches!(error.kind(), ConnectionRefused | NotFound) => {}
+            Err(error) => return Err(format!("connect {}: {error}", path.display())),
+        }
+    }
+    Ok(live)
+}
+
+fn control_address(spec: &str) -> String {
+    if spec.contains(':') {
+        spec.to_owned()
+    } else {
+        format!("127.0.0.1:{spec}")
+    }
 }
 
 fn call_live_control(bridge: Option<&str>, method: &str, params: Value) -> Result<Value, String> {
-    use std::io::Write;
-    let payload = format!(
-        "{}\n",
-        json!({ "id": 1, "method": method, "params": params })
-    );
-    let reply_line = if let Some(spec) = bridge {
-        let addr = if spec.contains(':') {
-            spec.to_owned()
-        } else {
-            format!("127.0.0.1:{spec}")
-        };
-        let mut stream =
+    if let Some(spec) = bridge {
+        let addr = control_address(spec);
+        let stream =
             std::net::TcpStream::connect(&addr).map_err(|e| format!("connect {addr}: {e}"))?;
         stream
-            .write_all(payload.as_bytes())
+            .set_read_timeout(Some(std::time::Duration::from_secs(300)))
             .map_err(|e| e.to_string())?;
-        stream.flush().map_err(|e| e.to_string())?;
-        let mut reader = std::io::BufReader::new(stream);
-        let mut line = String::new();
-        reader.read_line(&mut line).map_err(|e| e.to_string())?;
-        line
+        call_control_stream(stream, method, params)
     } else {
         #[cfg(unix)]
         {
-            let sock = discover_unix_socket().ok_or_else(|| {
+            let stream = connect_live_socket()?.ok_or_else(|| {
                 "No running Magic desktop window found (start `magic` or pass `--bridge <PORT>`)"
                     .to_string()
             })?;
-            let mut stream = std::os::unix::net::UnixStream::connect(&sock)
-                .map_err(|e| format!("connect {}: {e}", sock.display()))?;
-            stream
-                .write_all(payload.as_bytes())
-                .map_err(|e| e.to_string())?;
-            stream.flush().map_err(|e| e.to_string())?;
-            let mut reader = std::io::BufReader::new(stream);
-            let mut line = String::new();
-            reader.read_line(&mut line).map_err(|e| e.to_string())?;
-            line
+            call_unix_control(stream, method, params)
         }
         #[cfg(not(unix))]
         {
             return Err("Pass `--bridge <PORT>` to connect to a running Magic window".into());
         }
-    };
+    }
+}
+
+#[cfg(unix)]
+fn call_unix_control(
+    stream: std::os::unix::net::UnixStream,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(300)))
+        .map_err(|e| e.to_string())?;
+    call_control_stream(stream, method, params)
+}
+
+fn call_control_stream(
+    mut stream: impl Read + Write,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
+    writeln!(
+        stream,
+        "{}",
+        json!({ "id": 1, "method": method, "params": params })
+    )
+    .map_err(|e| e.to_string())?;
+    stream.flush().map_err(|e| e.to_string())?;
+    let mut reply_line = String::new();
+    BufReader::new(stream)
+        .read_line(&mut reply_line)
+        .map_err(|e| e.to_string())?;
     let parsed: Value =
         serde_json::from_str(reply_line.trim()).map_err(|e| format!("invalid reply: {e}"))?;
     if parsed["ok"].as_bool() == Some(true) {
@@ -573,6 +612,18 @@ fn call_live_control(bridge: Option<&str>, method: &str, params: Value) -> Resul
             .as_str()
             .unwrap_or("control request failed")
             .to_owned())
+    }
+}
+
+struct FollowWindow(magic_mcp::Headless);
+
+impl magic_mcp::Backend for FollowWindow {
+    fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        #[cfg(unix)]
+        if let Some(stream) = connect_live_socket()? {
+            return call_unix_control(stream, id, params);
+        }
+        self.0.execute(id, params)
     }
 }
 
@@ -695,9 +746,20 @@ fn main() {
                     println!("{}", json!({ "line": n + 1, "ok": true, "result": res }));
                 }
             }
-            Some(Cmd::Mcp { connect, token }) => {
-                if let Some(addr) = connect {
-                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(addr, token));
+            Some(Cmd::Mcp {
+                connect,
+                token,
+                follow_window,
+            }) => {
+                if let Some(addr) = connect.or(cli.bridge) {
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(
+                        control_address(&addr),
+                        token,
+                    ));
+                    srv.serve().map_err(|e| e.to_string())?;
+                } else if follow_window {
+                    let mut srv =
+                        magic_mcp::Server::new(FollowWindow(magic_mcp::Headless::new(session)));
                     srv.serve().map_err(|e| e.to_string())?;
                 } else {
                     let mut srv = magic_mcp::Server::new(magic_mcp::Headless::new(session));

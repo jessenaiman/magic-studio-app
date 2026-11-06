@@ -168,7 +168,10 @@ fn spawn_control_listener(
 }
 
 #[cfg(unix)]
-fn spawn_unix_control_socket(tx: Sender<ControlRequest>, wake: WakeHandle) {
+fn spawn_unix_control_socket(
+    tx: Sender<ControlRequest>,
+    wake: WakeHandle,
+) -> Option<ControlSocket> {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
@@ -176,9 +179,7 @@ fn spawn_unix_control_socket(tx: Sender<ControlRequest>, wake: WakeHandle) {
     let _ = std::fs::create_dir_all(&dir);
     let sock_path = dir.join(format!("{}-1.sock", std::process::id()));
     let _ = std::fs::remove_file(&sock_path);
-    let Ok(listener) = std::os::unix::net::UnixListener::bind(&sock_path) else {
-        return;
-    };
+    let listener = std::os::unix::net::UnixListener::bind(&sock_path).ok()?;
     std::thread::spawn(move || {
         for incoming in listener.incoming().flatten() {
             let tx = tx.clone();
@@ -197,6 +198,17 @@ fn spawn_unix_control_socket(tx: Sender<ControlRequest>, wake: WakeHandle) {
             });
         }
     });
+    Some(ControlSocket(sock_path))
+}
+
+#[cfg(unix)]
+struct ControlSocket(std::path::PathBuf);
+
+#[cfg(unix)]
+impl Drop for ControlSocket {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 fn main() -> eframe::Result {
@@ -204,25 +216,32 @@ fn main() -> eframe::Result {
 
     let mut session = Session::user_session();
     if let Some(path) = cli.project.as_deref().or(cli.file.as_deref()) {
-        let _ = session.execute("project.open", json!({ "path": path }));
-    }
-
-    #[cfg(feature = "lyrics-webview")]
-    if cli.lyrics || cli.view.as_deref() == Some("lyrics") {
-        return lyrics::run(session).map_err(|error| eframe::Error::AppCreation(Box::new(error)));
+        session
+            .execute("project.open", json!({ "path": path }))
+            .map_err(|error| {
+                eframe::Error::AppCreation(Box::new(std::io::Error::other(format!(
+                    "Open {path}: {error}"
+                ))))
+            })?;
     }
 
     let (tx, control_rx) = channel();
     let wake: WakeHandle = Arc::new(Mutex::new(None));
 
     #[cfg(unix)]
-    spawn_unix_control_socket(tx.clone(), Arc::clone(&wake));
+    let _control_socket = spawn_unix_control_socket(tx.clone(), Arc::clone(&wake));
 
     if let Some(spec) = &cli.control {
         match spawn_control_listener(spec, cli.control_token.clone(), tx, Arc::clone(&wake)) {
             Ok(bound) => eprintln!("magic: control listening on {bound}"),
             Err(err) => eprintln!("magic: failed to bind --control {spec}: {err}"),
         }
+    }
+
+    #[cfg(feature = "lyrics-webview")]
+    if cli.lyrics || cli.view.as_deref() == Some("lyrics") {
+        return lyrics::run(session, control_rx)
+            .map_err(|error| eframe::Error::AppCreation(Box::new(error)));
     }
 
     let initial_view = cli.view.as_deref().and_then(ViewMode::from_name);

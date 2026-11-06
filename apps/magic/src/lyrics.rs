@@ -5,23 +5,25 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, mpsc::Receiver};
 
 use magic::Session;
+use magic_ui_egui::ControlRequest;
 use serde_json::{Value, json};
 
-fn spawn_session_bridge(mut session: Session) -> Option<String> {
+fn spawn_session_bridge(session: Arc<Mutex<Session>>) -> Option<String> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).ok()?;
     let addr = listener.local_addr().ok()?;
     let url = format!("http://{addr}");
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            let _ = handle(&mut session, stream);
+            let _ = handle(&session, stream);
         }
     });
     Some(url)
 }
 
-fn handle(session: &mut Session, mut stream: TcpStream) -> std::io::Result<()> {
+fn handle(session: &Mutex<Session>, mut stream: TcpStream) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
     reader.read_line(&mut line)?;
@@ -48,7 +50,13 @@ fn handle(session: &mut Session, mut stream: TcpStream) -> std::io::Result<()> {
             (
                 "200 OK",
                 "application/json",
-                exec(session, &raw).into_bytes(),
+                session
+                    .lock()
+                    .map(|mut session| exec(&mut session, &raw))
+                    .unwrap_or_else(|_| {
+                        json!({ "error": "Lyrics session unavailable" }).to_string()
+                    })
+                    .into_bytes(),
             )
         }
         ("GET", "/file") => local_file(&param(query, "p")),
@@ -143,9 +151,10 @@ fn decode_uri(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub fn run(session: Session) -> tauri::Result<()> {
-    let bridge = spawn_session_bridge(session);
-    tauri::Builder::default()
+pub fn run(session: Session, control_rx: Receiver<ControlRequest>) -> tauri::Result<()> {
+    let session = Arc::new(Mutex::new(session));
+    let bridge = spawn_session_bridge(Arc::clone(&session));
+    let exit_code = tauri::Builder::default()
         .setup(move |app| {
             let mut builder = tauri::WebviewWindowBuilder::new(
                 app,
@@ -160,8 +169,40 @@ pub fn run(session: Session) -> tauri::Result<()> {
                     json!(url)
                 ));
             }
-            builder.build()?;
+            let window = builder.build()?;
+            std::thread::spawn(move || {
+                for request in control_rx {
+                    if request.method == "app.quit" {
+                        let result = window
+                            .close()
+                            .map(|()| json!({ "ok": true, "quitting": true }))
+                            .map_err(|error| error.to_string());
+                        let _ = request.reply.send(result);
+                        continue;
+                    }
+                    let result = session
+                        .lock()
+                        .map_err(|_| "Lyrics session unavailable".to_owned())
+                        .and_then(|mut session| match request.method.as_str() {
+                            "ui.state" | "ui.inspect" => Ok(json!({
+                                "ok": true,
+                                "view": "lyrics",
+                                "project": session.project_path,
+                            })),
+                            method => session
+                                .execute(method, request.params)
+                                .map_err(|e| e.to_string()),
+                        });
+                    let _ = request.reply.send(result);
+                }
+            });
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?
+        .run_return(|_, _| {});
+    if exit_code == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("Lyrics window exited with status {exit_code}")).into())
+    }
 }
