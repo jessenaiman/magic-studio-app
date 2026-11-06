@@ -1,3 +1,4 @@
+use crate::Session;
 use serde_json::json;
 
 fn effect_test_dir(label: &str) -> std::path::PathBuf {
@@ -15,7 +16,7 @@ fn effect_test_dir(label: &str) -> std::path::PathBuf {
 fn effect_exec_without_save_preserves_existing_project() {
     let dir = effect_test_dir("no-save");
     let path = dir.join("test.ecproj");
-    let mut session = magic::Session::default();
+    let mut session = Session::default();
     session
         .execute(
             "effect.exec",
@@ -38,7 +39,7 @@ fn effect_exec_without_save_preserves_existing_project() {
 fn effect_exec_without_save_does_not_create_a_new_project() {
     let dir = effect_test_dir("new-no-save");
     let path = dir.join("test.ecproj");
-    magic::Session::default()
+    Session::default()
         .execute(
             "effect.exec",
             json!({"path": path, "id": "comp.new", "params": {"name": "Draft", "width": 64, "height": 64, "duration": 1}, "save": false}),
@@ -53,7 +54,7 @@ fn effect_exec_without_save_does_not_create_a_new_project() {
 fn effect_exec_saves_existing_project_by_default() {
     let dir = effect_test_dir("default-save");
     let path = dir.join("test.ecproj");
-    let mut session = magic::Session::default();
+    let mut session = Session::default();
     session
         .execute(
             "effect.exec",
@@ -75,7 +76,7 @@ fn effect_exec_saves_existing_project_by_default() {
 fn effect_exec_without_automatic_save_allows_explicit_save_step() {
     let dir = effect_test_dir("explicit-save");
     let path = dir.join("test.ecproj");
-    magic::Session::default()
+    Session::default()
         .execute(
             "effect.exec",
             json!({"path": path, "save": false, "steps": [

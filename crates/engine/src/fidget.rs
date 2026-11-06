@@ -355,5 +355,5 @@ pub fn cmd_fidget_prepare(_: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/fidget.rs"]
+#[path = "tests/fidget.rs"]
 mod tests;

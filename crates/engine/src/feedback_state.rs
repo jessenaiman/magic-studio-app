@@ -64,5 +64,5 @@ pub fn ui_ready(v: &Value, ack: u64, revision: u64) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/feedback_state.rs"]
+#[path = "tests/feedback_state.rs"]
 mod tests;

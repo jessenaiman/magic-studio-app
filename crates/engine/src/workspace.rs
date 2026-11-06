@@ -476,5 +476,5 @@ pub fn asset_id_for_import(typed_name: Option<&str>, path: &Path) -> String {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/workspace.rs"]
+#[path = "tests/workspace.rs"]
 mod tests;

@@ -1273,5 +1273,5 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/storyboard.rs"]
+#[path = "tests/storyboard.rs"]
 mod tests;

@@ -229,5 +229,5 @@ pub fn cmd_scribbles_templates(_: &mut Session, _: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/scribbles.rs"]
+#[path = "tests/scribbles.rs"]
 mod tests;

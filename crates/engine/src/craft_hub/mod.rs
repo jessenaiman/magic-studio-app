@@ -195,15 +195,61 @@ fn call_cli(
 ) -> Result<Value> {
     let cli = target.cli_name();
     let mut cmd = Command::new(cli);
-
-    if let Some(path) = doc {
-        cmd.arg("--project").arg(path);
-    }
-
     let params_str =
         serde_json::to_string(params).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
 
-    cmd.arg("exec").arg(command).arg(&params_str);
+    match target {
+        CraftTarget::Film => {
+            if let Some(path) = doc {
+                cmd.arg("--project").arg(path);
+            }
+            cmd.arg("exec").arg(command).arg(&params_str);
+        }
+        CraftTarget::Effect => {
+            if let Some(path) = doc {
+                cmd.arg("--project").arg(path);
+            }
+            cmd.arg("exec")
+                .arg(command)
+                .arg("--params")
+                .arg(&params_str);
+        }
+        CraftTarget::Vector => {
+            cmd.arg("run");
+            if let Some(path) = doc {
+                cmd.arg("--in").arg(path);
+            }
+            cmd.arg("--cmd")
+                .arg(command)
+                .arg("--params")
+                .arg(&params_str);
+        }
+        CraftTarget::Photo => {
+            cmd.arg("run");
+            if let Some(path) = doc {
+                cmd.arg(path);
+            } else {
+                cmd.arg("--new").arg("{}");
+            }
+            cmd.arg("--cmd")
+                .arg(command)
+                .arg("--params")
+                .arg(&params_str);
+        }
+        CraftTarget::Design => {
+            cmd.arg("run");
+            if let Some(path) = doc {
+                cmd.arg("--in").arg(path);
+            }
+            cmd.arg("--cmd").arg(format!("{command}={params_str}"));
+        }
+        _ => {
+            if let Some(path) = doc {
+                cmd.arg("--project").arg(path);
+            }
+            cmd.arg("exec").arg(command).arg(&params_str);
+        }
+    }
 
     let output = cmd
         .output()
@@ -217,8 +263,22 @@ fn call_cli(
         ));
     }
 
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| EngineError::InvalidParams(format!("invalid JSON from CLI: {e}")))
+    let stdout_trim = std::str::from_utf8(&output.stdout)
+        .map_err(|e| EngineError::InvalidParams(format!("invalid UTF-8 from CLI: {e}")))?
+        .trim();
+
+    if stdout_trim.is_empty() || stdout_trim == "null" {
+        return Ok(Value::Null);
+    }
+
+    let parsed: Value = serde_json::from_str(stdout_trim)
+        .map_err(|e| EngineError::InvalidParams(format!("invalid JSON from CLI: {e}")))?;
+
+    if let Some(res) = parsed.get("result") {
+        Ok(res.clone())
+    } else {
+        Ok(parsed)
+    }
 }
 
 #[cfg(test)]
@@ -250,5 +310,26 @@ mod tests {
         );
         // Expect an Err, not a panic or crash
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn crafthub_executes_installed_cli() {
+        if std::process::Command::new("vectorcraft-cli")
+            .arg("--help")
+            .output()
+            .is_ok()
+        {
+            let res = CraftHub::execute(
+                CraftTarget::Vector,
+                None,
+                "file.new",
+                &json!({"width": 100, "height": 100}),
+            );
+            assert!(
+                res.is_ok(),
+                "failed to execute vectorcraft-cli via CraftHub: {:?}",
+                res
+            );
+        }
     }
 }

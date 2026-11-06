@@ -649,5 +649,5 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/lettering.rs"]
+#[path = "tests/lettering.rs"]
 mod tests;

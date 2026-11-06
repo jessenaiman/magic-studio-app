@@ -320,5 +320,5 @@ pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "../tests/unit/assembly.rs"]
+#[path = "tests/assembly.rs"]
 mod tests;
