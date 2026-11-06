@@ -23,6 +23,9 @@ magic = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+[dev-dependencies]
+egui_kittest = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 craft-dialogs = { workspace = true }
 craft-update = { workspace = true }

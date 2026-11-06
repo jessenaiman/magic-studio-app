@@ -64,6 +64,7 @@ ureq = { version = "3", default-features = false, features = ["rustls", "json"] 
 eframe = { version = "0.37", default-features = false }
 egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
 egui_extras = { version = "0.37", default-features = false }
+egui_kittest = { version = "0.37", default-features = false }
 open = "5"
 raw-window-handle = "0.6"
 rfd = "0.17"
@@ -115,6 +116,5 @@ egui_extras = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799
 egui_kittest = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
