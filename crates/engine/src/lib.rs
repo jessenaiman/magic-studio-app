@@ -68,6 +68,7 @@ pub mod change_marker;
 pub mod character;
 pub mod command_catalog;
 pub mod commands;
+pub mod craft_hub;
 mod creation_loop;
 pub mod crew;
 pub mod doctor;
@@ -99,6 +100,7 @@ pub mod workshop_transcript;
 pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
+pub use craft_hub::{CraftHub, CraftTarget};
 pub use session::{Asset, ProjectAsset, Session};
 
 use serde_json::Value;
