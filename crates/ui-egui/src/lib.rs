@@ -69,7 +69,7 @@ impl ViewMode {
         match self {
             Self::Projects => "Projects",
             Self::Storyboard => "Storyboard",
-            Self::Lyrics => "Lyrics & Words",
+            Self::Lyrics => "Lyrics",
             Self::Animation => "Animation",
             Self::Studio => "Studio",
         }
@@ -715,7 +715,7 @@ impl MagicApp {
                 "elements": [
                     { "id": "nav-projects", "label": "Projects" },
                     { "id": "nav-storyboard", "label": "Storyboard" },
-                    { "id": "nav-lyrics", "label": "Lyrics & Words" },
+                    { "id": "nav-lyrics", "label": "Lyrics" },
                     { "id": "nav-animation", "label": "Animation" },
                     { "id": "nav-studio", "label": "Studio" },
                     { "id": "drawer-fidget", "label": "Fidget" },
@@ -1413,7 +1413,7 @@ impl MagicApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("Song Audio, Lyrics & Kinetic Words");
+                    ui.heading("Lyrics");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let save_resp = primary_button(ui, "Save Song Details (`song.save`)");
                         self.auto
@@ -1427,17 +1427,18 @@ impl MagicApp {
                                     "album": self.song_album,
                                     "lyrics": self.song_lyrics_text,
                                     "notes": self.song_notes,
+                                    "document": self.words_doc,
                                 }),
                             );
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         {
                             let studio_resp =
-                                secondary_button(ui, "✨ Open Kinetic Lyric Studio (`--lyrics`)");
+                                secondary_button(ui, "✨ Open Lyrics Window (`--lyrics`)");
                             self.auto.add_response(
                                 "btn-open-lyrics-studio",
                                 &studio_resp,
-                                "Open Kinetic Lyric Studio",
+                                "Open Lyrics Window",
                             );
                             if studio_resp.clicked()
                                 && let Ok(exe) = std::env::current_exe()
