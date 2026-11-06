@@ -501,8 +501,9 @@ pub fn cmd_words_studio_track(s: &mut Session, params: &Value) -> Result<Value> 
         .filter(|(_, u)| !**u)
         .map(|((id, ..), _)| id.as_str())
         .collect();
-    let preview_url = (params["preview_status"] == true)
-        .then(|| crate::video_target::video_server_info(&dir, "hyperframes")["url"].clone());
+    let preview_url = (params["preview_status"] == true).then(|| {
+        crate::cmd::film::video_target::video_server_info(&dir, "hyperframes")["url"].clone()
+    });
     Ok(
         json!({"source":path,"preview_url":preview_url,"clip_count":clips.len(),"sections":sections,"overlaps":overlaps,"unmatched":unmatched}),
     )
@@ -829,12 +830,13 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
             json!({"ok":true,"caption_track":"removed: every section is designed","source":dest,"designed":designed}),
         );
     }
-    let duration = crate::video_target::probe_audio_duration(s.song_audio.as_deref())?.max(
-        words
-            .iter()
-            .filter_map(|w| w["end"].as_f64())
-            .fold(0.0, f64::max),
-    );
+    let duration = crate::cmd::film::video_target::probe_audio_duration(s.song_audio.as_deref())?
+        .max(
+            words
+                .iter()
+                .filter_map(|w| w["end"].as_f64())
+                .fold(0.0, f64::max),
+        );
     let kept = if dest.is_file() {
         let version = (1..)
             .map(|n| comp.join(format!("captions.v{n}.html")))
@@ -845,7 +847,7 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
     } else {
         None
     };
-    crate::video_target::write_caption_source(&dest, &words, &groups, duration)?;
+    crate::cmd::film::video_target::write_caption_source(&dest, &words, &groups, duration)?;
     let digest = format!(
         "{:x}",
         Sha256::digest(serde_json::to_vec(&words).map_err(|e| invalid(e.to_string()))?)

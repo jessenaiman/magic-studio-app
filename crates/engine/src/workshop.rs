@@ -5,7 +5,7 @@
 //! - [`crate::workshop_intake`]: Audio/target linking, file intake, panel splitting, draft approval, and file catalog
 //! - [`crate::workshop_transcript`]: Stage 2 transcript validation, SRT captions, and HyperFrames audio/beat analysis
 //! - [`crate::cmd::storyboard`]: Storyboard chapters and DeckCraft PDF generation
-//! - [`crate::video_target`]: Video target scaffolding and preview servers
+//! - [`crate::cmd::film::video_target`]: Video target scaffolding and preview servers
 
 use std::path::{Path, PathBuf};
 
@@ -13,11 +13,11 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::video_target::{target_project_chip, target_project_path};
+use crate::cmd::film::video_target::{target_project_chip, target_project_path};
 use crate::workspace::{has_extension, workspace_root};
 
 // Re-export video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
-pub use crate::video_target::{
+pub use crate::cmd::film::video_target::{
     cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start,
     cmd_video_server_stop, cmd_video_snapshot,
 };
@@ -50,7 +50,7 @@ pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
         return Some(duration);
     }
     let fcproj = video_project_path(dir)?;
-    let seq = crate::film::execute(&fcproj, "sequence.inspect", json!({})).ok()?;
+    let seq = crate::cmd::film::execute(&fcproj, "sequence.inspect", json!({})).ok()?;
     seq.get("duration")
         .and_then(Value::as_f64)
         .map(|t| t / SEQUENCE_TICKS_PER_SECOND)
@@ -509,7 +509,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         "complete": complete,
         "video_target": target,
         "targets": targets,
-        "film_timeline": crate::film::timeline_file(s)?,
+        "film_timeline": crate::cmd::film::timeline_file(s)?,
         "storyboard": storyboard,
         "asset_files": assets.iter().map(|p| file_chip(p)).collect::<Vec<_>>(),
         "studio": {"name": studio_info.name, "intent": studio_info.intent, "source": studio_info.source},

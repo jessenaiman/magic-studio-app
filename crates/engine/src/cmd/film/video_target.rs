@@ -283,7 +283,9 @@ pub(crate) fn ensure_video_target_project(
 }
 
 pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> Result<f64> {
-    audio.map_or(Ok(30.0), |path| crate::film::media_duration(path, false))
+    audio.map_or(Ok(30.0), |path| {
+        crate::cmd::film::media_duration(path, false)
+    })
 }
 
 /// The official caption component bound to timed words (`{text,start,end}`) shown in the given index groups.
@@ -298,7 +300,7 @@ pub(crate) fn write_caption_source(
         .replace('<', "\\u003c");
     let groups =
         serde_json::to_string(groups).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    let html = include_str!("../../../pipeline/templates/timed-captions.html")
+    let html = include_str!("../../../../../pipeline/templates/timed-captions.html")
         .replace("__AC_WORDS__", &text)
         .replace("__AC_GROUPS__", &groups)
         .replace("__AC_DURATION__", &duration.to_string());
@@ -1447,7 +1449,7 @@ fn render_video(
             ),
         ));
     }
-    let duration = match crate::film::media_duration(&staged, true) {
+    let duration = match crate::cmd::film::media_duration(&staged, true) {
         Ok(value) => value,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&stage);

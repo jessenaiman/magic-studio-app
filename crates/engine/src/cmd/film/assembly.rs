@@ -22,7 +22,7 @@ pub(crate) fn run(_dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> 
         body = earlier + &body;
     }
     std::fs::write(&file, &body)?;
-    crate::film::run(project, fresh, steps)
+    crate::cmd::film::run(project, fresh, steps)
 }
 
 pub(crate) fn ids(result: &Value, field: &str) -> Vec<u64> {
@@ -288,7 +288,7 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
     let exports = dir.join("exports");
     std::fs::create_dir_all(&exports)?;
     let out = exports.join(format!("{name}.mp4"));
-    crate::film::export(project, &out, false)?;
+    crate::cmd::film::export(project, &out, false)?;
     Ok(out)
 }
 
@@ -297,12 +297,12 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
 pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::workshop::project_dir(s)?;
     let film = inputs(s, &dir, p)?;
-    let project = crate::film::film_path(s)?;
+    let project = crate::cmd::film::film_path(s)?;
     if let Some(folder) = project.parent() {
         std::fs::create_dir_all(folder)?;
     }
     build_film(&dir, &project, &film, p["fps"].as_f64().unwrap_or(30.0))?;
-    crate::film::link(s, &project)?;
+    crate::cmd::film::link(s, &project)?;
     let exported = if p["export"] == false {
         None
     } else {
@@ -320,5 +320,5 @@ pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 #[cfg(test)]
-#[path = "tests/assembly.rs"]
+#[path = "../../tests/assembly.rs"]
 mod tests;

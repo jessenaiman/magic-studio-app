@@ -2,6 +2,10 @@
 //! half-size preview to watch in Studio, single program frames, the final export, and opening the
 //! timeline in FilmCraft for hand edits. Document operations call the linked FilmCraft engine.
 
+pub mod assembly;
+pub mod studio_cues;
+pub mod video_target;
+
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -418,11 +422,11 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
         let sequence = json!({"id": "file.newSequence", "params": {"name": f.name,
             "width": p["width"].as_u64().unwrap_or(1920), "height": p["height"].as_u64().unwrap_or(1080),
             "fps": p["fps"].as_f64().unwrap_or(30.0)}});
-        crate::assembly::run(&f.dir, &f.project, true, &[sequence])?;
+        crate::cmd::film::assembly::run(&f.dir, &f.project, true, &[sequence])?;
         link(s, &f.project)?;
     }
     let project = f.require()?.to_path_buf();
-    let imported = crate::assembly::run(
+    let imported = crate::cmd::film::assembly::run(
         &f.dir,
         &project,
         false,
@@ -430,14 +434,14 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
     )?;
     let item = imported
         .first()
-        .and_then(|r| crate::assembly::ids(r, "items").first().copied())
+        .and_then(|r| crate::cmd::film::assembly::ids(r, "items").first().copied())
         .ok_or_else(|| bad(format!("FilmCraft did not import {}", clip.display())))?;
     let place = json!({"id": "timeline.place", "params": {"item": item, "track": track, "seconds": from,
         "insert": false, "audio": false}});
-    let placed = crate::assembly::run(&f.dir, &project, false, &[place])?;
+    let placed = crate::cmd::film::assembly::run(&f.dir, &project, false, &[place])?;
     let clips = placed
         .first()
-        .map(|r| crate::assembly::ids(r, "clips"))
+        .map(|r| crate::cmd::film::assembly::ids(r, "clips"))
         .unwrap_or_default();
     if clips.is_empty() {
         return Err(bad(format!(

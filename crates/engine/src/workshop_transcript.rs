@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::video_target::ensure_video_target_project;
+use crate::cmd::film::video_target::ensure_video_target_project;
 use crate::workshop::{project_dir, transcript_files, workshop_status};
 use crate::workspace::resolve_workspace_path;
 use crate::{EngineError, Result, Session};
@@ -255,7 +255,7 @@ fn mapped_duration(s: &Session, params: &Value) -> Option<f64> {
 
 /// Unknown duration is retained as a warning by the transcript importer.
 fn probed_duration(s: &Session) -> Option<f64> {
-    crate::film::media_duration(s.song_audio.as_deref()?, false).ok()
+    crate::cmd::film::media_duration(s.song_audio.as_deref()?, false).ok()
 }
 
 /// What the recording's duration is, where it came from, and anything that contradicts it.
@@ -422,7 +422,7 @@ fn write_provenance(
 
 fn captions_status(s: &mut Session, dir: &Path) -> Result<Value> {
     if ensure_video_target_project(s, dir, &s.video_target).is_ok() {
-        return crate::video_target::ensure_native_captions(s, dir);
+        return crate::cmd::film::video_target::ensure_native_captions(s, dir);
     }
     Ok(
         json!({"ready":false,"reason":"Create the contained HyperFrames project to display these timed lyrics"}),
@@ -483,8 +483,10 @@ fn analysis_audio(s: &Session, params: &Value) -> Result<PathBuf> {
 }
 
 fn hyperframes_runtime(params: &Value, hf: &Path) -> Result<String> {
-    let runtime =
-        crate::video_target::resolve_video_cli(params["resolve_video_cli"].as_str(), Some(hf))?;
+    let runtime = crate::cmd::film::video_target::resolve_video_cli(
+        params["resolve_video_cli"].as_str(),
+        Some(hf),
+    )?;
     runtime.to_str().map(str::to_string).ok_or_else(|| {
         EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
     })
@@ -626,7 +628,7 @@ fn beat_analysis(
             .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
     )?;
     ran.push("hyperframes audio → audio-analysis.json");
-    if let Some(step) = crate::video_target::detect_audio_beats(hf, runtime) {
+    if let Some(step) = crate::cmd::film::video_target::detect_audio_beats(hf, runtime) {
         ran.push(step);
     }
     Ok(analysis)
@@ -657,7 +659,7 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     if params["resolve_video_cli"].as_str().is_none()
         && params["engine"].as_str() != Some("hyperframes")
     {
-        return crate::film::cmd_video_exec(
+        return crate::cmd::film::cmd_video_exec(
             s,
             &json!({
                 "id": "transcript.generate",

@@ -314,12 +314,13 @@ fn link_existing_video_project(s: &mut Session, dir: &Path, steps: &mut Vec<Valu
     if !dir.join("hyperframes/index.html").is_file() {
         return;
     }
-    let _ = super::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
-    s.video_project_path = super::video_target::target_project_path(s, dir, &s.video_target);
+    let _ = crate::cmd::film::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
+    s.video_project_path =
+        crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target);
     if s.song_audio.is_none() {
-        s.song_audio = super::video_target::discover_contained_audio(dir);
+        s.song_audio = crate::cmd::film::video_target::discover_contained_audio(dir);
     }
-    let _ = super::video_target::ensure_native_captions(s, dir);
+    let _ = crate::cmd::film::video_target::ensure_native_captions(s, dir);
     steps.push(json!({"command": "video.link_existing", "status": "linked existing hyperframes project and contained audio"}));
 }
 
@@ -564,19 +565,20 @@ fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
     if !dir.join("hyperframes/index.html").is_file() {
         return;
     }
-    let _ = super::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
+    let _ = crate::cmd::film::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
     if s.project_owner.is_none() {
         return;
     }
     let mut changed = false;
     if s.video_project_path.as_ref().is_none_or(|p| !p.is_file())
-        && let Some(vp) = super::video_target::target_project_path(s, dir, &s.video_target)
+        && let Some(vp) =
+            crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target)
     {
         s.video_project_path = Some(vp);
         changed = true;
     }
     if s.song_audio.as_ref().is_none_or(|p| !p.is_file())
-        && let Some(audio) = super::video_target::discover_contained_audio(dir)
+        && let Some(audio) = crate::cmd::film::video_target::discover_contained_audio(dir)
     {
         s.song_audio = Some(audio);
         changed = true;

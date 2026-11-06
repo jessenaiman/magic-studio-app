@@ -420,7 +420,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             "studio.cues",
             "Cues at a Song Time / Uses of a Clip (read-only)",
             "{\"project\":\"existing .magic path\",\"at\":43.2,\"clip\":\"clip id; give at or clip\"}",
-            crate::studio_cues::cues
+            crate::cmd::film::studio_cues::cues
         ),
         cmd!(
             "project.migrate",
@@ -744,7 +744,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             None,
             "{\"backgrounds\":\"optional [{\\\"asset\\\":\\\"registered image id (or path)\\\",\\\"from\\\":0}]; defaults to storyboard scene backgrounds\",\"characters\":\"optional [{\\\"clip\\\":\\\"character.shot .mov\\\",\\\"from\\\":seconds}] on V2\",\"lettering\":\"optional; default lettering/lyrics.mov (V3)\",\"fps\":30,\"export\":\"true (default) writes exports/<song>.mp4\"}",
             always,
-            crate::assembly::cmd_video_assemble
+            crate::cmd::film::assembly::cmd_video_assemble
         ),
         cmd!(
             "words.letter",
@@ -878,7 +878,7 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             None,
             "{\"id\":\"clip id\",\"path\":\"video file\",\"start\":0,\"duration\":2,\"rect\":[0,0,300,500],\"scene\":14,\"generation_receipt\":\"optional native image generation.json; links source poses and character\",\"character\":\"optional registered source motion asset; requires track\",\"track\":\"optional source motion track; requires character\",\"playback_rate\":1}",
             always,
-            crate::video_target::cmd_video_place_track
+            crate::cmd::film::video_target::cmd_video_place_track
         ),
         cmd!(
             "workshop.set_target",
@@ -973,7 +973,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
             None,
             "{\"target\": \"optional hyperframes\", \"at\": \"seconds or array of seconds\", \"out\": \"output PNG path for one time; directory for multiple times\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
             always,
-            crate::video_target::cmd_video_snapshot
+            crate::cmd::film::video_target::cmd_video_snapshot
         ),
         cmd!(
             "video.render",
@@ -982,7 +982,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
             None,
             "{\"target\": \"optional hyperframes\", \"out\": \"output path\", \"fps\": \"frames per second (default 24)\", \"workers\": \"bounded worker count (default 4, max 16)\", \"start/end\": \"unsupported by official HyperFrames CLI; any supplied value is rejected\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
             always,
-            crate::video_target::cmd_video_render
+            crate::cmd::film::video_target::cmd_video_render
         ),
         cmd!(
             "audio.analyze",
@@ -1427,7 +1427,7 @@ fn specs_film() -> Vec<CommandSpec> {
             "video.film",
             "Film Timeline, Preview and Export Status",
             "{}",
-            crate::film::cmd_video_film
+            crate::cmd::film::cmd_video_film
         ),
         cmd!(
             "video.preview",
@@ -1436,7 +1436,7 @@ fn specs_film() -> Vec<CommandSpec> {
             None,
             "{}",
             always,
-            crate::film::cmd_video_preview
+            crate::cmd::film::cmd_video_preview
         ),
         cmd!(
             "video.export",
@@ -1445,25 +1445,25 @@ fn specs_film() -> Vec<CommandSpec> {
             None,
             "{}",
             always,
-            crate::film::cmd_video_export
+            crate::cmd::film::cmd_video_export
         ),
         query!(
             "video.frame",
             "Render One Film Frame (FilmCraft)",
             "{\"seconds\":0}",
-            crate::film::cmd_video_frame
+            crate::cmd::film::cmd_video_frame
         ),
         query!(
             "video.open",
             "Open the Film in FilmCraft",
             "{}",
-            crate::film::cmd_video_open
+            crate::cmd::film::cmd_video_open
         ),
         query!(
             "video.timeline",
             "Film Tracks and Clips (FilmCraft)",
             "{}",
-            crate::film::cmd_video_timeline
+            crate::cmd::film::cmd_video_timeline
         ),
         cmd!(
             "video.place_clip",
@@ -1472,7 +1472,7 @@ fn specs_film() -> Vec<CommandSpec> {
             None,
             "{\"clip\":\"rendered .mov\",\"from\":0,\"track\":\"V2\",\"width\":\"animation study's first clip starts the film: 1920\",\"height\":1080,\"fps\":30}",
             always,
-            crate::film::cmd_video_place_clip
+            crate::cmd::film::cmd_video_place_clip
         ),
         cmd!(
             "video.exec",
@@ -1481,7 +1481,7 @@ fn specs_film() -> Vec<CommandSpec> {
             None,
             "{\"id\":\"file.exportInterchange|file.projectManager|graphics.newFromFile|sequence.inspect|project.items\",\"params\":{},\"save\":true}",
             always,
-            crate::film::cmd_video_exec
+            crate::cmd::film::cmd_video_exec
         ),
     ]
 }

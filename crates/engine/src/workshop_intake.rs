@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use crate::cmd::film::video_target::ensure_video_target_project;
 use crate::project::cmd_project_add_asset;
-use crate::video_target::ensure_video_target_project;
 use crate::workshop::{
     ASSETS_DIR, IMAGE_EXTENSIONS, STORYBOARD_DIR, STORYBOARD_PDF, VIDEO_TARGETS, files_in,
     panel_files, project_dir, transcript_files, video_project_path, workshop_asset_files,
@@ -87,11 +87,11 @@ fn restore_audio_state(s: &mut Session, previous: AudioState) {
 
 /// The HyperFrames project and its preview server, then the project file that records both.
 fn hyperframes_setup(s: &mut Session, params: &Value) -> Result<Value> {
-    let video = crate::video_target::cmd_video_init(
+    let video = crate::cmd::film::video_target::cmd_video_init(
         s,
         &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}),
     )?;
-    let preview = crate::video_target::cmd_video_server_start(
+    let preview = crate::cmd::film::video_target::cmd_video_server_start(
         s,
         &json!({"resolve_video_cli":params["resolve_video_cli"]}),
     )?;
