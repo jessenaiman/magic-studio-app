@@ -126,20 +126,17 @@ fn generate_via_guarded_codex(prompt: &str, dir: &Path, out: &Path) -> Result<()
         if let Ok(entries) = fs::read_dir(&gen_dir) {
             let mut newest: Option<(PathBuf, SystemTime)> = None;
             for entry in entries.flatten() {
-                if let Ok(meta) = entry.metadata() {
-                    if meta.is_dir() {
-                        if let Ok(files) = fs::read_dir(entry.path()) {
-                            for f in files.flatten() {
-                                if f.path().extension().is_some_and(|e| e == "png") {
-                                    if let Ok(f_meta) = f.metadata() {
-                                        if let Ok(time) = f_meta.modified() {
-                                            if newest.as_ref().is_none_or(|(_, t)| time > *t) {
-                                                newest = Some((f.path(), time));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                if let Ok(meta) = entry.metadata()
+                    && meta.is_dir()
+                    && let Ok(files) = fs::read_dir(entry.path())
+                {
+                    for f in files.flatten() {
+                        if f.path().extension().is_some_and(|e| e == "png")
+                            && let Ok(f_meta) = f.metadata()
+                            && let Ok(time) = f_meta.modified()
+                            && newest.as_ref().is_none_or(|(_, t)| time > *t)
+                        {
+                            newest = Some((f.path(), time));
                         }
                     }
                 }
@@ -165,7 +162,9 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         .ok_or_else(|| invalid("image.generate needs prompt=<description>"))?;
 
     let (out_png, receipt_path) = prepare_output_dir(s)?;
-    let work_dir = out_png.parent().unwrap();
+    let work_dir = out_png
+        .parent()
+        .ok_or_else(|| invalid("invalid output image path"))?;
 
     let settings = crate::project_settings::stored_settings();
     let img_settings = &settings["image"];

@@ -39,17 +39,5 @@ jobs:
             libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev \
             libfreetype-dev mesa-vulkan-drivers libasound2-dev
 
-      - name: Magic doctor report
-        run: cargo xtask doctor
-
-      - name: Layer hierarchy check
-        run: cargo xtask layers
-
-      - name: Format check
-        run: cargo fmt --check
-
-      - name: Clippy linter
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Run test suite
-        run: cargo test --workspace --lib --bins --tests --no-fail-fast
+      - name: Native quality gates
+        run: cargo xtask ci

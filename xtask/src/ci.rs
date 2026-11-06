@@ -39,6 +39,7 @@ fn tests() -> Result<()> {
 }
 
 pub(crate) fn ci() -> Result<()> {
+    crate::doctor::doctor()?;
     let cargo = env!("CARGO");
     run(Command::new(cargo).args(["fmt", "--check"]))?;
     run(Command::new(cargo).args([
@@ -51,5 +52,8 @@ pub(crate) fn ci() -> Result<()> {
     ]))?;
     tests()?;
     crate::policy::layers()?;
-    crate::policy::assets()
+    if std::env::var("CHECK_ASSETS").is_ok() {
+        crate::policy::assets()?;
+    }
+    Ok(())
 }

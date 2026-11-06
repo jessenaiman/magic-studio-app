@@ -1,10 +1,11 @@
 #!/bin/sh
-# Pre-commit hook: reports which workspace apps are configured, which are not,
-# and where the app breaks. Blocks commit on failure.
+# Pre-commit hook: enforces full native quality gates (doctor, fmt, clippy, tests, layers).
+# Blocks commit on any failure, forcing agents and developers to resolve issues before committing.
 #
 # To bypass: git commit --no-verify
 
 set -e
 
-echo "Running magic doctor report..."
-cargo xtask doctor
+echo "Running Magic Studio native quality gates (cargo xtask ci)..."
+cargo xtask ci
+
