@@ -49,16 +49,16 @@ craft-ai-core = { git = "https://github.com/storytold/craft-ai-integrations" }
 craft-ai-egui = { git = "https://github.com/storytold/craft-ai-integrations" }
 
 # CLI, TUI, MCP, and system foundations
-clap = { version = "4.6", features = ["derive", "env"] }
+clap = { version = "4", features = ["derive", "env"] }
 glam = "0.24"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 log = "0.4"
-rustix = { version = "1.1.5", features = ["fs", "net", "process"] }
+rustix = { version = "1", features = ["fs", "net", "process"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
-ureq = { version = "3.5.0", default-features = false, features = ["rustls", "json"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
 
 # Desktop & Web egui UI packages (`crates/ui-egui`, `apps/magic`, `apps/magic-web`)
 eframe = { version = "0.37", default-features = false }
