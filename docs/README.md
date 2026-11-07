@@ -18,7 +18,7 @@ Tauri v2 facts that shape this project (versions are in `apps/magic-tauri/Cargo.
 |---|---|
 | Understand the project | [Overview and native captures](../README.md) |
 | Make a song video | [Production guide](../apps/magic/agent.md) |
-| Run or build the app | [Tauri setup guide](../apps/magic-tauri/README.md) (legacy egui: [setup](../apps/magic/README.md)) |
+| Run or build the app | [Tauri setup guide](../apps/magic-tauri/README.md) |
 | Understand how the pieces fit | [Architecture](architecture.md) |
 | Browse Rust modules, types, and source | [Build the Rust API reference](RUSTDOC.md) |
 | Use CLI or MCP commands | [Control protocol](control-protocol.md), [command architecture](../apps/magic/MAGIC.md) and [Magic skill](../apps/magic/SKILL.md) |

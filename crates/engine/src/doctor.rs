@@ -65,7 +65,7 @@ pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 pub(crate) fn analytics_source_root(s: &crate::Session) -> std::path::PathBuf {
-    let is_checkout = |r: &Path| r.join("Cargo.toml").is_file() && r.join("apps/magic/Cargo.toml").is_file();
+    let is_checkout = |r: &Path| r.join("Cargo.toml").is_file() && r.join("crates/engine/Cargo.toml").is_file();
     if is_checkout(&s.cwd) {
         return s.cwd.clone();
     }

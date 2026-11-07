@@ -287,6 +287,7 @@ class WordsViewController {
           const x = d.items[wordsPanel.item];
           x.motion = key;
           delete x.motion_keys;
+          delete x.native_motion;
           if (key !== "quiet" && !x.accent)
             x.accent = x.word_ids.at(-1);
         })))),

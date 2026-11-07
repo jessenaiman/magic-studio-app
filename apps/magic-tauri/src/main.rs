@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod asset_scope;
 mod capture;
 mod control;
 
@@ -152,6 +153,7 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         return Err("The active project changed; the previous workspace command was not run".into());
     }
     let result = session.execute(id, params).map_err(|e| e.to_string())?;
+    asset_scope::allow(app, &session, &result)?;
     drop(session);
     if notify && changed {
         app.emit("magic-session-changed", ()).map_err(|e| e.to_string())?;
@@ -193,6 +195,7 @@ async fn session_snapshot(app: tauri::AppHandle) -> Result<Value, String> {
         } else {
             Value::Null
         };
+        asset_scope::allow(&app, &session, &data)?;
         Ok(json!({"project":project,"data":data,"initialView":desktop.initial_view}))
     })
     .await
@@ -255,7 +258,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, ui_reply, session_snapshot])
         .setup(move |app| {
             if let Some(path) = &cli.project {
-                state(app.handle()).session.lock().map_err(|e| e.to_string())?.execute("project.open", json!({"path":path}))?;
+                dispatch(app.handle(), "project.open", json!({"path":path}), false)?;
             }
             if let Some(spec) = &cli.control {
                 let handle = app.handle().clone();

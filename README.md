@@ -69,7 +69,7 @@ unverified. Before building, install:
 - A native compiler and the platform libraries required by the Rust workspace.
 
 Cargo fetches the workspace's Rust dependencies during a fresh build.
-The native desktop package is `magic` and the engine package is `magic-engine`.
+The desktop package is `magic-tauri` and the engine package is `magic-engine`.
 
 ### Build and install the app and CLI
 
@@ -77,7 +77,6 @@ The native desktop package is `magic` and the engine package is `magic-engine`.
 # Existing checkout: build and rerun checks without installing
 cargo build -p magic-tauri -p magic-cli --locked
 # Run the Tauri desktop: apps/magic-tauri/README.md#run-the-tauri-desktop
-# (`cargo run -p magic` starts the legacy egui app)
 cargo xtask ci
 cargo xtask layers
 cargo xtask assets
@@ -95,8 +94,7 @@ cargo install --locked --path apps/magic-cli
 `cargo install`, which would produce a binary that loads the dev server instead of the bundled frontend;
 copy `target/release/magic-tauri` where you want it. (`bundle.active` is off in `tauri.conf.json`, so no
 installer package is made.) There is no `cargo xtask install`. Run the desktop as described in
-[apps/magic-tauri/README.md](apps/magic-tauri/README.md#run-the-tauri-desktop). The legacy egui `magic` app
-installs with `cargo install --locked --path apps/magic`.
+[apps/magic-tauri/README.md](apps/magic-tauri/README.md#run-the-tauri-desktop).
 
 Ensure `~/.cargo/bin` is on your `PATH`, then launch `magic-tauri` (with a control port and token for
 agent use, see the Tauri README).

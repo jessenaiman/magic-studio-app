@@ -119,5 +119,5 @@ and duplicate CLI socket client are removed. CLI and MCP share the `Remote`
 client. Update MCP client configurations to the explicit bridge command above;
 existing processes must be restarted after rebuilding.
 
-Old egui and UI sources remain restoration references; they are not a second
+The authoring UI sources are loaded by the Tauri shell; they are not a second
 Tauri launch configuration. UI restoration has not been completed by this change.

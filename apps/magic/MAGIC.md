@@ -2,8 +2,7 @@
 
 Magic follows the Craft app split: one Rust engine whose `Session::execute(id, params)` is the
 only dispatch, a thin desktop shell, and a CLI that runs either headlessly or against the live
-desktop. `apps/magic-tauri` (Tauri v2, React frontend in `apps/magic/ui`) is the desktop app. The egui
-`magic` binary in this directory is a legacy restoration reference. `magic-cli` is a separate
+desktop. `apps/magic-tauri` (Tauri v2, React frontend in `apps/magic/ui`) is the desktop app. `magic-cli` is a separate
 executable; no arguments print help.
 
 The source of command IDs, labels, parameter documentation, journaling and long-running metadata
@@ -14,7 +13,7 @@ table.
 There are exactly two ways to run a command, and the choice is always explicit:
 
 - **Headless.** `magic-cli [--project /absolute/Project.magic] <command>` runs in this process's engine
-  for the lifetime of the invocation: it claims the project writer lease, executes
+  for the lifetime of the invocation: it holds a short-lived project sidecar lock, executes
   `Session::execute` and saves mutations.
 - **Live.** `magic-cli --bridge 127.0.0.1:PORT <command>` sends the command over the authenticated
   control channel to a running `magic-tauri --control PORT` and shares that window's session. Both
@@ -22,8 +21,7 @@ There are exactly two ways to run a command, and the choice is always explicit:
   there is no automatic window discovery; `--project` cannot be combined with `--bridge` (use
   `exec project.open path=/absolute/Project.magic`). See [the control protocol](../../docs/control-protocol.md).
 
-`crates/engine/src/studio_sessions.rs` and `local_ipc.rs` (the retired per-window Unix-socket
-transport) are not called by the CLI or the Tauri shell and are scheduled for removal.
+The per-window Unix-socket transport is removed. The explicit Tauri control bridge is the live transport.
 
 Agents use `magic-cli` only. PhotoCraft, EffectCraft, FilmCraft and DeckCraft document operations, plus
 TextureCraft mesh inspection, go through those apps' installed CLIs or linked Rust libraries.

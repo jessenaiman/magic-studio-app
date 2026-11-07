@@ -22,7 +22,7 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
             return runtime;
         }
     }
-    let current_root = |root: &Path| root.join("Cargo.toml").is_file() && root.join("apps/magic/Cargo.toml").is_file();
+    let current_root = |root: &Path| root.join("Cargo.toml").is_file() && root.join("crates/engine/Cargo.toml").is_file();
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()
         && current_root(&canon)

@@ -15,30 +15,15 @@ fn stamp() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
 }
 
-/// Read only chat settings from the same file the app edits. Never return credential fields.
-/// The coding agent Omarchy runs by default.
-///
-/// Omarchy moved its command surface behind a command centre, so the stable
-/// `omarchy-default-agent` binary is tried first and `omarchy default agent`
-/// (a read-only query with no argument) is the fallback. A launch is never
-/// triggered from here.
+/// Query Omarchy's configured coding agent without launching it.
 pub fn default_agent() -> Option<String> {
-    let read = |output: std::process::Output| String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    let legacy = Command::new("omarchy-default-agent")
+    Command::new("omarchy")
+        .args(["default", "agent"])
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .map(read)
-        .filter(|s| !s.is_empty() && !s.contains(char::is_whitespace));
-    legacy.or_else(|| {
-        Command::new("omarchy")
-            .args(["default", "agent"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(read)
-            .filter(|s| !s.is_empty() && !s.contains(char::is_whitespace))
-    })
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .filter(|s| !s.is_empty() && !s.contains(char::is_whitespace))
 }
 
 fn settings_base() -> Option<std::path::PathBuf> {

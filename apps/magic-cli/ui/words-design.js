@@ -640,7 +640,7 @@ class WordsTimelineController {
     const fraction = after === before ? 0 : wordsClamp((elapsed - before[0]) / (after[0] - before[0]));
     const at = (i) => before[i] + (after[i] - before[i]) * fraction;
     for (const [key, value] of [
-      ["--y", `${item.y - item.size * 0.82}px`], ["--tx", `${at(1)}px`], ["--ty", `${at(2)}px`],
+      ["--y", `${item.native_motion ? item.y : item.y - item.size * 0.82}px`], ["--tx", `${at(1)}px`], ["--ty", `${at(2)}px`],
       ["--sx", at(3) / 100], ["--sy", at(4) / 100], ["--rot", `${item.rotate + at(5)}deg`],
       ["--o", elapsed < 0 ? 0 : at(6) / 100]
     ]) node.style.setProperty(key, String(value));

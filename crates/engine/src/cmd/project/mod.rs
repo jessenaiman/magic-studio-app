@@ -230,10 +230,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
         }
     }
     if let Some(t) = params.get("transcript").and_then(Value::as_str).filter(|v| !v.is_empty()) {
-        let _ = crate::cmd::project::workshop::cmd_workshop_import_transcript(
-            s,
-            &json!({"path": t, "captions": params["captions"], "audiomap": params["audiomap"], "replace": true}),
-        );
+        let _ = crate::cmd::project::workshop::cmd_workshop_import_transcript(s, &json!({"path": t, "captions": params["captions"], "replace": true}));
         steps.push(json!({"command": "workshop.import_transcript", "status": "complete"}));
     } else if params.get("process_audio").and_then(Value::as_bool).unwrap_or(true) && params["prepare_only"] != true {
         let model = params.get("model").and_then(Value::as_str).unwrap_or("large-v3");

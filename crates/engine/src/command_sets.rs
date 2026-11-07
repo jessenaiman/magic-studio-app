@@ -644,7 +644,7 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             "Import Transcript",
             ["Workshop"],
             None,
-            "{\"path\": \"transcript.json\", \"captions\": \"optional original SRT; without it use provisional timed-word fallback\", \"audiomap\": \"optional existing audiomap.json\", \"replace\": false, \"filmcraft_project\": \"optional .fcproj\"}",
+            "{\"path\": \"transcript.json\", \"captions\": \"optional original SRT; without it use provisional timed-word fallback\", \"replace\": false, \"filmcraft_project\": \"optional .fcproj\"}",
             always,
             cmd_workshop_import_transcript
         ),
@@ -668,7 +668,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
             "Initialize Target Video Project",
             ["Workshop"],
             None,
-            "{\"target\": \"optional hyperframes\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH, no npx install\", \"captions\": true, \"assemble\": false, \"audiomap\": \"legacy parameter; retired assembly is rejected without changing the project\"}",
+            "{\"target\": \"optional hyperframes\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH, no npx install\", \"captions\": true, \"assemble\": false}",
             always,
             cmd_video_init
         ),

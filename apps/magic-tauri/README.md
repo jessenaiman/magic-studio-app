@@ -1,7 +1,7 @@
 # Tauri desktop foundation
 
 The desktop entry point is `src/main.rs`; the React frontend is in
-`../magic/ui`. Plugin installation does not migrate the egui workspaces.
+`../magic/ui`. The engine owns documents and command dispatch; the frontend owns presentation.
 
 Registered official v2 plugins:
 
@@ -43,10 +43,12 @@ Set in `tauri.conf.json` and `capabilities/default.json`; verified against a pro
 - **`withGlobalTauri` is off.** The React app imports `@tauri-apps/api`; the preserved JavaScript
   workspaces get their `window.__TAURI__` from `apps/magic/ui/workspaces/tauri-adapter.js`, which forwards
   to the parent's session.
-- **Asset protocol scope** (`assetProtocol.scope`): `requireLiteralLeadingDot` is on, so hidden folders such as
-  `~/.ssh`, `~/.aws` and `~/.config` are not readable; Magic's own hidden app folders are listed explicitly;
-  credential-looking names are denied. Visible folders under `$HOME` and `/run/media` remain readable so
-  existing projects load. That is still broad: the narrower design is to add each project folder at runtime.
+- **Asset protocol scope** starts with application data/cache directories only. Opening a project
+  grants its directory through `allow_directory`; referenced external media and returned previews
+  receive file grants. GLTF models also grant their directory for relative textures and buffers.
+  Startup, frontend IPC, and the control bridge share this behavior. Grants accumulate until the
+  app exits; switching projects does not revoke earlier grants. Hidden paths and credential-looking
+  names remain subject to the configured deny patterns.
 - **devtools** is a cargo feature (`--features devtools`), off for release builds; debug builds always include the inspector.
 - **shell** is registered but not granted (see the plugin table).
 

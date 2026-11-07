@@ -855,6 +855,7 @@ class WordsStageController {
           return;
         target.motion = key;
         delete target.motion_keys;
+        delete target.native_motion;
         if (key !== "quiet" && !target.accent)
           target.accent = target.word_ids.at(-1);
       })
@@ -870,6 +871,7 @@ class WordsStageController {
           target.preset = preset.id;
           target.motion = mapped;
           delete target.motion_keys;
+          delete target.native_motion;
           if (!target.accent)
             target.accent = target.word_ids.at(-1);
         })

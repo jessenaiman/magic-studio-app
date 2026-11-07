@@ -38,15 +38,7 @@
           "allow": [
             "$APPDATA/**",
             "$APPLOCALDATA/**",
-            "$APPCACHE/**",
-            "$HOME/.local/share/magic/**",
-            "$HOME/.local/share/magic-studio/**",
-            "$HOME/.local/state/magic/**",
-            "$HOME/.local/state/magic-studio/**",
-            "$HOME/.cache/magic/**",
-            "$HOME/.cache/magic-studio/**",
-            "$HOME/**",
-            "/run/media/**"
+            "$APPCACHE/**"
           ],
           "deny": [
             "**/*token*",

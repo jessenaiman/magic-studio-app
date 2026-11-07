@@ -241,7 +241,7 @@ fn workshop_transcript_summary(dir: &Path, video_target: &str, transcripts: &[Pa
         "Transcript ready; producer unknown because the supplied file did not record it.".to_string()
     };
     let mut outputs: Vec<Value> = transcripts.iter().map(|p| file_chip(p)).collect();
-    for name in ["transcript.json", "transcript.srt", "audio-analysis.json", "audiomap.json", "STORYBOARD.md"] {
+    for name in ["transcript.json", "transcript.srt", "audio-analysis.json", "STORYBOARD.md"] {
         let file = dir.join(video_target).join(name);
         if file.is_file() {
             outputs.push(file_chip(&file));

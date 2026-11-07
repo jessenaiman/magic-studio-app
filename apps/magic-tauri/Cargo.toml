@@ -16,8 +16,6 @@ path = "src/main.rs"
 [features]
 # Release builds ship without the webview inspector; debug builds always include it.
 devtools = ["tauri/devtools"]
-# Serve the bundled frontend instead of the dev server; `tauri build` turns this on.
-custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

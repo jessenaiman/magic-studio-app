@@ -14,8 +14,8 @@ Design principles:
 ## 1. Layers (`xtask/src/policy.rs`, enforced by `cargo xtask layers`)
 
 ```
-L7  apps/magic-tauri (active desktop) · apps/magic (legacy egui) · apps/magic-cli · apps/magic-tui · xtask
-L6  crates/ui-egui (magic-ui-egui) · crates/mcp (magic-mcp)
+L7  apps/magic-tauri (active desktop) · apps/magic-cli · apps/magic-tui · xtask
+L6  crates/mcp (magic-mcp)
 L5  crates/engine (magic-engine)
 L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
     vectorcraft-*, texturecraft-*, craft-*, craft-ai-*) — pinned, never edited
@@ -24,13 +24,11 @@ L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
 | Crate | Layer | Purpose (actual) |
 |---|---|---|
 | `magic-engine` | L5 | `Session`, 162 commands in `cmd/<domain>/`, `session/execute.rs`, `undo.rs`, `guard.rs`, `workspace.rs` (drives Craft CLIs / in-process Sessions) |
-| `magic-ui-egui` | L6 | egui views: `lib.rs` (Projects/Storyboard/Lyrics/Animation/Studio), `animation_effectcraft.rs`, `studio_filmcraft.rs`, `storyboard_workspace.rs`, `control.rs` |
 | `magic-mcp` | L6 | MCP stdio server, headless or `--bridge` to running app |
-| `magic-tauri` | L7 | Active desktop shell: React/Tauri, one managed engine session, authenticated `--control` listener |
-| `magic` | L7 | Legacy egui desktop retained as restoration reference |
+| `magic-tauri` | L7 | Active desktop shell: React/Tauri (`apps/magic/ui` frontend), one managed engine session, authenticated `--control` listener |
 | `magic-cli` | L7 | Headless CLI: `commands/describe/exec/run/mcp/ui/storyboard`, `--bridge`, `--project` |
 | `magic-tui` | L7 | Terminal UI |
-| `xtask` | L7 | `ci` (fmt/clippy/layers/control-protocol), `layers`, `install` |
+| `xtask` | L7 | `ci` (fmt/clippy/layers/control-protocol), `layers`, `assets` |
 
 Rules: every crate has a layer; only downward edges; no `egui/eframe/winit/rfd/tauri` below L6. No `magic-web` (deleted `2c499f64`).
 

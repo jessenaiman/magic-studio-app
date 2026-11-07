@@ -4,11 +4,8 @@ use std::time::Instant;
 
 use crate::Result;
 
-/// The workspace in groups that can each be built on their own, never `--workspace`: rfd's `gtk3`
-/// feature (Tauri's dialog plugin) and its `xdg-portal` feature (the egui crates) are mutually
-/// exclusive, so one build holding both cannot compile. [`check_sets`] fails when a crate is in no group.
-pub(crate) const SETS: &[(&str, &[&str])] =
-    &[("tauri", &["magic-engine", "magic-mcp", "magic-cli", "magic-tauri", "magic-tui", "xtask"]), ("egui", &["magic", "magic-ui-egui"])];
+/// Workspace crates gated by `cargo xtask ci`. [`check_sets`] fails when a crate is in no group.
+pub(crate) const SETS: &[(&str, &[&str])] = &[("tauri", &["magic-engine", "magic-mcp", "magic-cli", "magic-tauri", "magic-tui", "xtask"])];
 
 /// `-p` arguments for one group.
 pub(crate) fn packages(set: &[&str]) -> Vec<String> {

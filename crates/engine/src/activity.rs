@@ -246,17 +246,6 @@ fn max_sequence(rows: &[Value]) -> u64 {
     rows.iter().filter_map(|v| v["sequence"].as_u64()).max().unwrap_or(0)
 }
 
-/// Legacy acknowledgements can be associated only when command and project match a retained root.
-fn adopt_legacy_ack(event: &mut Value, rows: &[Value]) {
-    if !event["request_id"].is_null() || event["stage"] != "frontend_ack" {
-        return;
-    }
-    let previous = rows.iter().rev().find(|v| v["command"] == event["command"] && project(v) == project(event) && v["request_id"].is_string());
-    if let Some(previous) = previous {
-        event["request_id"] = previous["request_id"].clone();
-    }
-}
-
 /// A row that now knows its project fills the blank project on earlier rows of the same request.
 fn fill_blank_projects(rows: &mut [Value], event: &Value) {
     let Some(request) = event["request_id"].as_str() else {
@@ -324,7 +313,6 @@ pub fn append(mut event: Value) {
         let sequence = max_sequence(&rows) + 1;
         event["sequence"] = json!(sequence);
         event["unix_micros"] = json!(now());
-        adopt_legacy_ack(&mut event, &rows);
         fill_blank_projects(&mut rows, &event);
         if notable(&event) {
             if let Some(history) = history_path() {

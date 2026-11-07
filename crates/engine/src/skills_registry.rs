@@ -1,4 +1,4 @@
-//! Learning uses project-local Markdown, with the old global registry retained as read-only input.
+//! Learning uses project-local Markdown and its project index.
 //! UI and CLI use these same guarded commands. Imported references are never executed.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
@@ -25,12 +25,6 @@ fn id(p: &Value) -> Result<&str> {
 }
 fn root(s: &Session) -> PathBuf {
     s.project_path.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf).unwrap_or_else(|| crate::workspace::workspace_root(s)).join("learning")
-}
-fn legacy_file() -> Option<PathBuf> {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")))
-        .map(|p| p.join("magic/skills.json"))
 }
 fn read_json(p: &Path) -> Result<Value> {
     match fs::read(p) {
@@ -122,9 +116,6 @@ fn learning_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
 
 fn records(s: &Session) -> Result<Value> {
     let mut all = seeds();
-    if let Some(p) = legacy_file() {
-        merge_registry(&mut all, &p, "Legacy Learning registry")?;
-    }
     merge_registry(&mut all, &root(s).join("index.json"), "Learning index")?;
     for path in learning_files(&root(s))? {
         let ident = path.file_stem().and_then(|v| v.to_str()).unwrap_or_default().to_string();

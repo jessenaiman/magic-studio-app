@@ -135,6 +135,15 @@ function release(target: Target, button: number, mods: Mods, detail: number) {
   fireMouse(target, "mouseup", init);
 }
 
+// Editors can replace the selected node in a pointer handler. Subsequent input
+// must still bubble through the live document, as real pointer input would.
+function liveTarget(target: Target): Target {
+  if (target.element.isConnected) return target;
+  const element = target.doc.elementFromPoint(target.x, target.y);
+  if (!element) throw new Error("Drag target disappeared outside the visible document");
+  return { ...target, element };
+}
+
 function describe(target: Target) {
   return { id: target.element.id || undefined, tag: target.element.tagName.toLowerCase(), x: target.x, y: target.y };
 }
@@ -183,11 +192,12 @@ export function drag(params: Params) {
     const x = from.x + (to.x - from.x) * t, y = from.y + (to.y - from.y) * t;
     // Only the first and last points need a drawn element; in between, keep the last good target.
     last = step === steps ? to : { ...last, x, y };
+    last = liveTarget(last);
     const init = mouseInit(last, button, 1 << button, mods, 0);
     firePointer(last, "pointermove", init);
     fireMouse(last, "mousemove", init);
   }
-  release(to, button, mods, 1);
+  release(liveTarget(to), button, mods, 1);
   return { ok: true, from: describe(from), to: describe(to), steps };
 }
 

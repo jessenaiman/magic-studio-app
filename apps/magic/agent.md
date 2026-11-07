@@ -24,7 +24,7 @@ a suggested command from one actually run. Drafting a brief does not execute it.
 
 ## Learn and observe before acting
 
-1. Read `.agents/skills/magic-ui/SKILL.md` from the repository root. Learn its
+1. Read `.agents/skills/magic/SKILL.md` from the repository root. Learn its
    visual and interaction contracts; distinguish approved requirements from proposed designs.
 2. Read the relevant ArtCraft and Magic Studio skills in `.agents/skills/` named by the
    task. Discover command contracts with the CLI; never invent an operation.
@@ -36,7 +36,7 @@ a suggested command from one actually run. Drafting a brief does not execute it.
 ## One application, one live session
 
 Application: the Tauri desktop shell `apps/magic-tauri` with its React frontend in `apps/magic/ui`
-(the egui `magic` binary is a legacy restoration reference). The UI, Rust engine and CLI adapters
+with the React frontend in `apps/magic/ui`. The UI, Rust engine and CLI adapters
 share the Rust command registry and the window's single engine session; frontend commands use Tauri
 IPC and never start a second session.
 Read [the command contract](MAGIC.md) and [the control protocol](../../docs/control-protocol.md).

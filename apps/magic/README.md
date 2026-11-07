@@ -1,62 +1,38 @@
-# Magic Studio setup
+# Magic Studio frontend
 
-For the current Tauri application, see the [Tauri setup guide](../magic-tauri/README.md).
-This page describes the legacy egui application and CLI installation.
+This directory contains Magic's React frontend and the shared authoring UI.
+The desktop entry point, Tauri configuration, and capabilities are in
+[`../magic-tauri`](../magic-tauri/README.md).
 
-## Use the legacy egui app
+## Develop and build
+
+From this directory:
 
 ```sh
-magic
-magic-cli --help
-magic-cli commands
+bun install
+bun run tauri dev
+bun run tauri build
 ```
 
-`magic` opens the native egui desktop application. `magic-cli` is
-a separate headless executable backed by the same engine.
-See [the Magic skill](SKILL.md) for project selection and CLI usage.
+The build produces `target/release/magic-tauri` at the repository root.
+`bundle.active` is currently disabled, so it does not create an installer.
+For authenticated CLI/MCP control and project startup arguments, follow the
+[Tauri setup guide](../magic-tauri/README.md#run-the-tauri-desktop).
 
-An existing installation does not need a source checkout, provider-key setup,
-or model download just to open. Configure a provider only when the chosen
-production task needs it. Keep project media in the user-selected production
-folder rather than in this source tree.
-
-## Build and install the legacy egui app from source
-
-Run these commands from the repository root, with Rust/Cargo compatible with
-`Cargo.toml`, the native platform libraries required by the Rust workspace and Git available:
+Install the separate CLI from the repository root:
 
 ```sh
-cargo install --locked --path apps/magic
 cargo install --locked --path apps/magic-cli
 ```
 
-Cargo builds in release mode and places `magic` and `magic-cli` in `~/.cargo/bin`; put that folder on your
-`PATH`. The earlier `cargo xtask install` (resource copy, `~/.local/bin` links, desktop entry) was removed: Magic
-installs like any Cargo app. An installation made by the old installer under `~/.local/share/magic` is not updated
-by these commands, and `~/.local/bin/magic-cli` may still point at it; remove those links or put `~/.cargo/bin`
-first on `PATH`.
+There is no Rust desktop package in this frontend directory. Both Tauri IPC and
+`magic-cli --bridge 127.0.0.1:PORT` use the desktop's engine session. Without a
+bridge the CLI runs headlessly. Discover supported commands with
+`magic-cli commands` and follow [the Magic skill](SKILL.md).
 
-`cargo add -p magic <crate>` declares a desktop dependency. Cargo fetches and
-compiles project dependencies during the build. Use `cargo install` for Magic's executables.
+Keep artist media in the selected production project. Project persistence and
+Craft integration belong to the Rust engine; the frontend renders state and
+invokes registered commands.
 
-To connect the CLI or MCP server to a running Tauri window, start it with
-`--control PORT` and use `magic-cli --bridge 127.0.0.1:PORT ui state` or
-`magic-cli --bridge 127.0.0.1:PORT mcp`. Without `--bridge`, `magic-cli mcp`
-starts a headless session.
-
-`magic --lyrics` opens the Lyrics editor and offers a folder picker. Pass the
-song folder directly as `magic --lyrics /path/to/song`. The folder must contain
-its canonical lyric sheet and timed transcript. A `.magic` file is optional.
-
-Rebuild and reinstall after native
-changes when authorized. These commands install the legacy egui app and CLI, not the Tauri app; they do not
-install other creative apps, production providers, or GPU models.
-
-## Production tools and development
-
-The app, Rust engine and CLI share the Rust command registry; discover current
-operations with `magic-cli commands` rather than copying historical command
-tables. [Command architecture](MAGIC.md) explains dispatch and ownership. For
-code changes, follow [CONTRIBUTING](../../CONTRIBUTING.md).
-
+[Command architecture](MAGIC.md) · [Contributing](../../CONTRIBUTING.md) ·
 [Source attribution](../../SOURCE-ATTRIBUTION.md) · [License](../../LICENSE)

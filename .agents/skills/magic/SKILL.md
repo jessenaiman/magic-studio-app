@@ -146,7 +146,7 @@ report if the visible app still runs a different build.
 The retired Magic audit, review and formatting wrappers are removed. For
 verification authorized by Jesse, run `cargo xtask ci` (which executes
 `cargo fmt --check`, `cargo xtask layers`, Clippy with `-D warnings`, tests across
-the Tauri and egui package groups, and the `magic-tauri` control-protocol tests;
+the active workspace packages, and the `magic-tauri` control-protocol tests;
 GitHub CI invokes the same gate through `storytold/craft-common-actions`).
 Capture each native command's output and exit status without custom scores or
 relabeling failures. Do not run the withdrawn frontend or acceptance checks.

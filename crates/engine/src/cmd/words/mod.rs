@@ -342,22 +342,6 @@ fn match_line_clips(clips: &[RawClip], used: &mut [bool], section: &Value, line:
     found
 }
 
-fn trim_legacy_repeats(sections: &mut [Value]) {
-    for i in 0..sections.len() {
-        let next = sections.get(i + 1).and_then(|sec| sec["start"].as_f64()).unwrap_or(f64::INFINITY);
-        let snapshot = sections[i]["clips"].as_array().cloned().unwrap_or_default();
-        for clip in sections[i]["clips"].as_array_mut().into_iter().flatten() {
-            let start = clip["start"].as_f64().unwrap_or(0.0);
-            let boundary =
-                snapshot.iter().filter(|c| c["line_id"] != clip["line_id"]).filter_map(|c| c["start"].as_f64()).filter(|t| *t > start).fold(next, f64::min);
-            clip["duration"] = json!(clip["duration"].as_f64().unwrap_or(0.0).min((boundary - start).max(0.0)));
-        }
-        sections[i]["end"] = json!(
-            sections[i]["clips"].as_array().into_iter().flatten().filter_map(|c| Some(c["start"].as_f64()? + c["duration"].as_f64()?)).fold(0.0, f64::max)
-        );
-    }
-}
-
 fn detect_design_overlaps(html: &str, sections: &[Value]) -> Vec<Value> {
     let mut placed: std::collections::HashMap<String, (f64, f64)> = std::collections::HashMap::new();
     let mut from = 0;
@@ -420,7 +404,6 @@ pub fn cmd_words_studio_track(s: &mut Session, params: &Value) -> Result<Value> 
         sections.push(json!({"section":section["section"],"label":section["label"],"occurrence":section["occurrence"],"start":start,"end":end,"clips":found}));
     }
     let overlaps = detect_design_overlaps(&html, &sections);
-    trim_legacy_repeats(&mut sections);
     let unmatched: Vec<&str> = clips.iter().zip(&used).filter(|(_, u)| !**u).map(|((id, ..), _)| id.as_str()).collect();
     let preview_url = (params["preview_status"] == true).then(|| crate::cmd::film::video_target::video_server_info(&dir, "hyperframes")["url"].clone());
     Ok(json!({"source":path,"preview_url":preview_url,"clip_count":clips.len(),"sections":sections,"overlaps":overlaps,"unmatched":unmatched}))

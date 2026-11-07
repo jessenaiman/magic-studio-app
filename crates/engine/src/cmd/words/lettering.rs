@@ -12,6 +12,27 @@ const FRAME: (f64, f64) = (1920.0, 1080.0);
 const LEAD: f64 = 0.25;
 const HOLD: f64 = 1.0;
 
+#[cfg(test)]
+mod native_motion_placement_tests {
+    use super::*;
+
+    #[test]
+    fn native_motion_keeps_the_static_text_box_and_uses_its_center_for_position_keys() {
+        let line = Line { id: "line".into(), layer: "line".into(), words: vec![("round".into(), Some((1.0, 3.0)))], start: 1.0, end: 3.0 };
+        let mut item = json!({"word_ids":["line/w0"],"text":"round","x":100,"y":200,"size":80,"font":"serif","motion":"quiet"});
+        let mut still = Vec::new();
+        spatial_line_steps(&json!({}), &line, &json!({"items":[item.clone()]}), 0.75, 4.0, &mut still);
+        item["native_motion"] = json!({"property":"transform/rotation","speed":180,"duration":2});
+        item["motion_keys"] = json!([[0, 0, 0, 100, 100, 0, 100], [2, 0, 0, 100, 100, 360, 100]]);
+        let mut moving = Vec::new();
+        spatial_line_steps(&json!({}), &line, &json!({"items":[item]}), 0.75, 4.0, &mut moving);
+        assert_eq!(moving[0]["params"]["box"], still[0]["params"]["box"]);
+        let box_value = &still[0]["params"]["box"];
+        let position = moving.iter().find(|step| step["params"]["path"] == "transform/position").unwrap();
+        assert_eq!(position["params"]["value"], json!([100.0 + box_value[2].as_f64().unwrap() / 2.0, 200.0 + box_value[3].as_f64().unwrap() / 2.0]));
+    }
+}
+
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
@@ -318,7 +339,15 @@ fn spatial_line_steps(recipe: &Value, line: &Line, design: &Value, shown: f64, g
         text["name"] = json!(layer_id);
         if let Some(keys) = item["motion_keys"].as_array().filter(|keys| !keys.is_empty()) {
             let (start, _) = item_word_time(line, item);
-            text["position"] = json!([x, y]);
+            // Generic controls use the same top-left box as the authored static
+            // text. Older hand-authored curves retain their point-text baseline.
+            let (origin_x, origin_y) = if item["native_motion"].is_object() {
+                text["box"] = json!([x, y, bw, bh]);
+                (x + bw / 2.0, y + bh / 2.0)
+            } else {
+                text["position"] = json!([x, y]);
+                (x, y)
+            };
             text["justify"] = json!("left");
             steps.push(step("layer.newText", text));
             steps.extend(trim_steps(json!(layer_id), start.max(shown), gone));
@@ -326,7 +355,7 @@ fn spatial_line_steps(recipe: &Value, line: &Line, design: &Value, shown: f64, g
             for key in keys {
                 let num = |i: usize| key[i].as_f64().unwrap_or_default();
                 for (property, value) in [
-                    ("position", json!([x + num(1), y + num(2)])),
+                    ("position", json!([origin_x + num(1), origin_y + num(2)])),
                     ("scale", json!([num(3), num(4)])),
                     ("rotation", json!(rotate + num(5))),
                     ("opacity", json!(num(6))),

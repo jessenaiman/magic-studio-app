@@ -190,16 +190,6 @@ fn audio_mismatch(doc: &Value, song: Option<&PathBuf>) -> Option<String> {
     (Path::new(recorded) != song.as_path()).then(|| format!("transcript is for {recorded}, but this project's song is {}", song.display()))
 }
 
-fn mapped_duration(s: &Session, params: &Value) -> Option<f64> {
-    params["audiomap"]
-        .as_str()
-        .map(|v| resolve_workspace_path(s, v))
-        .and_then(|p| std::fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-        .and_then(|v| v["audio"]["duration_sec"].as_f64())
-        .filter(|v| v.is_finite() && *v >= 0.0)
-}
-
 /// Unknown duration is retained as a warning by the transcript importer.
 fn probed_duration(s: &Session) -> Option<f64> {
     crate::cmd::film::media_duration(s.song_audio.as_deref()?, false).ok()
@@ -208,29 +198,20 @@ fn probed_duration(s: &Session) -> Option<f64> {
 /// What the recording's duration is, where it came from, and anything that contradicts it.
 struct RecordingFacts {
     probed: Option<f64>,
-    mapped: Option<f64>,
     duration: Option<f64>,
     warning: Option<&'static str>,
 }
 
-fn check_recording(s: &Session, params: &Value, doc: &mut Value, problems: &mut Vec<String>) -> RecordingFacts {
-    let mapped = mapped_duration(s, params);
+fn check_recording(s: &Session, doc: &mut Value, problems: &mut Vec<String>) -> RecordingFacts {
     let probed = probed_duration(s);
     doc["recording_duration_sec"] = json!(probed);
     problems.extend(transcript_problems(doc).into_iter().filter(|e| e.contains("recording")));
-    if let (Some(recording), Some(mapped_sec)) = (probed, mapped)
-        && (recording - mapped_sec).abs() > 0.001
-    {
-        problems.push(format!("Audiomap duration {mapped_sec:.6}s disagrees with recording {recording:.6}s. Supply the matching map or omit it; recording duration will not be extended."));
-    }
-    // The recording is authoritative. A supplied map is explicitly unverified when no probe succeeded.
     RecordingFacts {
         probed,
-        mapped,
-        duration: probed.or(mapped),
-        warning: probed.is_none().then_some(
-            "Recording duration is unknown: provide matching audio readable by FilmCraft. Supplied map duration, if any, is unverified; transcript endpoints are not recording-length evidence.",
-        ),
+        duration: probed,
+        warning: probed
+            .is_none()
+            .then_some("Recording duration is unknown: provide matching audio readable by FilmCraft. Transcript endpoints are not recording-length evidence."),
     }
 }
 
@@ -311,7 +292,7 @@ fn merge_prior_producer(dir: &Path, source: &Path, provenance: &mut Value) {
 }
 
 fn write_provenance(dir: &Path, source: &Path, params: &Value, facts: &RecordingFacts, grouping: &str) -> Result<()> {
-    let mut provenance = json!({"mode":"reused existing transcript; no ASR or transcoding","source":params["original_source"],"captions_source":params["original_captions"],"duration_sec":facts.duration,"duration_source":if facts.probed.is_some(){"authoritative recording probe"}else{"unverified supplied audiomap or unknown"},"duration_warning":facts.warning, "recording_duration_sec":facts.probed,"audiomap_duration_sec":facts.mapped,"provider":"unknown; not recorded by source","model":"unknown; not recorded by source","manual":"~/.agents/skills/media-use/audio/references/transcribe.md","executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"tool":"workshop.import_transcript (native Rust; ASR not called)","grouping":grouping});
+    let mut provenance = json!({"mode":"reused existing transcript; no ASR or transcoding","source":params["original_source"],"captions_source":params["original_captions"],"duration_sec":facts.duration,"duration_source":if facts.probed.is_some(){"authoritative recording probe"}else{"unknown"},"duration_warning":facts.warning, "recording_duration_sec":facts.probed,"provider":"unknown; not recorded by source","model":"unknown; not recorded by source","manual":"~/.agents/skills/media-use/audio/references/transcribe.md","executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"tool":"workshop.import_transcript (native Rust; ASR not called)","grouping":grouping});
     merge_prior_producer(dir, source, &mut provenance);
     craft_atomic::atomic_write(
         &dir.join("transcript-provenance.json"),
@@ -339,7 +320,7 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
     if let Some(problem) = audio_mismatch(&doc, s.song_audio.as_ref()) {
         problems.push(problem);
     }
-    let facts = check_recording(s, params, &mut doc, &mut problems);
+    let facts = check_recording(s, &mut doc, &mut problems);
     if !problems.is_empty() {
         return Err(EngineError::InvalidParams(format!("transcript does not match: {}", problems.join("; "))));
     }
