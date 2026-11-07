@@ -49,6 +49,9 @@ fn main() {
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())
+        .plugin(tauri_plugin_websocket::init())
         .manage(session)
         .invoke_handler(generate_handler![execute_command, command_list])
         .setup(|app| {

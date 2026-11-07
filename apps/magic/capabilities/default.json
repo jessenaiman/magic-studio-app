@@ -2,7 +2,9 @@
   "$schema": "https://schemas.tauri.app/v2/capability.schema.json",
   "identifier": "default",
   "description": "Default capability set for Magic Studio",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "dialog:default",
@@ -16,6 +18,7 @@
     "core:window:allow-show",
     "core:window:allow-unmaximize",
     "core:window:allow-unminimize",
-    "core:app:allow-exit"
+    "core:app:allow-exit",
+    "log:default"
   ]
 }
