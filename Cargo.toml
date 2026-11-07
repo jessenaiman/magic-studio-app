@@ -14,11 +14,12 @@ repository = "https://github.com/jessenaiman/magic-studio-app"
 magic = { package = "magic-engine", path = "crates/engine" }
 magic-mcp = { path = "crates/mcp" }
 
-# Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking)
-craft-atomic = { git = "https://github.com/storytold/craft-libs" }
-craft-doc = { git = "https://github.com/storytold/craft-libs" }
-craft-docpath = { git = "https://github.com/storytold/craft-libs" }
-craft-settings = { git = "https://github.com/storytold/craft-libs" }
+# Shared Craft libraries (`storytold/craft-libs`, rev-pinned per craft-libs README)
+craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-audio = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c", features = ["decode", "peaks"] }
+craft-doc = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-docpath = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "e653048a187036d30fd912f35f14b32ab4084e5c" }
 
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
 craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }

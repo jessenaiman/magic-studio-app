@@ -86,9 +86,33 @@ impl CraftTarget {
         match self {
             Self::Film => Some("FILMCRAFT_CONTROL_TOKEN"),
             Self::Photo => Some("PHOTOCRAFT_CONTROL_TOKEN"),
+            Self::Texture => Some("TEXTURECRAFT_CONTROL_TOKEN"),
             _ => None,
         }
     }
+}
+
+fn target_token(target: CraftTarget) -> Option<String> {
+    if let Some(var) = target.token_env()
+        && let Ok(val) = std::env::var(var)
+    {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_owned());
+        }
+    }
+    if target == CraftTarget::Texture
+        && let Ok(addr) = target_addr(target)
+    {
+        let token_file = std::env::temp_dir().join(format!("texturecraft-control-{}.token", addr.port()));
+        if let Ok(text) = std::fs::read_to_string(token_file) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_owned());
+            }
+        }
+    }
+    None
 }
 
 pub struct CraftHub;
@@ -108,7 +132,7 @@ impl CraftHub {
     ///    editing a different document — never after a connected live command errors or times out.
     pub fn execute(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value) -> Result<Value> {
         let addr = target_addr(target)?;
-        let token = target.token_env().and_then(|var| std::env::var(var).ok());
+        let token = target_token(target);
         match call_tcp_at(target, addr, token.as_deref(), doc, command, params, false, Duration::from_millis(250)) {
             TcpOutcome::Connected(res) => res,
             TcpOutcome::Unreachable | TcpOutcome::DifferentDocumentOpen => call_cli_with_save(target, doc, command, params, false),
@@ -119,7 +143,7 @@ impl CraftHub {
     /// `--control` session, or `--save` / `--out` via `<app>-cli` when not open live).
     pub fn execute_and_save(target: CraftTarget, doc: &Path, command: &str, params: &Value) -> Result<Value> {
         let addr = target_addr(target)?;
-        let token = target.token_env().and_then(|var| std::env::var(var).ok());
+        let token = target_token(target);
         match call_tcp_at(target, addr, token.as_deref(), Some(doc), command, params, true, Duration::from_millis(250)) {
             TcpOutcome::Connected(res) => res,
             TcpOutcome::Unreachable | TcpOutcome::DifferentDocumentOpen => call_cli_with_save(target, Some(doc), command, params, true),
@@ -129,7 +153,7 @@ impl CraftHub {
     /// Send `command` to the live app ONLY if it is running AND currently has `doc` open.
     pub fn try_live(target: CraftTarget, doc: &Path, command: &str, params: &Value, save: bool) -> Option<Result<Value>> {
         let addr = target_addr(target).ok()?;
-        let token = target.token_env().and_then(|var| std::env::var(var).ok());
+        let token = target_token(target);
         match call_tcp_at(target, addr, token.as_deref(), Some(doc), command, params, save, Duration::from_millis(250)) {
             TcpOutcome::Connected(res) => Some(res),
             TcpOutcome::Unreachable | TcpOutcome::DifferentDocumentOpen => None,
@@ -187,7 +211,11 @@ impl ControlConn {
     }
 
     fn execute_engine(&mut self, command: &str, params: &Value) -> Result<Value> {
-        self.send_raw("engine.execute", json!({"command": command, "params": params})).map_err(|e| match e {
+        let (method, body) = match self.target {
+            CraftTarget::Texture => ("command.run", json!({"id": command, "params": params})),
+            _ => ("engine.execute", json!({"command": command, "params": params})),
+        };
+        self.send_raw(method, body).map_err(|e| match e {
             EngineError::CommandFailed(_, msg) => EngineError::CommandFailed(command.to_string(), msg),
             other => other,
         })
@@ -217,8 +245,12 @@ impl ControlConn {
                 let info = self.send_raw("document.inspect", json!({}))?;
                 Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
             }
-            CraftTarget::Deck | CraftTarget::Texture => {
+            CraftTarget::Deck => {
                 let info = self.execute_engine("document.inspect", &json!({}))?;
+                Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
+            }
+            CraftTarget::Texture => {
+                let info = self.send_raw("session.inspect", json!({}))?;
                 Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
             }
         }
@@ -226,10 +258,10 @@ impl ControlConn {
 
     fn save_open_document(&mut self, doc: &Path) -> Result<()> {
         match self.target {
-            CraftTarget::Film | CraftTarget::Design | CraftTarget::Vector | CraftTarget::Deck | CraftTarget::Texture => {
+            CraftTarget::Film | CraftTarget::Design | CraftTarget::Vector | CraftTarget::Deck => {
                 let _ = self.execute_engine("file.save", &json!({}))?;
             }
-            CraftTarget::Effect => {
+            CraftTarget::Effect | CraftTarget::Texture => {
                 let _ = self.execute_engine("file.save", &json!({"path": doc}))?;
             }
             CraftTarget::Photo => {
@@ -264,7 +296,7 @@ fn call_tcp_at(
         let writer = stream.try_clone().map_err(|e| EngineError::ExternalTool(target.name().into(), format!("clone stream: {e}")))?;
         let inline_token = if target == CraftTarget::Film { token.map(str::to_owned) } else { None };
         let mut conn = ControlConn { target, inline_token, writer, reader: BufReader::new(stream), next_id: 1 };
-        if target == CraftTarget::Photo
+        if matches!(target, CraftTarget::Photo | CraftTarget::Texture)
             && let Some(tok) = token
         {
             conn.send_raw("auth", json!({"token": tok}))?;
@@ -309,11 +341,14 @@ fn call_cli_with_save(target: CraftTarget, doc: Option<&Path>, command: &str, pa
             cmd.arg("exec").arg(command).arg(&params_str);
         }
         CraftTarget::Effect => {
+            cmd.arg("--json");
             if let Some(path) = doc {
                 cmd.arg("--project").arg(path);
                 if save {
                     cmd.arg("--save");
                 }
+            } else {
+                cmd.arg("--empty");
             }
             cmd.arg("exec").arg(command).arg("--params").arg(&params_str);
         }
@@ -340,16 +375,35 @@ fn call_cli_with_save(target: CraftTarget, doc: Option<&Path>, command: &str, pa
             cmd.arg("--cmd").arg(command).arg("--params").arg(&params_str);
         }
         CraftTarget::Design => {
-            cmd.arg("run");
-            if let Some(path) = doc {
-                cmd.arg("--in").arg(path);
-                if save {
-                    cmd.arg("--save").arg(path);
+            if save && let Some(path) = doc {
+                cmd.arg("script").arg("--in").arg(path).arg("--save").arg(path);
+                cmd.arg("--cmd").arg(format!("{command}={params_str}"));
+            } else {
+                cmd.arg("run");
+                if let Some(path) = doc {
+                    cmd.arg("--in").arg(path);
+                }
+                cmd.arg("--cmd").arg(format!("{command}={params_str}"));
+            }
+        }
+        CraftTarget::Texture => {
+            if command == "info" {
+                let input = doc.and_then(|p| p.to_str()).or_else(|| params["path"].as_str()).unwrap_or("builtin:material_ball");
+                cmd.arg("info").arg(input);
+            } else {
+                cmd.arg("run");
+                if let Some(path) = doc {
+                    cmd.arg(path);
+                } else {
+                    cmd.arg("builtin:material_ball");
+                }
+                cmd.arg(command).arg(&params_str);
+                if save && let Some(path) = doc {
+                    cmd.arg("-o").arg(path);
                 }
             }
-            cmd.arg("--cmd").arg(format!("{command}={params_str}"));
         }
-        CraftTarget::Deck | CraftTarget::Texture => {
+        CraftTarget::Deck => {
             if let Some(path) = doc {
                 cmd.arg("--project").arg(path);
                 if save {
