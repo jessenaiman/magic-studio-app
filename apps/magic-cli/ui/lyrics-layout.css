@@ -1,0 +1,62 @@
+/* Shared authoring arrangement: content / stage + item settings / effects. */
+#view-design.lyrics-authoring-layout.active {
+  grid-template-columns: clamp(210px, 20vw, 270px) minmax(0, 1fr) clamp(230px, 23vw, 300px);
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+.lyrics-authoring-layout #words-lyrics,
+.lyrics-authoring-layout #words-effects-rail { min-width:0; min-height:0; overflow-y:auto; }
+.lyrics-source-note { font-size:var(--text-xs); color:var(--muted); font-weight:400; }
+.lyrics-authoring-layout #words-lyrics .words-roll {
+  height:auto; margin:0; padding:var(--space-2); background:none; box-shadow:none;
+  display:flex; flex-direction:column; gap:var(--space-2);
+}
+.lyrics-authoring-layout #words-lyrics .words-roll > :not(.words-line):not(.words-band) { display:none; }
+.lyrics-authoring-layout #words-lyrics .words-roll > .words-band {
+  position:relative; inset:auto; height:auto; min-height:30px; margin:var(--space-2) 0 0;
+  padding:var(--space-1) var(--space-2); border:0; background:none; text-align:left;
+}
+.lyrics-authoring-layout #words-lyrics .words-roll > .words-line {
+  position:relative; inset:auto; height:auto; margin:0; padding:var(--space-1);
+  flex:none; overflow:hidden; border:1px solid var(--line); background:var(--surface);
+}
+.lyrics-authoring-layout #words-lyrics .words-line-card-row[hidden] { display:none; }
+.lyrics-composition-thumb { display:block; width:100%; height:116px; padding:var(--space-2); border-radius:var(--radius-sm); background:var(--lettering-paper); }
+.lyrics-card-caption { display:flex; justify-content:space-between; gap:var(--space-1); padding:var(--space-2) var(--space-1) var(--space-1); font-size:var(--text-xs); color:var(--muted); }
+.lyrics-authoring-layout #words-main { gap:var(--space-2); overflow-y:auto; overscroll-behavior:contain; }
+.lyrics-authoring-layout #words-main > #words-workspace-controls { flex:none; overflow:visible; }
+.lyrics-authoring-layout .words-engine-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.lyrics-effects-body { display:flex; flex-direction:column; gap:var(--space-3); }
+.lyrics-effects-body .words-engine-col { border:0; padding:0; }
+.lyrics-effects-body .words-motion-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.lyrics-effects-body .words-motion-grid > button { min-height:74px; }
+.lyrics-authoring-layout .words-token-move,
+.lyrics-authoring-layout .words-token-bracket { display:none; }
+.lyrics-authoring-layout .words-selection-bar { gap:var(--space-2); }
+.lyrics-authoring-layout .words-engine-header { flex-wrap:wrap; gap:var(--space-3); }
+.lyrics-authoring-layout .words-engine-title { flex-wrap:wrap; gap:var(--space-2); }
+.lyrics-authoring-layout .words-engine-title .words-editing-token { display:none; }
+.lyrics-authoring-layout .words-sliders-box { flex:1; min-width:200px; }
+.lyrics-authoring-layout .lyric-canvas { width:100%; max-width:none; flex:none; }
+.lyrics-authoring-layout > .words-arrows { display:none; }
+.lyrics-cue-disclosure { border:1px solid var(--line); border-radius:var(--radius); flex:none; }
+.lyrics-cue-disclosure > summary { cursor:pointer; padding:var(--space-2) var(--space-3); color:var(--muted); }
+.lyrics-cue-disclosure > p { padding:0 var(--space-3) var(--space-2); }
+.lyrics-cue-disclosure #words-film { max-height:220px; }
+.lyrics-authoring-layout .words-upper-bar { flex-wrap:wrap; }
+.lyrics-authoring-layout .words-toolbar { padding-block:var(--space-1); }
+@media (max-width:1050px) {
+  #view-design.lyrics-authoring-layout.active { grid-template-columns:190px minmax(0,1fr) 220px; }
+  .lyrics-authoring-layout .words-engine-grid { grid-template-columns:minmax(0,1fr); }
+  .lyrics-authoring-layout #words-main-head { flex-wrap:wrap; }
+  .lyrics-authoring-layout #words-main-head .panel-actions { max-width:100%; flex-wrap:wrap; }
+  .lyrics-authoring-layout .lyric-stage-modes { gap:var(--space-1); }
+  .lyrics-authoring-layout .lyric-stage-hint { display:none; }
+}
+@media (max-width:760px) {
+  #view-design.lyrics-authoring-layout.active { grid-template-columns:160px minmax(0,1fr); grid-template-rows:minmax(0,1fr); overflow:auto; }
+  .lyrics-authoring-layout #words-main { grid-column:2; grid-row:1; }
+  .lyrics-authoring-layout #words-lyrics { grid-column:1; grid-row:1; }
+  .lyrics-authoring-layout #words-effects-rail { grid-column:1 / -1; max-height:300px; }
+  .lyrics-effects-body .words-motion-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}

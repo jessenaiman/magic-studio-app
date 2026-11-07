@@ -223,7 +223,7 @@ class Tripo3DStage {
       return true;
     this.clearModel();
     this.loadedUrl = url;
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const loader = new THREE.GLTFLoader;
       loader.load(url, (gltf) => {
         if (this.loadedUrl !== url || !this.scene) {
@@ -247,7 +247,7 @@ class Tripo3DStage {
         this.applyWireframe(this.wireframe);
         this.frameModel(this.modelRoot);
         resolve(true);
-      }, undefined, () => resolve(false));
+      }, undefined, error => reject(new Error(`Could not load model ${path}: ${error?.message || error}`)));
     });
   }
   playClip(candidates, yaw) {

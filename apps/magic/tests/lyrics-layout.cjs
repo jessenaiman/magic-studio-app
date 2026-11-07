@@ -1,0 +1,15 @@
+const {readFileSync}=require('node:fs');
+const {join}=require('node:path');
+const vm=require('node:vm'),assert=require('node:assert/strict');
+const context=vm.createContext({});
+vm.runInContext(readFileSync(join(__dirname,'../../magic-cli/ui/lyrics-layout.js'),'utf8'),context);
+const source=[{word_id:'a',text:'Artist'},{word_id:'b',text:'words'}];
+const design={items:[{word_ids:['a','b'],text:'DO NOT USE',x:12,y:30,size:80,rotate:5,font:'serif',color:'#123456'}]};
+const before=JSON.stringify({source,design});
+const result=context.lyricPreviewItems(source,design);
+assert.equal(result[0].text,'Artist words');
+assert.equal(result[0].size,80);
+assert.equal(JSON.stringify({source,design}),before);
+assert.equal(context.lyricPreviewItems(source,{items:[{word_ids:['missing']}]}).length,0);
+assert.ok(Number.isFinite(context.lyricPreviewItems(source,{items:[{word_ids:['a'],x:Infinity,size:NaN} ]})[0].x));
+console.log('Lyric layout uses immutable artist words and finite visual values');

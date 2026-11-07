@@ -42,3 +42,15 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
   .project-chip { flex:1; }
   .drawer-toggles { margin-left:auto; }
 }
+
+/* Tauri workspace navigation: identical button boxes, independent of .start defaults. */
+#app-bar .app-identity { min-width:0; }
+#app-bar #brand { flex:none; white-space:nowrap; }
+#app-bar #project-name { min-width:0; }
+#app-bar #mode-tabs { flex:none; align-items:center; }
+#app-bar #mode-tabs > button { display:inline-flex; align-items:center; justify-content:center; height:34px; margin:0; padding:0 12px; white-space:nowrap; }
+@media (max-width:760px) {
+  #app-bar #project-name { display:none; }
+  #app-bar #mode-tabs { min-width:0; flex:1; overflow-x:auto; }
+  #app-bar #mode-tabs > button { flex:none; }
+}

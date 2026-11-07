@@ -328,8 +328,7 @@ class AnimationStageController {
     }
     if (!motion.playing && !motion.loading)
       animationRemember();
-    if (!motion.playing || magicTheatre.interactionRevision > magicTheatre.savedRevision)
-      theatreSeek(motion.time);
+    theatreSeek(motion.time);
     if (typeof timelineSeek === "function")
       timelineSeek(motion.time);
   }

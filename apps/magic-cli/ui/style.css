@@ -807,11 +807,11 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
    (right) share --song-s per second, so a sung line sits level with its frame;
    the stage, the section's lanes and what goes on them stay pinned in the centre.
    Items carry their song time and length as --at-s / --len-s, the playhead --now-s. */
-[data-ui-config="view-design"].active { position: relative; height: var(--words-available); min-height: 0; display: grid; grid-template-columns: clamp(10rem, 12vw, 16rem) minmax(0, 1fr) clamp(5rem, 7vw, 10rem); grid-template-rows: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-3); overflow: clip;
+[data-ui-config="view-design"].active { position: relative; height: var(--words-available); min-height: 0; display: grid; grid-template-columns: clamp(12rem, 16vw, 16rem) minmax(0, 1fr) clamp(9rem, 12vw, 12rem); grid-template-rows: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-3); overflow: clip;
   --song-s-px: 18; --song-s: calc(var(--space-1) * 4.5); --words-preview-height: calc(var(--words-available, var(--size-900)) * .35); }
 [data-ui-config="words-lyrics"], [data-ui-config="words-film"], [data-ui-config="words-main"], .words-preview, .words-layers, .words-shelf-body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 [data-ui-config="words-lyrics"], [data-ui-config="words-film"] { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
-[data-ui-config="words-main"] { position: relative; z-index: 2; min-height: 0; overflow: clip; background: none; border: 0; box-shadow: none; padding: 0; gap: var(--space-1); }
+[data-ui-config="words-main"] { position: relative; z-index: 2; min-height: 0; overflow: clip; background: none; border: 0; box-shadow: none; padding: 0; gap: var(--space-2); }
 .words-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .words-head strong { font-size: var(--text-lg); }
 .words-head > :last-child { margin-left: auto; }
@@ -1055,7 +1055,7 @@ svg.lyric-flow-arrows .lyric-flow-dot { fill: var(--depth-gold); stroke: var(--b
 [data-ui-config="words-main"] .words-backdrop { padding: 0 var(--space-1); }
 [data-ui-config="words-main"] .words-backdrop select { padding: var(--space-1) var(--space-2); height: var(--size-30); }
 
-.words-backgrounds { display: flex; gap: var(--space-1); min-width: 0; overflow-x: auto; padding: var(--space-1); }
+.words-backgrounds { display: flex; flex: 1; min-width: 0; gap: var(--space-1); min-width: 0; overflow-x: auto; padding: var(--space-1); }
 .words-background { flex: 0 0 var(--size-64); padding: var(--space-1); border: thin solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .words-background img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-sm); }
 .words-background:hover { border-color: var(--accent); }
@@ -1195,3 +1195,24 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
 .project-lyric-lines { white-space: pre-line; }
 .project-file-list { display: grid; gap: var(--space-1); padding-block: var(--space-2); }
 .project-file-list button { text-align: left; overflow-wrap: anywhere; }
+
+/* Restored Animation remains usable in a half-screen desktop window. */
+#motion-asset-browser .magic-assets-grid { padding:0; }
+#motion-asset-browser .magic-asset-name { white-space:normal; overflow-wrap:anywhere; }
+#motion-asset-browser .magic-asset-id { display:none; }
+#view-animation.active { grid-template-columns:210px minmax(0,1fr) 250px; }
+#motion-asset-browser { padding:8px; }
+#motion-asset-browser > .panel-head { display:grid; grid-template-columns:8px minmax(0,1fr) 24px; gap:6px; }
+#motion-asset-browser #motion-object { width:100%; min-width:0; padding-inline:8px; }
+#motion-asset-browser #motion-rebuild-rig { width:100%; margin-block:8px; }
+#motion-asset-browser .motion-section-body { padding:8px; }
+#motion-asset-browser .magic-assets-grid { width:100%; }
+#motion-stagebar { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:8px 12px; }
+#motion-stagebar .panel-title { width:100%; max-width:none; }
+#motion-stagebar .panel-actions { width:100%; max-width:none; flex-wrap:wrap; overflow:visible; }
+#motion-stagebar .panel-actions > * { margin:0; }
+@media (max-width:760px) {
+  #view-animation.active { grid-template-columns:180px minmax(0,1fr); }
+  #motion-inspector { grid-column:1 / -1; max-height:200px; }
+}
+#view-animation > .motion-inspector { width:auto; min-width:0; }

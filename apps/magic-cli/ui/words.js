@@ -610,7 +610,7 @@ class WordsViewController {
       }
     });
     scrub.value = scrub.defaultValue = String(wordsPanel.time || lineSpan.start);
-    const transport = [wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play or pause", title: "Play or pause", onclick: wordsPlay, html: ICONS.play }), scrub, wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || lineSpan.start)} / ${wordsClock(songSpan.end)}`)];
+    const transport = [wordsPanel.playButton = el("button", { id: "words-play", class: "icon", "aria-label": "Play or pause", title: "Play or pause", onclick: wordsPlay, html: ICONS.play }), scrub, wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || lineSpan.start)} / ${wordsClock(songSpan.end)}`)];
     if (wordsPanel.motionWorkspace)
       return el("div", { class: "words-toolbar transport" }, transport);
     return el("div", { class: "words-toolbar transport" }, transport, segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => {
@@ -683,7 +683,8 @@ class WordsViewController {
       }
     });
     searchInput.value = wordsPanel.searchQuery || "";
-    left.replaceChildren(new PanelHeader({ id: "words-lyrics-head", title: "Lyrics", actions: [searchInput] }).element, wordsTimeline(animations, end));
+    left.dataset.scroll = right.dataset.scroll = "auto";
+    left.replaceChildren(new PanelHeader({ id: "words-lyrics-head", title: "Lyrics", actions: [searchInput], layout: "stack" }).element, wordsTimeline(animations, end));
     right.replaceChildren(new PanelHeader({ id: "words-film-head", title: "Visual cues" }).element, wordsRoll(animations, end));
     for (const [node, id] of [[main, "words-main"], [left, "words-lyrics"], [right, "words-film"]])
       registerElement(node, id);
@@ -939,7 +940,7 @@ class WordsViewController {
     const frame = el("iframe", { id: "words-video-frame", title: "Lyric and drawing preview", allow: "autoplay" });
     frame.addEventListener("load", () => this.videoRange());
     const view = (show, label) => el("button", { role: "tab", "data-show": show, "aria-selected": String(wordsPanel.show === show), onclick: () => this.show(show) }, label);
-    wordsPanel.stage = el("div", { class: "words-preview", "data-animation": anim.animation_id }, anim.effects?.text ? el("div", { class: "segmented", role: "tablist", "aria-label": "What the stage shows" }, view("still", "Scene image"), view("edited", `Edited · ${anim.effects.text.name}`)) : null, el("div", { class: "stage", id: "words-preview" }, frame), el("div", { class: "transport" }, wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play song", title: "Play or pause the entire song", onclick: () => this.toggleSongPlay(), html: ICONS.play }), scrub, wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || 0)} / ${wordsClock(songSpan.end)}`), this.useButton(anim)));
+    wordsPanel.stage = el("div", { class: "words-preview", "data-animation": anim.animation_id }, anim.effects?.text ? el("div", { class: "segmented", role: "tablist", "aria-label": "What the stage shows" }, view("still", "Scene image"), view("edited", `Edited · ${anim.effects.text.name}`)) : null, el("div", { class: "stage", id: "words-preview" }, frame), el("div", { class: "transport" }, wordsPanel.playButton = el("button", { id: "words-play", class: "icon", "aria-label": "Play song", title: "Play or pause the entire song", onclick: () => this.toggleSongPlay(), html: ICONS.play }), scrub, wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || 0)} / ${wordsClock(songSpan.end)}`), this.useButton(anim)));
     if (wordsPanel.show === "edited" && !anim.effects?.text)
       wordsPanel.show = "still";
     this.show(wordsPanel.show, frame);

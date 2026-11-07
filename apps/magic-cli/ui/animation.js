@@ -63,6 +63,7 @@ class MotionStateController {
       selected_layer_depth: selectedDepth,
       open_sections: { ...this.openSections },
       refresh_error: this.refreshError || null,
+      load_error: this.loadError || null,
       last_export: this.lastExport?.project === state.project ? this.lastExport : null,
       last_edit: this.lastEdit?.project === state.project ? this.lastEdit : null,
       last_pose: this.lastPose?.project === state.project ? this.lastPose : null,
@@ -628,7 +629,7 @@ class AnimationViewController {
         await motionCommand("part.set_state", { expected_project: state.project, character: motion.character, part: l.id, visible: !shown });
         await this.refresh();
       })] : [];
-      row.append(el("img", { src: motionAssetUrl(l.file, l.image_sha256), alt: "" }), el("button", {
+      row.append(...(l.file ? [el("img", { src: motionAssetUrl(l.file, l.image_sha256), alt: "" })] : []), el("button", {
         class: "motion-layer-name",
         "aria-pressed": String(motion.selected === l.id),
         "aria-label": `Select part ${l.label} (${l.id})`,
@@ -921,7 +922,7 @@ function handleAnimationLoadError(character, error) {
   updateMagicSelection();
   $("motion-inspector")?.replaceChildren(el("p", { class: "muted" }, "Choose another asset or review the complete source artwork."));
   motion.stageHeader?.rename(character, "Source artwork is unavailable");
-  animationEmpty("Source artwork is unavailable", "Check its source in Project or choose another asset.");
+  animationEmpty("Source artwork is unavailable", String(error));
 }
 async function animationLoad(opts = {}) {
   return animationView.load(opts);

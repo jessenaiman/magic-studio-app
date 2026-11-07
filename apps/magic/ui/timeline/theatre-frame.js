@@ -92,7 +92,7 @@ window.addEventListener('message',async event=>{
    send('interaction_barrier',{request:message.request,project:projectPath,revision:interactionRevision,active:pointers.size>0});
   }else if(message.type==='export'){
    if(!project||message.project!==projectPath)throw new Error('Theatre export project mismatch; reload the intended project');
-   send('exported',{request:message.request,project:projectPath,state:studio.createContentOfSaveFile(projectId)});
+   send('exported',{request:message.request,project:projectPath,sheetId:sheet.address.sheetId,state:studio.createContentOfSaveFile(projectId)});
   }else if(message.type==='set_rotation'&&sheet){
    const target=getSheetObject(projectId,sheet,message.part);
    studio.transaction(({set})=>set(target.props.rotation,message.rotation));

@@ -121,6 +121,7 @@ class SongView {
         ...key === "track_number" ? { min: 1, step: 1 } : {}
       });
       input.value = input.defaultValue = metadata[key] ?? "";
+      if (key === "lyrics") { input.readOnly = true; input.title = "Artist-provided lyrics are read-only in Magic Studio"; }
       fields[key] = input;
       return el("label", {}, label, input);
     });
@@ -138,7 +139,6 @@ class SongView {
           title: fields.title.value,
           album: fields.album.value,
           track_number: fields.track_number.value === "" ? null : Number(fields.track_number.value),
-          lyrics: fields.lyrics.value,
           notes: fields.notes.value
         });
         await this.loadLyrics();

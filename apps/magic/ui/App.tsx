@@ -115,7 +115,7 @@ export const App: React.FC = () => {
           gap: "12px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="app-identity" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <button
             id="brand"
             className="ghost"
@@ -143,9 +143,9 @@ export const App: React.FC = () => {
               [
                 ["project", "Project"],
                 ["storyboard", "Storyboard"],
-                ["design", "Lyrics (.ecproj)"],
-                ["animation", "Animation (.pcraft / .ecproj)"],
-                ["studio", "Studio (.fcproj)"],
+                ["design", "Lyrics"],
+                ["animation", "Animation"],
+                ["studio", "Studio"],
               ] as Array<[ViewMode, string]>
             ).map(([id, label]) => (
               <button

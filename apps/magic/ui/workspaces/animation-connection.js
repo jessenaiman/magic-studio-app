@@ -1,5 +1,29 @@
+// Check the complete sheet, not just the pose at the current playhead.
+function animationClipExportProblem(state, sheetName) {
+  const sheet = state?.sheetsById?.[sheetName];
+  if (Object.keys(sheet?.sequence?.tracksByObject || {}).length ||
+      Object.keys(sheet?.staticOverrides?.byObject || {}).length)
+    return "This clip has timeline edits. Save motion to preserve them; EffectCraft clip export cannot bake these edits yet.";
+  return null;
+}
+
 // Connect the preserved pre-egui inspectors to the current GLB and Theatre data.
 function connectRestoredAnimation() {
+  const unavailable = text => el("p", { class: "muted", role: "note" }, text);
+  motionPathController.buildControls = () => {
+    const section = motionSection("Path & depth", unavailable("Motion paths, stack depth and their undo actions are unavailable in the current engine. Author motion in EffectCraft."), false);
+    section.id = "motion-path-section";
+    return section;
+  };
+  const authoring = motionAuthoringController.renderPanels.bind(motionAuthoringController);
+  motionAuthoringController.renderPanels = meta => {
+    const panels = authoring(meta);
+    panels.action.replaceChildren(unavailable("Render and review a clip with Save animation before placing it in Studio. The older action and scene-placement controls are unavailable."));
+    panels.layers.replaceChildren(unavailable("Stack editing and rig-edit undo are unavailable. Select a part below to inspect it."));
+    panels.part.replaceChildren(unavailable("Saved part position, scale and pivot controls are unavailable in this panel."));
+    panels.pose = unavailable("Pose capture and pose placement are unavailable in the current engine.");
+    return panels;
+  };
   window.addEventListener("message", event => {
     if (event.origin !== location.origin || event.source !== magicTheatre.frame?.contentWindow || !event.data?.magicTheatre) return;
     if (event.data.type === "ready") { const field = $("motion-part-angle"); if (field) field.disabled = false; }
@@ -35,9 +59,17 @@ function connectRestoredAnimation() {
   const controls = animationView.renderControls.bind(animationView);
   animationView.renderControls = () => {
     controls();
+    for (const id of ["motion-pen", "motion-path-visible"]) {
+      const control = $(id);
+      if (control) { control.disabled = true; control.title = "Motion paths are unavailable in the current engine"; }
+    }
+    for (const control of document.querySelectorAll('[id^="motion-visible-"]')) {
+      control.disabled = true;
+      control.title = "Part visibility editing is unavailable in the current engine";
+    }
     if (!motion.viewport3d) return;
     const pen = $("motion-pen");
-    if (pen) { pen.disabled = true; pen.title = "Draw paths on a 2D character canvas"; }
+    if (pen) { pen.disabled = true; pen.title = "Motion paths are unavailable in the current engine"; }
     const action = $("motion-action") || document.querySelector('#motion-inspector .motion-section-body');
     const track = animationView.buildTrackSelector(motion.meta);
     (action?.querySelector?.('.motion-section-body') || action)?.prepend(track);
@@ -77,6 +109,15 @@ function connectRestoredAnimation() {
   const exportDrawing = characterExportClip;
   characterExportClip = async status => {
     if (!motion.viewport3d) return exportDrawing(status);
+    theatreRequireSaved();
+    if (motion.rest || motion.amount !== 100 || motion.speed !== 1)
+      throw new Error("Clip export uses the original model motion. Choose a clip, 100% motion amount and 1× speed before exporting.");
+    const project = state.project, character = motion.character, track = motion.track;
+    const snapshot = await magicTheatre.requestExport(magicTheatre.frame, project);
+    if (state.project !== project || motion.character !== character || motion.track !== track)
+      throw new Error("Selection changed during export; try again with the intended clip.");
+    const problem = animationClipExportProblem(snapshot.state, snapshot.sheetId || magicTheatre.sheet);
+    if (problem) throw new Error(problem);
     if (Object.values(magicTheatre.rotations).some(value => Math.abs(value) > .0001))
       throw new Error("Timeline pose edits are saved in the project. Use Drawing / motion review to bake corrections into a revised GLB before rendering it.");
     const clip = tripo3DStage.activeAction?.getClip().name;

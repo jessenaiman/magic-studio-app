@@ -201,3 +201,29 @@ td > .report[data-look="bar"] { display: inline-block; width: var(--size-80); ma
 .report-group > summary { padding: var(--space-2) 0; color: var(--text); cursor: pointer; font-weight: 600; }
 .report-frame { display: block; width: 100%; height: clamp(var(--size-360), 65vh, var(--size-700)); border: thin solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .report-provenance code { display: block; white-space: pre-wrap; color: var(--muted); font-size: var(--text-xs); }
+
+/* Shared headers retain their controls when a panel scrolls or narrows. */
+.panel[data-scroll="auto"] > .panel-head {
+  position:sticky;
+  top:0;
+  z-index:5;
+  flex:none;
+  background:var(--surface);
+}
+.panel-head[data-layout="stack"] {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:var(--space-2);
+}
+.panel-head[data-layout="stack"] .panel-actions {
+  width:100%;
+  max-width:none;
+  overflow:visible;
+}
+.panel-head[data-layout="stack"] .panel-actions > .field {
+  flex:1;
+  min-width:0;
+}
+.panel-head .panel-actions > :is(button,.start) { margin-block:0; }
+.panel-body > :first-child { margin-top:0; }
+.panel-body > :last-child { margin-bottom:0; }

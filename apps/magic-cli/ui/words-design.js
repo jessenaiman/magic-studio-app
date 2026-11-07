@@ -916,7 +916,7 @@ class WordsTimelineController {
     wordsPanel.motionVideo?.pause();
     return false;
   }
-  play(forceStart = false) {
+  async play(forceStart = false) {
     const anim = wordsCurrent();
     if (!anim || !wordsPanel.line)
       return;
@@ -931,11 +931,28 @@ class WordsTimelineController {
       wordsPanel.motionVideo?.pause();
       return;
     }
-    if (audio.getAttribute("src") !== convertFileSrc(path))
-      audio.src = convertFileSrc(path);
-    audio.currentTime = wordsPanel.previewRange ? wordsPanel.previewRange.start :
-      wordsPanel.motionWorkspace ? wordsPanel.time : Math.max(0, span.start - 0.4);
-    audio.play();
+    const project = state.project;
+    try {
+      if (audio.dataset.sourcePath !== path) {
+        // WebKit's media pipeline cannot stream Tauri's custom asset scheme.
+        // Fetch through the scoped asset handler and give the decoder a blob URL.
+        const response = await fetch(convertFileSrc(path));
+        if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
+        const blob = await response.blob();
+        if (state.project !== project || state.view !== "design") return;
+        if (audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
+        audio.src = URL.createObjectURL(blob);
+        audio.dataset.sourcePath = path;
+      }
+      audio.currentTime = wordsPanel.previewRange ? wordsPanel.previewRange.start :
+        wordsPanel.motionWorkspace ? wordsPanel.time : Math.max(0, span.start - 0.4);
+      await audio.play();
+      if (state.project !== project || state.view !== "design") { audio.pause(); return; }
+    } catch (error) {
+      wordsPanel.playing = false;
+      toast(`Song playback failed: ${error.message || error}`);
+      return;
+    }
     const tick = () => {
       if (audio.paused || audio.ended || state.view !== "design") {
         audio.pause();
