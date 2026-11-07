@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { importDroppedArtwork } from "./artwork-transfer";
 import { connectDesktop } from "./desktop";
 import React, { useEffect, useRef, useState } from "react";
-import { executeCommand, WorkshopData } from "./api";
+import { executeCommand, toggleWindowSnap, WorkshopData } from "./api";
 import { FilmView } from "./views/FilmView";
 import { GalleryView } from "./views/GalleryView";
 import { HomeView } from "./views/HomeView";
@@ -164,6 +164,14 @@ export const App: React.FC = () => {
           >
             {projectName}
           </span>
+          <button
+            id="window-snap"
+            className="ghost"
+            title="Snap window to the top-right corner, or back to the center"
+            onClick={() => void toggleWindowSnap().then((to) => showToast(`Window moved to ${to}`)).catch((e) => showToast(String(e)))}
+          >
+            ⇱
+          </button>
         </div>
 
         {(

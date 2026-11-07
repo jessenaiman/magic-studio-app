@@ -27,13 +27,12 @@ pub struct ImagePrefs {
     pub provider: String,
     pub endpoint: Option<String>,
     pub model: Option<String>,
-    pub api_key: Option<String>,
     pub api_key_env: Option<String>,
 }
 
 impl Default for ImagePrefs {
     fn default() -> Self {
-        Self { provider: "codex".into(), endpoint: None, model: None, api_key: None, api_key_env: None }
+        Self { provider: "codex".into(), endpoint: None, model: None, api_key_env: None }
     }
 }
 

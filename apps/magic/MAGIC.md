@@ -23,10 +23,7 @@ There are exactly two ways to run a command, and the choice is always explicit:
 
 The per-window Unix-socket transport is removed. The explicit Tauri control bridge is the live transport.
 
-Agents use `magic-cli` only. PhotoCraft, EffectCraft, FilmCraft and DeckCraft document operations, plus
-TextureCraft mesh inspection, go through those apps' installed CLIs or linked Rust libraries.
-Separate native editor windows still use their installed applications. `magic-cli studio open
-/absolute/Project.magic` runs `project.open` (in the live window with `--bridge`);
+Agents use `magic-cli` only. DesignCraft, PhotoCraft, EffectCraft, FilmCraft, VectorCraft, DeckCraft, and TextureCraft operations go through `CraftHub` (`--control` loopback TCP when open live, or their installed `<app>-cli` executables on `PATH`), with shared foundation crates (`craft-settings`, `craft-atomic`, `craft-doc` gated on `info.supported`, `craft-docpath`, `craft-audio`) from `storytold/craft-libs`. Separate native editor windows still use their installed applications. `magic-cli studio open /absolute/Project.magic` runs `project.open` (in the live window with `--bridge`);
 `magic-cli studio list` runs `project.catalog`. Verification uses the authorized native Cargo
 commands directly; the retired Magic audit/review/formatting runners are removed.
 

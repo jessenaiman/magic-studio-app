@@ -72,11 +72,59 @@ pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
 
-pub(crate) fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session> {
-    let mut session = filmcraft_engine::Session::default();
-    let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    session.execute("file.open", json!({"path": path})).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
-    Ok(session)
+/// Run a JSONL batch of commands on `project` (or a fresh session when `fresh` is true or
+/// `project` does not exist yet), optionally saving back to `project`.
+pub(crate) fn run_steps(project: Option<&Path>, fresh: bool, save: bool, steps: &[Value]) -> Result<Vec<Value>> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    let mut cmd = Command::new(&cli);
+    if let Some(p) = project {
+        if !fresh && p.is_file() {
+            cmd.arg("--project").arg(p);
+            if save {
+                cmd.arg("--save");
+            }
+        } else if save {
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            cmd.arg("--save-as").arg(p);
+        }
+    }
+    cmd.arg("run").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        for step in steps {
+            let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| bad(format!("missing command id in {step}")))?;
+            let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
+            let line = serde_json::to_string(&json!({"id": id, "params": params}))
+                .map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+            stdin.write_all(line.as_bytes()).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+            stdin.write_all(b"\n").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+        }
+    }
+    let out = child.wait_with_output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    if !out.status.success() {
+        return Err(EngineError::ExternalTool(
+            "filmcraft-cli".into(),
+            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let mut results = Vec::with_capacity(steps.len());
+    for line in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let entry: Value = serde_json::from_str(line).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+        if entry["ok"].as_bool() == Some(false) {
+            return Err(EngineError::ExternalTool(
+                "filmcraft-cli".into(),
+                format!("{}: {}", entry["id"].as_str().unwrap_or("step"), entry["error"]),
+            ));
+        }
+        results.push(entry.get("result").cloned().unwrap_or(entry));
+    }
+    Ok(results)
 }
 
 /// Refresh the dedicated lettering layer while leaving the picture and audio cuts in place.
@@ -92,9 +140,14 @@ pub(crate) fn publish_lyrics(s: &Session, movie: &Path) -> Result<Value> {
         return live_result;
     }
     let _lock = crate::project_lock::for_project(&project);
-    let mut session = open_filmcraft(&project)?;
-    let mut run =
-        |id: &str, params: Value| session.execute(id, params).map_err(|error| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {error}")));
+    let mut run = |id: &str, params: Value| -> Result<Value> {
+        let step = json!({"id": id, "params": params});
+        let save = id != "sequence.inspect" && id != "media.status" && id != "file.save";
+        if id == "file.save" {
+            return Ok(json!({"saved": project}));
+        }
+        run_steps(Some(&project), false, save, &[step])?.into_iter().next().ok_or_else(|| EngineError::ExternalTool("filmcraft-cli".into(), format!("{id}: no result")))
+    };
     publish_lyrics_with(&project, movie, TRACK, &mut run)
 }
 
@@ -224,16 +277,7 @@ pub(crate) fn execute(project: &Path, id: &str, params: Value) -> Result<Value> 
 }
 
 pub(crate) fn run(project: &Path, fresh: bool, steps: &[Value]) -> Result<Vec<Value>> {
-    let mut session = if !fresh && project.is_file() { open_filmcraft(project)? } else { filmcraft_engine::Session::default() };
-    let mut out = Vec::with_capacity(steps.len());
-    for step in steps {
-        let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| bad(format!("missing command id in {step}")))?;
-        let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
-        let value = session.execute(id, params).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))?;
-        out.push(value);
-    }
-    session.execute("file.saveAs", json!({"path": project})).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
-    Ok(out)
+    run_steps(Some(project), fresh, true, steps)
 }
 
 pub(crate) fn export(project: &Path, output: &Path, draft: bool) -> Result<()> {
@@ -278,11 +322,10 @@ fn export_params(output: &Path, draft: bool, options: &Value) -> Value {
 }
 
 pub(crate) fn export_with_options(project: &Path, output: &Path, draft: bool, options: &Value) -> Result<()> {
-    let mut session = open_filmcraft(project)?;
     let params = export_params(output, draft, options);
-    let result = session.execute("file.exportMedia", params).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
+    let result = execute(project, "file.exportMedia", params)?;
     if let Some(offline) = result["offlineMedia"].as_array().filter(|items| !items.is_empty()) {
-        return Err(EngineError::ExternalTool("filmcraft-engine".into(), format!("export blocked by offline media: {offline:?}")));
+        return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("export blocked by offline media: {offline:?}")));
     }
     Ok(())
 }
@@ -309,20 +352,38 @@ pub(crate) fn frame(project: &Path, seconds: f64, output: &Path) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn probe_media(filename: &Path) -> Result<Value> {
+    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    let out = std::process::Command::new(&cli)
+        .arg("probe")
+        .arg(filename)
+        .output()
+        .map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    if !out.status.success() {
+        return Err(EngineError::InvalidParams(format!(
+            "cannot inspect {}: {}",
+            filename.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| EngineError::InvalidParams(format!("cannot inspect {}: {e}", filename.display())))
+}
+
 pub(crate) fn media_duration(filename: &Path, require_video: bool) -> Result<f64> {
-    let session = filmcraft_engine::Session::default();
-    let source = session
-        .media
-        .probe_file(&filename.to_string_lossy(), &*session.services)
-        .map_err(|e| EngineError::InvalidParams(format!("cannot inspect {}: {e}", filename.display())))?;
-    let info = source.info();
-    if require_video && info.kind != filmcraft_media::MediaKind::Movie {
+    let info = probe_media(filename)?;
+    let is_movie = info["kind"].as_str() == Some("Movie") || info["video"].is_object();
+    let has_audio = info["audio_streams"].as_array().is_some_and(|a| !a.is_empty());
+    if require_video && !is_movie {
         return Err(EngineError::InvalidParams(format!("{} has no video stream", filename.display())));
     }
-    if !require_video && info.audio_streams.is_empty() && info.kind != filmcraft_media::MediaKind::Movie {
+    if !require_video && !has_audio && !is_movie {
         return Err(EngineError::InvalidParams(format!("{} has no audio stream", filename.display())));
     }
-    let duration = info.duration.seconds();
+    let duration = info["duration"]
+        .as_f64()
+        .map(|ticks| ticks / TICKS)
+        .or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS))
+        .unwrap_or(0.0);
     if !duration.is_finite() || duration <= 0.0 {
         return Err(EngineError::InvalidParams(format!("{} has invalid duration {duration}", filename.display())));
     }
@@ -388,13 +449,11 @@ pub fn cmd_video_exec(s: &mut Session, p: &Value) -> Result<Value> {
     let id = p["id"].as_str().or_else(|| p["command"].as_str()).ok_or_else(|| bad("id=<filmcraft command> is required"))?;
     let params = p.get("params").cloned().unwrap_or_else(|| json!({}));
     let save = p["save"].as_bool().unwrap_or(true);
-    let mut session = open_filmcraft(&project)?;
-    let result = session.execute(id, params).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))?;
-    if save {
-        session
-            .execute("file.saveAs", json!({"path": project}))
-            .map_err(|error| EngineError::ExternalTool("filmcraft-engine".into(), format!("file.saveAs: {error}")))?;
-    }
+    let result = if save {
+        crate::CraftHub::execute_and_save(crate::CraftTarget::Film, &project, id, &params)?
+    } else {
+        crate::CraftHub::execute(crate::CraftTarget::Film, Some(&project), id, &params)?
+    };
     Ok(json!({"ok": true, "timeline": project, "id": id, "result": result}))
 }
 
@@ -521,15 +580,21 @@ mod tests {
 
     #[test]
     fn native_source_item_frame_export_accepts_integer_ticks_without_saving_project() {
-        let mut native = filmcraft_engine::Session::default();
-        native.execute("file.openDemoProject", json!({})).unwrap();
-        let sequence = native.execute("sequence.inspect", json!({})).unwrap();
+        let steps = [
+            json!({"id": "file.openDemoProject", "params": {}}),
+            json!({"id": "sequence.inspect", "params": {}}),
+        ];
+        let results = run_steps(None, true, false, &steps).unwrap();
+        let sequence = &results[1];
         let item =
             sequence["video"].as_array().unwrap().iter().flat_map(|track| track["items"].as_array().unwrap()).find_map(|clip| clip["item"].as_u64()).unwrap();
         let path = std::env::temp_dir().join(format!("magic-source-frame-{}.png", std::process::id()));
-        let result = native
-            .execute("file.exportFrame", json!({"target":"source","item":item,"time":127008000000_i64,"path":path,"format":"png","import":false}))
-            .unwrap();
+        let export_steps = [
+            json!({"id": "file.openDemoProject", "params": {}}),
+            json!({"id": "file.exportFrame", "params": {"target":"source","item":item,"time":127008000000_i64,"path":path,"format":"png","import":false}}),
+        ];
+        let export_results = run_steps(None, true, false, &export_steps).unwrap();
+        let result = &export_results[1];
         assert_eq!(result["target"], "source");
         assert!(result["width"].as_u64().unwrap() > 0);
         assert!(result["time"].as_i64().unwrap() <= 127008000000_i64);

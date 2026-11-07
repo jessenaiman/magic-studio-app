@@ -1,7 +1,9 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { arch, eol, exeExtension, family, locale, platform, type as osTypeFn, version } from "@tauri-apps/plugin-os";
+import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatOsInfo, type OsInfo } from "./os-info";
+import { isCentered, isTopRight, moveWindow, Position, type Rect } from "./positioner";
 
 export type { OsInfo };
 export { isMacOSPlatform, isWindowsPlatform, isUnixFamily, modifierLabel } from "./os-info";
@@ -17,6 +19,36 @@ export async function getOsInfo(): Promise<OsInfo> {
     eol: eol(),
     locale: await locale(),
   });
+}
+
+export type { Rect } from "./positioner";
+export { Position } from "./positioner";
+
+export async function getWindowPosition(): Promise<{ window: Rect; screen: Rect }> {
+  const current = getCurrentWindow();
+  const monitor = await currentMonitor();
+  if (!monitor) throw new Error("No monitor reported for the main window");
+  const [at, size] = await Promise.all([current.outerPosition(), current.outerSize()]);
+  return {
+    window: { x: at.x, y: at.y, width: size.width, height: size.height },
+    screen: { x: monitor.position.x, y: monitor.position.y, width: monitor.size.width, height: monitor.size.height },
+  };
+}
+
+// Snap the window to the top-right corner of its screen, or back to the center when it is already there.
+// The plugin resolves even when the window manager ignores the request (Wayland clients cannot place
+// themselves), so the result is read back and a window that did not move is an error, not a success.
+export async function toggleWindowSnap(): Promise<"top-right" | "center"> {
+  const before = await getWindowPosition();
+  const target = isTopRight(before.window, before.screen) ? "center" : "top-right";
+  await moveWindow(target === "center" ? Position.Center : Position.TopRight);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const after = await getWindowPosition();
+  const arrived = target === "center" ? isCentered(after.window, after.screen) : isTopRight(after.window, after.screen);
+  if (!arrived) {
+    throw new Error(`The window manager did not move the window to ${target} (position ${after.window.x},${after.window.y}); Wayland and tiling compositors may refuse to place windows`);
+  }
+  return target;
 }
 
 export interface ProjectSummary {

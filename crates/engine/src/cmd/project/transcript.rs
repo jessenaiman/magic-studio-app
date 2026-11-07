@@ -111,24 +111,58 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
     problems
 }
 
-/// Preserve externally authored cue boundaries using `filmcraft_captions::parse`; never invent word timing from subtitle lines.
-pub(crate) fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
-    let fmt = filmcraft_captions::detect(text.as_bytes(), Some("srt")).unwrap_or(filmcraft_captions::Format::Srt);
-    let doc = filmcraft_captions::parse(text.as_bytes(), fmt).map_err(|e| EngineError::InvalidParams(format!("invalid caption file: {e}")))?;
-    if doc.cues.is_empty() {
-        return Err(EngineError::InvalidParams("caption file is empty".into()));
+fn parse_srt_timestamp(raw: &str) -> Option<f64> {
+    let token = raw.trim().split_whitespace().next()?;
+    let (hms, ms_str) = token.split_once([',', '.'])?;
+    let mut parts = hms.split(':');
+    let h: u64 = parts.next()?.parse().ok()?;
+    let m: u64 = parts.next()?.parse().ok()?;
+    let s: u64 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || m >= 60 || s >= 60 {
+        return None;
     }
-    let mut cues = Vec::with_capacity(doc.cues.len());
+    let ms: u64 = format!("{:0<3}", &ms_str[..ms_str.len().min(3)]).parse().ok()?;
+    Some((h as f64) * 3600.0 + (m as f64) * 60.0 + (s as f64) + (ms as f64) / 1000.0)
+}
+
+fn format_srt_timestamp(seconds: f64) -> String {
+    let total_ms = (seconds.max(0.0) * 1000.0).round() as u64;
+    let ms = total_ms % 1000;
+    let total_s = total_ms / 1000;
+    let s = total_s % 60;
+    let total_m = total_s / 60;
+    let m = total_m % 60;
+    let h = total_m / 60;
+    format!("{h:02}:{m:02}:{s:02},{ms:03}")
+}
+
+/// Preserve externally authored cue boundaries from SRT/VTT; never invent word timing from subtitle lines.
+pub(crate) fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
+    let normalized = text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+    let mut cues = Vec::new();
     let mut previous = 0.0;
-    for cue in doc.cues {
-        let start = cue.start.seconds();
-        let end = cue.end.seconds();
-        let clean = cue.text.replace('\n', " ").trim().to_string();
+    for block in normalized.split("\n\n") {
+        let mut lines = block.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("WEBVTT") && !l.starts_with("NOTE")).peekable();
+        let Some(first) = lines.peek().copied() else { continue };
+        if !first.contains("-->") {
+            lines.next();
+        }
+        let Some(timing_line) = lines.next() else { continue };
+        let Some((start_raw, end_raw)) = timing_line.split_once("-->") else {
+            return Err(EngineError::InvalidParams("invalid caption file: missing '-->' timing arrow".into()));
+        };
+        let (Some(start), Some(end)) = (parse_srt_timestamp(start_raw), parse_srt_timestamp(end_raw)) else {
+            return Err(EngineError::InvalidParams("invalid caption file: bad timestamp".into()));
+        };
+        let clean = lines.collect::<Vec<_>>().join(" ").trim().to_string();
         if start < previous - 1e-6 || end < start || clean.is_empty() {
             return Err(EngineError::InvalidParams("SRT cues must be ordered, timed and nonempty".into()));
         }
         previous = start;
         cues.push(json!({"text": clean, "start": start, "end": end}));
+    }
+    if cues.is_empty() {
+        return Err(EngineError::InvalidParams("caption file is empty".into()));
     }
     Ok(cues)
 }
@@ -167,21 +201,17 @@ fn prepare_document(s: &Session, params: &Value, doc: &mut Value) -> Result<(Opt
     Ok((caption_text, grouping))
 }
 
-/// The captions to write when none were supplied: the document's own paragraph timing via `filmcraft_captions::write`.
+/// The captions to write when none were supplied: the document's own paragraph timing in SRT format.
 pub(crate) fn srt_from_paragraphs(doc: &Value) -> Option<String> {
     let paragraphs = doc["paragraphs"].as_array()?;
-    let cues: Vec<filmcraft_captions::Cue> = paragraphs
-        .iter()
-        .map(|p| filmcraft_captions::Cue {
-            start: filmcraft_time::Tick::from_seconds_f64(p["start"].as_f64().unwrap_or(0.0)),
-            end: filmcraft_time::Tick::from_seconds_f64(p["end"].as_f64().unwrap_or(0.0)),
-            text: p["text"].as_str().unwrap_or_default().to_string(),
-            ..Default::default()
-        })
-        .collect();
-    let cap_doc = filmcraft_captions::Document { language: Some("en".into()), cues, ..Default::default() };
-    let bytes = filmcraft_captions::write(&cap_doc, filmcraft_captions::Format::Srt, filmcraft_captions::WriteOptions::default());
-    String::from_utf8(bytes).ok()
+    let mut out = String::new();
+    for (idx, p) in paragraphs.iter().enumerate() {
+        let start = format_srt_timestamp(p["start"].as_f64().unwrap_or(0.0));
+        let end = format_srt_timestamp(p["end"].as_f64().unwrap_or(0.0));
+        let text = p["text"].as_str().unwrap_or_default();
+        out.push_str(&format!("{}\n{start} --> {end}\n{text}\n\n", idx + 1));
+    }
+    Some(out)
 }
 
 fn audio_mismatch(doc: &Value, song: Option<&PathBuf>) -> Option<String> {

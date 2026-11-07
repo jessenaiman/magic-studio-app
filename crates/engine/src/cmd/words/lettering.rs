@@ -570,11 +570,9 @@ mod native_motion_placement_tests {
             },
             &mut steps,
         );
-        let mut native = effectcraft_engine::Session::default();
-        for step in steps {
-            native.execute_checked(step["command"].as_str().unwrap(), step["params"].clone()).unwrap();
-        }
-        let trim = native.execute_checked("prop.get", json!({"layer":"circle", "path":"contents/trim/end", "time":2})).unwrap();
+        steps.push(step("prop.get", json!({"layer":"circle", "path":"contents/trim/end", "time":2})));
+        let results = crate::cmd::character::effectcraft(std::path::Path::new("."), None, &steps, false).unwrap();
+        let trim = results.last().unwrap();
         assert_eq!(trim["keys"].as_array().unwrap().len(), 2, "{trim}");
         assert_eq!(trim["value"], json!(50.0));
     }

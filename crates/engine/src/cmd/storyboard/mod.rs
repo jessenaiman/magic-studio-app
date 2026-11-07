@@ -9,8 +9,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use designcraft_engine::Session as Dc;
-use designcraft_engine::doc::Content;
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
@@ -144,52 +142,157 @@ fn doc_path(s: &Session, p: &Value) -> Result<PathBuf> {
     Ok(project.with_file_name("storyboard.designcraft"))
 }
 
+/// Extract `document.json` from a `.designcraft` ZIP archive via `flate2`.
+fn read_designcraft_document_json(path: &Path) -> Result<Value> {
+    use std::io::Read;
+    let bytes = std::fs::read(path)?;
+    if bytes.len() < 22 || &bytes[0..4] != b"PK\x03\x04" {
+        return Err(fail("not a valid .designcraft archive"));
+    }
+    let eocd = (0..=bytes.len() - 22)
+        .rev()
+        .find(|&i| &bytes[i..i + 4] == b"PK\x05\x06")
+        .ok_or_else(|| fail("corrupt .designcraft zip central directory"))?;
+    let total_entries = u16::from_le_bytes([bytes[eocd + 10], bytes[eocd + 11]]) as usize;
+    let cd_offset = u32::from_le_bytes([bytes[eocd + 16], bytes[eocd + 17], bytes[eocd + 18], bytes[eocd + 19]]) as usize;
+    let mut pos = cd_offset;
+    for _ in 0..total_entries {
+        if pos + 46 > bytes.len() || &bytes[pos..pos + 4] != b"PK\x01\x02" {
+            break;
+        }
+        let method = u16::from_le_bytes([bytes[pos + 10], bytes[pos + 11]]);
+        let comp_size = u32::from_le_bytes([bytes[pos + 20], bytes[pos + 21], bytes[pos + 22], bytes[pos + 23]]) as usize;
+        let name_len = u16::from_le_bytes([bytes[pos + 28], bytes[pos + 29]]) as usize;
+        let extra_len = u16::from_le_bytes([bytes[pos + 30], bytes[pos + 31]]) as usize;
+        let comment_len = u16::from_le_bytes([bytes[pos + 32], bytes[pos + 33]]) as usize;
+        let local_offset = u32::from_le_bytes([bytes[pos + 42], bytes[pos + 43], bytes[pos + 44], bytes[pos + 45]]) as usize;
+        let name = std::str::from_utf8(&bytes[pos + 46..pos + 46 + name_len]).unwrap_or("");
+        if name == "document.json" {
+            let l_name_len = u16::from_le_bytes([bytes[local_offset + 26], bytes[local_offset + 27]]) as usize;
+            let l_extra_len = u16::from_le_bytes([bytes[local_offset + 28], bytes[local_offset + 29]]) as usize;
+            let data_start = local_offset + 30 + l_name_len + l_extra_len;
+            let data = &bytes[data_start..data_start + comp_size];
+            let raw = match method {
+                0 => data.to_vec(),
+                8 => {
+                    let mut out = Vec::new();
+                    flate2::read::DeflateDecoder::new(data).read_to_end(&mut out).map_err(fail)?;
+                    out
+                }
+                other => return Err(fail(format!("unsupported zip compression method {other}"))),
+            };
+            return serde_json::from_slice(&raw).map_err(fail);
+        }
+        pos += 46 + name_len + extra_len + comment_len;
+    }
+    Err(fail("document.json not found in .designcraft archive"))
+}
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(1);
+
+struct ScopedTempDir(PathBuf);
+
+impl ScopedTempDir {
+    fn new(prefix: &str) -> Result<Self> {
+        let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{prefix}-{}-{seq}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(fail)?;
+        Ok(Self(dir))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScopedTempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// An open storyboard document and the frames of each of its scenes.
 struct Board {
-    dc: Dc,
     path: PathBuf,
+    work_path: PathBuf,
+    _temp_dir: ScopedTempDir,
     stamp: Option<crate::link_watch::FileStamp>,
 }
 
 impl Board {
     fn open(path: &Path) -> Result<Self> {
         let stamp = crate::link_watch::FileStamp::of(path);
-        let mut dc = Dc::new();
-        dc.execute("file.open", &json!({"path": path})).map_err(fail)?;
+        let temp_dir = ScopedTempDir::new("magic-storyboard-work")?;
+        let work_path = temp_dir.path().join("storyboard.designcraft");
+        std::fs::copy(path, &work_path).map_err(fail)?;
+        let _ = read_designcraft_document_json(&work_path)?;
         crate::link_watch::save_guard(path, stamp)?;
-        Ok(Self { dc, path: path.to_path_buf(), stamp })
+        Ok(Self { path: path.to_path_buf(), work_path, _temp_dir: temp_dir, stamp })
     }
 
     fn run(&mut self, id: &str, params: Value) -> Result<Value> {
-        self.dc.execute(id, &params).map_err(fail)
+        self.run_batch(&[(id, params)])?.into_iter().next().ok_or_else(|| fail(format!("{id}: no result")))
+    }
+
+    fn run_batch(&mut self, steps: &[(&str, Value)]) -> Result<Vec<Value>> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let mutates = steps.iter().any(|(id, _)| !matches!(*id, "document.inspect" | "object.findByLabel" | "story.get" | "preflight.run"));
+        let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
+        let mut cmd = Command::new(&cli);
+        cmd.arg("script").arg("-").arg("--in").arg(&self.work_path);
+        if mutates {
+            cmd.arg("--save").arg(&self.work_path);
+        }
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = cmd.spawn().map_err(fail)?;
+        let payload: Vec<Value> = steps.iter().map(|(id, params)| json!({"command": id, "params": params})).collect();
+        let bytes = serde_json::to_vec(&payload).map_err(fail)?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(&bytes).map_err(fail)?;
+        }
+        let out = child.wait_with_output().map_err(fail)?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if let Ok(report) = serde_json::from_slice::<Value>(&out.stdout)
+                && let Some(err) = report["failed"]["error"].as_str()
+            {
+                return Err(fail(err));
+            }
+            return Err(fail(stderr.trim()));
+        }
+        let report: Value = serde_json::from_slice(&out.stdout).map_err(fail)?;
+        if let Some(err) = report["failed"]["error"].as_str() {
+            return Err(fail(err));
+        }
+        Ok(report["results"].as_array().cloned().unwrap_or_default())
     }
 
     fn save(&mut self) -> Result<()> {
         let path = self.path.clone();
         crate::link_watch::save_guard(&path, self.stamp)?;
-        self.run("file.save", json!({"path": path}))?;
+        let bytes = std::fs::read(&self.work_path)?;
+        craft_atomic::atomic_write(&path, &bytes)?;
         self.stamp = crate::link_watch::FileStamp::of(&path);
         Ok(())
     }
 
     /// Label -> frame id per spread, for `labels` and `scene_id` (which marks a scene spread).
     fn frames(&mut self, labels: &[String]) -> Result<Vec<Labels>> {
-        let inspect = self.run("document.inspect", json!({}))?;
-        let spreads = inspect["spreads"].as_array().cloned().unwrap_or_default();
-        let mut owner: HashMap<u64, usize> = HashMap::new();
+        let doc = read_designcraft_document_json(&self.work_path)?;
+        let spreads = doc["spreads"].as_array().cloned().unwrap_or_default();
+        let want: std::collections::HashSet<&str> = labels.iter().map(String::as_str).chain(["scene_id"]).collect();
+        let mut out = vec![HashMap::new(); spreads.len()];
         for (i, sp) in spreads.iter().enumerate() {
             for item in sp["items"].as_array().into_iter().flatten() {
-                if let Some(id) = item["id"].as_u64() {
-                    owner.insert(id, i);
-                }
-            }
-        }
-        let mut out = vec![HashMap::new(); spreads.len()];
-        for label in labels.iter().map(String::as_str).chain(["scene_id"]) {
-            let found = self.run("object.findByLabel", json!({"label": label}))?;
-            for id in found["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64) {
-                if let Some(&sp) = owner.get(&id) {
-                    out[sp].insert(label.to_string(), id);
+                if let (Some(id), Some(label)) = (item["id"].as_u64(), item["label"].as_str())
+                    && !label.is_empty()
+                    && want.contains(label)
+                {
+                    out[i].insert(label.to_string(), id);
                 }
             }
         }
@@ -204,13 +307,39 @@ impl Board {
     }
 
     fn text(&mut self, frame: u64) -> Result<String> {
+        let doc = read_designcraft_document_json(&self.work_path)?;
+        for spread in doc["spreads"].as_array().into_iter().flatten() {
+            for item in spread["items"].as_array().into_iter().flatten() {
+                if item["id"].as_u64() == Some(frame) {
+                    if let Some(story_id) = item["content"]["story"].as_u64() {
+                        return Ok(doc["stories"][story_id.to_string()]["text"].as_str().unwrap_or_default().to_string());
+                    }
+                    return Ok(String::new());
+                }
+            }
+        }
         let r = self.run("story.get", json!({"frame": frame}))?;
         Ok(r["text"].as_str().unwrap_or_default().to_string())
     }
 
     fn set_text(&mut self, frame: u64, text: &str) -> Result<()> {
-        let r = self.run("story.get", json!({"frame": frame}))?;
-        let story = r.get("story").or_else(|| r.get("id")).cloned().ok_or_else(|| fail("frame has no story"))?;
+        let doc = read_designcraft_document_json(&self.work_path)?;
+        let mut story_id = None;
+        for spread in doc["spreads"].as_array().into_iter().flatten() {
+            for item in spread["items"].as_array().into_iter().flatten() {
+                if item["id"].as_u64() == Some(frame) {
+                    story_id = item["content"]["story"].as_u64();
+                    break;
+                }
+            }
+        }
+        let story = match story_id {
+            Some(id) => json!(id),
+            None => {
+                let r = self.run("story.get", json!({"frame": frame}))?;
+                r.get("story").or_else(|| r.get("id")).cloned().ok_or_else(|| fail("frame has no story"))?
+            }
+        };
         self.run("story.setText", json!({"story": story, "text": text}))?;
         Ok(())
     }
@@ -222,12 +351,15 @@ impl Board {
     }
 
     fn set_image(&mut self, frame: u64, hint: Option<u64>, path: &str) -> Result<()> {
-        self.run("place.load", json!({"path": path}))?;
-        self.run("place.drop", json!({"x": 0, "y": 0, "frame": frame}))?;
-        self.run("object.fit", json!({"mode": "fillProportionally", "ids": [frame]}))?;
+        let mut steps = vec![
+            ("place.load", json!({"path": path})),
+            ("place.drop", json!({"x": 0, "y": 0, "frame": frame})),
+            ("object.fit", json!({"mode": "fillProportionally", "ids": [frame]})),
+        ];
         if let Some(h) = hint {
-            self.run("object.setFlags", json!({"ids": [h], "hidden": true}))?;
+            steps.push(("object.setFlags", json!({"ids": [h], "hidden": true})));
         }
+        self.run_batch(&steps)?;
         Ok(())
     }
 
@@ -249,38 +381,58 @@ impl Board {
                 }
             }
         }
-        let state = self.dc.doc().map_err(fail)?;
-        let doc = &state.doc;
+        let doc = read_designcraft_document_json(&self.work_path)?;
         // Parent spread id -> its label ("A-Parent"), for the section a page belongs to.
-        let parents: HashMap<u64, String> = doc.parents.iter().filter_map(|p| p.parent.as_ref().map(|info| (p.id.0, info.label()))).collect();
+        let parents: HashMap<u64, String> = doc["parents"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| {
+                let id = p["id"].as_u64()?;
+                let prefix = p["parent"]["prefix"].as_str()?;
+                let name = p["parent"]["name"].as_str()?;
+                let label = if prefix.is_empty() { name.to_string() } else { format!("{prefix}-{name}") };
+                Some((id, label))
+            })
+            .collect();
+        let stories = &doc["stories"];
+        let assets = &doc["assets"];
         let mut pages = Vec::new();
-        for (index, spread) in doc.spreads.iter().enumerate() {
+        for (index, spread) in doc["spreads"].as_array().into_iter().flatten().enumerate() {
             let mut labels: Labels = HashMap::new();
             let mut slots = Vec::new();
-            for item in &spread.items {
-                if item.label.is_empty() {
+            for item in spread["items"].as_array().into_iter().flatten() {
+                let label = item["label"].as_str().unwrap_or_default();
+                if label.is_empty() {
                     continue;
                 }
-                let (kind, text, image) = match &item.content {
-                    Content::Text(frame) => {
-                        let text = doc.stories.get(&frame.story).map(|s| s.text.clone());
+                let Some(id) = item["id"].as_u64() else { continue };
+                let (kind, text, image) = match item["content"]["type"].as_str() {
+                    Some("text") => {
+                        let text = item["content"]["story"]
+                            .as_u64()
+                            .and_then(|sid| stories[sid.to_string()]["text"].as_str())
+                            .map(str::to_string);
                         ("text", text, None)
                     }
-                    Content::Graphic(graphic) => {
-                        let image = doc.assets.get(&graphic.asset).and_then(|a| a.link.clone());
+                    Some("graphic") => {
+                        let image = item["content"]["asset"]
+                            .as_u64()
+                            .and_then(|aid| assets[aid.to_string()]["link"].as_str())
+                            .map(str::to_string);
                         ("image", None, image)
                     }
                     _ => ("other", None, None),
                 };
-                labels.insert(item.label.clone(), item.id.0);
+                labels.insert(label.to_string(), id);
                 slots.push(Slot {
-                    label: item.label.clone(),
-                    id: item.id.0,
+                    label: label.to_string(),
+                    id,
                     kind,
                     text,
                     image,
-                    bounds: bounds.get(&item.id.0).copied(),
-                    hidden: item.hidden,
+                    bounds: bounds.get(&id).copied(),
+                    hidden: item["hidden"].as_bool().unwrap_or(false),
                     empty: kind == "other",
                 });
             }
@@ -293,7 +445,11 @@ impl Board {
                 }
                 slot.empty &= slot.kind == "image";
             }
-            let section = spread.pages.first().and_then(|p| p.parent).and_then(|id| parents.get(&id.0).cloned());
+            let section = spread["pages"]
+                .as_array()
+                .and_then(|ps| ps.first())
+                .and_then(|p| p["parent"].as_u64())
+                .and_then(|pid| parents.get(&pid).cloned());
             pages.push(PageSlots { index, archetype: archetype_of(&labels).to_string(), section, slots });
         }
         Ok(pages)
@@ -598,6 +754,85 @@ pub(crate) fn completion(s: &Session, p: &Value) -> Result<Value> {
         "pages": report, "preflight":preflight}))
 }
 
+struct ScriptStep {
+    command: String,
+    params: Value,
+}
+
+fn parse_script_step_object(v: &Value) -> std::result::Result<ScriptStep, String> {
+    let command = v.get("command").or_else(|| v.get("id")).and_then(Value::as_str).ok_or_else(|| "step object has no `command`".to_string())?.to_string();
+    let params = v.get("params").cloned().unwrap_or_else(|| Value::Object(Default::default()));
+    Ok(ScriptStep { command, params })
+}
+
+fn parse_script_steps(text: &str) -> std::result::Result<Vec<ScriptStep>, String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if trimmed.starts_with('[') {
+        let arr: Vec<Value> = serde_json::from_str(trimmed).map_err(|e| format!("JSON array script: {e}"))?;
+        return arr.iter().map(parse_script_step_object).collect();
+    }
+    let mut steps = Vec::new();
+    for (lineno, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
+            continue;
+        }
+        let step = if line.starts_with('{') {
+            let v: Value = serde_json::from_str(line).map_err(|e| format!("line {}: {e}", lineno + 1))?;
+            parse_script_step_object(&v).map_err(|e| format!("line {}: {e}", lineno + 1))?
+        } else {
+            let (cmd, rest) = match line.find(char::is_whitespace) {
+                Some(i) => (&line[..i], line[i..].trim()),
+                None => (line, ""),
+            };
+            let params = if rest.is_empty() {
+                Value::Object(Default::default())
+            } else {
+                serde_json::from_str(rest).map_err(|e| format!("line {} ({cmd}): {e}", lineno + 1))?
+            };
+            ScriptStep { command: cmd.to_string(), params }
+        };
+        steps.push(step);
+    }
+    Ok(steps)
+}
+
+fn resolve_script_ref(r: &str, results: &[Value]) -> std::result::Result<Value, String> {
+    let mut parts = r.split('.');
+    let idx_str = parts.next().unwrap_or("");
+    let idx: usize = idx_str.parse().map_err(|_| format!("invalid step reference `${r}`"))?;
+    let mut cur = results.get(idx).ok_or_else(|| format!("`${r}` refers to step {idx}, only {} have run", results.len()))?;
+    for key in parts {
+        cur = match cur {
+            Value::Object(map) => map.get(key).ok_or_else(|| format!("`${r}`: no key `{key}`"))?,
+            Value::Array(arr) => {
+                let i: usize = key.parse().map_err(|_| format!("`${r}`: `{key}` is not an array index"))?;
+                arr.get(i).ok_or_else(|| format!("`${r}`: index {i} out of bounds"))?
+            }
+            _ => return Err(format!("`${r}`: cannot index into {cur}")),
+        };
+    }
+    Ok(cur.clone())
+}
+
+fn resolve_script_value(value: &Value, results: &[Value]) -> std::result::Result<Value, String> {
+    match value {
+        Value::String(s) if s.starts_with('$') && s.len() > 1 => resolve_script_ref(&s[1..], results),
+        Value::Array(items) => items.iter().map(|v| resolve_script_value(v, results)).collect::<std::result::Result<Vec<_>, _>>().map(Value::Array),
+        Value::Object(map) => {
+            let mut out = serde_json::Map::with_capacity(map.len());
+            for (k, v) in map {
+                out.insert(k.clone(), resolve_script_value(v, results)?);
+            }
+            Ok(Value::Object(out))
+        }
+        other => Ok(other.clone()),
+    }
+}
+
 /// `storyboard.run`: run a command script against the storyboard.
 ///
 /// The script is DesignCraft's script format: a JSON array of steps, JSON lines, or compact
@@ -614,20 +849,44 @@ pub fn cmd_storyboard_run(s: &mut Session, p: &Value) -> Result<Value> {
         }
         None => p.get("script").and_then(Value::as_str).ok_or_else(|| bad("give `script` (the script text) or `script_file`"))?.to_string(),
     };
-    let steps = designcraft_engine::script::parse(&text).map_err(|e| bad(&e))?;
+    let steps = parse_script_steps(&text).map_err(|e| bad(&e))?;
     let mut b = Board::open(&doc_path(s, p)?)?;
     let session: &Session = s;
-    let report = designcraft_engine::script::run(&steps, |command, params| match command.strip_prefix("storyboard.") {
-        Some("set") => storyboard_step_set(session, &mut b, &params),
-        _ => b.dc.execute(command, &params).map_err(|e| e.to_string()),
-    });
+    let mut results = Vec::with_capacity(steps.len());
+    let mut failed: Option<(usize, String, String)> = None;
+    for (i, step) in steps.iter().enumerate() {
+        let params = match resolve_script_value(&step.params, &results) {
+            Ok(v) => v,
+            Err(e) => {
+                failed = Some((i, step.command.clone(), e));
+                break;
+            }
+        };
+        let res = match step.command.strip_prefix("storyboard.") {
+            Some("set") => storyboard_step_set(session, &mut b, &params),
+            _ => b.run(&step.command, params).map_err(|e| e.to_string()),
+        };
+        match res {
+            Ok(val) => results.push(val),
+            Err(e) => {
+                failed = Some((i, step.command.clone(), e));
+                break;
+            }
+        }
+    }
     // A failed step leaves the document unwritten.
-    if report.failed.is_none() {
+    if failed.is_none() {
         b.save()?;
     }
-    let mut out = report.to_json();
-    out["ok"] = json!(report.failed.is_none());
-    out["path"] = json!(b.path);
+    let mut out = json!({
+        "ok": failed.is_none(),
+        "completed": results.len(),
+        "results": results,
+        "path": b.path,
+    });
+    if let Some((step, command, error)) = failed {
+        out["failed"] = json!({"step": step, "command": command, "error": error});
+    }
     Ok(out)
 }
 
@@ -937,11 +1196,25 @@ pub fn cmd_storyboard_overlay(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn render_png(b: &mut Board, page: usize, scale: f64) -> Result<Vec<u8>> {
-    let st = b.dc.doc().map_err(fail)?;
-    let mut r = designcraft_render::Renderer::new();
-    let opts = designcraft_render::RenderOptions { printing_only: true, ..Default::default() };
-    let img = r.render_page(&st.doc, &b.dc.cache, page, scale, true, &opts).ok_or_else(|| bad("no such page"))?;
-    Ok(img.to_png())
+    let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
+    let tmp = ScopedTempDir::new("magic-sb-page")?;
+    let out_path = tmp.path().join("page.png");
+    let out = std::process::Command::new(&cli)
+        .arg("run")
+        .arg("--in")
+        .arg(&b.work_path)
+        .arg("--page")
+        .arg(page.to_string())
+        .arg("--scale")
+        .arg(scale.to_string())
+        .arg("--export")
+        .arg(&out_path)
+        .output()
+        .map_err(fail)?;
+    if !out.status.success() {
+        return Err(fail(String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    std::fs::read(&out_path).map_err(fail)
 }
 
 /// `storyboard.thumbnail`: render one page (`out`) or all scene thumbnails (`out_dir`) as PNG.

@@ -101,6 +101,15 @@ pub(crate) fn open_editor(app: &str, document: &Path) -> Result<()> {
 fn craft_doc_info(path: &Path) -> Option<Value> {
     let bytes = std::fs::read(path).ok()?;
     let info = craft_doc::info(&bytes, &craft_doc::Limits::default()).ok()?;
+    if !info.supported {
+        return Some(serde_json::json!({
+            "kind": info.kind.extension(),
+            "version": info.version,
+            "generator": info.generator,
+            "supported": false,
+            "error": "document version is newer than supported craft-doc schema",
+        }));
+    }
     Some(serde_json::json!({
         "kind": info.kind.extension(),
         "version": info.version,

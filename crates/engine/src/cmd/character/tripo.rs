@@ -472,14 +472,12 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
     let tc_report = model_path
         .as_deref()
         .map(|path| -> Result<Value> {
-            let imported =
-                texturecraft_formats::import_mesh(path).map_err(|e| crate::EngineError::ExternalTool("texturecraft-formats".into(), e.to_string()))?;
-            let mesh = &imported.mesh;
+            let info = crate::CraftHub::execute(crate::CraftTarget::Texture, Some(path), "info", &json!({"path": path}))?;
             Ok(json!({
                 "path": path.display().to_string(),
-                "vertices": mesh.positions.len(),
-                "triangles": mesh.indices.len() / 3,
-                "hasTangents": mesh.tangents.len() == mesh.positions.len(),
+                "vertices": info["vertices"].as_u64().unwrap_or(0),
+                "triangles": info["triangles"].as_u64().unwrap_or(0),
+                "hasTangents": info.get("hasTangents").and_then(Value::as_bool).unwrap_or(true),
             }))
         })
         .transpose()?

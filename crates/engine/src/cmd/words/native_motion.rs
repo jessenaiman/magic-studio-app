@@ -1,15 +1,16 @@
 //! Discover native transform metadata and save source-word-bound curves through Words.
 use super::{invalid, motion_curve, stage};
-use crate::{EngineError, Result, Session};
+use crate::{Result, Session};
 use serde_json::{Value, json};
 
 pub fn properties(_s: &mut Session, _p: &Value) -> Result<Value> {
-    let mut native = effectcraft_host::session();
-    let mut run =
-        |id: &str, params: Value| native.execute_checked(id, params).map_err(|error| EngineError::ExternalTool("effectcraft-engine".into(), error.to_string()));
-    run("comp.new", json!({"name":"Property discovery","width":640,"height":360,"duration":2}))?;
-    run("layer.newText", json!({"name":"Word","text":"Word"}))?;
-    let tree = run("layer.tree", json!({"layer":"Word","depth":2}))?;
+    let steps = [
+        json!({"command":"comp.new","params":{"name":"Property discovery","width":640,"height":360,"duration":2}}),
+        json!({"command":"layer.newText","params":{"name":"Word","text":"Word"}}),
+        json!({"command":"layer.tree","params":{"layer":"Word","depth":2}}),
+    ];
+    let results = crate::cmd::character::effectcraft(std::path::Path::new("."), None, &steps, false)?;
+    let tree = results.into_iter().nth(2).unwrap_or(Value::Null);
     let properties: Vec<Value> = tree["properties"]["children"]
         .as_array()
         .into_iter()

@@ -1,5 +1,5 @@
 //! Validation receipts bind FilmCraft exports to their settings and native sources.
-use super::{EngineError, Film, Path, PathBuf, Result, Value, bad, export_params, json, open_filmcraft};
+use super::{Film, Path, PathBuf, Result, TICKS, Value, bad, export_params, json, probe_media, run_steps};
 
 fn receipt_path(f: &Film) -> PathBuf {
     f.dir.join("exports/.magic-export-receipt.json")
@@ -55,10 +55,6 @@ fn signature(path: &Path, hash: bool) -> Result<Value> {
     Ok(result)
 }
 
-fn native(session: &mut filmcraft_engine::Session, id: &str, params: Value) -> Result<Value> {
-    session.execute(id, params).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))
-}
-
 fn check_live_timeline(project: &Path, report: &Value) -> Result<()> {
     let matches = report["path"]
         .as_str()
@@ -83,10 +79,18 @@ pub(super) fn require_clean_live(project: &Path) -> Result<()> {
 }
 
 pub(super) fn context(f: &Film, out: &Path, options: &Value) -> Result<Value> {
-    let mut session = open_filmcraft(f.require()?)?;
-    let resolved = native(&mut session, "export.resolve", export_params(out, false, options))?;
-    let sequence = native(&mut session, "sequence.inspect", json!({}))?;
-    let media = native(&mut session, "media.status", json!({}))?;
+    let steps = [
+        json!({"id": "export.resolve", "params": export_params(out, false, options)}),
+        json!({"id": "sequence.inspect", "params": {}}),
+        json!({"id": "media.status", "params": {}}),
+    ];
+    let results = run_steps(Some(f.require()?), false, false, &steps)?;
+    if results.len() < 3 {
+        return Err(bad("FilmCraft did not return export context"));
+    }
+    let resolved = results[0].clone();
+    let sequence = results[1].clone();
+    let media = results[2].clone();
     let mut ids = std::collections::BTreeSet::new();
     for kind in ["video", "audio"] {
         for track in sequence[kind].as_array().into_iter().flatten() {
@@ -129,10 +133,12 @@ pub(super) fn context(f: &Film, out: &Path, options: &Value) -> Result<Value> {
 }
 
 fn probe(out: &Path, resolved: &Value) -> Result<Value> {
-    let session = filmcraft_engine::Session::default();
-    let source = session.media.probe_file(&out.to_string_lossy(), &*session.services).map_err(|e| bad(format!("Export probe failed: {e}")))?;
-    let info = source.info();
-    let seconds = info.duration.seconds();
+    let info = probe_media(out).map_err(|e| bad(format!("Export probe failed: {e}")))?;
+    let seconds = info["duration"]
+        .as_f64()
+        .map(|ticks| ticks / TICKS)
+        .or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS))
+        .unwrap_or(0.0);
     let expected = resolved["range"]["seconds"].as_f64().ok_or_else(|| bad("Native export settings omit expected duration"))?;
     if !seconds.is_finite() || seconds <= 0.0 || (seconds - expected).abs() > 0.15 {
         return Err(bad(format!("Export duration {seconds:.3}s differs from native range {expected:.3}s")));
@@ -140,25 +146,22 @@ fn probe(out: &Path, resolved: &Value) -> Result<Value> {
     let format = resolved["settings"]["format"].as_str().unwrap_or("h264");
     let audio_only = matches!(format, "wav" | "flac" | "aac" | "mp3" | "aiff");
     if !audio_only {
-        let video = info.video.as_ref().ok_or_else(|| bad("Export has no video stream"))?;
-        if Some(u64::from(video.width)) != resolved["output"]["width"].as_u64() || Some(u64::from(video.height)) != resolved["output"]["height"].as_u64() {
+        let video = info.get("video").filter(|v| v.is_object()).ok_or_else(|| bad("Export has no video stream"))?;
+        if video["width"].as_u64() != resolved["output"]["width"].as_u64() || video["height"].as_u64() != resolved["output"]["height"].as_u64() {
             return Err(bad("Export dimensions differ from resolved FilmCraft settings"));
         }
     }
-    if (audio_only || resolved["settings"]["includeAudio"] == true) && format != "gif" && info.audio_streams.is_empty() {
+    let audio_streams = info["audio_streams"].as_array();
+    if (audio_only || resolved["settings"]["includeAudio"] == true) && format != "gif" && audio_streams.is_none_or(|a| a.is_empty()) {
         return Err(bad("Export has no expected audio stream"));
     }
-    // Decode a few native samples; container metadata alone does not prove frames
-    // are readable. This is a technical validation, not a visual-quality review.
+    // Decode a few native samples via filmcraft-cli bench-decode when video is present.
     if !audio_only {
-        for time in [0.0, seconds / 2.0, (seconds - 0.1).max(0.0)] {
-            source
-                .video_frame(filmcraft_media::FrameRequest { time: filmcraft_time::Tick::from_seconds_f64(time), scale: 0.125 })
-                .map_err(|e| bad(format!("Export frame at {time:.3}s cannot decode: {e}")))?;
+        let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| bad(e.to_string()))?;
+        let dec = std::process::Command::new(cli).args(["bench-decode", "--frames", "2"]).arg(out).output().map_err(|e| bad(e.to_string()))?;
+        if !dec.status.success() {
+            return Err(bad(format!("Export frame decode failed: {}", String::from_utf8_lossy(&dec.stderr).trim())));
         }
-    }
-    if let Some(audio) = info.audio_streams.first() {
-        source.audio(0, 1024, audio.sample_rate).map_err(|e| bad(format!("Export audio cannot decode: {e}")))?;
     }
     Ok(json!({"valid":true,"duration_seconds":seconds,"expected_duration_seconds":expected,"format":format,"media":info}))
 }
@@ -231,9 +234,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("magic-export-receipt-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = Film { dir: dir.clone(), name: "Fixture".into(), project: dir.join("Fixture.fcproj") };
-        let mut native = filmcraft_engine::Session::default();
-        native.execute("file.openDemoProject", json!({})).unwrap();
-        native.execute("file.saveAs", json!({"path":f.project})).unwrap();
+        run_steps(Some(&f.project), true, true, &[json!({"id": "file.openDemoProject", "params": {}})]).unwrap();
         let options = json!({"format":"wav","range":"custom","startSeconds":0,"endSeconds":0.25});
         let out = dir.join("fixture.wav");
         assert_eq!(saved_status(&f, &out, &options, false)["valid"], false);

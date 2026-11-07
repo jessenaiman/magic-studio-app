@@ -106,32 +106,82 @@ fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
     out
 }
 
-fn open_effectcraft(project: &Path) -> Result<effectcraft_engine::Session> {
-    let mut session = effectcraft_host::session();
-    let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    session.execute_checked("file.open", json!({"path": path})).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
-    Ok(session)
-}
-
-/// Run EffectCraft's native registry in-process; no CLI or temporary command file.
+/// Run EffectCraft commands via live `--control` (when the project is open) or `effectcraft-cli`.
 pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], save: bool) -> Result<Vec<Value>> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
     let base = project.and_then(Path::parent).unwrap_or(dir);
-    let mut session = match project {
-        Some(path) => open_effectcraft(path)?,
-        None => effectcraft_host::session(),
-    };
-    let mut out = Vec::with_capacity(steps.len());
+    let mut resolved = Vec::with_capacity(steps.len());
     for step in steps {
         let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| bad(format!("missing command id in {step}")))?;
         let raw_params = step.get("params").cloned().unwrap_or_else(|| json!({}));
         let params = resolve_effectcraft_params(base, id, &raw_params);
-        let value = session.execute_checked(id, params).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), format!("{id}: {e}")))?;
-        out.push(value);
+        resolved.push((id.to_string(), params));
     }
-    if let Some(path) = project.filter(|_| save) {
-        session.execute_checked("file.saveAs", json!({"path": path})).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+
+    if let Some(path) = project.filter(|p| p.is_file()) {
+        if let Some(first) = resolved.first() {
+            if let Some(first_res) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, false) {
+                let mut out = Vec::with_capacity(resolved.len());
+                out.push(first_res?);
+                for (idx, (id, params)) in resolved.iter().enumerate().skip(1) {
+                    let save_step = save && idx + 1 == resolved.len();
+                    let v = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save_step)
+                        .unwrap_or_else(|| Err(EngineError::ExternalTool("effectcraft".into(), format!("lost live control connection during {id}"))))?;
+                    out.push(v);
+                }
+                if save && resolved.len() == 1 {
+                    let _ = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, "file.save", &json!({}), false);
+                }
+                return Ok(out);
+            }
+        }
     }
-    Ok(out)
+
+    let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    let mut cmd = Command::new(&cli);
+    cmd.arg("--json");
+    match project {
+        Some(path) if path.is_file() => {
+            cmd.arg("--project").arg(path);
+            if save {
+                cmd.arg("--save");
+            }
+        }
+        Some(path) => {
+            cmd.arg("--empty");
+            if save {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                cmd.arg("--save-as").arg(path);
+            }
+        }
+        None => {
+            cmd.arg("--empty");
+        }
+    }
+    cmd.arg("run").arg("--commands").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    let payload: Vec<Value> = resolved.iter().map(|(id, params)| json!({"command": id, "params": params})).collect();
+    let payload_bytes = serde_json::to_vec(&payload).map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(&payload_bytes).map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    }
+    let out = child.wait_with_output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    if !out.status.success() {
+        return Err(EngineError::ExternalTool(
+            "effectcraft-cli".into(),
+            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
+        ));
+    }
+    let parsed: Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), format!("invalid JSON output: {e}")))?;
+    let list = parsed.as_array().or_else(|| parsed["result"].as_array()).ok_or_else(|| {
+        EngineError::ExternalTool("effectcraft-cli".into(), format!("expected array result from run, got {parsed}"))
+    })?;
+    Ok(list.iter().map(|entry| entry.get("result").cloned().unwrap_or_else(|| entry.clone())).collect())
 }
 
 pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_side: u32, output: &Path) -> Result<()> {
@@ -161,29 +211,49 @@ pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_si
 }
 
 pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value> {
-    let mut session = open_effectcraft(project)?;
-    let existing: Vec<u64> = session.project.render_queue.iter().map(|i| i.id).collect();
-    for id in existing {
-        let _ = session.execute("renderQueue.setRender", json!({"id": id, "render": false}));
+    let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    let output_str = params["output"].as_str().ok_or_else(|| bad("output path is required for effectcraft_render"))?;
+    let output_path = Path::new(output_str);
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
-    let added = session.execute_checked("renderQueue.add", params).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
-    let item_id =
-        added["id"].as_u64().ok_or_else(|| EngineError::ExternalTool("effectcraft-engine".into(), format!("renderQueue.add returned no id: {added}")))?;
-    session.start_render(true).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
-    while session.is_rendering() {
-        session.poll_render();
-        std::thread::sleep(std::time::Duration::from_millis(10));
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.arg("--json").arg("--project").arg(project).arg("render");
+    if let Some(comp) = params["comp"].as_str().filter(|s| !s.is_empty()) {
+        cmd.arg("--comp").arg(comp);
+    } else if let Some(comp_id) = params["comp"].as_u64() {
+        cmd.arg("--comp").arg(comp_id.to_string());
     }
-    let item = session
-        .project
-        .render_queue
-        .iter()
-        .find(|i| i.id == item_id)
-        .ok_or_else(|| EngineError::ExternalTool("effectcraft-engine".into(), format!("render queue item {item_id} missing after render")))?;
-    if item.status != effectcraft_engine::project::render_queue::RenderStatus::Done {
-        return Err(EngineError::ExternalTool("effectcraft-engine".into(), format!("render status: {:?}", item.status)));
+    cmd.arg("--out").arg(output_path);
+    if let Some(fmt) = params["format"].as_str() {
+        cmd.arg("--format").arg(fmt);
     }
-    Ok(added)
+    if let Some(start) = params["start"].as_f64() {
+        cmd.arg("--start").arg(start.to_string());
+    }
+    if let Some(end) = params["end"].as_f64() {
+        cmd.arg("--end").arg(end.to_string());
+    }
+    if let Some(fps) = params["frameRate"].as_f64().or_else(|| params["fps"].as_f64()) {
+        cmd.arg("--fps").arg(fps.to_string());
+    }
+    if let Some(res) = params["resolution"].as_str() {
+        cmd.arg("--resolution").arg(res);
+    }
+    if let Some(channels) = params["channels"].as_str() {
+        cmd.arg("--channels").arg(channels);
+    }
+    if let Some(prores) = params["proresProfile"].as_str() {
+        cmd.arg("--prores").arg(prores);
+    }
+    let out = cmd.output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    if !out.status.success() {
+        return Err(EngineError::ExternalTool(
+            "effectcraft-cli".into(),
+            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
+        ));
+    }
+    serde_json::from_slice(&out.stdout).or_else(|_| Ok(json!({"ok": true, "output": output_path})))
 }
 
 pub(crate) fn path_arg(path: &Path) -> String {

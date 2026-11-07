@@ -265,15 +265,21 @@ pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
 const EFFECT_KINDS: &[(&str, &str)] = &[("text", "word by word text reveal")];
 
 fn runtime_effectcraft_tools() -> Value {
-    let mut ec = effectcraft_host::session();
-    let mut get_data = |cmd: &str| ec.execute_checked(cmd, json!({})).ok().map(|v| v.get("data").cloned().unwrap_or(v)).unwrap_or(Value::Null);
+    let steps = [
+        json!({"command":"text.presets","params":{}}),
+        json!({"command":"text.animatorProperties","params":{}}),
+        json!({"command":"paint.presets","params":{}}),
+        json!({"command":"effect.list","params":{}}),
+    ];
+    let results = crate::cmd::character::effectcraft(std::path::Path::new("."), None, &steps, false).unwrap_or_default();
+    let get_data = |idx: usize| results.get(idx).cloned().map(|v| v.get("data").cloned().unwrap_or(v)).unwrap_or(Value::Null);
     let as_list = |v: Value, key: &str| {
         if v.is_array() { v } else { v.get(key).cloned().unwrap_or_else(|| json!([])) }
     };
-    let text_presets = as_list(get_data("text.presets"), "presets");
-    let animator_properties = as_list(get_data("text.animatorProperties"), "properties");
-    let paint_presets = as_list(get_data("paint.presets"), "presets");
-    let effects: Vec<Value> = get_data("effect.list")
+    let text_presets = as_list(get_data(0), "presets");
+    let animator_properties = as_list(get_data(1), "properties");
+    let paint_presets = as_list(get_data(2), "presets");
+    let effects: Vec<Value> = get_data(3)
         .as_array()
         .into_iter()
         .flatten()

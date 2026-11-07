@@ -13,6 +13,7 @@ name = "magic"
 workspace = true
 
 [dependencies]
+flate2 = { workspace = true }
 glam = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
