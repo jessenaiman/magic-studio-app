@@ -27,7 +27,7 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
         }
     }
     let current_root = |root: &Path| {
-        root.join("Cargo.toml").is_file() && root.join("apps/magic-gui/Cargo.toml").is_file()
+        root.join("Cargo.toml").is_file() && root.join("apps/magic/Cargo.toml").is_file()
     };
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()

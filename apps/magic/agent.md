@@ -35,10 +35,10 @@ a suggested command from one actually run. Drafting a brief does not execute it.
 
 ## One application, one live session
 
-Application: `apps/magic-gui` in the current Magic Studio checkout.
+Application: `apps/magic` in the current Magic Studio checkout.
 The native Rust UI rewrite is active. Preserve the retired web UI deletion;
 do not restore frontend dependencies or run the withdrawn checks.
-Read [the command contract](../../apps/magic-gui/MAGIC.md). The UI, Rust engine and CLI adapters
+Read [the command contract](MAGIC.md). The UI, Rust engine and CLI adapters
 share the Rust command registry and the window's engine session. New/Open and project
 workflow controls enter the guarded native dispatch directly; do not add a CLI subprocess loop.
 

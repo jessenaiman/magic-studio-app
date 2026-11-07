@@ -44,6 +44,10 @@ pub(crate) fn doctor() -> Result<()> {
 
     // 3. Run cargo check and capture per-package breakage.
     let check = run_cargo_check(cargo)?;
+    if !check.status {
+        print!("{}", check.stdout);
+        eprint!("{}", check.stderr);
+    }
     let broken_packages = parse_broken_packages(&check);
 
     // 4. Scan source for stale references (deleted files, MCP hacks, old paths).
@@ -218,19 +222,10 @@ fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
     while let Some(pos) = line[start..].find(pattern) {
         let abs = start + pos;
         let end = abs + pattern.len();
-        // Word boundary before: not alphanumeric/underscore, or start of line.
-        let before_ok = abs == 0
-            || !line[abs - 1..abs]
-                .chars()
-                .next()
-                .is_none_or(|c| c.is_alphanumeric() || c == '_');
-        // Word boundary after: not alphanumeric/underscore, or end of line.
-        let after_ok = end >= line.len()
-            || !line[end..end + 1]
-                .chars()
-                .next()
-                .is_none_or(|c| c.is_alphanumeric() || c == '_');
-        if before_ok && after_ok {
+        let word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let before = line[..abs].chars().next_back();
+        let after = line[end..].chars().next();
+        if !before.is_some_and(word_char) && !after.is_some_and(word_char) {
             return true;
         }
         start = end;
@@ -241,7 +236,7 @@ fn line_contains_mcp_call(line: &str, pattern: &str) -> bool {
 /// Parse cargo metadata JSON and return (package_name, dependency_names) pairs.
 fn cargo_metadata(cargo: &str) -> Result<serde_json::Value> {
     let out = Command::new(cargo)
-        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .args(["metadata", "--locked", "--format-version", "1", "--no-deps"])
         .output()
         .map_err(|e| format!("cargo metadata: {e}"))?;
     if !out.status.success() {
@@ -339,7 +334,7 @@ struct CheckResult {
 
 fn run_cargo_check(cargo: &str) -> Result<CheckResult> {
     let out = Command::new(cargo)
-        .args(["check", "--workspace", "--all-targets"])
+        .args(["check", "--locked", "--workspace", "--all-targets"])
         .output()
         .map_err(|e| format!("cargo check: {e}"))?;
     Ok(CheckResult {

@@ -19,6 +19,7 @@ fn run(cmd: &mut Command) -> Result<()> {
 fn tests() -> Result<()> {
     let cargo = env!("CARGO");
     let targets = [
+        "--locked",
         "--workspace",
         "--lib",
         "--bins",
@@ -35,7 +36,7 @@ fn tests() -> Result<()> {
         println!("cargo-nextest not found, running cargo test");
         run(Command::new(cargo).arg("test").args(targets))?;
     }
-    run(Command::new(cargo).args(["test", "--workspace", "--doc"]))
+    run(Command::new(cargo).args(["test", "--locked", "--workspace", "--doc"]))
 }
 
 pub(crate) fn ci() -> Result<()> {
@@ -44,6 +45,7 @@ pub(crate) fn ci() -> Result<()> {
     run(Command::new(cargo).args(["fmt", "--check"]))?;
     run(Command::new(cargo).args([
         "clippy",
+        "--locked",
         "--workspace",
         "--all-targets",
         "--",

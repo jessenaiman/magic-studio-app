@@ -120,16 +120,20 @@ where applicable. Verify Magic Studio production provenance before adding it. --
 The current source-installation path is for **Linux**; other platforms remain
 unverified. Before building, install:
 
-- Git and Rust/Cargo **1.95 or newer**.
-- A native compiler and the platform libraries required by the Rust workspace.
+- Git and rustup. The checkout uses the Rust **1.95.0** toolchain pinned in
+  [rust-toolchain.toml](rust-toolchain.toml).
+- Node.js 26 and npm for the default Lyrics webview.
+- A native compiler, WebKitGTK 4.1 development headers, and the platform
+  libraries listed in [the Linux CI workflow](.github/workflows/ci.yml).
 
-A fresh build downloads missing Rust dependencies. The native Rust UI rewrite
-is underway in `apps/magic-gui/`; preserve the retired frontend's deletion.
+A fresh build downloads missing Rust dependencies. The native Rust desktop
+application lives in `apps/magic/`.
 
 ### Build and install the app and CLI
 
 ```sh
 # Existing checkout: build, run, and rerun checks without installing
+npm ci --prefix apps/magic-cli
 cargo build -p magic-gui -p magic-cli --locked
 cargo run -p magic-gui
 cargo xtask ci
@@ -139,8 +143,9 @@ cargo xtask assets
 Asset rights metadata is pending; SonarCloud, WASM and translations are not configured.
 
 ```sh
-git clone https://github.com/jessenaiman/magic-app.git
+git clone https://github.com/jessenaiman/magic-studio-app.git magic-app
 cd magic-app
+npm ci --prefix apps/magic-cli
 cargo build -p magic-gui -p magic-cli --release --locked
 cargo xtask install --profile release
 ```
@@ -166,7 +171,7 @@ An installed app opens without a provider key. Supported Craft document operatio
 use linked Rust libraries. Opening a separate native editor requires its installed
 application. HyperFrames and FFmpeg remain external runtimes. See the
 [production guide](magic.md).
-The [setup guide](apps/magic-gui/README.md) covers installer
+The [setup guide](apps/magic/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 

@@ -19,25 +19,37 @@ jobs:
   ci:
     name: Quality Gates
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+        run: cargo --version
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: apps/magic-cli/package-lock.json
 
       - name: Install system dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libx11-dev \
             libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libfontconfig1-dev \
-            libfreetype-dev mesa-vulkan-drivers libasound2-dev
+            libfreetype-dev mesa-vulkan-drivers libasound2-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev
+
+      - name: Install Lyrics webview dependencies
+        run: npm ci --prefix apps/magic-cli
 
       - name: Native quality gates
         run: cargo xtask ci
+
+      - name: Build the default GUI and CLI
+        run: cargo build --locked -p magic-gui -p magic-cli

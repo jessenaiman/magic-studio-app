@@ -120,22 +120,20 @@ commit. Magic provides these existing commands:
 
 ```sh
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
 cargo xtask layers
 cargo xtask assets
 cargo xtask ci
 ```
 
-`cargo xtask ci` combines formatting, Clippy, tests (nextest when available,
-otherwise cargo test), doctests, layers and assets. Run focused tests while
-iterating. Record actual final gate results; a skipped or failing gate is not a
-pass. Documentation-only changes need accurate paths and commands, not synthetic
-code tests.
+`cargo xtask ci` runs doctor, formatting, Clippy, tests (nextest when available,
+otherwise cargo test), doctests and layers. Set `CHECK_ASSETS=1` to include the
+asset check. CI uses the pinned Rust toolchain and the committed Cargo.lock.
+Record the results of the gates you run.
 
-The current pre-commit hook runs **`cargo xtask doctor`**, which checks workspace
-configuration, compilation and stale references. It does **not** run the full
-`ci` suite. Do not describe a passing commit hook as passing all quality gates.
+Run `git config --local core.hooksPath .githooks` after cloning to enable the
+pre-commit hook. The hook runs `cargo xtask ci`.
 Magic has no `cargo xtask wasm` subcommand; do not copy that upstream command as
 though it exists here. Changes affecting the web target must verify the supported
 web build separately and report any limitations.

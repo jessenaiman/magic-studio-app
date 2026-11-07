@@ -22,10 +22,11 @@ impl Session {
         let step = self
             .history
             .undo
-            .pop()
+            .last()
             .ok_or_else(|| EngineError::InvalidParams("Nothing to undo".into()))?;
-        let inverse = self.swap_in(&step)?;
+        let inverse = swap_in(&mut self.docs, step)?;
         let label = step.label.clone();
+        self.history.undo.pop();
         self.history.redo.push(inverse);
         Ok(
             json!({"ok": true, "undone": label, "can_undo": !self.history.undo.is_empty(), "can_redo": true}),
@@ -36,58 +37,62 @@ impl Session {
         let step = self
             .history
             .redo
-            .pop()
+            .last()
             .ok_or_else(|| EngineError::InvalidParams("Nothing to redo".into()))?;
-        let inverse = self.swap_in(&step)?;
+        let inverse = swap_in(&mut self.docs, step)?;
         let label = step.label.clone();
+        self.history.redo.pop();
         self.history.undo.push(inverse);
         Ok(
             json!({"ok": true, "redone": label, "can_undo": true, "can_redo": !self.history.redo.is_empty()}),
         )
     }
+}
 
-    /// Put the step's documents in place and write them; returns the step that reverses it.
-    fn swap_in(&mut self, step: &Step) -> Result<Step> {
-        let mut inverse = Step {
-            label: step.label.clone(),
-            docs: Vec::new(),
-        };
-        for saved in &step.docs {
-            let current = self
-                .docs
-                .iter()
-                .position(|d| d.kind == saved.kind && d.path == saved.path);
-            let live = current.map(|i| self.docs[i].clone());
-            inverse.docs.push(
-                live.clone()
-                    .unwrap_or_else(|| DocState::new(saved.kind, &saved.path, Value::Null)),
-            );
-            let mut restored = saved.clone();
-            // The file on disk is the one the live copy last wrote; saving checks against that.
-            restored.stamp = live.as_ref().and_then(|d| d.stamp);
-            restored.revision = live.as_ref().map_or(0, |d| d.revision) + 1;
-            restored.dirty = true;
-            if restored.value.is_null() {
-                // The document did not exist before: remove its file.
-                if restored.changed_on_disk() {
-                    return Err(EngineError::InvalidParams(format!(
-                        "{} changed outside this session",
-                        restored.path.display()
-                    )));
-                }
-                let _ = std::fs::remove_file(&restored.path);
-                self.docs
-                    .retain(|d| !(d.kind == saved.kind && d.path == saved.path));
-                continue;
+/// Put the step's documents in place and write them; returns the step that reverses it.
+fn swap_in(docs: &mut Vec<DocState>, step: &Step) -> Result<Step> {
+    let mut inverse = Step {
+        label: step.label.clone(),
+        docs: Vec::new(),
+    };
+    for saved in &step.docs {
+        let live = docs
+            .iter()
+            .find(|d| d.kind == saved.kind && d.path == saved.path);
+        crate::link_watch::save_guard(&saved.path, live.and_then(|d| d.stamp))?;
+    }
+    for saved in &step.docs {
+        let current = docs
+            .iter()
+            .position(|d| d.kind == saved.kind && d.path == saved.path);
+        let live = current.map(|i| &docs[i]);
+        inverse.docs.push(
+            live.cloned()
+                .unwrap_or_else(|| DocState::new(saved.kind, &saved.path, Value::Null)),
+        );
+        let mut restored = saved.clone();
+        // The file on disk is the one the live copy last wrote; saving checks against that.
+        restored.stamp = live.and_then(|d| d.stamp);
+        restored.revision = live.map_or(0, |d| d.revision) + 1;
+        restored.dirty = true;
+        if restored.value.is_null() {
+            // The document did not exist before. Only forget it after the file is gone.
+            crate::link_watch::save_guard(&restored.path, restored.stamp)?;
+            if restored.stamp.is_some() {
+                std::fs::remove_file(&restored.path)?;
             }
+            if let Some(i) = current {
+                docs.remove(i);
+            }
+        } else {
             restored.save()?;
             match current {
-                Some(i) => self.docs[i] = restored,
-                None => self.docs.push(restored),
+                Some(i) => docs[i] = restored,
+                None => docs.push(restored),
             }
         }
-        Ok(inverse)
     }
+    Ok(inverse)
 }
 
 pub fn cmd_edit_undo(s: &mut Session, _: &Value) -> Result<Value> {
