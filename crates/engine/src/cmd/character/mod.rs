@@ -188,18 +188,16 @@ pub(crate) fn effectcraft_frame(
     max_side: u32,
     output: &Path,
 ) -> Result<()> {
-    let session = open_effectcraft(project)?;
-    let comp = session
-        .resolve_comp(Some(&json!(comp)))
-        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
-    let time = effectcraft_engine::time::Tick::from_seconds_f64(seconds.max(0.0));
-    let (w, h, rgba) = session
-        .render_rgba8_alpha(comp, time, max_side, true)
-        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
-    if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent)?;
+    // Via installed effectcraft-cli render-frame (system app pattern)
+    let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    if let Some(parent) = output.parent() { std::fs::create_dir_all(parent)?; }
+    let out = std::process::Command::new(&cli)
+        .arg("render-frame").arg("--comp").arg(comp).arg("--time").arg(seconds.max(0.0).to_string())
+        .arg("--max-side").arg(max_side.to_string()).arg("--out").arg(output)
+        .output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    if !out.status.success() {
+        return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
     }
-    image::save_buffer(output, &rgba, w, h, image::ColorType::Rgba8)?;
     Ok(())
 }
 

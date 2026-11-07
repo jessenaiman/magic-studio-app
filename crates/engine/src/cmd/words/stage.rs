@@ -404,26 +404,16 @@ fn runtime_effectcraft_tools() -> Value {
 }
 
 fn runtime_filmcraft_tools() -> Value {
-    let mut fc = filmcraft_engine::Session::default();
-    let effects: Vec<Value> = fc
-        .execute("effects.list", json!({}))
-        .ok()
-        .and_then(|v| v.as_array().cloned())
-        .into_iter()
-        .flatten()
-        .map(|fx| {
-            json!({
-                "id": fx["id"],
-                "name": fx["name"],
-                "category": fx.get("folder").or_else(|| fx.get("category")).unwrap_or(&Value::Null),
-                "kind": fx["kind"]
-            })
-        })
-        .collect();
-    let presets = fc
-        .execute("presets.list", json!({}))
-        .ok()
-        .unwrap_or(Value::Null);
+    let cli = crate::workspace::find_executable("filmcraft-cli").ok();
+    let run = |id: &str| -> Value {
+        cli.as_ref().and_then(|c| {
+            let out = std::process::Command::new(c).arg("exec").arg(id).arg("{}").output().ok()?;
+            if out.status.success() { serde_json::from_slice(&out.stdout).ok() } else { None }
+        }).unwrap_or(Value::Null)
+    };
+    let effects: Vec<Value> = run("effects.list").as_array().cloned().into_iter().flatten()
+        .map(|fx| json!({"id": fx["id"], "name": fx["name"], "category": fx.get("folder").or_else(|| fx.get("category")).unwrap_or(&Value::Null), "kind": fx["kind"]})).collect();
+    let presets = run("presets.list");
     json!({
         "effects": effects,
         "presets": if presets.is_array() { presets } else { json!([]) }
