@@ -27,7 +27,6 @@ filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = 
 filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-ui-egui = { git = "https://github.com/storytold/filmcraft" }
-photocraft-engine = { git = "https://github.com/storytold/photocraft" }
 texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
 
 # Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking)
