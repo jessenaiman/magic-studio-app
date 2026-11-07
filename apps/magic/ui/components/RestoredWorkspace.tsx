@@ -4,7 +4,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
-import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { clear, readImage, readText, writeHtml, writeImage, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { executeCommand } from "../api";
 import { takeAuthoringTime } from "../authoring-navigation";
 
@@ -15,7 +15,7 @@ interface Host {
   navigate: (view: string) => Promise<unknown>;
   invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
   fileUrl: typeof convertFileSrc; openDialog: typeof open; saveDialog: typeof save; openPath: typeof openPath; openUrl: typeof openUrl; listen: typeof listen;
-  clipboard: { readText: typeof readText; writeText: typeof writeText };
+  clipboard: { readText: typeof readText; writeText: typeof writeText; readImage: typeof readImage; writeImage: typeof writeImage; writeHtml: typeof writeHtml; clear: typeof clear };
   report: (message: string) => void;
 }
 declare global { interface Window { __MAGIC_WORKSPACE_HOSTS__?: Map<string, Host> } }
@@ -59,7 +59,7 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
         return invoke(command, args);
       },
       fileUrl: convertFileSrc, openDialog: open, saveDialog: save, openPath, openUrl, listen,
-      clipboard: { readText, writeText },
+      clipboard: { readText, writeText, readImage, writeImage, writeHtml, clear },
       report: message => { if (active) { setError(message); onToast(message); } },
     });
     setReady(true);

@@ -9,6 +9,26 @@ function nativeWordControls(anim) {
   if (!item) return panel;
   const words = wordsLineWords(anim, lineId), label = item.word_ids.map(id => words.find(word => word.word_id === id)?.text).filter(Boolean).join(" ");
   panel.append(el("strong", {}, `Word motion · ${label}`));
+  panel.append(el("div", { class: "words-selection-actions" },
+    el("button", { id: "words-copy-style", class: "ghost", onclick: async () => {
+      try {
+        const current = wordsDesign(anim, lineId).items?.[index];
+        if (!current) throw new Error("Select a word group first");
+        await window.__TAURI__.clipboardManager.writeText(styleClipboardText(current));
+        toast("Word style copied");
+      } catch (error) { toast(`Clipboard: ${error}`); }
+    } }, "Copy style"),
+    el("button", { id: "words-paste-style", class: "ghost", onclick: async () => {
+      try {
+        const style = parseStyleClipboard(await window.__TAURI__.clipboardManager.readText());
+        if (state.project !== project || wordsPanel.selected !== anim.animation_id || wordsPanel.line !== lineId) throw new Error("Selection changed; style was not pasted");
+        wordsDesignEdit(anim, lineId, next => {
+          const targetIdx = wordsStageController.resolveActiveItemIndex(next, wordsPanel.picked);
+          next.items = applyStyleClipboard(next, targetIdx, style).items;
+        });
+        toast("Word style pasted · Save to persist");
+      } catch (error) { toast(`Clipboard: ${error}`); }
+    } }, "Paste style")));
   const status = el("p", { id: "native-word-motion-status", class: "muted", role: "status" }, "Reading native controls…");
   panel.append(status);
   nativeWordProperties ||= wordsCommand("words.motion.properties");
