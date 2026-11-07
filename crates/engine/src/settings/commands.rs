@@ -9,11 +9,11 @@ fn schema(s: &mut Session, p: &Value) -> Result<Value> {
     let want = p.get("category").and_then(Value::as_str);
     Ok(super::schema_json(s, want))
 }
-fn get(s: &mut Session, p: &Value) -> Result<Value> {
+fn get(_s: &mut Session, p: &Value) -> Result<Value> {
     let key = p.get("key").and_then(Value::as_str).ok_or_else(|| crate::EngineError::InvalidParams("need `key`".into()))?;
     Ok(json!({"key":key,"value":super::prefs::get(key)}))
 }
-fn set(s: &mut Session, p: &Value) -> Result<Value> {
+fn set(_s: &mut Session, p: &Value) -> Result<Value> {
     let key = p.get("key").and_then(Value::as_str).ok_or_else(|| crate::EngineError::InvalidParams("need `key`".into()))?;
     let value = p.get("value").cloned().ok_or_else(|| crate::EngineError::InvalidParams("need `value`".into()))?;
     // Validate against schema

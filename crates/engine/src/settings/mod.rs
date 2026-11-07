@@ -7,7 +7,7 @@ pub mod commands;
 
 pub use schema::{CATEGORIES, Kind, fields_with_cat};
 
-pub fn schema_json(session: &crate::Session, category: Option<&str>) -> serde_json::Value {
+pub fn schema_json(_session: &crate::Session, category: Option<&str>) -> serde_json::Value {
     use serde_json::json;
     let stored = crate::cmd::project::settings::stored_settings();
     let flat = |k: &str| stored.get(k).cloned().unwrap_or(serde_json::Value::Null);
