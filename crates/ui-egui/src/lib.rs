@@ -149,9 +149,15 @@ pub enum DialogAction {
     AddProjectAsset,
     AssistantReferenceImage,
     OpenEffectcraftComposition,
+    SaveEffectcraftCompositionAs,
     ImportStudioAnimation,
     WebProjectPicker,
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use filmcraft_ui_egui::AudioOut as StudioAudioOut;
+#[cfg(not(target_arch = "wasm32"))]
+type OpenStudioAudio = fn() -> Result<Box<dyn StudioAudioOut>, String>;
 
 pub struct MagicApp {
     pub session: Session,
@@ -206,6 +212,8 @@ pub struct MagicApp {
     pub studio_frame_path: Option<PathBuf>,
     #[cfg(not(target_arch = "wasm32"))]
     studio_film: Option<studio_filmcraft::StudioFilmcraft>,
+    #[cfg(not(target_arch = "wasm32"))]
+    studio_audio: Option<OpenStudioAudio>,
     #[cfg(not(target_arch = "wasm32"))]
     studio_open_error: Option<(PathBuf, String)>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -304,6 +312,8 @@ impl MagicApp {
             studio_frame_path: None,
             #[cfg(not(target_arch = "wasm32"))]
             studio_film: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            studio_audio: None,
             #[cfg(not(target_arch = "wasm32"))]
             studio_open_error: None,
             #[cfg(not(target_arch = "wasm32"))]
@@ -787,6 +797,17 @@ impl MagicApp {
                                 let result = self.open_effectcraft_composition(&path);
                                 self.set_status_result(result);
                             }
+                            DialogAction::SaveEffectcraftCompositionAs => {
+                                let result = self
+                                    .effectcraft_animation
+                                    .as_mut()
+                                    .ok_or_else(|| {
+                                        "Open an EffectCraft composition first.".to_owned()
+                                    })
+                                    .and_then(|composition| composition.save_as(&path))
+                                    .map(|()| format!("Saved animation to {}", path.display()));
+                                self.set_status_result(result);
+                            }
                             DialogAction::ImportStudioAnimation => {
                                 let result = self.import_studio_animation(&path);
                                 self.set_status_result(result);
@@ -1001,9 +1022,40 @@ impl MagicApp {
                 self.studio_toolbar_command(ctx, &params)
             }
             #[cfg(not(target_arch = "wasm32"))]
+            "words.letter"
+                if params["studio"] == true
+                    && self
+                        .studio_film
+                        .as_ref()
+                        .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) =>
+            {
+                Err("Save the open FilmCraft project before updating its lyrics.".into())
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "words.publish"
+                if self
+                    .studio_film
+                    .as_ref()
+                    .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) =>
+            {
+                Err("Save the open FilmCraft project before updating its lyrics.".into())
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "video.exec"
+                if params["save"] != false
+                    && self
+                        .studio_film
+                        .as_ref()
+                        .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) =>
+            {
+                Err("Save the open FilmCraft project before editing it through the CLI.".into())
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             "ui.animation.controls" if self.view == ViewMode::Animation => {
                 self.animation_workspace_command(ctx, &params)
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.animation.controls" => Err("Open Animation to edit its composition.".into()),
             #[cfg(not(target_arch = "wasm32"))]
             "ui.storyboard.workspace" if self.view == ViewMode::Storyboard => {
                 self.storyboard_workspace_command(&params)
@@ -1060,6 +1112,10 @@ impl MagicApp {
                             "ui.playback",
                             json!({"action":"toggle"}),
                         )?;
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    "studio-preview" if self.view == ViewMode::Studio => {
+                        self.studio_program_preview("toggle", None)?;
                     }
                     id if self.view == ViewMode::Animation
                         && id.starts_with("animation-asset-") =>
@@ -2110,6 +2166,32 @@ impl MagicApp {
                         Err(error) => format!("Save EffectCraft project: {error}"),
                     };
                 }
+                if secondary_button(ui, "Save Animation As…").clicked() {
+                    self.dialogs.ask(
+                        craft_dialogs::FileDialog::save()
+                            .title("Save EffectCraft Project As")
+                            .filter("EffectCraft Project", &["ecproj"]),
+                        DialogAction::SaveEffectcraftCompositionAs,
+                    );
+                }
+                if let Some(mut seconds) = composition.duration() {
+                    let duration = ui.add(
+                        egui::DragValue::new(&mut seconds)
+                            .speed(0.05)
+                            .range(1.0 / 120.0..=86_400.0)
+                            .fixed_decimals(2)
+                            .prefix("Duration ")
+                            .suffix(" s")
+                            .update_while_editing(false),
+                    );
+                    self.auto
+                        .add_response("animation-duration", &duration, "Composition duration");
+                    if duration.changed()
+                        && let Err(error) = composition.set_duration(seconds)
+                    {
+                        self.status_line = error;
+                    }
+                }
                 ui.label(composition.name());
                 let send = secondary_button(ui, "Render to Studio");
                 self.auto
@@ -2630,6 +2712,12 @@ impl eframe::App for MagicApp {
         self.poll_worker();
         self.poll_control(ctx);
 
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.view != ViewMode::Studio
+            && let Some(document) = self.studio_film.as_mut()
+        {
+            document.stop();
+        }
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(composition) = self.effectcraft_animation.as_mut() {
             if self.view != ViewMode::Animation && composition.is_playing() {

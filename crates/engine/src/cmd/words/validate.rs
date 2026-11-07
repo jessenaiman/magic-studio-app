@@ -321,7 +321,7 @@ fn validate_line_item<'a>(
     } else {
         short_colour(&item["outline"])?
     };
-    Ok(json!({
+    let mut normalized = json!({
         "word_ids": ids,
         "text": text,
         "x": bounded_num(&item["x"], "x", -2000.0, 6000.0)?,
@@ -335,7 +335,42 @@ fn validate_line_item<'a>(
         "rotate": bounded_num(&item["rotate"], "rotate", -45.0, 45.0)?,
         "motion": one_of(&item["motion"], MOVES, "motion")?,
         "accent": accent
-    }))
+    });
+    if let Some(raw) = item.get("motion_keys").filter(|keys| !keys.is_null()) {
+        if ids.len() != 1 {
+            return Err(invalid("motion_keys animate exactly one word"));
+        }
+        let keys = raw
+            .as_array()
+            .filter(|keys| (2..=24).contains(&keys.len()))
+            .ok_or_else(|| invalid("motion_keys needs 2–24 keyframes"))?;
+        let mut last = -1.0;
+        for key in keys {
+            let row = key.as_array().filter(|row| row.len() == 7).ok_or_else(|| {
+                invalid("a motion key is [seconds, dx, dy, scale_x, scale_y, rotation, opacity]")
+            })?;
+            for (value, (low, high)) in row.iter().zip([
+                (0., 8.),
+                (-1920., 1920.),
+                (-1080., 1080.),
+                (1., 400.),
+                (1., 400.),
+                (-720., 720.),
+                (0., 100.),
+            ]) {
+                bounded_num(value, "motion key", low, high)?;
+            }
+            let time = row[0]
+                .as_f64()
+                .ok_or_else(|| invalid("a motion key needs a time"))?;
+            if (last < 0.0 && time != 0.0) || time <= last {
+                return Err(invalid("motion keys must start at zero and increase"));
+            }
+            last = time;
+        }
+        normalized["motion_keys"] = raw.clone();
+    }
+    Ok(normalized)
 }
 
 fn validate_line_stroke_path(path: &Value) -> Result<Value> {

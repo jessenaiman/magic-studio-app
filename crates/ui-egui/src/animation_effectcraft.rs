@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::SystemTime;
 
 use effectcraft_ui_egui::{EffectcraftApp, dock::PanelKind, gpu_failure::GpuFailureBridge, panels};
 use egui::{Context, Ui};
@@ -9,6 +10,11 @@ use crate::MagicApp;
 pub(crate) struct AnimationEffectcraft {
     app: EffectcraftApp,
     preview_configured: bool,
+    modified: Option<SystemTime>,
+}
+
+fn modified(path: &Path) -> Option<SystemTime> {
+    path.metadata().and_then(|meta| meta.modified()).ok()
 }
 
 impl AnimationEffectcraft {
@@ -21,6 +27,7 @@ impl AnimationEffectcraft {
         Ok(Self {
             app: EffectcraftApp::new(session),
             preview_configured: false,
+            modified: modified(&path),
         })
     }
 
@@ -30,6 +37,30 @@ impl AnimationEffectcraft {
 
     pub fn name(&self) -> String {
         panels::unsaved::project_name(&self.app)
+    }
+
+    pub fn duration(&self) -> Option<f64> {
+        self.app
+            .session
+            .active_comp()
+            .map(|comp| comp.duration.seconds())
+    }
+
+    pub fn set_duration(&mut self, seconds: f64) -> Result<f64, String> {
+        if !seconds.is_finite() || seconds <= 0.0 || seconds > 86_400.0 {
+            return Err("Enter a duration between one frame and 24 hours.".into());
+        }
+        self.stop_preview();
+        self.edit("comp.settings", json!({"duration": seconds}))?;
+        self.duration()
+            .ok_or_else(|| "Open an EffectCraft composition first.".into())
+    }
+
+    fn edit(&mut self, command: &str, params: Value) -> Result<Value, String> {
+        self.app
+            .session
+            .execute_checked(command, params)
+            .map_err(|error| error.to_string())
     }
 
     fn path(&self) -> Option<&str> {
@@ -97,11 +128,31 @@ impl AnimationEffectcraft {
     }
 
     pub fn save(&mut self) -> Result<(), String> {
-        self.app
-            .session
-            .execute_checked("file.save", json!({}))
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+        if self.path().and_then(|path| modified(Path::new(path))) != self.modified {
+            return Err(
+                "Animation changed on disk. Save as a new file, or reopen it before editing."
+                    .into(),
+            );
+        }
+        self.edit("file.save", json!({}))?;
+        self.modified = self.path().and_then(|path| modified(Path::new(path)));
+        Ok(())
+    }
+
+    pub fn save_as(&mut self, path: &Path) -> Result<(), String> {
+        if !path.is_absolute()
+            || !path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
+        {
+            return Err("Choose an absolute .ecproj path.".into());
+        }
+        if path.exists() {
+            return Err("Choose a new filename, or use Save to update the open project.".into());
+        }
+        self.edit("file.saveAs", json!({"path": path}))?;
+        self.modified = modified(path);
+        Ok(())
     }
 
     pub fn tick(&mut self, ctx: &Context, frame: &eframe::Frame) {
@@ -159,6 +210,8 @@ impl MagicApp {
             return Ok(json!({
                 "project": project, "character": self.selected_character, "view": self.selected_view,
                 "composition": self.effectcraft_animation.as_ref().and_then(AnimationEffectcraft::path),
+                "duration": self.effectcraft_animation.as_ref().and_then(AnimationEffectcraft::duration),
+                "dirty": self.effectcraft_animation.as_ref().is_some_and(AnimationEffectcraft::is_dirty),
                 "revision": self.animation_revision, "artwork_request": self.animation_artwork_request,
                 "busy": self.busy_command, "error": self.last_error,
             }));
@@ -188,6 +241,53 @@ impl MagicApp {
         }
         if self.busy_command.is_some() {
             return Err("Wait for the current operation to finish.".into());
+        }
+        if action == "open" {
+            let path = params["path"]
+                .as_str()
+                .ok_or("Choose an EffectCraft project.")?;
+            let message = self.open_effectcraft_composition(Path::new(path))?;
+            self.set_status_result(Ok(message));
+            return Ok(json!({"ok": true, "composition": path}));
+        }
+        if matches!(action, "duration" | "edit" | "save" | "save-as") {
+            let composition = self
+                .effectcraft_animation
+                .as_mut()
+                .ok_or("Open an EffectCraft composition first.")?;
+            let result = match action {
+                "duration" => json!(
+                    composition.set_duration(
+                        params["seconds"]
+                            .as_f64()
+                            .ok_or("Enter a duration in seconds.")?
+                    )?
+                ),
+                "edit" => {
+                    let command = params["command"].as_str().filter(|command| {
+                        ["comp.", "layer.", "prop.", "time.", "mask.", "effect."].iter().any(|prefix| command.starts_with(prefix))
+                    }).ok_or("Choose an EffectCraft composition, layer, property, time, mask, or effect command.")?;
+                    composition.stop_preview();
+                    composition.edit(
+                        command,
+                        params.get("params").cloned().unwrap_or_else(|| json!({})),
+                    )?
+                }
+                "save" => {
+                    composition.save()?;
+                    Value::Null
+                }
+                _ => {
+                    let path = params["path"]
+                        .as_str()
+                        .ok_or("Choose a new EffectCraft project path.")?;
+                    composition.save_as(Path::new(path))?;
+                    json!(path)
+                }
+            };
+            return Ok(
+                json!({"ok":true,"result":result,"composition":composition.path(),"dirty":composition.is_dirty()}),
+            );
         }
         match action {
             "select" => {
@@ -312,6 +412,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn duration_control_edits_the_open_animation_session() {
+        let mut app = MagicApp::new(magic::Session::default());
+        app.view = crate::ViewMode::Animation;
+        app.session.project_path = Some("animation-test.magic".into());
+        let mut effect = effectcraft_host::session();
+        effect
+            .execute_checked("comp.new", json!({"duration": 2.0, "frameRate": 30}))
+            .unwrap();
+        app.effectcraft_animation = Some(AnimationEffectcraft {
+            app: EffectcraftApp::new(effect),
+            preview_configured: false,
+            modified: None,
+        });
+        let ctx = Context::default();
+        app.handle_control_request(
+            &ctx,
+            "ui.animation.controls",
+            json!({
+                "action": "duration", "project": "animation-test.magic", "seconds": 3.0
+            }),
+        )
+        .unwrap();
+        let info = app
+            .handle_control_request(&ctx, "ui.animation.controls", json!({"action":"state"}))
+            .unwrap();
+        assert_eq!(info["duration"], 3.0);
+        assert_eq!(info["dirty"], true);
+    }
+
+    #[test]
     fn animation_playback_controls_the_embedded_preview() {
         let mut app = MagicApp::new(magic::Session::default());
         app.view = crate::ViewMode::Animation;
@@ -326,6 +456,7 @@ mod tests {
         app.effectcraft_animation = Some(AnimationEffectcraft {
             app: EffectcraftApp::new(effect),
             preview_configured: false,
+            modified: None,
         });
 
         assert_eq!(playback(&mut app, "play").unwrap()["playing"], true);
@@ -346,6 +477,7 @@ mod tests {
         app.effectcraft_animation = Some(AnimationEffectcraft {
             app: EffectcraftApp::new(effect),
             preview_configured: false,
+            modified: None,
         });
         let ctx = Context::default();
         let error = app
@@ -357,6 +489,7 @@ mod tests {
         app.effectcraft_animation = Some(AnimationEffectcraft {
             app: EffectcraftApp::new(effectcraft_host::session()),
             preview_configured: false,
+            modified: None,
         });
         app.handle_control_request(&ctx, "project.close", json!({}))
             .unwrap();

@@ -828,6 +828,7 @@ class WordsStageController {
         if (!target)
           return;
         target.motion = key;
+        delete target.motion_keys;
         if (key !== "quiet" && !target.accent)
           target.accent = target.word_ids.at(-1);
       })
@@ -842,6 +843,7 @@ class WordsStageController {
             return;
           target.preset = preset.id;
           target.motion = mapped;
+          delete target.motion_keys;
           if (!target.accent)
             target.accent = target.word_ids.at(-1);
         })
@@ -1117,9 +1119,10 @@ class WordsStageController {
       if (!await this.flushPendingEdits(anim))
         return;
       toast("Building EffectCraft project & rendering transparent lettering…");
-      const res = await wordsCommand("words.letter", { render: true });
+      const film = wordsPanel.read?.lyrics_only ? null : await wordsCommand("video.film").catch(() => null);
+      const res = await wordsCommand("words.letter", { render: true, studio: Boolean(film?.timeline?.exists) });
       await wordsOpen();
-      toast(`Lettering rendered: ${res.render || res.project}`);
+      toast(res.studio ? "Updated Kinetic Lyrics in Studio" : `Lettering rendered: ${res.render || res.project}`);
     } catch (error) {
       toast(String(error).replace(/^.*?: /, ""));
     }
@@ -1134,7 +1137,8 @@ class WordsStageController {
       const film = await wordsCommand("video.film");
       let res;
       if (film.timeline?.exists) {
-        toast("Exporting the saved FilmCraft timeline…");
+        toast("Updating Kinetic Lyrics and exporting the FilmCraft timeline…");
+        await wordsCommand("words.letter", { render: true, studio: true });
         res = await wordsCommand("video.export");
       } else {
         toast("Rendering EffectCraft lettering & assembling FilmCraft MP4…");

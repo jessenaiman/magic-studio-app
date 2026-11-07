@@ -447,6 +447,35 @@ fn spatial_line_steps(
         let mut text = text_params(&look);
         text["text"] = json!(text_str);
         text["name"] = json!(layer_id);
+        if let Some(keys) = item["motion_keys"]
+            .as_array()
+            .filter(|keys| !keys.is_empty())
+        {
+            let (start, _) = item_word_time(line, item);
+            text["position"] = json!([x, y]);
+            text["justify"] = json!("left");
+            steps.push(step("layer.newText", text));
+            steps.extend(trim_steps(json!(layer_id), start.max(shown), gone));
+            let rotate = item["rotate"].as_f64().unwrap_or_default();
+            for key in keys {
+                let num = |i: usize| key[i].as_f64().unwrap_or_default();
+                for (property, value) in [
+                    ("position", json!([x + num(1), y + num(2)])),
+                    ("scale", json!([num(3), num(4)])),
+                    ("rotation", json!(rotate + num(5))),
+                    ("opacity", json!(num(6))),
+                ] {
+                    steps.push(step(
+                        "prop.addKey",
+                        json!({"layer": layer_id,
+                        "path": format!("transform/{property}"), "time": start + num(0),
+                        "timeBase": "comp", "value": value}),
+                    ));
+                }
+            }
+            hero_summary = json!({"word": text_str, "motion": "keyframes", "at": start});
+            continue;
+        }
         text["box"] = json!([x, y, bw, bh]);
         text["justify"] = json!("left");
         steps.push(step("layer.newText", text));
@@ -642,10 +671,36 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
         )?;
         Some(movie)
     };
+    let studio = if p["studio"] == true {
+        let movie = render
+            .as_deref()
+            .ok_or_else(|| invalid("Render the lettering before sending it to Studio"))?;
+        Some(crate::cmd::film::publish_lyrics(s, movie)?)
+    } else {
+        None
+    };
     Ok(
         json!({"ok": true, "project": project, "commands": commands, "render": render,
-        "recipe": recipe_path, "duration": duration, "lines": summary}),
+        "recipe": recipe_path, "duration": duration, "lines": summary, "studio": studio}),
     )
+}
+
+/// Publish the already-rendered alpha lettering after a background render.
+pub fn cmd_words_publish(s: &mut Session, p: &Value) -> Result<Value> {
+    let dir = crate::cmd::words::workspace_dir(s)?.canonicalize()?;
+    let path = p["path"]
+        .as_str()
+        .map_or_else(|| dir.join("lettering/lyrics.mov"), |path| dir.join(path));
+    let path = path.canonicalize()?;
+    if !path.starts_with(&dir)
+        || !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("mov"))
+    {
+        return Err(invalid("Choose a rendered .mov inside the Magic project"));
+    }
+    let studio = crate::cmd::film::publish_lyrics(s, &path)?;
+    Ok(json!({"ok":true,"render":path,"studio":studio}))
 }
 
 #[cfg(test)]

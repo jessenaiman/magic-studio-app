@@ -137,6 +137,10 @@ impl MagicApp {
                 .and_then(|composition| {
                     composition.preview(p["action"].as_str().unwrap_or("state"))
                 }),
+            #[cfg(not(target_arch = "wasm32"))]
+            "ui.playback" if self.view == ViewMode::Studio => self.studio_program_preview(
+                p["action"].as_str().unwrap_or("state"), p["seconds"].as_f64(),
+            ),
             "ui.playback" => Err(
                 "ui.playback: the Magic views have no transport; preview runs through the `video.preview` command"
                     .into(),

@@ -628,9 +628,23 @@ class WordsTimelineController {
     ])
       node.style.setProperty(key, value);
   }
+  applyWordKeys(node, item, elapsed) {
+    const keys = item.motion_keys;
+    if (!keys?.length) return;
+    const next = keys.findIndex((key) => key[0] > elapsed);
+    const before = keys[next < 0 ? keys.length - 1 : Math.max(0, next - 1)];
+    const after = keys[next < 0 ? keys.length - 1 : next];
+    const fraction = after === before ? 0 : wordsClamp((elapsed - before[0]) / (after[0] - before[0]));
+    const at = (i) => before[i] + (after[i] - before[i]) * fraction;
+    for (const [key, value] of [
+      ["--y", `${item.y - item.size * 0.82}px`], ["--tx", `${at(1)}px`], ["--ty", `${at(2)}px`],
+      ["--sx", at(3) / 100], ["--sy", at(4) / 100], ["--rot", `${item.rotate + at(5)}deg`],
+      ["--o", elapsed < 0 ? 0 : at(6) / 100]
+    ]) node.style.setProperty(key, String(value));
+  }
   drawLineItem(world, words, span, local, interactive, W, it, i, design) {
     const text = (it.text || it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ")).toUpperCase && (it.size || 0) >= 145 ? it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ").toUpperCase() : it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ");
-    const accentWord = words.find((w) => w.word_id === it.accent);
+    const accentWord = words.find((w) => w.word_id === (it.accent || (it.motion_keys?.length ? it.word_ids[0] : null)));
     const a = (accentWord ? wordsAt(accentWord) : span.start) - span.start;
     const settled = wordsEase.out3(wordsClamp((local - a) / 0.65)), arc = wordsClamp((local - a) / 0.75);
     const pulse = this.itemPulse(local, a), [tx, ty] = this.itemMotionOffset(it.motion, settled, arc);
@@ -643,7 +657,8 @@ class WordsTimelineController {
       "data-font": it.font || "song"
     });
     this.applyItemVars(node, it, local, settled, pulse, tx, ty);
-    node.append(...it.motion === "sleep" ? this.buildSleepSpans(text, local, a) : [el("span", {}, text)]);
+    this.applyWordKeys(node, it, local - a);
+    node.append(...it.motion === "sleep" && !it.motion_keys?.length ? this.buildSleepSpans(text, local, a) : [el("span", {}, text)]);
     if (isSelected)
       node.append(...this.itemHandles(world, W, it, i));
     if (interactive)

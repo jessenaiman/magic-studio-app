@@ -294,6 +294,7 @@ class WordsViewController {
         el("div", { class: "words-effects" }, ...moves.map(([key, name, does]) => wordsCard(it.motion === key, String(name), String(does), () => edit((d) => {
           const x = d.items[wordsPanel.item];
           x.motion = key;
+          delete x.motion_keys;
           if (key !== "quiet" && !x.accent)
             x.accent = x.word_ids.at(-1);
         })))),
@@ -609,7 +610,7 @@ class WordsViewController {
       class: "ghost",
       title: "Build EffectCraft project (lettering/lyrics.ecproj) and render transparent lyrics.mov",
       onclick: () => wordsStageController.renderLettering()
-    }, "Render Lettering"), state.lyricsOnly ? null : el("button", {
+    }, state.lyricsOnly ? "Render Lettering" : "Render Lyrics to Studio"), state.lyricsOnly ? null : el("button", {
       class: "start",
       title: "Export the saved FilmCraft timeline or assemble a new one",
       onclick: () => wordsStageController.exportFilm()
@@ -795,7 +796,7 @@ class WordsViewController {
   }
   useButton(anim) {
     const used = wordsPanel.read.in_video?.includes(anim.animation_id);
-    const label = used ? "Restore original video lyrics" : "Use this lyric design in the video";
+    const label = used ? "Restore lyrics in the web preview" : "Apply this section to the web preview";
     return el("button", {
       class: "icon",
       title: label,

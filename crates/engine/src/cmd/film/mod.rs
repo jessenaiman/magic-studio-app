@@ -93,6 +93,64 @@ pub(crate) fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session
     Ok(session)
 }
 
+/// Refresh the dedicated lettering layer while leaving the picture and audio cuts in place.
+pub(crate) fn publish_lyrics(s: &Session, movie: &Path) -> Result<Value> {
+    const TRACK: &str = "Kinetic Lyrics";
+    let project = film_path(s)?;
+    let mut session = open_filmcraft(&project)?;
+    let mut run = |id: &str, params: Value| {
+        session.execute(id, params).map_err(|error| {
+            EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {error}"))
+        })
+    };
+    let sequence = run("sequence.inspect", json!({}))?;
+    let duration = sequence["durationFrames"]
+        .as_u64()
+        .filter(|frames| *frames > 0)
+        .ok_or_else(|| bad("Open a FilmCraft sequence with picture or audio first"))?;
+    let imported = run("file.import", json!({"paths":[movie]}))?;
+    let item = imported["items"][0]
+        .as_u64()
+        .ok_or_else(|| bad("FilmCraft did not import the lyric render"))?;
+    let old_track = sequence["video"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|track| track["name"] == TRACK);
+    let track = old_track
+        .and_then(|track| track["id"].as_u64())
+        .map_or(json!("new"), |id| json!(id));
+    let placed = run(
+        "timeline.place",
+        json!({"item":item,"track":track,"frame":0,
+        "duration":{"frame":duration},"insert":false,"video":true,"audio":false}),
+    )?;
+    let clip = placed["clips"][0]
+        .as_u64()
+        .ok_or_else(|| bad("FilmCraft did not place the lyric render"))?;
+    run("clip.fitToFrame", json!({"clips":[clip]}))?;
+    let after = run("sequence.inspect", json!({}))?;
+    let track = after["video"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|track| {
+            track["items"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|row| row["clip"] == clip)
+        })
+        .and_then(|track| track["id"].as_u64())
+        .ok_or_else(|| bad("FilmCraft did not return the lyric track"))?;
+    run(
+        "timeline.setTrack",
+        json!({"track":track,"name":TRACK,"enabled":true}),
+    )?;
+    run("file.save", json!({}))?;
+    Ok(json!({"timeline": project, "track":track, "clip":clip}))
+}
+
 pub(crate) fn execute(project: &Path, id: &str, params: Value) -> Result<Value> {
     open_filmcraft(project)?
         .execute(id, params)
@@ -313,7 +371,14 @@ pub fn cmd_video_exec(s: &mut Session, p: &Value) -> Result<Value> {
         .execute(id, params)
         .map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))?;
     if save {
-        let _ = session.execute("file.saveAs", json!({"path": project}));
+        session
+            .execute("file.saveAs", json!({"path": project}))
+            .map_err(|error| {
+                EngineError::ExternalTool(
+                    "filmcraft-engine".into(),
+                    format!("file.saveAs: {error}"),
+                )
+            })?;
     }
     Ok(json!({"ok": true, "timeline": project, "id": id, "result": result}))
 }

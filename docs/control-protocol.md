@@ -60,7 +60,8 @@ Methods (handlers in `crates/ui-egui/src/control.rs`):
 | `ui.drag` | `{from, to, steps, modifiers}` | press–move–release; `steps` is an integer 0–1024 (default 12; 0 or 1 uses 2 steps) |
 | `ui.scroll` | `{id|x,y, dx, dy, modifiers}` | wheel / trackpad |
 | `ui.key` / `ui.type` | `{key}` (`Cmd+K`, `Space`…; off macOS `Ctrl+K` is the same key) / `{text}` | keyboard |
-| `ui.playback` | `{action: play\|stop\|toggle\|state}` | preview the open EffectCraft composition in Animation. Returns `playing` and the current time in seconds. |
+| `ui.playback` | `{action: play\|stop\|toggle\|state, seconds?}` | Preview the open EffectCraft composition in Animation or the linked FilmCraft sequence in Studio. Studio also accepts `seek` and a time in seconds. |
+| `ui.animation.controls` | `{action, project, ...}` | In Animation, use `state`, `open` with `path`, `duration` with `seconds`, `edit` with `command` and `params`, or `save` and `save-as`. Save As accepts an absolute `.ecproj` path. |
 | `ui.screenshot` | `{path?, panel?}` | PNG of the window or one panel; fails after 10 s when no frame is presented (window hidden, display asleep) |
 | `ui.resize`, `app.quit` | `{width,height}` / `{}` | resize or close the native window; `app.quit` quits without the save prompt, while the command `app.quit` asks first |
 | `ui.focus` | `{}` / `{id}` | empty parameters activate the native window; a widget ID requests egui focus without OS activation |

@@ -748,7 +748,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             "Letter and Animate the Lyrics (effects app)",
             ["Design"],
             None,
-            "{\"recipe\":\"optional; default lyrics-design.json in the project\",\"render\":\"true (default) renders lettering/lyrics.mov with transparency\"}",
+            "{\"recipe\":\"optional; default lyrics-design.json in the project\",\"render\":\"true (default) renders lettering/lyrics.mov with transparency\",\"studio\":\"true updates the Kinetic Lyrics track of the linked FilmCraft timeline\"}",
             always,
             crate::cmd::words::lettering::cmd_words_letter
         ),
@@ -760,6 +760,15 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             "{\"animation_id\":\"words-chorus-1\",\"use\":true}",
             always,
             crate::cmd::words::cmd_words_apply
+        ),
+        cmd!(
+            "words.publish",
+            "Update Studio Lyrics from a Render",
+            ["Design"],
+            None,
+            "{\"path\":\"optional project-local alpha MOV; defaults to lettering/lyrics.mov\"}",
+            always,
+            crate::cmd::words::lettering::cmd_words_publish
         ),
         cmd!(
             "edit.undo",
@@ -784,7 +793,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             "Save Words Animation",
             ["Design"],
             None,
-            "{\"animation_id\":\"words-chorus-1\",\"expected_source_revision\":0,\"style\":{\"size\":120},\"words\":[{\"word_id\":\"ch1-l1/w5\",\"action\":\"cry\",\"emphasis\":true}]}",
+            "{\"animation_id\":\"words-chorus-1\",\"expected_source_revision\":0,\"style\":{\"size\":120},\"design\":\"line items; one-word motion_keys rows are [seconds, dx, dy, scale_x, scale_y, rotation, opacity]\"}",
             always,
             crate::cmd::words::cmd_words_save
         ),

@@ -71,6 +71,49 @@ impl StudioFilmcraft {
         self.modified != modified(&self.path)
     }
 
+    pub fn is_playing(&self) -> bool {
+        self.app.playback.playing
+    }
+
+    pub fn stop(&mut self) {
+        if self.app.transport_running() {
+            self.app.stop();
+        }
+    }
+
+    fn preview(&mut self, action: &str, seconds: Option<f64>) -> Result<Value, String> {
+        let duration = self
+            .app
+            .session
+            .active_sequence()
+            .ok_or("Open a FilmCraft sequence first.")?
+            .duration()
+            .seconds();
+        if let Some(time) = seconds {
+            if !time.is_finite() || !(0.0..=duration).contains(&time) {
+                return Err("Seek within the film timeline.".into());
+            }
+            self.stop();
+            self.app
+                .session
+                .execute("playhead.set", json!({"seconds": time}))
+                .map_err(|error| error.to_string())?;
+        }
+        match action {
+            "state" | "seek" => {}
+            "play" if !self.is_playing() => self.app.play(1.0),
+            "play" => {}
+            "stop" => self.stop(),
+            "toggle" => self.app.toggle_play(1.0),
+            _ => return Err("Choose play, stop, toggle, seek, or state.".into()),
+        }
+        Ok(
+            json!({"playing": self.is_playing(), "time": self.app.session.playhead().seconds(),
+            "duration": duration, "timeline": self.path, "audio": self.app.audio.is_some(),
+            "audio_clock": self.app.playback.audio_clock}),
+        )
+    }
+
     pub fn save(&mut self) -> Result<(), String> {
         if self.changed_on_disk() {
             return Err("FilmCraft project changed on disk. Reopen it before saving.".into());
@@ -132,6 +175,24 @@ impl Drop for StudioFilmcraft {
 }
 
 impl MagicApp {
+    pub fn set_studio_audio(&mut self, open: crate::OpenStudioAudio) {
+        self.studio_audio = Some(open);
+    }
+    pub(crate) fn studio_program_preview(
+        &mut self,
+        action: &str,
+        seconds: Option<f64>,
+    ) -> Result<Value, String> {
+        let path = self
+            .studio_film_path()
+            .ok_or("No FilmCraft project path.")?;
+        self.load_studio_film(&path, false)?;
+        self.studio_film
+            .as_mut()
+            .ok_or_else(|| "Open the FilmCraft project first.".to_owned())?
+            .preview(action, seconds)
+    }
+
     fn studio_film_path(&self) -> Option<PathBuf> {
         self.film_state["timeline"]["path"]
             .as_str()
@@ -149,11 +210,18 @@ impl MagicApp {
                 );
             }
         }
-        self.studio_film = Some(if create {
+        let mut document = if create {
             StudioFilmcraft::create(path)?
         } else {
             StudioFilmcraft::open(path)?
-        });
+        };
+        if let Some(open) = self.studio_audio {
+            match open() {
+                Ok(audio) => document.app.audio = Some(audio),
+                Err(error) => log::warn!("Studio audio output unavailable: {error}"),
+            }
+        }
+        self.studio_film = Some(document);
         self.studio_open_error = None;
         Ok(())
     }
@@ -416,7 +484,21 @@ impl MagicApp {
             .default_size(240.0)
             .min_size(180.0)
             .show(ui, |ui| document.show(ui, PanelKind::Project));
-        egui::CentralPanel::default().show(ui, |ui| document.show(ui, PanelKind::Program));
+        egui::CentralPanel::default().show(ui, |ui| {
+            let label = if document.is_playing() {
+                "Pause Film"
+            } else {
+                "Play Film"
+            };
+            let preview = secondary_button(ui, label);
+            self.auto.add_response("studio-preview", &preview, label);
+            if preview.clicked()
+                && let Err(error) = document.preview("toggle", None)
+            {
+                self.status_line = error;
+            }
+            document.show(ui, PanelKind::Program);
+        });
         document.show_dialogs(ctx);
     }
 }

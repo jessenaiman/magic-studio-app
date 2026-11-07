@@ -149,6 +149,32 @@ fn spatial_line_design_places_each_item_and_rotates_and_animates_trim_strokes() 
 }
 
 #[test]
+fn authored_word_curves_trim_to_the_word_cue_and_key_the_native_layer() {
+    let design = json!({"l1": {"items": [{
+        "word_ids": ["l1/w3"], "text": "spot,", "x": 720, "y": 60, "rotate": 2,
+        "motion": "pop", "motion_keys": [[0, -90, 35, 52, 140, -22, 70], [0.2, 0, 0, 100, 100, 0, 100]]
+    }]}});
+    let (steps, _) = build_steps_with_designs(&recipe(), &design, &lines(&aligned()), 33.0);
+    let item = "l1_item0";
+    let keys: Vec<_> = steps
+        .iter()
+        .filter(|s| s["command"] == "prop.addKey" && s["params"]["layer"] == item)
+        .collect();
+    assert_eq!(keys.len(), 8);
+    assert!(
+        keys.iter()
+            .any(|s| s["params"]["path"] == "transform/position"
+                && s["params"]["time"] == 1.26
+                && s["params"]["value"] == json!([630.0, 95.0]))
+    );
+    assert!(
+        steps
+            .windows(2)
+            .any(|s| s[0]["params"]["time"] == 1.26 && s[1]["params"]["op"] == "trimInToTime")
+    );
+}
+
+#[test]
 fn recipe_hero_stroke_emits_svg_trim_shape_layer() {
     let mut r = recipe();
     r["heroes"]["spot"]["stroke"] = json!("underline");

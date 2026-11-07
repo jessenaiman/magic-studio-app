@@ -28,6 +28,9 @@ use magic_ui_egui::{ControlRequest, MagicApp, ViewMode};
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq;
 
+#[cfg(not(target_arch = "wasm32"))]
+mod studio_audio;
+
 #[cfg(feature = "lyrics-webview")]
 mod lyrics;
 
@@ -333,6 +336,8 @@ fn main() -> eframe::Result {
             }
             magic_ui_egui::theme::apply(&cc.egui_ctx);
             let mut app = MagicApp::new(session).with_control(control_rx);
+            #[cfg(not(target_arch = "wasm32"))]
+            app.set_studio_audio(studio_audio::open);
             if let Some(view) = initial_view {
                 app.view = view;
             }
