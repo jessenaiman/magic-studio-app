@@ -1,0 +1,6 @@
+.film-export-icon { display:inline-flex; align-items:center; justify-content:center; width:40px; height:36px; padding:6px; }
+.film-export-icon.ready { color:var(--accent, #2dd4bf); border-color:currentColor; }
+.film-export-icon.error { color:var(--danger, #ed8796); border-color:currentColor; }
+.film-export-spinner { width:18px; height:18px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:film-export-spin .8s linear infinite; }
+@keyframes film-export-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .film-export-spinner { animation:none; border-style:dotted; } }

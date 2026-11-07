@@ -335,7 +335,7 @@ class WordsFlowController {
       return node;
     };
     const lane = (key, name, blocks) => el("div", { class: "lane", "data-track": key }, el("span", { class: "lane-name" }, name), el("div", { class: "lane-track" }, ...blocks, el("span", { class: "lane-head" })));
-    const accent = (it) => words.find((w) => w.word_id === it.accent);
+    const accent = (it) => words.find((w) => w.word_id === (it.accent || (it.motion_keys?.length ? it.word_ids[0] : null)));
     const moveList = wordsMoves();
     wordsPanel.lanes = el("div", { class: "words-lanes", "aria-label": "Line timing" }, lane("text", "Sung words", words.map((w) => {
       const clip = wordsClip(w.word_id);
@@ -344,7 +344,9 @@ class WordsFlowController {
         wordsCanvasDraw();
         this.now(wordsPanel.time);
       });
-    })), lane("motion", "Accents", design.items.flatMap((it, i) => it.motion === "quiet" || !accent(it) ? [] : [block(String(moveList.find((m) => m[0] === it.motion)?.[1] || it.motion), wordsAt(accent(it)), 0.65, () => {
+    })), lane("motion", "Accents", design.items.flatMap((it, i) => (it.motion === "quiet" && !it.motion_keys?.length) || !accent(it) ? [] : [block(
+      it.native_motion ? it.native_motion.property.split("/").at(-1) : it.motion_keys?.length ? "Keyframes" : String(moveList.find((m) => m[0] === it.motion)?.[1] || it.motion),
+      wordsAt(accent(it)) + (it.native_motion?.delay || 0), it.native_motion?.duration ?? it.motion_keys?.at(-1)?.[0] ?? 0.65, () => {
       wordsPanel.item = i;
       wordsPanel.tab = "move";
       wordsRender();
@@ -741,10 +743,11 @@ class WordsStageController {
   buildTokenPill(anim, line, words, it, idx, activeIdx) {
     const label = it.word_ids.map((id) => words.find((w) => w.word_id === id)?.text).join(" ");
     const moveEntry = wordsMoves().find((m) => m[0] === it.motion);
-    const move = it.motion && it.motion !== "quiet" ? moveEntry?.[1] || it.motion : null;
+    const move = it.native_motion ? it.native_motion.property.split("/").at(-1) : it.motion && it.motion !== "quiet" ? moveEntry?.[1] || it.motion : null;
     const on = idx === activeIdx;
     const icon = moveEntry?.[3] || (it.motion === "pop" ? "\uD83D\uDD25" : it.motion === "rise" ? "↗" : it.motion === "fall" ? "↘" : it.motion === "loop" ? "↻" : "⚡");
     return el("button", {
+      id: `words-token-${idx}`,
       class: `chip words-line-word${on ? " active" : ""}${move ? " has-act" : ""}`,
       "data-token-index": String(idx),
       title: `${label} · Click to edit token style, motion & marks`,
@@ -777,6 +780,21 @@ class WordsStageController {
     const design = wordsDesign(anim, line.id), words = wordsLineWords(anim, line.id);
     const activeIdx = this.resolveActiveItemIndex(design, picked);
     const hasGrouped = (design.items || []).some((it) => (it.word_ids?.length || 0) > 1);
+    const selectedItem = design.items[activeIdx];
+    let phraseSplit = null;
+    if (selectedItem?.word_ids.length > 1) {
+      const boundary = el("select", {id:"words-phrase-boundary", "aria-label":"Split phrase after word"},
+        ...selectedItem.word_ids.slice(0, -1).map((id, index) => el("option", {value:String(index + 1)},
+          `After ${index + 1}: ${words.find(word => word.word_id === id)?.text || ""}`)));
+      phraseSplit = el("span", {class:"words-phrase-split"}, boundary, el("button", {
+        id:"words-split-phrase", class:"ghost", title:"Split this phrase into two independently controlled effect groups",
+        onclick: () => wordsDesignEdit(anim, line.id, next => {
+          const groups = wordsDesignController.splitItemAt(anim, words, next.items[activeIdx], Number(boundary.value));
+          next.items.splice(activeIdx, 1, ...groups);
+          wordsPanel.picked = [...groups[0].word_ids];
+        })
+      }, "Split phrase"));
+    }
     const drawPills = (design.draws || []).map((d, dIdx) => el("button", {
       class: "chip words-draw-pill",
       title: `${d.name} · Click to remove this motion drawing from the line`,
@@ -797,7 +815,7 @@ class WordsStageController {
       class: "ghost",
       title: "Split grouped phrase into individual draggable word tokens",
       onclick: () => wordsDesignController.splitLineTokens(anim, line.id)
-    }, "Split words") : null, el("button", {
+    }, "Split words") : null, phraseSplit, el("button", {
       id: "words-replay-line",
       class: "ghost",
       title: "Play just this line's animation",
@@ -845,9 +863,9 @@ class WordsStageController {
     const moves = wordsMoves();
     const ecPresets = wordsEffectCraftTools().text_presets || [];
     return el("div", { class: "words-engine-col", "aria-label": "Motion styles and shaders" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "Motion Styles & EffectCraft Presets")), el("div", { class: "words-motion-grid" }, ...moves.map(([key, name, does, icon]) => el("button", {
-      class: `effect words-shader-card${it?.motion === key ? " active" : ""}`,
+      class: `effect words-shader-card${!it?.native_motion && it?.motion === key ? " active" : ""}`,
       role: "radio",
-      "aria-checked": String(it?.motion === key),
+      "aria-checked": String(!it?.native_motion && it?.motion === key),
       title: `${name} · ${does}`,
       onclick: () => wordsDesignEdit(anim, lineId, (d) => {
         const target = d.items[activeIdx] || d.items[0];

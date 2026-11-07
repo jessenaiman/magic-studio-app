@@ -15,7 +15,7 @@ export function restoredWorkspaces(): Plugin {
       else if (/\.(html|js|css|json|svg|png|webp|jpg|jpeg|woff2?)$/.test(entry.name)) files.set(relative(source, path).replaceAll("\\", "/"), path);
     }
   };
-  walk(source); files.set("tauri-shim.js", adapter);
+  walk(source); files.set("tauri-adapter.js", adapter);
   files.delete("vendor/konva.bundle.js"); files.delete("vendor/rig-review.bundle.js");
   files.set("animation-connection.js", fileURLToPath(new URL("./ui/workspaces/animation-connection.js", import.meta.url)));
   files.set("embedded.js", fileURLToPath(new URL("./ui/workspaces/embedded.js", import.meta.url)));
@@ -24,10 +24,10 @@ export function restoredWorkspaces(): Plugin {
   const content = (name: string) => {
     if (name === "theatre-frame.html") return Buffer.from('<!doctype html><script>location.replace("/theatre.html")</script>');
     let data = readFileSync(files.get(name)!);
-    if (name === "project-workspace.html" || name === "animation-workspace.html") {
+    if (name.endsWith(".html")) {
       let html = data.toString().replace('<script src="vendor/konva.bundle.js"></script>', '<script type="module" src="/workspaces/vendor.js"></script>')
         .replace('<script src="vendor/rig-review.bundle.js"></script>', '');
-      html = html.replace('</head>', '<style>#app-bar,#workspace-select{display:none!important}body{height:100vh;grid-template-rows:minmax(0,1fr)!important}body>main{height:100%;min-height:0}.workshop-drawers{top:0}</style></head>')
+      if (name === "project-workspace.html" || name === "animation-workspace.html") html = html.replace('</head>', '<style>#app-bar,#workspace-select{display:none!important}body{height:100vh;grid-template-rows:minmax(0,1fr)!important}body>main{height:100%;min-height:0}.workshop-drawers{top:0}</style></head>')
         .replace('</body>', '<script src="animation-connection.js"></script><script src="embedded.js"></script></body>');
       data = Buffer.from(html);
     }

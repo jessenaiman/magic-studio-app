@@ -5,6 +5,15 @@
   window.__magicWorkspaceVisible = host.isActive();
   window.__magicAuthoringMode = host.authoringMode?.() || "design";
   window.addEventListener("message", event => {
+    if (event.source !== parent || event.origin !== location.origin || !event.data?.magicAssetsImported || typeof state === "undefined" || event.data.magicAssetsImported !== state.project || state.view !== "project") return;
+    void host.invoke("session_snapshot").then(snapshot => {
+      if (snapshot.project !== state.project) return;
+      state.data = snapshot.data;
+      state.open = "assets";
+      projectView.render();
+    }).catch(error => host.report(String(error)));
+  });
+  window.addEventListener("message", event => {
     if (event.source !== parent || event.origin !== location.origin || !["design", "motion"].includes(event.data?.magicAuthoringMode)) return;
     window.__magicAuthoringMode = event.data.magicAuthoringMode;
     window.setMagicAuthoringMode?.(event.data.magicAuthoringMode);
@@ -30,9 +39,10 @@
   });
   window.__TAURI__ = {
     core: { invoke: host.invoke, convertFileSrc: host.fileUrl },
-    dialog: { open: host.openDialog },
+    dialog: { open: host.openDialog, save: host.saveDialog },
     opener: { openPath: host.openPath, openUrl: host.openUrl },
     event: { listen: host.listen },
+    clipboardManager: host.clipboard,
   };
   window.addEventListener("error", event => host.report(String(event.error || event.message)));
   // A Content-Security-Policy block is otherwise silent; surface it as a workspace alert.

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { FilmExportButton } from "../components/FilmExportButton";
 import {
   executeCommand,
   fileUrl,
@@ -20,6 +21,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
   const [burnCaptions, setBurnCaptions] = useState<boolean>(false);
   const [captionSidecar, setCaptionSidecar] = useState<string>("");
   const [exportRange, setExportRange] = useState<string>("entire");
+  const [exportSettingsEdited, setExportSettingsEdited] = useState(false);
   const [playhead, setPlayhead] = useState<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -50,6 +52,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
   };
 
   useEffect(() => {
+    setExportSettingsEdited(false);
     void refreshFilm();
   }, [projectPath]);
 
@@ -179,10 +182,14 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           >
             Open in FilmCraft
           </button>
+          <FilmExportButton project={projectPath} disabled={busy || !film?.timeline?.exists} onBusy={setBusy} onToast={onToast}
+            options={exportSettingsEdited ? {format:exportFormat,range:exportRange,burnCaptions,captionSidecar:captionSidecar || null} : {}} />
         </div>
       </div>
 
-      {/* FilmCraft Export & Interchange Bar */}
+      {/* Optional settings stay collapsed; exporting itself opens no dialog. */}
+      <details id="film-export-settings">
+      <summary aria-label="Export settings and interchange" title="Export settings and interchange">⚙</summary>
       <div
         style={{
           display: "flex",
@@ -201,7 +208,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           <select
             id="film-export-format"
             value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value)}
+            onChange={(e) => { setExportFormat(e.target.value); setExportSettingsEdited(true); }}
           >
             <option value="h264">H.264 (.mp4)</option>
             <option value="hevc">HEVC / H.265 (.mp4)</option>
@@ -218,7 +225,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           <select
             id="film-export-range"
             value={exportRange}
-            onChange={(e) => setExportRange(e.target.value)}
+            onChange={(e) => { setExportRange(e.target.value); setExportSettingsEdited(true); }}
           >
             <option value="entire">Entire Sequence</option>
             <option value="inOut">In / Out Range</option>
@@ -231,7 +238,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
             id="film-burn-captions"
             type="checkbox"
             checked={burnCaptions}
-            onChange={(e) => setBurnCaptions(e.target.checked)}
+            onChange={(e) => { setBurnCaptions(e.target.checked); setExportSettingsEdited(true); }}
           />
           <span>Burn Captions</span>
         </label>
@@ -241,31 +248,13 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           <select
             id="film-caption-sidecar"
             value={captionSidecar}
-            onChange={(e) => setCaptionSidecar(e.target.value)}
+            onChange={(e) => { setCaptionSidecar(e.target.value); setExportSettingsEdited(true); }}
           >
             <option value="">None</option>
             <option value="srt">.srt</option>
             <option value="vtt">.vtt</option>
           </select>
         </label>
-
-        <button
-          id="film-export"
-          className="start"
-          disabled={busy || !film?.timeline?.exists}
-          onClick={() =>
-            void runFilmAction("Export", () =>
-              executeCommand("video.export", {
-                format: exportFormat,
-                range: exportRange,
-                burnCaptions,
-                ...(captionSidecar ? { captionSidecar } : {}),
-              }),
-            )
-          }
-        >
-          Export Film
-        </button>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: "6px" }}>
           <button
@@ -294,6 +283,8 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           </button>
         </div>
       </div>
+
+      </details>
 
       {/* Video Program Monitor */}
       <div

@@ -15,6 +15,10 @@ function authoringVisibility(mode, together = false) {
   return { words: together || mode !== "motion", drawings: together || mode === "motion" };
 }
 
+function authoringSongDuration(recording, project, fallback) {
+  return recording?.project === project && Number.isFinite(recording.duration) && recording.duration > 0 ? recording.duration : fallback;
+}
+
 if (typeof window !== "undefined") {
   const svgNode = (tag, attrs = {}) => {
     const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -119,6 +123,11 @@ if (typeof window !== "undefined") {
       if (!track.isConnected || state.project !== project) return;
       const peaks = result.peaks || [];
       if (!peaks.length) throw new Error("No waveform data");
+      wordsPanel.recording = {project,source:result.source,duration:result.duration};
+      const duration = authoringSongDuration(wordsPanel.recording, project, wordsSongSpan().end);
+      const scrub = document.getElementById("words-scrub");
+      if (scrub) scrub.max = String(duration);
+      if (wordsPanel.timeLabel) wordsPanel.timeLabel.textContent = `${wordsClock(wordsPanel.time)} / ${wordsClock(duration)}`;
       const svg = svgNode("svg", { viewBox: `0 0 ${peaks.length} 32`, preserveAspectRatio: "none", class: "song-waveform" });
       const amplitude = value => Math.max(-1, Math.min(1, value));
       const top = peaks.map((pair, i) => `${i},${16 - amplitude(pair[1]) * 15}`).join(" ");
@@ -191,8 +200,9 @@ if (typeof window !== "undefined") {
     if (wordsPanel.presentationMode === "design") main.querySelector("#words-workspace-controls")?.prepend(nativeWordControls(anim));
     if (wordsPanel.presentationMode === "motion") {
       main.querySelector("#words-workspace-controls")?.prepend(existingDrawingControls(anim));
-      const selectedWords = wordsLineWords(anim, wordsPanel.line).filter(word => wordsPanel.picked.includes(word.word_id));
-      const linked = selectedWords.map(word => word.text).join(" ") || wordsLineWords(anim, wordsPanel.line).map(word => word.text).join(" ");
+      const drawing = wordsDesign(anim, wordsPanel.line).draws?.[wordsPanel.selectedDrawingIndex || 0];
+      const selectedWords = wordsLineWords(anim, wordsPanel.line).filter(word => drawing?.word_ids?.includes(word.word_id));
+      const linked = selectedWords.map(word => word.text).join(" ") || "No linked word";
       main.querySelector("#words-workspace-controls")?.prepend(el("p", { class: "authoring-linked-word" }, "Drawing context · ", el("strong", {}, linked)));
       const brushSettings = content.querySelector('[aria-label="EffectCraft brush presets"] .words-style-toggles');
       if (brushSettings) {

@@ -27,10 +27,56 @@ function patchDrawing(design, index, changes) {
   return result;
 }
 
+function drawingClipboardText(drawing) {
+  return JSON.stringify({format:"magic.drawing",version:1,drawing});
+}
+
+function parseDrawingClipboard(text) {
+  if (typeof text !== "string" || text.length > 512 * 1024) throw new Error("Clipboard drawing is too large");
+  const payload = JSON.parse(text);
+  if (payload.format !== "magic.drawing" || payload.version !== 1) throw new Error("Copy a Motion drawing first");
+  const source = payload.drawing;
+  const box = String(source?.view_box || "").trim().split(/\s+/).map(Number);
+  if (box.length !== 4 || !box.every(Number.isFinite) || box[2] <= 0 || box[3] <= 0) throw new Error("Invalid drawing bounds");
+  if (!Array.isArray(source.paths) || !source.paths.length || source.paths.length > 256) throw new Error("Invalid drawing paths");
+  const paths = source.paths.map(path => {
+    if (typeof path.d !== "string" || !path.d.length || path.d.length > 100000 || !/^[MmLlHhVvCcSsQqTtAaZz0-9eE.,\s+\-]+$/.test(path.d)) throw new Error("Invalid drawing geometry");
+    if (!/^#[0-9a-f]{6}$/i.test(path.stroke) || !Number.isFinite(path.width) || path.width < .5 || path.width > 60) throw new Error("Invalid drawing stroke");
+    if (![path.from,path.to].every(Number.isFinite) || path.from < 0 || path.to <= path.from || path.to > 600) throw new Error("Invalid drawing timing");
+    return {d:path.d,stroke:path.stroke,width:path.width,from:path.from,to:path.to};
+  });
+  const drawing = {name:String(source.name || "Drawing").slice(0,200),view_box:box.join(" "),paths};
+  return patchDrawing({draws:[drawing]},0,{x:source.x,y:source.y,w:source.w,h:source.h}).draws[0];
+}
+
 function existingDrawingControls(anim) {
   const lineId = wordsPanel.line, design = wordsDesign(anim, lineId), drawings = design.draws || [];
   const panel = el("section", { id: "existing-drawing-controls", class: "panel-body existing-drawing-controls", "aria-label": "Existing drawing settings" });
   panel.append(el("strong", {}, "Existing drawing"));
+  const project = state.project;
+  panel.append(el("div", {class:"words-selection-actions"},
+    el("button", {id:"motion-copy-drawing",class:"ghost",disabled:!drawings.length,onclick:async () => {
+      try {
+        const selected = drawings[Math.min(drawings.length - 1, wordsPanel.selectedDrawingIndex || 0)];
+        await window.__TAURI__.clipboardManager.writeText(drawingClipboardText(selected));
+        toast("Drawing copied");
+      } catch (error) { toast(`Clipboard: ${error}`); }
+    }}, "Copy drawing"),
+    el("button", {id:"motion-paste-drawing",class:"ghost",onclick:async () => {
+      try {
+        const drawing = parseDrawingClipboard(await window.__TAURI__.clipboardManager.readText());
+        if (state.project !== project || wordsPanel.selected !== anim.animation_id || wordsPanel.line !== lineId) throw new Error("Selection changed; drawing was not pasted");
+        wordsDesignEdit(anim,lineId,next => { next.draws ||= []; next.draws.push(drawing); wordsPanel.selectedDrawingIndex = next.draws.length - 1; });
+        toast("Drawing pasted · Save to persist");
+      } catch (error) { toast(`Clipboard: ${error}`); }
+    }}, "Paste drawing"),
+    el("button", {id:"motion-delete-drawing",class:"ghost",disabled:!drawings.length,onclick:() => {
+      wordsDesignEdit(anim,lineId,next => {
+        const index = Math.min(next.draws.length - 1, wordsPanel.selectedDrawingIndex || 0);
+        next.draws.splice(index,1);
+        wordsPanel.selectedDrawingIndex = Math.max(0,index - 1);
+      });
+    }}, "Remove drawing")));
   if (!drawings.length) { panel.append(el("p", { class: "muted" }, "No drawing in this moment. Choose a shape or draw on the stage.")); return panel; }
   const index = Math.max(0, Math.min(drawings.length - 1, wordsPanel.selectedDrawingIndex || 0));
   wordsPanel.selectedDrawingIndex = index;
@@ -56,7 +102,7 @@ function existingDrawingControls(anim) {
   name.value = name.defaultValue = drawing.name || "Drawing";
   const start = Math.min(...drawing.paths.map(path => path.from)), end = Math.max(...drawing.paths.map(path => path.to));
   const color = el("input", { id: "motion-drawing-color", type: "color", "aria-label": "Existing drawing stroke colour", onchange: event => apply({ color: event.target.value }) });
-  color.value = color.defaultValue = /^#[0-9a-f]{6}$/i.test(drawing.paths[0]?.stroke || "") ? drawing.paths[0].stroke : "#173f49";
+  color.value = color.defaultValue = /^#[0-9a-f]{6}$/i.test(drawing.paths[0]?.stroke || "") ? drawing.paths[0].stroke.toLowerCase() : "#173f49";
   const words = wordsLineWords(anim, lineId);
   const linkedWord = el("select", { id: "motion-drawing-linked-word", "aria-label": "Drawing's source word", onchange: event => apply({ word_ids: event.target.value ? [event.target.value] : [] }) },
     el("option", { value: "" }, "No linked word"), ...words.map(word => el("option", { value: word.word_id }, `${word.text} · ${wordsClock(wordsAt(word))}`)));
@@ -70,7 +116,7 @@ function existingDrawingControls(anim) {
   panel.append(el("label", {}, "Link to artist word", linkedWord), align, el("label", {}, "Name", name), el("div", { class: "drawing-coordinate-grid" },
     field("x", "X", drawing.x, -2000, 6000, 1), field("y", "Y", drawing.y, -2000, 6000, 1),
     field("w", "Width", drawing.w, 1, 6000, 1), field("h", "Height", drawing.h, 1, 6000, 1),
-    field("start", "Draw start · seconds in line", start, 0, 600, .05), field("end", "Draw end · seconds in line", end, 0, 600, .05),
+    field("start", "Draw start · seconds in line", start, 0, 600, .01), field("end", "Draw end · seconds in line", end, 0, 600, .01),
     field("stroke-width", "Stroke width", drawing.paths[0]?.width || 4, .5, 60, .5, "strokeWidth"), el("label", {}, "Stroke colour", color)),
     el("p", { class: "muted" }, "Changes apply to this drawing. Multi-stroke timing keeps its relative rhythm."), status);
   return panel;

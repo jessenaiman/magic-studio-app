@@ -1,0 +1,18 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const context=vm.createContext({window:{},localStorage:{getItem:()=>null},document:{createElement:()=>({getContext:()=>({})})},ResizeObserver:class{observe(){}},addEventListener(){},structuredClone});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../../magic-cli/ui/words-design.js'),'utf8'),context);
+const controller=context.window.wordsDesignController;
+const words=['and','round','and','round'].map((text,i)=>({word_id:`line/w${i}`,text}));
+const original={word_ids:words.map(w=>w.word_id),x:100,y:200,size:58,font:'sans',accent:'line/w1',motion:'loop'};
+controller.measure=()=>160;
+const groups=controller.splitItemAt({},words,original,2);
+assert.deepEqual(JSON.parse(JSON.stringify(groups.map(g=>g.word_ids))),[['line/w0','line/w1'],['line/w2','line/w3']]);
+assert.deepEqual(JSON.parse(JSON.stringify(groups.map(g=>g.text))),['and round','and round']);
+assert.equal(groups[0].accent,'line/w1');
+assert.equal(groups[1].accent,'line/w2');
+assert.ok(groups[1].x>groups[0].x);
+groups[0].motion='quiet';
+assert.equal(groups[1].motion,'loop');
+assert.equal(original.motion,'loop');
+assert.throws(()=>controller.splitItemAt({},words,original,0));
+console.log('Phrase split preserves artist words and creates two independent effect groups');

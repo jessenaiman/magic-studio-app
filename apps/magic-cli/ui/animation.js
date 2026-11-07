@@ -711,8 +711,8 @@ class AnimationViewController {
       title: "Copy file path to clipboard",
       "aria-label": `Copy asset path for ${name}`,
       onclick: () => {
-        if (selected.file && navigator.clipboard)
-          navigator.clipboard.writeText(selected.file).then(() => toast("Copied asset path")).catch(() => {});
+        if (selected.file)
+          window.__TAURI__.clipboardManager.writeText(selected.file).then(() => toast("Copied asset path")).catch(error => toast(`Clipboard: ${error}`));
       }
     }, "Copy path"));
     return [grid, actionStatus, bar];

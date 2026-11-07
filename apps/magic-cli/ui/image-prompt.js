@@ -177,7 +177,7 @@ class ImagePromptController {
     generate.disabled = draft.busy;
     const copy = el("button", { class: "ghost", id: "image-copy-command", title: "Copy the exact image command without executing it", onclick: async () => {
       try {
-        await navigator.clipboard.writeText(command.textContent);
+        await window.__TAURI__.clipboardManager.writeText(command.textContent);
         toast("Image command copied · nothing executed");
       } catch {
         toast("Clipboard unavailable · select the command text");

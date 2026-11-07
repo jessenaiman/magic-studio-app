@@ -143,7 +143,7 @@ fn target_addr(target: CraftTarget) -> Result<SocketAddr> {
 }
 
 fn same_canonical_path(a: &Path, b: &Path) -> bool {
-    a == b || matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(ca), Ok(cb)) if ca == cb)
+    matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(ca), Ok(cb)) if ca == cb)
 }
 
 struct ControlConn {
@@ -209,8 +209,9 @@ impl ControlConn {
             }
             CraftTarget::Photo => {
                 let info = self.send_raw("ui.inspect", json!({}))?;
-                let docs = info.pointer("/session/documents").and_then(Value::as_array);
-                Ok(docs.is_some_and(|list| list.iter().any(|d| d["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))))
+                let active = info.pointer("/session/active").and_then(Value::as_u64).and_then(|index| usize::try_from(index).ok());
+                let document = active.and_then(|index| info.pointer("/session/documents")?.as_array()?.get(index));
+                Ok(document.and_then(|d| d["path"].as_str()).is_some_and(|p| same_canonical_path(Path::new(p), expected)))
             }
             CraftTarget::Vector => {
                 let info = self.send_raw("document.inspect", json!({}))?;
@@ -387,6 +388,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn canonical_path_comparison_rejects_missing_documents() {
+        let missing = std::env::temp_dir().join(format!("magic-missing-document-{}", std::process::id()));
+        assert!(!same_canonical_path(&missing, &missing));
+    }
+
+    #[test]
     fn filmcraft_default_port_avoids_magic_tauri_port() {
         assert_eq!(CraftTarget::Film.default_port(), 9875);
         assert_ne!(CraftTarget::Film.default_port(), 9876);
@@ -419,7 +426,8 @@ mod tests {
             reader.read_line(&mut line).unwrap();
             let inspect: Value = serde_json::from_str(&line).unwrap();
             assert_eq!(inspect["method"], "ui.inspect");
-            writeln!(stream, "{}", json!({"id": inspect["id"], "ok": true, "result": {"session": {"documents": [{"path": doc_for_server}]}}})).unwrap();
+            writeln!(stream, "{}", json!({"id": inspect["id"], "ok": true, "result": {"session": {"active": 0, "documents": [{"path": doc_for_server}]}}}))
+                .unwrap();
 
             // 3. Engine command fails in live session -> must surface Connected(Err), never CLI fallback
             line.clear();
@@ -442,6 +450,39 @@ mod tests {
             }
             _ => panic!("expected Connected(Err(CommandFailed)), not CLI fallback"),
         }
+    }
+
+    #[test]
+    fn photocraft_rejects_requested_document_when_another_is_active() {
+        let dir = std::env::temp_dir().join(format!("magic-photo-active-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let requested = dir.join("requested.pcraft");
+        let active = dir.join("active.pcraft");
+        std::fs::write(&requested, b"a").unwrap();
+        std::fs::write(&active, b"b").unwrap();
+        let requested_for_server = requested.clone();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let req: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(req["method"], "ui.inspect");
+            writeln!(
+                stream,
+                "{}",
+                json!({"id": req["id"], "ok": true, "result": {"session": {"active": 1, "documents": [{"path": requested_for_server}, {"path": active}]}}})
+            )
+            .unwrap();
+            line.clear();
+            assert_eq!(reader.read_line(&mut line).unwrap(), 0, "must not send a mutation");
+        });
+        let outcome = call_tcp_at(CraftTarget::Photo, addr, None, Some(&requested), "layer.rename", &json!({"name": "Hero"}), true, Duration::from_secs(2));
+        server.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(matches!(outcome, TcpOutcome::DifferentDocumentOpen));
     }
 
     #[test]

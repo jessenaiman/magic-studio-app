@@ -37,7 +37,7 @@
 .lyrics-authoring-layout .words-engine-title { flex-wrap:wrap; gap:var(--space-2); }
 .lyrics-authoring-layout .words-engine-title .words-editing-token { display:none; }
 .lyrics-authoring-layout .words-sliders-box { flex:1; min-width:200px; }
-.lyrics-authoring-layout .lyric-canvas { width:100%; max-width:none; flex:none; }
+.lyrics-authoring-layout .lyric-canvas { width:100%; max-width:min(100%, 71.111vh, 782px); flex:none; }
 .lyrics-authoring-layout > .words-arrows { display:none; }
 .lyrics-cue-disclosure { border:1px solid var(--line); border-radius:var(--radius); flex:none; }
 .lyrics-cue-disclosure > summary { cursor:pointer; padding:var(--space-2) var(--space-3); color:var(--muted); }

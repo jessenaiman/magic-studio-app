@@ -245,4 +245,7 @@ assets/
 # Templates the code bundles are the exceptions.
 !/pipeline/templates/*.deckcraft
 !/references/storyboard/*.potx
+# Native examples shipped by the disconnected effect gallery.
+!/apps/magic/public/effect-gallery/*.ecproj
+!/apps/magic/public/effect-gallery/*.mp4
 apps/magic/gen/

@@ -378,6 +378,18 @@ class WordsDesignController {
     }
     return out;
   }
+  splitItemAt(anim, words, item, boundary) {
+    if (!Number.isInteger(boundary) || boundary < 1 || boundary >= item.word_ids.length)
+      throw new Error("Choose a word boundary inside the selected phrase");
+    const text = ids => ids.map(id => words.find(word => word.word_id === id)?.text || "").join(" ");
+    const groups = [item.word_ids.slice(0, boundary), item.word_ids.slice(boundary)].map(ids => ({
+      ...structuredClone(item), word_ids: ids, text: text(ids),
+      accent: ids.includes(item.accent) ? item.accent : ids[0]
+    }));
+    const look = `${item.font || "song"}${item.italic ? "-italic" : item.weight >= 600 ? "-bold" : ""}`;
+    groups[1].x = Math.round(item.x + this.measure(anim, groups[0].text, item.size || 58, look) + (item.size || 58) * .36);
+    return groups;
+  }
   splitLineTokens(anim, lineId) {
     const words = wordsLineWords(anim, lineId);
     this.designEdit(anim, lineId, (d) => {
@@ -654,6 +666,7 @@ class WordsTimelineController {
     const isSelected = this.isItemSelected(interactive, design || { items: [it] }, it, i);
     const isHero = (it.size || 0) >= 140 || it.motion === "pop";
     const node = el("div", {
+      id: `lyrics-stage-word-${i}`,
       class: `lyric-item${isSelected ? " active" : ""}${isHero ? " hero-item" : ""}`,
       "data-weight": String(it.weight),
       "data-italic": String(it.italic),

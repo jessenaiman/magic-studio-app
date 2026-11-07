@@ -41,6 +41,16 @@ export function findElement(id: string): HTMLElement | null {
 }
 
 const win = (doc: Document) => doc.defaultView as Win;
+export function commitValueEvents(element: HTMLElement) {
+  const EventType = win(element.ownerDocument).Event;
+  if (element.tagName === "SELECT") {
+    element.dispatchEvent(new EventType("change", {bubbles:true}));
+  } else {
+    element.dispatchEvent(new EventType("input", {bubbles:true}));
+    // An input handler can rebuild the editor. Do not commit a detached old field.
+    if (element.isConnected) element.dispatchEvent(new EventType("change", {bubbles:true}));
+  }
+}
 const isVisible = (element: Element) => element.getClientRects().length > 0;
 
 function finite(params: Params, key: string, fallback?: number): number {
@@ -158,7 +168,7 @@ export function click(params: Params) {
   const target = locate(params);
   for (let n = 1; n <= count; n++) {
     press(target, button, mods, n);
-    release(target, button, mods, n);
+    release(liveTarget(target), button, mods, n);
     const init = mouseInit(target, button, 0, mods, n);
     if (button === 0) fireMouse(target, "click", init);
     else if (button === 1) fireMouse(target, "auxclick", init);

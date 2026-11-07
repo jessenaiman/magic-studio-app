@@ -265,7 +265,7 @@ class ClipPlacementController {
     this.copy.onclick = async () => {
       try {
         this.request();
-        await navigator.clipboard.writeText(this.command.textContent);
+        await window.__TAURI__.clipboardManager.writeText(this.command.textContent);
         if (this.current())
           this.message("Exact placement command copied; nothing executed.");
       } catch (error) {

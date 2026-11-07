@@ -1,0 +1,2796 @@
+{
+  "savedBy": "0.22.0",
+  "activeComp": 1,
+  "openComps": [
+    1
+  ],
+  "schema": 2,
+  "settings": {
+    "bit_depth": "Bpc8",
+    "linearize": false,
+    "working_space": null,
+    "blend_linear": false,
+    "time_display": "Timecode",
+    "frame_start": 0,
+    "audio_sample_rate": 48000,
+    "gpu_acceleration": true,
+    "color_engine": "Adobe",
+    "hdr": "Clip",
+    "output_space": null,
+    "working_gamma": 2.2
+  },
+  "items": {
+    "1": {
+      "id": 1,
+      "name": "Draw an underline",
+      "label": "Sandstone",
+      "comment": "",
+      "parent": null,
+      "kind": {
+        "type": "Comp",
+        "width": 640,
+        "height": 360,
+        "pixel_aspect": 1.0,
+        "frame_rate": {
+          "num": 24,
+          "den": 1
+        },
+        "duration": 762048000000,
+        "display_start": 0,
+        "background": [
+          0.95686275,
+          0.9372549,
+          0.89411765
+        ],
+        "work_area": [
+          0,
+          762048000000
+        ],
+        "layers": [
+          {
+            "id": 57,
+            "name": "Example",
+            "source": {
+              "type": "Text"
+            },
+            "label": "Red",
+            "comment": "",
+            "start_time": 0,
+            "in_point": 0,
+            "out_point": 762048000000,
+            "stretch": 100.0,
+            "switches": {
+              "video": true,
+              "audio": true,
+              "solo": false,
+              "locked": false,
+              "shy": false,
+              "collapse": false,
+              "quality": "Best",
+              "sampling": "Bilinear",
+              "effects": true,
+              "frame_blend": "Off",
+              "motion_blur": false,
+              "adjustment": false,
+              "three_d": false,
+              "guide": false
+            },
+            "blend_mode": "Normal",
+            "preserve_transparency": false,
+            "track_matte": null,
+            "parent": null,
+            "markers": [],
+            "auto_orient": "Off",
+            "props": {
+              "uid": 58,
+              "match": "layer",
+              "name": "Example",
+              "kind": {
+                "kind": "Plain"
+              },
+              "enabled": true,
+              "children": [
+                {
+                  "node": "Group",
+                  "uid": 73,
+                  "match": "text",
+                  "name": "Text",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": [
+                    {
+                      "node": "Prop",
+                      "uid": 59,
+                      "match": "sourceText",
+                      "name": "Source Text",
+                      "value": {
+                        "t": "Text",
+                        "v": {
+                          "text": "round and round",
+                          "font": "DejaVu Sans",
+                          "style": "Regular",
+                          "size": 42.0,
+                          "fill": [
+                            0.09019608,
+                            0.24705882,
+                            0.28627452,
+                            1.0
+                          ],
+                          "stroke": [
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0
+                          ],
+                          "stroke_width": 0.0,
+                          "apply_fill": true,
+                          "apply_stroke": false,
+                          "stroke_over_fill": true,
+                          "line_join": "Miter",
+                          "tracking": 0.0,
+                          "leading": null,
+                          "justify": "Center",
+                          "baseline_shift": 0.0,
+                          "h_scale": 100.0,
+                          "v_scale": 100.0,
+                          "faux_bold": false,
+                          "faux_italic": false,
+                          "all_caps": false,
+                          "small_caps": false,
+                          "box_size": null,
+                          "box_pos": [
+                            0.0,
+                            0.0
+                          ],
+                          "tsume": 0.0,
+                          "baseline": "Normal",
+                          "kerning": "Metrics",
+                          "ligatures": true,
+                          "tate_chu_yoko": false,
+                          "vertical_roman_upright": false,
+                          "indent_left": 0.0,
+                          "indent_right": 0.0,
+                          "indent_first": 0.0,
+                          "space_before": 0.0,
+                          "space_after": 0.0,
+                          "direction": "Ltr",
+                          "composer": "EveryLine",
+                          "hanging_punctuation": false,
+                          "vertical": false
+                        }
+                      },
+                      "ui": {
+                        "kind": "Text"
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 60,
+                      "match": "perChar3d",
+                      "name": "Per-character 3D",
+                      "value": {
+                        "t": "Bool",
+                        "v": false
+                      },
+                      "ui": {
+                        "kind": "Hidden"
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": true
+                    },
+                    {
+                      "node": "Group",
+                      "uid": 62,
+                      "match": "pathOptions",
+                      "name": "Path Options",
+                      "kind": {
+                        "kind": "Plain"
+                      },
+                      "enabled": true,
+                      "children": [
+                        {
+                          "node": "Prop",
+                          "uid": 61,
+                          "match": "path",
+                          "name": "Path",
+                          "value": {
+                            "t": "Enum",
+                            "v": 0
+                          },
+                          "ui": {
+                            "kind": "Popup",
+                            "options": [
+                              "None"
+                            ]
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": true
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 63,
+                          "match": "reversePath",
+                          "name": "Reverse Path",
+                          "value": {
+                            "t": "Bool",
+                            "v": false
+                          },
+                          "ui": {
+                            "kind": "Checkbox"
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 64,
+                          "match": "perpendicular",
+                          "name": "Perpendicular To Path",
+                          "value": {
+                            "t": "Bool",
+                            "v": true
+                          },
+                          "ui": {
+                            "kind": "Checkbox"
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 65,
+                          "match": "forceAlignment",
+                          "name": "Force Alignment",
+                          "value": {
+                            "t": "Bool",
+                            "v": false
+                          },
+                          "ui": {
+                            "kind": "Checkbox"
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 66,
+                          "match": "firstMargin",
+                          "name": "First Margin",
+                          "value": {
+                            "t": "Scalar",
+                            "v": 0.0
+                          },
+                          "ui": {
+                            "kind": "Pixels"
+                          },
+                          "spatial": false,
+                          "hold_only": false,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 67,
+                          "match": "lastMargin",
+                          "name": "Last Margin",
+                          "value": {
+                            "t": "Scalar",
+                            "v": 0.0
+                          },
+                          "ui": {
+                            "kind": "Pixels"
+                          },
+                          "spatial": false,
+                          "hold_only": false,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        }
+                      ]
+                    },
+                    {
+                      "node": "Group",
+                      "uid": 68,
+                      "match": "moreOptions",
+                      "name": "More Options",
+                      "kind": {
+                        "kind": "Plain"
+                      },
+                      "enabled": true,
+                      "children": [
+                        {
+                          "node": "Prop",
+                          "uid": 69,
+                          "match": "anchorGrouping",
+                          "name": "Anchor Point Grouping",
+                          "value": {
+                            "t": "Enum",
+                            "v": 0
+                          },
+                          "ui": {
+                            "kind": "Popup",
+                            "options": [
+                              "Character",
+                              "Word",
+                              "Line",
+                              "All"
+                            ]
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": true
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 70,
+                          "match": "groupingAlignment",
+                          "name": "Grouping Alignment",
+                          "value": {
+                            "t": "Vec2",
+                            "v": [
+                              0.0,
+                              0.0
+                            ]
+                          },
+                          "ui": {
+                            "kind": "Percent"
+                          },
+                          "spatial": false,
+                          "hold_only": false,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 71,
+                          "match": "fillStroke",
+                          "name": "Fill & Stroke",
+                          "value": {
+                            "t": "Enum",
+                            "v": 0
+                          },
+                          "ui": {
+                            "kind": "Popup",
+                            "options": [
+                              "Per Character Palette",
+                              "All Fills Over All Strokes",
+                              "All Strokes Over All Fills"
+                            ]
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": true
+                        },
+                        {
+                          "node": "Prop",
+                          "uid": 72,
+                          "match": "interCharBlend",
+                          "name": "Inter-Character Blending",
+                          "value": {
+                            "t": "Enum",
+                            "v": 0
+                          },
+                          "ui": {
+                            "kind": "Popup",
+                            "options": [
+                              "Normal",
+                              "Darken",
+                              "Multiply",
+                              "Color Burn",
+                              "Linear Burn",
+                              "Darker Color",
+                              "Add",
+                              "Lighten",
+                              "Screen",
+                              "Color Dodge",
+                              "Lighter Color",
+                              "Overlay",
+                              "Soft Light",
+                              "Hard Light",
+                              "Linear Light",
+                              "Vivid Light",
+                              "Pin Light",
+                              "Hard Mix",
+                              "Difference",
+                              "Exclusion",
+                              "Subtract",
+                              "Divide",
+                              "Hue",
+                              "Saturation",
+                              "Color",
+                              "Luminosity"
+                            ]
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": true
+                        }
+                      ]
+                    },
+                    {
+                      "node": "Group",
+                      "uid": 74,
+                      "match": "animators",
+                      "name": "Animators",
+                      "kind": {
+                        "kind": "Plain"
+                      },
+                      "enabled": true,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "node": "Group",
+                  "uid": 75,
+                  "match": "masks",
+                  "name": "Masks",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": []
+                },
+                {
+                  "node": "Group",
+                  "uid": 76,
+                  "match": "effects",
+                  "name": "Effects",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": []
+                },
+                {
+                  "node": "Group",
+                  "uid": 85,
+                  "match": "transform",
+                  "name": "Transform",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": [
+                    {
+                      "node": "Prop",
+                      "uid": 77,
+                      "match": "anchor",
+                      "name": "Anchor Point",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          0.0,
+                          0.0,
+                          0.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Point"
+                      },
+                      "spatial": true,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 2,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 78,
+                      "match": "position",
+                      "name": "Position",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          320.0,
+                          180.0,
+                          0.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Point"
+                      },
+                      "spatial": true,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 2,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 79,
+                      "match": "scale",
+                      "name": "Scale",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          100.0,
+                          100.0,
+                          100.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 2,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 80,
+                      "match": "orientation",
+                      "name": "Orientation",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          0.0,
+                          0.0,
+                          0.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": true,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 81,
+                      "match": "rotationX",
+                      "name": "X Rotation",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": true,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 82,
+                      "match": "rotationY",
+                      "name": "Y Rotation",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": true,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 83,
+                      "match": "rotation",
+                      "name": "Rotation",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 84,
+                      "match": "opacity",
+                      "name": "Opacity",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 100.0
+                      },
+                      "ui": {
+                        "kind": "Slider",
+                        "min": 0.0,
+                        "max": 100.0,
+                        "slider_min": 0.0,
+                        "slider_max": 100.0,
+                        "decimals": 0
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    }
+                  ]
+                },
+                {
+                  "node": "Group",
+                  "uid": 86,
+                  "match": "materialOptions",
+                  "name": "Material Options",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": [
+                    {
+                      "node": "Prop",
+                      "uid": 87,
+                      "match": "castsShadows",
+                      "name": "Casts Shadows",
+                      "value": {
+                        "t": "Enum",
+                        "v": 0
+                      },
+                      "ui": {
+                        "kind": "Popup",
+                        "options": [
+                          "Off",
+                          "On",
+                          "Only"
+                        ]
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 88,
+                      "match": "lightTransmission",
+                      "name": "Light Transmission",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 89,
+                      "match": "acceptsShadows",
+                      "name": "Accepts Shadows",
+                      "value": {
+                        "t": "Enum",
+                        "v": 1
+                      },
+                      "ui": {
+                        "kind": "Popup",
+                        "options": [
+                          "Off",
+                          "On",
+                          "Only"
+                        ]
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 90,
+                      "match": "acceptsLights",
+                      "name": "Accepts Lights",
+                      "value": {
+                        "t": "Bool",
+                        "v": true
+                      },
+                      "ui": {
+                        "kind": "Checkbox"
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 91,
+                      "match": "ambient",
+                      "name": "Ambient",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 100.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 92,
+                      "match": "diffuse",
+                      "name": "Diffuse",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 50.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 93,
+                      "match": "specularIntensity",
+                      "name": "Specular Intensity",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 50.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 94,
+                      "match": "specularShininess",
+                      "name": "Specular Shininess",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 5.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 95,
+                      "match": "metal",
+                      "name": "Metal",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 100.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": 4,
+            "name": "Drawing",
+            "source": {
+              "type": "Solid",
+              "item": 3
+            },
+            "label": "Red",
+            "comment": "",
+            "start_time": 0,
+            "in_point": 0,
+            "out_point": 762048000000,
+            "stretch": 100.0,
+            "switches": {
+              "video": true,
+              "audio": true,
+              "solo": false,
+              "locked": false,
+              "shy": false,
+              "collapse": false,
+              "quality": "Best",
+              "sampling": "Bilinear",
+              "effects": true,
+              "frame_blend": "Off",
+              "motion_blur": false,
+              "adjustment": false,
+              "three_d": false,
+              "guide": false
+            },
+            "blend_mode": "Normal",
+            "preserve_transparency": false,
+            "track_matte": null,
+            "parent": null,
+            "markers": [],
+            "auto_orient": "Off",
+            "props": {
+              "uid": 5,
+              "match": "layer",
+              "name": "Drawing",
+              "kind": {
+                "kind": "Plain"
+              },
+              "enabled": true,
+              "children": [
+                {
+                  "node": "Group",
+                  "uid": 6,
+                  "match": "masks",
+                  "name": "Masks",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": []
+                },
+                {
+                  "node": "Group",
+                  "uid": 7,
+                  "match": "effects",
+                  "name": "Effects",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": [
+                    {
+                      "node": "Group",
+                      "uid": 27,
+                      "match": "ec.paint.paint",
+                      "name": "Paint",
+                      "kind": {
+                        "kind": "Effect",
+                        "effect": "ec.paint.paint"
+                      },
+                      "enabled": true,
+                      "children": [
+                        {
+                          "node": "Prop",
+                          "uid": 28,
+                          "match": "on_transparent",
+                          "name": "Paint on Transparent",
+                          "value": {
+                            "t": "Bool",
+                            "v": false
+                          },
+                          "ui": {
+                            "kind": "Checkbox"
+                          },
+                          "spatial": false,
+                          "hold_only": true,
+                          "three_d_only": false,
+                          "two_d_only": false,
+                          "shown_dims": 0,
+                          "static_only": false
+                        },
+                        {
+                          "node": "Group",
+                          "uid": 29,
+                          "match": "brush",
+                          "name": "Brush 1",
+                          "kind": {
+                            "kind": "Indexed"
+                          },
+                          "enabled": true,
+                          "children": [
+                            {
+                              "node": "Prop",
+                              "uid": 30,
+                              "match": "path",
+                              "name": "Path",
+                              "value": {
+                                "t": "Path",
+                                "v": {
+                                  "vertices": [
+                                    [
+                                      140.0,
+                                      222.0
+                                    ],
+                                    [
+                                      146.0,
+                                      222.66358453077365
+                                    ],
+                                    [
+                                      152.0,
+                                      223.30877878718462
+                                    ],
+                                    [
+                                      158.0,
+                                      223.91770215441682
+                                    ],
+                                    [
+                                      164.0,
+                                      224.47347921227896
+                                    ],
+                                    [
+                                      170.0,
+                                      224.96070741278416
+                                    ],
+                                    [
+                                      176.0,
+                                      225.3658839392316
+                                    ],
+                                    [
+                                      182.0,
+                                      225.67777991701502
+                                    ],
+                                    [
+                                      188.0,
+                                      225.88775160545325
+                                    ],
+                                    [
+                                      194.0,
+                                      225.9899799464162
+                                    ],
+                                    [
+                                      200.0,
+                                      225.98163183100706
+                                    ],
+                                    [
+                                      206.0,
+                                      225.86293861503
+                                    ],
+                                    [
+                                      212.0,
+                                      225.63718970730272
+                                    ],
+                                    [
+                                      218.0,
+                                      225.31064140850384
+                                    ],
+                                    [
+                                      224.0,
+                                      224.8923435269533
+                                    ],
+                                    [
+                                      230.0,
+                                      224.39388857641583
+                                    ],
+                                    [
+                                      236.0,
+                                      223.82909050654325
+                                    ],
+                                    [
+                                      242.0,
+                                      223.21360186947143
+                                    ],
+                                    [
+                                      248.0,
+                                      222.56448003223946
+                                    ],
+                                    [
+                                      254.0,
+                                      221.8997144568193
+                                    ],
+                                    [
+                                      260.0,
+                                      221.23772814849806
+                                    ],
+                                    [
+                                      266.0,
+                                      220.59686708924153
+                                    ],
+                                    [
+                                      272.0,
+                                      219.99489180564663
+                                    ],
+                                    [
+                                      278.0,
+                                      219.44848516193258
+                                    ],
+                                    [
+                                      284.0,
+                                      218.97279001876828
+                                    ],
+                                    [
+                                      290.0,
+                                      218.58098957104465
+                                    ],
+                                    [
+                                      296.0,
+                                      218.28394199491694
+                                    ],
+                                    [
+                                      302.0,
+                                      218.0898795293396
+                                    ],
+                                    [
+                                      308.0,
+                                      218.0041803316083
+                                    ],
+                                    [
+                                      314.0,
+                                      218.02921942959938
+                                    ],
+                                    [
+                                      320.0,
+                                      218.16430290134744
+                                    ],
+                                    [
+                                      326.0,
+                                      218.40568710607707
+                                    ],
+                                    [
+                                      332.0,
+                                      218.7466824337297
+                                    ],
+                                    [
+                                      338.0,
+                                      219.17783869771844
+                                    ],
+                                    [
+                                      344.0,
+                                      219.68720703302276
+                                    ],
+                                    [
+                                      350.0,
+                                      220.2606710414997
+                                    ],
+                                    [
+                                      356.0,
+                                      220.88233800720428
+                                    ],
+                                    [
+                                      362.0,
+                                      221.53497933975908
+                                    ],
+                                    [
+                                      368.0,
+                                      222.2005080395287
+                                    ],
+                                    [
+                                      374.0,
+                                      222.86047995235126
+                                    ],
+                                    [
+                                      380.0,
+                                      223.4966049222849
+                                    ],
+                                    [
+                                      386.0,
+                                      224.0912536765187
+                                    ],
+                                    [
+                                      392.0,
+                                      224.62794639487515
+                                    ],
+                                    [
+                                      398.0,
+                                      225.09180942391393
+                                    ],
+                                    [
+                                      404.0,
+                                      225.46998747847522
+                                    ],
+                                    [
+                                      410.0,
+                                      225.75199990709896
+                                    ],
+                                    [
+                                      416.0,
+                                      225.9300311479455
+                                    ],
+                                    [
+                                      422.0,
+                                      225.99914732565688
+                                    ],
+                                    [
+                                      428.0,
+                                      225.95743298649353
+                                    ],
+                                    [
+                                      434.0,
+                                      225.80604418233202
+                                    ],
+                                    [
+                                      440.0,
+                                      225.54917643237877
+                                    ],
+                                    [
+                                      446.0,
+                                      225.19394845049396
+                                    ],
+                                    [
+                                      452.0,
+                                      224.75020486045224
+                                    ],
+                                    [
+                                      458.0,
+                                      224.23024336659893
+                                    ],
+                                    [
+                                      464.0,
+                                      223.64847394096702
+                                    ],
+                                    [
+                                      470.0,
+                                      223.02101947198608
+                                    ],
+                                    [
+                                      476.0,
+                                      222.365268942219
+                                    ],
+                                    [
+                                      482.0,
+                                      221.69939551815276
+                                    ],
+                                    [
+                                      488.0,
+                                      221.04185290747873
+                                    ],
+                                    [
+                                      494.0,
+                                      220.41086394158415
+                                    ],
+                                    [
+                                      500.0,
+                                      219.82391555644253
+                                    ]
+                                  ],
+                                  "in_tangents": [
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ]
+                                  ],
+                                  "out_tangents": [
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ],
+                                    [
+                                      0.0,
+                                      0.0
+                                    ]
+                                  ],
+                                  "closed": false
+                                }
+                              },
+                              "ui": {
+                                "kind": "Path"
+                              },
+                              "spatial": false,
+                              "hold_only": false,
+                              "three_d_only": false,
+                              "two_d_only": false,
+                              "shown_dims": 0,
+                              "static_only": false
+                            },
+                            {
+                              "node": "Prop",
+                              "uid": 31,
+                              "match": "mode",
+                              "name": "mode",
+                              "value": {
+                                "t": "Enum",
+                                "v": 0
+                              },
+                              "ui": {
+                                "kind": "Hidden"
+                              },
+                              "spatial": false,
+                              "hold_only": true,
+                              "three_d_only": false,
+                              "two_d_only": false,
+                              "shown_dims": 0,
+                              "static_only": true
+                            },
+                            {
+                              "node": "Prop",
+                              "uid": 32,
+                              "match": "in",
+                              "name": "in",
+                              "value": {
+                                "t": "Scalar",
+                                "v": 0.5
+                              },
+                              "ui": {
+                                "kind": "Hidden"
+                              },
+                              "spatial": false,
+                              "hold_only": false,
+                              "three_d_only": false,
+                              "two_d_only": false,
+                              "shown_dims": 0,
+                              "static_only": true
+                            },
+                            {
+                              "node": "Prop",
+                              "uid": 33,
+                              "match": "out",
+                              "name": "out",
+                              "value": {
+                                "t": "Scalar",
+                                "v": 1000000000.0
+                              },
+                              "ui": {
+                                "kind": "Hidden"
+                              },
+                              "spatial": false,
+                              "hold_only": false,
+                              "three_d_only": false,
+                              "two_d_only": false,
+                              "shown_dims": 0,
+                              "static_only": true
+                            },
+                            {
+                              "node": "Prop",
+                              "uid": 34,
+                              "match": "duration",
+                              "name": "duration",
+                              "value": {
+                                "t": "Enum",
+                                "v": 1
+                              },
+                              "ui": {
+                                "kind": "Hidden"
+                              },
+                              "spatial": false,
+                              "hold_only": true,
+                              "three_d_only": false,
+                              "two_d_only": false,
+                              "shown_dims": 0,
+                              "static_only": true
+                            },
+                            {
+                              "node": "Prop",
+                              "uid": 35,
+                              "match": "pressure",
+                              "name": "pressure",
+                              "value": {
+                                "t": "Str",
+                                "v": ""
+                              },
+                              "ui": {
+                                "kind": "Hidden"
+                              },
+                              "spatial": false,
+                              "hold_only": true,
+                              "three_d_only": false,
+                              "two_d_only": false,
+                              "shown_dims": 0,
+                              "static_only": true
+                            },
+                            {
+                              "node": "Group",
+                              "uid": 36,
+                              "match": "stroke_options",
+                              "name": "Stroke Options",
+                              "kind": {
+                                "kind": "Plain"
+                              },
+                              "enabled": true,
+                              "children": [
+                                {
+                                  "node": "Prop",
+                                  "uid": 37,
+                                  "match": "start",
+                                  "name": "Start",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 0.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 100.0,
+                                    "slider_min": 0.0,
+                                    "slider_max": 100.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 38,
+                                  "match": "end",
+                                  "name": "End",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 100.0
+                                  },
+                                  "keys": [
+                                    {
+                                      "time": 127008000000,
+                                      "value": {
+                                        "t": "Scalar",
+                                        "v": 0.0
+                                      },
+                                      "in_interp": "Linear",
+                                      "out_interp": "Linear",
+                                      "in_ease": [],
+                                      "out_ease": [],
+                                      "continuous": false,
+                                      "auto_bezier": false,
+                                      "spatial_in": [
+                                        0.0,
+                                        0.0,
+                                        0.0
+                                      ],
+                                      "spatial_out": [
+                                        0.0,
+                                        0.0,
+                                        0.0
+                                      ],
+                                      "spatial_auto": true,
+                                      "spatial_continuous": false,
+                                      "roving": false
+                                    },
+                                    {
+                                      "time": 508032000000,
+                                      "value": {
+                                        "t": "Scalar",
+                                        "v": 100.0
+                                      },
+                                      "in_interp": "Linear",
+                                      "out_interp": "Linear",
+                                      "in_ease": [],
+                                      "out_ease": [],
+                                      "continuous": false,
+                                      "auto_bezier": false,
+                                      "spatial_in": [
+                                        0.0,
+                                        0.0,
+                                        0.0
+                                      ],
+                                      "spatial_out": [
+                                        0.0,
+                                        0.0,
+                                        0.0
+                                      ],
+                                      "spatial_auto": true,
+                                      "spatial_continuous": false,
+                                      "roving": false
+                                    }
+                                  ],
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 100.0,
+                                    "slider_min": 0.0,
+                                    "slider_max": 100.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 39,
+                                  "match": "color",
+                                  "name": "Color",
+                                  "value": {
+                                    "t": "Color",
+                                    "v": [
+                                      0.09,
+                                      0.38,
+                                      0.34,
+                                      1.0
+                                    ]
+                                  },
+                                  "ui": {
+                                    "kind": "Color"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 40,
+                                  "match": "diameter",
+                                  "name": "Diameter",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 4.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 2500.0,
+                                    "slider_min": 1.0,
+                                    "slider_max": 200.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 41,
+                                  "match": "angle",
+                                  "name": "Angle",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 0.0
+                                  },
+                                  "ui": {
+                                    "kind": "Angle"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 42,
+                                  "match": "hardness",
+                                  "name": "Hardness",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 100.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 100.0,
+                                    "slider_min": 0.0,
+                                    "slider_max": 100.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 43,
+                                  "match": "roundness",
+                                  "name": "Roundness",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 100.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 100.0,
+                                    "slider_min": 0.0,
+                                    "slider_max": 100.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 44,
+                                  "match": "spacing",
+                                  "name": "Spacing",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 25.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 1.0,
+                                    "max": 1000.0,
+                                    "slider_min": 1.0,
+                                    "slider_max": 200.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 45,
+                                  "match": "channels",
+                                  "name": "Channels",
+                                  "value": {
+                                    "t": "Enum",
+                                    "v": 0
+                                  },
+                                  "ui": {
+                                    "kind": "Popup",
+                                    "options": [
+                                      "RGBA",
+                                      "RGB",
+                                      "Alpha"
+                                    ]
+                                  },
+                                  "spatial": false,
+                                  "hold_only": true,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 46,
+                                  "match": "opacity",
+                                  "name": "Opacity",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 100.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 100.0,
+                                    "slider_min": 0.0,
+                                    "slider_max": 100.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 47,
+                                  "match": "flow",
+                                  "name": "Flow",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 100.0
+                                  },
+                                  "ui": {
+                                    "kind": "Slider",
+                                    "min": 0.0,
+                                    "max": 100.0,
+                                    "slider_min": 0.0,
+                                    "slider_max": 100.0,
+                                    "decimals": 1
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 48,
+                                  "match": "size_pressure",
+                                  "name": "size_pressure",
+                                  "value": {
+                                    "t": "Bool",
+                                    "v": true
+                                  },
+                                  "ui": {
+                                    "kind": "Hidden"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": true,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": true
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 49,
+                                  "match": "min_size",
+                                  "name": "min_size",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 1.0
+                                  },
+                                  "ui": {
+                                    "kind": "Hidden"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": true
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 50,
+                                  "match": "opacity_pressure",
+                                  "name": "opacity_pressure",
+                                  "value": {
+                                    "t": "Bool",
+                                    "v": false
+                                  },
+                                  "ui": {
+                                    "kind": "Hidden"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": true,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": true
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 51,
+                                  "match": "flow_pressure",
+                                  "name": "flow_pressure",
+                                  "value": {
+                                    "t": "Bool",
+                                    "v": false
+                                  },
+                                  "ui": {
+                                    "kind": "Hidden"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": true,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": true
+                                }
+                              ]
+                            },
+                            {
+                              "node": "Group",
+                              "uid": 52,
+                              "match": "transform",
+                              "name": "Transform: Brush 1",
+                              "kind": {
+                                "kind": "Plain"
+                              },
+                              "enabled": true,
+                              "children": [
+                                {
+                                  "node": "Prop",
+                                  "uid": 53,
+                                  "match": "anchor",
+                                  "name": "Anchor Point",
+                                  "value": {
+                                    "t": "Vec2",
+                                    "v": [
+                                      140.0,
+                                      222.0
+                                    ]
+                                  },
+                                  "ui": {
+                                    "kind": "Point"
+                                  },
+                                  "spatial": true,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 54,
+                                  "match": "position",
+                                  "name": "Position",
+                                  "value": {
+                                    "t": "Vec2",
+                                    "v": [
+                                      140.0,
+                                      222.0
+                                    ]
+                                  },
+                                  "ui": {
+                                    "kind": "Point"
+                                  },
+                                  "spatial": true,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 55,
+                                  "match": "scale",
+                                  "name": "Scale",
+                                  "value": {
+                                    "t": "Vec2",
+                                    "v": [
+                                      100.0,
+                                      100.0
+                                    ]
+                                  },
+                                  "ui": {
+                                    "kind": "Percent"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                },
+                                {
+                                  "node": "Prop",
+                                  "uid": 56,
+                                  "match": "rotation",
+                                  "name": "Rotation",
+                                  "value": {
+                                    "t": "Scalar",
+                                    "v": 0.0
+                                  },
+                                  "ui": {
+                                    "kind": "Angle"
+                                  },
+                                  "spatial": false,
+                                  "hold_only": false,
+                                  "three_d_only": false,
+                                  "two_d_only": false,
+                                  "shown_dims": 0,
+                                  "static_only": false
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "node": "Group",
+                  "uid": 16,
+                  "match": "transform",
+                  "name": "Transform",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": [
+                    {
+                      "node": "Prop",
+                      "uid": 8,
+                      "match": "anchor",
+                      "name": "Anchor Point",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          320.0,
+                          180.0,
+                          0.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Point"
+                      },
+                      "spatial": true,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 2,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 9,
+                      "match": "position",
+                      "name": "Position",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          320.0,
+                          180.0,
+                          0.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Point"
+                      },
+                      "spatial": true,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 2,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 10,
+                      "match": "scale",
+                      "name": "Scale",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          100.0,
+                          100.0,
+                          100.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 2,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 11,
+                      "match": "orientation",
+                      "name": "Orientation",
+                      "value": {
+                        "t": "Vec3",
+                        "v": [
+                          0.0,
+                          0.0,
+                          0.0
+                        ]
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": true,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 12,
+                      "match": "rotationX",
+                      "name": "X Rotation",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": true,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 13,
+                      "match": "rotationY",
+                      "name": "Y Rotation",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": true,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 14,
+                      "match": "rotation",
+                      "name": "Rotation",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Angle"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 15,
+                      "match": "opacity",
+                      "name": "Opacity",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 100.0
+                      },
+                      "ui": {
+                        "kind": "Slider",
+                        "min": 0.0,
+                        "max": 100.0,
+                        "slider_min": 0.0,
+                        "slider_max": 100.0,
+                        "decimals": 0
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    }
+                  ]
+                },
+                {
+                  "node": "Group",
+                  "uid": 17,
+                  "match": "materialOptions",
+                  "name": "Material Options",
+                  "kind": {
+                    "kind": "Plain"
+                  },
+                  "enabled": true,
+                  "children": [
+                    {
+                      "node": "Prop",
+                      "uid": 18,
+                      "match": "castsShadows",
+                      "name": "Casts Shadows",
+                      "value": {
+                        "t": "Enum",
+                        "v": 0
+                      },
+                      "ui": {
+                        "kind": "Popup",
+                        "options": [
+                          "Off",
+                          "On",
+                          "Only"
+                        ]
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 19,
+                      "match": "lightTransmission",
+                      "name": "Light Transmission",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 0.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 20,
+                      "match": "acceptsShadows",
+                      "name": "Accepts Shadows",
+                      "value": {
+                        "t": "Enum",
+                        "v": 1
+                      },
+                      "ui": {
+                        "kind": "Popup",
+                        "options": [
+                          "Off",
+                          "On",
+                          "Only"
+                        ]
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 21,
+                      "match": "acceptsLights",
+                      "name": "Accepts Lights",
+                      "value": {
+                        "t": "Bool",
+                        "v": true
+                      },
+                      "ui": {
+                        "kind": "Checkbox"
+                      },
+                      "spatial": false,
+                      "hold_only": true,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 22,
+                      "match": "ambient",
+                      "name": "Ambient",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 100.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 23,
+                      "match": "diffuse",
+                      "name": "Diffuse",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 50.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 24,
+                      "match": "specularIntensity",
+                      "name": "Specular Intensity",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 50.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 25,
+                      "match": "specularShininess",
+                      "name": "Specular Shininess",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 5.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    },
+                    {
+                      "node": "Prop",
+                      "uid": 26,
+                      "match": "metal",
+                      "name": "Metal",
+                      "value": {
+                        "t": "Scalar",
+                        "v": 100.0
+                      },
+                      "ui": {
+                        "kind": "Percent"
+                      },
+                      "spatial": false,
+                      "hold_only": false,
+                      "three_d_only": false,
+                      "two_d_only": false,
+                      "shown_dims": 0,
+                      "static_only": false
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "markers": [],
+        "shutter_angle": 180.0,
+        "shutter_phase": -90.0,
+        "motion_blur_samples": 16,
+        "motion_blur_adaptive_limit": 128,
+        "renderer": "Classic3D",
+        "hide_shy": false,
+        "enable_motion_blur": true,
+        "enable_frame_blending": true,
+        "draft_3d": false,
+        "preserve_frame_rate": false,
+        "preserve_resolution": false,
+        "poster_time": 0,
+        "global_light": {
+          "angle": {
+            "uid": 0,
+            "match": "globalLightAngle",
+            "name": "Global Light Angle",
+            "value": {
+              "t": "Scalar",
+              "v": 120.0
+            },
+            "ui": {
+              "kind": "Angle"
+            },
+            "spatial": false,
+            "hold_only": false,
+            "three_d_only": false,
+            "two_d_only": false,
+            "shown_dims": 0,
+            "static_only": false
+          },
+          "altitude": {
+            "uid": 0,
+            "match": "globalLightAltitude",
+            "name": "Global Light Altitude",
+            "value": {
+              "t": "Scalar",
+              "v": 30.0
+            },
+            "ui": {
+              "kind": "Angle"
+            },
+            "spatial": false,
+            "hold_only": false,
+            "three_d_only": false,
+            "two_d_only": false,
+            "shown_dims": 0,
+            "static_only": false
+          }
+        }
+      }
+    },
+    "2": {
+      "id": 2,
+      "name": "Solids",
+      "label": "Yellow",
+      "comment": "",
+      "parent": null,
+      "kind": {
+        "type": "Folder"
+      }
+    },
+    "3": {
+      "id": 3,
+      "name": "Drawing",
+      "label": "Red",
+      "comment": "",
+      "parent": 2,
+      "kind": {
+        "type": "Solid",
+        "color": [
+          0.95686275,
+          0.9372549,
+          0.89411765
+        ],
+        "width": 640,
+        "height": 360,
+        "pixel_aspect": 1.0
+      }
+    }
+  },
+  "next_id": 96
+}

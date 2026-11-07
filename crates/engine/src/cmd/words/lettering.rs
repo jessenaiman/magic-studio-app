@@ -12,27 +12,6 @@ const FRAME: (f64, f64) = (1920.0, 1080.0);
 const LEAD: f64 = 0.25;
 const HOLD: f64 = 1.0;
 
-#[cfg(test)]
-mod native_motion_placement_tests {
-    use super::*;
-
-    #[test]
-    fn native_motion_keeps_the_static_text_box_and_uses_its_center_for_position_keys() {
-        let line = Line { id: "line".into(), layer: "line".into(), words: vec![("round".into(), Some((1.0, 3.0)))], start: 1.0, end: 3.0 };
-        let mut item = json!({"word_ids":["line/w0"],"text":"round","x":100,"y":200,"size":80,"font":"serif","motion":"quiet"});
-        let mut still = Vec::new();
-        spatial_line_steps(&json!({}), &line, &json!({"items":[item.clone()]}), 0.75, 4.0, &mut still);
-        item["native_motion"] = json!({"property":"transform/rotation","speed":180,"duration":2});
-        item["motion_keys"] = json!([[0, 0, 0, 100, 100, 0, 100], [2, 0, 0, 100, 100, 360, 100]]);
-        let mut moving = Vec::new();
-        spatial_line_steps(&json!({}), &line, &json!({"items":[item]}), 0.75, 4.0, &mut moving);
-        assert_eq!(moving[0]["params"]["box"], still[0]["params"]["box"]);
-        let box_value = &still[0]["params"]["box"];
-        let position = moving.iter().find(|step| step["params"]["path"] == "transform/position").unwrap();
-        assert_eq!(position["params"]["value"], json!([100.0 + box_value[2].as_f64().unwrap() / 2.0, 200.0 + box_value[3].as_f64().unwrap() / 2.0]));
-    }
-}
-
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
@@ -211,7 +190,7 @@ fn stroke_steps(s: &Stroke<'_>, steps: &mut Vec<Value>) {
     steps.push(step("prop.set", json!({"layer": s.id, "path": "transform/position", "value": [s.x + s.w / 2.0, s.y + s.h / 2.0, 0.0]})));
     steps.push(step("layer.addShapeItem", json!({"layer": s.id, "kind": "trim"})));
     for (t, v) in [(s.from.max(0.0), 0.0), (s.to.max(s.from + 0.05), 100.0)] {
-        steps.push(step("prop.set", json!({"layer": s.id, "path": "contents/trim/end", "value": v, "time": t, "timeBase": "comp"})));
+        steps.push(step("prop.addKey", json!({"layer": s.id, "path": "contents/trim/end", "value": v, "time": t, "timeBase": "comp"})));
     }
     steps.extend(trim_steps(json!(s.id), s.shown, s.gone));
 }
@@ -256,7 +235,7 @@ fn animate_range(id: &str, range: (usize, usize), name: &str, start: f64, end: f
     }
     for (time, value) in keys {
         let path = format!("text/animators/animator/properties/{property}");
-        steps.push(step("prop.set", json!({"layer": id, "path": path, "value": value, "time": time.max(0.0), "timeBase": "comp"})));
+        steps.push(step("prop.addKey", json!({"layer": id, "path": path, "value": value, "time": time.max(0.0), "timeBase": "comp"})));
     }
 }
 
@@ -386,7 +365,7 @@ fn spatial_line_steps(recipe: &Value, line: &Line, design: &Value, shown: f64, g
         }
         steps.extend(trim_steps(json!(layer_id), shown, gone));
         for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
-            steps.push(step("prop.set", json!({"layer": layer_id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
+            steps.push(step("prop.addKey", json!({"layer": layer_id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
         }
     }
     for (d_idx, draw) in design["draws"].as_array().into_iter().flatten().enumerate() {
@@ -432,7 +411,7 @@ fn build_steps_with_designs(recipe: &Value, designs: &Value, all: &[Line], durat
         let shown = (line.start - LEAD).max(previous_out).max(0.0);
         let gone = if next - line.end < HOLD { next } else { (line.end + HOLD).min(duration) };
         previous_out = gone;
-        let line_design = &designs[id];
+        let line_design = &designs[&line.layer];
         let hero_info = if line_design["items"].as_array().is_some_and(|a| !a.is_empty()) {
             spatial_line_steps(recipe, line, line_design, shown, gone, &mut steps)
         } else {
@@ -445,7 +424,7 @@ fn build_steps_with_designs(recipe: &Value, designs: &Value, all: &[Line], durat
             let h_val = hero(recipe, line).map(|(k, spec)| hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps)).unwrap_or(Value::Null);
             steps.extend(trim_steps(json!(line.layer), shown, gone));
             for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
-                steps.push(step("prop.set", json!({"layer": line.layer, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
+                steps.push(step("prop.addKey", json!({"layer": line.layer, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
             }
             h_val
         };
@@ -454,7 +433,7 @@ fn build_steps_with_designs(recipe: &Value, designs: &Value, all: &[Line], durat
     (steps, summary)
 }
 
-fn words_designs(dir: &Path) -> Value {
+fn words_designs(dir: &Path, all: &[Line]) -> Value {
     let path = crate::cmd::words::document_path(dir);
     let Ok(bytes) = std::fs::read(path) else {
         return json!({});
@@ -463,11 +442,19 @@ fn words_designs(dir: &Path) -> Value {
         return json!({});
     };
     let mut map = serde_json::Map::new();
-    for anim in doc["animations"].as_array().into_iter().flatten() {
-        if let Some(obj) = anim["design"].as_object() {
-            for (k, v) in obj {
-                map.insert(k.clone(), v.clone());
-            }
+    // A sung id repeats across choruses. Match the saved section by its timed
+    // words, then key by the unique native layer stem instead of overwriting all
+    // occurrences with the last chorus's design.
+    for line in all {
+        let design = doc["animations"].as_array().into_iter().flatten().find_map(|anim| {
+            let belongs = anim["words"].as_array().into_iter().flatten().any(|word| {
+                word["sung_id"].as_str().or(word["line_id"].as_str()) == Some(line.id.as_str())
+                    && word["start"].as_f64().is_some_and(|start| (start - line.start).abs() < 0.0001)
+            });
+            belongs.then(|| anim["design"].get(&line.id)).flatten()
+        });
+        if let Some(design) = design {
+            map.insert(line.layer.clone(), design.clone());
         }
     }
     Value::Object(map)
@@ -477,7 +464,8 @@ fn words_designs(dir: &Path) -> Value {
 /// lyrics, then render it with transparency unless `render` is false.
 pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
-    let designs = words_designs(&dir);
+    let all = lines(&crate::cmd::words::aligned_in(&dir)?);
+    let designs = words_designs(&dir, &all);
     let recipe_path = p["recipe"].as_str().map_or_else(|| dir.join("lyrics-design.json"), PathBuf::from);
     let recipe: Value = std::fs::read(&recipe_path)
         .ok()
@@ -489,7 +477,6 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
                 .map(|_| json!({"band": "top", "base": {"lettering": "sans-bold", "size": 58, "color": "#173F49", "outline": "#FFF8E9"}}))
         })
         .ok_or_else(|| invalid(format!("No lyric design recipe at {}; propose one and get it approved first", recipe_path.display())))?;
-    let all = lines(&crate::cmd::words::aligned_in(&dir)?);
     if all.is_empty() {
         return Err(invalid("No timed lyric lines: import the transcript and the artist's lyric sheet first"));
     }
@@ -536,4 +523,75 @@ pub fn cmd_words_publish(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let studio = crate::cmd::film::publish_lyrics(s, &path)?;
     Ok(json!({"ok":true,"render":path,"studio":studio}))
+}
+
+#[cfg(test)]
+mod native_motion_placement_tests {
+    use super::*;
+
+    #[test]
+    fn repeated_chorus_uses_each_occurrences_saved_design() {
+        let dir = std::env::temp_dir().join(format!("magic-lettering-occurrences-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("design")).unwrap();
+        let doc = json!({"animations":[
+            {"words":[{"sung_id":"chorus", "start":1}], "design":{"chorus":{"items":[{"text":"round","x":755,"y":386}]}}},
+            {"words":[{"sung_id":"chorus", "start":5}], "design":{"chorus":{"items":[{"text":"round","x":714,"y":36}]}}}
+        ]});
+        std::fs::write(dir.join("design/words.json"), serde_json::to_vec(&doc).unwrap()).unwrap();
+        let all = lines(
+            &json!({"words":[{"sung_id":"chorus","text":"round","start":1,"end":2}, {"sung_id":"other","text":"and","start":3,"end":4}, {"sung_id":"chorus","text":"round","start":5,"end":6}]}),
+        );
+        let designs = words_designs(&dir, &all);
+        let (steps, _) = build_steps_with_designs(&json!({}), &designs, &all, 7.0);
+        let text_boxes: Vec<_> = steps.iter().filter(|s| s["command"] == "layer.newText").map(|s| s["params"]["box"].clone()).collect();
+        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(text_boxes[0][0], json!(755.0));
+        assert_eq!(text_boxes[2][0], json!(714.0));
+    }
+
+    #[test]
+    fn drawing_trim_is_keyframed_in_the_native_engine() {
+        let mut steps = vec![step("comp.new", json!({"name": "Lyrics", "width": 640, "height": 360, "frameRate": 30, "duration": 4}))];
+        stroke_steps(
+            &Stroke {
+                id: "circle",
+                view_box: "0 0 200 200",
+                x: 300.0,
+                y: 80.0,
+                w: 200.0,
+                h: 200.0,
+                d: "M 100 10 A 90 90 0 1 1 99.99 10",
+                color: "#ff0000",
+                width: 7.0,
+                from: 1.0,
+                to: 3.0,
+                shown: 0.75,
+                gone: 4.0,
+            },
+            &mut steps,
+        );
+        let mut native = effectcraft_engine::Session::default();
+        for step in steps {
+            native.execute_checked(step["command"].as_str().unwrap(), step["params"].clone()).unwrap();
+        }
+        let trim = native.execute_checked("prop.get", json!({"layer":"circle", "path":"contents/trim/end", "time":2})).unwrap();
+        assert_eq!(trim["keys"].as_array().unwrap().len(), 2, "{trim}");
+        assert_eq!(trim["value"], json!(50.0));
+    }
+
+    #[test]
+    fn native_motion_keeps_the_static_text_box_and_uses_its_center_for_position_keys() {
+        let line = Line { id: "line".into(), layer: "line".into(), words: vec![("round".into(), Some((1.0, 3.0)))], start: 1.0, end: 3.0 };
+        let mut item = json!({"word_ids":["line/w0"],"text":"round","x":100,"y":200,"size":80,"font":"serif","motion":"quiet"});
+        let mut still = Vec::new();
+        spatial_line_steps(&json!({}), &line, &json!({"items":[item.clone()]}), 0.75, 4.0, &mut still);
+        item["native_motion"] = json!({"property":"transform/rotation","speed":180,"duration":2});
+        item["motion_keys"] = json!([[0, 0, 0, 100, 100, 0, 100], [2, 0, 0, 100, 100, 360, 100]]);
+        let mut moving = Vec::new();
+        spatial_line_steps(&json!({}), &line, &json!({"items":[item]}), 0.75, 4.0, &mut moving);
+        assert_eq!(moving[0]["params"]["box"], still[0]["params"]["box"]);
+        let box_value = &still[0]["params"]["box"];
+        let position = moving.iter().find(|step| step["params"]["path"] == "transform/position").unwrap();
+        assert_eq!(position["params"]["value"], json!([100.0 + box_value[2].as_f64().unwrap() / 2.0, 200.0 + box_value[3].as_f64().unwrap() / 2.0]));
+    }
 }

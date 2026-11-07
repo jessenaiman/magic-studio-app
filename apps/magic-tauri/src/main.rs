@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod asset_scope;
 mod capture;
+mod clipboard_image;
 mod control;
 
 use clap::Parser;
@@ -152,7 +153,11 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
     {
         return Err("The active project changed; the previous workspace command was not run".into());
     }
-    let result = session.execute(id, params).map_err(|e| e.to_string())?;
+    let result = if id == "clipboard.import_image" {
+        clipboard_image::import_image(app, &mut session, &params)?
+    } else {
+        session.execute(id, params).map_err(|e| e.to_string())?
+    };
     asset_scope::allow(app, &session, &result)?;
     drop(session);
     if notify && changed {

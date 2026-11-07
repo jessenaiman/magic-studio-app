@@ -1,0 +1,13 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const c=vm.createContext({structuredClone});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../../magic-cli/ui/drawing-controls.js'),'utf8'),c);
+const drawing={name:'Circle',view_box:'0 0 200 200',x:100,y:200,w:200,h:200,word_ids:['old-line/w0'],paths:[{d:'M100 0 A100 100 0 1 1 100 200',stroke:'#123456',width:5,from:.1,to:1.2}]};
+const result=c.parseDrawingClipboard(c.drawingClipboardText(drawing));
+assert.equal(result.paths[0].d,drawing.paths[0].d);
+assert.equal(result.word_ids,undefined,'Clipboard cannot carry stale word links into another line');
+result.paths[0].width=8;
+assert.equal(drawing.paths[0].width,5);
+assert.throws(()=>c.parseDrawingClipboard('artist lyrics'));
+const hostile=structuredClone(drawing);hostile.paths[0].d='M0 0"/><script>alert(1)</script>';
+assert.throws(()=>c.parseDrawingClipboard(c.drawingClipboardText(hostile)));
+console.log('Drawing clipboard copies editable geometry and rejects non-drawing or executable content');

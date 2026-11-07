@@ -171,7 +171,8 @@ class ProjectView {
     const assets = state.data?.assets?.assets || [], assetFiles = s.asset_files || [];
     const filesDetails = assetFiles.length ? el("details", {}, el("summary", {}, `Project files (${assetFiles.length})`), ...assetFiles.map(fileButton)) : null;
     const assetsHint = "Click any asset to open and animate it directly in the Animation stage.";
-    const assetsBody = [el("button", { id: "asset-import", class: "start", onclick: (event) => this.importAsset(event) }, "Add asset"), projectAssetGrid(assets, { prefix: "asset" }), el("p", { class: "why" }, assetsHint), filesDetails];
+    const assetsBody = [el("div", {class:"actions"}, el("button", { id: "asset-import", class: "start", onclick: (event) => this.importAsset(event) }, "Add asset"),
+      el("button", {id:"asset-paste",class:"ghost",onclick:() => this.pasteArtwork()}, "Paste artwork")), projectAssetGrid(assets, { prefix: "asset" }), el("p", { class: "why" }, assetsHint), filesDetails];
     box.append(this.block("assets", ICONS.animate, "Assets", `${assets.length} assets`, this.ready("assets"), assetsBody, this.prerequisite("assets").state));
     box.append(this.block("animate", ICONS.animate, "Animate", `${assets.length} objects`, this.ready("animate"), el("p", { class: "why" }, "Choose an asset above to animate it."), this.prerequisite("animate").state));
     box.append(el("button", { id: "project-close-apps", class: "ghost", onclick: () => closeAppsOpenedByMagic() }, "Close apps opened by Magic"));
@@ -179,6 +180,14 @@ class ProjectView {
       $("magic-image-tools")?.replaceChildren(imagePromptBlock());
     if (state.view === "design" && typeof wordsStatusRefresh === "function")
       wordsStatusRefresh();
+  }
+  async pasteArtwork() {
+    try {
+      await this.command("clipboard.import_image", {expected_project:this.state.project});
+      state.open = "assets";
+      this.renderBlocks();
+      toast("Clipboard artwork saved · choose where to place it");
+    } catch (error) { toast(String(error)); }
   }
   async importAsset(event) {
     const supplied = event?.currentTarget?.uiFiles;

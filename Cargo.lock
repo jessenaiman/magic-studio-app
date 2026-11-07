@@ -6374,6 +6374,7 @@ version = "0.17.0"
 dependencies = [
  "cairo-rs",
  "clap",
+ "image",
  "log",
  "magic-engine",
  "serde",

@@ -3,6 +3,7 @@
 //! timeline in FilmCraft for hand edits. Document operations call the linked FilmCraft engine.
 
 pub mod assembly;
+mod export_validation;
 pub mod studio_cues;
 pub mod video_target;
 
@@ -106,6 +107,46 @@ fn existing_lyric_slot(sequence: &Value, track_name: &str) -> Option<(u64, u64, 
     Some((track_id, clip_id, item_id))
 }
 
+/// Match the native source path, including a project relocation under the same
+/// media tree. A bare lyrics.mov filename never establishes source ownership.
+fn same_lettering_source(source: &Path, movie: &Path) -> bool {
+    if source == movie || matches!((source.canonicalize(), movie.canonicalize()), (Ok(a), Ok(b)) if a == b) {
+        return true;
+    }
+    let parts: Vec<_> = movie.components().collect();
+    let Some(media) = parts.iter().rposition(|part| part.as_os_str() == "media") else { return false };
+    let suffix: PathBuf = parts[media..].iter().collect();
+    // media/<project>/lettering/lyrics.mov is the shortest owned source suffix.
+    parts.len() - media >= 4 && source.ends_with(suffix)
+}
+
+fn legacy_lyric_slot(sequence: &Value, movie: &Path, media: &Value) -> Result<Option<(u64, u64, u64)>> {
+    let mut slots = Vec::new();
+    for track in sequence["video"].as_array().into_iter().flatten() {
+        for clip in track["items"].as_array().into_iter().flatten() {
+            let Some((track_id, clip_id, item_id)) = track["id"].as_u64().zip(clip["clip"].as_u64()).zip(clip["item"].as_u64()).map(|((t, c), i)| (t, c, i))
+            else {
+                continue;
+            };
+            if clip["startFrame"].as_u64() != Some(0) || clip["endFrame"] != sequence["durationFrames"] {
+                continue;
+            }
+            let owned =
+                media.as_array().into_iter().flatten().any(|item| {
+                    item["item"].as_u64() == Some(item_id) && item["path"].as_str().is_some_and(|path| same_lettering_source(Path::new(path), movie))
+                });
+            if owned {
+                slots.push((track_id, clip_id, item_id));
+            }
+        }
+    }
+    match slots.as_slice() {
+        [] => Ok(None),
+        [slot] => Ok(Some(*slot)),
+        _ => Err(bad("Multiple existing full-song lettering clips match this source; choose the dedicated Kinetic Lyrics track before publishing")),
+    }
+}
+
 fn publish_lyrics_live(project: &Path, movie: &Path, track_name: &str) -> Option<Result<Value>> {
     let sequence = match crate::CraftHub::try_live(crate::CraftTarget::Film, project, "sequence.inspect", &json!({}), false)? {
         Ok(seq) => seq,
@@ -130,7 +171,11 @@ fn publish_lyrics_sequence(
     sequence: &Value,
     run: &mut impl FnMut(&str, Value) -> Result<Value>,
 ) -> Result<Value> {
-    if let Some((track, clip, item)) = existing_lyric_slot(sequence, track_name) {
+    let slot = match existing_lyric_slot(sequence, track_name) {
+        Some(slot) => Some(slot),
+        None => legacy_lyric_slot(sequence, movie, &run("media.status", json!({}))?)?,
+    };
+    if let Some((track, clip, item)) = slot {
         run("media.replaceFootage", json!({"item": item, "path": movie}))?;
         run("timeline.setTrack", json!({"track": track, "name": track_name, "enabled": true}))?;
         run("file.save", json!({}))?;
@@ -195,8 +240,7 @@ pub(crate) fn export(project: &Path, output: &Path, draft: bool) -> Result<()> {
     export_with_options(project, output, draft, &json!({}))
 }
 
-pub(crate) fn export_with_options(project: &Path, output: &Path, draft: bool, options: &Value) -> Result<()> {
-    let mut session = open_filmcraft(project)?;
+fn export_params(output: &Path, draft: bool, options: &Value) -> Value {
     let mut params = json!({"path": output, "format": "h264", "wait": true});
     if draft {
         params["scale"] = json!(0.5);
@@ -223,11 +267,19 @@ pub(crate) fn export_with_options(project: &Path, output: &Path, draft: bool, op
             "crf",
             "alpha",
         ] {
-            if let Some(val) = src.get(key).filter(|v| !v.is_null()) {
-                dst.insert(key.into(), val.clone());
+            if let Some(val) = src.get(key).filter(|v| !v.is_null() || matches!(key, "captionSidecar" | "preset")) {
+                // Native FilmCraft uses the explicit string "none" to clear a
+                // sidecar; JSON null alone leaves its saved setting unchanged.
+                dst.insert(key.into(), if key == "captionSidecar" && val.is_null() { json!("none") } else { val.clone() });
             }
         }
     }
+    params
+}
+
+pub(crate) fn export_with_options(project: &Path, output: &Path, draft: bool, options: &Value) -> Result<()> {
+    let mut session = open_filmcraft(project)?;
+    let params = export_params(output, draft, options);
     let result = session.execute("file.exportMedia", params).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), e.to_string()))?;
     if let Some(offline) = result["offlineMedia"].as_array().filter(|items| !items.is_empty()) {
         return Err(EngineError::ExternalTool("filmcraft-engine".into(), format!("export blocked by offline media: {offline:?}")));
@@ -287,14 +339,17 @@ fn export_with(f: &Film, out: &Path, draft: bool, options: &Value) -> Result<()>
 }
 
 /// What exists for the film and whether the preview and export are older than the timeline.
-pub fn cmd_video_film(s: &mut Session, _: &Value) -> Result<Value> {
+pub fn cmd_video_film(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
     let project = file_info(&f.project);
     let preview = file_info(&f.preview());
-    let export = file_info(&f.export());
+    let (out, options) = export_validation::destination(&f, p);
+    let export = file_info(&out);
+    let validation = export_validation::status(&f, &out, &options, false);
     let stale = |v: &Value| v["exists"] == true && v["modified"].as_u64() < project["modified"].as_u64();
     Ok(json!({"ok": true, "timeline": project, "preview": preview, "export": export,
-        "preview_stale": stale(&preview), "export_stale": stale(&export)}))
+        "preview_stale": stale(&preview), "export_stale": !validation["valid"].as_bool().unwrap_or(false),
+        "export_ready": validation["valid"] == true, "validation": validation, "export_options": options}))
 }
 
 /// A half-size draft of the whole film with sound, to watch in Studio before exporting.
@@ -308,17 +363,19 @@ pub fn cmd_video_preview(s: &mut Session, p: &Value) -> Result<Value> {
 /// The final film: full size, `exports/<song>.mp4` (or custom format/preset/options).
 pub fn cmd_video_export(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
-    let ext = match p["format"].as_str() {
-        Some("prores" | "dnxhr") => "mov",
-        Some("gif") => "gif",
-        Some("wav") => "wav",
-        Some("flac") => "flac",
-        Some("aac") => "aac",
-        _ => "mp4",
-    };
-    let out = p["path"].as_str().map(PathBuf::from).unwrap_or_else(|| f.dir.join("exports").join(format!("{}.{ext}", f.name)));
-    export_with(&f, &out, false, p)?;
-    Ok(json!({"ok": true, "export": out, "timeline": f.project}))
+    let (out, options) = export_validation::destination(&f, p);
+    let before = export_validation::context(&f, &out, &options)?;
+    export_with(&f, &out, false, &options)?;
+    let validation = export_validation::record(&f, &out, &options, &before)?;
+    Ok(json!({"ok":true,"export":out,"timeline":f.project,"export_ready":true,"validation":validation,"export_options":options}))
+}
+
+/// Recheck a recorded export without rendering or changing its receipt.
+pub fn cmd_video_validate_export(s: &mut Session, p: &Value) -> Result<Value> {
+    let f = film(s)?;
+    let (out, options) = export_validation::destination(&f, p);
+    let validation = export_validation::status(&f, &out, &options, true);
+    Ok(json!({"ok":true,"export":out,"timeline":f.project,"export_ready":validation["valid"] == true,"validation":validation,"export_options":options}))
 }
 
 /// Execute any FilmCraft command (`file.exportInterchange`, `file.projectManager`,
@@ -453,6 +510,39 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
 mod tests {
     //! Reference: <https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/crates/engine/src/relink.rs#L701-L715>
     use super::*;
+
+    #[test]
+    fn legacy_source_matching_rejects_filename_only_and_ambiguous_clips() {
+        let movie = Path::new("/new/media/artist/song/lettering/lyrics.mov");
+        assert!(!same_lettering_source(Path::new("/unrelated/lyrics.mov"), movie));
+        assert!(!same_lettering_source(Path::new("/old/media/other/song/lettering/lyrics.mov"), movie));
+        let sequence = json!({"durationFrames":300,"video":[{"id":3,"items":[
+            {"clip":112,"item":24,"startFrame":0,"endFrame":300},
+            {"clip":113,"item":24,"startFrame":0,"endFrame":300}
+        ]}]});
+        let media = json!([{"item":24,"path":"/old/media/artist/song/lettering/lyrics.mov"}]);
+        assert!(legacy_lyric_slot(&sequence, movie, &media).is_err());
+    }
+
+    #[test]
+    fn publish_lyrics_adopts_relocated_native_source_without_replacing_edits() {
+        let sequence = json!({"durationFrames":300,"video":[{"id":3,"name":"Video 3","items":[{"clip":112,"item":24,"startFrame":0,"endFrame":300,"effects":[{"id":"authored"}]}]}]});
+        let mut calls = Vec::new();
+        let result = publish_lyrics_sequence(
+            Path::new("/new/media/artist/song/film/song.fcproj"),
+            Path::new("/new/media/artist/song/lettering/lyrics.mov"),
+            "Kinetic Lyrics",
+            &sequence,
+            &mut |id, params| {
+                calls.push((id.to_owned(), params));
+                if id == "media.status" { Ok(json!([{"item":24,"path":"/old/media/artist/song/lettering/lyrics.mov"}])) } else { Ok(json!({})) }
+            },
+        )
+        .unwrap();
+        assert_eq!(result["clip"], 112);
+        assert_eq!(result["item"], 24);
+        assert!(!calls.iter().any(|(id, _)| id == "file.import" || id == "timeline.place" || id == "clip.fitToFrame"));
+    }
 
     #[test]
     fn publish_lyrics_replaces_footage_in_place_when_kinetic_track_exists() {

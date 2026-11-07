@@ -95,7 +95,7 @@ export async function connectDesktop(
             if (!candidate.checkValidity() || candidate.value !== value) throw new Error("Value is outside the control's accepted range");
             const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
             setter?.call(element, value);
-            element.dispatchEvent(new Event(element.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
+            input.commitValueEvents(element);
             if (element.value !== value) throw new Error("The control did not accept the requested value");
             result = { ok: true, id: params.id, value: element.value }; break;
           }

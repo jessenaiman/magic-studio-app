@@ -42,19 +42,61 @@ fn media_path(path: &Path) -> bool {
     })
 }
 
+// GLTF URIs use percent encoding; reject schemes, absolute paths, queries and fragments.
+fn local_uri(uri: &str) -> Option<PathBuf> {
+    if uri.contains([':', '?', '#', '\\']) {
+        return None;
+    }
+    let bytes = uri.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            decoded.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            decoded.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let path = PathBuf::from(String::from_utf8(decoded).ok()?);
+    if path.is_absolute() || path.as_os_str().is_empty() { None } else { Some(path) }
+}
+
+fn safe_directory(path: &Path) -> bool {
+    if path.parent().is_none() {
+        return false;
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    !home.as_deref().is_some_and(|home| path == home || matches!((path.canonicalize(), home.canonicalize()), (Ok(a), Ok(b)) if a == b))
+}
+
 impl Grants {
     fn media(&mut self, path: PathBuf) {
         if !path.is_absolute() || !media_path(&path) {
             return;
         }
-        // GLTF can load relative buffers and textures beside the selected model.
         if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gltf")) {
-            if let Some(parent) = path.parent() {
-                self.directories.insert(parent.to_owned());
+            // Grant only resources explicitly named by this model, not its whole parent.
+            if let Ok(bytes) = std::fs::read(&path)
+                && let Ok(model) = serde_json::from_slice::<Value>(&bytes)
+                && let Some(parent) = path.parent()
+            {
+                for field in ["buffers", "images"] {
+                    if let Some(entries) = model.get(field).and_then(Value::as_array) {
+                        for entry in entries {
+                            if let Some(uri) = entry.get("uri").and_then(Value::as_str)
+                                && let Some(relative) = local_uri(uri)
+                            {
+                                self.files.insert(parent.join(relative));
+                            }
+                        }
+                    }
+                }
             }
-        } else {
-            self.files.insert(path);
         }
+        self.files.insert(path);
     }
 
     fn returned_media(&mut self, value: &Value) {
@@ -69,10 +111,14 @@ impl Grants {
 
 fn grants(session: &Session, result: &Value) -> Grants {
     let mut plan = Grants::default();
-    if let Some(parent) = session.project_path.as_deref().and_then(Path::parent) {
+    if let Some(parent) = session.project_path.as_deref().and_then(Path::parent)
+        && safe_directory(parent)
+    {
         plan.directories.insert(parent.to_owned());
     }
-    if let Some(workspace) = &session.lyrics_workspace {
+    if let Some(workspace) = &session.lyrics_workspace
+        && safe_directory(workspace)
+    {
         plan.directories.insert(workspace.clone());
     }
     let resolve = |path: &Path| {
@@ -111,6 +157,32 @@ pub fn allow(app: &tauri::AppHandle, session: &Session, result: &Value) -> Resul
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn gltf_grants_only_model_and_linked_local_files() {
+        let dir = std::env::temp_dir().join(format!("magic-gltf-scope-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("textures")).unwrap();
+        let model = dir.join("model.gltf");
+        std::fs::write(&model, r#"{"buffers":[{"uri":"mesh.bin"}],"images":[{"uri":"textures/albedo.png"}]}"#).unwrap();
+        let mut plan = Grants::default();
+        plan.media(model.clone());
+        assert!(plan.files.contains(&model));
+        assert!(plan.files.contains(&dir.join("mesh.bin")));
+        assert!(plan.files.contains(&dir.join("textures/albedo.png")));
+        assert!(!plan.directories.contains(&dir));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn project_at_home_or_root_does_not_grant_those_directories() {
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        for directory in [home, PathBuf::from("/")] {
+            let session = Session { project_path: Some(directory.join("Song.magic")), ..Session::default() };
+            let plan = grants(&session, &json!({"preview": directory.join("preview.png")}));
+            assert!(!plan.directories.contains(&directory));
+            assert!(plan.files.contains(&directory.join("preview.png")));
+        }
+    }
 
     #[test]
     fn unopened_session_has_no_workspace_or_home_access() {

@@ -568,7 +568,7 @@ $("footer-instance")?.addEventListener("click", async () => {
     return;
   }
   try {
-    await navigator.clipboard.writeText(magicCommandText("ui.feedback"));
+    await window.__TAURI__.clipboardManager.writeText(magicCommandText("ui.feedback"));
     toast("Copied project feedback command");
   } catch {
     toast("Could not copy the project command");

@@ -4,6 +4,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { executeCommand } from "../api";
 
 interface Host {
@@ -11,7 +12,8 @@ interface Host {
   authoringMode: () => string | undefined;
   navigate: (view: string) => Promise<unknown>;
   invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
-  fileUrl: typeof convertFileSrc; openDialog: typeof open; openPath: typeof openPath; openUrl: typeof openUrl; listen: typeof listen;
+  fileUrl: typeof convertFileSrc; openDialog: typeof open; saveDialog: typeof save; openPath: typeof openPath; openUrl: typeof openUrl; listen: typeof listen;
+  clipboard: { readText: typeof readText; writeText: typeof writeText };
   report: (message: string) => void;
 }
 declare global { interface Window { __MAGIC_WORKSPACE_HOSTS__?: Map<string, Host> } }
@@ -53,7 +55,8 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
         // Only the existing Tauri commands are exposed; unknown native calls fail visibly.
         return invoke(command, args);
       },
-      fileUrl: convertFileSrc, openDialog: open, openPath, openUrl, listen,
+      fileUrl: convertFileSrc, openDialog: open, saveDialog: save, openPath, openUrl, listen,
+      clipboard: { readText, writeText },
       report: message => { if (active) { setError(message); onToast(message); } },
     });
     setReady(true);

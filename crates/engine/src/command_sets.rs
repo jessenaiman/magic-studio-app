@@ -266,6 +266,15 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             requires_ui
         ),
         cmd!("ui.screenshot", "Capture window", [], None, "{\"output\":\"optional PNG path\"}", always, requires_ui),
+        cmd!(
+            "clipboard.import_image",
+            "Paste clipboard artwork",
+            [],
+            None,
+            "{\"expected_project\":\"active .magic path\",\"name\":\"optional artwork name\"}",
+            always,
+            requires_ui
+        ),
     ]
 }
 
@@ -1107,6 +1116,7 @@ fn specs_storyboard() -> Vec<CommandSpec> {
 
 fn specs_film() -> Vec<CommandSpec> {
     vec![
+        query!("video.validate_export", "Validate Recorded Film Export", "{path?, format?, preset?}", crate::cmd::film::cmd_video_validate_export),
         query!("video.film", "Film Timeline, Preview and Export Status", "{}", crate::cmd::film::cmd_video_film),
         cmd!("video.preview", "Render a Film Preview (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_preview),
         cmd!("video.export", "Export the Film (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_export),

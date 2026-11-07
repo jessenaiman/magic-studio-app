@@ -72,7 +72,7 @@ pub struct CommandSpec { // crates/engine/src/commands.rs:26
 
 - `magic-tauri --control 9876`: authenticated JSON-lines control over loopback TCP; shares the session used by Tauri IPC. Methods follow FilmCraft: `engine.*`, `ui.inspect/elements/click/move/drag/scroll/key/type/set/focus/resize/screenshot`, `app.quit`.
 - `magic-cli --bridge 127.0.0.1:9876 mcp`: Craft-style `rmcp` tools; no local session or automatic fallback in bridge mode. Omit `--bridge` for explicit headless operation.
-- The separate browser HTTP UI server and duplicate CLI socket implementation are removed. `crates/engine/src/studio_sessions.rs` and `local_ipc.rs` are unreferenced remnants of the old Unix-socket transport.
+- The separate browser HTTP UI server and old Unix-socket transport have been removed; restored workspaces use the native Tauri adapter.
 - See [control-protocol.md](control-protocol.md) for implemented UI operations and the canonical launch instructions.
 
 ## 6. Known deviations (true)

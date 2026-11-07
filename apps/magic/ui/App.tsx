@@ -1,5 +1,7 @@
 import { PreservedWorkspaces } from "./components/RestoredWorkspace";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { importDroppedArtwork } from "./artwork-transfer";
 import { connectDesktop } from "./desktop";
 import React, { useEffect, useRef, useState } from "react";
 import { executeCommand, WorkshopData } from "./api";
@@ -32,6 +34,7 @@ export const App: React.FC = () => {
   const liveState = useRef({ view, projectPath, busy, toastMsg });
   liveState.current = { view, projectPath, busy, toastMsg };
   const refreshVersion = useRef(0);
+  const transferBusy = useRef(false);
   const refreshProject = async (initial = false) => {
     const version = ++refreshVersion.current;
     const snapshot = await invoke<{ project: string | null; data: WorkshopData | null; initialView: ViewMode }>("session_snapshot");
@@ -64,6 +67,28 @@ export const App: React.FC = () => {
       setView("home");
     } catch (error) { showToast(String(error)); }
   };
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview().onDragDropEvent(event => {
+      if (event.payload.type !== "drop" || disposed) return;
+      const project = liveState.current.projectPath;
+      if (!project) { showToast("Open a project before dropping artwork"); return; }
+      if (transferBusy.current || liveState.current.busy) { showToast("Wait for the current operation before dropping artwork"); return; }
+      transferBusy.current = true;
+      setBusy(true);
+      void importDroppedArtwork(event.payload.paths, project, executeCommand).then(async count => {
+        await refreshProject();
+        if (disposed || liveState.current.projectPath !== project) return;
+        for (const frame of document.querySelectorAll("iframe")) frame.contentWindow?.postMessage({magicAssetsImported:project}, location.origin);
+        setView("project");
+        showToast(`Imported ${count} artwork file${count === 1 ? "" : "s"} · choose where to place them`);
+      }).catch(error => { if (!disposed) showToast(String(error)); })
+        .finally(() => { transferBusy.current = false; if (!disposed) setBusy(false); });
+    }).then(stop => { if (disposed) stop(); else unlisten = stop; }).catch(error => showToast(`File drop unavailable: ${error}`));
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
 
   useEffect(() => {
     let disposed = false;

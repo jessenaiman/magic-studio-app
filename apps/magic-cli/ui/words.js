@@ -879,7 +879,8 @@ class WordsViewController {
     const animations = wordsPanel.read?.document?.animations || [];
     const studioEnds = (wordsPanel.studio?.sections || []).map((s) => Number(s.end) || 0);
     const animEnds = animations.map((a) => wordsSpan(a).end || 0);
-    return { start: 0, end: Math.max(10, ...studioEnds, ...animEnds) };
+    const fallback = Math.max(10, ...studioEnds, ...animEnds);
+    return { start: 0, end: typeof authoringSongDuration === "function" ? authoringSongDuration(wordsPanel.recording, state.project, fallback) : fallback };
   }
   toggleSongPlay() {
     if (wordsPanel.playing) {
