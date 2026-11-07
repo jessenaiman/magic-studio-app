@@ -27,7 +27,6 @@
   <script src="words.js"></script>
   <script>
     window.addEventListener("DOMContentLoaded", async () => {
-      renderWorkspaceNav("design");
       state.view = "design";
       const motion = new URLSearchParams(location.search).get("workspace") === "motion";
       if (motion) {

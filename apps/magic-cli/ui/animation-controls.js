@@ -1,4 +1,3 @@
-renderWorkspaceNav("animation");
 const animationAssetsRail = location.hash === "#assets";
 const animationContent = document.querySelector("#animation-controls-content");
 const animationStatus = document.querySelector("#animation-status");

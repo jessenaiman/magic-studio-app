@@ -1,4 +1,3 @@
-renderWorkspaceNav("motion");
 const motionHost = window.__TAURI__.core;
 const motionList = document.querySelector("#motion-assets");
 const motionPlayer = document.querySelector("#motion-player");

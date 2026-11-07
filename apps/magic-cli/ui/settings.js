@@ -1,4 +1,3 @@
-renderWorkspaceNav("settings");
 const root = document.getElementById("settings-root");
 async function load() {
   const { invoke } = window.__TAURI__.core;
