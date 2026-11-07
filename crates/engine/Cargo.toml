@@ -40,7 +40,6 @@ filmcraft-media = { workspace = true }
 filmcraft-time = { workspace = true }
 photocraft-engine = { workspace = true }
 texturecraft-formats = { workspace = true }
-vectorcraft-engine = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true }

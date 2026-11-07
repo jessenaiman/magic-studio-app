@@ -1310,17 +1310,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfb"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f13298d9178622b7916ec5d01d470425c04273c8ed07e87b1c38b34c4f4612b"
-dependencies = [
- "fnv",
- "uuid",
- "web-time",
-]
-
-[[package]]
 name = "cfg-expr"
 version = "0.15.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2076,7 +2065,7 @@ source = "git+https://github.com/storytold/craft-libs#e653048a187036d30fd912f35f
 dependencies = [
  "craft-ecproj-format 0.1.0 (git+https://github.com/storytold/craft-libs)",
  "craft-pcraft-format 0.1.0 (git+https://github.com/storytold/craft-libs)",
- "craft-vectorcraft-format 0.1.0 (git+https://github.com/storytold/craft-libs)",
+ "craft-vectorcraft-format",
  "flate2",
  "serde",
  "serde_json",
@@ -2087,11 +2076,6 @@ dependencies = [
 name = "craft-docpath"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
-
-[[package]]
-name = "craft-docpath"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
 
 [[package]]
 name = "craft-docpath"
@@ -2257,23 +2241,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "craft-pdf"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
-dependencies = [
- "hayro-interpret",
- "hayro-syntax",
- "krilla",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "craft-prepress"
 version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0#92d392cff132eaf53e13afff77f38b5c11b73aa0"
 dependencies = [
  "craft-cms",
- "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-pdf",
  "kurbo 0.13.1",
  "linesweeper",
  "thiserror 2.0.21",
@@ -2442,17 +2415,6 @@ dependencies = [
  "winreg 0.55.0",
  "winsafe",
  "zip 9.3.0",
-]
-
-[[package]]
-name = "craft-vectorcraft-format"
-version = "0.1.0"
-source = "git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb#9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb"
-dependencies = [
- "flate2",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2991,7 +2953,7 @@ source = "git+https://github.com/storytold/designcraft#4f3bb5340eeee5f747f7ee2a6
 dependencies = [
  "chrono",
  "craft-cms",
- "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-pdf",
  "craft-prepress",
  "designcraft-color",
  "designcraft-compose",
@@ -3029,7 +2991,7 @@ name = "designcraft-render"
 version = "0.17.0"
 source = "git+https://github.com/storytold/designcraft#4f3bb5340eeee5f747f7ee2a6905d3c990831d22"
 dependencies = [
- "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-pdf",
  "designcraft-color",
  "designcraft-compose",
  "designcraft-doc",
@@ -3621,7 +3583,7 @@ name = "effectcraft-pdf"
 version = "0.21.0"
 source = "git+https://github.com/storytold/effectcraft#e1de87e8c3efaf02293728716d296342e0383a81"
 dependencies = [
- "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=92d392cff132eaf53e13afff77f38b5c11b73aa0)",
+ "craft-pdf",
  "effectcraft-svg",
  "effectcraft-text",
  "kurbo 0.13.1",
@@ -5850,7 +5812,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ae047235e33e2829703574b54fdec96bfbad892062d97fed2f76022287de61b"
 dependencies = [
  "color_quant",
- "weezl 0.1.12",
+ "weezl",
 ]
 
 [[package]]
@@ -5860,7 +5822,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
 dependencies = [
  "color_quant",
- "weezl 0.1.12",
+ "weezl",
 ]
 
 [[package]]
@@ -6841,7 +6803,6 @@ version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "82d07aafccd67af15d02512a6adf5896fbc5ed00f2e99b471d2efa14016db3db"
 dependencies = [
- "core_maths",
  "icu_collections",
  "icu_locale_fallback",
  "icu_provider",
@@ -6929,12 +6890,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09e54e57b4c48b40f7aec75635392b12b3421fa26fe8b4332e63138ed278459c"
 
 [[package]]
-name = "imagesize"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65b27460c2c92b037f3f94c538ed9a3342f3fdf923606781629ccb35f82d042a"
-
-[[package]]
 name = "indd"
 version = "0.1.0"
 source = "git+https://github.com/storytold/indd-utils?rev=7f3060e5bce78d21ea70e0d5eacb96edce15dfbe#7f3060e5bce78d21ea70e0d5eacb96edce15dfbe"
@@ -6968,7 +6923,7 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4200d433cbd5178df7797c9c2e75b348b728e39631cf14520d1e2fc424201f4"
 dependencies = [
- "cfb 0.14.0",
+ "cfb",
 ]
 
 [[package]]
@@ -7820,7 +7775,6 @@ dependencies = [
  "texturecraft-formats",
  "thiserror 2.0.21",
  "ureq",
- "vectorcraft-engine",
 ]
 
 [[package]]
@@ -7909,16 +7863,6 @@ checksum = "3f607c237553f086e7043417a51df26b2eb899d3caff94e6a67592ff992fedc7"
 dependencies = [
  "autocfg",
  "rawpointer",
-]
-
-[[package]]
-name = "md-5"
-version = "0.10.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
-dependencies = [
- "cfg-if",
- "digest 0.10.7",
 ]
 
 [[package]]
@@ -12692,7 +12636,7 @@ dependencies = [
  "flate2",
  "half",
  "quick-error",
- "weezl 0.1.12",
+ "weezl",
  "zune-jpeg 0.5.15",
 ]
 
@@ -13420,26 +13364,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "usvg"
-version = "0.48.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "977d0a4abdef933f424a99fe09f95576e089b90aebc6f016a3bc813762493e91"
-dependencies = [
- "data-url",
- "flate2",
- "imagesize 0.15.0",
- "kurbo 0.13.1",
- "log",
- "pico-args",
- "roxmltree 0.21.2",
- "simplecss",
- "siphasher",
- "strict-num",
- "svgtypes 0.16.2",
- "tiny-skia-path 0.12.0",
-]
-
-[[package]]
 name = "utf16_iter"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13482,359 +13406,6 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "vectorcraft-affinity"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "crc32fast",
- "flate2",
- "image",
- "ruzstd",
-]
-
-[[package]]
-name = "vectorcraft-brush"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "kurbo 0.13.1",
- "serde",
- "serde_json",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-geom",
-]
-
-[[package]]
-name = "vectorcraft-cad"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "image",
- "kurbo 0.13.1",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-pathops",
- "vectorcraft-text",
-]
-
-[[package]]
-name = "vectorcraft-color"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "kurbo 0.13.1",
- "moxcms",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "vectorcraft-doc"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "chrono",
- "hayro-ccitt",
- "image",
- "kurbo 0.13.1",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tiff",
- "vectorcraft-color",
- "vectorcraft-geom",
- "zune-jpeg 0.5.15",
-]
-
-[[package]]
-name = "vectorcraft-effects"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "image",
- "kurbo 0.13.1",
- "serde_json",
- "vectorcraft-doc",
- "vectorcraft-geom",
- "vectorcraft-pathops",
- "vectorcraft-plugins",
- "vectorcraft-text",
- "vectorcraft-three-d",
-]
-
-[[package]]
-name = "vectorcraft-engine"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "cfb 0.15.0",
- "chrono",
- "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
- "flate2",
- "hayro-jpeg2000",
- "image",
- "kurbo 0.13.1",
- "log",
- "roxmltree 0.21.2",
- "rustix 1.1.5",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "vectorcraft-affinity",
- "vectorcraft-brush",
- "vectorcraft-cad",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-eps",
- "vectorcraft-format",
- "vectorcraft-geom",
- "vectorcraft-metafile",
- "vectorcraft-pathops",
- "vectorcraft-pdf",
- "vectorcraft-plugins",
- "vectorcraft-render",
- "vectorcraft-scriptcheck",
- "vectorcraft-svg",
- "vectorcraft-text",
- "vectorcraft-tools",
- "vectorcraft-trace",
-]
-
-[[package]]
-name = "vectorcraft-eps"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "flate2",
- "hayro-ccitt",
- "image",
- "kurbo 0.13.1",
- "memchr",
- "ruzstd",
- "serde_json",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-metafile",
- "vectorcraft-pathops",
- "vectorcraft-pdf",
- "vectorcraft-render",
- "vectorcraft-text",
-]
-
-[[package]]
-name = "vectorcraft-format"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "craft-vectorcraft-format 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
- "flate2",
- "rustix 1.1.5",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "vectorcraft-doc",
-]
-
-[[package]]
-name = "vectorcraft-geom"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "kurbo 0.13.1",
- "serde",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "vectorcraft-metafile"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "image",
- "kurbo 0.13.1",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-text",
-]
-
-[[package]]
-name = "vectorcraft-pathops"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "kurbo 0.13.1",
- "linesweeper",
- "thiserror 2.0.21",
- "vectorcraft-geom",
-]
-
-[[package]]
-name = "vectorcraft-pdf"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "aes 0.8.4",
- "chrono",
- "craft-pdf 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
- "flate2",
- "getrandom 0.4.3",
- "image",
- "jpeg-encoder",
- "kurbo 0.13.1",
- "log",
- "md-5",
- "roxmltree 0.21.2",
- "serde",
- "sha2 0.10.9",
- "skrifa 0.47.0",
- "smallvec",
- "thiserror 2.0.21",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-text",
- "weezl 0.2.1",
-]
-
-[[package]]
-name = "vectorcraft-plugins"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-geom",
- "wasmi",
-]
-
-[[package]]
-name = "vectorcraft-render"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "flate2",
- "gif 0.14.2",
- "image",
- "jpeg-encoder",
- "log",
- "png 0.18.1",
- "unicode-general-category",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-text",
- "vello_common 0.2.0",
- "vello_cpu 0.2.0",
- "weezl 0.2.1",
- "winsafe",
-]
-
-[[package]]
-name = "vectorcraft-scriptcheck"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-
-[[package]]
-name = "vectorcraft-svg"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs?rev=9be9a63782298ab59cd9b7a42ee9cba4f42a5ccb)",
- "flate2",
- "image",
- "kurbo 0.13.1",
- "serde",
- "serde_json",
- "simplecss",
- "svgtypes 0.16.2",
- "thiserror 2.0.21",
- "usvg 0.48.1",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-text",
-]
-
-[[package]]
-name = "vectorcraft-text"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "harfrust 0.13.3",
- "icu_segmenter",
- "kurbo 0.13.1",
- "log",
- "skrifa 0.47.0",
- "subsetter",
- "unicode-bidi",
- "unicode-general-category",
- "unicode-script",
- "unicode-segmentation",
- "vectorcraft-doc",
- "vectorcraft-geom",
- "vello_cpu 0.2.0",
- "windows-registry",
-]
-
-[[package]]
-name = "vectorcraft-three-d"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "vectorcraft-geom",
- "vectorcraft-pathops",
-]
-
-[[package]]
-name = "vectorcraft-tools"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "kurbo 0.13.1",
- "serde",
- "serde_json",
- "vectorcraft-brush",
- "vectorcraft-color",
- "vectorcraft-doc",
- "vectorcraft-effects",
- "vectorcraft-geom",
- "vectorcraft-pathops",
- "vectorcraft-text",
-]
-
-[[package]]
-name = "vectorcraft-trace"
-version = "0.21.0"
-source = "git+https://github.com/storytold/vectorcraft#8e9781976990f8572d3fda076d88c0597eba3f8b"
-dependencies = [
- "image",
- "kurbo 0.13.1",
- "serde",
- "thiserror 2.0.21",
- "vectorcraft-geom",
 ]
 
 [[package]]
@@ -14432,12 +14003,6 @@ name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
-
-[[package]]
-name = "weezl"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4ca08e5ef825b65b056d9efbd95c8750683f0a6d0466d02e96dc2e4e360f3d2"
 
 [[package]]
 name = "wgpu"
