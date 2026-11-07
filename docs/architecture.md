@@ -14,7 +14,7 @@ Design principles:
 ## 1. Layers (`xtask/src/policy.rs`, enforced by `cargo xtask layers`)
 
 ```
-L7  apps/magic-tauri (active desktop) · apps/magic-cli · apps/magic-tui · xtask
+L7  apps/magic (desktop) · apps/magic-cli · apps/magic-tui · xtask
 L6  crates/mcp (magic-mcp)
 L5  crates/engine (magic-engine)
 L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
@@ -25,7 +25,7 @@ L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
 |---|---|---|
 | `magic-engine` | L5 | `Session`, 162 commands in `cmd/<domain>/`, `session/execute.rs`, `undo.rs`, `guard.rs`, `workspace.rs` (drives Craft CLIs / in-process Sessions) |
 | `magic-mcp` | L6 | MCP stdio server, headless or `--bridge` to running app |
-| `magic-tauri` | L7 | Active desktop shell: React/Tauri (`apps/magic/ui` frontend), one managed engine session, authenticated `--control` listener |
+| `magic` | L7 | Desktop shell: React/Tauri (`apps/magic/ui` frontend), one managed engine session, authenticated `--control` listener |
 | `magic-cli` | L7 | Headless CLI: `commands/describe/exec/run/mcp/ui/storyboard`, `--bridge`, `--project` |
 | `magic-tui` | L7 | Terminal UI |
 | `xtask` | L7 | `ci` (fmt/clippy/layers/control-protocol), `layers`, `assets` |
@@ -70,7 +70,7 @@ pub struct CommandSpec { // crates/engine/src/commands.rs:26
 
 ## 5. Control / MCP / API
 
-- `magic-tauri --control 9876`: authenticated JSON-lines control over loopback TCP; shares the session used by Tauri IPC. Methods follow FilmCraft: `engine.*`, `ui.inspect/elements/click/move/drag/scroll/key/type/set/focus/resize/screenshot`, `app.quit`.
+- `magic --control 9876`: authenticated JSON-lines control over loopback TCP; shares the session used by Tauri IPC. Methods follow FilmCraft: `engine.*`, `ui.inspect/elements/click/move/drag/scroll/key/type/set/focus/resize/screenshot`, `app.quit`.
 - `magic-cli --bridge 127.0.0.1:9876 mcp`: Craft-style `rmcp` tools; no local session or automatic fallback in bridge mode. Omit `--bridge` for explicit headless operation.
 - The separate browser HTTP UI server and old Unix-socket transport have been removed; restored workspaces use the native Tauri adapter.
 - See [control-protocol.md](control-protocol.md) for implemented UI operations and the canonical launch instructions.

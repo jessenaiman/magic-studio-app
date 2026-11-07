@@ -3,10 +3,6 @@
     "magic": {
       "command": "target/release/magic-cli",
       "args": ["mcp", "--bridge", "127.0.0.1:9876"]
-    },
-    "magic-headless": {
-      "command": "target/release/magic-cli",
-      "args": ["mcp"]
     }
   }
 }

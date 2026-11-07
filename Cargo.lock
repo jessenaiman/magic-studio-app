@@ -6323,6 +6323,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "magic"
+version = "0.17.0"
+dependencies = [
+ "cairo-rs",
+ "clap",
+ "image",
+ "log",
+ "magic-engine",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-http",
+ "tauri-plugin-log",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-os",
+ "tauri-plugin-persisted-scope",
+ "tauri-plugin-positioner",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-store",
+ "tauri-plugin-websocket",
+ "tauri-plugin-window-state",
+ "webkit2gtk",
+]
+
+[[package]]
 name = "magic-cli"
 version = "0.17.0"
 dependencies = [
@@ -6375,40 +6409,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "magic-tauri"
-version = "0.17.0"
-dependencies = [
- "cairo-rs",
- "clap",
- "image",
- "log",
- "magic-engine",
- "serde",
- "serde_json",
- "subtle",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-http",
- "tauri-plugin-log",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-os",
- "tauri-plugin-persisted-scope",
- "tauri-plugin-positioner",
- "tauri-plugin-process",
- "tauri-plugin-shell",
- "tauri-plugin-single-instance",
- "tauri-plugin-store",
- "tauri-plugin-websocket",
- "tauri-plugin-window-state",
- "webkit2gtk",
 ]
 
 [[package]]

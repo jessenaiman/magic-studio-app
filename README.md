@@ -69,14 +69,14 @@ unverified. Before building, install:
 - A native compiler and the platform libraries required by the Rust workspace.
 
 Cargo fetches the workspace's Rust dependencies during a fresh build.
-The desktop package is `magic-tauri` and the engine package is `magic-engine`.
+The desktop package is `magic` and the engine package is `magic-engine`.
 
 ### Build and install the app and CLI
 
 ```sh
 # Existing checkout: build and rerun checks without installing
-cargo build -p magic-tauri -p magic-cli --locked
-# Run the Tauri desktop: apps/magic-tauri/README.md#run-the-tauri-desktop
+cargo build -p magic -p magic-cli --locked
+# Run the Tauri desktop: apps/magic/README.md#run-the-desktop
 cargo xtask ci
 cargo xtask layers
 cargo xtask assets
@@ -87,17 +87,17 @@ Asset rights metadata is pending; SonarCloud, WASM and translations are not conf
 git clone https://github.com/jessenaiman/magic-studio-app.git
 cd magic-studio-app
 cargo install --locked --path apps/magic-cli
-(cd apps/magic && bun install && bun run tauri build)   # frontend + release binary: target/release/magic-tauri
+(cd apps/magic && bun install && bun run tauri build)   # frontend + release binary: target/release/magic
 ```
 
 `cargo install` places `magic-cli` in `~/.cargo/bin`. The desktop is built by `tauri build` rather than
 `cargo install`, which would produce a binary that loads the dev server instead of the bundled frontend;
-copy `target/release/magic-tauri` where you want it. (`bundle.active` is off in `tauri.conf.json`, so no
+copy `target/release/magic` where you want it. (`bundle.active` is off in `tauri.conf.json`, so no
 installer package is made.) There is no `cargo xtask install`. Run the desktop as described in
-[apps/magic-tauri/README.md](apps/magic-tauri/README.md#run-the-tauri-desktop).
+[apps/magic/README.md](apps/magic/README.md#run-the-desktop).
 
-Ensure `~/.cargo/bin` is on your `PATH`, then launch `magic-tauri` (with a control port and token for
-agent use, see the Tauri README).
+Ensure `~/.cargo/bin` is on your `PATH`, then launch `magic` (with a control port and token for
+agent use, see [apps/magic/README.md](apps/magic/README.md#run-the-desktop)).
 
 Open **File → Application Settings** and choose an existing **Production project
 root** outside the checkout. This selects the destination for new projects;

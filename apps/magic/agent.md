@@ -35,13 +35,12 @@ a suggested command from one actually run. Drafting a brief does not execute it.
 
 ## One application, one live session
 
-Application: the Tauri desktop shell `apps/magic-tauri` with its React frontend in `apps/magic/ui`
-with the React frontend in `apps/magic/ui`. The UI, Rust engine and CLI adapters
+Application: the Tauri desktop shell `apps/magic` with its React frontend in `apps/magic/ui`. The UI, Rust engine and CLI adapters
 share the Rust command registry and the window's single engine session; frontend commands use Tauri
 IPC and never start a second session.
 Read [the command contract](MAGIC.md) and [the control protocol](../../docs/control-protocol.md).
 
-Launch the desktop with a control port and token (`apps/magic-tauri/README.md`). Use
+Launch the desktop with a control port and token (`apps/magic/README.md`). Use
 `magic-cli --project /absolute/Project.magic` for headless work on a project, or
 `magic-cli --bridge 127.0.0.1:PORT exec project.open path=/absolute/Project.magic` to open it in the
 live window. Verify identity with `magic-cli --bridge 127.0.0.1:PORT ui inspect`.

@@ -22,7 +22,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 #[derive(Parser, Debug)]
-#[command(name = "magic-tauri")]
+#[command(name = "magic")]
 struct Cli {
     #[arg(long)]
     project: Option<String>,
@@ -318,13 +318,13 @@ fn main() {
                         dispatch(&handle, id, params, true)
                     }),
                 )?;
-                diag(format_args!("magic-tauri: control listening on {address}"));
+                diag(format_args!("magic: control listening on {address}"));
             }
             Ok(())
         })
         .build(tauri::generate_context!())
         .unwrap_or_else(|error| {
-            diag(format_args!("magic-tauri: error while running Magic Studio: {error}"));
+            diag(format_args!("magic: error while running Magic Studio: {error}"));
             std::process::exit(1)
         })
         .run(|app, event| {
@@ -342,7 +342,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     const DOC: &str = include_str!("../../../docs/control-protocol.md");
-    const FRONTEND: &str = include_str!("../../magic/ui/desktop.ts");
+    const FRONTEND: &str = include_str!("../ui/desktop.ts");
     const SHELL: &str = include_str!("main.rs");
 
     /// Method ids in the first column of the control-protocol table (`engine.*`, `ui.*`, `app.*`).

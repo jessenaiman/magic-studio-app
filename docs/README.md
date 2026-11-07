@@ -6,7 +6,7 @@ Rule (target state): Rust is the server side and only authority (engine, pipelin
 
 Current state: the Tauri shell still loads the preserved JavaScript workspaces from `apps/magic-cli/ui` (Project, Animation, Lyrics) inside same-origin frames beside the React views. The migration path is JS → TS/TSX → Rust engine, never JS → Rust directly.
 
-Tauri v2 facts that shape this project (versions are in `apps/magic-tauri/Cargo.toml`; `Cargo.lock` pins them):
+Tauri v2 facts that shape this project (versions are in `apps/magic/Cargo.toml`; `Cargo.lock` pins them):
 
 - **Capabilities and CSP.** Permissions are granular `capabilities/*.json`; the webview's Content-Security-Policy is `app.security.csp` in `tauri.conf.json` (`devCsp` for `tauri dev`). By default every `invoke_handler` command is callable from the window; `build.rs` does not yet restrict that with `AppManifest::commands`.
 - **MSRV.** Tauri 2.12 requires Rust 1.90 or newer; this workspace requires 1.95.
@@ -18,7 +18,7 @@ Tauri v2 facts that shape this project (versions are in `apps/magic-tauri/Cargo.
 |---|---|
 | Understand the project | [Overview and native captures](../README.md) |
 | Make a song video | [Production guide](../apps/magic/agent.md) |
-| Run or build the app | [Tauri setup guide](../apps/magic-tauri/README.md) |
+| Run or build the app | [Tauri setup guide](../apps/magic/README.md) |
 | Understand how the pieces fit | [Architecture](architecture.md) |
 | Browse Rust modules, types, and source | [Build the Rust API reference](RUSTDOC.md) |
 | Use CLI or MCP commands | [Control protocol](control-protocol.md), [command architecture](../apps/magic/MAGIC.md) and [Magic skill](../apps/magic/SKILL.md) |

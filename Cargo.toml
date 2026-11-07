@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/engine", "crates/mcp", "apps/magic-tauri", "apps/magic-cli", "apps/magic-tui", "xtask"]
+members = ["crates/engine", "crates/mcp", "apps/magic", "apps/magic-cli", "apps/magic-tui", "xtask"]
 
 [workspace.package]
 version = "0.17.0"

@@ -4,7 +4,7 @@
 //! does). It exposes tools only: `command_list`, `command_run`, `command_batch` over
 //! [`magic::command_specs`] and [`magic::Session::execute`], plus the `ui_*` tools for the live
 //! window. Calls go to exactly one backend, chosen when the server starts:
-//! - [`Remote`]: a running `magic-tauri --control <port>` desktop window over authenticated loopback
+//! - [`Remote`]: a running `magic --control <port>` desktop window over authenticated loopback
 //!   TCP (`magic-cli --bridge ADDRESS mcp`); it never falls back to a local session.
 //! - [`Headless`]: an in-process [`magic::Session`] (`magic-cli mcp`); `ui_*` tools are refused.
 
@@ -43,7 +43,7 @@ impl Backend for Headless {
     }
 }
 
-/// Loopback TCP backend talking to a running `magic-tauri --control <port>` window.
+/// Loopback TCP backend talking to a running `magic --control <port>` window.
 pub struct Remote {
     pub addr: String,
     pub token: Option<String>,

@@ -5,7 +5,7 @@ use std::time::Instant;
 use crate::Result;
 
 /// Workspace crates gated by `cargo xtask ci`. [`check_sets`] fails when a crate is in no group.
-pub(crate) const SETS: &[(&str, &[&str])] = &[("tauri", &["magic-engine", "magic-mcp", "magic-cli", "magic-tauri", "magic-tui", "xtask"])];
+pub(crate) const SETS: &[(&str, &[&str])] = &[("tauri", &["magic-engine", "magic-mcp", "magic-cli", "magic", "magic-tui", "xtask"])];
 
 /// `-p` arguments for one group.
 pub(crate) fn packages(set: &[&str]) -> Vec<String> {
@@ -80,7 +80,7 @@ pub(crate) fn ci() -> Result<()> {
     stage("tests", tests)?;
     // The Tauri shell's control channel: transport tests, and the documented method table against the
     // shell's dispatch and the frontend's request switch.
-    stage("control protocol", || run(Command::new(cargo).args(["test", "-p", "magic-tauri", "--bins", "control"])))?;
+    stage("control protocol", || run(Command::new(cargo).args(["test", "-p", "magic", "--bins", "control"])))?;
     if std::env::var("CHECK_ASSETS").is_ok() {
         stage("assets", crate::policy::assets)?;
     }

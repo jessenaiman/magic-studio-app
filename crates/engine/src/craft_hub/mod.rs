@@ -55,7 +55,7 @@ impl CraftTarget {
         }
     }
 
-    /// Standard default control port for the application (`9876` is reserved for `magic-tauri`).
+    /// Standard default control port for the application (`9876` is reserved for `magic`).
     pub fn default_port(&self) -> u16 {
         match self {
             Self::Film => 9875,
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn filmcraft_default_port_avoids_magic_tauri_port() {
+    fn filmcraft_default_port_avoids_magic_port() {
         assert_eq!(CraftTarget::Film.default_port(), 9875);
         assert_ne!(CraftTarget::Film.default_port(), 9876);
     }

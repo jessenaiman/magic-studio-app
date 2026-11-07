@@ -6,13 +6,13 @@
   "build": {
     "beforeDevCommand": {
       "script": "bun run dev",
-      "cwd": "../magic"
+      "cwd": "."
     },
     "beforeBuildCommand": {
       "script": "bun run build",
-      "cwd": "../magic"
+      "cwd": "."
     },
-    "frontendDist": "../magic/dist",
+    "frontendDist": "dist",
     "devUrl": "http://localhost:1420"
   },
   "app": {

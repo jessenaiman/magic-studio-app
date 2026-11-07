@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::process::Command;
 
 /// Magic's own crates and their layers (docs/architecture.md › Layers).
-const LAYERS: &[(&str, u8)] = &[("magic-engine", 5), ("magic-mcp", 6), ("magic-tauri", 7), ("magic-cli", 7), ("magic-tui", 7), ("xtask", 7)];
+const LAYERS: &[(&str, u8)] = &[("magic-engine", 5), ("magic-mcp", 6), ("magic", 7), ("magic-cli", 7), ("magic-tui", 7), ("xtask", 7)];
 
 /// Craft backends (L0–L4): maintained dependencies Magic drives, never edited here.
 const CRAFT_PREFIXES: &[&str] = &["designcraft-", "effectcraft-", "filmcraft-", "photocraft-", "vectorcraft-", "texturecraft-", "craft-"];

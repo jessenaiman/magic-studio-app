@@ -8,7 +8,7 @@ and [rmcp server](https://github.com/storytold/filmcraft/blob/7322aad72491a294a0
 
 ## Launch and connect
 
-[The desktop guide](../apps/magic-tauri/README.md#run-the-tauri-desktop) contains
+[The desktop guide](../apps/magic/README.md#run-the-desktop) contains
 the exact Tauri CLI launch command. `--control PORT` (or `MAGIC_CONTROL_PORT`)
 starts a loopback JSON-lines listener. `MAGIC_CONTROL_TOKEN` must be 64 hexadecimal
 characters and must be inherited by both desktop and CLI/MCP processes. Missing
@@ -95,9 +95,9 @@ an explicit `path` can inspect another project's canonical identity.
 
 ## Registering the MCP servers
 
-The repository's [`.mcp.json`](../.mcp.json) registers both modes for any MCP client that reads it
-(Claude Code and others), as FilmCraft's does: `magic` (bridge to `127.0.0.1:9876`) and
-`magic-headless`. Both run `target/release/magic-cli`; build it first (`cargo build --release -p magic-cli`) or
+The repository's [`.mcp.json`](../.mcp.json) registers one server, `magic`, bridged to
+`127.0.0.1:9876`, for any MCP client that reads it (Claude Code and others). It runs
+`target/release/magic-cli`; build it first (`cargo build --release -p magic-cli`) or
 install it with `cargo install --locked --path apps/magic-cli`. Other clients take the same command and
 arguments with an absolute path, for example in Codex's `config.toml`:
 
@@ -109,11 +109,11 @@ args = ["mcp", "--bridge", "127.0.0.1:9876"]
 
 The bridge needs the desktop's `MAGIC_CONTROL_TOKEN` in the client's environment. Never write the token
 into `.mcp.json`, a client config, or a command line. Without it, the bridge server reports the missing
-token and the headless server still works.
+token.
 
 ## Removed legacy paths
 
-There is one Tauri configuration (`apps/magic-tauri/tauri.conf.json`) and one
+There is one Tauri configuration (`apps/magic/tauri.conf.json`) and one
 startup parser (Clap). The CLI-plugin parser and the duplicate config under
 `apps/magic` are removed. The standalone browser HTTP server, Unix-socket
 auto-discovery, `--follow-window`, `mcp --connect`, old `magic_*` MCP tool aliases,
