@@ -122,6 +122,7 @@ pub enum WebWorkspacePage {
     Studio,
     AnimationAssets,
     AnimationInspector,
+    Animation,
 }
 
 /// The native webview host. egui reserves the rectangle and handles navigation.
@@ -2345,7 +2346,18 @@ impl MagicApp {
         } else {
             self.show_animation_fallback_rails(ctx, ui);
         }
-        self.show_animation_stage(ctx, ui);
+        // Comprehensive web canvas (animation.html: Konva canvas + dials + transport + timeline)
+        // replaces egui stub stage when webview host present. Bottom EffectCraft timeline remains when composition open.
+        if self.lyrics_host.is_some() {
+            let project = self.session.project_path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+            let rect = ui.available_rect_before_wrap();
+            ui.allocate_rect(rect, egui::Sense::hover());
+            if let Some(host) = self.lyrics_host.as_mut() {
+                host.show(frame, ctx, rect, &project, WebWorkspacePage::Animation);
+            }
+        } else {
+            self.show_animation_stage(ctx, ui);
+        }
     }
 
     fn show_animation_fallback_rails(&mut self, ctx: &Context, ui: &mut Ui) {

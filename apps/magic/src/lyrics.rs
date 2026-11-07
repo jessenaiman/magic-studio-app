@@ -345,6 +345,7 @@ fn page_url(base: &str, page: WebWorkspacePage) -> String {
         WebWorkspacePage::Studio => "studio.html",
         WebWorkspacePage::AnimationAssets => "animation-controls.html#assets",
         WebWorkspacePage::AnimationInspector => "animation-controls.html#inspector",
+        WebWorkspacePage::Animation => "animation.html",
     };
     format!("{base}/{file}")
 }

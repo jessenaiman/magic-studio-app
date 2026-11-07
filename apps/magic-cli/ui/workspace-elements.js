@@ -112,3 +112,18 @@ function magicAssetTile(asset, { active = false, candidate = false, prefix = "ma
   });
   return tile;
 }
+
+// Central assets component — shared between Projects, Storyboard, Animation, Motion, Studio.
+// Single source: project.list_assets. All views render via this grid + magicAssetTile.
+function projectAssetGrid(assets, { active = null, prefix = "magic-asset", onOpen, onRemove } = {}) {
+  return el("div", { class: "magic-assets-grid" }, (assets || []).map((asset) => magicAssetTile(asset, {
+    active: asset.id === active, prefix,
+    onclick: () => onOpen ? onOpen(asset.id) : (typeof openAnimation === "function" ? openAnimation(asset.id) : null),
+    onremove: onRemove ? () => onRemove(asset.id) : null,
+  })));
+}
+function centralAssetsRail(assets, opts = {}) {
+  return el("aside", { id: opts.id || "motion-asset-browser", "aria-label": opts.label || "Project assets" },
+    el("div", { class: "panel-head inline" }, el("span", { class: "panel-title" }, `Assets (${(assets||[]).length})`)),
+    projectAssetGrid(assets, opts));
+}

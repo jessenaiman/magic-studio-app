@@ -148,18 +148,8 @@ function updateMagicSelection() {
     }
   }
 }
-function projectAssetGrid(assets, { active = null, prefix = "magic-asset" } = {}) {
-  return el("div", { class: "magic-assets-grid" }, assets.map((asset) => magicAssetTile(asset, { active: asset.id === active, prefix, onclick: () => openAnimation(asset.id), onremove: async () => {
-    try {
-      await designCommand("project.remove_asset", { id: asset.id });
-      if (state.view === "animation")
-        await animationRefresh();
-      toast(`Removed ${asset.name || asset.id}`);
-    } catch (e) {
-      toast(String(e));
-    }
-  } })));
-}
+// projectAssetGrid moved to workspace-elements.js (central, shared). Kept as wrapper for existing callers.
+function projectAssetGridDelegated(assets, opts) { return projectAssetGrid(assets, opts); }
 const FOOTER_STAGES = [["song", "Song"], ["lyrics", "Lyrics"], ["transcript", "Transcript"], ["storyboard", "Storyboard"], ["animate", "Animate"], ["studio", "Studio"]];
 const STAGE_DOT = { ok: "ready", warn: "needs-attention", idle: "idle" };
 const STAGE_NOTE = { ok: "ready", warn: "needs work", idle: "not started" };
