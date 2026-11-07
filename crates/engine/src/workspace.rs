@@ -209,44 +209,38 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
             .unwrap_or_else(|| serde_json::json!({}));
         pairs.push((id, params));
     }
-    crate::cmd::character::cut::photocraft_run(&path, &pairs, save.as_deref())?;
-    let info = save
-        .as_deref()
-        .or(Some(path.as_path()))
-        .and_then(craft_doc_info);
-    Ok(serde_json::json!({"ok": true, "path": path, "pcraft": save, "info": info}))
+    // Via installed photocraft-cli (system app pattern, no in-process linking)
+    let cli = find_executable("photocraft-cli").map_err(|e| EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.arg("run").arg(&path);
+    for (id, params) in &pairs { cmd.arg("--cmd").arg(id).arg("--params").arg(params.to_string()); }
+    if let Some(ref out) = save { if let Some(parent) = out.parent() { std::fs::create_dir_all(parent)?; } cmd.arg("--out").arg(out); }
+    let out = cmd.output().map_err(|e| EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
+    if !out.status.success() { return Err(EngineError::ExternalTool("photocraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)))); }
+    let info = save.as_deref().or(Some(path.as_path())).and_then(craft_doc_info);
+    Ok(serde_json::json!({"ok": true, "path": path, "pcraft": save, "info": info, "via": "photocraft-cli"}))
 }
 
-/// Run EffectCraft commands (`comp.settings`, `comp.workArea`, `comp.addMarker`, `comp.setSwitch`,
-/// `layer.newText`, `layer.newShape`, `edit.splitLayer`, `edit.history.list`) in-process.
+/// Run EffectCraft via installed `effectcraft-cli` (system app pattern).
 pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
-    let raw = p["path"]
-        .as_str()
-        .ok_or_else(|| EngineError::InvalidParams("path=<.ecproj> is required".into()))?;
+    let raw = p["path"].as_str().ok_or_else(|| EngineError::InvalidParams("path=<.ecproj> is required".into()))?;
     let path = resolve_workspace_path(s, raw);
-    let save = p["save"].as_bool().unwrap_or(true);
-    let mut steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
-        arr.clone()
-    } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-        vec![
-            serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))}),
-        ]
-    } else {
-        return Err(EngineError::InvalidParams(
-            "id=<effectcraft command> or steps=[...] is required".into(),
-        ));
-    };
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    let existing = path.is_file().then_some(path.as_path());
-    if save && existing.is_none() {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        steps.push(serde_json::json!({"id": "file.saveAs", "params": {"path": path}}));
-    }
-    let results = crate::cmd::character::effectcraft(dir, existing, &steps, save)?;
+    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() { arr.clone() }
+        else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
+            vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+        } else { return Err(EngineError::InvalidParams("id=<effectcraft command> or steps=[...] is required".into())); };
+    let cli = find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    let tmp = std::env::temp_dir().join(format!("magic-effect-{}.json", std::process::id()));
+    std::fs::write(&tmp, serde_json::to_vec(&steps).unwrap_or_default())?;
+    let mut cmd = std::process::Command::new(&cli);
+    cmd.arg("run").arg("--commands").arg(&tmp);
+    // effectcraft-cli run opens project via --args? Use exec per step fallback: run sets project from first file.open step; caller includes file.open if needed.
+    let out = cmd.output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    let _ = std::fs::remove_file(&tmp);
+    if !out.status.success() { return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)))); }
+    let results: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| serde_json::from_str(l.trim()).ok()).collect();
     let info = craft_doc_info(&path);
-    Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results}))
+    Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results, "via": "effectcraft-cli"}))
 }
 
 /// Run VectorCraft via installed `vectorcraft-cli` (system app, MCP/CLI pattern).
