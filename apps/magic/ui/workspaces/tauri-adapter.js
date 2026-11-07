@@ -4,6 +4,24 @@
   if (!host) throw new Error("The workspace must be opened inside Magic Studio");
   window.__magicWorkspaceVisible = host.isActive();
   window.__magicAuthoringMode = host.authoringMode?.() || "design";
+  // Lifecycle checks include mounted editors even when their workspace is hidden.
+  window.magicDraftSnapshot = () => {
+    if (typeof acFeedback === "undefined" || acFeedback.phase !== "ready") return {dirty:true,drafts:["Workspace is still loading"],saving:false};
+    const drafts = [];
+    if (typeof wordsPanel !== "undefined") {
+      if (wordsPanel.designs.size) drafts.push("Lyrics or Motion design");
+      if (Object.keys(wordsPanel.styleEdits).length) drafts.push("Lyrics styling");
+      for (const field of document.querySelectorAll("#words-workspace-controls input, #words-workspace-controls textarea, #words-workspace-controls select[data-initial-value]")) {
+        if (field.disabled || field.readOnly) continue;
+        const changed = field.tagName === "SELECT" ? field.value !== field.dataset.initialValue : ["checkbox","radio"].includes(field.type) ? field.checked !== field.defaultChecked : field.value !== field.defaultValue;
+        if (changed) drafts.push(field.getAttribute("aria-label") || field.id || "Authoring field");
+      }
+    }
+    if (typeof artworkDraft !== "undefined" && artworkDraft?.dirty) drafts.push("Artwork parts");
+    if (typeof animationReview !== "undefined" && animationReview.dirty) drafts.push("Animation review");
+    if (typeof theatreFeedback === "function" && theatreFeedback().live_edits === "needs_save") drafts.push("Motion keyframes");
+    return {dirty:drafts.length > 0,drafts,saving:typeof animationReview !== "undefined" && !!animationReview.saving};
+  };
   window.addEventListener("message", event => {
     if (event.source !== parent || event.origin !== location.origin || !event.data?.magicAssetsImported || typeof state === "undefined" || event.data.magicAssetsImported !== state.project || state.view !== "project") return;
     void host.invoke("session_snapshot").then(snapshot => {

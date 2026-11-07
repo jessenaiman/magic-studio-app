@@ -8,7 +8,7 @@ import { executeCommand, WorkshopData } from "./api";
 import { FilmView } from "./views/FilmView";
 import { GalleryView } from "./views/GalleryView";
 import { HomeView } from "./views/HomeView";
-import { StoryboardView } from "./views/StoryboardView";
+import { PreservedStoryboard } from "./views/StoryboardView";
 
 export type ViewMode =
   | "home"
@@ -197,15 +197,9 @@ export const App: React.FC = () => {
       {/* Main Content Area */}
       <div style={{ overflow: "hidden", height: "100%" }}>
         {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
+        {projectPath && <PreservedStoryboard key={`storyboard-${projectPath}`} active={view === "storyboard"} projectPath={projectPath} storyboard={data?.storyboard} onRefresh={() => refreshProject()} onToast={showToast} />}
         {view === "gallery" ? <GalleryView /> : view === "home" || !projectPath ? (
           <HomeView onOpenProject={openProject} onToast={showToast} />
-        ) : view === "storyboard" ? (
-          <StoryboardView
-            projectPath={projectPath}
-            storyboard={data?.storyboard}
-            onRefresh={() => refreshProject()}
-            onToast={showToast}
-          />
         ) : view === "studio" ? (
           <FilmView projectPath={projectPath} onToast={showToast} />
         ) : null}

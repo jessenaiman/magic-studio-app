@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { StudioFilmstrips } from "../components/StudioFilmstrips";
 import { FilmExportButton } from "../components/FilmExportButton";
 import {
   executeCommand,
@@ -86,13 +87,12 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
     );
   };
 
-  const videoSrc = film?.preview?.exists
+  const videoSrc = film?.preview?.exists && !film.preview_stale
     ? `${fileUrl(film.preview.path)}?v=${film.preview.modified || 0}`
     : film?.export?.exists
       ? `${fileUrl(film.export.path)}?v=${film.export.modified || 0}`
       : "";
 
-  const totalDuration = Math.max(1, timeline?.duration || 1);
 
   return (
     <div
@@ -286,148 +286,8 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
 
       </details>
 
-      {/* Video Program Monitor */}
-      <div
-        style={{
-          background: "#0b0d11",
-          borderRadius: "8px",
-          padding: "12px",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: "340px",
-        }}
-      >
-        <video
-          ref={videoRef}
-          id="film-player"
-          className="film-player"
-          controls
-          preload="auto"
-          src={videoSrc || undefined}
-          onTimeUpdate={(e) => setPlayhead(e.currentTarget.currentTime)}
-          style={{
-            maxWidth: "100%",
-            maxHeight: "48vh",
-            borderRadius: "6px",
-          }}
-        />
-      </div>
-
-      {/* Interactive Multi-Track Timeline */}
-      <div
-        id="film-layers"
-        aria-label="Film layers"
-        style={{
-          background: "var(--surface-2, #181c22)",
-          borderRadius: "8px",
-          padding: "12px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "6px",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
-          <strong>
-            Timeline Tracks{" "}
-            {film?.timeline?.path ? `(${film.timeline.path.split("/").pop()})` : ""}
-          </strong>
-          <span className="muted">
-            Playhead: {playhead.toFixed(2)}s / {totalDuration.toFixed(2)}s
-          </span>
-        </div>
-
-        {!timeline || timeline.tracks.length === 0 ? (
-          <p className="muted" style={{ fontSize: "12px", margin: "4px 0" }}>
-            No tracks loaded yet.
-          </p>
-        ) : (
-          timeline.tracks.map((track, idx) => (
-            <div
-              key={track.id ?? idx}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "48px 1fr",
-                alignItems: "center",
-                gap: "8px",
-                height: "30px",
-              }}
-            >
-              <span
-                className="muted"
-                style={{ fontSize: "12px", fontWeight: 600 }}
-              >
-                {track.label}
-              </span>
-              <div
-                style={{
-                  position: "relative",
-                  height: "26px",
-                  background: "var(--surface-1, #12151a)",
-                  borderRadius: "4px",
-                  overflow: "hidden",
-                }}
-              >
-                {track.clips.map((c, cIdx) => {
-                  const leftPct = (c.start / totalDuration) * 100;
-                  const widthPct = Math.max(
-                    0.5,
-                    ((c.end - c.start) / totalDuration) * 100,
-                  );
-                  return (
-                    <button
-                      key={cIdx}
-                      title={`${c.name} (${c.start.toFixed(2)}s – ${c.end.toFixed(2)}s)`}
-                      onClick={() => {
-                        if (videoRef.current) {
-                          videoRef.current.currentTime = c.start;
-                        }
-                        setPlayhead(c.start);
-                      }}
-                      style={{
-                        position: "absolute",
-                        left: `${leftPct}%`,
-                        width: `${widthPct}%`,
-                        top: "2px",
-                        bottom: "2px",
-                        background:
-                          track.kind === "audio"
-                            ? "var(--surface-3, #2a3340)"
-                            : "var(--accent, #3fb8a8)",
-                        opacity: c.enabled === false ? 0.35 : 0.85,
-                        border: "none",
-                        borderRadius: "3px",
-                        color: "#fff",
-                        fontSize: "11px",
-                        padding: "0 6px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      {c.name}
-                    </button>
-                  );
-                })}
-                {/* Playhead indicator */}
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${Math.min(100, (playhead / totalDuration) * 100)}%`,
-                    top: 0,
-                    bottom: 0,
-                    width: "2px",
-                    background: "var(--warn, #ffb020)",
-                    pointerEvents: "none",
-                  }}
-                />
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      <StudioFilmstrips project={projectPath} timeline={timeline} videoSrc={videoSrc}
+        revision={film?.timeline?.modified || 0} playhead={playhead} onTime={setPlayhead} videoRef={videoRef} />
     </div>
   );
 };

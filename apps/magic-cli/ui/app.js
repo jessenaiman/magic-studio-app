@@ -68,7 +68,7 @@ async function dispatchToEngine(command, params, _options) {
       return cat?.projects || [];
     }
     case "recent_forget":
-      return { ok: true };
+      return nativeInvoke("execute_command", { id: "project.catalog", params: { forget: params?.path } });
     case "projects_root": {
       const res = await nativeInvoke("execute_command", { id: "project.root", params: {} });
       return res?.root || "";
@@ -84,11 +84,9 @@ async function dispatchToEngine(command, params, _options) {
       return { project: current?.project || null, identity: { pid: null, branch: "main" }, menus: { file: [], text: [] } };
     }
     case "close_documents":
-      return [];
-    case "studio_hide":
-    case "drawer_layout":
+      throw new Error("Closing other Craft apps from Magic is not available yet");
     case "new_window":
-      return { ok: true };
+      throw new Error("Opening another Magic window is not available yet");
     default:
       if (command.includes(".")) {
         return nativeInvoke("execute_command", { id: command, params: params || {} });
@@ -405,7 +403,6 @@ class AppShellController {
     window.workspaceNavigation?.select(state.view);
   }
   async openWorkspace(view) {
-    await invoke("studio_hide");
     await WORKSPACE_OPENERS[view]?.();
   }
   canLeaveCurrentView(nextView) {
@@ -430,13 +427,6 @@ class AppShellController {
       view = "studio";
     if (!this.canLeaveCurrentView(view))
       return false;
-    if (view !== state.view) {
-      try {
-        await invoke("close_documents");
-      } catch (error) {
-        toast(String(error));
-      }
-    }
     this.cleanupPreviousView(view);
     state.view = view;
     window.workspaceNavigation?.select(view);

@@ -18,6 +18,7 @@ function nativeWordControls(anim) {
     const selected = item.native_motion || { property: "transform/rotation", from: 0, speed: 0, duration: 2 };
     const property = el("select", { id: "word-motion-property", "aria-label": "Native transform property" }, ...properties.map(prop => el("option", { value: prop.path }, prop.name)));
     property.value = selected.property;
+    property.dataset.initialValue = property.value;
     const fields = el("div", { class: "native-motion-fields" });
     let inputs;
     const input = (id, label, value, min, max, step) => {

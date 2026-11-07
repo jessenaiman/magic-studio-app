@@ -364,8 +364,10 @@ pub fn cmd_video_preview(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_video_export(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
     let (out, options) = export_validation::destination(&f, p);
+    export_validation::require_clean_live(&f.project)?;
     let before = export_validation::context(&f, &out, &options)?;
     export_with(&f, &out, false, &options)?;
+    export_validation::require_clean_live(&f.project)?;
     let validation = export_validation::record(&f, &out, &options, &before)?;
     Ok(json!({"ok":true,"export":out,"timeline":f.project,"export_ready":true,"validation":validation,"export_options":options}))
 }
@@ -423,7 +425,7 @@ pub fn cmd_video_open(s: &mut Session, _: &Value) -> Result<Value> {
 /// FilmCraft's time unit: ticks per second.
 const TICKS: f64 = 254_016_000_000.0;
 
-fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
+fn track_rows(tracks: &Value, kind: &str, media: &Value) -> Vec<Value> {
     let secs = |v: &Value| v.as_f64().map(|t| t / TICKS);
     let prefix = match kind {
         "video" => "V",
@@ -442,18 +444,23 @@ fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
                 .into_iter()
                 .flatten()
                 .map(|c| {
+                    let source = media.as_array().into_iter().flatten().find(|source| source["item"].as_u64().is_some() && source["item"] == c["item"]);
                     json!({
                         "clip": c.get("clip").or_else(|| c.get("id")).cloned().unwrap_or(Value::Null),
                         "item": c.get("item").cloned().unwrap_or(Value::Null),
                         "name": c.get("name").or_else(|| c.get("text")).cloned().unwrap_or(Value::Null),
                         "start": secs(&c["start"]),
                         "end": secs(&c["end"]),
+                        "sourceIn": secs(&c["sourceIn"]),
+                        "sourceOut": secs(&c["sourceOut"]),
+                        "source_path": source.and_then(|source| source["path"].as_str()),
+                        "source_status": source.and_then(|source| source["status"].as_str()),
                         "enabled": c.get("enabled").cloned().unwrap_or(json!(true)),
                     })
                 })
                 .collect();
             let label = format!("{prefix}{}", i + 1);
-            json!({"id": t["id"], "label": label, "kind": kind, "enabled": t["enabled"], "clips": clips})
+            json!({"id": t["id"], "label": label, "name": t.get("name").and_then(Value::as_str).unwrap_or(&label), "kind": kind, "enabled": t["enabled"], "clips": clips})
         })
         .collect()
 }
@@ -462,11 +469,12 @@ fn track_rows(tracks: &Value, kind: &str) -> Vec<Value> {
 pub fn cmd_video_timeline(s: &mut Session, _: &Value) -> Result<Value> {
     let f = film(s)?;
     let seq = execute(f.require()?, "sequence.inspect", json!({}))?;
-    let mut tracks = track_rows(&seq["captions"], "caption");
-    let mut video = track_rows(&seq["video"], "video");
+    let media = execute(f.require()?, "media.status", json!({}))?;
+    let mut tracks = track_rows(&seq["captions"], "caption", &media);
+    let mut video = track_rows(&seq["video"], "video", &media);
     video.reverse();
     tracks.extend(video);
-    tracks.extend(track_rows(&seq["audio"], "audio"));
+    tracks.extend(track_rows(&seq["audio"], "audio", &media));
     Ok(json!({"ok": true, "timeline": f.project, "name": seq["name"],
         "duration": seq["duration"].as_f64().map(|t| t / TICKS), "tracks": tracks}))
 }
@@ -510,6 +518,40 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
 mod tests {
     //! Reference: <https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/crates/engine/src/relink.rs#L701-L715>
     use super::*;
+
+    #[test]
+    fn native_source_item_frame_export_accepts_integer_ticks_without_saving_project() {
+        let mut native = filmcraft_engine::Session::default();
+        native.execute("file.openDemoProject", json!({})).unwrap();
+        let sequence = native.execute("sequence.inspect", json!({})).unwrap();
+        let item =
+            sequence["video"].as_array().unwrap().iter().flat_map(|track| track["items"].as_array().unwrap()).find_map(|clip| clip["item"].as_u64()).unwrap();
+        let path = std::env::temp_dir().join(format!("magic-source-frame-{}.png", std::process::id()));
+        let result = native
+            .execute("file.exportFrame", json!({"target":"source","item":item,"time":127008000000_i64,"path":path,"format":"png","import":false}))
+            .unwrap();
+        assert_eq!(result["target"], "source");
+        assert!(result["width"].as_u64().unwrap() > 0);
+        assert!(result["time"].as_i64().unwrap() <= 127008000000_i64);
+        assert!(std::fs::metadata(&path).unwrap().len() > 0);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn timeline_rows_preserve_names_and_native_source_ranges() {
+        let tracks = json!([{"id":3,"name":"Animation edits","enabled":true,"items":[{"clip":112,"item":24,"name":"Walk","start":254016000000_i64,"end":762048000000_i64,"sourceIn":127008000000_i64,"sourceOut":635040000000_i64}]}]);
+        let media = json!([{"item":24,"path":"/tmp/animation.mov","status":"online"}]);
+        let rows = track_rows(&tracks, "video", &media);
+        assert_eq!(rows[0]["label"], "V1");
+        assert_eq!(rows[0]["name"], "Animation edits");
+        assert_eq!(rows[0]["clips"][0]["sourceIn"], 0.5);
+        assert_eq!(rows[0]["clips"][0]["sourceOut"], 2.5);
+        assert_eq!(rows[0]["clips"][0]["item"], 24);
+        assert_eq!(rows[0]["clips"][0]["source_path"], "/tmp/animation.mov");
+        assert_eq!(rows[0]["clips"][0]["source_status"], "online");
+        let unmapped = track_rows(&tracks, "video", &json!([]));
+        assert!(unmapped[0]["clips"][0]["source_path"].is_null());
+    }
 
     #[test]
     fn legacy_source_matching_rejects_filename_only_and_ambiguous_clips() {

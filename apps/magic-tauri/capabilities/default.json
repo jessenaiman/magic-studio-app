@@ -34,7 +34,6 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-unregister-all",
     "global-shortcut:allow-is-registered",
-    "process:default",
     "os:default",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
@@ -46,11 +45,13 @@
     "core:window:allow-show",
     "core:window:allow-unmaximize",
     "core:window:allow-unminimize",
-    "core:app:allow-exit",
     "log:default",
     "websocket:default",
     "log:allow-log",
     "websocket:allow-connect",
-    "websocket:allow-send"
+    "websocket:allow-send",
+    "process:deny-exit",
+    "process:deny-restart",
+    "core:app:deny-exit"
   ]
 }

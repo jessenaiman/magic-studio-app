@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import * as input from "./control-input";
+import { workspaceDrafts } from "./workspace-drafts";
 import { allowKeys, findElement, surfacesOf as surfaces } from "./control-input";
 
 interface Request { id: number; method: string; params: Record<string, unknown> }
@@ -38,6 +39,9 @@ export async function connectDesktop(
       const { method, params } = payload;
       let result: unknown;
       switch (method) {
+        case "ui.drafts":
+          allowKeys(params, "ui.drafts", []);
+          result = workspaceDrafts(); break;
         case "ui.inspect": case "ui.state":
           watchViolations();
           result = { ...(inspect() as Record<string, unknown>),

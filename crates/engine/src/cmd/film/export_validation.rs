@@ -59,6 +59,29 @@ fn native(session: &mut filmcraft_engine::Session, id: &str, params: Value) -> R
     session.execute(id, params).map_err(|e| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {e}")))
 }
 
+fn check_live_timeline(project: &Path, report: &Value) -> Result<()> {
+    let matches = report["path"]
+        .as_str()
+        .is_some_and(|path| Path::new(path) == project || matches!((Path::new(path).canonicalize(),project.canonicalize()),(Ok(a),Ok(b)) if a == b));
+    if !matches {
+        return Err(bad("FilmCraft changed its active timeline during the export check; retry after selecting the saved timeline"));
+    }
+    match report["dirty"].as_bool() {
+        Some(false) => Ok(()),
+        Some(true) => Err(bad("Save the open FilmCraft timeline before exporting or validating its final output")),
+        None => Err(bad("Cannot verify whether the open FilmCraft timeline is saved; update the native integration before exporting")),
+    }
+}
+
+/// A matching live editor owns its unsaved edits. Never silently validate a
+/// headless export of an older saved file while that editor is dirty.
+pub(super) fn require_clean_live(project: &Path) -> Result<()> {
+    if let Some(report) = crate::CraftHub::try_live(crate::CraftTarget::Film, project, "project.inspect", &json!({}), false) {
+        check_live_timeline(project, &report?)?;
+    }
+    Ok(())
+}
+
 pub(super) fn context(f: &Film, out: &Path, options: &Value) -> Result<Value> {
     let mut session = open_filmcraft(f.require()?)?;
     let resolved = native(&mut session, "export.resolve", export_params(out, false, options))?;
@@ -171,6 +194,13 @@ pub(super) fn record(f: &Film, out: &Path, options: &Value, before: &Value) -> R
 }
 
 pub(super) fn status(f: &Film, out: &Path, options: &Value, reprobe: bool) -> Value {
+    match require_clean_live(&f.project) {
+        Ok(()) => saved_status(f, out, options, reprobe),
+        Err(error) => json!({"valid":false,"path":out,"error":error.to_string(),"receipt":receipt_path(f)}),
+    }
+}
+
+fn saved_status(f: &Film, out: &Path, options: &Value, reprobe: bool) -> Value {
     let check = || -> Result<Value> {
         let receipt = read_receipt(f);
         if receipt.is_null() {
@@ -188,6 +218,15 @@ pub(super) fn status(f: &Film, out: &Path, options: &Value, reprobe: bool) -> Va
 mod tests {
     use super::*;
     #[test]
+    fn live_timeline_policy_requires_matching_saved_document() {
+        let project = Path::new("/tmp/owned-film.fcproj");
+        assert!(check_live_timeline(project, &json!({"path":project,"dirty":false})).is_ok());
+        for report in [json!({"path":project,"dirty":true}), json!({"path":project}), json!({"path":"/tmp/other-film.fcproj","dirty":false})] {
+            assert!(check_live_timeline(project, &report).is_err(), "{report}");
+        }
+    }
+
+    #[test]
     fn native_export_receipt_tracks_output_settings_and_authored_design() {
         let dir = std::env::temp_dir().join(format!("magic-export-receipt-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -197,13 +236,13 @@ mod tests {
         native.execute("file.saveAs", json!({"path":f.project})).unwrap();
         let options = json!({"format":"wav","range":"custom","startSeconds":0,"endSeconds":0.25});
         let out = dir.join("fixture.wav");
-        assert_eq!(status(&f, &out, &options, false)["valid"], false);
+        assert_eq!(saved_status(&f, &out, &options, false)["valid"], false);
         let before = context(&f, &out, &options).unwrap();
         super::super::export_with_options(&f.project, &out, false, &options).unwrap();
         record(&f, &out, &options, &before).unwrap();
-        assert_eq!(status(&f, &out, &options, true)["valid"], true);
+        assert_eq!(saved_status(&f, &out, &options, true)["valid"], true);
         let changed = json!({"format":"wav","range":"custom","startSeconds":0,"endSeconds":0.2});
-        assert_eq!(status(&f, &out, &changed, false)["valid"], false);
+        assert_eq!(saved_status(&f, &out, &changed, false)["valid"], false);
         let (saved_out, saved_options) = destination(&f, &json!({"_origin":"test","_expected_project":"ignored"}));
         assert_eq!(saved_out, out);
         assert_eq!(saved_options, options);
@@ -213,18 +252,18 @@ mod tests {
         assert!(cleared.get("_expected_project").is_none());
         std::fs::create_dir_all(dir.join("design")).unwrap();
         std::fs::write(dir.join("design/words.json"), b"authored design changed").unwrap();
-        assert_eq!(status(&f, &out, &options, false)["valid"], false);
+        assert_eq!(saved_status(&f, &out, &options, false)["valid"], false);
         std::fs::remove_file(dir.join("design/words.json")).unwrap();
         std::fs::remove_file(&out).unwrap();
-        assert_eq!(status(&f, &out, &options, false)["valid"], false);
+        assert_eq!(saved_status(&f, &out, &options, false)["valid"], false);
         let video_options = json!({"format":"h264","range":"custom","startSeconds":0,"endSeconds":0.25,"scale":0.08333333333333333,"audio":false});
         let movie = dir.join("fixture.mp4");
         let before = context(&f, &movie, &video_options).unwrap();
         super::super::export_with_options(&f.project, &movie, false, &video_options).unwrap();
         record(&f, &movie, &video_options, &before).unwrap();
-        assert_eq!(status(&f, &movie, &video_options, true)["valid"], true);
+        assert_eq!(saved_status(&f, &movie, &video_options, true)["valid"], true);
         std::fs::write(&movie, b"corrupt output").unwrap();
-        assert_eq!(status(&f, &movie, &video_options, true)["valid"], false);
+        assert_eq!(saved_status(&f, &movie, &video_options, true)["valid"], false);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

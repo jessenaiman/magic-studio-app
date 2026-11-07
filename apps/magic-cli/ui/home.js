@@ -32,7 +32,6 @@ class HomeViewController {
     $("project-name").textContent = "No project";
     document.title = "Magic Studio";
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-home"));
-    await invoke("studio_hide").catch(() => {});
     await this.renderRecent();
     updateAppFooter();
     await acFeedback.acknowledge(null, null);

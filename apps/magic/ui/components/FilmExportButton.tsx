@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { executeCommand } from "../api";
 import { ExportReport, exportIconState } from "../export-state";
 import "../export-button.css";
@@ -48,7 +47,7 @@ export function FilmExportButton({project, options, disabled, onBusy, onToast}: 
     if (inFlight.current) return;
     if (editorDrafts()) { onToast("Save the editor changes before exporting the final video"); return; }
     if (status === "ready" && report?.export?.path) {
-      try { await openPath(report.export.path); } catch (failure) { onToast(String(failure)); }
+      try { await executeCommand("video.open_export", {...JSON.parse(optionsKey), _expected_project:project}); } catch (failure) { onToast(String(failure)); }
       return;
     }
     const version = revision.current;

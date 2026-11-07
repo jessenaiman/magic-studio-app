@@ -6,6 +6,7 @@ mod asset_scope;
 mod capture;
 mod clipboard_image;
 mod control;
+mod lifecycle;
 
 use clap::Parser;
 use magic::Session;
@@ -18,6 +19,7 @@ use std::sync::{
 };
 use std::time::Duration;
 use tauri::{Emitter, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 #[derive(Parser, Debug)]
 #[command(name = "magic-tauri")]
@@ -37,6 +39,7 @@ struct Desktop {
     ready: AtomicBool,
     next_request: AtomicU64,
     pending: Mutex<HashMap<u64, Reply>>,
+    lifecycle: lifecycle::Lifecycle,
 }
 
 fn state(app: &tauri::AppHandle) -> Arc<Desktop> {
@@ -127,14 +130,14 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         "engine.commands" | "ui.menu.list" => {
             return dispatch(app, "command.list", params, false);
         }
-        "app.quit" => {
-            // Let the control reply flush before the process exits.
-            let app = app.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(150));
-                app.exit(0);
-            });
-            return Ok(json!({"ok":true,"quitting":true}));
+        "app.quit" | "app.restart" => {
+            only_keys(&params, id, &[])?;
+            return lifecycle::exit(app, id == "app.restart");
+        }
+        "app.hide" => {
+            only_keys(&params, id, &[])?;
+            main_window(app)?.hide().map_err(|e| e.to_string())?;
+            return Ok(json!({"ok":true,"hidden":true}));
         }
         "ui.focus" if params.get("id").is_none() => {
             let window = main_window(app)?;
@@ -147,13 +150,39 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         _ => {}
     }
     let changed = !magic::commands::is_read_only_command(id, &params);
-    let mut session = desktop.session.lock().map_err(|e| e.to_string())?;
+    if desktop.lifecycle.exiting() {
+        return Err("Magic is closing or restarting; the command was not run".into());
+    }
+    let transition = if matches!(id, "project.open" | "project.new" | "project.close") {
+        Some(lifecycle::begin(app)?)
+    } else {
+        if changed && desktop.lifecycle.transitioning() {
+            return Err("A close or project switch is being checked; retry after it finishes".into());
+        }
+        None
+    };
+    let mut session = if transition.is_some() {
+        desktop.session.try_lock().map_err(|_| "The engine is busy; wait for the current operation to finish".to_string())?
+    } else {
+        desktop.session.lock().map_err(|e| e.to_string())?
+    };
+    if let Some(transition) = &transition {
+        transition.verify(&session)?;
+    }
     if let Some(expected) = params.get("_expected_project").and_then(Value::as_str)
         && session.project_path.as_ref().and_then(|path| path.to_str()) != Some(expected)
     {
         return Err("The active project changed; the previous workspace command was not run".into());
     }
-    let result = if id == "clipboard.import_image" {
+    let result = if id == "video.open_export" {
+        let report = session.execute("video.validate_export", params).map_err(|e| e.to_string())?;
+        if report["export_ready"] != true || report["validation"]["valid"] != true {
+            return Err(report["validation"]["error"].as_str().unwrap_or("Render a current, validated export before opening it").to_owned());
+        }
+        let path = report["export"].as_str().ok_or("Validated export returned no path")?;
+        app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())?;
+        json!({"ok":true,"opened":path})
+    } else if id == "clipboard.import_image" {
         clipboard_image::import_image(app, &mut session, &params)?
     } else {
         session.execute(id, params).map_err(|e| e.to_string())?
@@ -234,6 +263,7 @@ fn main() {
         ready: AtomicBool::new(false),
         next_request: AtomicU64::new(1),
         pending: Mutex::new(HashMap::new()),
+        lifecycle: lifecycle::Lifecycle::default(),
     });
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -260,6 +290,15 @@ fn main() {
         .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())
         .plugin(tauri_plugin_websocket::init())
         .manage(desktop)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
+                && !state(window.app_handle()).lifecycle.exiting()
+            {
+                api.prevent_close();
+                lifecycle::native_close(window.app_handle());
+            }
+        })
         .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, ui_reply, session_snapshot])
         .setup(move |app| {
             if let Some(path) = &cli.project {
@@ -281,10 +320,18 @@ fn main() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .unwrap_or_else(|error| {
             diag(format_args!("magic-tauri: error while running Magic Studio: {error}"));
             std::process::exit(1)
+        })
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event
+                && !state(app).lifecycle.exiting()
+            {
+                api.prevent_exit();
+                lifecycle::native_close(app);
+            }
         });
 }
 

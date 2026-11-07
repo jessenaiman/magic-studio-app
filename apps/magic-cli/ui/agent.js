@@ -518,7 +518,6 @@ const workshopDrawers = createTopDrawers({
     toast("Open a project first");
     return false;
   },
-  onLayout: (height) => invoke("drawer_layout", { height }).catch((e) => agentStatus(String(e))),
   onSettings: (id) => {
     if (id === "anim-agent-settings")
       refreshModels();

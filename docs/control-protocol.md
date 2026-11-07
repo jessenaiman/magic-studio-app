@@ -41,6 +41,7 @@ A parameter a method does not name is an error (`unknown parameter ...`), never 
 | `engine.execute` | `{command, params}` | Dispatches to the same session as Tauri IPC. |
 | `engine.commands` | `{filter?}` | Returns registry descriptions. |
 | `ui.inspect` / `ui.state` | – | Actual frontend view, requested view, project, busy state, alerts, preserved-workspace feedback, `viewport`, `focus` and `cspViolations` (Content-Security-Policy blocks seen in the page). |
+| `ui.drafts` | `{}` | Returns `{dirty, drafts, saving}` across mounted editor workspaces, including hidden workspaces. Unavailable workspace state is reported as a draft. |
 | `ui.elements` | `{prefix?}` or `{unidentified: true}` | DOM IDs, labels, values, enabled state and window-coordinate bounds across the active view and its same-origin workspace frames. `unidentified: true` instead lists visible interactive elements that have no ID (the Craft rule is that every interactive widget has one), with label, class and nearest identified parent. |
 | `ui.click` | `{id}` or `{x,y}`, `button?` (`left`/`middle`/`right`), `count?` 1–10, `modifiers?` | pointer-down, pointer-up and click (or `auxclick` / `contextmenu`) at the element's center or the point; `count: 2` also sends `dblclick`. |
 | `ui.move` | `{id}` or `{x,y}`, `modifiers?` | pointer and mouse move events. |
@@ -53,7 +54,8 @@ A parameter a method does not name is an error (`unknown parameter ...`), never 
 | `ui.resize` | `{width, height}` | Logical window size, 320×240 up to 7680×4320. Returns the size actually reached; fails if the window manager keeps another size (tiled and maximized windows cannot be resized). |
 | `ui.screenshot` | `{path?}` | PNG of the window as the webview presents it. `path` must be absolute and end in `.png`; without it a file is written to the temp folder. Returns `{path, width, height, bytes}`. Linux (WebKitGTK) only; fails after 10 s if no frame is presented (hidden window, sleeping display). |
 | `ui.menu.invoke` / `ui.menu.list` | – | Aliases for `engine.execute` / `engine.commands`: Tauri has no native menu bar. |
-| `app.quit` | – | Exits the application after replying; no save prompt. Save first. |
+| `app.quit` / `app.restart` | `{}` | Quits or restarts after replying when engine documents and project are saved, editor drafts are clear, and no operation is busy. Returns an error if state cannot be verified or work is unsaved or pending; save or wait before retrying. |
+| `app.hide` | `{}` | Hides the main window. |
 
 Pointer, key and text input are **DOM events dispatched by the page**, not operating-system
 input. They reach every handler and the defaults listed above, but they cannot trigger CSS

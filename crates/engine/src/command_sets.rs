@@ -266,6 +266,7 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             requires_ui
         ),
         cmd!("ui.screenshot", "Capture window", [], None, "{\"output\":\"optional PNG path\"}", always, requires_ui),
+        cmd!("video.open_export", "Open Validated Export", [], None, "{path?, format?, preset?}", always, requires_ui),
         cmd!(
             "clipboard.import_image",
             "Paste clipboard artwork",
