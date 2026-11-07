@@ -2312,42 +2312,8 @@ impl MagicApp {
                 });
         }
 
-        if let Some(host) = self.lyrics_host.as_mut() {
-            let project = self
-                .session
-                .project_path
-                .as_ref()
-                .map(|path| path.to_string_lossy());
-            let project = project.as_deref().unwrap_or_default();
-            egui::Panel::left("animation_assets_web")
-                .resizable(true)
-                .default_size(210.0)
-                .min_size(165.0)
-                .show(ui, |ui| {
-                    let rect = ui.available_rect_before_wrap();
-                    ui.allocate_rect(rect, Sense::hover());
-                    host.show(frame, ctx, rect, project, WebWorkspacePage::AnimationAssets);
-                });
-            egui::Panel::right("animation_inspector_web")
-                .resizable(true)
-                .default_size(290.0)
-                .min_size(215.0)
-                .show(ui, |ui| {
-                    let rect = ui.available_rect_before_wrap();
-                    ui.allocate_rect(rect, Sense::hover());
-                    host.show(
-                        frame,
-                        ctx,
-                        rect,
-                        project,
-                        WebWorkspacePage::AnimationInspector,
-                    );
-                });
-        } else {
-            self.show_animation_fallback_rails(ctx, ui);
-        }
-        // Comprehensive web canvas (animation.html: Konva canvas + dials + transport + timeline)
-        // replaces egui stub stage when webview host present. Bottom EffectCraft timeline remains when composition open.
+        // Single full webview (animation.html includes assets rail + canvas + inspector + timeline).
+        // Old 3-slot version (Assets+Inspector+Animation on 2 webview slots) reloaded every frame = flashing.
         if self.lyrics_host.is_some() {
             let project = self.session.project_path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
             let rect = ui.available_rect_before_wrap();
@@ -2356,6 +2322,7 @@ impl MagicApp {
                 host.show(frame, ctx, rect, &project, WebWorkspacePage::Animation);
             }
         } else {
+            self.show_animation_fallback_rails(ctx, ui);
             self.show_animation_stage(ctx, ui);
         }
     }

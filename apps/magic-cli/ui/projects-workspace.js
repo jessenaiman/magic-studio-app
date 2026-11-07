@@ -88,10 +88,6 @@ async function showCurrentProject() {
     if (file?.exists) files.set(file.path, { ...file, name: file.path.split("/").at(-1), group: "film" });
   }
   const overview = projectField("project-overview");
-  document.querySelector(".home-hero")?.remove();
-  document.querySelector(".group-label")?.remove();
-  document.getElementById("recent")?.remove();
-  document.body.classList.remove("at-home");
   overview.replaceChildren(el("header", {},
     el("h2", {}, project.split("/").at(-1).replace(/\.magic$/i, "")),
     el("button", { type: "button", class: "ghost", onclick: () => projectAction(() => projectCommand("ui.set_view", { view: "lyrics" })) }, "Edit lyrics")),
