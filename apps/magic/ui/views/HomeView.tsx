@@ -1,17 +1,33 @@
-import React, { useEffect, useState } from "react";
-import { executeCommand, pickFile, ProjectSummary } from "../api";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { executeCommand, pickFile } from "../api";
+import "../home.css";
+
+interface Readiness {
+  next_step?: string;
+  audio_available?: boolean;
+  transcript_valid?: boolean;
+  editor_ready?: boolean;
+}
+
+interface QuickAction {
+  label: string;
+  command: string;
+}
+
+interface CatalogProject {
+  name: string;
+  path: string;
+  folder?: string;
+  exists?: boolean;
+  thumb?: string;
+  open_state?: "attached" | "detached" | null;
+  readiness?: Readiness;
+  quick_actions?: QuickAction[];
+}
 
 interface CatalogResponse {
-  projects?: Array<{
-    name: string;
-    path: string;
-    folder?: string;
-    exists?: boolean;
-    readiness?: {
-      next_step?: string;
-      audio_available?: boolean;
-    };
-  }>;
+  projects?: CatalogProject[];
 }
 
 interface HomeViewProps {
@@ -20,33 +36,30 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) => {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projects, setProjects] = useState<CatalogProject[]>([]);
+  const [filter, setFilter] = useState<"all" | "production" | "render" | "character">("all");
+  const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAudio, setNewAudio] = useState("");
   const [newRoot, setNewRoot] = useState("");
   const [busy, setBusy] = useState(false);
+  const [audioDropStem, setAudioDropStem] = useState<string | null>(null);
 
-  const loadCatalog = async () => {
+  const loadCatalog = useCallback(async () => {
     try {
       const cat = await executeCommand<CatalogResponse>("project.catalog");
-      const list: ProjectSummary[] = (cat.projects || []).map((p) => ({
-        name: p.name,
-        path: p.path,
-        dir: p.folder,
-        exists: p.exists,
-      }));
-      setProjects(list);
+      setProjects(cat.projects || []);
       const rootInfo = await executeCommand<{ root?: string }>("project.root");
       if (rootInfo.root) setNewRoot(rootInfo.root);
     } catch (err) {
       onToast(String(err));
     }
-  };
+  }, [onToast]);
 
   useEffect(() => {
     void loadCatalog();
-  }, []);
+  }, [loadCatalog]);
 
   const handleBrowseProject = async () => {
     const selected = await pickFile({
@@ -65,15 +78,17 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
     });
     if (typeof selected === "string" && selected) {
       setNewAudio(selected);
-      if (!newName.trim()) {
-        const stem = selected
-          .split("/")
-          .pop()
-          ?.replace(/\.[^.]+$/, "")
-          .replace(/[._-]+/g, " ")
-          .trim();
-        if (stem) setNewName(stem);
+      const stem = selected
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "")
+        .replace(/[._-]+/g, " ")
+        .trim();
+      if (stem) {
+        setNewName(stem);
+        setAudioDropStem(stem);
       }
+      setCreating(true);
     }
   };
 
@@ -110,6 +125,8 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
         await executeCommand("workshop.set_audio", { path: newAudio });
       }
       setCreating(false);
+      setNewAudio("");
+      setAudioDropStem(null);
       await onOpenProject(magicPath);
     } catch (err) {
       onToast(String(err));
@@ -118,165 +135,322 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
     }
   };
 
-  return (
-    <section id="view-home" className="view active" style={{ padding: "24px" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "20px",
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: "22px" }}>Magic Studio</h1>
-          <p className="muted" style={{ margin: "4px 0 0" }}>
-            Song-driven storyboard, spatial lyrics, character animation, and FilmCraft studio
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            id="home-new"
-            className="start"
-            onClick={() => setCreating((v) => !v)}
-          >
-            New Song Project
-          </button>
-          <button id="home-open" className="ghost" onClick={handleBrowseProject}>
-            Open .magic…
-          </button>
-        </div>
-      </div>
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    const list = projects.filter((p) => {
+      const match =
+        q === "" ||
+        p.name.toLowerCase().includes(q) ||
+        (p.path || "").toLowerCase().includes(q);
+      if (!match) return false;
+      switch (filter) {
+        case "production":
+          return !!(
+            p.readiness?.audio_available || p.readiness?.transcript_valid
+          );
+        case "render":
+          return !!p.readiness?.editor_ready;
+        case "character":
+          return /character|rig/i.test(p.name || "") || /character|rig/i.test(p.path || "");
+        default:
+          return true;
+      }
+    });
+    return { list, allCount: projects.length };
+  }, [projects, filter, search]);
 
-      {creating && (
-        <form
-          id="new-form"
-          onSubmit={handleCreateProject}
-          style={{
-            background: "var(--surface-2, #181c22)",
-            padding: "16px",
-            borderRadius: "8px",
-            marginBottom: "20px",
-            display: "grid",
-            gap: "12px",
-            maxWidth: "560px",
-          }}
-        >
-          <strong>New Song Project</strong>
-          <label style={{ display: "grid", gap: "4px" }}>
-            <span>Song / Project Name</span>
-            <input
-              id="new-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. X Marks The Spot"
-              required
-            />
-          </label>
-          <label style={{ display: "grid", gap: "4px" }}>
-            <span>Audio Recording (optional)</span>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input
-                id="new-audio"
-                value={newAudio}
-                onChange={(e) => setNewAudio(e.target.value)}
-                placeholder="/path/to/song.wav"
-                style={{ flex: 1 }}
-              />
-              <button type="button" className="ghost" onClick={handlePickAudio}>
-                Browse…
-              </button>
-            </div>
-          </label>
-          <label style={{ display: "grid", gap: "4px" }}>
-            <span>Projects Root Folder</span>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input
-                id="new-root"
-                value={newRoot}
-                onChange={(e) => setNewRoot(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button type="button" className="ghost" onClick={handlePickRoot}>
-                Folder…
-              </button>
-            </div>
-          </label>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button type="submit" className="start" disabled={busy}>
-              {busy ? "Creating…" : "Create Project"}
+  const hashString = (str: string): number => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return h;
+  };
+
+  const waveformSvg = useCallback(
+    (name: string) => {
+      const seed = hashString(name);
+      const bars = 24;
+      const svgW = 400;
+      const svgH = 170;
+      const gap = 6;
+      const barW = (svgW - gap * (bars - 1)) / bars;
+      const maxH = svgH * 0.6;
+      const parts: string[] = [];
+      for (let i = 0; i < bars; i++) {
+        const h = 6 + Math.abs(Math.sin(seed * 0.1 + i * 0.7) * (maxH - 6));
+        const x = i * (barW + gap);
+        const y = (svgH - h) / 2;
+        const color = i % 3 === 0 ? "#5bd69b" : i % 3 === 1 ? "#eabb62" : "#7fe0b3";
+        parts.push(
+          `<rect x="${Math.round(x * 100) / 100}" y="${Math.round(y * 100) / 100}" width="${Math.round(barW * 100) / 100}" height="${Math.round(h * 100) / 100}" fill="${color}" rx="2"/>`,
+        );
+      }
+      return `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:100%">${parts.join("")}</svg>`;
+    },
+    [],
+  );
+
+  const statusPills = (p: CatalogProject) => {
+    const r = p.readiness || {};
+    const pills: { kind: "song" | "lyrics" | "studio" | "none"; label: string }[] = [];
+    if (r.audio_available) pills.push({ kind: "song", label: "Song · audio" });
+    if (r.transcript_valid) pills.push({ kind: "lyrics", label: "Lyrics · transcript" });
+    if (r.editor_ready) pills.push({ kind: "studio", label: "Studio · editor" });
+    if (pills.length === 0) pills.push({ kind: "none", label: "Empty" });
+    return pills;
+  };
+
+  return (
+    <section id="view-home" className="view active">
+      <div className="home-shelf">
+        {/* Top toolbar */}
+        <div className="home-toolbar">
+          <div className="home-brand">
+            <svg className="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+            </svg>
+            <h2>Magic Studio</h2>
+          </div>
+          <div className="home-filters">
+            <button
+              className={`home-filter-pill ${filter === "all" ? "active" : ""}`}
+              onClick={() => setFilter("all")}
+            >
+              All Songs ({filtered.allCount})
             </button>
             <button
-              type="button"
-              className="ghost"
-              onClick={() => setCreating(false)}
+              className={`home-filter-pill ${filter === "production" ? "active" : ""}`}
+              onClick={() => setFilter("production")}
             >
-              Cancel
+              In Production
+            </button>
+            <button
+              className={`home-filter-pill ${filter === "render" ? "active" : ""}`}
+              onClick={() => setFilter("render")}
+            >
+              Ready to Render
+            </button>
+            <button
+              className={`home-filter-pill ${filter === "character" ? "active" : ""}`}
+              onClick={() => setFilter("character")}
+            >
+              Character Rigs
             </button>
           </div>
-        </form>
-      )}
-
-      <h2 style={{ fontSize: "14px", textTransform: "uppercase", opacity: 0.7 }}>
-        Recent Projects
-      </h2>
-      {projects.length === 0 ? (
-        <div className="panel-empty boxed">
-          No recent projects yet. Click <strong>Open .magic…</strong> or{" "}
-          <strong>New Song Project</strong>.
+          <div className="home-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Filter songs or characters…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="home-actions">
+            <button id="home-new" onClick={() => setCreating((v) => !v)}>
+              + New Song Project
+            </button>
+            <button id="home-open" onClick={handleBrowseProject}>
+              Open .magic
+            </button>
+          </div>
         </div>
-      ) : (
+
+        {/* Quick-Drop / Audio Intake strip */}
         <div
-          id="recent"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: "12px",
-          }}
+          className="home-quickdrop"
+          role="button"
+          tabIndex={0}
+          onClick={handlePickAudio}
+          onKeyDown={(e) => e.key === "Enter" && handlePickAudio()}
+          aria-label="Drop an audio track to start a new song film"
         >
-          {projects.map((p) => (
-            <div
-              key={p.path}
-              className="project-card"
-              style={{
-                background: "var(--surface-2, #181c22)",
-                border: "1px solid var(--border, #2a313c)",
-                borderRadius: "8px",
-                padding: "14px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                gap: "10px",
-              }}
-            >
-              <div>
-                <strong style={{ fontSize: "15px", display: "block" }}>
-                  {p.name}
-                </strong>
-                <span
-                  className="muted"
-                  style={{
-                    fontSize: "12px",
-                    wordBreak: "break-all",
-                    display: "block",
-                    marginTop: "4px",
-                  }}
-                >
-                  {p.path}
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  className="start"
-                  onClick={() => void onOpenProject(p.path)}
-                >
-                  Open Project
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <p>Drop an .mp3 / .wav audio track anywhere to start a new song film</p>
+          {audioDropStem && (
+            <p className="stem-hint">Ready: “{audioDropStem}” — review name below and click Create</p>
+          )}
+        </div>
+
+        {/* New project form (inline drawer / modal) */}
+        {creating && (
+          <form id="new-form" onSubmit={handleCreateProject} aria-label="New Song Project">
+            <h3 className="home-section-title">New Song Project</h3>
+            <div className="new-form-field">
+              <label>Song / Project Name</label>
+              <input
+                id="new-name"
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. X Marks The Spot"
+                required
+              />
+            </div>
+            <div className="new-form-field">
+              <label>Audio Recording (optional)</label>
+              <div className="new-form-row">
+                <input
+                  id="new-audio"
+                  value={newAudio}
+                  onChange={(e) => setNewAudio(e.target.value)}
+                  placeholder="/path/to/song.wav"
+                />
+                <button type="button" onClick={handlePickAudio}>
+                  Browse…
                 </button>
               </div>
             </div>
-          ))}
+            <div className="new-form-field">
+              <label>Projects Root Folder</label>
+              <div className="new-form-row">
+                <input
+                  id="new-root"
+                  value={newRoot}
+                  onChange={(e) => setNewRoot(e.target.value)}
+                />
+                <button type="button" onClick={handlePickRoot}>
+                  Folder…
+                </button>
+              </div>
+            </div>
+            <div className="new-form-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreating(false);
+                  setAudioDropStem(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="open" disabled={busy}>
+                {busy ? "Creating…" : "Create Project"}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Recent projects grid */}
+        <h3 className="home-section-title">Recent Projects</h3>
+        <div id="recent">
+          {filtered.list.length === 0 ? (
+            <div className="empty-state">
+              <p>No projects match your filter yet.</p>
+              <p style={{ fontSize: "12px", marginTop: "6px" }}>
+                Click <strong>+ New Song Project</strong> or drop an audio track on the strip above to begin.
+              </p>
+            </div>
+          ) : (
+            filtered.list.map((p) => {
+              const attached = p.open_state === "attached";
+              const pills = statusPills(p);
+              return (
+                <div
+                  key={p.path}
+                  className={`project-card ${attached ? "attached" : ""}`}
+                  onMouseEnter={(e) => {
+                    const m = e.currentTarget.querySelector(".card-menu");
+                    if (m) m.classList.add("open");
+                  }}
+                  onMouseLeave={(e) => {
+                    const m = e.currentTarget.querySelector(".card-menu");
+                    if (m) m.classList.remove("open");
+                  }}
+                >
+                  <div className="card-media">
+                    {p.thumb ? (
+                      <img
+                        src={convertFileSrc(p.thumb)}
+                        alt={`${p.name} thumbnail`}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div
+                        dangerouslySetInnerHTML={{
+                          __html: waveformSvg(p.name || "Untitled"),
+                        }}
+                      />
+                    )}
+                    <div className="card-menu">
+                      <button onClick={(e) => { e.stopPropagation(); onToast(`View folder: ${p.name}`); }}>
+                        View in folder
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onToast(`Duplicate: ${p.name}`); }}>
+                        Duplicate
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onToast(`Remove: ${p.name}`); }}>
+                        Remove from list
+                      </button>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    <h3 className="card-title">{p.name}</h3>
+                    <div className="card-path" title={p.path || ""}>
+                      {p.folder || p.path || ""}
+                    </div>
+                    <div className="card-status">
+                      {pills.map((pil, i) => (
+                        <span key={i} className={`card-pill ${pil.kind}`}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: "6px",
+                              height: "6px",
+                              borderRadius: "50%",
+                              backgroundColor:
+                                pil.kind === "song"
+                                  ? "#5bd69b"
+                                  : pil.kind === "lyrics"
+                                    ? "#7fe0b3"
+                                    : pil.kind === "studio"
+                                      ? "#eabb62"
+                                      : "#7a8594",
+                            }}
+                          />
+                          {pil.label}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="card-actions">
+                      {p.quick_actions?.map((qa, i) => (
+                        <button
+                          key={i}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void executeCommand(qa.command).catch((err) => onToast(String(err)));
+                          }}
+                        >
+                          {qa.label}
+                        </button>
+                      ))}
+                      <button
+                        className="open"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void onOpenProject(p.path);
+                        }}
+                      >
+                        Open Project
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
-      )}
+      </div>
     </section>
   );
 };

@@ -37,9 +37,7 @@ function renderBoardFields(page) {
       const label = el("label", {}, el("code", {}, slot.label), control);
       if (kind === "text") return label;
       return el("div", { class: "panel-fields" }, label,
-        el("button", { type: "button", class: "ghost", onclick: () => pickBoardImage(control) }, "Browse…"),
-        page?.archetype === "scene" ? el("button", { type: "button", class: "ghost",
-          onclick: () => boardAction("scribbles", { label: slot.label }) }, "Draw in Scribbles") : null);
+        el("button", { type: "button", class: "ghost", onclick: () => pickBoardImage(control) }, "Browse…"));
     });
     return rows.length ? el("details", { class: "motion-section", open: kind === "text" },
       el("summary", {}, kind === "text" ? "Text Fields" : "Image Fields"), el("div", { class: "motion-section-body" }, rows)) : null;
