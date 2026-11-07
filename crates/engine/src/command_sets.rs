@@ -1321,6 +1321,16 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 /// The film in FilmCraft: watch a preview in Studio, check frames, export, or edit in FilmCraft.
 fn specs_storyboard() -> Vec<CommandSpec> {
     vec![
+        query!(
+            "storyboard.toc", "DesignCraft Storyboard Contents",
+            "{\"path\":\"optional storyboard.designcraft\"}",
+            crate::cmd::storyboard::cmd_storyboard_toc
+        ),
+        query!(
+            "storyboard.backgrounds", "Storyboard and Project Backdrops",
+            "{\"path\":\"optional storyboard.designcraft\"}",
+            crate::cmd::storyboard::cmd_storyboard_backgrounds
+        ),
         cmd!(
             "storyboard.open",
             "Open Storyboard in DesignCraft with Live Control",

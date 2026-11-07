@@ -1322,3 +1322,35 @@ pub fn cmd_storyboard_open(s: &mut Session, p: &Value) -> Result<Value> {
         "inspect":format!("designcraft-cli app --port {port} --method document.inspect"),
         "mcp":format!("designcraft-cli mcp --connect {port}")}))
 }
+
+/// Registered project images used by the DesignCraft storyboard, for the Lyrics backdrop picker.
+pub fn cmd_storyboard_backgrounds(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = doc_path(s, p)?;
+    let used: Vec<String> = if path.is_file() {
+        Board::open(&path)?.pages()?.into_iter().flat_map(|page| page.slots)
+            .filter_map(|slot| slot.image).collect()
+    } else { Vec::new() };
+    let images: Vec<Value> = s.project_assets.iter().filter_map(|asset| {
+        let file = asset.path.as_ref()?;
+        let extension = file.extension()?.to_str()?.to_ascii_lowercase();
+        if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif") { return None; }
+        Some(json!({"id":asset.id,"name":asset.name,"path":file,
+            "in_storyboard":used.iter().any(|source| std::path::Path::new(source) == file)}))
+    }).collect();
+    Ok(json!({"ok":true,"path":path,"images":images}))
+}
+
+/// Scene choices for the preserved animation placement controls, from the native document.
+pub fn cmd_storyboard_toc(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = doc_path(s, p)?;
+    let pages = Board::open(&path)?.pages()?;
+    let mut scene = 0usize;
+    let chapters: Vec<Value> = pages.iter().map(|page| {
+        let number = if page.archetype == "scene" { scene += 1; Some(scene) } else { None };
+        let title = ["title", "scene_title", "scene_id", "cover_title", "world_heading", "char_heading"]
+            .iter().find_map(|label| page.slot(label).and_then(|slot| slot.text.as_deref()))
+            .map(str::to_owned).unwrap_or_else(|| format!("{} {}", page.archetype, page.index + 1));
+        json!({"page":page.index,"scene":number,"title":title,"archetype":page.archetype})
+    }).collect();
+    Ok(json!({"ok":true,"path":path,"chapters":chapters}))
+}

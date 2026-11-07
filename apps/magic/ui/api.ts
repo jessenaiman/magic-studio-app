@@ -277,23 +277,3 @@ export async function pickFile(options: {
       : undefined,
   });
 }
-
-// Translate the engine document once; never discard the authored design/kinetic data.
-export function lyricSections(response: WordsReadResponse): WordsAnimation[] {
-  return (response.document?.animations || []).map(animation => {
-    const grouped = new Map<string, WordsLineItem>();
-    for (const word of animation.words || []) {
-      const id = word.line_id || word.sung_id || "line";
-      const line = grouped.get(id) || { line_id: id, text: "", words: [] };
-      line.words!.push(word);
-      line.text = line.words!.map(item => item.text).join(" ");
-      if (typeof word.start === "number") line.start = Math.min(line.start ?? word.start, word.start);
-      if (typeof word.end === "number") line.end = Math.max(line.end ?? word.end, word.end);
-      grouped.set(id, line);
-    }
-    return { ...animation, lines: [...grouped.values()],
-      title: animation.title || animation.scope?.section?.replace(/_/g, " ") || animation.animation_id,
-      style: { ...animation.kinetic?.style, ...animation.style },
-      used_in_video: response.in_video?.includes(animation.animation_id) };
-  });
-}

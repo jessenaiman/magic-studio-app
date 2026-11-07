@@ -19,7 +19,8 @@ function noteTransportSuccess(command, params, companion, result) {
 }
 async function buildProjectState(path, opened) {
   if (path && (!opened || opened.project !== path)) {
-    opened = await nativeInvoke("execute_command", { id: "project.open", params: { path } });
+    const current = await nativeInvoke("execute_command", { id: "project.identity", params: {} }).catch(() => null);
+    opened = current?.project === path ? current : await nativeInvoke("execute_command", { id: "project.open", params: { path } });
   }
   const [status, assets] = await Promise.all([
     nativeInvoke("execute_command", { id: "workshop.status", params: {} }),

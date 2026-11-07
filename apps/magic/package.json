@@ -25,6 +25,9 @@
     "@tauri-apps/plugin-store": "^2.5.0",
     "@tauri-apps/plugin-websocket": "^2.5.0",
     "@tauri-apps/plugin-window-state": "2",
+    "@theatre/core": "0.7.0",
+    "@theatre/studio": "0.7.0",
+    "konva": "^10.9.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "three": "^0.187.0"

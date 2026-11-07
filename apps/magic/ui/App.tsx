@@ -1,7 +1,8 @@
+import { RestoredWorkspace } from "./components/RestoredWorkspace";
 import { invoke } from "@tauri-apps/api/core";
 import { connectDesktop } from "./desktop";
 import React, { useEffect, useRef, useState } from "react";
-import { executeCommand, pickFile, WorkshopData } from "./api";
+import { executeCommand, WorkshopData } from "./api";
 import { AnimationView } from "./views/AnimationView";
 import { FilmView } from "./views/FilmView";
 import { HomeView } from "./views/HomeView";
@@ -85,9 +86,6 @@ export const App: React.FC = () => {
   }, []);
 
   const songStage = data?.status?.stages?.find((s) => s.id === "song");
-  const transcriptStage = data?.status?.stages?.find(
-    (s) => s.id === "transcript",
-  );
   const audioInput = songStage?.inputs?.[0];
   const assets = data?.assets?.assets || [];
   const projectName =
@@ -95,36 +93,6 @@ export const App: React.FC = () => {
     projectPath?.split("/").pop()?.replace(/\.magic$/, "") ||
     "No project";
 
-  const handleSetAudio = async () => {
-    const selected = await pickFile({
-      title: "Choose Song Audio",
-      extensions: ["wav", "mp3", "flac", "m4a", "aac", "ogg"],
-    });
-    if (typeof selected !== "string" || !selected) return;
-    setBusy(true);
-    try {
-      await executeCommand("workshop.set_audio", { path: selected });
-      await refreshProject();
-      showToast("Linked song audio");
-    } catch (err) {
-      showToast(String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleTranscribe = async () => {
-    setBusy(true);
-    try {
-      await executeCommand("audio.analyze", { analyze_beats: false });
-      await refreshProject();
-      showToast("Transcription complete");
-    } catch (err) {
-      showToast(String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div
@@ -228,122 +196,7 @@ export const App: React.FC = () => {
         ) : view === "studio" ? (
           <FilmView projectPath={projectPath} onToast={showToast} />
         ) : (
-          /* Project Overview: Craft Project Files & Song Setup */
-          <div
-            id="view-project"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "340px 1fr",
-              gap: "16px",
-              height: "100%",
-              padding: "16px",
-            }}
-          >
-            <aside
-              id="blocks"
-              style={{
-                background: "var(--surface-2, #181c22)",
-                borderRadius: "8px",
-                padding: "14px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
-                overflowY: "auto",
-              }}
-            >
-              <section
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                  paddingBottom: "12px",
-                  borderBottom: "1px solid var(--border, #2a313c)",
-                }}
-              >
-                <strong>1. Song & Audio</strong>
-                <span className="muted" style={{ fontSize: "12px" }}>
-                  {audioInput?.name || "No song audio linked yet"}
-                </span>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <button
-                    id="song-upload"
-                    className="start"
-                    disabled={busy}
-                    onClick={handleSetAudio}
-                  >
-                    {audioInput ? "Change Audio…" : "Link Audio…"}
-                  </button>
-                  {audioInput && (
-                    <button
-                      id="song-transcribe"
-                      className="ghost"
-                      disabled={busy}
-                      onClick={handleTranscribe}
-                    >
-                      Transcribe Audio
-                    </button>
-                  )}
-                </div>
-                {transcriptStage?.why && (
-                  <span className="muted" style={{ fontSize: "11px" }}>
-                    {transcriptStage.why}
-                  </span>
-                )}
-              </section>
-
-              <section
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                  paddingBottom: "12px",
-                  borderBottom: "1px solid var(--border, #2a313c)",
-                }}
-              >
-                <strong>2. Linked Craft Project Files (.magic)</strong>
-                <button
-                  className="ghost"
-                  style={{ textAlign: "left" }}
-                  onClick={() => setView("storyboard")}
-                >
-                  DesignCraft Storyboard:{" "}
-                  {data?.storyboard?.path
-                    ? data.storyboard.path.split("/").pop()
-                    : "Not created yet"}
-                </button>
-                <button
-                  className="ghost"
-                  style={{ textAlign: "left" }}
-                  onClick={() => setView("design")}
-                >
-                  EffectCraft Lyrics: lettering/lyrics.ecproj
-                </button>
-                <button
-                  className="ghost"
-                  style={{ textAlign: "left" }}
-                  onClick={() => setView("animation")}
-                >
-                  PhotoCraft & EffectCraft Assets ({assets.length})
-                </button>
-                <button
-                  className="ghost"
-                  style={{ textAlign: "left" }}
-                  onClick={() => setView("studio")}
-                >
-                  FilmCraft Timeline (.fcproj)
-                </button>
-              </section>
-            </aside>
-
-            <main style={{ height: "100%", overflow: "hidden" }}>
-              <StoryboardView
-                projectPath={projectPath}
-            storyboard={data?.storyboard}
-                onRefresh={() => refreshProject()}
-                onToast={showToast}
-              />
-            </main>
-          </div>
+          <RestoredWorkspace key={projectPath} project={projectPath} page="project-workspace.html" title="Project workspace" onToast={showToast} />
         )}
       </div>
 

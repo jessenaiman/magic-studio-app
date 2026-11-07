@@ -64,7 +64,7 @@ export const StoryboardView: React.FC<Props> = ({ projectPath, storyboard, onRef
           onToast(`DesignCraft connected on port ${result.control}`);
         })}>Open in DesignCraft</button>
       <button id="storyboard-refresh" className="ghost" disabled={!!busy}
-        onClick={() => void action("Refreshing…", load)}>Refresh saved document</button>
+        onClick={() => void action("Refreshing…", async () => { await load(); await onRefresh(); })}>Refresh saved document</button>
       <nav aria-label="Storyboard pages" style={{ display: "grid", gap: 6, marginTop: 16 }}>
         {pages.map((item, index) => {
           const status = check.pages?.find(p => p.page === item.page)?.status || "incomplete";
