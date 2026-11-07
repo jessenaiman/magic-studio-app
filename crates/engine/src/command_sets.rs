@@ -86,6 +86,7 @@ macro_rules! query {
     };
 }
 
+fn specs_settings() -> Vec<CommandSpec> { crate::settings::commands::commands() }
 pub fn build() -> Vec<CommandSpec> {
     let mut specs = Vec::new();
     for section in [
@@ -107,6 +108,7 @@ pub fn build() -> Vec<CommandSpec> {
         specs_film,
         specs_storyboard,
         specs_diagnostics,
+        specs_settings,
     ] {
         specs.extend(section());
     }

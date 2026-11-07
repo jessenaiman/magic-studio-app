@@ -1,3 +1,4 @@
+renderWorkspaceNav("storyboard");
 const { invoke: boardInvoke, convertFileSrc: boardFileUrl } = window.__TAURI__.core;
 const boardElement = id => document.getElementById(id);
 let board = null;

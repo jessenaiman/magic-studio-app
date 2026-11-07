@@ -1293,6 +1293,62 @@ impl MagicApp {
         });
     }
 
+
+    fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Settings");
+        ui.label("Rendered from prefs.schema — one schema drives UI, CLI, MCP and --control.");
+        let schema = self.session.execute("prefs.schema", serde_json::json!({})).unwrap_or(serde_json::json!({"categories":[]}));
+        if let Some(cats) = schema["categories"].as_array() {
+            for cat in cats {
+                ui.collapsing(format!("{} ({})", cat["title"].as_str().unwrap_or(""), cat["fields"].as_array().map(|f| f.len()).unwrap_or(0)), |ui| {
+                    if let Some(fields) = cat["fields"].as_array() {
+                        for f in fields {
+                            let key = f["key"].as_str().unwrap_or("");
+                            let label = f["label"].as_str().unwrap_or(key);
+                            let kind = &f["kind"];
+                            let typ = kind["type"].as_str().unwrap_or("text");
+                            let id = format!("settings.{}", key);
+                            match typ {
+                                "bool" => {
+                                    let mut val = f["value"].as_bool().unwrap_or(false);
+                                    let resp = ui.checkbox(&mut val, label);
+                                    self.auto.add_response(&id, &resp, label);
+                                    if resp.changed() { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                }
+                                "int" | "float" => {
+                                    let min = kind["min"].as_f64().unwrap_or(0.0) as f32;
+                                    let max = kind["max"].as_f64().unwrap_or(100.0) as f32;
+                                    let mut val = f["value"].as_f64().unwrap_or(min as f64) as f32;
+                                    let resp = ui.add(egui::Slider::new(&mut val, min..=max).text(label));
+                                    self.auto.add_response(&id, &resp, label);
+                                    if resp.changed() { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                }
+                                "choice" => {
+                                    let cur = f["value"].as_str().unwrap_or("").to_string();
+                                    let mut val = cur.clone();
+                                    let resp = egui::ComboBox::from_id_salt(&id).selected_text(&cur).show_ui(ui, |ui| {
+                                        if let Some(choices) = kind["choices"].as_array() {
+                                            for c in choices { ui.selectable_value(&mut val, c["value"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or("")); }
+                                        }
+                                    });
+                                    self.auto.add_response(&id, &resp.response, label);
+                                    if val != cur { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                }
+                                _ => {
+                                    let mut val = f["value"].as_str().unwrap_or("").to_string();
+                                    let resp = ui.text_edit_singleline(&mut val);
+                                    // label above
+                                    ui.label(label);
+                                    self.auto.add_response(&id, &resp, label);
+                                    if resp.changed() { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
     fn show_projects_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if let Some(host) = self.lyrics_host.as_mut() {
             let project = self
@@ -2831,7 +2887,7 @@ impl eframe::App for MagicApp {
                     .inner_margin(egui::Margin::same(8)),
             )
             .show(ui, |ui| match self.view {
-                ViewMode::Projects => self.show_projects_view(ctx, ui, frame),
+                ViewMode::Projects => { self.show_projects_view(ctx, ui, frame); self.show_settings_panel(ui); },
                 ViewMode::Storyboard => self.show_storyboard_view(ctx, ui, frame),
                 ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
                 ViewMode::Animation => self.show_animation_view(ctx, ui, frame),

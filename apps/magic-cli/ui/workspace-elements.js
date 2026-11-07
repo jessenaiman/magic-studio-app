@@ -1,3 +1,25 @@
+
+const WORKSPACE_NAV = [
+  ["project", "Project", "projects.html"],
+  ["storyboard", "Storyboard", "storyboard-workspace.html"],
+  ["design", "Lyrics", "lyrics.html"],
+  ["animation", "Animation", "animation-controls.html"],
+  ["motion", "Motion", "motion.html"],
+  ["studio", "Studio", "studio.html"],
+];
+function renderWorkspaceNav(current, projectName) {
+  const header = el("header", { id: "app-bar", class: "bar" },
+    el("div", { class: "brand" }, el("button", { id: "brand", class: "ghost", onclick: () => location.assign("projects.html") }, "✦ Magic Studio")),
+    el("span", { id: "project-name", class: "muted" }, projectName || "No project"),
+    el("nav", { id: "mode-tabs", "aria-label": "Workspace views" },
+      ...WORKSPACE_NAV.map(([id, label, href]) => el("button", {
+        id: `tab-${id}`, class: current === id ? "start" : "ghost",
+        "aria-current": current === id ? "page" : null,
+        onclick: () => { if (current !== id) location.assign(href); }
+      }, label))));
+  document.body.prepend(header);
+  return header;
+}
 function isOverlayMedia(asset, project) {
   const projectPath = project?.replaceAll("\\", "/");
   const path = asset.path?.replaceAll("\\", "/");

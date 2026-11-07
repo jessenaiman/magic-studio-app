@@ -85,6 +85,7 @@ pub mod panels;
 pub(crate) mod read_only_file;
 pub mod scribbles;
 pub mod session;
+pub mod settings;
 pub mod skills_registry;
 pub mod workspace;
 

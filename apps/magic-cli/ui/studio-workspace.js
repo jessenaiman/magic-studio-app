@@ -1,3 +1,4 @@
+renderWorkspaceNav("studio");
 const studioInvoke = window.__TAURI__.core.invoke;
 const studioToolbar = document.querySelector("#film-head");
 const studioStatus = document.querySelector("#film-status");

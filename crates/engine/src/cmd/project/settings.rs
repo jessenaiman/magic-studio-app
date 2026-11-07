@@ -33,6 +33,7 @@ fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
+pub(crate) fn file_pub() -> Result<PathBuf> { file() }
 fn file() -> Result<PathBuf> {
     crate::cmd::project::catalog::file()
         .and_then(|p| p.parent().map(|p| p.join("settings.json")))
