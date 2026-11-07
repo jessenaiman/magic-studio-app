@@ -220,7 +220,7 @@ impl Server {
     }
     #[tool(description = "Call a live control method such as ui.set or ui.focus. Unsupported operations return errors.")]
     async fn ui_control(&self, Parameters(p): Parameters<ControlParams>) -> CallToolResult {
-        if !p.method.starts_with("ui.") && p.method != "app.quit" {
+        if !p.method.starts_with("ui.") && !matches!(p.method.as_str(), "app.quit" | "app.restart" | "app.hide") {
             return output(Err("Use command_run for engine commands".into()));
         }
         output(self.run(&p.method, p.params.unwrap_or_else(|| json!({}))).await)

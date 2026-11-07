@@ -1,5 +1,5 @@
 import { PreservedWorkspaces } from "./components/RestoredWorkspace";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { importDroppedArtwork } from "./artwork-transfer";
 import { connectDesktop } from "./desktop";
@@ -20,12 +20,22 @@ export type ViewMode =
   | "animation"
   | "studio";
 
+const formatClock = (sec: number): string => {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const s = Math.floor(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
 export const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>("home");
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [data, setData] = useState<WorkshopData | null>(null);
   const [toastMsg, setToastMsg] = useState<string>("");
   const [busy, setBusy] = useState<boolean>(false);
+  const [audioPlaying, setAudioPlaying] = useState<boolean>(false);
+  const [audioTime, setAudioTime] = useState<number>(0);
+  const [audioDuration, setAudioDuration] = useState<number>(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -64,10 +74,20 @@ export const App: React.FC = () => {
 
   const closeProject = async () => {
     try {
+      audioRef.current?.pause();
       await executeCommand("project.close");
       await refreshProject();
       setView("home");
     } catch (error) { showToast(String(error)); }
+  };
+
+  const launchCraftApp = async (app: string, label: string) => {
+    try {
+      await executeCommand("workspace.open", { app });
+      showToast(`Launched ${label}`);
+    } catch (error) {
+      showToast(String(error));
+    }
   };
 
   useEffect(() => {
@@ -111,8 +131,6 @@ export const App: React.FC = () => {
       if (!disposed) await invoke("desktop_ready");
     })().catch(error => showToast(String(error)));
     return () => { disposed = true; ++refreshVersion.current; disconnect?.(); };
-    // Rebind native listeners when the control module changes during development;
-    // an old listener otherwise keeps reporting the previous draft contract.
   }, [connectDesktop]);
 
   const projectName =
@@ -120,13 +138,30 @@ export const App: React.FC = () => {
     projectPath?.split("/").pop()?.replace(/\.magic$/, "") ||
     "No project";
 
+  const songAudioPath = data?.status?.stages?.find((s) => s.id === "song")?.inputs?.[0]?.path || null;
+
+  useEffect(() => {
+    setAudioPlaying(false);
+    setAudioTime(0);
+    setAudioDuration(0);
+  }, [songAudioPath]);
+
+  const toggleTopAudio = () => {
+    const el = audioRef.current;
+    if (!el || !songAudioPath) return;
+    if (el.paused) {
+      void el.play().catch((err) => showToast(String(err)));
+    } else {
+      el.pause();
+    }
+  };
 
   return (
     <div
       id="app-shell"
       style={{
         display: "grid",
-        gridTemplateRows: "48px 1fr 28px",
+        gridTemplateRows: "52px 1fr 28px",
         height: "100vh",
         width: "100vw",
         background: "var(--bg, #0e1116)",
@@ -142,31 +177,47 @@ export const App: React.FC = () => {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 16px",
-          background: "var(--surface-2, #181c22)",
-          borderBottom: "1px solid var(--border, #2a313c)",
+          padding: "0 14px",
+          background: "#0d1117",
+          borderBottom: "1px solid #232a35",
           gap: "12px",
         }}
       >
-        <div className="app-identity" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div className="app-identity" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button
             id="brand"
-            className="ghost"
+            className="top-brand-btn"
+            title={projectPath ? "Return to Song Film Shelf (Home)" : "Magic Studio Home"}
             onClick={() => void closeProject()}
-            style={{ fontWeight: 700 }}
           >
-            ✦ Magic Studio
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style={{ color: "#eabb62" }}>
+              <path d="M12 2l2.2 6.3L20.5 10.5l-6.3 2.2L12 19l-2.2-6.3L3.5 10.5l6.3-2.2L12 2zm6.5 12l1 2.8 2.8 1-2.8 1-1 2.8-1-2.8-2.8-1 2.8-1 1-2.8z" />
+            </svg>
+            {!projectPath && <span style={{ marginLeft: 6, fontWeight: 700 }}>Magic Studio</span>}
           </button>
-          <span
-            id="project-name"
-            className="muted"
-            style={{ fontSize: "13px", fontWeight: 600 }}
-          >
-            {projectName}
-          </span>
+
+          {projectPath ? (
+            <button
+              id="tab-project"
+              className={`top-project-pill ${view === "project" ? "active" : ""}`}
+              onClick={() => setView("project")}
+              title={`Project workspace · ${projectName}`}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z" />
+                <path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z" />
+              </svg>
+              <span id="project-name">{projectName}</span>
+            </button>
+          ) : (
+            <span id="project-name" className="muted" style={{ fontSize: "12px", fontWeight: 600 }}>
+              {projectName}
+            </span>
+          )}
+
           <button
             id="window-snap"
-            className="ghost"
+            className="top-icon-ghost"
             title="Snap window to the top-right corner, or back to the center"
             onClick={() => void toggleWindowSnap().then((to) => showToast(`Window moved to ${to}`)).catch((e) => showToast(String(e)))}
           >
@@ -174,37 +225,132 @@ export const App: React.FC = () => {
           </button>
         </div>
 
-        {(
-          <nav
-            id="mode-tabs"
-            aria-label="Workspace views"
-            style={{ display: "flex", gap: "6px" }}
-          >
-            {(
-              [
-                ["project", "Project"],
-                ["storyboard", "Storyboard"],
-                ["design", "Lyrics"],
-                ["motion", "Motion"],
-                ["gallery", "Gallery"],
-                ["animation", "Animation"],
-                ["studio", "Studio"],
-              ] as Array<[ViewMode, string]>
-            ).filter(([id]) => projectPath || id === "gallery").map(([id, label]) => (
-              <button
-                key={id}
-                id={`tab-${id}`}
-                className={view === id ? "start" : "ghost"}
-                onClick={() => setView(id)}
-              >
-                {id === "storyboard" && <span aria-label={data?.storyboard?.complete ? "Storyboard complete" : "Storyboard incomplete"}
+        <nav
+          id="mode-tabs"
+          aria-label="Workspace views"
+          className="top-mode-nav"
+        >
+          {(
+            [
+              ["storyboard", "Storyboard"],
+              ["design", "Lyrics"],
+              ["motion", "Motion"],
+              ["gallery", "Gallery"],
+              ["animation", "Animation"],
+              ["studio", "Studio"],
+            ] as Array<[ViewMode, string]>
+          ).filter(([id]) => projectPath || id === "gallery").map(([id, label]) => (
+            <button
+              key={id}
+              id={`tab-${id}`}
+              className={`top-mode-tab ${view === id ? "active" : ""}`}
+              onClick={() => setView(id)}
+            >
+              {id === "storyboard" && (
+                <span
+                  aria-label={data?.storyboard?.complete ? "Storyboard complete" : "Storyboard incomplete"}
                   title={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields; ${data?.storyboard?.preflight?.errors ?? 0} layout errors`}
-                  style={{ color: data?.storyboard?.complete ? "#5bd69b" : data?.storyboard?.status === "review" ? "#eabb62" : "#ed8796", marginRight: 6 }}>●</span>}
-                {label}
+                  style={{
+                    color: data?.storyboard?.complete ? "#5bd69b" : data?.storyboard?.status === "review" ? "#eabb62" : "#ed8796",
+                    marginRight: 5,
+                    fontSize: 10,
+                  }}
+                >
+                  ●
+                </span>
+              )}
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div id="app-bar-tools" className="top-right-tools">
+          {songAudioPath && (
+            <>
+              <audio
+                ref={audioRef}
+                src={convertFileSrc(songAudioPath)}
+                preload="metadata"
+                onPlay={() => setAudioPlaying(true)}
+                onPause={() => setAudioPlaying(false)}
+                onEnded={() => setAudioPlaying(false)}
+                onTimeUpdate={(e) => setAudioTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
+              />
+              <button
+                id="app-audio-toggle"
+                className={`top-audio-pill ${audioPlaying ? "playing" : ""}`}
+                onClick={toggleTopAudio}
+                title={audioPlaying ? "Pause song preview" : "Play song preview"}
+              >
+                <span className="top-audio-play-ico">{audioPlaying ? "⏸" : "▶"}</span>
+                <span className="top-audio-clock">
+                  {formatClock(audioTime)} / {formatClock(audioDuration)}
+                </span>
               </button>
-            ))}
-          </nav>
-        )}
+            </>
+          )}
+
+          <div className="top-craft-dock" aria-label="ArtCraft Suite">
+            <button
+              id="dock-photocraft"
+              className="craft-dock-btn craft-photo"
+              title="Open PhotoCraft"
+              onClick={() => void launchCraftApp("photocraft", "PhotoCraft")}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="m21 15-5-5L5 21" />
+              </svg>
+            </button>
+            <button
+              id="dock-vectorcraft"
+              className="craft-dock-btn craft-vector"
+              title="Open VectorCraft"
+              onClick={() => void launchCraftApp("vectorcraft", "VectorCraft")}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <circle cx="6" cy="6" r="2.5" />
+                <circle cx="18" cy="6" r="2.5" />
+                <circle cx="12" cy="18" r="2.5" />
+                <path d="M8 7.5 11 16M16 7.5 13 16M8.5 6h7" />
+              </svg>
+            </button>
+            <button
+              id="dock-designcraft"
+              className="craft-dock-btn craft-design"
+              title="Open DesignCraft"
+              onClick={() => void launchCraftApp("designcraft", "DesignCraft")}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M12 19l7-7 3 3-7 7-3-3z" />
+                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+              </svg>
+            </button>
+            <button
+              id="dock-effectcraft"
+              className="craft-dock-btn craft-effect"
+              title="Open EffectCraft"
+              onClick={() => void launchCraftApp("effectcraft", "EffectCraft")}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M12 3l2.1 5.4L19.5 10.5l-5.4 2.1L12 18l-2.1-5.4L4.5 10.5l5.4-2.1L12 3z" />
+              </svg>
+            </button>
+            <button
+              id="dock-filmcraft"
+              className="craft-dock-btn craft-film"
+              title="Open FilmCraft"
+              onClick={() => void launchCraftApp("filmcraft", "FilmCraft")}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M7 4v16M17 4v16M3 10h18M3 15h4M17 15h4" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       {/* Main Content Area */}
@@ -227,12 +373,12 @@ export const App: React.FC = () => {
           justifyContent: "space-between",
           padding: "0 16px",
           fontSize: "11px",
-          background: "var(--surface-2, #181c22)",
-          borderTop: "1px solid var(--border, #2a313c)",
+          background: "#0d1117",
+          borderTop: "1px solid #232a35",
         }}
       >
         <span id="footer-status">
-          {busy ? "Working…" : toastMsg || (projectPath ? `Ready · ${projectPath}` : "Ready")}
+          {busy ? "Working…" : toastMsg || (projectPath ? `Saved · ${projectPath}` : "Ready")}
         </span>
         <span className="muted">Tauri v2 · React + Strict TypeScript</span>
       </footer>

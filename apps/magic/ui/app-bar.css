@@ -43,14 +43,178 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
   .drawer-toggles { margin-left:auto; }
 }
 
-/* Tauri workspace navigation: identical button boxes, independent of .start defaults. */
+/* Tauri workspace navigation: spacious pill header + Craft dock. */
 #app-bar .app-identity { min-width:0; }
 #app-bar #brand { flex:none; white-space:nowrap; }
-#app-bar #project-name { min-width:0; }
+#app-bar #project-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #app-bar #mode-tabs { flex:none; align-items:center; }
-#app-bar #mode-tabs > button { display:inline-flex; align-items:center; justify-content:center; height:34px; margin:0; padding:0 12px; white-space:nowrap; }
+
+.top-brand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid #262f3d;
+  background: #141922;
+  color: #e6edf3;
+  cursor: pointer;
+}
+
+.top-brand-btn:hover {
+  border-color: #eabb62;
+  background: #1a212d;
+}
+
+.top-project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(91, 214, 155, 0.55);
+  background: rgba(91, 214, 155, 0.14);
+  color: #7fe0b3;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  max-width: 240px;
+  transition: all 0.15s ease;
+}
+
+.top-project-pill.active,
+.top-project-pill:hover {
+  background: rgba(91, 214, 155, 0.24);
+  border-color: #5bd69b;
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(91, 214, 155, 0.25);
+}
+
+.top-icon-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #7d8590;
+  cursor: pointer;
+}
+
+.top-icon-ghost:hover {
+  background: #171c26;
+  color: #e6edf3;
+}
+
+.top-mode-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #151a23;
+  border: 1px solid #252d3a;
+}
+
+.top-mode-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  margin: 0;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: #9ba5b4;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.top-mode-tab:hover {
+  color: #e6edf3;
+}
+
+.top-mode-tab.active {
+  background: #232b38;
+  color: #ffffff;
+}
+
+.top-right-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.top-audio-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #283140;
+  background: #151b24;
+  color: #c9d1d9;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.top-audio-pill.playing,
+.top-audio-pill:hover {
+  border-color: #5bd69b;
+  color: #ffffff;
+}
+
+.top-audio-play-ico {
+  font-size: 10px;
+  color: #5bd69b;
+}
+
+.top-craft-dock {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.craft-dock-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  border: 0;
+  display: inline-grid;
+  place-items: center;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.14s ease, filter 0.14s ease;
+}
+
+.craft-dock-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.12);
+}
+
+.craft-photo { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.craft-vector { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.craft-design { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.craft-effect { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+.craft-film { background: linear-gradient(135deg, #34d399, #10b981); }
+
+@media (max-width:960px) {
+  .top-audio-pill { display:none; }
+}
 @media (max-width:760px) {
   #app-bar #project-name { display:none; }
   #app-bar #mode-tabs { min-width:0; flex:1; overflow-x:auto; }
-  #app-bar #mode-tabs > button { flex:none; }
 }

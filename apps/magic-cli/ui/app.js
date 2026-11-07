@@ -22,9 +22,10 @@ async function buildProjectState(path, opened) {
     const current = await nativeInvoke("execute_command", { id: "project.identity", params: {} }).catch(() => null);
     opened = current?.project === path ? current : await nativeInvoke("execute_command", { id: "project.open", params: { path } });
   }
-  const [status, assets] = await Promise.all([
+  const [status, assets, trunk] = await Promise.all([
     nativeInvoke("execute_command", { id: "workshop.status", params: {} }),
-    nativeInvoke("execute_command", { id: "project.list_assets", params: {} })
+    nativeInvoke("execute_command", { id: "project.list_assets", params: {} }),
+    nativeInvoke("execute_command", { id: "project.trunk", params: {} }).catch(() => ({ files: [] }))
   ]);
   const projectPath = opened?.project || path || assets?.project || state.project;
   return {
@@ -33,6 +34,7 @@ async function buildProjectState(path, opened) {
     mode: opened?.mode || null,
     status,
     assets,
+    trunk,
     storyboard: status?.storyboard || null,
     design: { placements: [], text_fields: [] }
   };

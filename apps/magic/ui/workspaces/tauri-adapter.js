@@ -75,7 +75,7 @@
   window.__TAURI__ = {
     core: { invoke: host.invoke, convertFileSrc: host.fileUrl },
     dialog: { open: host.openDialog, save: host.saveDialog },
-    opener: { openPath: host.openPath, openUrl: host.openUrl },
+    opener: { openPath: host.openPath, openUrl: host.openUrl, revealItemInDir: host.revealItemInDir },
     event: { listen: host.listen },
     clipboardManager: host.clipboard,
   };

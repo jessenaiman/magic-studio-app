@@ -16,14 +16,14 @@ existing screen already implements them.
 | Data | Authoritative file | Save owner |
 |---|---|---|
 | Magic project details, document paths and content links | `.magic` (JSON) | Magic Studio |
-| Application preferences and machine-specific settings | Separate user `settings.json` | Magic Studio settings |
-| Editable storyboard | Format decision pending DeckCraft / DesignCraft feature comparison | Selected document app |
+| Application preferences and machine-specific settings | `config.toml` (craft-settings) | Magic Studio settings |
+| Editable storyboard | `storyboard.designcraft` (DesignCraft) | DesignCraft |
 | Editable animations | `.ecproj` | EffectCraft |
 | The project's one linked film | `.fcproj` | FilmCraft |
 
 Choose **File → New Project** (`Ctrl+N`), or open an existing `.magic` project.
 In **Storyboard**, bring together the recording, timed lyrics, scene descriptions,
-and artwork. Browse the saved scene pages, then choose **Edit in DeckCraft**
+and artwork. Browse the saved scene pages, then choose **Edit in DesignCraft**
 to edit and save the storyboard document. The intended Storyboard view brings
 together the recording, timed lyrics, scene descriptions and artwork through
 the linked source document; the approved creative layout and how verses map

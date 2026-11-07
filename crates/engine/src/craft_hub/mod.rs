@@ -159,6 +159,34 @@ impl CraftHub {
             TcpOutcome::Unreachable | TcpOutcome::DifferentDocumentOpen => None,
         }
     }
+
+    /// The standard loopback control address for `target` (`<PORT_ENV>` override or suite default).
+    pub fn control_addr(target: CraftTarget) -> Result<SocketAddr> {
+        target_addr(target)
+    }
+
+    /// Execute an app-level command against the live target's `--control` endpoint only.
+    ///
+    /// Unlike [`CraftHub::execute`] there is no open-document gate — the command may target a
+    /// document that is not open yet (e.g. `file.open`) — and there is no `<app>-cli` fallback:
+    /// when no live app answers, the caller decides (typically by launching the editor).
+    /// `port` overrides the standard [`CraftHub::control_addr`] endpoint.
+    ///
+    /// A transport failure (nothing listening, or a listener that does not answer the Craft
+    /// control envelope) is an error; a command-level failure arrives as
+    /// [`EngineError::CommandFailed`] and means the endpoint does speak the protocol.
+    pub fn live_execute(target: CraftTarget, port: Option<u16>, command: &str, params: &Value) -> Result<Value> {
+        let addr = match port {
+            Some(port) => SocketAddr::from(([127, 0, 0, 1], port)),
+            None => target_addr(target)?,
+        };
+        let token = target_token(target);
+        match call_tcp_at(target, addr, token.as_deref(), None, command, params, false, Duration::from_millis(250)) {
+            TcpOutcome::Connected(res) => res,
+            TcpOutcome::Unreachable => Err(EngineError::ExternalTool(target.name().into(), format!("no live --control endpoint on {addr}"))),
+            TcpOutcome::DifferentDocumentOpen => Err(EngineError::ExternalTool(target.name().into(), format!("document gate engaged on {addr}"))),
+        }
+    }
 }
 
 fn target_addr(target: CraftTarget) -> Result<SocketAddr> {
@@ -166,7 +194,7 @@ fn target_addr(target: CraftTarget) -> Result<SocketAddr> {
     format!("127.0.0.1:{port}").parse().map_err(|e| EngineError::InvalidParams(format!("invalid control address: {e}")))
 }
 
-fn same_canonical_path(a: &Path, b: &Path) -> bool {
+pub(crate) fn same_canonical_path(a: &Path, b: &Path) -> bool {
     matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(ca), Ok(cb)) if ca == cb)
 }
 

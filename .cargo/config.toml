@@ -1,3 +1,3 @@
 [alias]
-# Repository tasks written in Rust: `cargo xtask ci | layers | assets`.
+# Repository tasks written in Rust: `cargo xtask ci | verify | bench | layers | assets`.
 xtask = "run --quiet --package xtask --"

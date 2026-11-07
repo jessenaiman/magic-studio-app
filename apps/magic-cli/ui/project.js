@@ -3,6 +3,12 @@ class ProjectView {
   pending;
   queue;
   state;
+  pfFilter = "all";
+  pfSort = "type";
+  pfGroup = true;
+  pfSearch = "";
+  pfCollapsedGroups = new Set();
+  stageTab = "characters";
   constructor(state) {
     this.state = state;
     this.pending = 0;
@@ -21,7 +27,7 @@ class ProjectView {
   render() {
     renderTarget();
     renderBlocks();
-    $("project-contents")?.replaceChildren(this.setupCard());
+    this.renderContents();
     if (this.state.view === "storyboard" || this.state.view === "design")
       renderStoryboard();
   }
@@ -84,14 +90,350 @@ class ProjectView {
       window.companionBoxes.readiness(id, { state: blockState, reason: failed ? "Failed · rebuild required" : done ? "Ready" : "Needs work" });
     return el("section", { box: id, class: `block${open ? " open" : ""}`, "data-state": blockState, "data-block": id, "data-box-id": id }, action ? el("div", { class: "block-headrow" }, head, action) : head, el("div", { class: "block-body" }, el("div", {}, el("div", { class: "block-inner" }, body))));
   }
+  renderContents() {
+    const host = $("project-contents");
+    if (!host)
+      return;
+    if (!this.state.project || this.state.creating) {
+      host.replaceChildren(this.setupCard(Boolean(this.state.creating)));
+      return;
+    }
+    host.replaceChildren(
+      el("div", { class: "project-workspace-stack", id: "project-workspace-stack" },
+        this.projectFilesPanel(),
+        this.stageAssetsSection(),
+        this.setupCard(false)
+      )
+    );
+  }
+  fileDetail(file) {
+    if (file.badge === "DC" && this.state.data?.storyboard?.page_count) {
+      const sb = this.state.data.storyboard;
+      const unfilled = sb.count ?? 0;
+      return `${sb.page_count} pages · ${unfilled} unfilled`;
+    }
+    return file.detail || "";
+  }
+  projectFilesPanel() {
+    const rawFiles = this.state.data?.trunk?.files || [];
+    const sb = this.state.data?.storyboard;
+    const allFiles = rawFiles.map((f) => ({ ...f, displayDetail: this.fileDetail(f) }));
+    const counts = {
+      all: allFiles.length,
+      craft: allFiles.filter((f) => f.is_craft_project).length,
+      design_pdf: allFiles.filter((f) => f.group === "design_pdf").length,
+      effect_film: allFiles.filter((f) => f.group === "effect_film").length,
+      photo_vector: allFiles.filter((f) => f.group === "photo_vector").length,
+      texture_3d: allFiles.filter((f) => f.group === "texture_3d").length,
+      audio_words: allFiles.filter((f) => f.group === "audio_words").length
+    };
+    const q = this.pfSearch.trim().toLowerCase();
+    const filtered = allFiles.filter((f) => {
+      if (this.pfFilter === "craft" && !f.is_craft_project)
+        return false;
+      if (!["all", "craft"].includes(this.pfFilter) && f.group !== this.pfFilter)
+        return false;
+      if (q && !`${f.name} ${f.rel_dir} ${f.badge} ${f.group_label}`.toLowerCase().includes(q))
+        return false;
+      return true;
+    });
+    const sorted = [...filtered].sort((a, b) => {
+      if (this.pfSort === "name")
+        return String(a.name).localeCompare(String(b.name));
+      if (this.pfSort === "modified")
+        return (b.modified_ms || 0) - (a.modified_ms || 0);
+      if (this.pfSort === "size")
+        return (b.size_bytes || 0) - (a.size_bytes || 0);
+      return (a.group_order - b.group_order) || (a.craft_priority - b.craft_priority) || String(a.name).localeCompare(String(b.name));
+    });
+
+    const folderIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+    const renderRow = (file, index, rowKey) => el("div", { class: "pf-row", "data-badge": file.badge },
+      el("span", { class: "pf-idx" }, String(index + 1)),
+      el("span", { class: `pf-badge pf-badge-${String(file.badge || "FILE").toLowerCase()}` }, file.badge || "FILE"),
+      el("span", { class: "pf-name", title: file.path }, file.name),
+      el("span", { class: "pf-dir", title: file.rel_dir }, file.rel_dir),
+      el("span", { class: "pf-meta" }, file.displayDetail),
+      el("div", { class: "pf-row-actions" },
+        el("button", {
+          id: `pf-open-${rowKey}`,
+          class: "pf-open-btn",
+          title: `${file.open_label} (${file.name})`,
+          onclick: () => openPath(file.path)
+        }, file.open_label || "Open"),
+        el("button", {
+          id: `pf-reveal-${rowKey}`,
+          class: "pf-reveal-btn",
+          title: `Reveal ${file.name} in folder`,
+          "aria-label": `Reveal ${file.name} in folder`,
+          html: folderIcon,
+          onclick: () => this.revealFile(file.path)
+        })
+      )
+    );
+
+    const groupsOrder = [
+      ["design_pdf", "Design & PDF"],
+      ["effect_film", "Effect & Film"],
+      ["photo_vector", "Photo & Vector"],
+      ["texture_3d", "3D & Texture"],
+      ["audio_words", "Audio & Lyrics"]
+    ];
+    let rowCounter = 0;
+    const listBody = !sorted.length
+      ? [el("div", { class: "pf-empty" }, "No project files match the active filter.")]
+      : this.pfGroup
+        ? groupsOrder.map(([gKey, gLabel]) => {
+            const items = sorted.filter((f) => f.group === gKey);
+            if (!items.length)
+              return null;
+            const collapsed = this.pfCollapsedGroups.has(gKey);
+            return el("div", { class: `pf-group${collapsed ? " collapsed" : ""}` },
+              el("button", {
+                id: `pf-group-${gKey}`,
+                class: "pf-group-head",
+                "aria-expanded": String(!collapsed),
+                onclick: () => {
+                  if (collapsed)
+                    this.pfCollapsedGroups.delete(gKey);
+                  else
+                    this.pfCollapsedGroups.add(gKey);
+                  this.renderContents();
+                }
+              }, el("span", { class: "pf-group-arrow" }, collapsed ? "▸" : "▾"), ` ${gLabel} (${items.length})`),
+              collapsed ? null : el("div", { class: "pf-group-rows" }, ...items.map((item, idx) => renderRow(item, idx, `${gKey}-${rowCounter++}`)))
+            );
+          })
+        : [el("div", { class: "pf-group-rows" }, ...sorted.map((item, idx) => renderRow(item, idx, `flat-${idx}`)))];
+
+    const typeSelect = el("select", {
+      id: "pf-type-filter",
+      class: "pf-select",
+      "aria-label": "Filter project files by type",
+      onchange: (e) => {
+        this.pfFilter = e.currentTarget.value;
+        this.renderContents();
+      }
+    },
+      el("option", { value: "all", selected: this.pfFilter === "all" }, `Type: All Files (${counts.all})`),
+      el("option", { value: "craft", selected: this.pfFilter === "craft" }, `Type: Craft Projects (${counts.craft})`),
+      el("option", { value: "design_pdf", selected: this.pfFilter === "design_pdf" }, `Type: Design & PDF (${counts.design_pdf})`),
+      el("option", { value: "effect_film", selected: this.pfFilter === "effect_film" }, `Type: Effect & Film (${counts.effect_film})`),
+      el("option", { value: "photo_vector", selected: this.pfFilter === "photo_vector" }, `Type: Photo & Vector (${counts.photo_vector})`),
+      el("option", { value: "texture_3d", selected: this.pfFilter === "texture_3d" }, `Type: 3D & Texture (${counts.texture_3d})`),
+      el("option", { value: "audio_words", selected: this.pfFilter === "audio_words" }, `Type: Audio & Lyrics (${counts.audio_words})`)
+    );
+
+    const sortSelect = el("select", {
+      id: "pf-sort",
+      class: "pf-select",
+      "aria-label": "Sort project files",
+      onchange: (e) => {
+        this.pfSort = e.currentTarget.value;
+        this.renderContents();
+      }
+    },
+      el("option", { value: "type", selected: this.pfSort === "type" }, "Sort: Type"),
+      el("option", { value: "name", selected: this.pfSort === "name" }, "Sort: Name"),
+      el("option", { value: "modified", selected: this.pfSort === "modified" }, "Sort: Modified"),
+      el("option", { value: "size", selected: this.pfSort === "size" }, "Sort: Size")
+    );
+
+    const groupCheckbox = el("input", {
+      id: "pf-group-toggle",
+      type: "checkbox",
+      checked: this.pfGroup,
+      defaultChecked: true,
+      "aria-label": "Group files by Craft type",
+      onchange: (e) => {
+        this.pfGroup = Boolean(e.currentTarget.checked);
+        this.renderContents();
+      }
+    });
+
+    const searchInput = el("input", {
+      id: "pf-search",
+      type: "search",
+      class: "pf-search",
+      placeholder: "Filter by name...",
+      "aria-label": "Filter files by name",
+      value: this.pfSearch,
+      oninput: (e) => {
+        this.pfSearch = e.currentTarget.value;
+        const pos = e.currentTarget.selectionStart;
+        this.renderContents();
+        const next = $("pf-search");
+        if (next) {
+          next.focus();
+          try { next.setSelectionRange(pos, pos); } catch (_) {}
+        }
+      }
+    });
+
+    void sb;
+    return el("section", { class: "pf-panel", id: "project-files-panel", "aria-label": "Project Files" },
+      el("div", { class: "pf-header" },
+        el("strong", { class: "pf-title" }, "Project Files"),
+        el("div", { class: "pf-toolbar" },
+          typeSelect,
+          sortSelect,
+          el("label", { class: "pf-group-label", for: "pf-group-toggle" },
+            groupCheckbox,
+            el("span", {}, "Group")
+          ),
+          el("div", { class: "pf-search-wrap" }, searchInput),
+          el("button", {
+            id: "pf-paste",
+            class: "pf-btn",
+            onclick: () => this.pasteArtwork()
+          }, "Paste"),
+          el("button", {
+            id: "pf-import",
+            class: "pf-btn pf-btn-primary",
+            onclick: (event) => this.importProjectFile(event)
+          }, "+ Import File")
+        )
+      ),
+      el("div", { class: "pf-list", id: "pf-list" }, ...listBody)
+    );
+  }
+  stageAssetsSection() {
+    const assets = this.state.data?.assets?.assets || [];
+    return stageAssetsPanel(assets, {
+      project: this.state.project,
+      tab: this.stageTab,
+      prefix: "stage-asset",
+      onTabChange: (nextTab) => {
+        this.stageTab = nextTab;
+        this.renderContents();
+      },
+      onAddAsset: (event) => this.importAsset(event),
+      onOpen: (assetId) => {
+        if (typeof openAnimation === "function")
+          openAnimation(assetId);
+      },
+      onRemove: async (assetId) => {
+        try {
+          await this.command("project.remove_asset", { id: assetId });
+          toast(`Removed ${assetId}`);
+        } catch (err) {
+          toast(String(err));
+        }
+      }
+    });
+  }
+  async revealFile(path) {
+    try {
+      if (window.__TAURI__?.opener?.revealItemInDir) {
+        await window.__TAURI__.opener.revealItemInDir(path);
+        toast(`Revealed ${String(path).split("/").pop()} in folder`);
+      } else {
+        await openPath(path);
+      }
+    } catch (error) {
+      toast(String(error));
+    }
+  }
+  async importProjectFile(event) {
+    const supplied = event?.currentTarget?.uiFiles;
+    const selected = supplied || await dialog.open({
+      title: "Import Studio File",
+      multiple: true,
+      filters: [
+        {
+          name: "All Studio Files",
+          extensions: ["designcraft", "idml", "deckcraft", "pdf", "pdfcraft", "ecproj", "fcproj", "mp4", "mov", "webm", "pcraft", "psd", "vectorcraft", "vcraft", "svg", "tcraft", "glb", "gltf", "png", "jpg", "jpeg", "webp", "mp3", "wav", "flac", "m4a", "srt", "txt", "md"]
+        },
+        { name: "Craft Projects", extensions: ["designcraft", "ecproj", "fcproj", "pcraft", "vectorcraft", "tcraft", "deckcraft"] },
+        { name: "Artwork & Vectors", extensions: ["png", "jpg", "jpeg", "webp", "svg", "psd", "glb"] }
+      ]
+    });
+    if (!selected)
+      return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    try {
+      await this.command("project.import_file", { paths });
+      toast(`Imported ${paths.length} file${paths.length === 1 ? "" : "s"} into project`);
+    } catch (error) {
+      toast(String(error));
+    }
+  }
+  async pickStageAudio() {
+    const path = await dialog.open({
+      title: "Choose song audio",
+      filters: [{ name: "Audio", extensions: ["wav", "mp3", "flac", "m4a", "aac", "ogg"] }]
+    });
+    if (!path)
+      return;
+    try {
+      await this.command("workshop.set_audio", { path });
+      toast("Audio linked to project");
+    } catch (error) {
+      toast(String(error));
+    }
+  }
+  async openFilmCraft() {
+    try {
+      await invoke("engine_command", { id: "workspace.open", params: { app: "filmcraft" } });
+      toast("Launched FilmCraft");
+    } catch (error) {
+      toast(String(error));
+    }
+  }
   setupCard(creating = false) {
-    const preview = el("div", { class: "project-setup-preview", "aria-hidden": "true" }, el("div", { class: "project-setup-sheet" }, el("span", { class: "project-setup-art", html: ICONS.animate }), el("span", { class: "project-setup-line" }), el("div", { class: "project-setup-fields" }, ...Array.from({ length: 4 }, () => el("span")))));
-    const steps = el("ol", { class: "project-setup-steps", "aria-label": "Project workflow" }, ...[["song", "Recording"], ["lyrics", "Lyrics"], ["animate", "Animate"]].map(([icon, label]) => el("li", {}, el("span", { class: "ico", html: ICONS[icon], "aria-hidden": "true" }), el("span", {}, label))));
-    return el("div", { id: "sb-empty", class: "panel-empty project-setup" }, preview, el("strong", {}, creating ? "Start with your song" : "Project workspace"), el("p", {}, creating ? "Add a recording in the Song panel." : "Add audio, lyrics, or 2D/3D/CAD assets to animate directly."), steps, creating ? null : el("button", {
-      id: "sb-add-asset",
-      class: "start",
-      onclick: (event) => this.importAsset(event)
-    }, "Add asset"));
+    const reelSvg = `<svg viewBox="0 0 120 120" width="84" height="84" fill="none" stroke="#4fd1c5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="12" width="84" height="96" rx="8" fill="#101822" stroke="#2d4f5c" stroke-width="2"/><circle cx="60" cy="52" r="28" stroke="#4fd1c5" stroke-width="2"/><circle cx="60" cy="52" r="22" stroke="#2b7a78" stroke-dasharray="4 3"/><circle cx="60" cy="52" r="7" fill="#101822" stroke="#4fd1c5" stroke-width="2"/><path d="M60 30v12M60 62v12M38 52h12M70 52h12M44 36l9 9M67 59l9 9M76 36l-9 9M53 59l-9 9"/><line x1="28" y1="88" x2="92" y2="88" stroke="#4fd1c5"/><rect x="80" y="66" width="8" height="22" rx="2" fill="#101822" stroke="#4fd1c5"/><rect x="28" y="95" width="32" height="5" rx="2" fill="#2b7a78" stroke="none"/><rect x="68" y="94" width="10" height="7" rx="1" fill="#233140" stroke="none"/><rect x="82" y="94" width="10" height="7" rx="1" fill="#233140" stroke="none"/></svg>`;
+    const musicIcon = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+    const lyricsIcon = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+    const importIcon = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16c3.3 0 6-2.7 6-6 0-4.9-4.5-9.6-10-9.6Z"/></svg>`;
+    const filmIcon = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>`;
+
+    const hasProject = Boolean(this.state.project);
+    const hasAudioOrWords = Boolean(this.ready("song") || this.ready("lyrics") || this.state.lyrics?.line_count);
+    const hasScenes = Boolean(this.ready("storyboard") || (this.state.data?.assets?.assets || []).length > 0);
+    const stepRow = (done, label) => el("li", { class: `setup-step-item${done ? " done" : ""}` },
+      el("span", { class: `setup-step-box${done ? " checked" : ""}`, "aria-hidden": "true" }, done ? "✓" : ""),
+      el("span", {}, label)
+    );
+
+    return el("div", { id: "sb-empty", class: "setup-stage-wrap" },
+      el("div", { class: "setup-stage-hero" },
+        el("div", { class: "setup-stage-reel", "aria-hidden": "true", html: reelSvg }),
+        el("strong", { class: "setup-stage-title" }, creating ? "Start with your song" : "Setup Your Studio Stage")
+      ),
+      el("div", { class: "setup-stage-card" },
+        el("p", { class: "setup-stage-sub" }, "Drag your assets here or choose a generator to get started"),
+        el("div", { class: "setup-tiles-row" },
+          el("button", {
+            id: "setup-add-audio",
+            class: "setup-tile setup-tile-audio",
+            onclick: () => this.pickStageAudio()
+          }, el("span", { class: "setup-tile-ico", html: musicIcon }), el("span", { class: "setup-tile-label" }, "Add Music / Audio")),
+          el("button", {
+            id: "setup-add-lyrics",
+            class: "setup-tile setup-tile-lyrics",
+            onclick: (event) => songView.attachOriginal(event)
+          }, el("span", { class: "setup-tile-ico", html: lyricsIcon }), el("span", { class: "setup-tile-label" }, "Add Lyrics")),
+          el("button", {
+            id: "sb-add-asset",
+            class: "setup-tile setup-tile-import",
+            onclick: (event) => this.importProjectFile(event)
+          }, el("span", { class: "setup-tile-ico", html: importIcon }), el("span", { class: "setup-tile-label" }, "Import"))
+        ),
+        el("button", {
+          id: "setup-open-filmcraft",
+          class: "setup-filmcraft-btn",
+          onclick: () => this.openFilmCraft()
+        }, el("span", { class: "setup-filmcraft-ico", html: filmIcon }), el("span", {}, "FilmCraft ↗")),
+        el("div", { class: "setup-next-steps" },
+          el("div", { class: "setup-next-heading" }, "Next Steps"),
+          el("ul", { class: "setup-steps-list", "aria-label": "Project workflow" },
+            stepRow(hasProject, "Initialize project"),
+            stepRow(hasAudioOrWords, "Upload backing audio/words"),
+            stepRow(hasScenes, "Draft your scenes")
+          )
+        )
+      )
+    );
   }
   appendNotices(box) {
     const receipt = state.projectReceipt;
@@ -185,7 +527,7 @@ class ProjectView {
     try {
       await this.command("clipboard.import_image", {expected_project:this.state.project});
       state.open = "assets";
-      this.renderBlocks();
+      this.render();
       toast("Clipboard artwork saved · choose where to place it");
     } catch (error) { toast(String(error)); }
   }
@@ -201,7 +543,7 @@ class ProjectView {
         await this.command("project.add_asset", { path, kind: "image", name, image: name, load: false });
       }
       state.open = "assets";
-      this.renderBlocks();
+      this.render();
       toast("Assets saved · choose where to place them");
     } catch (e) {
       toast(String(e));

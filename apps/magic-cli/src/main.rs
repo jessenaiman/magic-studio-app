@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[command(
     name = "magic-cli",
     about = "Drive Magic Studio through its Rust engine or a live Tauri session",
-    after_help = "LIVE MAGIC: magic --control 9876 (share MAGIC_CONTROL_TOKEN with clients)\n  magic-cli --bridge 127.0.0.1:9876 ui inspect\n  magic-cli --bridge 127.0.0.1:9876 ui elements prefix=tab-\n  magic-cli --bridge 127.0.0.1:9876 ui click tab-animation\n  magic-cli --bridge 127.0.0.1:9876 ui key Ctrl+K\n  magic-cli --bridge 127.0.0.1:9876 ui screenshot /tmp/magic.png\n  magic-cli --bridge 127.0.0.1:9876 mcp\nSTORYBOARD: magic-cli --project song.magic storyboard open --control 7979\n  designcraft-cli app --port 7979 --method document.inspect\n  designcraft-cli mcp --connect 7979\n  storyboard check reports unfilled template slots and layout issues. View navigation stays unrestricted."
+    after_help = "LIVE MAGIC: magic --control 9876 (share MAGIC_CONTROL_TOKEN with clients)\n  magic-cli --bridge 127.0.0.1:9876 ui inspect\n  magic-cli --bridge 127.0.0.1:9876 ui elements prefix=tab-\n  magic-cli --bridge 127.0.0.1:9876 ui click tab-animation\n  magic-cli --bridge 127.0.0.1:9876 ui key Ctrl+K\n  magic-cli --bridge 127.0.0.1:9876 ui screenshot /tmp/magic.png\n  magic-cli --bridge 127.0.0.1:9876 mcp\nSTORYBOARD: magic-cli --project song.magic storyboard open\n  designcraft-cli app --port 9877 --method document.inspect\n  designcraft-cli mcp --connect 9877\n  storyboard check reports unfilled template slots and layout issues. View navigation stays unrestricted."
 )]
 pub struct Cli {
     /// Open this .magic project first (or use the last opened project from session file)
@@ -94,8 +94,9 @@ enum SbCmd {
     Open {
         #[arg(long)]
         path: Option<String>,
-        #[arg(long, default_value_t = 7979)]
-        control: u16,
+        /// Control port override (default: DesignCraft's suite standard, `DESIGNCRAFT_CONTROL_PORT` or 9877)
+        #[arg(long)]
+        control: Option<u16>,
     },
     /// Create a storyboard from the template
     New {
@@ -274,7 +275,7 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
         SbCmd::Open { path, control } => {
             id = "storyboard.open".into();
             put("path", path.clone().map(Value::String));
-            put("control", Some(json!(control)));
+            put("control", control.map(|port| json!(port)));
         }
         SbCmd::New { path, overwrite } => {
             id = "storyboard.new".into();

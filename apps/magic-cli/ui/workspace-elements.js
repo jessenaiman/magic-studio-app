@@ -73,9 +73,16 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
-function magicAssetTile(asset, { active = false, candidate = false, prefix = "magic-asset", onclick, onremove = null, canDrag = true, placeholder = "PART" }) {
+function isBackgroundPlateAsset(asset) {
+  const path = String(asset?.path || "").replaceAll("\\", "/").toLowerCase();
+  const name = String(asset?.name || asset?.id || "").toLowerCase();
+  return path.includes("/backgrounds/") || path.includes("/plates/") || /\b(background|backdrop|plate|world|clearing|river)\b/.test(name);
+}
+
+function magicAssetTile(asset, { active = false, candidate = false, prefix = "magic-asset", variant = "compact", subtitle = null, onclick, onremove = null, canDrag = true, placeholder = null }) {
   const name = asset.name || asset.id;
-  const image = /\.(png|jpe?g|webp|gif)$/i.test(asset.path || "") ? el("img", { src: window.__TAURI__.core.convertFileSrc(asset.path), alt: "", draggable: "false" }) : el("span", { class: "magic-asset-placeholder" }, placeholder);
+  const fallbackBadge = placeholder || (asset.kind === "model_3d" || /\.(glb|gltf)$/i.test(asset.path || "") ? "3D RIG" : /\.(mp4|mov|webm)$/i.test(asset.path || "") ? "VIDEO" : "PART");
+  const image = /\.(png|jpe?g|webp|gif|svg)$/i.test(asset.path || "") ? el("img", { src: window.__TAURI__.core.convertFileSrc(asset.path), alt: "", draggable: "false" }) : el("span", { class: "magic-asset-placeholder" }, fallbackBadge);
   const remove = onremove ? el("span", {
     class: "forget asset-forget",
     id: `${prefix}-remove-${asset.id}`,
@@ -97,14 +104,15 @@ function magicAssetTile(asset, { active = false, candidate = false, prefix = "ma
       }
     }
   }) : null;
+  const subText = subtitle || asset.id;
   const tile = el("button", {
-    class: `magic-asset-tile${active ? " active" : ""}${candidate ? " candidate" : ""}`,
+    class: `magic-asset-tile${variant === "card" ? " magic-asset-card" : ""}${active ? " active" : ""}${candidate ? " candidate" : ""}`,
     id: `${prefix}-${asset.id}`,
     draggable: String(canDrag),
     "aria-pressed": String(active),
     title: candidate ? `${name} · generated candidate awaiting review` : `${name} (${asset.id})${canDrag ? " · drag onto a storyboard page or click to animate" : ""}`,
     onclick
-  }, image, el("span", { class: "magic-asset-name" }, name), candidate ? el("span", { class: "magic-asset-badge" }, "Candidate") : el("span", { class: "magic-asset-id" }, asset.id), remove);
+  }, variant === "card" ? el("span", { class: "magic-asset-card-thumb" }, image) : image, el("span", { class: "magic-asset-name" }, name), candidate ? el("span", { class: "magic-asset-badge" }, "Candidate") : el("span", { class: "magic-asset-id" }, subText), remove);
   if (canDrag) tile.addEventListener("dragstart", (event) => {
     event.dataTransfer.setData("application/x-magicstudio-asset", asset.id);
     event.dataTransfer.setData("text/plain", asset.id);
@@ -115,13 +123,64 @@ function magicAssetTile(asset, { active = false, candidate = false, prefix = "ma
 
 // Central assets component — shared between Projects, Storyboard, Animation, Motion, Studio.
 // Single source: project.list_assets. All views render via this grid + magicAssetTile.
-function projectAssetGrid(assets, { active = null, prefix = "magic-asset", onOpen, onRemove } = {}) {
-  return el("div", { class: "magic-assets-grid" }, (assets || []).map((asset) => magicAssetTile(asset, {
-    active: asset.id === active, prefix,
+function projectAssetGrid(assets, { active = null, prefix = "magic-asset", variant = "compact", subtitle = null, onOpen, onRemove } = {}) {
+  return el("div", { class: `magic-assets-grid${variant === "card" ? " magic-assets-cards" : ""}` }, (assets || []).map((asset) => magicAssetTile(asset, {
+    active: asset.id === active, prefix, variant,
+    subtitle: typeof subtitle === "function" ? subtitle(asset) : subtitle,
     onclick: () => onOpen ? onOpen(asset.id) : (typeof openAnimation === "function" ? openAnimation(asset.id) : null),
     onremove: onRemove ? () => onRemove(asset.id) : null,
   })));
 }
+
+function stageAssetsPanel(assets, { project = null, tab = "characters", onTabChange, onAddAsset, onOpen, onRemove, prefix = "stage-asset" } = {}) {
+  const all = (assets || []).filter((asset) => !isOverlayMedia(asset, project));
+  const plates = all.filter(isBackgroundPlateAsset);
+  const characters = all.filter((asset) => !isBackgroundPlateAsset(asset));
+  const activeTab = tab === "plates" ? "plates" : "characters";
+  const visible = activeTab === "plates" ? plates : characters;
+  const grid = visible.length
+    ? projectAssetGrid(visible, {
+        prefix,
+        variant: "card",
+        subtitle: (asset) => isBackgroundPlateAsset(asset)
+          ? "Scene Plate · Storyboard →"
+          : (asset.kind === "model_3d" || /\.(glb|gltf)$/i.test(asset.path || "") ? "3D Rig · Animate →" : "Cutout · Animate →"),
+        onOpen,
+        onRemove,
+      })
+    : el("div", { class: "pf-empty" }, activeTab === "plates" ? "No background plates registered yet. Click + Add Asset to import scene art." : "No character cutouts registered yet. Click + Add Asset to import a cutout or 3D rig.");
+  return el("section", { class: "pf-panel stage-assets-panel", id: "stage-assets-panel", "aria-label": "Stage Assets & Animate" },
+    el("div", { class: "stage-assets-head" },
+      el("div", { class: "stage-assets-title-wrap" },
+        el("strong", { class: "pf-title" }, "Stage Assets & Animate"),
+        el("span", { class: "pf-count" }, `(${all.length})`)
+      ),
+      el("button", {
+        id: "stage-add-asset",
+        class: "pf-btn",
+        onclick: (event) => onAddAsset && onAddAsset(event)
+      }, "+ Add Asset")
+    ),
+    el("div", { class: "stage-assets-tabs", role: "tablist", "aria-label": "Asset categories" },
+      el("button", {
+        id: "stage-tab-characters",
+        role: "tab",
+        class: `stage-tab${activeTab === "characters" ? " active" : ""}`,
+        "aria-selected": String(activeTab === "characters"),
+        onclick: () => onTabChange && onTabChange("characters")
+      }, "Characters / Animate ", el("span", { class: "stage-tab-count" }, `(${characters.length})`)),
+      el("button", {
+        id: "stage-tab-plates",
+        role: "tab",
+        class: `stage-tab${activeTab === "plates" ? " active" : ""}`,
+        "aria-selected": String(activeTab === "plates"),
+        onclick: () => onTabChange && onTabChange("plates")
+      }, "Backgrounds & Plates ", el("span", { class: "stage-tab-count" }, `(${plates.length})`))
+    ),
+    grid
+  );
+}
+
 function centralAssetsRail(assets, opts = {}) {
   return el("aside", { id: opts.id || "motion-asset-browser", "aria-label": opts.label || "Project assets" },
     el("div", { class: "panel-head inline" }, el("span", { class: "panel-title" }, `Assets (${(assets||[]).length})`)),

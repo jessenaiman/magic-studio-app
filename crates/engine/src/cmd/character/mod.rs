@@ -120,23 +120,22 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
         resolved.push((id.to_string(), params));
     }
 
-    if let Some(path) = project.filter(|p| p.is_file()) {
-        if let Some(first) = resolved.first() {
-            if let Some(first_res) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, false) {
-                let mut out = Vec::with_capacity(resolved.len());
-                out.push(first_res?);
-                for (idx, (id, params)) in resolved.iter().enumerate().skip(1) {
-                    let save_step = save && idx + 1 == resolved.len();
-                    let v = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save_step)
-                        .unwrap_or_else(|| Err(EngineError::ExternalTool("effectcraft".into(), format!("lost live control connection during {id}"))))?;
-                    out.push(v);
-                }
-                if save && resolved.len() == 1 {
-                    let _ = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, "file.save", &json!({}), false);
-                }
-                return Ok(out);
-            }
+    if let Some(path) = project.filter(|p| p.is_file())
+        && let Some(first) = resolved.first()
+        && let Some(first_res) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, false)
+    {
+        let mut out = Vec::with_capacity(resolved.len());
+        out.push(first_res?);
+        for (idx, (id, params)) in resolved.iter().enumerate().skip(1) {
+            let save_step = save && idx + 1 == resolved.len();
+            let v = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save_step)
+                .unwrap_or_else(|| Err(EngineError::ExternalTool("effectcraft".into(), format!("lost live control connection during {id}"))))?;
+            out.push(v);
         }
+        if save && resolved.len() == 1 {
+            let _ = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, "file.save", &json!({}), false);
+        }
+        return Ok(out);
     }
 
     let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
@@ -176,11 +175,12 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
             format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
         ));
     }
-    let parsed: Value = serde_json::from_slice(&out.stdout)
-        .map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), format!("invalid JSON output: {e}")))?;
-    let list = parsed.as_array().or_else(|| parsed["result"].as_array()).ok_or_else(|| {
-        EngineError::ExternalTool("effectcraft-cli".into(), format!("expected array result from run, got {parsed}"))
-    })?;
+    let parsed: Value =
+        serde_json::from_slice(&out.stdout).map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), format!("invalid JSON output: {e}")))?;
+    let list = parsed
+        .as_array()
+        .or_else(|| parsed["result"].as_array())
+        .ok_or_else(|| EngineError::ExternalTool("effectcraft-cli".into(), format!("expected array result from run, got {parsed}")))?;
     Ok(list.iter().map(|entry| entry.get("result").cloned().unwrap_or_else(|| entry.clone())).collect())
 }
 

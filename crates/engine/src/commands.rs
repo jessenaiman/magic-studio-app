@@ -66,6 +66,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "project.search"
         | "workshop.status"
         | "workshop.files"
+        | "project.trunk"
         | "animation.motion_options"
         | "animation.review"
         | "character.list"

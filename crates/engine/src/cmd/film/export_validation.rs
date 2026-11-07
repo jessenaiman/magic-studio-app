@@ -134,11 +134,7 @@ pub(super) fn context(f: &Film, out: &Path, options: &Value) -> Result<Value> {
 
 fn probe(out: &Path, resolved: &Value) -> Result<Value> {
     let info = probe_media(out).map_err(|e| bad(format!("Export probe failed: {e}")))?;
-    let seconds = info["duration"]
-        .as_f64()
-        .map(|ticks| ticks / TICKS)
-        .or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS))
-        .unwrap_or(0.0);
+    let seconds = info["duration"].as_f64().map(|ticks| ticks / TICKS).or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS)).unwrap_or(0.0);
     let expected = resolved["range"]["seconds"].as_f64().ok_or_else(|| bad("Native export settings omit expected duration"))?;
     if !seconds.is_finite() || seconds <= 0.0 || (seconds - expected).abs() > 0.15 {
         return Err(bad(format!("Export duration {seconds:.3}s differs from native range {expected:.3}s")));

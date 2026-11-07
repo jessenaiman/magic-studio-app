@@ -202,7 +202,8 @@ apps/src-tauri/acceptance/artifacts/
 
 /apps/src-tauri/ui/inspector-controls.js
 
-/.agent/ui-inspector-review/
+/.agent/
+/build-activity.log
 
 # Local Craft Anything study state; not application source.
 /craft.json

@@ -74,7 +74,7 @@ impl Backend for Remote {
         stream.set_write_timeout(Some(Duration::from_secs(120))).map_err(|e| e.to_string())?;
         let req_id = self.next_id;
         self.next_id += 1;
-        let (method, params) = if id.starts_with("ui.") || id.starts_with("engine.") || id == "app.quit" {
+        let (method, params) = if id.starts_with("ui.") || id.starts_with("engine.") || matches!(id, "app.quit" | "app.restart" | "app.hide") {
             (id, params)
         } else {
             ("engine.execute", json!({"command":id,"params":params}))

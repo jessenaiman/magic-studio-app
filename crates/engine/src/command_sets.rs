@@ -5,8 +5,8 @@ use crate::commands::always;
 use crate::agent::{cmd_agent_config, cmd_agent_log, cmd_agent_models, cmd_agent_new_chat, cmd_agent_send, cmd_agent_session};
 use crate::doctor::cmd_app_doctor;
 use crate::project::{
-    cmd_project_add_asset, cmd_project_close, cmd_project_list_assets, cmd_project_load_asset, cmd_project_new, cmd_project_open, cmd_project_remove_asset,
-    cmd_project_save, cmd_project_update_asset,
+    cmd_project_add_asset, cmd_project_close, cmd_project_import_file, cmd_project_list_assets, cmd_project_load_asset, cmd_project_new, cmd_project_open,
+    cmd_project_remove_asset, cmd_project_save, cmd_project_trunk, cmd_project_update_asset,
 };
 use crate::workshop::{
     cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_video_init, cmd_video_server_start, cmd_video_server_stop, cmd_workshop_add,
@@ -583,6 +583,7 @@ fn specs_workshop_queries() -> Vec<CommandSpec> {
             "{\"filter\": \"optional substring\", \"group\": \"optional audio|liner_notes|transcript|storyboard|assets|other\"}",
             cmd_workshop_files
         ),
+        query!("project.trunk", "ArtCraft Project File Trunk", "{}", cmd_project_trunk),
         query!("project.search", "Search Project, Files, Storyboard & Commands", "{\"query\": \"search text\"}", cmd_project_search),
     ]
 }
@@ -640,6 +641,15 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             "{\"kind\": \"liner_notes|panels|assets\", \"paths\": [\"file\"]}",
             always,
             cmd_workshop_add
+        ),
+        cmd!(
+            "project.import_file",
+            "Import Project or Media File",
+            ["Project Assets"],
+            None,
+            "{\"paths\": [\"file\"], \"path\": \"optional single file\", \"overwrite\": false}",
+            always,
+            cmd_project_import_file
         ),
         cmd!(
             "workshop.split_panels",
@@ -1004,7 +1014,7 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             "Open Storyboard in DesignCraft with Live Control",
             ["Storyboard"],
             None,
-            "{\"path\":\"optional storyboard.designcraft\",\"control\":7979}",
+            "{\"path\":\"optional storyboard.designcraft\",\"control\":\"optional port (default DESIGNCRAFT_CONTROL_PORT or 9877)\"}",
             always,
             crate::cmd::storyboard::cmd_storyboard_open
         ),

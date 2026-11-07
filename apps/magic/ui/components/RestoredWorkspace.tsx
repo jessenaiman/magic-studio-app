@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { clear, readImage, readText, writeHtml, writeImage, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { executeCommand } from "../api";
@@ -14,7 +14,7 @@ interface Host {
   authoringMode: () => string | undefined;
   navigate: (view: string) => Promise<unknown>;
   invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
-  fileUrl: typeof convertFileSrc; openDialog: typeof open; saveDialog: typeof save; openPath: typeof openPath; openUrl: typeof openUrl; listen: typeof listen;
+  fileUrl: typeof convertFileSrc; openDialog: typeof open; saveDialog: typeof save; openPath: typeof openPath; openUrl: typeof openUrl; revealItemInDir: typeof revealItemInDir; listen: typeof listen;
   clipboard: { readText: typeof readText; writeText: typeof writeText; readImage: typeof readImage; writeImage: typeof writeImage; writeHtml: typeof writeHtml; clear: typeof clear };
   report: (message: string) => void;
 }
@@ -58,14 +58,14 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
         // Only the existing Tauri commands are exposed; unknown native calls fail visibly.
         return invoke(command, args);
       },
-      fileUrl: convertFileSrc, openDialog: open, saveDialog: save, openPath, openUrl, listen,
+      fileUrl: convertFileSrc, openDialog: open, saveDialog: save, openPath, openUrl, revealItemInDir, listen,
       clipboard: { readText, writeText, readImage, writeImage, writeHtml, clear },
-      report: message => { if (active) { setError(message); onToast(message); } },
+      report: message => { if (active) { setError(message); onToast(message); void invoke("record_ui_error", { message, source: page, control: id }).catch(() => {}); } },
     });
     setReady(true);
     return () => { active = false; registry.delete(id); };
   }, [id, project]);
-  return <section id={`restored-${page.replace(/\.html$/, "")}`} style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+  return <section id={`restored-${page.replace(/\.html$/, "")}`} data-workspace-error={error || undefined} style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
     {error && <div role="alert" style={{ color: "#ed8796", padding: "6px 12px", background: "#281b24", fontSize: 12 }}>{error}</div>}
     {ready && <iframe ref={frame} id={id} onLoad={() => { frame.current?.contentWindow?.postMessage({ magicWorkspaceVisibility: true, active: visible }, location.origin); frame.current?.contentWindow?.postMessage({ magicAuthoringMode: modeRef.current }, location.origin); }} title={title} src={`/workspaces/${page}`} style={{ position: "relative", inset: "auto", border: 0, width: "100%", minHeight: 0, flex: 1 }} />}
   </section>;

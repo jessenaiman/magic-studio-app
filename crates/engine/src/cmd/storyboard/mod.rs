@@ -149,10 +149,7 @@ fn read_designcraft_document_json(path: &Path) -> Result<Value> {
     if bytes.len() < 22 || &bytes[0..4] != b"PK\x03\x04" {
         return Err(fail("not a valid .designcraft archive"));
     }
-    let eocd = (0..=bytes.len() - 22)
-        .rev()
-        .find(|&i| &bytes[i..i + 4] == b"PK\x05\x06")
-        .ok_or_else(|| fail("corrupt .designcraft zip central directory"))?;
+    let eocd = (0..=bytes.len() - 22).rev().find(|&i| &bytes[i..i + 4] == b"PK\x05\x06").ok_or_else(|| fail("corrupt .designcraft zip central directory"))?;
     let total_entries = u16::from_le_bytes([bytes[eocd + 10], bytes[eocd + 11]]) as usize;
     let cd_offset = u32::from_le_bytes([bytes[eocd + 16], bytes[eocd + 17], bytes[eocd + 18], bytes[eocd + 19]]) as usize;
     let mut pos = cd_offset;
@@ -409,17 +406,11 @@ impl Board {
                 let Some(id) = item["id"].as_u64() else { continue };
                 let (kind, text, image) = match item["content"]["type"].as_str() {
                     Some("text") => {
-                        let text = item["content"]["story"]
-                            .as_u64()
-                            .and_then(|sid| stories[sid.to_string()]["text"].as_str())
-                            .map(str::to_string);
+                        let text = item["content"]["story"].as_u64().and_then(|sid| stories[sid.to_string()]["text"].as_str()).map(str::to_string);
                         ("text", text, None)
                     }
                     Some("graphic") => {
-                        let image = item["content"]["asset"]
-                            .as_u64()
-                            .and_then(|aid| assets[aid.to_string()]["link"].as_str())
-                            .map(str::to_string);
+                        let image = item["content"]["asset"].as_u64().and_then(|aid| assets[aid.to_string()]["link"].as_str()).map(str::to_string);
                         ("image", None, image)
                     }
                     _ => ("other", None, None),
@@ -445,11 +436,7 @@ impl Board {
                 }
                 slot.empty &= slot.kind == "image";
             }
-            let section = spread["pages"]
-                .as_array()
-                .and_then(|ps| ps.first())
-                .and_then(|p| p["parent"].as_u64())
-                .and_then(|pid| parents.get(&pid).cloned());
+            let section = spread["pages"].as_array().and_then(|ps| ps.first()).and_then(|p| p["parent"].as_u64()).and_then(|pid| parents.get(&pid).cloned());
             pages.push(PageSlots { index, archetype: archetype_of(&labels).to_string(), section, slots });
         }
         Ok(pages)
@@ -1287,33 +1274,63 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// Open the canonical storyboard in the installed DesignCraft editor with live control.
+///
+/// The endpoint is DesignCraft's suite-standard `--control` port (CraftHub: `DESIGNCRAFT_CONTROL_PORT`
+/// or `9877`); `control` overrides it. A listener on the port is verified through the Craft control
+/// protocol (`document.inspect`) before it is trusted with `file.open` — a connection on the port
+/// alone does not prove identity — and a dirty document open there is never replaced silently.
 pub fn cmd_storyboard_open(s: &mut Session, p: &Value) -> Result<Value> {
+    use crate::craft_hub::{CraftHub, CraftTarget};
     use std::process::{Command, Stdio};
+    use std::time::Duration;
     let path = doc_path(s, p)?;
     if !path.is_file() {
         return Err(bad("Create the DesignCraft storyboard first with storyboard.new"));
     }
-    let port = p.get("control").and_then(Value::as_u64).unwrap_or(7979);
-    if port == 0 || port > u16::MAX as u64 {
-        return Err(bad("control must be a port from 1 to 65535"));
-    }
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port as u16));
-    let reused = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_ok();
-    if reused {
-        let cli = crate::workspace::find_executable("designcraft-cli")?;
-        let output = Command::new(cli).args(["app", "--port", &port.to_string(), "file.open"]).arg(json!({"path":path}).to_string()).output()?;
-        if !output.status.success() {
-            return Err(bad(&String::from_utf8_lossy(&output.stderr)));
-        }
-    } else {
+    let port = match p.get("control").map(|v| v.as_u64().filter(|n| (1..=u16::MAX as u64).contains(n)).map(|n| n as u16)) {
+        None => CraftHub::control_addr(CraftTarget::Design)?.port(),
+        Some(Some(port)) => port,
+        Some(None) => return Err(bad("control must be a port from 1 to 65535")),
+    };
+    let mut receipt = json!({"ok":true,"path":path,"control":port});
+    receipt["inspect"] = json!(format!("designcraft-cli app --port {port} --method document.inspect"));
+    receipt["mcp"] = json!(format!("designcraft-cli mcp --connect {port}"));
+
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let reused = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok();
+    receipt["reused"] = json!(reused);
+    if !reused {
         let app = crate::workspace::find_executable("designcraft")?;
         let mut child =
             Command::new(app).arg("--control").arg(port.to_string()).arg(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
         std::thread::spawn(move || child.wait());
+        return Ok(receipt);
     }
-    Ok(json!({"ok":true,"path":path,"control":port,"reused":reused,
-        "inspect":format!("designcraft-cli app --port {port} --method document.inspect"),
-        "mcp":format!("designcraft-cli mcp --connect {port}")}))
+
+    // Verify identity through the Craft control envelope before trusting the listener.
+    // `CommandFailed` means the endpoint speaks the protocol but reports no document
+    // (nothing open, or nothing to inspect); anything else is an untrusted endpoint.
+    let info = match CraftHub::live_execute(CraftTarget::Design, Some(port), "document.inspect", &json!({})) {
+        Ok(info) => Some(info),
+        Err(EngineError::CommandFailed(_, _)) => None,
+        Err(e) => return Err(e),
+    };
+    let previous = info.as_ref().and_then(|v| v["path"].as_str()).map(PathBuf::from);
+    if previous.as_deref().is_some_and(|prev| crate::craft_hub::same_canonical_path(prev, &path)) {
+        receipt["already_open"] = json!(true);
+        return Ok(receipt);
+    }
+    if info.as_ref().is_some_and(|v| v["dirty"] == json!(true)) {
+        let shown = previous.as_ref().map(|prev| prev.display().to_string()).unwrap_or_else(|| "an unnamed document".to_owned());
+        return Err(bad(&format!("DesignCraft has unsaved changes in {shown}; save or close it there first")));
+    }
+    let opened = CraftHub::live_execute(CraftTarget::Design, Some(port), "file.open", &json!({"path": path}))?;
+    receipt["already_open"] = json!(false);
+    if info.is_some() {
+        receipt["previous"] = info.unwrap_or(Value::Null);
+    }
+    receipt["opened"] = opened;
+    Ok(receipt)
 }
 
 /// Registered project images used by the DesignCraft storyboard, for the Lyrics backdrop picker.

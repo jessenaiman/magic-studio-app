@@ -10,10 +10,12 @@ import { allowKeys, findElement, surfacesOf as surfaces } from "./control-input"
 
 interface Request { id: number; method: string; params: Record<string, unknown> }
 interface Violation { directive: string; blocked: string; source: string; line: number; document: string }
+interface UiError { message: string; source?: string; line?: number; stack?: string; workspace?: string }
 
 const MAX_VIOLATIONS = 50;
 const INTERACTIVE = 'button,a[href],input,select,textarea,summary,[role="button"],[role="tab"],[role="menuitem"],[role="switch"],[role="checkbox"],[tabindex]:not([tabindex="-1"])';
 const violations: Violation[] = [];
+const shellErrors: UiError[] = [];
 const watched = new WeakSet<Document>();
 // A CSP that blocks something the app needs fails silently in the page; keep the evidence for ui.inspect.
 function watchViolations() {
@@ -26,6 +28,19 @@ function watchViolations() {
     });
   }
 }
+
+window.addEventListener("error", event => {
+  const message = String(event.message || event.error).slice(0, 300);
+  if (shellErrors.length >= MAX_VIOLATIONS) shellErrors.shift();
+  shellErrors.push({ message, source: String(event.filename || "shell").split("/").pop(), line: event.lineno || undefined });
+  void invoke("record_ui_error", { message, source: "shell", control: null }).catch(() => {});
+});
+window.addEventListener("unhandledrejection", event => {
+  const message = String((event.reason as { message?: string })?.message || event.reason).slice(0, 300);
+  if (shellErrors.length >= MAX_VIOLATIONS) shellErrors.shift();
+  shellErrors.push({ message, source: "shell-promise" });
+  void invoke("record_ui_error", { message, source: "shell-promise", control: null }).catch(() => {});
+});
 
 function isForm(element: Element | null): element is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
   return !!element && /^(INPUT|SELECT|TEXTAREA)$/.test(element.tagName);
@@ -46,23 +61,33 @@ export async function connectDesktop(
         case "ui.drafts":
           allowKeys(params, "ui.drafts", []);
           result = workspaceDrafts(); break;
-        case "ui.inspect": case "ui.state":
+        case "ui.inspect": case "ui.state": {
           watchViolations();
+          const alerts = surfaces().flatMap(({ doc }) => Array.from(doc.querySelectorAll('[role="alert"]')).map(element => element.textContent?.trim()).filter((s): s is string => Boolean(s)));
+          const workspaces = Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe[id^="restored-"]')).map(frame => {
+            let doc: Document | null = null;
+            try { doc = frame.contentDocument; } catch { /* cross-origin */ }
+            const feedback = (doc?.defaultView as unknown as { acFeedback?: { snapshot: () => Record<string, unknown> } })?.acFeedback?.snapshot();
+            const hostError = frame.closest<HTMLElement>("[data-workspace-error]")?.dataset.workspaceError;
+            const errors = Array.isArray(feedback?.errors) ? [...feedback.errors] : [];
+            if (hostError && !errors.some(e => (e as { message?: string })?.message === hostError)) errors.push({ message: hostError, source: "host" });
+            return { title: frame.title || doc?.title || frame.id, visible: frame.getClientRects().length > 0, feedback: feedback ? {
+              rendered: feedback.rendered, phase: hostError ? "error" : feedback.phase, project: feedback.project, view: feedback.view,
+              errors, pending_invokes: feedback.pending_invokes,
+              draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre, animation: feedback.animation, authoring: feedback.authoring,
+            } : hostError ? { rendered: false, phase: "error", errors } : undefined };
+          });
+          const workspaceErrors = workspaces.flatMap(w => (w.feedback?.errors || []).map(err => ({ ...(err as Record<string, unknown>), workspace: w.title })));
           result = { ...(inspect() as Record<string, unknown>),
             viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
             focus: input.focusedElement(),
+            errors: [...shellErrors, ...workspaceErrors],
             cspViolations: violations,
             os: await getOsInfo().catch(() => null),
             notification: await notificationPermission().catch(() => false),
-            alerts: surfaces().flatMap(({ doc }) => Array.from(doc.querySelectorAll('[role="alert"]')).map(element => element.textContent?.trim()).filter(Boolean)),
-            workspaces: surfaces().filter(surface => surface.doc !== document).map(({ doc }) => {
-              const feedback = (doc.defaultView as unknown as { acFeedback?: { snapshot: () => Record<string, unknown> } })?.acFeedback?.snapshot();
-              return { title: doc.title, feedback: feedback && {
-                rendered: feedback.rendered, phase: feedback.phase, project: feedback.project, view: feedback.view,
-                errors: feedback.errors, pending_invokes: feedback.pending_invokes,
-                draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre, animation: feedback.animation, authoring: feedback.authoring,
-              } };
-            }) }; break;
+            alerts,
+            workspaces }; break;
+        }
         case "ui.elements": {
           allowKeys(params, "ui.elements", ["prefix", "unidentified"]);
           if (params.unidentified === true) {

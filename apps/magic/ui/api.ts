@@ -3,6 +3,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { arch, eol, exeExtension, family, locale, platform, type as osTypeFn, version } from "@tauri-apps/plugin-os";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatOsInfo, type OsInfo } from "./os-info";
+import { notifyTaskComplete } from "./notification";
 import { isCentered, isTopRight, moveWindow, Position, type Rect } from "./positioner";
 
 export type { OsInfo };
@@ -300,11 +301,36 @@ export interface TimelineResponse {
   tracks: TimelineTrack[];
 }
 
+// Long-task notification set (#113): only the heavy producers notify, never scrub-time queries.
+const NOTIFY_IDS = new Set(["video.assemble", "video.export", "video.render", "image.generate"]);
+const NOTIFY_PREFIXES = ["scribbles."];
+
+let longTaskLabels: Map<string, string> | null = null;
+async function notifyForTask(id: string, done: Promise<unknown>): Promise<void> {
+  if (!NOTIFY_IDS.has(id) && !NOTIFY_PREFIXES.some((prefix) => id.startsWith(prefix))) return;
+  if (!longTaskLabels) {
+    try {
+      const listed = await invoke<{ commands?: Array<{ id: string; label?: string; long_running?: boolean }> }>("execute_command", { id: "command.list", params: {} });
+      longTaskLabels = new Map((listed.commands ?? []).filter((c) => c.long_running).map((c) => [c.id, c.label || c.id]));
+    } catch {
+      longTaskLabels = new Map();
+    }
+  }
+  const label = longTaskLabels.get(id);
+  if (!label) return;
+  done.then(
+    () => void notifyTaskComplete(label, true).catch(() => {}),
+    (error) => void notifyTaskComplete(label, false, String(error)).catch(() => {}),
+  );
+}
+
 export async function executeCommand<T = unknown>(
   id: string,
   params: Record<string, unknown> = {},
 ): Promise<T> {
-  return invoke<T>("execute_command", { id, params });
+  const done = invoke<T>("execute_command", { id, params });
+  void notifyForTask(id, done);
+  return done;
 }
 
 export function fileUrl(filePath?: string | null): string {

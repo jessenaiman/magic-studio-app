@@ -26,6 +26,7 @@ pub use crate::cmd::project::intake::{
 };
 pub use crate::cmd::project::transcript::{cmd_audio_analyze, cmd_workshop_import_transcript};
 pub(crate) use crate::cmd::project::transcript::{transcript_document, transcript_problems};
+pub use crate::cmd::project::trunk::{cmd_project_import_file, cmd_project_trunk};
 
 /// Image file extensions recognized by the workshop.
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];

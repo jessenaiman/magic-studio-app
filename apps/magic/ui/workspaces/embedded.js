@@ -36,5 +36,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
     window.workshopDrawers?.close(false);
     acFeedback.report("ready");
-  } catch (error) { host?.report(String(error)); }
+  } catch (error) {
+    const message = String(error);
+    acFeedback?.errors?.push({ message: message.slice(0, 300), source: location.pathname.split("/").pop() || "embedded.js" });
+    acFeedback?.report("error");
+    host?.report(message);
+  }
 });

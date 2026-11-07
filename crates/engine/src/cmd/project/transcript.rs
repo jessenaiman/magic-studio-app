@@ -112,7 +112,7 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
 }
 
 fn parse_srt_timestamp(raw: &str) -> Option<f64> {
-    let token = raw.trim().split_whitespace().next()?;
+    let token = raw.split_whitespace().next()?;
     let (hms, ms_str) = token.split_once([',', '.'])?;
     let mut parts = hms.split(':');
     let h: u64 = parts.next()?.parse().ok()?;

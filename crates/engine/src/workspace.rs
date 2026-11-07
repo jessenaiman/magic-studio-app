@@ -98,6 +98,73 @@ pub(crate) fn open_editor(app: &str, document: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Launch a Craft desktop app directly when no specific document path is given.
+pub(crate) fn open_app(app: &str) -> Result<()> {
+    use std::process::{Command, Stdio};
+    let mut editor = Command::new(resolve_tool(app))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| EngineError::ExternalTool(app.to_owned(), e.to_string()))?;
+    std::thread::spawn(move || editor.wait());
+    Ok(())
+}
+
+fn find_first_with_ext(dir: &Path, exts: &[&str], depth: usize) -> Option<PathBuf> {
+    if depth == 0 {
+        return None;
+    }
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| !p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('.') || n == "node_modules" || n == "frames"))
+        .collect();
+    entries.sort();
+    for entry in &entries {
+        if entry.is_file() && has_extension(entry, exts) {
+            return Some(entry.clone());
+        }
+    }
+    for entry in &entries {
+        if entry.is_dir()
+            && let Some(found) = find_first_with_ext(entry, exts, depth - 1)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_project_craft_doc(s: &crate::Session, app: &str) -> Option<PathBuf> {
+    let dir = s.project_path.as_deref()?.parent()?;
+    match app {
+        "designcraft" => [dir.join("storyboard.designcraft"), dir.join("storyboard/storyboard.designcraft")]
+            .into_iter()
+            .find(|p| p.is_file())
+            .or_else(|| find_first_with_ext(dir, &["designcraft"], 3)),
+        "effectcraft" => {
+            let lyrics = dir.join("lettering/lyrics.ecproj");
+            lyrics.is_file().then_some(lyrics).or_else(|| find_first_with_ext(dir, &["ecproj"], 3))
+        }
+        "filmcraft" => {
+            let stem = s.project_path.as_deref().and_then(|p| p.file_stem()).and_then(|n| n.to_str()).unwrap_or("Film");
+            let primary = dir.join("film").join(format!("{stem}.fcproj"));
+            primary
+                .is_file()
+                .then_some(primary)
+                .or_else(|| crate::cmd::project::workshop::video_project_path(dir))
+                .or_else(|| find_first_with_ext(dir, &["fcproj"], 3))
+        }
+        "photocraft" => find_first_with_ext(dir, &["pcraft", "psd"], 4),
+        "vectorcraft" => find_first_with_ext(dir, &["vectorcraft", "vcraft", "drawcraft"], 4),
+        "texturecraft" => find_first_with_ext(dir, &["tcraft", "mcraft"], 4),
+        "deckcraft" => find_first_with_ext(dir, &["deckcraft"], 3),
+        _ => None,
+    }
+}
+
 fn craft_doc_info(path: &Path) -> Option<Value> {
     let bytes = std::fs::read(path).ok()?;
     let info = craft_doc::info(&bytes, &craft_doc::Limits::default()).ok()?;
@@ -118,8 +185,22 @@ fn craft_doc_info(path: &Path) -> Option<Value> {
     }))
 }
 
-/// Open a project file in the Craft app that owns its format, or the system opener.
+/// Open a project file in the Craft app that owns its format, launch a Craft app directly, or invoke the system opener.
 pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Value> {
+    if params.get("path").and_then(Value::as_str).is_none_or(|p| p.trim().is_empty())
+        && let Some(app) = params.get("app").and_then(Value::as_str).map(str::trim).filter(|a| !a.is_empty())
+    {
+        let allowed = ["photocraft", "vectorcraft", "designcraft", "effectcraft", "filmcraft", "texturecraft", "deckcraft"];
+        if !allowed.contains(&app) {
+            return Err(EngineError::InvalidParams(format!("unsupported Craft app '{app}'")));
+        }
+        if let Some(doc) = find_project_craft_doc(s, app) {
+            open_editor(app, &doc)?;
+            return Ok(serde_json::json!({"ok": true, "app": app, "path": doc}));
+        }
+        open_app(app)?;
+        return Ok(serde_json::json!({"ok": true, "app": app, "path": Value::Null}));
+    }
     let raw = params["path"].as_str().filter(|p| !p.trim().is_empty()).ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
     let path = resolve_workspace_path(s, raw);
     let sniffed = std::fs::read(&path).ok().and_then(|bytes| craft_doc::sniff(&bytes)).map(|kind| match kind {

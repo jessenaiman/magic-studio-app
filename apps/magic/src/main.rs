@@ -146,6 +146,7 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         }
         "ui.screenshot" => return screenshot(app, &params),
         "ui.resize" => return resize(app, &params),
+        "ui.feedback" | "ui.look" => return ui_request(app, "ui.inspect", params),
         id if id.starts_with("ui.") => return ui_request(app, id, params),
         _ => {}
     }
@@ -206,6 +207,21 @@ fn desktop_ready(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn record_ui_error(app: tauri::AppHandle, message: String, source: Option<String>, control: Option<String>) {
+    let project = state(&app).session.lock().ok().and_then(|s| s.project_path.clone());
+    magic::activity::append(json!({
+        "stage": "handler_error",
+        "command": source.as_deref().unwrap_or("ui"),
+        "project": project,
+        "origin": "frontend",
+        "control": control,
+        "error": message.chars().take(350).collect::<String>(),
+        "pid": std::process::id(),
+        "severity": "error"
+    }));
+}
+
+#[tauri::command]
 fn ui_reply(app: tauri::AppHandle, id: u64, result: Option<Value>, error: Option<String>) -> Result<(), String> {
     if let Some(tx) = state(&app).pending.lock().map_err(|e| e.to_string())?.remove(&id) {
         let _ = tx.send(match error {
@@ -225,7 +241,8 @@ async fn session_snapshot(app: tauri::AppHandle) -> Result<Value, String> {
         let data = if project.is_some() {
             let status = session.execute("workshop.status", json!({})).map_err(|e| e.to_string())?;
             let assets = session.execute("project.list_assets", json!({})).map_err(|e| e.to_string())?;
-            json!({"project": project, "status": status, "storyboard": status.get("storyboard"), "assets": assets})
+            let trunk = session.execute("project.trunk", json!({})).unwrap_or_else(|_| json!({"files": []}));
+            json!({"project": project, "status": status, "storyboard": status.get("storyboard"), "assets": assets, "trunk": trunk})
         } else {
             Value::Null
         };
@@ -301,7 +318,7 @@ fn main() {
                 lifecycle::native_close(window.app_handle());
             }
         })
-        .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, ui_reply, session_snapshot])
+        .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, record_ui_error, ui_reply, session_snapshot])
         .setup(move |app| {
             if let Some(path) = &cli.project {
                 dispatch(app.handle(), "project.open", json!({"path":path}), false)?;

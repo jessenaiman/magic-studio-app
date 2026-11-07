@@ -53,11 +53,22 @@ class FeedbackController {
       last_frontend_command: this.last
     };
   }
-  async report(phase, ack, _event) {
+  async report(phase, ack, event) {
     if (phase)
       this.phase = phase;
     if (ack)
       this.ack = Math.max(this.ack, ack);
+    if (event?.stage === "handler_error" && event.error) {
+      const msg = String(event.error).slice(0, 350);
+      if (!this.errors.some((e) => e.message === msg)) {
+        this.errors.push({ message: msg, source: event.command || "invoke", control: event.control || undefined });
+      }
+      window.__TAURI__?.core?.invoke?.("record_ui_error", {
+        message: msg,
+        source: String(event.command || location.pathname),
+        control: event.control ? String(event.control) : null
+      }).catch?.(() => {});
+    }
   }
   async acknowledge(revision, project) {
     const frameObserved = await Promise.race([
@@ -114,11 +125,13 @@ class FeedbackController {
   }
   bindEvents() {
     window.addEventListener("error", (e) => {
-      this.errors.push({ message: String(e.message).slice(0, 300), source: String(e.filename).split("/").pop(), line: e.lineno });
+      const stack = e.error?.stack ? String(e.error.stack).split("\n").slice(0, 4).join(" | ").slice(0, 350) : undefined;
+      this.errors.push({ message: String(e.message || e.error).slice(0, 300), source: String(e.filename || "").split("/").pop() || undefined, line: e.lineno || undefined, stack });
       this.report("error");
     });
     window.addEventListener("unhandledrejection", (e) => {
-      this.errors.push({ message: String(e.reason).slice(0, 300) });
+      const stack = e.reason?.stack ? String(e.reason.stack).split("\n").slice(0, 4).join(" | ").slice(0, 350) : undefined;
+      this.errors.push({ message: String(e.reason?.message || e.reason).slice(0, 300), source: "promise", stack });
       this.report("error");
     });
     document.addEventListener("input", () => {

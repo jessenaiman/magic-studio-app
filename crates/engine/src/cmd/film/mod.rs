@@ -99,8 +99,8 @@ pub(crate) fn run_steps(project: Option<&Path>, fresh: bool, save: bool, steps: 
         for step in steps {
             let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| bad(format!("missing command id in {step}")))?;
             let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
-            let line = serde_json::to_string(&json!({"id": id, "params": params}))
-                .map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+            let line =
+                serde_json::to_string(&json!({"id": id, "params": params})).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
             stdin.write_all(line.as_bytes()).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
             stdin.write_all(b"\n").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
         }
@@ -117,10 +117,7 @@ pub(crate) fn run_steps(project: Option<&Path>, fresh: bool, save: bool, steps: 
     for line in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
         let entry: Value = serde_json::from_str(line).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
         if entry["ok"].as_bool() == Some(false) {
-            return Err(EngineError::ExternalTool(
-                "filmcraft-cli".into(),
-                format!("{}: {}", entry["id"].as_str().unwrap_or("step"), entry["error"]),
-            ));
+            return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("{}: {}", entry["id"].as_str().unwrap_or("step"), entry["error"])));
         }
         results.push(entry.get("result").cloned().unwrap_or(entry));
     }
@@ -146,7 +143,10 @@ pub(crate) fn publish_lyrics(s: &Session, movie: &Path) -> Result<Value> {
         if id == "file.save" {
             return Ok(json!({"saved": project}));
         }
-        run_steps(Some(&project), false, save, &[step])?.into_iter().next().ok_or_else(|| EngineError::ExternalTool("filmcraft-cli".into(), format!("{id}: no result")))
+        run_steps(Some(&project), false, save, &[step])?
+            .into_iter()
+            .next()
+            .ok_or_else(|| EngineError::ExternalTool("filmcraft-cli".into(), format!("{id}: no result")))
     };
     publish_lyrics_with(&project, movie, TRACK, &mut run)
 }
@@ -354,17 +354,10 @@ pub(crate) fn frame(project: &Path, seconds: f64, output: &Path) -> Result<()> {
 
 pub(crate) fn probe_media(filename: &Path) -> Result<Value> {
     let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let out = std::process::Command::new(&cli)
-        .arg("probe")
-        .arg(filename)
-        .output()
-        .map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    let out =
+        std::process::Command::new(&cli).arg("probe").arg(filename).output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
     if !out.status.success() {
-        return Err(EngineError::InvalidParams(format!(
-            "cannot inspect {}: {}",
-            filename.display(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        )));
+        return Err(EngineError::InvalidParams(format!("cannot inspect {}: {}", filename.display(), String::from_utf8_lossy(&out.stderr).trim())));
     }
     serde_json::from_slice(&out.stdout).map_err(|e| EngineError::InvalidParams(format!("cannot inspect {}: {e}", filename.display())))
 }
@@ -379,11 +372,8 @@ pub(crate) fn media_duration(filename: &Path, require_video: bool) -> Result<f64
     if !require_video && !has_audio && !is_movie {
         return Err(EngineError::InvalidParams(format!("{} has no audio stream", filename.display())));
     }
-    let duration = info["duration"]
-        .as_f64()
-        .map(|ticks| ticks / TICKS)
-        .or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS))
-        .unwrap_or(0.0);
+    let duration =
+        info["duration"].as_f64().map(|ticks| ticks / TICKS).or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS)).unwrap_or(0.0);
     if !duration.is_finite() || duration <= 0.0 {
         return Err(EngineError::InvalidParams(format!("{} has invalid duration {duration}", filename.display())));
     }
@@ -580,10 +570,7 @@ mod tests {
 
     #[test]
     fn native_source_item_frame_export_accepts_integer_ticks_without_saving_project() {
-        let steps = [
-            json!({"id": "file.openDemoProject", "params": {}}),
-            json!({"id": "sequence.inspect", "params": {}}),
-        ];
+        let steps = [json!({"id": "file.openDemoProject", "params": {}}), json!({"id": "sequence.inspect", "params": {}})];
         let results = run_steps(None, true, false, &steps).unwrap();
         let sequence = &results[1];
         let item =

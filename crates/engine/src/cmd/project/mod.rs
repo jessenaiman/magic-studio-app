@@ -4,7 +4,10 @@ pub mod catalog;
 pub mod intake;
 pub mod settings;
 pub mod transcript;
+pub mod trunk;
 pub mod workshop;
+
+pub use trunk::{cmd_project_import_file, cmd_project_trunk};
 
 use std::path::{Path, PathBuf};
 

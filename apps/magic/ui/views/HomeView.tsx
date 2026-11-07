@@ -1,18 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { executeCommand, pickFile } from "../api";
+import type { ViewMode } from "../App";
 import "../home.css";
+
+interface QuickAction {
+  label: string;
+  view?: string;
+  open_block?: string;
+  enabled?: boolean;
+}
 
 interface Readiness {
   next_step?: string;
   audio_available?: boolean;
   transcript_valid?: boolean;
   editor_ready?: boolean;
-}
-
-interface QuickAction {
-  label: string;
-  command: string;
+  quick_actions?: QuickAction[];
 }
 
 interface CatalogProject {
@@ -21,9 +26,8 @@ interface CatalogProject {
   folder?: string;
   exists?: boolean;
   thumb?: string;
-  open_state?: "attached" | "detached" | null;
+  open_state?: "attached" | "detached" | "not_observed_open" | null;
   readiness?: Readiness;
-  quick_actions?: QuickAction[];
 }
 
 interface CatalogResponse {
@@ -31,7 +35,7 @@ interface CatalogResponse {
 }
 
 interface HomeViewProps {
-  onOpenProject: (path: string) => Promise<void>;
+  onOpenProject: (path: string, initialView?: ViewMode) => Promise<void>;
   onToast: (msg: string) => void;
 }
 
@@ -99,6 +103,24 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
     });
     if (typeof selected === "string" && selected) {
       setNewRoot(selected);
+    }
+  };
+
+  const handleRevealProject = async (path: string) => {
+    try {
+      await revealItemInDir(path);
+    } catch (err) {
+      onToast(String(err));
+    }
+  };
+
+  const handleForgetProject = async (path: string, name: string) => {
+    try {
+      await executeCommand("project.catalog", { forget: path });
+      await loadCatalog();
+      onToast(`Removed ${name} from recent projects`);
+    } catch (err) {
+      onToast(String(err));
     }
   };
 
@@ -210,28 +232,32 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
             <svg className="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
             </svg>
-            <h2>Magic Studio</h2>
+            <h2>Song Film Shelf</h2>
           </div>
           <div className="home-filters">
             <button
+              id="home-filter-all"
               className={`home-filter-pill ${filter === "all" ? "active" : ""}`}
               onClick={() => setFilter("all")}
             >
               All Songs ({filtered.allCount})
             </button>
             <button
+              id="home-filter-production"
               className={`home-filter-pill ${filter === "production" ? "active" : ""}`}
               onClick={() => setFilter("production")}
             >
               In Production
             </button>
             <button
+              id="home-filter-render"
               className={`home-filter-pill ${filter === "render" ? "active" : ""}`}
               onClick={() => setFilter("render")}
             >
               Ready to Render
             </button>
             <button
+              id="home-filter-character"
               className={`home-filter-pill ${filter === "character" ? "active" : ""}`}
               onClick={() => setFilter("character")}
             >
@@ -244,6 +270,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
               <path d="M21 21l-4.3-4.3" />
             </svg>
             <input
+              id="home-search-input"
               type="text"
               placeholder="Filter songs or characters…"
               value={search}
@@ -260,43 +287,23 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
           </div>
         </div>
 
-        {/* Quick-Drop / Audio Intake strip */}
-        <div
-          className="home-quickdrop"
-          role="button"
-          tabIndex={0}
-          onClick={handlePickAudio}
-          onKeyDown={(e) => e.key === "Enter" && handlePickAudio()}
-          aria-label="Drop an audio track to start a new song film"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          <p>Drop an .mp3 / .wav audio track anywhere to start a new song film</p>
-          {audioDropStem && (
-            <p className="stem-hint">Ready: “{audioDropStem}” — review name below and click Create</p>
-          )}
-        </div>
-
         {/* New project form (inline drawer / modal) */}
         {creating && (
           <form id="new-form" onSubmit={handleCreateProject} aria-label="New Song Project">
             <h3 className="home-section-title">New Song Project</h3>
             <div className="new-form-field">
-              <label>Song / Project Name</label>
+              <label htmlFor="new-name">Song / Project Name</label>
               <input
                 id="new-name"
                 autoFocus
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. X Marks The Spot"
+                placeholder="e.g. Storybook Moves"
                 required
               />
             </div>
             <div className="new-form-field">
-              <label>Audio Recording (optional)</label>
+              <label htmlFor="new-audio">Audio Recording (optional)</label>
               <div className="new-form-row">
                 <input
                   id="new-audio"
@@ -304,26 +311,27 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
                   onChange={(e) => setNewAudio(e.target.value)}
                   placeholder="/path/to/song.wav"
                 />
-                <button type="button" onClick={handlePickAudio}>
+                <button id="new-audio-pick" type="button" onClick={handlePickAudio}>
                   Browse…
                 </button>
               </div>
             </div>
             <div className="new-form-field">
-              <label>Projects Root Folder</label>
+              <label htmlFor="new-root">Projects Root Folder</label>
               <div className="new-form-row">
                 <input
                   id="new-root"
                   value={newRoot}
                   onChange={(e) => setNewRoot(e.target.value)}
                 />
-                <button type="button" onClick={handlePickRoot}>
+                <button id="new-root-pick" type="button" onClick={handlePickRoot}>
                   Folder…
                 </button>
               </div>
             </div>
             <div className="new-form-actions">
               <button
+                id="new-cancel"
                 type="button"
                 onClick={() => {
                   setCreating(false);
@@ -332,123 +340,179 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
               >
                 Cancel
               </button>
-              <button type="submit" className="open" disabled={busy}>
+              <button id="new-create" type="submit" className="open" disabled={busy}>
                 {busy ? "Creating…" : "Create Project"}
               </button>
             </div>
           </form>
         )}
 
-        {/* Recent projects grid */}
-        <h3 className="home-section-title">Recent Projects</h3>
+        {/* Projects Grid — Top-Left Slot is always the "+ New Project" card */}
+        <h3 className="home-section-title">Projects &amp; Recent Productions</h3>
         <div id="recent">
-          {filtered.list.length === 0 ? (
-            <div className="empty-state">
-              <p>No projects match your filter yet.</p>
-              <p style={{ fontSize: "12px", marginTop: "6px" }}>
-                Click <strong>+ New Song Project</strong> or drop an audio track on the strip above to begin.
-              </p>
+          {/* Top-Left Slot: New Project Card */}
+          <div className="project-card new-project-slot">
+            <div
+              id="home-new-slot-hero"
+              className="new-slot-media"
+              role="button"
+              tabIndex={0}
+              onClick={() => setCreating(true)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setCreating(true)}
+              aria-label="Create a new song project"
+            >
+              <div className="new-slot-plus">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2.4">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </div>
+              <span className="new-slot-badge">Start Here</span>
             </div>
-          ) : (
-            filtered.list.map((p) => {
-              const attached = p.open_state === "attached";
-              const pills = statusPills(p);
-              return (
-                <div
-                  key={p.path}
-                  className={`project-card ${attached ? "attached" : ""}`}
-                  onMouseEnter={(e) => {
-                    const m = e.currentTarget.querySelector(".card-menu");
-                    if (m) m.classList.add("open");
-                  }}
-                  onMouseLeave={(e) => {
-                    const m = e.currentTarget.querySelector(".card-menu");
-                    if (m) m.classList.remove("open");
-                  }}
+            <div className="card-body">
+              <h3 className="card-title">New Song Project</h3>
+              <div className="card-path">
+                {audioDropStem
+                  ? `Ready: “${audioDropStem}” — click Create above`
+                  : "Drop an .mp3 / .wav track or start a blank song film"}
+              </div>
+              <div className="card-status">
+                <span className="card-pill song">Audio · Lyrics · Storyboard · Film</span>
+              </div>
+              <div className="card-actions">
+                <button
+                  id="home-slot-audio"
+                  onClick={() => void handlePickAudio()}
                 >
-                  <div className="card-media">
-                    {p.thumb ? (
-                      <img
-                        src={convertFileSrc(p.thumb)}
-                        alt={`${p.name} thumbnail`}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: waveformSvg(p.name || "Untitled"),
-                        }}
-                      />
-                    )}
-                    <div className="card-menu">
-                      <button onClick={(e) => { e.stopPropagation(); onToast(`View folder: ${p.name}`); }}>
-                        View in folder
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); onToast(`Duplicate: ${p.name}`); }}>
-                        Duplicate
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); onToast(`Remove: ${p.name}`); }}>
-                        Remove from list
-                      </button>
-                    </div>
+                  Choose Audio…
+                </button>
+                <button
+                  id="home-slot-create"
+                  className="open"
+                  onClick={() => setCreating(true)}
+                >
+                  + New Project
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Existing Recent Project Cards */}
+          {filtered.list.map((p, idx) => {
+            const attached = p.open_state === "attached";
+            const pills = statusPills(p);
+            const quickActions = (p.readiness?.quick_actions || []).filter((qa) => qa.enabled !== false);
+            return (
+              <div
+                key={p.path}
+                className={`project-card ${attached ? "attached" : ""}`}
+                onMouseEnter={(e) => {
+                  const m = e.currentTarget.querySelector(".card-menu");
+                  if (m) m.classList.add("open");
+                }}
+                onMouseLeave={(e) => {
+                  const m = e.currentTarget.querySelector(".card-menu");
+                  if (m) m.classList.remove("open");
+                }}
+              >
+                <div className="card-media">
+                  {p.thumb ? (
+                    <img
+                      src={convertFileSrc(p.thumb)}
+                      alt={`${p.name} thumbnail`}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: waveformSvg(p.name || "Untitled"),
+                      }}
+                    />
+                  )}
+                  <div className="card-menu">
+                    <button
+                      id={`home-reveal-${idx}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleRevealProject(p.path);
+                      }}
+                    >
+                      View in folder
+                    </button>
+                    <button
+                      id={`home-forget-${idx}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleForgetProject(p.path, p.name);
+                      }}
+                    >
+                      Remove from list
+                    </button>
                   </div>
-                  <div className="card-body">
-                    <h3 className="card-title">{p.name}</h3>
-                    <div className="card-path" title={p.path || ""}>
-                      {p.folder || p.path || ""}
-                    </div>
-                    <div className="card-status">
-                      {pills.map((pil, i) => (
-                        <span key={i} className={`card-pill ${pil.kind}`}>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              width: "6px",
-                              height: "6px",
-                              borderRadius: "50%",
-                              backgroundColor:
-                                pil.kind === "song"
-                                  ? "#5bd69b"
-                                  : pil.kind === "lyrics"
-                                    ? "#7fe0b3"
-                                    : pil.kind === "studio"
-                                      ? "#eabb62"
-                                      : "#7a8594",
-                            }}
-                          />
-                          {pil.label}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="card-actions">
-                      {p.quick_actions?.map((qa, i) => (
+                </div>
+                <div className="card-body">
+                  <h3 className="card-title">{p.name}</h3>
+                  <div className="card-path" title={p.path || ""}>
+                    {p.folder || p.path || ""}
+                  </div>
+                  <div className="card-status">
+                    {pills.map((pil, i) => (
+                      <span key={i} className={`card-pill ${pil.kind}`}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: "6px",
+                            height: "6px",
+                            borderRadius: "50%",
+                            backgroundColor:
+                              pil.kind === "song"
+                                ? "#5bd69b"
+                                : pil.kind === "lyrics"
+                                  ? "#7fe0b3"
+                                  : pil.kind === "studio"
+                                    ? "#eabb62"
+                                    : "#7a8594",
+                          }}
+                        />
+                        {pil.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="card-actions">
+                    {quickActions.slice(0, 2).map((qa, i) => {
+                      const targetView: ViewMode =
+                        qa.open_block === "lyrics"
+                          ? "design"
+                          : (qa.view as ViewMode) || "project";
+                      return (
                         <button
                           key={i}
+                          id={`home-qa-${idx}-${i}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            void executeCommand(qa.command).catch((err) => onToast(String(err)));
+                            void onOpenProject(p.path, targetView);
                           }}
                         >
                           {qa.label}
                         </button>
-                      ))}
-                      <button
-                        className="open"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void onOpenProject(p.path);
-                        }}
-                      >
-                        Open Project
-                      </button>
-                    </div>
+                      );
+                    })}
+                    <button
+                      id={`home-open-card-${idx}`}
+                      className="open"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void onOpenProject(p.path, "project");
+                      }}
+                    >
+                      Open Project
+                    </button>
                   </div>
                 </div>
-              );
-            })
-          )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
