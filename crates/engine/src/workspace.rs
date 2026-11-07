@@ -256,7 +256,7 @@ pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
 }
 
 /// Resolve an installed tool executable from `<TOOL_NAME>` env override,
-/// `~/.config/magic/settings.json` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
+/// `~/.config/magic/config.toml` (`tools.<name>`), `PATH`, or `~/.local/bin/<name>`.
 pub fn resolve_tool(name: &str) -> String {
     if let Ok(env_val) = std::env::var(name.to_uppercase().replace('-', "_")) {
         let trimmed = env_val.trim();

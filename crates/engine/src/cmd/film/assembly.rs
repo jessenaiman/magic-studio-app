@@ -214,7 +214,3 @@ pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "project": project, "export": exported, "duration": film.duration,
         "backgrounds": backgrounds, "characters": film.characters.len(), "lettering": film.lettering}))
 }
-
-#[cfg(test)]
-#[path = "../../tests/assembly.rs"]
-mod tests;

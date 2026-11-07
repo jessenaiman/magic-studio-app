@@ -50,7 +50,7 @@ export async function connectDesktop(
               return { title: doc.title, feedback: feedback && {
                 rendered: feedback.rendered, phase: feedback.phase, project: feedback.project, view: feedback.view,
                 errors: feedback.errors, pending_invokes: feedback.pending_invokes,
-                draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre, animation: feedback.animation,
+                draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre, animation: feedback.animation, authoring: feedback.authoring,
               } };
             }) }; break;
         case "ui.elements": {
@@ -103,7 +103,7 @@ export async function connectDesktop(
           if (keys.some(k => k !== "view")) throw new Error("Only the view field is supported by ui.set");
           const aliases: Record<string, string> = { projects: "project", lyrics: "design" };
           const view = aliases[String(params.view)] || String(params.view);
-          if (!["home", "project", "storyboard", "design", "animation", "studio"].includes(view)) throw new Error("Unknown view");
+          if (!["home", "project", "storyboard", "design", "motion", "gallery", "animation", "studio"].includes(view)) throw new Error("Unknown view");
           setView(view);
           result = { ok: true, requestedView: view }; break;
         }

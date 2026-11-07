@@ -37,8 +37,8 @@ pub struct Session {
     pub record_user_state: bool,
     /// Active chat selection belongs to this engine/window, never to project serialization.
     pub agent_selection: Option<Value>,
-    /// Exclusive lease on the project file or standalone canonical lyric sheet.
-    pub project_owner: Option<std::sync::Arc<std::fs::File>>,
+    /// File stamp of the open `.magic` file at last load or atomic save (`link_watch::FileStamp`).
+    pub project_stamp: std::cell::Cell<Option<crate::link_watch::FileStamp>>,
     /// The selected recording; uploads use the copy inside the contained HyperFrames project.
     pub song_audio: Option<PathBuf>,
     /// Editable song details, stored only in this project's `.magic` document.
@@ -76,7 +76,7 @@ impl Default for Session {
             project_mode: None,
             record_user_state: false,
             agent_selection: None,
-            project_owner: None,
+            project_stamp: std::cell::Cell::new(None),
             song_audio: None,
             song: crate::cmd::song::song_metadata::SongMetadata::default(),
             draft_approved: false,
@@ -104,7 +104,7 @@ impl Clone for Session {
             project_mode: self.project_mode.clone(),
             record_user_state: self.record_user_state,
             agent_selection: self.agent_selection.clone(),
-            project_owner: self.project_owner.clone(),
+            project_stamp: std::cell::Cell::new(self.project_stamp.get()),
             song_audio: self.song_audio.clone(),
             song: self.song.clone(),
             draft_approved: self.draft_approved,

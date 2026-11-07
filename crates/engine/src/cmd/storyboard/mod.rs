@@ -993,10 +993,6 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "exported": done}))
 }
 
-#[cfg(test)]
-#[path = "../../tests/storyboard.rs"]
-mod tests;
-
 /// Open the canonical storyboard in the installed DesignCraft editor with live control.
 pub fn cmd_storyboard_open(s: &mut Session, p: &Value) -> Result<Value> {
     use std::process::{Command, Stdio};

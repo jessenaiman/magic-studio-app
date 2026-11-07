@@ -8,16 +8,19 @@ import { executeCommand } from "../api";
 
 interface Host {
   isActive: () => boolean;
+  authoringMode: () => string | undefined;
   navigate: (view: string) => Promise<unknown>;
   invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
   fileUrl: typeof convertFileSrc; openDialog: typeof open; openPath: typeof openPath; openUrl: typeof openUrl; listen: typeof listen;
   report: (message: string) => void;
 }
 declare global { interface Window { __MAGIC_WORKSPACE_HOSTS__?: Map<string, Host> } }
-interface Props { project: string; page: string; title: string; active?: boolean; onToast: (message: string) => void }
-export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, active: visible = true, onToast }) => {
+interface Props { project: string; page: string; title: string; active?: boolean; authoringMode?: string; onToast: (message: string) => void }
+export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, active: visible = true, authoringMode, onToast }) => {
   const id = `restored-${useId().replace(/[^a-z0-9]/gi, "")}`;
   const frame = useRef<HTMLIFrameElement>(null);
+  const modeRef = useRef(authoringMode); modeRef.current = authoringMode;
+  useEffect(() => { frame.current?.contentWindow?.postMessage({ magicAuthoringMode: authoringMode }, location.origin); }, [authoringMode]);
   const activeView = useRef(visible); activeView.current = visible;
   useEffect(() => { frame.current?.contentWindow?.postMessage({ magicWorkspaceVisibility: true, active: visible }, location.origin); }, [visible]);
   const [ready, setReady] = useState(false);
@@ -27,6 +30,7 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
     const registry: Map<string, Host> = window.__MAGIC_WORKSPACE_HOSTS__ ||= new Map<string, Host>();
     registry.set(id, {
       isActive: () => activeView.current,
+      authoringMode: () => modeRef.current,
       navigate: view => executeCommand("ui.set", { view }),
       invoke: async (command, args = {}) => {
         if (!active) throw new Error("The workspace has changed");
@@ -57,7 +61,7 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
   }, [id, project]);
   return <section id={`restored-${page.replace(/\.html$/, "")}`} style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
     {error && <div role="alert" style={{ color: "#ed8796", padding: "6px 12px", background: "#281b24", fontSize: 12 }}>{error}</div>}
-    {ready && <iframe ref={frame} id={id} onLoad={() => frame.current?.contentWindow?.postMessage({ magicWorkspaceVisibility: true, active: visible }, location.origin)} title={title} src={`/workspaces/${page}`} style={{ position: "relative", inset: "auto", border: 0, width: "100%", minHeight: 0, flex: 1 }} />}
+    {ready && <iframe ref={frame} id={id} onLoad={() => { frame.current?.contentWindow?.postMessage({ magicWorkspaceVisibility: true, active: visible }, location.origin); frame.current?.contentWindow?.postMessage({ magicAuthoringMode: modeRef.current }, location.origin); }} title={title} src={`/workspaces/${page}`} style={{ position: "relative", inset: "auto", border: 0, width: "100%", minHeight: 0, flex: 1 }} />}
   </section>;
 };
 
@@ -68,12 +72,14 @@ const PAGES: Record<string, [string, string]> = {
 };
 // Keep visited editors mounted so switching views preserves their unsaved drafts and selection.
 export function PreservedWorkspaces({ project, view, onToast }: { project: string; view: string; onToast: (message: string) => void }) {
-  const [opened, setOpened] = useState<string[]>(PAGES[view] ? [view] : []);
-  useEffect(() => { if (PAGES[view]) setOpened(previous => previous.includes(view) ? previous : [...previous, view]); }, [view]);
-  const shown = PAGES[view] && !opened.includes(view) ? [...opened, view] : opened;
-  return <div style={{ display: PAGES[view] ? "block" : "none", height: "100%" }}>
-    {shown.map(mode => <div key={mode} style={{ display: mode === view ? "block" : "none", height: "100%" }}>
-      <RestoredWorkspace project={project} page={PAGES[mode][0]} title={PAGES[mode][1]} active={mode === view} onToast={onToast} />
+  const authoring = ["design", "motion"].includes(view);
+  const pageView = authoring ? "design" : view;
+  const [opened, setOpened] = useState<string[]>(PAGES[pageView] ? [pageView] : []);
+  useEffect(() => { if (PAGES[pageView]) setOpened(previous => previous.includes(pageView) ? previous : [...previous, pageView]); }, [pageView]);
+  const shown = PAGES[pageView] && !opened.includes(pageView) ? [...opened, pageView] : opened;
+  return <div style={{ display: PAGES[pageView] ? "block" : "none", height: "100%" }}>
+    {shown.map(mode => <div key={mode} style={{ display: mode === pageView ? "block" : "none", height: "100%" }}>
+      <RestoredWorkspace project={project} page={PAGES[mode][0]} title={mode === "design" ? "Lyrics and Motion" : PAGES[mode][1]} active={mode === pageView} authoringMode={mode === "design" ? (authoring ? view : undefined) : undefined} onToast={onToast} />
     </div>)}
   </div>;
 }

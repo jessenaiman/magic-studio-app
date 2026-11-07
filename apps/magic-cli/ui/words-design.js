@@ -7,6 +7,7 @@ try {
     if (typeof links[key] === "boolean")
       wordsPanel.links[key] = links[key];
 } catch {}
+function wordsBrushKey(brush) { return String(brush.id ?? brush.index ?? brush.name); }
 const wordsTools = () => wordsPanel.read?.tools || wordsPanel.effects?.tools || {};
 const wordsMoves = () => (wordsTools().moves || []).map((m) => [m.id, m.name, m.does, m.icon || "⚡"]);
 const wordsLetterings = () => (wordsTools().letterings || []).map((l) => [l.id, l.name, l.does, l.font, l.weight, l.italic]);
@@ -264,19 +265,13 @@ class WordsDesignController {
     wordsVideoRange();
   }
   design(anim, lineId) {
-    const pending = wordsPanel.designs.get(lineId);
+    const pending = anim.animation_id === wordsPanel.selected ? wordsPanel.designs.get(lineId) : undefined;
     if (pending !== undefined)
       return pending ?? this.layout(anim, lineId, "cascade");
     const saved = anim.design?.[lineId];
     if (!saved?.items?.length)
       return this.layout(anim, lineId, "cascade");
-    const isFlatTop = saved.items.every((it) => (it.y || 0) < 150 && !it.rotate);
-    if (!isFlatTop)
-      return saved;
-    const upgraded = this.layout(anim, lineId, "cascade");
-    if (saved.draws?.length)
-      upgraded.draws = saved.draws.map((d) => ({ ...d, y: Math.max(d.y || 0, 650) }));
-    return upgraded;
+    return saved;
   }
   designEdit(anim, lineId, change) {
     const design = structuredClone(this.design(anim, lineId));
@@ -685,17 +680,26 @@ class WordsTimelineController {
     world.style.setProperty("--h", `${H}px`);
     world.style.setProperty("--family", JSON.stringify(wordsSongFont(anim)));
     const local = wordsPanel.playing || !interactive ? t - span.start : Math.max(0.55, span.end - span.start - 0.08);
-    const flow = interactive ? this.flowArrowsSvg(design, words, W, H) : null;
-    const strokes = design.draws.map((d) => {
+    const visibility = typeof authoringVisibility === "function" ? authoringVisibility(wordsPanel.presentationMode, wordsPanel.previewTogether) : {words:true,drawings:true};
+    const flow = interactive && typeof authoringVisibility !== "function" ? this.flowArrowsSvg(design, words, W, H) : null;
+    const strokes = (visibility.drawings ? design.draws : []).map((d, drawingIndex) => {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("class", "lyric-draw");
+      svg.setAttribute("class", `lyric-draw${interactive && drawingIndex === wordsPanel.selectedDrawingIndex ? " selected-drawing" : ""}`);
+      if (interactive && wordsPanel.presentationMode === "motion") {
+        svg.id = `motion-stage-drawing-${drawingIndex}`;
+        svg.setAttribute("role", "button"); svg.setAttribute("tabindex", "0");
+        svg.setAttribute("aria-label", `Select drawing ${d.name || drawingIndex + 1}`);
+        const select = event => { event.stopPropagation(); wordsPanel.selectedDrawingIndex = drawingIndex; wordsRender(); };
+        svg.addEventListener("click", select);
+        svg.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(event); } });
+      }
       svg.setAttribute("viewBox", d.view_box);
       for (const [key, value] of [["--x", d.x], ["--y", d.y], ["--dw", d.w], ["--dh", d.h]])
         svg.style.setProperty(key, `${value}px`);
       svg.innerHTML = d.paths.map((p) => `<path d="${p.d}" pathLength="1" fill="none" stroke="${p.stroke}" stroke-width="${p.width}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="${1 - wordsClamp((local - p.from) / Math.max(0.01, p.to - p.from))}"/>`).join("");
       return svg;
     });
-    const items = design.items.map((it, i) => this.drawLineItem(world, words, span, local, interactive, W, it, i, design));
+    const items = visibility.words ? design.items.map((it, i) => this.drawLineItem(world, words, span, local, interactive, W, it, i, design)) : [];
     world.replaceChildren(...flow ? [flow] : [], ...strokes, ...items);
     requestAnimationFrame(() => {
       const view = $("view-design");
@@ -747,7 +751,7 @@ class WordsTimelineController {
         box.onpointerup = null;
         if (pts.length > 1) {
           const lid = wordsPanel.line || wordsLines(anim)[0]?.id;
-          const brush = wordsEffectCraftTools().paint_presets?.find((b) => b.id === wordsPanel.activeBrush);
+          const brush = wordsEffectCraftTools().paint_presets?.find((b) => wordsBrushKey(b) === wordsPanel.activeBrush);
           if (lid) {
             wordsDesignEdit(anim, lid, (d) => {
               d.draws.push({

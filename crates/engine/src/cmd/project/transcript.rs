@@ -260,7 +260,7 @@ fn write_transcript(dest: &Path, doc: &Value, params: &Value) -> Result<()> {
     }
     let parent = dest.parent().ok_or_else(|| EngineError::InvalidParams("Transcript destination has no parent directory".into()))?;
     std::fs::create_dir_all(parent)?;
-    std::fs::write(dest, serialized)?;
+    craft_atomic::atomic_write(dest, &serialized)?;
     Ok(())
 }
 
@@ -268,7 +268,7 @@ fn write_captions(dir: &Path, target: &str, text: String) -> Result<PathBuf> {
     let folder = dir.join(target);
     std::fs::create_dir_all(&folder)?;
     let path = folder.join("transcript.srt");
-    std::fs::write(&path, text)?;
+    craft_atomic::atomic_write(&path, text.as_bytes())?;
     Ok(path)
 }
 
@@ -313,7 +313,10 @@ fn merge_prior_producer(dir: &Path, source: &Path, provenance: &mut Value) {
 fn write_provenance(dir: &Path, source: &Path, params: &Value, facts: &RecordingFacts, grouping: &str) -> Result<()> {
     let mut provenance = json!({"mode":"reused existing transcript; no ASR or transcoding","source":params["original_source"],"captions_source":params["original_captions"],"duration_sec":facts.duration,"duration_source":if facts.probed.is_some(){"authoritative recording probe"}else{"unverified supplied audiomap or unknown"},"duration_warning":facts.warning, "recording_duration_sec":facts.probed,"audiomap_duration_sec":facts.mapped,"provider":"unknown; not recorded by source","model":"unknown; not recorded by source","manual":"~/.agents/skills/media-use/audio/references/transcribe.md","executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"tool":"workshop.import_transcript (native Rust; ASR not called)","grouping":grouping});
     merge_prior_producer(dir, source, &mut provenance);
-    std::fs::write(dir.join("transcript-provenance.json"), serde_json::to_vec_pretty(&provenance).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
+    craft_atomic::atomic_write(
+        &dir.join("transcript-provenance.json"),
+        &serde_json::to_vec_pretty(&provenance).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
+    )?;
     Ok(())
 }
 

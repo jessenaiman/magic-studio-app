@@ -1,8 +1,7 @@
 //! The existing Home navigation history, shared by UI, terminal and native app. Not a media scan.
 use serde_json::{Value, json};
 use std::{
-    fs::{self, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    fs,
     path::{Path, PathBuf},
 };
 pub fn file() -> Option<PathBuf> {
@@ -23,42 +22,22 @@ fn is_transient(path: &str) -> bool {
     path.contains("/.agent/") || path.contains("/tmp/") || Path::new(path).starts_with(std::env::temp_dir())
 }
 
-fn open_catalog(target: &Path) -> Result<fs::File, String> {
-    let file = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(target).map_err(|e| e.to_string())?;
-    file.lock().map_err(|e| e.to_string())?;
-    Ok(file)
-}
-
-fn read_items(file: &mut fs::File) -> Result<Vec<String>, String> {
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-    // An unreadable or older catalog is replaced, not treated as a failure.
-    Ok(serde_json::from_slice(&bytes).unwrap_or_default())
-}
-
-fn rewrite(file: &mut fs::File, items: &[String]) -> Result<(), String> {
-    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-    let bytes = serde_json::to_vec(items).map_err(|e| e.to_string())?;
-    file.write_all(&bytes).map_err(|e| e.to_string())?;
-    file.set_len(bytes.len() as u64).map_err(|e| e.to_string())
-}
-
 fn update(path: &str, forget: bool) -> Result<(), String> {
     let path = canonical(path);
-    let target = file().ok_or("Config directory unavailable")?;
-    fs::create_dir_all(target.parent().ok_or("Config directory unavailable")?).map_err(|e| e.to_string())?;
-    let mut file = open_catalog(&target)?;
-    let mut items = read_items(&mut file)?;
-    items.retain(|p| canonical(p) != path);
-    if is_transient(&path) {
+    if is_transient(&path) && !forget {
         return Ok(());
     }
+    let target = file().ok_or("Config directory unavailable")?;
+    fs::create_dir_all(target.parent().ok_or("Config directory unavailable")?).map_err(|e| e.to_string())?;
+    let _lock = crate::project_lock::lock(&target, || {});
+    let mut items: Vec<String> = fs::read(&target).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    items.retain(|p| canonical(p) != path);
     if !forget {
         items.insert(0, path);
         items.truncate(10);
     }
-    let result = rewrite(&mut file, &items);
-    // Even a failed write may have changed a prefix of the catalog.
+    let bytes = serde_json::to_vec(&items).map_err(|e| e.to_string())?;
+    let result = craft_atomic::atomic_write(&target, &bytes).map_err(|e| e.to_string());
     crate::change_marker::invalidate();
     result
 }

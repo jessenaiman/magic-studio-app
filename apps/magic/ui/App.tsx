@@ -4,6 +4,7 @@ import { connectDesktop } from "./desktop";
 import React, { useEffect, useRef, useState } from "react";
 import { executeCommand, WorkshopData } from "./api";
 import { FilmView } from "./views/FilmView";
+import { GalleryView } from "./views/GalleryView";
 import { HomeView } from "./views/HomeView";
 import { StoryboardView } from "./views/StoryboardView";
 
@@ -12,6 +13,8 @@ export type ViewMode =
   | "project"
   | "storyboard"
   | "design"
+  | "motion"
+  | "gallery"
   | "animation"
   | "studio";
 
@@ -70,7 +73,7 @@ export const App: React.FC = () => {
         () => {
           const state = liveState.current;
           return { ok: true, renderer: "tauri", ready: true,
-            view: state.projectPath ? state.view : "home", requestedView: state.view,
+            view: state.projectPath || state.view === "gallery" ? state.view : "home", requestedView: state.view,
             project: state.projectPath, busy: state.busy, status: state.toastMsg };
         },
         next => setView(next as ViewMode),
@@ -133,7 +136,7 @@ export const App: React.FC = () => {
           </span>
         </div>
 
-        {projectPath && (
+        {(
           <nav
             id="mode-tabs"
             aria-label="Workspace views"
@@ -144,10 +147,12 @@ export const App: React.FC = () => {
                 ["project", "Project"],
                 ["storyboard", "Storyboard"],
                 ["design", "Lyrics"],
+                ["motion", "Motion"],
+                ["gallery", "Gallery"],
                 ["animation", "Animation"],
                 ["studio", "Studio"],
               ] as Array<[ViewMode, string]>
-            ).map(([id, label]) => (
+            ).filter(([id]) => projectPath || id === "gallery").map(([id, label]) => (
               <button
                 key={id}
                 id={`tab-${id}`}
@@ -167,7 +172,7 @@ export const App: React.FC = () => {
       {/* Main Content Area */}
       <div style={{ overflow: "hidden", height: "100%" }}>
         {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
-        {view === "home" || !projectPath ? (
+        {view === "gallery" ? <GalleryView /> : view === "home" || !projectPath ? (
           <HomeView onOpenProject={openProject} onToast={showToast} />
         ) : view === "storyboard" ? (
           <StoryboardView

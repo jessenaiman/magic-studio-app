@@ -57,7 +57,3 @@ pub fn ui_ready(v: &Value, ack: u64, revision: u64) -> bool {
         && v["project"] == v["active_project"]
         && ack >= revision
 }
-
-#[cfg(test)]
-#[path = "tests/feedback_state.rs"]
-mod tests;

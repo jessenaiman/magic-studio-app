@@ -1,0 +1,34 @@
+[
+  {
+    "id": "comp.new",
+    "params": {
+      "name": "Fade up",
+      "width": 640,
+      "height": 360,
+      "frameRate": 24,
+      "duration": 3,
+      "background": "#f4efe4"
+    }
+  },
+  {
+    "id": "layer.newText",
+    "params": {
+      "name": "Example",
+      "text": "round and round",
+      "font": "DejaVu Sans",
+      "size": 42,
+      "fill": "#173f49",
+      "position": [
+        320,
+        180
+      ]
+    }
+  },
+  {
+    "id": "layer.applyTextPreset",
+    "params": {
+      "layer": "Example",
+      "preset": "fadeUpCharacters"
+    }
+  }
+]

@@ -22,7 +22,7 @@ use tauri::{Emitter, Manager};
 struct Cli {
     #[arg(long)]
     project: Option<String>,
-    #[arg(long, default_value = "projects", value_parser = ["home", "projects", "project", "storyboard", "lyrics", "design", "animation", "studio"])]
+    #[arg(long, default_value = "projects", value_parser = ["home", "projects", "project", "storyboard", "lyrics", "design", "motion", "gallery", "animation", "studio"])]
     view: String,
     #[arg(long, env = "MAGIC_CONTROL_PORT")]
     control: Option<String>,

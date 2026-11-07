@@ -16,17 +16,19 @@ impl Session {
     }
 
     pub fn undo(&mut self) -> Result<Value> {
-        let step = self.history.undo.pop().ok_or_else(|| EngineError::InvalidParams("Nothing to undo".into()))?;
+        let step = self.history.undo.last().cloned().ok_or_else(|| EngineError::InvalidParams("Nothing to undo".into()))?;
         let inverse = self.swap_in(&step)?;
-        let label = step.label.clone();
+        self.history.undo.pop();
+        let label = step.label;
         self.history.redo.push(inverse);
         Ok(json!({"ok": true, "undone": label, "can_undo": !self.history.undo.is_empty(), "can_redo": true}))
     }
 
     pub fn redo(&mut self) -> Result<Value> {
-        let step = self.history.redo.pop().ok_or_else(|| EngineError::InvalidParams("Nothing to redo".into()))?;
+        let step = self.history.redo.last().cloned().ok_or_else(|| EngineError::InvalidParams("Nothing to redo".into()))?;
         let inverse = self.swap_in(&step)?;
-        let label = step.label.clone();
+        self.history.redo.pop();
+        let label = step.label;
         self.history.undo.push(inverse);
         Ok(json!({"ok": true, "redone": label, "can_undo": true, "can_redo": !self.history.redo.is_empty()}))
     }

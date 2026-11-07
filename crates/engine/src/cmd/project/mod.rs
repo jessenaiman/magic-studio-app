@@ -112,60 +112,31 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
     ["assets", "workshop", "mode", "song"].iter().any(|key| saved[*key] != current[*key])
 }
 
-/// Writes the open project's asset connections to its `.magic` file.
+/// Writes the open project's asset connections to its `.magic` file atomically (`craft_atomic::atomic_write`),
+/// guarding against external edits via [`crate::link_watch::save_guard`].
 pub fn write_project_file(s: &Session) -> Result<()> {
     let Some(path) = &s.project_path else {
         return Ok(());
     };
+    if path.exists() && !path.is_file() {
+        return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
+    }
+    if s.project_stamp.get().is_some() {
+        crate::link_watch::save_guard(path, s.project_stamp.get())?;
+    }
     let doc = merged_document(s, path);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let text = serde_json::to_string_pretty(&doc).map_err(|e| EngineError::InvalidParams(format!("cannot encode project: {e}")))?;
-    let written = write_preserving_lease(path, text.as_bytes());
-    // A failed write can still have left partial effects if rollback failed.
+    craft_atomic::atomic_write(path, text.as_bytes())?;
+    s.project_stamp.set(crate::link_watch::FileStamp::of(path));
     if s.record_user_state {
         crate::change_marker::invalidate();
     }
-    written?;
     s.project_saves.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if s.record_user_state {
         crate::activity::stored(path, text.len());
-    }
-    Ok(())
-}
-
-// Preserve the inode holding Studio's existing writer lease. Replacing it with a renamed
-// temporary file would release exclusivity on the new path. Encoding precedes all disk writes;
-// an ordinary write failure restores the old bytes. This is not a crash-atomic transaction.
-fn write_preserving_lease(path: &Path, bytes: &[u8]) -> Result<()> {
-    write_preserving_lease_using(path, bytes, store_project_bytes)
-}
-fn store_project_bytes(file: &mut std::fs::File, content: &[u8]) -> std::io::Result<()> {
-    use std::io::{Seek, SeekFrom, Write};
-    file.seek(SeekFrom::Start(0))?;
-    file.write_all(content)?;
-    file.set_len(content.len() as u64)?;
-    file.sync_data()
-}
-fn write_preserving_lease_using(path: &Path, bytes: &[u8], mut store: impl FnMut(&mut std::fs::File, &[u8]) -> std::io::Result<()>) -> Result<()> {
-    use std::io::Read;
-    let mut file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?;
-    if !file.metadata()?.is_file() {
-        return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
-    }
-    let mut before = Vec::new();
-    file.read_to_end(&mut before)?;
-    if before == bytes {
-        return Ok(());
-    }
-    if let Err(error) = store(&mut file, bytes) {
-        if let Err(rollback) = store(&mut file, &before) {
-            return Err(EngineError::Io(std::io::Error::other(format!(
-                "Project write failed: {error}; restoring prior bytes also failed: {rollback}. Preserve this file and repair storage before retrying"
-            ))));
-        }
-        return Err(EngineError::Io(std::io::Error::other(format!("Project write failed; prior bytes restored: {error}"))));
     }
     Ok(())
 }
@@ -189,14 +160,14 @@ pub(crate) fn project_file_path(s: &Session, params: &Value) -> Result<PathBuf> 
 
 /// A fresh session for a project: no assets loaded, nothing active.
 fn reset_for_project(s: &mut Session, path: PathBuf, assets: Vec<crate::ProjectAsset>) {
-    let owner = if s.project_path.as_ref() == Some(&path) { s.project_owner.clone() } else { None };
+    let stamp = crate::link_watch::FileStamp::of(&path);
     *s = Session {
         cwd: s.cwd.clone(),
         record_user_state: s.record_user_state,
         agent_selection: s.agent_selection.clone(),
         project_assets: assets,
         project_path: Some(path),
-        project_owner: owner,
+        project_stamp: std::cell::Cell::new(stamp),
         ..Session::default()
     };
 }
@@ -293,16 +264,6 @@ fn project_audio_source(s: &Session, params: &Value) -> Result<Option<PathBuf>> 
     }
 }
 
-fn claim_new_project(s: &Session, path: &Path) -> Result<std::sync::Arc<std::fs::File>> {
-    if path.exists() {
-        claim(s, path)
-    } else {
-        let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(path)?;
-        file.try_lock().map_err(|e| EngineError::InvalidParams(format!("Cannot own new project: {e}")))?;
-        Ok(std::sync::Arc::new(file))
-    }
-}
-
 /// Create a new `.magic` session.
 pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
@@ -313,9 +274,11 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let owner = claim_new_project(s, &path)?;
+    let path = match (path.parent().and_then(|p| std::fs::canonicalize(p).ok()), path.file_name()) {
+        (Some(parent), Some(name)) => parent.join(name),
+        _ => path,
+    };
     reset_for_project(s, path.clone(), Vec::new());
-    s.project_owner = Some(owner);
     s.song_audio = audio;
     s.project_mode = mode;
     write_project_file(s)?;
@@ -364,13 +327,10 @@ fn project_assets_from_doc(path: &Path, doc: &Value) -> Result<Vec<crate::Projec
     Ok(assets)
 }
 
-fn apply_opened_state(s: &mut Session, path: &Path, doc: &Value, assets: Vec<crate::ProjectAsset>, owner: Option<std::sync::Arc<std::fs::File>>) -> Result<()> {
+fn apply_opened_state(s: &mut Session, path: &Path, doc: &Value, assets: Vec<crate::ProjectAsset>) -> Result<()> {
     let song = serde_json::from_value(doc.get("song").cloned().unwrap_or_else(|| json!({})))
         .map_err(|e| EngineError::InvalidParams(format!("invalid song metadata: {e}")))?;
     reset_for_project(s, path.to_path_buf(), assets);
-    if let Some(owner) = owner {
-        s.project_owner = Some(owner);
-    }
     s.project_mode = project_mode(doc)?;
     s.song = song;
     s.song_audio = doc.pointer("/workshop/audio").and_then(Value::as_str).map(|source| opened_path(source, path));
@@ -385,7 +345,6 @@ fn apply_opened_state(s: &mut Session, path: &Path, doc: &Value, assets: Vec<cra
 /// Open an existing `.magic` session.
 pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
-    let owner = if params["claim_owner"] == true { Some(claim(s, &path)?) } else { None };
     let doc = read_project_document(&path)?;
     if doc.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
         return Err(EngineError::InvalidParams(format!("{} is not a Magic Studio project", path.display())));
@@ -394,8 +353,10 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     // Report connections whose source files have moved instead of dropping them.
     let missing: Vec<&str> = assets.iter().filter(|a| a.path.as_ref().is_some_and(|p| !p.exists())).map(|a| a.id.as_str()).collect::<Vec<_>>();
     let missing = json!(missing);
-    apply_opened_state(s, &path, &doc, assets, owner)?;
-    repair_opened_workshop_links(s, &path);
+    apply_opened_state(s, &path, &doc, assets)?;
+    if params["read_only"] != true {
+        repair_opened_workshop_links(s, &path);
+    }
     let warnings = recent_warning(s, &path, params["record_recent"] != false);
     let workshop = crate::cmd::project::workshop::workshop_status(s)?;
     Ok(json!({
@@ -418,9 +379,6 @@ fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
         return;
     }
     let _ = crate::cmd::film::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
-    if s.project_owner.is_none() {
-        return;
-    }
     let mut changed = false;
     if s.video_project_path.as_ref().is_none_or(|p| !p.is_file())
         && let Some(vp) = crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target)
@@ -439,24 +397,6 @@ fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
     }
 }
 
-fn claim_save_target(target: &Path) -> Result<std::sync::Arc<std::fs::File>> {
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    // Acquire the destination without truncating it, before changing session identity.
-    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(target)?;
-    if !file.metadata()?.is_file() {
-        return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
-    }
-    file.try_lock().map_err(|_| {
-        EngineError::InvalidParams(format!(
-            "Project is owned by another live writer: {}. No Save As write performed; the original project remains selected.",
-            target.display()
-        ))
-    })?;
-    Ok(std::sync::Arc::new(file))
-}
-
 /// Refuse to act when `expected_project` names a different project than the selected one.
 fn project_guard(s: &Session, p: &Value) -> Result<()> {
     let selected = s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Select the intended project".into()))?.canonicalize()?;
@@ -465,6 +405,22 @@ fn project_guard(s: &Session, p: &Value) -> Result<()> {
         return Err(EngineError::InvalidParams("expected_project differs from selected project".into()));
     }
     Ok(())
+}
+
+/// Flush all dirty session `DocState`s atomically with `FileStamp` guards, returning save receipts.
+fn flush_dirty_documents(s: &mut Session) -> Result<Vec<Value>> {
+    let mut saved = Vec::new();
+    for doc in &mut s.docs {
+        if doc.dirty {
+            doc.save()?;
+            saved.push(json!({
+                "kind": doc.kind,
+                "path": doc.path,
+                "revision": doc.revision,
+            }));
+        }
+    }
+    Ok(saved)
 }
 
 /// Save the open project (or save-as when `path` is given).
@@ -482,24 +438,59 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
     match target {
         Some(target) if s.project_path.as_ref() != Some(&target) => save_as(s, target),
         _ => {
+            let documents = flush_dirty_documents(s)?;
             write_project_file(s)?;
-            Ok(json!({"ok": true, "project": s.project_path, "documents": []}))
+            s.edits_since_save = 0;
+            Ok(json!({
+                "ok": true,
+                "project": s.project_path,
+                "saved": s.project_path,
+                "saves": s.project_saves.load(std::sync::atomic::Ordering::Relaxed),
+                "documents": documents,
+                "native": [],
+                "derivatives": [],
+                "relinked": [],
+                "warnings": [],
+            }))
         }
     }
 }
 
 /// Save to a new file and select it; a failed write keeps the original project selected.
 fn save_as(s: &mut Session, target: PathBuf) -> Result<Value> {
-    let file = claim_save_target(&target)?;
-    let target = std::fs::canonicalize(target)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if target.exists() && !target.is_file() {
+        return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
+    }
+    let target = match (target.parent().and_then(|p| std::fs::canonicalize(p).ok()), target.file_name()) {
+        (Some(parent), Some(name)) => parent.join(name),
+        _ => target,
+    };
+    let documents = flush_dirty_documents(s)?;
     let previous_path = s.project_path.replace(target);
-    let previous_owner = s.project_owner.replace(file);
+    let previous_stamp = s.project_stamp.replace(None);
     if let Err(error) = write_project_file(s) {
         s.project_path = previous_path;
-        s.project_owner = previous_owner;
+        s.project_stamp.set(previous_stamp);
         return Err(error);
     }
-    Ok(json!({"ok": true, "project": s.project_path}))
+    if let Some(path) = s.project_path.as_ref().and_then(|p| std::fs::canonicalize(p).ok()) {
+        s.project_path = Some(path);
+    }
+    s.edits_since_save = 0;
+    Ok(json!({
+        "ok": true,
+        "project": s.project_path,
+        "saved": s.project_path,
+        "saves": s.project_saves.load(std::sync::atomic::Ordering::Relaxed),
+        "documents": documents,
+        "native": [],
+        "derivatives": [],
+        "relinked": [],
+        "warnings": [],
+    }))
 }
 
 /// Close the project and clear session state.
@@ -652,7 +643,7 @@ fn record_provenance(folder: &Path, copy: &Path, source: &Path, meta: &std::fs::
         "file": copy.strip_prefix(assets_dir).unwrap_or(copy), "source": source, "bytes": meta.len(),
         "modified_unix": meta.modified().map(unix).unwrap_or(0),
         "copied_unix": unix(std::time::SystemTime::now())}));
-    std::fs::write(&provenance, format!("{doc:#}\n"))?;
+    craft_atomic::atomic_write(&provenance, format!("{doc:#}\n").as_bytes())?;
     Ok(())
 }
 
@@ -802,27 +793,12 @@ pub fn cmd_project_identity(s: &mut Session, p: &Value) -> Result<Value> {
     let path = std::fs::canonicalize(path)?;
     Ok(json!({"ok":true,"project":path,"project_id":path,"identity_kind":"canonical path"}))
 }
-pub(crate) fn claim(s: &Session, path: &Path) -> Result<std::sync::Arc<std::fs::File>> {
-    if s.project_path.as_deref() == Some(path)
-        && let Some(owner) = &s.project_owner
-    {
-        return Ok(owner.clone());
-    }
-    let file = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
-    file.try_lock().map_err(|_| {
-        EngineError::InvalidParams(format!(
-            "Project is owned by another live writer: {}. Inspect project.catalog and attach to its existing Studio; no competing write performed.",
-            path.display()
-        ))
-    })?;
-    Ok(std::sync::Arc::new(file))
-}
 
-/// Attach disk metadata without a UI switch, writer lease, action receipt or navigation-history change.
+/// Attach disk metadata without a UI switch, action receipt or navigation-history change.
 pub fn cmd_project_attach(s: &mut Session, p: &Value) -> Result<Value> {
     let mut p = p.clone();
     p["record_recent"] = json!(false);
-    p["claim_owner"] = json!(false);
+    p["read_only"] = json!(true);
     let mut value = cmd_project_open(s, &p)?;
     value["attachment"] = json!("read-only disk metadata; Studio unchanged");
     Ok(value)
@@ -842,9 +818,13 @@ pub fn save_theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
         return Err(EngineError::InvalidParams("Invalid Theatre snapshot".into()));
     }
     let path = s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    if s.project_stamp.get().is_some() {
+        crate::link_watch::save_guard(path, s.project_stamp.get())?;
+    }
     let mut doc = read_project_document(path)?;
     doc["theatre"] = params["state"].clone();
     let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    write_preserving_lease(path, &bytes)?;
+    craft_atomic::atomic_write(path, &bytes)?;
+    s.project_stamp.set(crate::link_watch::FileStamp::of(path));
     Ok(json!({"saved":true,"project":path}))
 }

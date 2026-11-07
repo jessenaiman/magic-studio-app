@@ -61,7 +61,7 @@ input. They reach every handler and the defaults listed above, but they cannot t
 Coordinates are window coordinates, the same space as the bounds `ui.elements` returns.
 
 View names: `home`, `project` (alias `projects`), `storyboard`, `design` (alias
-`lyrics`), `animation`, `studio`. Without a project the rendered view is Home;
+`lyrics`), `motion`, `gallery`, `animation`, `studio`. Lyrics and Motion share one mounted authoring session so view changes retain drafts. Gallery is a project-independent effect-example catalogue and is available without an open project. Without a project the rendered view is Home;
 `requestedView` retains the requested navigation state. Other `ui.*` methods return
 explicit unsupported-operation errors. Playback and panel control still require actual
 implementations during restoration.

@@ -1,0 +1,23 @@
+.effect-gallery { height:100%; display:grid; grid-template-columns:210px minmax(0,1fr) minmax(260px,28%); gap:12px; padding:12px; min-height:0; }
+.effect-gallery-rail,.effect-gallery-detail { overflow:auto; }
+.effect-gallery .panel-head { position:sticky; top:0; z-index:1; background:var(--surface); }
+.effect-gallery .panel-body { display:grid; gap:12px; }
+.effect-gallery nav { display:grid; gap:8px; margin-block:12px; }
+.effect-gallery button.start { margin:0; }
+.effect-gallery nav button { text-align:left; white-space:normal; }
+.effect-gallery-main { min-width:0; min-height:0; overflow:auto; }
+.effect-gallery-main > header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:12px; }
+.effect-gallery-main h2 { font-size:18px; margin:4px 0; }
+.effect-example-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:2px; }
+.effect-example { display:flex; flex-direction:column; gap:8px; text-align:left; padding:6px; min-width:0; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+.effect-example.selected { border-color:var(--accent); outline:1px solid var(--accent); }
+.effect-example img { width:100%; aspect-ratio:16/9; object-fit:contain; border-radius:5px; background:#f4efe4; }
+.effect-example strong,.effect-example small { padding-inline:4px; }
+.effect-example small { color:var(--muted); }
+.effect-gallery-detail video { display:block; width:100%; aspect-ratio:16/9; border-radius:5px; background:#f4efe4; }
+.effect-gallery-detail p { margin:0; font-size:12px; }
+.effect-gallery-detail pre { max-height:420px; overflow:auto; font-size:10px; white-space:pre-wrap; overflow-wrap:anywhere; padding:10px; background:var(--bg); }
+.effect-gallery summary { cursor:pointer; padding-block:8px; }
+@media(min-width:1500px) { .effect-example-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:1000px) { .effect-gallery { grid-template-columns:170px minmax(0,1fr) 250px; } }
+@media(max-width:700px) { .effect-gallery { grid-template-columns:140px minmax(0,1fr); overflow:auto; } .effect-gallery-detail { grid-column:1 / -1; } }

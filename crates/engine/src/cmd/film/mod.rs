@@ -79,18 +79,68 @@ pub(crate) fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session
 }
 
 /// Refresh the dedicated lettering layer while leaving the picture and audio cuts in place.
+///
+/// Uses `media.replaceFootage` (`storytold/filmcraft/crates/engine/src/relink.rs`) when the
+/// `"Kinetic Lyrics"` track already holds a clip item so `ItemId`, `ClipId`, track placement,
+/// trims, markers, and groups stay intact and FilmCraft bumps `Session.revision` to invalidate
+/// decoded frame caches. Falls back to `file.import` + `timeline.place` only on initial creation.
 pub(crate) fn publish_lyrics(s: &Session, movie: &Path) -> Result<Value> {
     const TRACK: &str = "Kinetic Lyrics";
     let project = film_path(s)?;
+    if let Some(live_result) = publish_lyrics_live(&project, movie, TRACK) {
+        return live_result;
+    }
+    let _lock = crate::project_lock::for_project(&project);
     let mut session = open_filmcraft(&project)?;
     let mut run =
         |id: &str, params: Value| session.execute(id, params).map_err(|error| EngineError::ExternalTool("filmcraft-engine".into(), format!("{id}: {error}")));
+    publish_lyrics_with(&project, movie, TRACK, &mut run)
+}
+
+fn existing_lyric_slot(sequence: &Value, track_name: &str) -> Option<(u64, u64, u64)> {
+    let track = sequence["video"].as_array()?.iter().find(|t| t["name"] == track_name)?;
+    let track_id = track["id"].as_u64()?;
+    let first = track["items"].as_array()?.first()?;
+    let clip_id = first.get("clip").or_else(|| first.get("id")).and_then(Value::as_u64)?;
+    let item_id = first.get("item").and_then(Value::as_u64)?;
+    Some((track_id, clip_id, item_id))
+}
+
+fn publish_lyrics_live(project: &Path, movie: &Path, track_name: &str) -> Option<Result<Value>> {
+    let sequence = match crate::CraftHub::try_live(crate::CraftTarget::Film, project, "sequence.inspect", &json!({}), false)? {
+        Ok(seq) => seq,
+        Err(e) => return Some(Err(e)),
+    };
+    let mut run = |id: &str, params: Value| {
+        crate::CraftHub::try_live(crate::CraftTarget::Film, project, id, &params, false)
+            .unwrap_or_else(|| Err(EngineError::ExternalTool("filmcraft".into(), format!("lost live control connection during {id}"))))
+    };
+    Some(publish_lyrics_sequence(project, movie, track_name, &sequence, &mut run))
+}
+
+fn publish_lyrics_with(project: &Path, movie: &Path, track_name: &str, run: &mut impl FnMut(&str, Value) -> Result<Value>) -> Result<Value> {
     let sequence = run("sequence.inspect", json!({}))?;
+    publish_lyrics_sequence(project, movie, track_name, &sequence, run)
+}
+
+fn publish_lyrics_sequence(
+    project: &Path,
+    movie: &Path,
+    track_name: &str,
+    sequence: &Value,
+    run: &mut impl FnMut(&str, Value) -> Result<Value>,
+) -> Result<Value> {
+    if let Some((track, clip, item)) = existing_lyric_slot(sequence, track_name) {
+        run("media.replaceFootage", json!({"item": item, "path": movie}))?;
+        run("timeline.setTrack", json!({"track": track, "name": track_name, "enabled": true}))?;
+        run("file.save", json!({}))?;
+        return Ok(json!({"timeline": project, "track": track, "clip": clip, "item": item, "relinked": true}));
+    }
     let duration =
         sequence["durationFrames"].as_u64().filter(|frames| *frames > 0).ok_or_else(|| bad("Open a FilmCraft sequence with picture or audio first"))?;
     let imported = run("file.import", json!({"paths":[movie]}))?;
     let item = imported["items"][0].as_u64().ok_or_else(|| bad("FilmCraft did not import the lyric render"))?;
-    let old_track = sequence["video"].as_array().into_iter().flatten().find(|track| track["name"] == TRACK);
+    let old_track = sequence["video"].as_array().into_iter().flatten().find(|track| track["name"] == track_name);
     let track = old_track.and_then(|track| track["id"].as_u64()).map_or(json!("new"), |id| json!(id));
     let placed = run(
         "timeline.place",
@@ -107,9 +157,9 @@ pub(crate) fn publish_lyrics(s: &Session, movie: &Path) -> Result<Value> {
         .find(|track| track["items"].as_array().into_iter().flatten().any(|row| row["clip"] == clip))
         .and_then(|track| track["id"].as_u64())
         .ok_or_else(|| bad("FilmCraft did not return the lyric track"))?;
-    run("timeline.setTrack", json!({"track":track,"name":TRACK,"enabled":true}))?;
+    run("timeline.setTrack", json!({"track":track,"name":track_name,"enabled":true}))?;
     run("file.save", json!({}))?;
-    Ok(json!({"timeline": project, "track":track, "clip":clip}))
+    Ok(json!({"timeline": project, "track":track, "clip":clip, "item": item, "relinked": false}))
 }
 
 pub(crate) fn execute(project: &Path, id: &str, params: Value) -> Result<Value> {
@@ -397,4 +447,37 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
     }
     Ok(json!({"ok": true, "timeline": project, "track": track, "from": from, "clips": clips,
         "next": "video.preview to watch it"}))
+}
+
+#[cfg(test)]
+mod tests {
+    //! Reference: <https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/crates/engine/src/relink.rs#L701-L715>
+    use super::*;
+
+    #[test]
+    fn publish_lyrics_replaces_footage_in_place_when_kinetic_track_exists() {
+        let existing_seq = json!({
+            "durationFrames": 300,
+            "video": [{
+                "id": 2,
+                "name": "Kinetic Lyrics",
+                "items": [{"clip": 42, "item": 9, "start": 0, "end": 1000}]
+            }]
+        });
+        let mut calls = Vec::new();
+        let out = publish_lyrics_sequence(Path::new("/tmp/song.fcproj"), Path::new("/tmp/lyrics.mov"), "Kinetic Lyrics", &existing_seq, &mut |id, params| {
+            calls.push((id.to_string(), params));
+            Ok(json!({}))
+        })
+        .unwrap();
+
+        assert_eq!(out["relinked"], true);
+        assert_eq!(out["track"], 2);
+        assert_eq!(out["clip"], 42);
+        assert_eq!(out["item"], 9);
+        assert_eq!(calls[0].0, "media.replaceFootage");
+        assert_eq!(calls[0].1, json!({"item": 9, "path": "/tmp/lyrics.mov"}));
+        assert_eq!(calls[1].0, "timeline.setTrack");
+        assert_eq!(calls[2].0, "file.save");
+    }
 }

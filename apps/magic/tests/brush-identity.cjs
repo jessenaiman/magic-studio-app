@@ -1,0 +1,12 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const context=vm.createContext({window:{},localStorage:{getItem:()=>null},document:{createElement:()=>({getContext:()=>({})})},ResizeObserver:class{observe(){}},addEventListener(){}});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../../magic-cli/ui/words-design.js'),'utf8'),context);
+assert.notEqual(context.wordsBrushKey({index:0,name:'Hard'}),context.wordsBrushKey({index:1,name:'Soft'}));
+assert.equal(context.wordsBrushKey({id:'custom',index:0}),'custom');
+assert.equal(context.wordsBrushKey({name:'Legacy brush'}),'Legacy brush');
+console.log('Native index-only brush presets have distinct selection identities');
+const authored={items:[{word_ids:['word'],x:80,y:40,size:120,rotate:0}],draws:[]};
+const anim={animation_id:'verse',words:[{word_id:'word',line_id:'line',text:'Ocean',start:1,end:2}],design:{line:authored}};
+assert.equal(context.window.wordsDesignController.design(anim,'line'),authored,'A saved top-aligned layout must not be replaced by a generated cascade');
+vm.runInContext("wordsPanel.selected='current'; wordsPanel.designs.set('line',{items:[{word_ids:['word'],x:999,y:999,size:80}],draws:[]});",context);
+assert.equal(context.window.wordsDesignController.design(anim,'line'),authored,'Drafts from another section with the same line ID must not leak into a gallery preview');

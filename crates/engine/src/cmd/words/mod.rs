@@ -16,6 +16,8 @@ pub mod compose;
 pub mod lettering;
 pub mod lyrics;
 pub(crate) mod lyrics_layout;
+pub(crate) mod motion_curve;
+pub(crate) mod native_motion;
 pub(crate) mod stage;
 pub(crate) mod validate;
 
@@ -39,7 +41,9 @@ pub fn cmd_words_workspace(s: &mut Session, params: &Value) -> Result<Value> {
             return Err(invalid("Choose a lyrics folder"));
         }
         let sheet = lyrics::song_lyrics_in(&folder)?;
-        let path = sheet["sheet"].as_str().ok_or_else(|| invalid("This folder has no canonical lyric sheet"))?;
+        if sheet["sheet"].as_str().is_none() {
+            return Err(invalid("This folder has no canonical lyric sheet"));
+        }
         let (_, _, words) = reference(&folder)?;
         if words.is_empty() {
             return Err(invalid("This folder has no words in its timed transcript"));
@@ -64,10 +68,7 @@ pub fn cmd_words_workspace(s: &mut Session, params: &Value) -> Result<Value> {
             })
         };
         if s.lyrics_workspace.as_ref() != Some(&folder) {
-            let lease = fs::File::open(path)?;
-            lease.try_lock().map_err(|_| invalid("This lyric sheet is already open in another standalone window"))?;
             s.close_documents();
-            s.project_owner = Some(std::sync::Arc::new(lease));
             s.lyrics_workspace = Some(folder);
         }
         s.song_audio = audio;

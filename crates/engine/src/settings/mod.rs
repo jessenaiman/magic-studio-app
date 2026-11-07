@@ -1,16 +1,22 @@
-//! Settings: storage + schema + commands. Copied from FilmCraft `settings/`, refactored for Magic.
-//! Storage reuses `cmd::project::settings::stored_settings()` (settings.json).
+//! Settings: `craft-settings` (`config.toml`) storage + schema + commands.
+//!
+//! Reference:
+//! - <https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/crates/engine/src/settings/commands.rs>
+//! - <https://github.com/storytold/craft-libs/blob/e653048a187036d30fd912f35f14b32ab4084e5c/docs/settings-storage.md>
 
 pub mod commands;
 pub mod prefs;
 pub mod schema;
 
+pub use prefs::MagicPrefs;
 pub use schema::{CATEGORIES, Kind, fields_with_cat};
 
 pub fn schema_json(_session: &crate::Session, category: Option<&str>) -> serde_json::Value {
+    schema_json_for(prefs::open_store().get(), category)
+}
+
+pub fn schema_json_for(prefs: &MagicPrefs, category: Option<&str>) -> serde_json::Value {
     use serde_json::json;
-    let stored = crate::cmd::project::settings::stored_settings();
-    let flat = |k: &str| stored.get(k).cloned().unwrap_or(serde_json::Value::Null);
     let cats: Vec<_> = CATEGORIES
         .iter()
         .filter(|c| category.is_none_or(|w| w == c.id))
@@ -27,7 +33,7 @@ pub fn schema_json(_session: &crate::Session, category: Option<&str>) -> serde_j
                         Kind::Text => json!({"type":"text"}),
                         Kind::Path => json!({"type":"path"}),
                     };
-                    json!({"key":f.key,"label":f.label,"kind":kind,"wired":f.wired,"enabledBy":f.enabled_by,"value":flat(f.key)})
+                    json!({"key":f.key,"label":f.label,"kind":kind,"wired":f.wired,"enabledBy":f.enabled_by,"value":prefs.get_value(f.key)})
                 })
                 .collect();
             json!({"id":c.id,"title":c.title,"command":format!("prefs.{}",c.id),"fields":fields})

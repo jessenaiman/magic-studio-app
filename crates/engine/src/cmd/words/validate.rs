@@ -193,15 +193,12 @@ fn validate_line_item<'a>(item: &'a Value, words: &[Value], placed: &mut Vec<&'a
         "accent": accent
     });
     if let Some(raw) = item.get("motion_keys").filter(|keys| !keys.is_null()) {
-        if ids.len() != 1 {
-            return Err(invalid("motion_keys animate exactly one word"));
-        }
         let keys = raw.as_array().filter(|keys| (2..=24).contains(&keys.len())).ok_or_else(|| invalid("motion_keys needs 2–24 keyframes"))?;
         let mut last = -1.0;
         for key in keys {
             let row =
                 key.as_array().filter(|row| row.len() == 7).ok_or_else(|| invalid("a motion key is [seconds, dx, dy, scale_x, scale_y, rotation, opacity]"))?;
-            for (value, (low, high)) in row.iter().zip([(0., 8.), (-1920., 1920.), (-1080., 1080.), (1., 400.), (1., 400.), (-720., 720.), (0., 100.)]) {
+            for (value, (low, high)) in row.iter().zip([(0., 8.), (-1920., 1920.), (-1080., 1080.), (1., 400.), (1., 400.), (-14400., 14400.), (0., 100.)]) {
                 bounded_num(value, "motion key", low, high)?;
             }
             let time = row[0].as_f64().ok_or_else(|| invalid("a motion key needs a time"))?;
@@ -211,6 +208,11 @@ fn validate_line_item<'a>(item: &'a Value, words: &[Value], placed: &mut Vec<&'a
             last = time;
         }
         normalized["motion_keys"] = raw.clone();
+    }
+    if let Some(spec) = item.get("native_motion").filter(|spec| !spec.is_null()) {
+        let (config, keys) = super::motion_curve::curve(spec)?;
+        normalized["native_motion"] = config;
+        normalized["motion_keys"] = keys;
     }
     Ok(normalized)
 }
@@ -234,14 +236,14 @@ fn validate_line_stroke_path(path: &Value) -> Result<Value> {
     }))
 }
 
-fn validate_line_draw(draw: &Value) -> Result<Value> {
+fn validate_line_draw(draw: &Value, words: &[Value]) -> Result<Value> {
     let paths: Vec<Value> =
         draw["paths"].as_array().ok_or_else(|| invalid("a drawing needs paths"))?.iter().map(validate_line_stroke_path).collect::<Result<_>>()?;
     let view_box = draw["view_box"]
         .as_str()
         .filter(|v| v.split_whitespace().count() == 4 && v.split_whitespace().all(|n| n.parse::<f64>().is_ok()))
         .ok_or_else(|| invalid("view_box must be four numbers"))?;
-    Ok(json!({
+    let mut normalized = json!({
         "name": draw["name"].as_str().unwrap_or("Drawing"),
         "view_box": view_box,
         "x": bounded_num(&draw["x"], "x", -2000.0, 6000.0)?,
@@ -249,7 +251,17 @@ fn validate_line_draw(draw: &Value) -> Result<Value> {
         "w": bounded_num(&draw["w"], "w", 1.0, 6000.0)?,
         "h": bounded_num(&draw["h"], "h", 1.0, 6000.0)?,
         "paths": paths
-    }))
+    });
+    if let Some(ids) = draw.get("word_ids") {
+        let ids = ids.as_array().ok_or_else(|| invalid("Drawing word_ids must be an array"))?;
+        for id in ids {
+            if !id.is_string() || !words.iter().any(|word| word["word_id"] == *id) {
+                return Err(invalid("A drawing can only link to words in its own line"));
+            }
+        }
+        normalized["word_ids"] = json!(ids);
+    }
+    Ok(normalized)
 }
 
 /// Check one line's design. Items group the line's own words, all of them, in sung order.
@@ -265,7 +277,7 @@ pub(crate) fn line_design(words: &[Value], design: &Value) -> Result<Value> {
     if placed != line {
         return Err(invalid("the items must hold every word of the line once, in sung order"));
     }
-    let draws: Vec<Value> = design["draws"].as_array().into_iter().flatten().map(validate_line_draw).collect::<Result<_>>()?;
+    let draws: Vec<Value> = design["draws"].as_array().into_iter().flatten().map(|draw| validate_line_draw(draw, words)).collect::<Result<_>>()?;
     Ok(json!({"items":items,"draws":draws}))
 }
 

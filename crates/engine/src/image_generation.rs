@@ -144,7 +144,7 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
     } else if provider == "codex" {
         generate_via_guarded_codex(prompt, work_dir, &out_png)?;
     } else {
-        return Err(invalid("No OPENAI_API_KEY set and provider is not codex. Set OPENAI_API_KEY or configure image provider in settings.json."));
+        return Err(invalid("No OPENAI_API_KEY set and provider is not codex. Set OPENAI_API_KEY or configure image.provider in config.toml."));
     }
 
     let (width, height, sha256) = validated_png(&out_png)?;

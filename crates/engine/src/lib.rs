@@ -72,6 +72,7 @@ pub mod image_generation;
 pub mod link_watch;
 mod mayhem;
 pub mod panels;
+pub mod project_lock;
 pub(crate) mod read_only_file;
 pub mod scribbles;
 pub mod session;
@@ -114,7 +115,3 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
     }
     Ok(())
 }
-
-pub mod local_ipc;
-
-pub mod studio_sessions;

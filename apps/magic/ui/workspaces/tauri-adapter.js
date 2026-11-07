@@ -3,6 +3,12 @@
   const host = parent.__MAGIC_WORKSPACE_HOSTS__?.get(window.frameElement?.id);
   if (!host) throw new Error("The workspace must be opened inside Magic Studio");
   window.__magicWorkspaceVisible = host.isActive();
+  window.__magicAuthoringMode = host.authoringMode?.() || "design";
+  window.addEventListener("message", event => {
+    if (event.source !== parent || event.origin !== location.origin || !["design", "motion"].includes(event.data?.magicAuthoringMode)) return;
+    window.__magicAuthoringMode = event.data.magicAuthoringMode;
+    window.setMagicAuthoringMode?.(event.data.magicAuthoringMode);
+  });
   window.addEventListener("message", event => {
     if (event.source !== parent || event.origin !== location.origin || !event.data?.magicWorkspaceVisibility) return;
     const wasVisible = window.__magicWorkspaceVisible;

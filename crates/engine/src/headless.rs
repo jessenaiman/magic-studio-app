@@ -117,8 +117,7 @@ fn attach_or_open_project(s: &mut Session, id: &str, params: &Value, persistent:
     if let Some(project) = identity["project"].as_str()
         && s.project_path.as_deref() != Some(std::path::Path::new(project))
     {
-        s.execute(if persistent { "project.open" } else { "project.attach" }, json!({"path": project, "claim_owner": persistent}))
-            .map_err(|e| e.to_string())?;
+        s.execute(if persistent { "project.open" } else { "project.attach" }, json!({"path": project})).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -135,16 +134,13 @@ fn auto_load_asset(s: &mut Session, id: &str, params: &Value) {
     }
 }
 
-fn normalize_project_params(id: &str, params: &mut Value, dry_run: bool, persistent: bool) -> bool {
+fn normalize_project_params(id: &str, params: &mut Value, dry_run: bool) -> bool {
     let is_dry = dry_run || params.get("_dry_run").and_then(Value::as_bool) == Some(true);
     if let Some(obj) = params.as_object_mut() {
         obj.remove("_dry_run");
     }
     if matches!(id, "project.open" | "project.identity" | "project.attach") && params["path"].is_null() && params["project"].is_string() {
         params["path"] = params["project"].clone();
-    }
-    if persistent && id == "project.open" && !is_dry {
-        params["claim_owner"] = json!(true);
     }
     is_dry
 }
@@ -153,12 +149,25 @@ pub fn dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool, per
     if crate::find_command(id).is_none() {
         return Err(format!("Unknown engine command: {id}"));
     }
-    let is_dry = normalize_project_params(id, &mut params, dry_run, persistent);
+    let is_dry = normalize_project_params(id, &mut params, dry_run);
     // These observer queries validate their own arguments and must never attach, open or
     // auto-load an asset in the caller's persistent session, even for rejected requests.
     if matches!(id, "backstage.observe" | "backstage.changes") {
         return s.execute(id, params).map_err(|e| e.to_string());
     }
+    let mutating_cli = !persistent && !is_dry && !crate::commands::is_read_only_command(id, &params);
+    // Acquire short-lived `.{name}.lock` BEFORE reading/attaching the project on headless mutating CLI runs
+    // (storytold/filmcraft/apps/filmcraft-cli/src/project_lock.rs).
+    let pre_lock = if mutating_cli {
+        params["project"]
+            .as_str()
+            .and_then(|raw| s.execute("project.identity", json!({"path": raw})).ok())
+            .and_then(|v| v["project"].as_str().map(std::path::PathBuf::from))
+            .or_else(|| s.project_path.clone())
+            .and_then(|p| crate::project_lock::for_project(&p))
+    } else {
+        None
+    };
     attach_or_open_project(s, id, &params, persistent)?;
     if is_dry && !crate::commands::is_read_only_command(id, &params) {
         return Ok(json!({
@@ -169,6 +178,7 @@ pub fn dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool, per
             "project": s.project_path,
         }));
     }
+    let _lock = pre_lock.or_else(|| if mutating_cli { s.project_path.as_deref().and_then(crate::project_lock::for_project) } else { None });
     auto_load_asset(s, id, &params);
     let out = s.execute(id, params).map_err(|e| e.to_string())?;
     if !is_dry && crate::find_command(id).is_some_and(|c| c.journal) && s.edits_since_save > 0 && s.project_path.is_some() {

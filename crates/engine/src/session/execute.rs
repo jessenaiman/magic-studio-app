@@ -5,19 +5,7 @@
 
 use serde_json::Value;
 
-use crate::{CommandSpec, EngineError, Result, Session, activity, check_param_types, commands, guard, project};
-
-/// The writer lease a journaled command needs, except for the project lifecycle calls.
-fn writer_lease(s: &Session, id: &str, project_edit: bool) -> Result<Option<std::sync::Arc<std::fs::File>>> {
-    let lifecycle = matches!(id, "project.open" | "project.close" | "project.new" | "project.intake");
-    if !project_edit || lifecycle {
-        return Ok(None);
-    }
-    match s.project_path.as_deref() {
-        Some(path) => Ok(Some(project::claim(s, path)?)),
-        None => Ok(None),
-    }
-}
+use crate::{CommandSpec, EngineError, Result, Session, activity, check_param_types, commands, guard};
 
 fn announce_dispatch(s: &Session, id: &str, params: &Value) {
     activity::command(s.project_path.as_deref(), id, params, "dispatch_running", None);
@@ -53,13 +41,6 @@ fn note_edit(s: &mut Session, project_edit: bool, result: &Result<Value>, saves_
     }
 }
 
-/// Save As transfers ownership to a new path; never restore the source lease over it.
-fn restore_lease(s: &mut Session, prior: Option<std::sync::Arc<std::fs::File>>, had_writer: bool, project_before: Option<&std::path::PathBuf>) {
-    if had_writer && s.project_path.as_ref() == project_before {
-        s.project_owner = prior;
-    }
-}
-
 /// Keep the open project file in step with its asset connections.
 fn sync_project_file(s: &mut Session, spec: &CommandSpec, id: &str, assets_before: Option<&Value>) -> Result<()> {
     if !spec.journal || matches!(id, "project.open" | "project.new" | "project.close") || s.project_path.is_none() {
@@ -73,17 +54,7 @@ fn sync_project_file(s: &mut Session, spec: &CommandSpec, id: &str, assets_befor
 
 fn execute_command(s: &mut Session, id: &str, params: Value) -> Result<Value> {
     let _context = activity::enter(id, &params);
-    // Cast writes are journaled workshop files, independent of the open song's writer lease.
     let project_edit = commands::find(id).is_some_and(|c| c.journal) && id != "crew.save";
-    let _writer = writer_lease(s, id, project_edit).inspect_err(|error| {
-        if s.record_user_state {
-            activity::error(s.project_path.as_deref(), id, error);
-        }
-    })?;
-    let prior_owner = s.project_owner.clone();
-    if let Some(owner) = &_writer {
-        s.project_owner = Some(owner.clone());
-    }
     let record = s.record_user_state && commands::find(id).is_none_or(|c| c.journal);
     if record {
         announce_dispatch(s, id, &params);
@@ -98,7 +69,6 @@ fn execute_command(s: &mut Session, id: &str, params: Value) -> Result<Value> {
     if record || (s.record_user_state && !result.as_ref().is_ok_and(|v| v["ok"] != false)) {
         announce_result(s, id, &params, &result);
     }
-    restore_lease(s, prior_owner, _writer.is_some(), project_before.as_ref());
     result
 }
 

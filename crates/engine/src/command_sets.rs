@@ -406,6 +406,7 @@ fn specs_workshop_and_lyrics() -> Vec<CommandSpec> {
     vec![
         query!("workshop.status", "Workshop Stages", "{}", cmd_workshop_status),
         query!("song.lyrics", "Song Lyrics (Artist Sheet or Transcript)", "{}", crate::cmd::words::lyrics::cmd_song_lyrics),
+        query!("song.waveform", "Song Audio Waveform", r#"{"start":0,"end":"optional seconds","bins":800}"#, crate::cmd::song::waveform::read),
         cmd!(
             "song.save",
             "Save Song Details",
@@ -428,6 +429,22 @@ fn specs_words_part1() -> Vec<CommandSpec> {
         ),
         query!("words.align", "Artist Words vs Timing Reference", "{}", crate::cmd::words::cmd_words_align),
         query!("words.read", "Words Animations", "{\"animation_id\":\"optional\"}", crate::cmd::words::cmd_words_read),
+        query!("words.motion.properties", "Native Word Transform Properties", "{}", crate::cmd::words::native_motion::properties),
+        query!(
+            "words.motion.curve",
+            "Preview Native Word Transform Curve",
+            r#"{"property":"native transform path","from":"optional scalar or pair","to":"scalar or pair","speed":"optional rotation degrees/second","duration":2,"delay":0}"#,
+            crate::cmd::words::native_motion::curve
+        ),
+        cmd!(
+            "words.motion.set",
+            "Set Native Word Transform",
+            ["Design"],
+            None,
+            r#"{"animation_id":"id","line_id":"id","word_ids":["id"],"expected_source_revision":0,"property":"transform/rotation|position|scale|opacity","from":"optional scalar or pair","to":"scalar or pair","speed":"optional rotation degrees/second instead of to","duration":2,"delay":0}"#,
+            always,
+            crate::cmd::words::native_motion::set
+        ),
         query!("words.studio_track", "Lyric Clips in the Video", "{}", crate::cmd::words::cmd_words_studio_track),
         cmd!(
             "words.lyrics_view",
@@ -576,7 +593,7 @@ fn specs_agent_and_image() -> Vec<CommandSpec> {
             "Generate Image (Codex)",
             ["Project Assets"],
             None,
-            "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from settings.json / magic_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
+            "{\"prompt\":\"image description\",\"provider\":\"codex (subscription default) or http (from config.toml / magic_IMAGE_ENDPOINT)\",\"model\":\"optional model override (omit to use Codex subscription default)\",\"quality\":\"auto\",\"reference_asset\":\"optional registered reference PNG asset ID\",\"references\":[\"project-relative or absolute project PNG; max 5 including reference_asset\"],\"poses\":[\"optional 2 to 8 ordered pose descriptions; requires a reference\"],\"rig_parts\":[{\"id\":\"part id\",\"description\":\"what the part is\",\"parent\":\"optional part id\",\"pivot\":\"optional [u,v] in the part, 0-1\"}],\"character\":\"optional registered source character ID\",\"scene\":1,\"animation\":\"optional intended action name\",\"transparent_background\":true,\"name\":\"optional asset name\",\"timeout_s\":300,\"project\":\"optional existing .magic for CLI targeting\"}",
             always,
             crate::image_generation::generate
         ),

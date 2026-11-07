@@ -37,6 +37,7 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
 
 #[cfg(test)]
 mod tests {
+    //! Reference: <https://github.com/storytold/vectorcraft/blob/a479c8baa1b783b5002f8ebd02391aa3395b5b49/crates/engine/src/guard.rs>
     use super::*;
 
     #[test]

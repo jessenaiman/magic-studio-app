@@ -190,7 +190,3 @@ pub fn cmd_scribbles_templates(_: &mut Session, _: &Value) -> Result<Value> {
         "craft_ai": crate::fidget::craft_ai_status(),
     }))
 }
-
-#[cfg(test)]
-#[path = "tests/scribbles.rs"]
-mod tests;

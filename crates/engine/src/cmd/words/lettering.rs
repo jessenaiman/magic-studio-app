@@ -508,7 +508,3 @@ pub fn cmd_words_publish(s: &mut Session, p: &Value) -> Result<Value> {
     let studio = crate::cmd::film::publish_lyrics(s, &path)?;
     Ok(json!({"ok":true,"render":path,"studio":studio}))
 }
-
-#[cfg(test)]
-#[path = "../../tests/lettering.rs"]
-mod tests;

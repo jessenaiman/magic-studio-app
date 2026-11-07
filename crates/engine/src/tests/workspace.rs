@@ -1,3 +1,5 @@
+//! Reference: ArtCraft desktop launcher `.desktop` convention (`ai.storyteller.<app>.desktop`) across
+//! <https://github.com/storytold/photocraft> and <https://github.com/storytold/vectorcraft>.
 use super::launcher_app;
 
 /// The launcher's desktop entry names the installed build; a stale link elsewhere is ignored.

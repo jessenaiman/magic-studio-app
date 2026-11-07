@@ -325,7 +325,7 @@ class WordsFlowController {
   lanes(anim) {
     if (!wordsPanel.line)
       return null;
-    const span = wordsLineSpan(anim, wordsPanel.line), from = span.start - 0.4, length = span.end - from;
+    const span = wordsLineSpan(anim, wordsPanel.line), from = Math.max(0, span.start - 0.4), length = span.end - from;
     const words = wordsLineWords(anim, wordsPanel.line), design = wordsDesign(anim, wordsPanel.line);
     const at = (t) => `${(100 * (t - from) / length).toFixed(3)}%`;
     const block = (text, start, duration, onclick) => {
@@ -460,7 +460,7 @@ class WordsFlowController {
     const view = $("view-design"), anim = wordsCurrent();
     view?.style.setProperty("--now-s", t.toFixed(3));
     if (anim && wordsPanel.line && wordsPanel.lanes) {
-      const span = wordsLineSpan(anim, wordsPanel.line), from = span.start - 0.4;
+      const span = wordsLineSpan(anim, wordsPanel.line), from = Math.max(0, span.start - 0.4);
       wordsPanel.lanes.style.setProperty("--at", `${(100 * wordsClamp((t - from) / (span.end - from))).toFixed(3)}%`);
     }
     this.animateFlow(view, t);
@@ -974,7 +974,7 @@ class WordsStageController {
   }
   colBrushPresets() {
     const brushes = wordsEffectCraftTools().paint_presets || [];
-    const activeId = wordsPanel.activeBrush || brushes[0]?.id;
+    const activeId = wordsPanel.activeBrush || (brushes[0] ? wordsBrushKey(brushes[0]) : null);
     const sizeSlider = el("input", {
       type: "range",
       min: "2",
@@ -995,10 +995,10 @@ class WordsStageController {
     });
     brushColor.value = brushColor.defaultValue = wordsPanel.brushColor || "#f59e0b";
     return el("div", { class: "words-engine-col", "aria-label": "EffectCraft brush presets" }, el("div", { class: "words-engine-col-head" }, el("strong", {}, "EffectCraft Paint Brushes")), el("div", { class: "words-motion-grid" }, ...brushes.map((b) => el("button", {
-      class: `effect words-shader-card${activeId === b.id ? " active" : ""}`,
+      class: `effect words-shader-card${activeId === wordsBrushKey(b) ? " active" : ""}`,
       title: `${b.name} · Diameter ${b.diameter}px · Hardness ${b.hardness}%`,
       onclick: () => {
-        wordsPanel.activeBrush = b.id;
+        wordsPanel.activeBrush = wordsBrushKey(b);
         wordsPanel.brushSize = b.diameter || 8;
         wordsPanel.drawMode = true;
         wordsRender();
