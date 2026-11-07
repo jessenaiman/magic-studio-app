@@ -25,7 +25,7 @@ async function buildProjectState(path, opened) {
     nativeInvoke("execute_command", { id: "workshop.status", params: {} }),
     nativeInvoke("execute_command", { id: "project.list_assets", params: {} })
   ]);
-  const projectPath = opened?.project || path || state.project;
+  const projectPath = opened?.project || path || assets?.project || state.project;
   return {
     project: projectPath,
     name: opened?.name || projectPath?.split("/").pop()?.replace(/\.magic$/, "") || "",
@@ -159,44 +159,6 @@ function projectAssetGrid(assets, { active = null, prefix = "magic-asset" } = {}
       toast(String(e));
     }
   } })));
-}
-function magicAssetTile(asset, { active = false, candidate = false, prefix = "magic-asset", onclick, onremove = null }) {
-  const name = asset.name || asset.id;
-  const image = /\.(png|jpe?g|webp|gif)$/i.test(asset.path || "") ? el("img", { src: convertFileSrc(asset.path), alt: "", draggable: "false" }) : el("span", { class: "magic-asset-placeholder" }, "PART");
-  const remove = onremove ? el("span", {
-    class: "forget asset-forget",
-    id: `${prefix}-remove-${asset.id}`,
-    role: "button",
-    tabindex: "0",
-    "data-commands": "project.remove_asset",
-    "aria-label": `Remove ${name} (${asset.id})`,
-    title: `Remove ${name} from project`,
-    html: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-    onclick: (e) => {
-      e.stopPropagation();
-      onremove();
-    },
-    onkeydown: (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        e.stopPropagation();
-        onremove();
-      }
-    }
-  }) : null;
-  const tile = el("button", {
-    class: `magic-asset-tile${active ? " active" : ""}${candidate ? " candidate" : ""}`,
-    id: `${prefix}-${asset.id}`,
-    draggable: "true",
-    title: candidate ? `${name} · generated candidate awaiting review` : `${name} (${asset.id}) · drag onto a storyboard page or click to animate`,
-    onclick
-  }, image, el("span", { class: "magic-asset-name" }, name), candidate ? el("span", { class: "magic-asset-badge" }, "Candidate") : el("span", { class: "magic-asset-id" }, asset.id), remove);
-  tile.addEventListener("dragstart", (event) => {
-    event.dataTransfer.setData("application/x-magicstudio-asset", asset.id);
-    event.dataTransfer.setData("text/plain", asset.id);
-    event.dataTransfer.effectAllowed = "copy";
-  });
-  return tile;
 }
 const FOOTER_STAGES = [["song", "Song"], ["lyrics", "Lyrics"], ["transcript", "Transcript"], ["storyboard", "Storyboard"], ["animate", "Animate"], ["studio", "Studio"]];
 const STAGE_DOT = { ok: "ready", warn: "needs-attention", idle: "idle" };

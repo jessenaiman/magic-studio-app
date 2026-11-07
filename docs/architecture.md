@@ -1,136 +1,84 @@
-# Architecture
+# Architecture (honest draft)
 
-> **Last updated:** 2026-11-06 · **Model:** the Storytold craft apps (VectorCraft, DesignCraft, FilmCraft, EffectCraft)
+> **Last reviewed:** 2026-11-06 · **Model:** Storytold craft apps (FilmCraft, EffectCraft) · **Status:** partially unproven — see Known deviations
 
-How Magic is built. Magic is not a video editor. It is a pipeline orchestrator: an app that
-combines ~10 Craft tools to end up with a FilmCraft video project. It reuses each Craft app
-through the CLI and the command registry — one `Session::execute` path, no second dispatch
-table — and its job is the pipeline that connects the tools from different apps into a single
-film. When a change does not fit this file, stop and ask; do not build around it.
+Magic is a pipeline orchestrator, not a video editor. It combines Craft tools into a FilmCraft project. Engine is headless: every feature reachable without a window; egui UI, CLI, MCP and `--control` are clients.
 
-## Shape
+Design principles:
+1. **Engine-first.** All project changes via `Session::execute(id, params)`.
+2. **Everything is a command.** 162 `CommandSpec`s in `crates/engine/src/commands.rs`.
+3. **Rust server, TS client (proposed).** Rust owns documents/Craft/paid backends; TS-React (or egui) only renders + emits IDs. No JS.
+4. **No second dispatch.** CLI/MCP/--control/API resolve same registry.
+5. **Honest time:** currently `f64` seconds in lyrics/motion, not FilmCraft `Tick`. Drift risk at 29.97 — unproven.
 
-A Cargo workspace: library crates under `crates/`, apps under `apps/`, and `xtask`. **Pure Rust, no
-handwritten JS/TS, no Tauri, no npm in the product.** The same engine runs the desktop app, the browser
-build (egui on WASM), the headless CLI and the MCP server.
+## 1. Layers (`xtask/src/policy.rs`, enforced by `cargo xtask layers`)
 
-Reference designs (`references/*.tsx`, retired web UIs in Git history) are **design specs only**. They are
-never built, bundled or shipped.
+```
+L7  apps/magic · apps/magic-cli · apps/magic-tui · xtask
+L6  crates/ui-egui (magic-ui-egui) · crates/mcp (magic-mcp)
+L5  crates/engine (magic-engine)
+L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
+    vectorcraft-*, texturecraft-*, craft-*, craft-ai-*) — pinned, never edited
+```
 
-## The pipeline
-
-Magic's destination is a FilmCraft project; most of its architecture is the pipeline that feeds
-that destination. The pipeline is pipeline-style: each stage produces an artifact the next stage
-consumes, and `workshop.status` returns the current stage and next action. Every arrow below is a
-CLI-visible command.
-
-| Stage | Artifact produced | Command |
+| Crate | Layer | Purpose (actual) |
 |---|---|---|
-| Song intake | `hyperframes/transcript.json`, `transcript.srt`, `audio-analysis.json`, beats | `workshop.set_audio`, `audio.analyze` |
-| Producer-supplied words | timed words + lines | `workshop.import_transcript` |
-| Storyboard | `storyboard.designcraft` | `storyboard.new`, `storyboard.cues`, `storyboard.lyrics`, `storyboard.run`, `storyboard.export` |
-| Panel extraction | split panels | `workshop.split_panels` |
-| Character art | `assets/characters/<name>/parts/` from drawings | `scribbles.*`, `image.generate`, `project.add_asset`, `character.*` |
-| Cut / rig / pose | animated clips/frames | `character.mark` → `character.cut` → `character.rig/action/render` |
-| Kinetic lyrics | `lyrics-design.json`, lettering layer | `words.design`, `words.letter`, `words.apply`, `words.compose` |
-| Assemble | `hyperframes/` video project, `exports/<song>.mp4` | `video.assemble`, `video.init/render/preview/snapshot/export` |
-| Video handoff | native FilmCraft project, songs with timings | `video.exec` (raw interchange), `video.film` |
+| `magic-engine` | L5 | `Session`, 162 commands in `cmd/<domain>/`, `session/execute.rs`, `undo.rs`, `guard.rs`, `workspace.rs` (drives Craft CLIs / in-process Sessions) |
+| `magic-ui-egui` | L6 | egui views: `lib.rs` (Projects/Storyboard/Lyrics/Animation/Studio), `animation_effectcraft.rs`, `studio_filmcraft.rs`, `storyboard_workspace.rs`, `control.rs` |
+| `magic-mcp` | L6 | MCP stdio server, headless or `--bridge` to running app |
+| `magic` | L7 | Desktop binary (eframe/wgpu), `magic --control PORT`, `magic --lyrics` |
+| `magic-cli` | L7 | Headless CLI: `commands/describe/exec/run/mcp/ui/storyboard`, `--bridge`, `--project` |
+| `magic-tui` | L7 | Terminal UI |
+| `xtask` | L7 | `ci` (fmt/clippy/layers/control-protocol), `layers`, `install` |
 
-Typical chain: `project.new → audio.analyze → storyboard.new → scribbles.generate → words.design → video.assemble`.
+Rules: every crate has a layer; only downward edges; no `egui/eframe/winit/rfd/tauri` below L6. No `magic-web` (deleted `2c499f64`).
 
-The engine's `cmd/<domain>/` modules are the pipeline layers (`words/`, `storyboard/`, `character/`,
-`film/`, `song/`, `project/`). Each command writes intermediate artifacts and records them in the session.
+## 2. Data model (`.magic` JSON)
 
-## Underlying Craft tools (transfer vehicle)
+```
+.magic (project_path in Session)
+├─ song: SongMetadata, song_audio, video_target, video_project_path
+├─ project_mode: None (song) | Some("animation")
+├─ assets: map id→Asset, project_assets: Vec<ProjectAsset>
+├─ docs: Vec<DocState> (lyric design, storyboard, cast, film)
+└─ edits_since_save, project_saves (atomic write via write_project_file)
+```
+Files written only on save. `link_watch.rs` reloads external changes. Undo = `session/undo.rs` snapshots.
 
-Magic treats each Craft app as a backend. It drives them through one command registry and through
-`crates/engine/src/workspace.rs`, which builds exact CLI argument vectors, runs subprocesses, or
-links library Sessions in-process. Real reuse — see `photo.exec`, `effect.exec`, `vector.exec`,
-`video.exec`. Magic never edits Craft sources; it drives their engines.
+## 3. Command system (actual struct)
 
-| Job | Magic commands | Underlying app(s) | How it connects |
+```rust
+pub struct CommandSpec { // crates/engine/src/commands.rs:26
+  pub id: &'static str, pub label: &'static str,
+  pub menu: &'static [&'static str], pub shortcut: Option<&'static str>,
+  pub params: &'static str,
+  pub enabled: fn(&Session) -> Result<(), String>,
+  pub run: fn(&mut Session, &Value) -> Result<Value>,
+  pub journal: bool,
+}
+```
+162 commands, domains: `project, workshop, storyboard, words, character, video, effect, photo, vector, scribbles, fidget, image, audio, song, ui, studio, mayhem, backstage…` Verified: `magic-cli commands`.
+
+## 4. Views — honest state
+
+| View | egui (`ui-egui`) | JS/TS (`apps/magic-cli/ui`, retired #93) | Status |
 |---|---|---|---|
-| Images | `photo.exec` | PhotoCraft | in-process `photocraft_engine::Session` |
-| Vectors | `vector.exec` | VectorCraft | in-process `vectorcraft_engine::Session` |
-| Motion / effects | `effect.exec` | EffectCraft | in-process `effectcraft_engine::Session` |
-| Storyboard | `storyboard.run` (`storyboard.designcraft`) | DesignCraft | native `.designcraft` doc via linked crates |
-| Video | `video.assemble/render/export`, `video.exec` | FilmCraft + HyperFrames | native render, CLI, or installed app `--control` |
-| Text / director | `words.design`, `scribbles.*` | HyperFrames, Codex image model | command-driven media generation |
-| Character animation | `character.*`, `character.shot`, Tripo breakout/rig | PhotoCraft + EffectCraft + Tripo | pipeline: mark (Scribbles) → cut (PhotoCraft) → rig (EffectCraft) → shot |
+| Projects | `lib.rs` refresh | `projects.html` landing only | Stand-in |
+| Storyboard | `storyboard_workspace.rs` | `storyboard-workspace.html` | Working spread, fields editor |
+| Lyrics | `lyrics/` | `lyrics.html` + `words*.js` (3,585 lines) | JS ahead of egui; TS migration needed |
+| Animation | `animation_effectcraft.rs` | `animation.js` (928) + Konva `character-stage.js` | Canvas exists in JS, missing in egui (#102) |
+| Studio | `studio_filmcraft.rs` | `studio.html` toolbar | Toolbar only |
 
-The desktop views in `crates/ui-egui` (Projects, Storyboard, Lyrics, Animation, Studio) embed
-other Craft apps' egui crates at L6 on the same egui fork — Animation (`effectcraft-ui-egui`),
-Studio (FilmCraft). Magic reuses those crates; it does not rebuild a timeline, compositor, or
-canvas.
+## 5. Control / MCP / API
 
-## Layers
+- `magic --control 9876`: JSON-lines, `MAGIC_CONTROL_TOKEN` (64 hex), methods `engine.execute`, `ui.inspect/elements/click/screenshot/animation.controls/playback` (`ui-egui/src/control.rs`).
+- `magic-cli mcp`: stdio, `--bridge 127.0.0.1:9876` or headless Session. Tools: `command_list/run/batch`, `ui_*`, `doc_inspect`.
+- API: not implemented — same registry would serve HTTP; currently CLI/MCP only.
 
-`cargo xtask layers` (part of `cargo xtask ci` and the pre-commit hook) enforces that a crate depends only on
-lower layers, and that nothing below L6 depends on a UI toolkit (`egui`, `eframe`, `winit`, `rfd`). The table
-lives in `xtask/src/policy.rs`.
+## 6. Known deviations (true)
 
-| Layer | Crates | Role |
-|---|---|---|
-| L0–L4 | Craft backends — PhotoCraft, EffectCraft, VectorCraft, DesignCraft, FilmCraft, HyperFrames, Codex (`designcraft-*`, `effectcraft-*`, `filmcraft-*`, `photocraft-*`, `vectorcraft-*`, `texturecraft-*`, `craft-*`, `craft-ai-*`) | maintained dependencies, pinned to immutable revisions; never edited here. Magic drives them through `Session::execute` and `workspace.rs`. |
-| L5 | `engine` (package `magic-engine`) | pipeline orchestration: sessions, history, the command registry, project files, the panic guard. Domain modules: `words` (lyrics design), `storyboard`, `character`, `film`, `song`… |
-| L6 | `ui-egui` (`magic-ui-egui`), `mcp` (`magic-mcp`) | the egui front end (views, panels, dialogs); the MCP server (JSON-RPC over stdio) |
-| L7 | `apps/magic`, `apps/magic-cli`, `apps/magic-web`, `apps/magic-tui`, `xtask` | desktop app (eframe, wgpu; binary `magic`); CLI (binary `magic-cli`, including `magic-cli mcp`); browser runner (egui on WASM); terminal UI; build tooling |
-
-Each app folder holds the package of the same name (`apps/magic` → package `magic`, `apps/magic-cli` →
-`magic-cli`), and the engine is `magic-engine`, as in every craft app (`apps/vectorcraft` → `vectorcraft`,
-`crates/engine` → `vectorcraft-engine`).
-
-## Engine shape
-
-The engine follows the craft engine layout (VectorCraft `crates/engine`):
-
-| Module | Role |
-|---|---|
-| `session.rs`, `session/documents.rs`, `doc_state.rs` | the open project and its documents (lyric design, storyboard, cast, film) live in the session; views, CLI, MCP and the control channel all read and edit that one copy |
-| `session/execute.rs`, `session/edit.rs` | one execution path: command → document edit → dirty → views redraw; files are written only by saving the document |
-| `session/undo.rs`, `history.rs` | undo and redo for every journaled edit |
-| `journal.rs`, `steps.rs` | the record of executed commands; batches whose steps reference earlier results |
-| `link_watch.rs` | a file of the open project changed by another app or agent is reloaded, never silently overwritten |
-| `guard.rs` | a panic inside a command rolls the document back; frontends never crash |
-| `file_access.rs` | the folders automation may read and write |
-| `cmd/<domain>/`, `command_sets.rs` | commands grouped by domain (`words`, `storyboard`, `character`, `film`, `song`, `project`), registered in one place |
-
-A view never keeps its own copy of document state, and a command never writes a project file behind the
-session's back.
-
-## Everything is a command
-
-Every user-visible action is a `CommandSpec` in the engine's command registry (id, label, menu path,
-shortcut, params doc, `enabled`, `run`, journal flag). Views emit commands; menus, the control channel, the CLI
-and MCP all reach the same registry, so anything a user can do an agent can do. There is no second dispatch
-table: `magic-cli <domain> <verb>` resolves against the same registry the desktop UI, headless engine, and MCP
-server use. Option lists the UI offers (kinetic acts, layouts, letterings, overlays, strokes…) come from
-engine commands (e.g. `words.read` → `kinetic_library`), not from constants in the UI.
-
-## Views and craft canvases
-
-The desktop views are egui, in `crates/ui-egui`, one module per view (Projects, Storyboard, Lyrics, Animation,
-Studio). A view that needs another craft app's canvas embeds that app's egui crate at L6, on the same egui fork
-revision. Magic does not reimplement a craft app's canvas.
-
-## Agent control
-
-- **Control channel:** `magic --control PORT`: JSON lines on a loopback TCP port, with UI state, element
-  listing, input injection and screenshots (`ui.*` commands). Budgets and read/write confinement
-  (`--automation-read-root` / `--automation-write-root`) are in [control-protocol.md](control-protocol.md).
-- **MCP:** `magic-cli mcp`, attached to a running app (`--connect`) or headless.
-- Other craft apps are driven the same way (`<app> --control PORT`, `<app>-cli mcp`).
-
-## Robustness
-
-No panics in shipped code (workspace clippy lints); errors reach the status bar. Craft dependencies are pinned
-to immutable revisions.
-
-## Known deviations (to fix)
-
-| Deviation | Issue |
-|---|---|
-| `apps/magic` builds an optional Tauri webview and runs `npm` for the Lyrics design (`lyrics-webview` feature) | #97 |
-| `apps/magic-cli/ui` (retired web UI), `ui_server.rs` (`magic-cli ui`), and npm files in `apps/magic-cli` | #93 |
-| craft git dependencies without `rev` (8 craft-libs revisions in `Cargo.lock`) | #91 |
-| egui views are stand-ins without the accepted design; Animation lacks the EffectCraft canvas | #102 |
+- Tauri webview + npm in `apps/magic` (#97), `apps/magic-cli/ui` JS sprawl (#93) — both violate Pure Rust rule, both are the *only* working canvas/preview UI.
+- Craft git deps without `rev` in `Cargo.lock` (#91).
+- `target/analytics/{audit,lizard}.json` stale, references deleted `apps/src-tauri` — Mayhem reads it, nothing regenerates it.
+- `f64` seconds, no `Tick` — no exact time guarantee.
+- Tests: 17 lib tests, all mock/local (scribbles template resolution only). No test fires `image.generate` (OpenAI `ureq::post` / Codex `exec`) — by design, but unproven that paid path works.

@@ -10,10 +10,13 @@ let animationError = "";
 let animationRefreshId = 0;
 let clipChoice = "";
 let paceChoice = "baseline";
-let durationChoice = "3";
+let durationChoice = 3;
 let artworkDraft = null;
 
-document.querySelector("#animation-controls-title").textContent = animationAssetsRail ? "Assets" : "Animation";
+const rail = animationContent.closest("main");
+rail.id = animationAssetsRail ? "motion-asset-browser" : "motion-inspector";
+rail.classList.add("motion-inspector");
+rail.setAttribute("aria-label", animationAssetsRail ? "Animation assets" : "Animation inspector");
 
 function animationControl(action, fields = {}) {
   return animationInvoke("execute_command", {
@@ -48,7 +51,10 @@ function animationPanel(name, body, initiallyOpen = true) {
   return el("details", {
     class: "motion-section", open: animationPanels.get(name) ?? initiallyOpen,
     ontoggle: (event) => animationPanels.set(name, event.currentTarget.open),
-  }, el("summary", {}, name), el("div", { class: "motion-section-body" }, body));
+  }, el("summary", { class: "panel-head", "data-look": "control" },
+    el("span", { class: "title" }, name),
+    el("span", { class: "chev", "aria-hidden": "true", html: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg>' })),
+    el("div", { class: "motion-section-body" }, body));
 }
 
 function animationSelect(label, options, current, change) {
@@ -59,23 +65,31 @@ function animationSelect(label, options, current, change) {
 }
 
 function renderAnimationAssets({ characters, assets }, state) {
-  const chooseCharacter = animationSelect("Character",
-    [{ id: "", name: "Choose a character…" }, ...characters.map(character => ({ id: character.id, name: character.id }))],
-    state.character, (character) => character && animationDo(() => animationControl("select", { character })));
-  const cards = assets.map(asset => {
-    const composition = /\.ecproj$/i.test(asset.path || "");
-    const art = /\.(png|jpe?g|webp|gif)$/i.test(asset.path || "");
-    const active = composition ? state.composition === asset.path : state.character === asset.id;
-    return el("button", {
-      type: "button", class: `magic-asset-tile${active ? " active" : ""}`,
-      id: `animation-asset-${asset.id}`, title: `${asset.name} · ${asset.path || asset.kind}`,
-      "aria-pressed": String(active),
+  const available = assets.filter(asset => !isOverlayMedia(asset, state.project));
+  const isComposition = asset => /\.ecproj$/i.test(asset.path || "");
+  const artwork = new Map(available.filter(asset => !isComposition(asset)).map(asset => [asset.id, asset]));
+  const projectArtwork = new Set(artwork.keys());
+  const artworkId = id => id.replaceAll("_", "-");
+  const aliases = new Map([...projectArtwork].map(id => [artworkId(id), id]));
+  for (const character of characters) {
+    if (!aliases.has(artworkId(character.id))) artwork.set(character.id, character);
+  }
+  const selected = artwork.has(state.character) ? state.character : aliases.get(artworkId(state.character)) || "";
+  const chooseArtwork = animationSelect("Artwork",
+    [{ id: "", name: "Choose artwork…" }, ...[...artwork.values()].map(asset => ({ id: asset.id, name: asset.name || asset.id }))],
+    selected, (id) => {
+      if (id) animationDo(() => projectArtwork.has(id) ? animationControl("asset", { id }) : animationControl("select", { character: id }));
+    });
+  const cards = available.map(asset => {
+    const composition = isComposition(asset);
+    return magicAssetTile(asset, {
+      prefix: "animation-asset", canDrag: false,
+      active: composition ? state.composition === asset.path : state.character === asset.id,
+      placeholder: composition ? "COMP" : asset.kind === "model_3d" ? "3D" : "PART",
       onclick: () => animationDo(() => animationControl("asset", { id: asset.id })),
-    }, art ? el("img", { src: animationFileUrl(asset.path), alt: "" }) :
-      el("span", { class: "magic-asset-placeholder" }, composition ? "COMP" : asset.kind === "model_3d" ? "3D" : "ASSET"),
-    el("span", { class: "magic-asset-name" }, asset.name || asset.id));
+    });
   });
-  animationContent.replaceChildren(chooseCharacter,
+  animationContent.replaceChildren(el("div", { class: "panel-head inline" }, chooseArtwork),
     animationButton("Prepare artwork…", "prepare-artwork"),
     animationPanel("Assets", cards.length ? el("div", { class: "magic-assets-grid" }, cards) :
       el("p", { class: "muted" }, "Add artwork or an EffectCraft composition to this project.")));
@@ -138,21 +152,17 @@ function modelMotionPanel(metadata, options) {
   if (!clips.length) return null;
   if (!clips.includes(clipChoice)) clipChoice = clips[0];
   if (!options.some(option => option.id === paceChoice)) paceChoice = options[0]?.id;
-  const duration = el("input", { type: "number", min: "0.1", max: "30", step: "0.1", value: durationChoice,
-    oninput: (event) => { durationChoice = event.target.value; } });
-  const note = el("p", { class: "muted" }, options.find(option => option.id === paceChoice)?.description || "");
+  const duration = new InspectorNumberField({
+    id: "animation-clip-duration", label: "Duration", unit: "s",
+    min: 0.1, max: 30, step: 0.1, control: "dial", value: durationChoice,
+    change: (value) => { durationChoice = value; },
+  });
   return animationPanel("Motion & timing", [
     animationSelect("Clip", clips.map(id => ({ id, name: id.split("|").at(-1) })), clipChoice, value => { clipChoice = value; }),
-    animationSelect("Motion option", options.map(option => ({ id: option.id, name: option.label })), paceChoice, value => {
-      paceChoice = value;
-      note.textContent = options.find(option => option.id === value)?.description || "";
-    }),
-    note,
-    new InspectorField("Duration (s)", duration).node,
-    el("button", { type: "button", class: "start", onclick: () => animationDo(() => {
-      if (!duration.reportValidity() || !duration.value) return;
-      return animationControl("prepare-motion", { clip: clipChoice, option: paceChoice, duration: Number(duration.value) });
-    }) }, "Prepare in EffectCraft"),
+    animationSelect("Pacing", options.map(option => ({ id: option.id, name: option.label })), paceChoice, value => { paceChoice = value; }),
+    duration.node,
+    el("button", { type: "button", class: "start", onclick: () => animationDo(() =>
+      animationControl("prepare-motion", { clip: clipChoice, option: paceChoice, duration: durationChoice })) }, "Prepare in EffectCraft"),
   ]);
 }
 
@@ -186,7 +196,7 @@ async function updateAnimationRail() {
     animationVersion = version;
   }
   if (showArtwork) {
-    const artwork = [...animationContent.querySelectorAll("details")].find(section => section.querySelector("summary").textContent === "Part artwork");
+    const artwork = [...animationContent.querySelectorAll("details")].find(section => section.querySelector("summary .title").textContent === "Part artwork");
     if (artwork) {
       artwork.open = true;
       artwork.scrollIntoView({ block: "nearest" });

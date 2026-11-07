@@ -3,6 +3,7 @@ const motionList = document.querySelector("#motion-assets");
 const motionPlayer = document.querySelector("#motion-player");
 const motionStatus = document.querySelector("#motion-status");
 const motionOpen = document.querySelector("#motion-open");
+document.querySelector("#motion-draw").onclick = () => location.assign("lyrics.html?workspace=motion");
 
 async function loadMotionCompositions() {
   try {
@@ -10,11 +11,11 @@ async function loadMotionCompositions() {
       id: "project.list_assets",
       params: {},
     });
-    const assets = result?.assets ?? [];
+    const { assets = [], project } = result || {};
     const compositions = assets.filter(asset =>
-      asset.id?.startsWith("motion_") && asset.path?.toLowerCase().endsWith(".ecproj"));
+      asset.path?.toLowerCase().endsWith(".ecproj") && isOverlayMedia(asset, project));
     if (!compositions.length) {
-      motionStatus.textContent = "Add an EffectCraft project with a motion_ asset ID to list it here.";
+      motionStatus.textContent = "No overlay compositions yet.";
       return;
     }
     for (const composition of compositions) {

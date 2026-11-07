@@ -6,32 +6,16 @@
   <title>Magic Studio — Animation</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="global.css" />
-  <style>
-    body { margin: 0; overflow: hidden auto; background: var(--surface); }
-    main { box-sizing: border-box; width: 100%; padding: var(--space-3); }
-    .motion-section-body > .inspector-field { grid-template-columns: minmax(0, 1fr); }
-    .animation-controls-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
-    .animation-controls-head h2 { font-size: var(--text-md); margin: 0; }
-    #animation-status { overflow-wrap: anywhere; font-size: var(--text-sm); }
-    .magic-asset-tile > .magic-asset-placeholder { min-width: 3rem; }
-    .magic-assets-grid { grid-template-columns: minmax(0, 1fr); }
-    .artwork-mark-editor { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); }
-    .artwork-mark-editor svg { display: block; width: 100%; touch-action: none; }
-    .artwork-outline { fill: color-mix(in srgb, var(--accent) 13%, transparent); stroke: var(--accent); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
-    .artwork-handle, .artwork-joint { fill: var(--accent); stroke: var(--bg); stroke-width: 1px; vector-effect: non-scaling-stroke; cursor: grab; }
-    .artwork-joint { fill: var(--amber); }
-    .artwork-mark-editor circle:focus { stroke: var(--text); stroke-width: 2px; outline: none; }
-  </style>
 </head>
-<body>
+<body class="animation-rail-page">
   <main aria-label="Animation controls">
-    <div class="animation-controls-head"><h2 id="animation-controls-title"></h2></div>
     <div id="animation-controls-content"></div>
     <p id="animation-status" class="muted" role="status"></p>
   </main>
   <script src="tauri-shim.js"></script>
   <script src="workspace-elements.js"></script>
   <script src="panel-header.js"></script>
+  <script src="inspector-controls.js"></script>
   <script src="artwork-marks.js"></script>
   <script src="animation-controls.js"></script>
 </body>

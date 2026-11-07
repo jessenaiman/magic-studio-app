@@ -6,14 +6,8 @@
   <title>Magic Studio — Projects</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="global.css" />
-  <style>
-    body { margin: 0; overflow: auto; }
-    #view-home { display: flex; justify-content: center; }
-    #new-form { margin-bottom: var(--space-4); }
-    #new-form[hidden] { display: none; }
-  </style>
 </head>
-<body class="at-home">
+<body class="at-home projects-workspace-page">
   <section class="view active" id="view-home" aria-label="Projects">
     <div class="home">
       <div class="home-hero">
@@ -40,6 +34,7 @@
           <button type="submit" class="start" id="new-create">Create</button>
         </div>
       </form>
+      <section class="project-overview" id="project-overview" aria-label="Current project" hidden></section>
       <div class="group-label">Recent</div>
       <div class="recent" id="recent"></div>
       <p id="home-status" class="muted" role="status"></p>

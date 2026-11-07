@@ -138,6 +138,12 @@ class WordsDesignController {
       wordsRender();
       wordsVideoRange();
     } catch (error) {
+      if (wordsPanel.motionWorkspace) {
+        view.replaceChildren(el("div", { class: "panel-empty boxed" },
+          el("p", {}, "Draw-on-video cues use the project's lyric timing."),
+          el("button", { type: "button", class: "ghost", onclick: () => location.assign("motion.html") }, "Compositions")));
+        return;
+      }
       view.replaceChildren(el("div", { class: "panel-empty boxed" }, el("p", {}, "Words starts from the artist's lyric sheet."), el("p", { class: "muted" }, String(error).replace(/^.*?: /, "")), el("p", { class: "muted" }, "Attach the original in Project › Song › Lyrics & notes.")));
     }
   }
@@ -304,6 +310,8 @@ class WordsDesignController {
   }
   layout(anim, lineId, kind) {
     const words = wordsLineWords(anim, lineId), [W, H] = wordsWorld();
+    if (!words.length)
+      return { items: [], draws: [] };
     const letterings = wordsLetterings();
     const item = (ws, x, y, size, look = "song", motion = "quiet", rotate = 0) => {
       const [, , , font, weight, italic] = letterings.find((l) => l[0] === look) || ["song", "Song font", "", "song", 400, false];
@@ -767,6 +775,8 @@ class WordsTimelineController {
     };
   }
   canvas(anim) {
+    if (wordsPanel.motionWorkspace)
+      return this.motionCanvas(anim);
     const world = el("div", { class: "lyric-world" });
     const bg = wordsPanel.scene ? this.activeBackdrop(anim) : null;
     const bgImg = bg ? el("img", { class: "lyric-scene-bg", src: convertFileSrc(bg.path), alt: bg.name }) : null;
@@ -811,6 +821,49 @@ class WordsTimelineController {
     wordsFitter.observe(box);
     return box;
   }
+  motionCanvas(anim) {
+    const bg = this.activeBackdrop(anim);
+    const bgImg = bg ? el("img", { class: "lyric-scene-bg", src: convertFileSrc(bg.path), alt: bg.name }) : null;
+    const video = wordsPanel.motionMedia ? wordsPanel.motionVideo ||= el("video", {
+      class: "motion-stage-video", src: convertFileSrc(wordsPanel.motionMedia.path), preload: "auto",
+      muted: true, playsInline: true, onloadedmetadata: () => this.canvasDraw(),
+    }) : null;
+    const world = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    world.setAttribute("class", "motion-cue-preview");
+    const [width, height] = wordsWorld();
+    world.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    world.setAttribute("aria-hidden", "true");
+    const box = el("div", { id: "words-preview", class: "lyric-canvas", "aria-label": "Motion overlay canvas" }, bgImg, video, world);
+    wordsPanel.canvas = { box, world, bgImg };
+    return box;
+  }
+  drawMotionCues(world, time) {
+    const paths = [];
+    for (const cue of wordsPanel.read.graphics || []) {
+      if (cue.kind !== "drawing" || !cue.stroke?.d || time < cue.start || time > cue.end)
+        continue;
+      const animation = wordsPanel.read.document.animations.find(anim => anim.animation_id === cue.animation_id);
+      const drawing = animation?.kinetic?.draws?.[cue.index];
+      const [, , width, height] = (cue.stroke.view_box || "").split(/\s+/).map(Number);
+      if (!(width > 0 && height > 0))
+        continue;
+      const svg = this.stroke(cue.stroke);
+      const outputWidth = drawing?.width ?? width;
+      svg.setAttribute("x", drawing?.x ?? 0);
+      svg.setAttribute("y", drawing?.y ?? 0);
+      svg.setAttribute("width", outputWidth);
+      svg.setAttribute("height", outputWidth * height / width);
+      const path = svg.firstElementChild;
+      path.setAttribute("stroke", cue.color || "#e4572e");
+      path.setAttribute("stroke-width", "7");
+      path.removeAttribute("vector-effect");
+      path.setAttribute("pathLength", "1");
+      path.setAttribute("stroke-dasharray", "1");
+      path.setAttribute("stroke-dashoffset", 1 - wordsClamp((time - cue.start) / Math.max(0.01, cue.draw_end - cue.start)));
+      paths.push(svg);
+    }
+    world.replaceChildren(...paths);
+  }
   sceneSeek(_t) {}
   canvasDraw(t = wordsPanel.time) {
     const anim = wordsCurrent(), canvas = wordsPanel.canvas;
@@ -820,6 +873,20 @@ class WordsTimelineController {
       const bg = this.activeBackdrop(anim);
       if (bg && canvas.bgImg.getAttribute("src") !== convertFileSrc(bg.path))
         canvas.bgImg.setAttribute("src", convertFileSrc(bg.path));
+    }
+    if (wordsPanel.motionWorkspace) {
+      const video = wordsPanel.motionVideo;
+      if (video?.readyState) {
+        const time = Math.min(t, video.duration);
+        if (Math.abs(video.currentTime - time) > (wordsPanel.playing ? 0.2 : 0.01))
+          video.currentTime = time;
+        if (!wordsPanel.playing || time >= video.duration)
+          video.pause();
+        else if (video.paused)
+          video.play().catch(() => {});
+      }
+      this.drawMotionCues(canvas.world, t);
+      return;
     }
     this.drawLine(canvas.world, anim, wordsPanel.line, t, true);
   }
@@ -846,6 +913,7 @@ class WordsTimelineController {
     }
     audio.pause();
     wordsPanel.playing = false;
+    wordsPanel.motionVideo?.pause();
     return false;
   }
   play(forceStart = false) {
@@ -860,16 +928,19 @@ class WordsTimelineController {
     if (!forceStart && !audio.paused) {
       audio.pause();
       wordsPanel.playing = false;
+      wordsPanel.motionVideo?.pause();
       return;
     }
     if (audio.getAttribute("src") !== convertFileSrc(path))
       audio.src = convertFileSrc(path);
-    audio.currentTime = wordsPanel.previewRange ? wordsPanel.previewRange.start : Math.max(0, span.start - 0.4);
+    audio.currentTime = wordsPanel.previewRange ? wordsPanel.previewRange.start :
+      wordsPanel.motionWorkspace ? wordsPanel.time : Math.max(0, span.start - 0.4);
     audio.play();
     const tick = () => {
       if (audio.paused || audio.ended || state.view !== "design") {
         audio.pause();
         wordsPanel.playing = false;
+        wordsPanel.motionVideo?.pause();
         return;
       }
       const t = audio.currentTime;

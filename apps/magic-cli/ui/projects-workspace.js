@@ -43,6 +43,59 @@ async function showRecentProjects() {
   ]));
 }
 
+function showProjectLyrics(lyrics, transcript) {
+  const sections = lyrics.sections || [];
+  const lyricsText = sections.map((section, index) => el("details", { open: index === 0 },
+    el("summary", {}, section.label || section.title || section.name || section.section || "Lyrics"),
+    el("p", { class: "project-lyric-lines" }, (section.lines || []).map(line => line.text).join("\n"))));
+  const paragraphs = transcript?.paragraphs?.map(paragraph => paragraph.text).filter(Boolean) || [];
+  const fallback = paragraphs.length ? paragraphs.join("\n\n") : transcript?.words?.map(word => word.text || word.word).join(" ");
+  return el("section", {}, el("h3", {}, "Lyrics"), ...(lyricsText.length ? lyricsText : [
+    el("p", { class: "muted" }, fallback ? "From the transcript" : "No lyrics in this project yet."),
+    fallback ? el("p", { class: "project-lyric-lines" }, fallback) : null,
+  ]));
+}
+
+function showProjectFiles(files, projectDir) {
+  const groups = { audio: "Audio", liner_notes: "Lyrics & notes", transcript: "Timing", storyboard: "Storyboard", assets: "Assets", film: "Studio", other: "Other files" };
+  return el("section", {}, el("h3", {}, "Project files"), ...Object.entries(groups).map(([group, label]) => {
+    const items = files.filter(file => file.group === group);
+    if (!items.length) return null;
+    return el("details", { open: ["audio", "film"].includes(group) }, el("summary", {}, `${label} · ${items.length}`),
+      el("div", { class: "project-file-list" }, items.map(file => el("button", {
+        type: "button", class: "ghost", title: file.path, disabled: file.exists === false,
+        onclick: () => projectAction(() => projectCommand("workspace.open", { path: file.path })),
+      }, file.path.startsWith(`${projectDir}/`) ? file.path.slice(projectDir.length + 1) : file.name))));
+  }), files.length ? null : el("p", { class: "muted" }, "No project files yet."));
+}
+
+async function showCurrentProject() {
+  const { project, assets = [] } = await projectCommand("project.list_assets");
+  if (!project) return;
+  const [workshop, lyrics, film] = await Promise.all([
+    projectCommand("workshop.files"),
+    projectCommand("song.lyrics"),
+    projectCommand("video.film").catch(() => null),
+  ]);
+  const transcript = lyrics.source === "transcript"
+    ? (await projectCommand("workshop.status")).stages?.find(stage => stage.id === "transcript")?.document
+    : null;
+  const files = new Map(workshop.files.map(file => [file.path, file]));
+  for (const asset of assets) {
+    if (asset.path && !files.has(asset.path)) files.set(asset.path, { ...asset, group: "assets" });
+  }
+  for (const file of [film?.timeline, film?.preview, film?.export]) {
+    if (file?.exists) files.set(file.path, { ...file, name: file.path.split("/").at(-1), group: "film" });
+  }
+  const overview = projectField("project-overview");
+  overview.replaceChildren(el("header", {},
+    el("h2", {}, project.split("/").at(-1).replace(/\.magic$/i, "")),
+    el("button", { type: "button", class: "ghost", onclick: () => projectAction(() => projectCommand("ui.set_view", { view: "lyrics" })) }, "Edit lyrics")),
+    el("div", { class: "project-overview-grid" }, showProjectLyrics(lyrics, transcript),
+      showProjectFiles([...files.values()], workshop.project_dir)));
+  overview.hidden = false;
+}
+
 async function showProjectForm(mode) {
   projectMode = mode;
   projectForm.hidden = false;
@@ -110,4 +163,4 @@ document.addEventListener("keydown", (event) => {
     projectField(button).click();
   }
 });
-projectAction(showRecentProjects);
+projectAction(() => Promise.all([showRecentProjects(), showCurrentProject()]));

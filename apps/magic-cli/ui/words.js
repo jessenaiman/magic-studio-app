@@ -59,18 +59,10 @@ function wordsSizeInput(anim) {
   return wordsViewController.sizeInput(anim);
 }
 function wordsSyncLiveSliders(it) {
-  const sizeIn = document.querySelector('[data-slider="size"]'), sizeVal = document.querySelector('[data-slider-val="size"]');
-  if (sizeIn && it.size != null) {
-    sizeIn.value = sizeIn.defaultValue = String(Math.round(it.size));
-    if (sizeVal)
-      sizeVal.textContent = `${Math.round(it.size)}px`;
-  }
-  const tiltIn = document.querySelector('[data-slider="rotate"]'), tiltVal = document.querySelector('[data-slider-val="rotate"]');
-  if (tiltIn && it.rotate != null) {
-    tiltIn.value = tiltIn.defaultValue = String(Math.round(it.rotate));
-    if (tiltVal)
-      tiltVal.textContent = `${Math.round(it.rotate)}°`;
-  }
+  if (it.size != null)
+    wordsPanel.tokenSliders?.size.setValue(it.size / 80);
+  if (it.rotate != null)
+    wordsPanel.tokenSliders?.rotate.setValue(it.rotate);
 }
 addEventListener("pointermove", (event) => {
   const drag = wordsPanel.drag, anim = wordsCurrent();
@@ -387,10 +379,17 @@ class WordsViewController {
     return el("div", { id: "words-link-controls", class: "transport" }, el("span", { class: "group-label" }, "Connections"), colour, this.linksToggleButton(), toggle("front", "Bring connections in front", '<svg viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12"/><path d="M8 4h12v12M11 13l8-8M13 5h6v6"/></svg>'), toggle("pulse", "Slow connection colour blend", '<svg viewBox="0 0 24 24"><path d="M3 12c3-8 6 8 9 0s6 8 9 0"/></svg>'));
   }
   motionActions(anim) {
-    return el("div", { class: "transport", "aria-label": "Add visual cue" }, el("button", { class: "start", "aria-label": "Draw cue on scene", onclick: () => this.drawCue(anim) }, "Draw cue"), el("button", { class: "ghost", "aria-label": "Add scene effect", onclick: () => {
-      wordsPanel.motionAdd = "effect";
-      this.render();
-    } }, "Add effect"));
+    const library = wordsPanel.read?.kinetic_library || {};
+    const effects = wordsPanel.motionAdd === "effect" ? wordsChoiceRow(library, "overlays", anim.kinetic?.overlay || "none", (overlay) => {
+      wordsPanel.motionAdd = null;
+      this.kinetic({ overlay });
+    }) : null;
+    return el("div", {}, el("div", { class: "transport", "aria-label": "Add visual cue" },
+      el("button", { class: "start", "aria-label": "Draw cue on scene", onclick: () => this.drawCue(anim) }, "Draw cue"),
+      el("button", { class: "ghost", "aria-expanded": String(Boolean(effects)), onclick: () => {
+        wordsPanel.motionAdd = effects ? null : "effect";
+        this.render();
+      } }, "Scene effects")), effects);
   }
   drawingEdit(anim, cue) {
     if (cue.index == null)
@@ -429,6 +428,10 @@ class WordsViewController {
       return toast("Select a lyric line to attach the drawing");
     const project = state.project, size = wordsPanel.size || { width: 1920, height: 1080 };
     this.video("pause");
+    wordsPanel.audio?.pause();
+    wordsPanel.playing = false;
+    wordsCanvasDraw();
+    const start = wordsPanel.time;
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS(overlay.namespaceURI, "path");
     overlay.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
     overlay.setAttribute("class", "words-sketch");
@@ -487,7 +490,8 @@ class WordsViewController {
         width: size.width,
         color: previous?.color || "#e4572e",
         duration: previous?.duration || 1.2,
-        hold: previous?.hold ?? 1
+        hold: previous?.hold ?? 1,
+        ...(wordsPanel.motionWorkspace && !previous ? { offset: start - wordsAt(word) } : {}),
       };
       const draws = [...anim.kinetic?.draws || []];
       if (replaceIndex == null)
@@ -568,6 +572,8 @@ class WordsViewController {
     return el("section", { class: "words-timing", "aria-label": "Timing controls" }, this.linkControls(), this.cueEditor(anim));
   }
   innerControls(anim) {
+    if (wordsPanel.motionWorkspace)
+      return [this.motionActions(anim), this.cueEditor(anim)];
     if (wordsPanel.mode === "timing")
       return [this.timingPanel(anim)];
     if (anim.kinetic)
@@ -590,6 +596,7 @@ class WordsViewController {
         const t = Number(e.target.value);
         if (wordsPanel.playing) {
           this.video("pause");
+          wordsPanel.audio?.pause();
           wordsPanel.playing = false;
         }
         wordsPanel.previewRange = null;
@@ -603,7 +610,10 @@ class WordsViewController {
       }
     });
     scrub.value = scrub.defaultValue = String(wordsPanel.time || lineSpan.start);
-    return el("div", { class: "words-toolbar transport" }, wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play this line", title: "Play from this line", onclick: wordsPlay, html: ICONS.play }), scrub, wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || lineSpan.start)} / ${wordsClock(songSpan.end)}`), segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => {
+    const transport = [wordsPanel.playButton = el("button", { class: "icon", "aria-label": "Play or pause", title: "Play or pause", onclick: wordsPlay, html: ICONS.play }), scrub, wordsPanel.timeLabel = el("span", { class: "meta" }, `${wordsClock(wordsPanel.time || lineSpan.start)} / ${wordsClock(songSpan.end)}`)];
+    if (wordsPanel.motionWorkspace)
+      return el("div", { class: "words-toolbar transport" }, transport);
+    return el("div", { class: "words-toolbar transport" }, transport, segmented("Behind the lyrics", wordsPanel.scene ? "scene" : "paper", [["scene", "Scene"], ["paper", "Paper"]], (key) => {
       wordsPanel.scene = key === "scene";
       this.render();
     }), el("button", {
@@ -637,7 +647,7 @@ class WordsViewController {
   }
   mountMain(view, anim, animations, end, parts) {
     const main = wordsPanel.mainEl ||= el("section", { id: "words-main" });
-    main.setAttribute("aria-label", `${wordsLabel(anim)} lyrics`);
+    main.setAttribute("aria-label", wordsPanel.motionWorkspace ? "Motion workspace" : `${wordsLabel(anim)} lyrics`);
     const [head, notice, upper, stageNode, toolbar, controls] = parts;
     const before = [head, ...notice ? [notice] : [], upper];
     const after = [...toolbar ? [toolbar] : [], controls];
@@ -653,6 +663,11 @@ class WordsViewController {
     }
     const left = wordsPanel.leftEl ||= el("aside", { id: "words-lyrics" });
     const right = wordsPanel.rightEl ||= el("aside", { id: "words-film" });
+    for (const rail of [left, right]) {
+      rail.tabIndex = 0;
+      rail.onwheel = rail.onpointerdown = rail.onkeydown = () => wordsFlowController.beginRailScroll(rail);
+      rail.onscroll = () => wordsFlowController.syncRailScroll(rail);
+    }
     const searchInput = el("input", {
       type: "search",
       class: "field words-search-input",
@@ -698,28 +713,20 @@ class WordsViewController {
     this.mountMain(view, anim, animations, end, [
       new PanelHeader({
         id: "words-main-head",
-        title: `${wordsLabel(anim)} · ${lineNo}`,
+        title: wordsPanel.motionWorkspace ? `Motion · ${wordsLabel(anim)}` : `${wordsLabel(anim)} · ${lineNo}`,
         description,
-        actions: [this.modeTabs(), this.linksToggleButton(), save]
+        actions: wordsPanel.motionWorkspace ? [
+          el("button", { type: "button", class: "ghost", onclick: () => location.assign("motion.html") }, "Compositions"),
+          this.linksToggleButton(),
+        ] : [this.modeTabs(), this.linksToggleButton(), save]
       }).element,
       wordsPanel.read.reference_changed ? el("p", { class: "not-linked" }, "The timing reference changed since this was saved; check the words before saving.") : null,
-      wordsUpperTracks(anim),
+      wordsPanel.motionWorkspace ? this.motionSource() : wordsUpperTracks(anim),
       designer ? wordsCanvas(anim) : this.stage(anim),
       designer ? this.designerToolbar(anim) : null,
       el("div", { id: "words-workspace-controls" }, ...this.innerControls(anim))
     ]);
     view.dataset.wordsMode = wordsPanel.mode;
-    view.onwheel = (event) => {
-      if (event.target.closest?.("#words-workspace-controls, .words-backgrounds"))
-        return;
-      wordsPanel.userWheelUntil = performance.now() + 260;
-      wordsPanel.programmaticScrollUntil = 0;
-      if (wordsPanel.playing) {
-        this.video("pause");
-        wordsPanel.playing = false;
-      }
-    };
-    view.onscroll = () => wordsSyncViewScroll(view);
     wordsViewFitter.observe(view);
     if ($("magic-workstation"))
       wordsViewFitter.observe($("magic-workstation"));
@@ -1034,24 +1041,30 @@ class WordsViewController {
       return song >= s.start - 0.3 && song < s.end + 0.1;
     });
     const view = $("view-design");
-    if (here && here.animation_id !== wordsPanel.selected) {
+    const sectionChanged = here && here.animation_id !== wordsPanel.selected;
+    if (sectionChanged) {
       wordsPanel.selected = here.animation_id;
       view?.querySelectorAll(".words-band[data-section]").forEach((b) => b.classList.toggle("active", b.dataset.section === here.animation_id));
       document.querySelector("#words-main .words-upper-tracks")?.replaceWith(wordsUpperTracks(here));
-      $("words-workspace-controls")?.replaceChildren(...this.innerControls(here));
     }
     const current = wordsCurrent();
     if (!current)
       return;
     const line = wordsLines(current).findLast((l) => wordsAt(l.words[0]) <= song + 0.25) || wordsLines(current)[0];
-    if (line && line.id !== wordsPanel.line) {
+    if (line && (sectionChanged || line.id !== wordsPanel.line)) {
       wordsPanel.line = line.id;
       view?.querySelectorAll(".words-tl > .words-line").forEach((r) => r.classList.toggle("active", r.dataset.animationId === current.animation_id && r.dataset.lineId === line.id));
       const lineNo = wordsLines(current).findIndex((l) => l.id === line.id) + 1;
-      const headTitle = $("words-main-head")?.querySelector(".title");
+      const headTitle = $("words-main-head")?.querySelector(".panel-title");
       if (headTitle)
-        headTitle.textContent = `${wordsLabel(current)} · ${lineNo}`;
+        headTitle.textContent = wordsPanel.motionWorkspace ? `Motion · ${wordsLabel(current)}` : `${wordsLabel(current)} · ${lineNo}`;
+      $("words-workspace-controls")?.replaceChildren(...this.innerControls(current));
     }
+  }
+  motionSource() {
+    const label = wordsPanel.motionMediaStale ? "Earlier Studio render" :
+      wordsPanel.motionMedia ? "Studio video" : "Scene still · render a Studio preview for video";
+    return el("p", { class: "meta" }, label);
   }
   handlePreviewBoundary(song, isPlaying) {
     const range = wordsPanel.previewRange;

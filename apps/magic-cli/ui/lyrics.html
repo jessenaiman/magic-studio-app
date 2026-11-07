@@ -10,13 +10,8 @@
   <link rel="stylesheet" href="drawers.css" />
   <link rel="stylesheet" href="menu.css" />
   <link rel="stylesheet" href="app-bar.css" />
-  <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; }
-    main { height: 100vh; display: flex; flex-direction: column; }
-    #view-design.view.active { flex: 1; height: 100%; overflow: auto; }
-  </style>
 </head>
-<body>
+<body class="lyrics-workspace-page">
   <main>
     <section class="view active" id="view-design" aria-label="Lyrics and motion graphics"></section>
   </main>
@@ -33,6 +28,15 @@
   <script>
     window.addEventListener("DOMContentLoaded", async () => {
       state.view = "design";
+      const motion = new URLSearchParams(location.search).get("workspace") === "motion";
+      if (motion) {
+        wordsPanel.motionWorkspace = true;
+        wordsPanel.mode = "motion";
+        wordsPanel.topShelf = "overlay";
+        document.title = "Magic Studio — Motion";
+        document.querySelector("#view-design").setAttribute("aria-label", "Motion overlays");
+      }
+      await loadComponents();
       try {
         const workspace = await nativeInvoke("execute_command", { id: "words.workspace", params: {} });
         if (workspace?.standalone) {
@@ -45,6 +49,16 @@
           state.data = st;
         }
       } catch {}
+      if (motion && state.project) {
+        const film = await wordsCommand("video.film").catch(() => null);
+        const media = [
+          { file: film?.preview, stale: film?.preview_stale },
+          { file: film?.export, stale: film?.export_stale },
+        ].filter(item => item.file?.exists);
+        const source = media.find(item => !item.stale) || media[0];
+        wordsPanel.motionMedia = source?.file;
+        wordsPanel.motionMediaStale = source?.stale;
+      }
       await wordsOpen();
     });
   </script>

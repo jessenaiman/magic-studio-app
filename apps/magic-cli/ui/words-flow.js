@@ -71,21 +71,17 @@ function wordsAnimateFlow(view, t) {
 function wordsNow(t) {
   return wordsFlowController.now(t);
 }
-function wordsRollGeometry(view) {
-  return wordsFlowController.rollGeometry(view);
-}
 function wordsFollow(t, smooth = false) {
   return wordsFlowController.follow(t, smooth);
 }
 function wordsEnsureBelowVideo(t) {
   return wordsFlowController.ensureBelowVideo(t);
 }
-function wordsSyncViewScroll(view) {
-  return wordsFlowController.syncViewScroll(view);
-}
 
 class WordsFlowController {
   noteLoopId = 0;
+  railScrollTargets = new WeakMap();
+  railPaintId = 0;
   nearestAnchor(time) {
     let nearest = null;
     for (const anim of wordsPanel.read?.document?.animations || [])
@@ -178,8 +174,12 @@ class WordsFlowController {
     const preview = view.querySelector(".words-preview, .lyric-canvas");
     if (!preview || !active)
       return [y1, y2];
-    const floor = preview.getBoundingClientRect().bottom - box.top + view.scrollTop + 18;
+    const floor = preview.getBoundingClientRect().bottom - box.top + 18;
     return [Math.max(y1, floor), Math.max(y2, floor)];
+  }
+  railContainsY(element, y) {
+    const rail = element.closest("aside")?.getBoundingClientRect();
+    return rail && y >= rail.top && y <= rail.bottom;
   }
   buildArrowNotesNode() {
     const notes = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -202,13 +202,15 @@ class WordsFlowController {
       return null;
     const sourceChip = chips.find((c) => cue.word_ids?.includes(c.dataset.wordId));
     const lineRect = line.getBoundingClientRect(), frameRect = frame.getBoundingClientRect();
-    const x1 = lineRect.right - box.left + view.scrollLeft + 5, x2 = frameRect.left - box.left + view.scrollLeft;
+    const x1 = lineRect.right - box.left + 5, x2 = frameRect.left - box.left;
     const timeline = line.parentElement.getBoundingClientRect();
     const target = wordsPanel.linkDrag?.cue.id === cue.id ? wordsPanel.linkDrag.target : null;
     const anchorAt = target?.at ?? cue.anchor ?? (sourceChip ? Number(sourceChip.dataset.start) : start);
-    const y1 = timeline.top - box.top + view.scrollTop + anchorAt * scale;
+    const y1 = timeline.top - box.top + anchorAt * scale;
     const fraction = (Math.max(start, cue.start) - cue.start) / Math.max(0.05, cue.end - cue.start);
-    const y2 = frameRect.top - box.top + view.scrollTop + Math.min(frameRect.height - 4, Math.max(4, frameRect.height * fraction));
+    const y2 = frameRect.top - box.top + Math.min(frameRect.height - 4, Math.max(4, frameRect.height * fraction));
+    if (!this.railContainsY(line, y1 + box.top) || !this.railContainsY(frame, y2 + box.top))
+      return null;
     const flowStart = Math.min(anchorAt, cue.start), flowEnd = Math.max(flowStart + 0.65, cue.draw_end ?? cue.end);
     const active = wordsPanel.cue ? wordsPanel.cue === cue.id : line.classList.contains("active");
     const [cy1, cy2] = this.curveControlY(view, box, y1, y2, active);
@@ -257,13 +259,15 @@ class WordsFlowController {
       return null;
     const tetherPort = activeLine.querySelector(".words-line-tether") || activeLine;
     const portRect = tetherPort.getBoundingClientRect();
-    const x1 = portRect.right - box.left + view.scrollLeft, y1 = portRect.top + portRect.height / 2 - box.top + view.scrollTop;
+    const x1 = portRect.right - box.left, y1 = portRect.top + portRect.height / 2 - box.top;
+    if (!this.railContainsY(activeLine, y1 + box.top))
+      return null;
     const items = [...canvas.querySelectorAll(".lyric-item")];
     const heroNode = canvas.querySelector(".lyric-item.active") || items.at(-1) || canvas;
     const firstNode = items[0] && items[0] !== heroNode ? items[0] : null;
     const heroRect = heroNode.getBoundingClientRect();
-    const hxL = heroRect.left - box.left + view.scrollLeft, hy = heroRect.top + heroRect.height / 2 - box.top + view.scrollTop;
-    const hxR = heroRect.right - box.left + view.scrollLeft;
+    const hxL = heroRect.left - box.left, hy = heroRect.top + heroRect.height / 2 - box.top;
+    const hxR = heroRect.right - box.left;
     const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
     group.setAttribute("class", "words-arrow-group active primary flowing");
     group.setAttribute("data-line-id", activeLine.dataset.lineId || "");
@@ -271,15 +275,16 @@ class WordsFlowController {
     group.setAttribute("data-end", "3");
     if (firstNode) {
       const fRect = firstNode.getBoundingClientRect();
-      const fx = fRect.left - box.left + view.scrollLeft, fy = fRect.top + fRect.height / 2 - box.top + view.scrollTop;
+      const fx = fRect.left - box.left, fy = fRect.top + fRect.height / 2 - box.top;
       group.append(this.stageTetherCurve(x1, y1, fx, fy, true), this.stageTetherDot(fx, fy));
     }
     group.append(this.stageTetherCurve(x1, y1, hxL, hy, false), this.stageTetherDot(x1, y1), this.stageTetherDot(hxL, hy, "var(--amber)"), this.buildArrowNotesNode());
     const rightFrame = view.querySelector(".words-roll > .words-graphic.active") || view.querySelector("#words-film .words-roll");
     if (rightFrame) {
       const rRect = rightFrame.getBoundingClientRect();
-      const rx = rRect.left - box.left + view.scrollLeft, ry = Math.min(rRect.bottom - 20, Math.max(rRect.top + 20, heroRect.top + heroRect.height * 0.35)) - box.top + view.scrollTop;
-      group.append(this.stageTetherCurve(hxR, hy, rx, ry, false), this.stageTetherDot(rx, ry));
+      const rx = rRect.left - box.left, ry = Math.min(rRect.bottom - 20, Math.max(rRect.top + 20, heroRect.top + heroRect.height * 0.35)) - box.top;
+      if (this.railContainsY(rightFrame, ry + box.top))
+        group.append(this.stageTetherCurve(hxR, hy, rx, ry, false), this.stageTetherDot(rx, ry));
     }
     return group;
   }
@@ -308,8 +313,8 @@ class WordsFlowController {
     svg.setAttribute("class", `words-arrows${wordsPanel.links.pulse ? " blending" : ""}${wordsPanel.links.front ? " front" : ""}`);
     svg.setAttribute("role", "group");
     svg.setAttribute("aria-label", "Lyric and drawing connections");
-    svg.style.setProperty("--arrows-width", `${view.scrollWidth}px`);
-    svg.style.setProperty("--arrows-height", `${view.scrollHeight}px`);
+    svg.style.setProperty("--arrows-width", `${view.clientWidth}px`);
+    svg.style.setProperty("--arrows-height", `${view.clientHeight}px`);
     this.appendCueArrows(view, svg, box, frames, lines);
     const stageTether = this.buildStageTetherGroup(view, box);
     if (stageTether)
@@ -462,42 +467,63 @@ class WordsFlowController {
     if (wordsPanel.playing)
       this.follow(t);
   }
-  rollGeometry(view) {
-    const tl = view?.querySelector(".words-tl"), eye = view?.querySelector(".words-preview, .lyric-canvas");
-    if (!tl || !eye || tl.clientHeight <= 0)
+  rollGeometry(rail) {
+    const tl = rail?.querySelector(".words-tl");
+    if (!tl || tl.clientHeight <= 0)
       return null;
     const seconds = Number(tl.style.getPropertyValue("--len-s")) || wordsSongSpan().end;
-    const box = view.getBoundingClientRect(), eyeY = 24;
-    view.style.setProperty("--words-playhead-y", `${eyeY}px`);
-    return { tl, seconds, eyeY, tlTop: tl.getBoundingClientRect().top - box.top + view.scrollTop };
+    const eyeY = Math.min(120, rail.clientHeight / 3);
+    const tlTop = tl.getBoundingClientRect().top - rail.getBoundingClientRect().top + rail.scrollTop;
+    return { scale: tl.clientHeight / seconds, eyeY, tlTop };
   }
-  follow(t, smooth = false) {
-    const view = $("view-design"), g = this.rollGeometry(view);
+  scrollRailTo(rail, t, smooth = false) {
+    const g = this.rollGeometry(rail);
     if (!g)
       return;
-    const target = Math.max(0, g.tlTop + g.tl.clientHeight * t / g.seconds - 120);
-    wordsPanel.programmaticScrollUntil = performance.now() + (smooth ? 450 : 180);
-    view.scrollTo({ top: target, behavior: smooth ? "smooth" : "instant" });
+    const top = Math.max(0, Math.min(rail.scrollHeight - rail.clientHeight, g.tlTop + t * g.scale - g.eyeY));
+    if (Math.abs(rail.scrollTop - top) < 1)
+      return;
+    this.railScrollTargets.set(rail, top);
+    rail.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
+  }
+  follow(t, smooth = false) {
+    for (const rail of [wordsPanel.leftEl, wordsPanel.rightEl])
+      this.scrollRailTo(rail, t, smooth);
   }
   ensureBelowVideo(t) {
     this.follow(t, true);
   }
-  syncViewScroll(view) {
-    this.arrows(view);
-    const now = performance.now();
-    if (now >= (wordsPanel.userWheelUntil || 0))
+  beginRailScroll(rail) {
+    this.railScrollTargets.delete(rail);
+  }
+  syncRailScroll(rail) {
+    const view = $("view-design");
+    if (!view?.classList.contains("active"))
       return;
-    const g = this.rollGeometry(view);
+    if (!this.railPaintId) {
+      this.railPaintId = requestAnimationFrame(() => {
+        this.railPaintId = 0;
+        this.arrows(view);
+      });
+    }
+    if (this.railScrollTargets.has(rail)) {
+      if (Math.abs(rail.scrollTop - this.railScrollTargets.get(rail)) < 1)
+        this.railScrollTargets.delete(rail);
+      return;
+    }
+    const g = this.rollGeometry(rail);
     if (!g)
       return;
-    const t = Math.max(0, Math.min(wordsSongSpan().end, (view.scrollTop + g.eyeY - g.tlTop) / g.tl.clientHeight * g.seconds));
+    const t = Math.max(0, Math.min(wordsSongSpan().end, (rail.scrollTop + g.eyeY - g.tlTop) / g.scale));
+    this.scrollRailTo(rail === wordsPanel.leftEl ? wordsPanel.rightEl : wordsPanel.leftEl, t);
     if (wordsPanel.playing) {
       wordsVideo("pause");
+      wordsPanel.audio?.pause();
       wordsPanel.playing = false;
     }
     wordsPanel.previewRange = null;
     wordsPanel.autoPlay = false;
-    wordsPanel.userScrollingUntil = now + 220;
+    wordsPanel.userScrollingUntil = performance.now() + 220;
     wordsSeekSong(t);
     wordsFollowLivePlayback(t);
     this.now(t);
@@ -851,32 +877,29 @@ class WordsStageController {
     })) : null);
   }
   buildTokenSliders(lineId, design, it, activeIdx) {
-    const slider = (label, key, min, max, unit) => {
-      const rawVal = Math.round(Number(it?.[key] || (key === "size" ? 88 : 0)));
-      const display = key === "size" ? `${(rawVal / 80).toFixed(2)}x` : `${rawVal}${unit}`;
-      const valBadge = el("span", { "data-slider-val": key, class: "words-slider-val" }, display);
-      const input = el("input", {
-        "data-slider": key,
-        type: "range",
-        min: String(min),
-        max: String(max),
-        step: "1",
-        "aria-label": `Token ${label}`,
-        oninput: (e) => {
-          const v = Number(e.target.value);
-          valBadge.textContent = key === "size" ? `${(v / 80).toFixed(2)}x` : `${v}${unit}`;
+    const control = (key, label, min, max, unit, displayScale, controlType) => {
+      const field = new InspectorNumberField({
+        id: `words-token-${key}`, label, min, max, unit,
+        control: controlType, step: 1 / displayScale, value: (it[key] ?? (key === "size" ? 88 : 0)) / displayScale,
+        change: (value) => {
           const held = wordsPanel.designs.get(lineId) ?? structuredClone(design);
           if (held.items[activeIdx])
-            held.items[activeIdx][key] = v;
+            held.items[activeIdx][key] = Math.round(value * displayScale);
           wordsPanel.designs.set(lineId, held);
           wordsCanvasDraw();
-        },
-        onchange: () => wordsRender()
+        }
       });
-      input.value = input.defaultValue = String(rawVal);
-      return el("label", { class: "words-slider-row" }, el("span", { class: "words-slider-label" }, label), input, valBadge);
+      field.input.addEventListener("change", () => {
+        const focus = document.activeElement?.id;
+        wordsRender();
+        if (focus) $(focus)?.focus({ preventScroll: true });
+      });
+      return field;
     };
-    return el("div", { class: "words-sliders-box" }, slider("Scale", "size", 24, 260, "px"), slider("Tilt", "rotate", -45, 45, "°"));
+    const size = control("size", "Scale", 0.3, 3.25, "×", 80, "horizontal");
+    const rotate = control("rotate", "Tilt", -45, 45, "°", 1, "dial");
+    wordsPanel.tokenSliders = { size, rotate };
+    return el("div", { class: "words-sliders-box" }, size.node, rotate.node);
   }
   colTokenStyle(anim, lineId, design, activeIdx) {
     const it = design.items?.[activeIdx] || design.items?.[0];
