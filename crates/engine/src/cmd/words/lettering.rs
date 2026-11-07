@@ -29,19 +29,12 @@ struct Line {
 
 impl Line {
     fn text(&self) -> String {
-        self.words
-            .iter()
-            .map(|w| w.0.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
+        self.words.iter().map(|w| w.0.as_str()).collect::<Vec<_>>().join(" ")
     }
 
     /// Character range of word `k` within `text()`.
     fn range(&self, k: usize) -> (usize, usize) {
-        let start: usize = self.words[..k]
-            .iter()
-            .map(|w| w.0.chars().count() + 1)
-            .sum();
+        let start: usize = self.words[..k].iter().map(|w| w.0.chars().count() + 1).sum();
         (start, start + self.words[k].0.chars().count())
     }
 }
@@ -50,21 +43,12 @@ impl Line {
 fn lines(aligned: &Value) -> Vec<Line> {
     let mut out: Vec<Line> = Vec::new();
     for w in aligned["words"].as_array().into_iter().flatten() {
-        let id = w["sung_id"]
-            .as_str()
-            .or(w["line_id"].as_str())
-            .unwrap_or_default();
+        let id = w["sung_id"].as_str().or(w["line_id"].as_str()).unwrap_or_default();
         let time = w["start"].as_f64().zip(w["end"].as_f64());
         let word = (w["text"].as_str().unwrap_or_default().to_owned(), time);
         match out.last_mut() {
             Some(line) if line.id == id => line.words.push(word),
-            _ => out.push(Line {
-                id: id.to_owned(),
-                layer: id.to_owned(),
-                words: vec![word],
-                start: f64::MAX,
-                end: f64::MIN,
-            }),
+            _ => out.push(Line { id: id.to_owned(), layer: id.to_owned(), words: vec![word], start: f64::MAX, end: f64::MIN }),
         }
     }
     for line in &mut out {
@@ -85,10 +69,7 @@ fn lines(aligned: &Value) -> Vec<Line> {
 }
 
 fn key(text: &str) -> String {
-    text.chars()
-        .filter(char::is_ascii_alphabetic)
-        .flat_map(char::to_lowercase)
-        .collect()
+    text.chars().filter(char::is_ascii_alphabetic).flat_map(char::to_lowercase).collect()
 }
 
 /// The recipe's look for one group of words: font, style, size, fill and outline.
@@ -109,8 +90,7 @@ fn colour(recipe: &Value, name: &Value) -> Option<String> {
 }
 
 fn look(recipe: &Value, spec: &Value) -> Look {
-    let font =
-        |kind: &str, default: &str| recipe["fonts"][kind].as_str().unwrap_or(default).to_owned();
+    let font = |kind: &str, default: &str| recipe["fonts"][kind].as_str().unwrap_or(default).to_owned();
     let (font, style) = match spec["lettering"].as_str().unwrap_or("sans-bold") {
         "serif-bold" => (font("serif", "C059"), "Bold"),
         "serif-italic" => (font("serif", "C059"), "Italic"),
@@ -128,8 +108,7 @@ fn look(recipe: &Value, spec: &Value) -> Look {
 }
 
 fn item_look(recipe: &Value, item: &Value) -> Look {
-    let font_fn =
-        |kind: &str, default: &str| recipe["fonts"][kind].as_str().unwrap_or(default).to_owned();
+    let font_fn = |kind: &str, default: &str| recipe["fonts"][kind].as_str().unwrap_or(default).to_owned();
     let kind = item["font"].as_str().unwrap_or("sans");
     let bold = item["weight"].as_u64().unwrap_or(700) >= 700;
     let italic = item["italic"].as_bool().unwrap_or(false);
@@ -154,10 +133,7 @@ fn hero<'a>(recipe: &'a Value, line: &Line) -> Option<(usize, &'a Value)> {
     if recipe["max_heroes"].as_u64() == Some(0) {
         return None;
     }
-    line.words
-        .iter()
-        .enumerate()
-        .find_map(|(k, w)| recipe["heroes"].get(key(&w.0)).map(|spec| (k, spec)))
+    line.words.iter().enumerate().find_map(|(k, w)| recipe["heroes"].get(key(&w.0)).map(|spec| (k, spec)))
 }
 
 /// The hero's motion as (animator property, keyframes of (comp seconds, value)). Every motion
@@ -166,83 +142,25 @@ fn motion(name: &str, start: f64, end: f64) -> Option<(&'static str, Vec<(f64, V
     let still = json!([0, 0, 0]);
     let arrive = (end - start).clamp(0.3, 0.6);
     Some(match name {
-        "pop" => (
-            "scale",
-            vec![
-                (start - 0.1, json!([100, 100, 100])),
-                (start + 0.06, json!([135, 135, 100])),
-                (start + 0.24, json!([100, 100, 100])),
-            ],
-        ),
-        "fall" => (
-            "position",
-            vec![(start - 0.05, json!([0, -60, 0])), (start + arrive, still)],
-        ),
-        "rise" => (
-            "position",
-            vec![(start - 0.05, json!([0, 50, 0])), (start + arrive, still)],
-        ),
-        "east" => (
-            "position",
-            vec![(start - 0.05, json!([-80, 0, 0])), (start + arrive, still)],
-        ),
-        "west" => (
-            "position",
-            vec![(start - 0.05, json!([80, 0, 0])), (start + arrive, still)],
-        ),
-        "settle" => (
-            "position",
-            vec![(start - 0.05, json!([0, -24, 0])), (start + arrive, still)],
-        ),
-        "sleep" => (
-            "rotation",
-            vec![(start - 0.05, json!(-12)), (start + arrive, json!(0))],
-        ),
-        "loop" => (
-            "rotation",
-            vec![(start, json!(-360)), (start + 0.8, json!(0))],
-        ),
+        "pop" => ("scale", vec![(start - 0.1, json!([100, 100, 100])), (start + 0.06, json!([135, 135, 100])), (start + 0.24, json!([100, 100, 100]))]),
+        "fall" => ("position", vec![(start - 0.05, json!([0, -60, 0])), (start + arrive, still)]),
+        "rise" => ("position", vec![(start - 0.05, json!([0, 50, 0])), (start + arrive, still)]),
+        "east" => ("position", vec![(start - 0.05, json!([-80, 0, 0])), (start + arrive, still)]),
+        "west" => ("position", vec![(start - 0.05, json!([80, 0, 0])), (start + arrive, still)]),
+        "settle" => ("position", vec![(start - 0.05, json!([0, -24, 0])), (start + arrive, still)]),
+        "sleep" => ("rotation", vec![(start - 0.05, json!(-12)), (start + arrive, json!(0))]),
+        "loop" => ("rotation", vec![(start, json!(-360)), (start + 0.8, json!(0))]),
         _ => return None,
     })
 }
 
 fn stroke_preset(name: &str) -> Option<(&'static str, &'static str, f64, f64, f64)> {
     Some(match name {
-        "underline" => (
-            "0 0 280 30",
-            "M 5 14 Q 61 5 125 13 T 269 10",
-            260.0,
-            28.0,
-            0.55,
-        ),
-        "swoop" => (
-            "0 0 790 160",
-            "M 10 145 Q 126 170 217 93 T 438 58 Q 578 29 756 7 M 730 5 L 761 5 L 746 29",
-            520.0,
-            110.0,
-            1.0,
-        ),
-        "loop" => (
-            "0 0 620 110",
-            "M 15 20 C 110 95 425 95 455 40 C 485 -4 350 -3 352 37 C 355 95 515 85 602 50 M 579 33 L 608 49 L 586 73",
-            460.0,
-            90.0,
-            1.0,
-        ),
-        "hill" => (
-            "0 0 410 95",
-            "M 7 77 Q 73 72 118 32 Q 171 -8 228 31 Q 279 75 400 76",
-            320.0,
-            74.0,
-            0.9,
-        ),
-        "down" => (
-            "0 0 160 330",
-            "M 73 13 C 27 67 104 129 66 196 Q 47 231 61 289 M 30 264 L 61 294 L 87 260",
-            120.0,
-            240.0,
-            0.8,
-        ),
+        "underline" => ("0 0 280 30", "M 5 14 Q 61 5 125 13 T 269 10", 260.0, 28.0, 0.55),
+        "swoop" => ("0 0 790 160", "M 10 145 Q 126 170 217 93 T 438 58 Q 578 29 756 7 M 730 5 L 761 5 L 746 29", 520.0, 110.0, 1.0),
+        "loop" => ("0 0 620 110", "M 15 20 C 110 95 425 95 455 40 C 485 -4 350 -3 352 37 C 355 95 515 85 602 50 M 579 33 L 608 49 L 586 73", 460.0, 90.0, 1.0),
+        "hill" => ("0 0 410 95", "M 7 77 Q 73 72 118 32 Q 171 -8 228 31 Q 279 75 400 76", 320.0, 74.0, 0.9),
+        "down" => ("0 0 160 330", "M 73 13 C 27 67 104 129 66 196 Q 47 231 61 289 M 30 264 L 61 294 L 87 260", 120.0, 240.0, 0.8),
         _ => return None,
     })
 }
@@ -269,26 +187,16 @@ fn stroke_steps(s: &Stroke<'_>, steps: &mut Vec<Value>) {
         s.view_box, s.w, s.h, s.d, s.color, s.width
     );
     steps.push(step("edit.pasteSvg", json!({"svg": svg, "name": s.id})));
-    steps.push(step(
-        "prop.set",
-        json!({"layer": s.id, "path": "transform/position", "value": [s.x + s.w / 2.0, s.y + s.h / 2.0, 0.0]}),
-    ));
-    steps.push(step(
-        "layer.addShapeItem",
-        json!({"layer": s.id, "kind": "trim"}),
-    ));
+    steps.push(step("prop.set", json!({"layer": s.id, "path": "transform/position", "value": [s.x + s.w / 2.0, s.y + s.h / 2.0, 0.0]})));
+    steps.push(step("layer.addShapeItem", json!({"layer": s.id, "kind": "trim"})));
     for (t, v) in [(s.from.max(0.0), 0.0), (s.to.max(s.from + 0.05), 100.0)] {
-        steps.push(step(
-            "prop.set",
-            json!({"layer": s.id, "path": "contents/trim/end", "value": v, "time": t, "timeBase": "comp"}),
-        ));
+        steps.push(step("prop.set", json!({"layer": s.id, "path": "contents/trim/end", "value": v, "time": t, "timeBase": "comp"})));
     }
     steps.extend(trim_steps(json!(s.id), s.shown, s.gone));
 }
 
 fn text_params(look: &Look) -> Value {
-    let mut p =
-        json!({"font": look.font, "style": look.style, "size": look.size, "fill": look.fill});
+    let mut p = json!({"font": look.font, "style": look.style, "size": look.size, "fill": look.fill});
     if let Some(outline) = &look.outline {
         p["stroke"] = json!(outline);
         p["applyStroke"] = json!(true);
@@ -316,51 +224,23 @@ fn step(command: &str, params: Value) -> Value {
     json!({"command": command, "params": params})
 }
 
-fn animate_range(
-    id: &str,
-    range: (usize, usize),
-    name: &str,
-    start: f64,
-    end: f64,
-    steps: &mut Vec<Value>,
-) {
+fn animate_range(id: &str, range: (usize, usize), name: &str, start: f64, end: f64, steps: &mut Vec<Value>) {
     let Some((property, keys)) = motion(name, start, end) else {
         return;
     };
-    steps.push(step(
-        "layer.addTextAnimator",
-        json!({"layer": id, "properties": [property]}),
-    ));
+    steps.push(step("layer.addTextAnimator", json!({"layer": id, "properties": [property]})));
     let selector = "text/animators/animator/selectors/rangeSelector";
-    for (path, value) in [
-        ("advanced/units", json!(1)),
-        ("start", json!(range.0)),
-        ("end", json!(range.1)),
-    ] {
-        steps.push(step(
-            "prop.set",
-            json!({"layer": id, "path": format!("{selector}/{path}"), "value": value}),
-        ));
+    for (path, value) in [("advanced/units", json!(1)), ("start", json!(range.0)), ("end", json!(range.1))] {
+        steps.push(step("prop.set", json!({"layer": id, "path": format!("{selector}/{path}"), "value": value})));
     }
     for (time, value) in keys {
         let path = format!("text/animators/animator/properties/{property}");
-        steps.push(step(
-            "prop.set",
-            json!({"layer": id, "path": path, "value": value, "time": time.max(0.0), "timeBase": "comp"}),
-        ));
+        steps.push(step("prop.set", json!({"layer": id, "path": path, "value": value, "time": time.max(0.0), "timeBase": "comp"})));
     }
 }
 
 /// The hero word's style and motion, limited to its characters by a range selector.
-fn hero_steps(
-    recipe: &Value,
-    line: &Line,
-    k: usize,
-    spec: &Value,
-    box_y: f64,
-    span: (f64, f64),
-    steps: &mut Vec<Value>,
-) -> Value {
+fn hero_steps(recipe: &Value, line: &Line, k: usize, spec: &Value, box_y: f64, span: (f64, f64), steps: &mut Vec<Value>) -> Value {
     let id = line.layer.as_str();
     let (a, b) = line.range(k);
     let hero_look = look(recipe, spec);
@@ -398,10 +278,7 @@ fn hero_steps(
 }
 
 fn item_word_time(line: &Line, item: &Value) -> (f64, f64) {
-    let id_str = item["accent"]
-        .as_str()
-        .or_else(|| item["word_ids"].get(0).and_then(Value::as_str))
-        .unwrap_or_default();
+    let id_str = item["accent"].as_str().or_else(|| item["word_ids"].get(0).and_then(Value::as_str)).unwrap_or_default();
     if let Some((_, suffix)) = id_str.rsplit_once("/w")
         && let Ok(idx) = suffix.parse::<usize>()
         && let Some((_, Some(t))) = line.words.get(idx)
@@ -425,14 +302,7 @@ fn item_text(line: &Line, item: &Value) -> String {
         .join(" ")
 }
 
-fn spatial_line_steps(
-    recipe: &Value,
-    line: &Line,
-    design: &Value,
-    shown: f64,
-    gone: f64,
-    steps: &mut Vec<Value>,
-) -> Value {
+fn spatial_line_steps(recipe: &Value, line: &Line, design: &Value, shown: f64, gone: f64, steps: &mut Vec<Value>) -> Value {
     let mut hero_summary = Value::Null;
     for (idx, item) in design["items"].as_array().into_iter().flatten().enumerate() {
         let layer_id = format!("{}_item{idx}", line.layer);
@@ -441,16 +311,12 @@ fn spatial_line_steps(
         let look = item_look(recipe, item);
         let x = item["x"].as_f64().unwrap_or(140.0);
         let y = item["y"].as_f64().unwrap_or(90.0);
-        let bw =
-            ((text_str.chars().count() as f64) * look.size * 0.72).clamp(220.0, FRAME.0 - 80.0);
+        let bw = ((text_str.chars().count() as f64) * look.size * 0.72).clamp(220.0, FRAME.0 - 80.0);
         let bh = (look.size * 1.5).max(96.0);
         let mut text = text_params(&look);
         text["text"] = json!(text_str);
         text["name"] = json!(layer_id);
-        if let Some(keys) = item["motion_keys"]
-            .as_array()
-            .filter(|keys| !keys.is_empty())
-        {
+        if let Some(keys) = item["motion_keys"].as_array().filter(|keys| !keys.is_empty()) {
             let (start, _) = item_word_time(line, item);
             text["position"] = json!([x, y]);
             text["justify"] = json!("left");
@@ -481,42 +347,23 @@ fn spatial_line_steps(
         steps.push(step("layer.newText", text));
         let rot = item["rotate"].as_f64().unwrap_or(0.0);
         if rot.abs() > 1e-4 {
-            steps.push(step(
-                "prop.set",
-                json!({"layer": layer_id, "path": "transform/rotation", "value": rot}),
-            ));
+            steps.push(step("prop.set", json!({"layer": layer_id, "path": "transform/rotation", "value": rot})));
         }
         let (ws, we) = item_word_time(line, item);
         let move_name = item["motion"].as_str().unwrap_or("quiet");
-        animate_range(
-            &layer_id,
-            (0, text_str.chars().count()),
-            move_name,
-            ws,
-            we,
-            steps,
-        );
+        animate_range(&layer_id, (0, text_str.chars().count()), move_name, ws, we, steps);
         if item["accent"].is_string() || move_name != "quiet" {
             hero_summary = json!({"word": text_str, "motion": move_name, "at": ws});
         }
         steps.extend(trim_steps(json!(layer_id), shown, gone));
         for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
-            steps.push(step(
-                "prop.set",
-                json!({"layer": layer_id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"}),
-            ));
+            steps.push(step("prop.set", json!({"layer": layer_id, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
         }
     }
     for (d_idx, draw) in design["draws"].as_array().into_iter().flatten().enumerate() {
         let vb = draw["view_box"].as_str().unwrap_or("0 0 280 30");
-        let (x, y) = (
-            draw["x"].as_f64().unwrap_or(0.0),
-            draw["y"].as_f64().unwrap_or(0.0),
-        );
-        let (w, h) = (
-            draw["w"].as_f64().unwrap_or(240.0),
-            draw["h"].as_f64().unwrap_or(30.0),
-        );
+        let (x, y) = (draw["x"].as_f64().unwrap_or(0.0), draw["y"].as_f64().unwrap_or(0.0));
+        let (w, h) = (draw["w"].as_f64().unwrap_or(240.0), draw["h"].as_f64().unwrap_or(30.0));
         for (p_idx, path) in draw["paths"].as_array().into_iter().flatten().enumerate() {
             let sid = format!("{}_draw{d_idx}_{p_idx}", line.layer);
             stroke_steps(
@@ -542,37 +389,22 @@ fn spatial_line_steps(
     hero_summary
 }
 
-fn build_steps_with_designs(
-    recipe: &Value,
-    designs: &Value,
-    all: &[Line],
-    duration: f64,
-) -> (Vec<Value>, Vec<Value>) {
+fn build_steps_with_designs(recipe: &Value, designs: &Value, all: &[Line], duration: f64) -> (Vec<Value>, Vec<Value>) {
     let (w, h) = FRAME;
     let top = recipe["band"].as_str() != Some("bottom");
     let box_y = if top { 50.0 } else { h - 350.0 };
     let base = look(recipe, &recipe["base"]);
-    let mut steps = vec![step(
-        "comp.new",
-        json!({"name": COMP, "width": w, "height": h, "frameRate": 30, "duration": duration}),
-    )];
+    let mut steps = vec![step("comp.new", json!({"name": COMP, "width": w, "height": h, "frameRate": 30, "duration": duration}))];
     let mut summary = Vec::new();
     let mut previous_out: f64 = 0.0;
     for (i, line) in all.iter().enumerate() {
         let id = line.id.as_str();
         let next = all.get(i + 1).map_or(duration, |l| l.start);
         let shown = (line.start - LEAD).max(previous_out).max(0.0);
-        let gone = if next - line.end < HOLD {
-            next
-        } else {
-            (line.end + HOLD).min(duration)
-        };
+        let gone = if next - line.end < HOLD { next } else { (line.end + HOLD).min(duration) };
         previous_out = gone;
         let line_design = &designs[id];
-        let hero_info = if line_design["items"]
-            .as_array()
-            .is_some_and(|a| !a.is_empty())
-        {
+        let hero_info = if line_design["items"].as_array().is_some_and(|a| !a.is_empty()) {
             spatial_line_steps(recipe, line, line_design, shown, gone, &mut steps)
         } else {
             let mut text = text_params(&base);
@@ -581,20 +413,14 @@ fn build_steps_with_designs(
             text["box"] = json!([120.0, box_y, w - 240.0, 300.0]);
             text["justify"] = json!("center");
             steps.push(step("layer.newText", text));
-            let h_val = hero(recipe, line)
-                .map(|(k, spec)| {
-                    hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps)
-                })
-                .unwrap_or(Value::Null);
+            let h_val = hero(recipe, line).map(|(k, spec)| hero_steps(recipe, line, k, spec, box_y, (shown, gone), &mut steps)).unwrap_or(Value::Null);
             steps.extend(trim_steps(json!(line.layer), shown, gone));
             for (time, value) in [(shown, 0), (shown + 0.2, 100)] {
                 steps.push(step("prop.set", json!({"layer": line.layer, "path": "transform/opacity", "value": value, "time": time, "timeBase": "comp"})));
             }
             h_val
         };
-        summary.push(
-            json!({"id": id, "text": line.text(), "in": shown, "out": gone, "hero": hero_info}),
-        );
+        summary.push(json!({"id": id, "text": line.text(), "in": shown, "out": gone, "hero": hero_info}));
     }
     (steps, summary)
 }
@@ -623,33 +449,23 @@ fn words_designs(dir: &Path) -> Value {
 pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
     let designs = words_designs(&dir);
-    let recipe_path = p["recipe"]
-        .as_str()
-        .map_or_else(|| dir.join("lyrics-design.json"), PathBuf::from);
+    let recipe_path = p["recipe"].as_str().map_or_else(|| dir.join("lyrics-design.json"), PathBuf::from);
     let recipe: Value = std::fs::read(&recipe_path)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .or_else(|| {
-            designs.as_object().filter(|m| !m.is_empty()).map(|_| {
-                json!({"band": "top", "base": {"lettering": "sans-bold", "size": 58, "color": "#173F49", "outline": "#FFF8E9"}})
-            })
+            designs
+                .as_object()
+                .filter(|m| !m.is_empty())
+                .map(|_| json!({"band": "top", "base": {"lettering": "sans-bold", "size": 58, "color": "#173F49", "outline": "#FFF8E9"}}))
         })
-        .ok_or_else(|| {
-            invalid(format!(
-                "No lyric design recipe at {}; propose one and get it approved first",
-                recipe_path.display()
-            ))
-        })?;
+        .ok_or_else(|| invalid(format!("No lyric design recipe at {}; propose one and get it approved first", recipe_path.display())))?;
     let all = lines(&crate::cmd::words::aligned_in(&dir)?);
     if all.is_empty() {
-        return Err(invalid(
-            "No timed lyric lines: import the transcript and the artist's lyric sheet first",
-        ));
+        return Err(invalid("No timed lyric lines: import the transcript and the artist's lyric sheet first"));
     }
     let last = all.last().map_or(0.0, |l| l.end);
-    let duration = crate::workshop::song_seconds(&dir)
-        .unwrap_or(last + 2.0)
-        .max(last);
+    let duration = crate::workshop::song_seconds(&dir).unwrap_or(last + 2.0).max(last);
     let (steps, summary) = build_steps_with_designs(&recipe, &designs, &all, duration);
     let out = dir.join("lettering");
     std::fs::create_dir_all(&out)?;
@@ -672,31 +488,21 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
         Some(movie)
     };
     let studio = if p["studio"] == true {
-        let movie = render
-            .as_deref()
-            .ok_or_else(|| invalid("Render the lettering before sending it to Studio"))?;
+        let movie = render.as_deref().ok_or_else(|| invalid("Render the lettering before sending it to Studio"))?;
         Some(crate::cmd::film::publish_lyrics(s, movie)?)
     } else {
         None
     };
-    Ok(
-        json!({"ok": true, "project": project, "commands": commands, "render": render,
-        "recipe": recipe_path, "duration": duration, "lines": summary, "studio": studio}),
-    )
+    Ok(json!({"ok": true, "project": project, "commands": commands, "render": render,
+        "recipe": recipe_path, "duration": duration, "lines": summary, "studio": studio}))
 }
 
 /// Publish the already-rendered alpha lettering after a background render.
 pub fn cmd_words_publish(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?.canonicalize()?;
-    let path = p["path"]
-        .as_str()
-        .map_or_else(|| dir.join("lettering/lyrics.mov"), |path| dir.join(path));
+    let path = p["path"].as_str().map_or_else(|| dir.join("lettering/lyrics.mov"), |path| dir.join(path));
     let path = path.canonicalize()?;
-    if !path.starts_with(&dir)
-        || !path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("mov"))
-    {
+    if !path.starts_with(&dir) || !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("mov")) {
         return Err(invalid("Choose a rendered .mov inside the Magic project"));
     }
     let studio = crate::cmd::film::publish_lyrics(s, &path)?;

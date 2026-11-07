@@ -35,7 +35,7 @@ blocker, not a reason to silently fetch it. `--locked` preserves `Cargo.lock`.
 
 ## Optional native-shell and internal reference
 
-In the already prepared [native development environment](../apps/magic-gui/README.md):
+In the already prepared [native development environment](../apps/magic/README.md):
 
 ```sh
 cargo doc --workspace --no-deps --locked
@@ -64,7 +64,7 @@ prepared native development environment to establish shell coverage.
 ## GitHub visibility and optional hosting
 
 The [repository documentation](README.md) and
-[command architecture](../apps/magic-gui/MAGIC.md) are readable on GitHub
+[command architecture](../apps/magic/MAGIC.md) are readable on GitHub
 without deploying anything. Links from generated pages to repository guides
 track the default branch: newly added guide pages are not live at those links
 until this documentation commit merges. To host the API reference, publish the

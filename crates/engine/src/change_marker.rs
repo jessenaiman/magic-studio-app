@@ -9,10 +9,7 @@ use std::{
 };
 
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
-const COVERAGE: &[&str] = &[
-    "user_session_project_file_write_attempt",
-    "recent_projects_write_attempt",
-];
+const COVERAGE: &[&str] = &["user_session_project_file_write_attempt", "recent_projects_write_attempt"];
 
 fn directory() -> Result<PathBuf> {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
@@ -20,15 +17,9 @@ fn directory() -> Result<PathBuf> {
         .or_else(|| std::env::var_os("XDG_STATE_HOME").filter(|v| !v.is_empty()))
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|v| PathBuf::from(v).join(".local/state")))
-        .ok_or_else(|| {
-            EngineError::InvalidParams(
-                "No runtime or state directory available for change notifications".into(),
-            )
-        })?;
+        .ok_or_else(|| EngineError::InvalidParams("No runtime or state directory available for change notifications".into()))?;
     if !base.is_absolute() {
-        return Err(EngineError::InvalidParams(
-            "Change notification directory must be absolute".into(),
-        ));
+        return Err(EngineError::InvalidParams("Change notification directory must be absolute".into()));
     }
     Ok(base.join("magic"))
 }
@@ -46,37 +37,25 @@ fn ensure_private_directory(dir: &std::path::Path) -> Result<()> {
     {
         use std::os::unix::fs::MetadataExt;
         let metadata = fs::symlink_metadata(dir)?;
-        let parent = fs::metadata(dir.parent().ok_or_else(|| {
-            EngineError::InvalidParams("Notification parent unavailable".into())
-        })?)?;
+        let parent = fs::metadata(dir.parent().ok_or_else(|| EngineError::InvalidParams("Notification parent unavailable".into()))?)?;
         if !metadata.file_type().is_dir()
             || metadata.uid() != rustix::process::getuid().as_raw()
             || parent.uid() != rustix::process::getuid().as_raw()
             || (metadata.mode() & 0o077 != 0 && parent.mode() & 0o077 != 0)
         {
-            return Err(EngineError::InvalidParams(
-                "Notification directory must be private to the current user".into(),
-            ));
+            return Err(EngineError::InvalidParams("Notification directory must be private to the current user".into()));
         }
     }
     Ok(())
 }
 
 fn marker_token() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!(
-        "{}-{now}-{}",
-        std::process::id(),
-        SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    )
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    format!("{}-{now}-{}", std::process::id(), SEQUENCE.fetch_add(1, Ordering::Relaxed))
 }
 
 fn write_marker(dir: &std::path::Path, token: &str) -> Result<()> {
-    let payload = serde_json::to_string(&json!({"version":1,"token":token}))
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let payload = serde_json::to_string(&json!({"version":1,"token":token})).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     craft_atomic::WriteOptions::default()
         .with_new_file_permissions(craft_atomic::NewFilePermissions::Private)
         .atomic_write(&dir.join("changes.json"), payload.as_bytes())?;
@@ -98,13 +77,8 @@ fn publish() -> Result<()> {
 
 fn check_no_options(params: &Value) -> Result<()> {
     let allowed = ["_origin", "_client", "_request_id", "_control"];
-    if params
-        .as_object()
-        .is_none_or(|p| p.keys().any(|k| !allowed.contains(&k.as_str())))
-    {
-        return Err(EngineError::InvalidParams(
-            "backstage.changes accepts no options".into(),
-        ));
+    if params.as_object().is_none_or(|p| p.keys().any(|k| !allowed.contains(&k.as_str()))) {
+        return Err(EngineError::InvalidParams("backstage.changes accepts no options".into()));
     }
     Ok(())
 }
@@ -128,9 +102,7 @@ fn read_marker(path: &std::path::Path) -> std::result::Result<Value, &'static st
     }
     use std::io::Read;
     let mut bytes = Vec::new();
-    file.take(4097)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "marker_unreadable")?;
+    file.take(4097).read_to_end(&mut bytes).map_err(|_| "marker_unreadable")?;
     if bytes.len() > 4096 {
         return Err("marker_invalid");
     }
@@ -147,9 +119,7 @@ pub fn status(_: &mut Session, params: &Value) -> Result<Value> {
     let path = directory()?.join("changes.json");
     let read = read_marker(&path);
     let token = read.as_ref().ok().and_then(|v| v["token"].as_str());
-    Ok(
-        json!({"ok":true,"path":path,"available":token.is_some(),"token":token,"reason":read.as_ref().err(),
+    Ok(json!({"ok":true,"path":path,"available":token.is_some(),"token":token,"reason":read.as_ref().err(),
         "coverage":COVERAGE,"excluded":["non_user_session_project_writes","unsaved_ui","external_file_changes","asynchronous_completions","other_project_files"],
-        "semantics":"opaque coalescing invalidation; readers never clear the marker"}),
-    )
+        "semantics":"opaque coalescing invalidation; readers never clear the marker"}))
 }

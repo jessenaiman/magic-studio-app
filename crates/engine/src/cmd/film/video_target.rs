@@ -17,49 +17,25 @@ pub(crate) fn target_project_path(_: &Session, dir: &Path, target: &str) -> Opti
     let hf = dir.join("hyperframes");
     let config = hf.join("hyperframes.json");
     let index = hf.join("index.html");
-    if index.is_file() {
-        Some(if config.is_file() { config } else { index })
-    } else {
-        None
-    }
+    if index.is_file() { Some(if config.is_file() { config } else { index }) } else { None }
 }
 
 pub(crate) fn target_project_chip(s: &Session, dir: &Path, target: &str) -> Value {
     let found = target_project_path(s, dir, target);
-    let path = found
-        .clone()
-        .unwrap_or_else(|| dir.join("hyperframes/index.html"));
-    let name = path
-        .strip_prefix(dir)
-        .unwrap_or(&path)
-        .to_string_lossy()
-        .into_owned();
+    let path = found.clone().unwrap_or_else(|| dir.join("hyperframes/index.html"));
+    let name = path.strip_prefix(dir).unwrap_or(&path).to_string_lossy().into_owned();
     json!({"name": name, "path": path, "exists": found.is_some(), "target": "hyperframes"})
 }
 
 fn native_preview(dir: &Path, flags: &[String], executable: Option<&str>) -> Result<Value> {
     let project = dir.join("hyperframes");
     let runtime = resolve_video_cli(executable, Some(&project))?;
-    let mut args = vec![
-        "preview".into(),
-        project.to_string_lossy().into_owned(),
-        "--json".into(),
-    ];
+    let mut args = vec!["preview".into(), project.to_string_lossy().into_owned(), "--json".into()];
     args.extend_from_slice(flags);
-    let output = run_tool_in(
-        dir,
-        runtime
-            .to_str()
-            .ok_or_else(|| EngineError::InvalidParams("HyperFrames path must be UTF-8".into()))?,
-        &args,
-    )?;
-    let reply: Value = serde_json::from_str(&output)
-        .map_err(|e| EngineError::InvalidParams(format!("HyperFrames preview: {e}")))?;
+    let output = run_tool_in(dir, runtime.to_str().ok_or_else(|| EngineError::InvalidParams("HyperFrames path must be UTF-8".into()))?, &args)?;
+    let reply: Value = serde_json::from_str(&output).map_err(|e| EngineError::InvalidParams(format!("HyperFrames preview: {e}")))?;
     if reply["ok"] != true {
-        return Err(EngineError::ExternalTool(
-            "hyperframes preview".into(),
-            reply.to_string(),
-        ));
+        return Err(EngineError::ExternalTool("hyperframes preview".into(), reply.to_string()));
     }
     Ok(reply["result"].clone())
 }
@@ -83,19 +59,9 @@ pub(crate) fn video_server_info(dir: &Path, _: &str) -> Value {
 pub(crate) fn pinned_renderer_version(project: &Path) -> Option<String> {
     let text = std::fs::read_to_string(project.join("package.json")).ok()?;
     let json: Value = serde_json::from_str(&text).ok()?;
-    let scripts = json["scripts"]
-        .as_object()
-        .into_iter()
-        .flatten()
-        .filter_map(|(_, v)| v.as_str());
+    let scripts = json["scripts"].as_object().into_iter().flatten().filter_map(|(_, v)| v.as_str());
     scripts
-        .filter_map(|cmd| {
-            cmd.split("hyperframes@").nth(1).map(|rest| {
-                rest.chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '.')
-                    .collect::<String>()
-            })
-        })
+        .filter_map(|cmd| cmd.split("hyperframes@").nth(1).map(|rest| rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect::<String>()))
         .find(|v| !v.is_empty())
         .or_else(|| {
             json["dependencies"]["hyperframes"]
@@ -110,18 +76,12 @@ pub(crate) fn pinned_renderer_version(project: &Path) -> Option<String> {
 pub(crate) fn pinned_cli(project: &Path, npx_root: &Path, version: &str) -> Option<PathBuf> {
     let matches = |modules: &Path| {
         let manifest = std::fs::read_to_string(modules.join("hyperframes/package.json")).ok()?;
-        let found = serde_json::from_str::<Value>(&manifest).ok()?["version"]
-            .as_str()?
-            .to_string();
+        let found = serde_json::from_str::<Value>(&manifest).ok()?["version"].as_str()?.to_string();
         let bin = modules.join(".bin/hyperframes");
         (found == version && bin.is_file()).then_some(bin)
     };
     matches(&project.join("node_modules")).or_else(|| {
-        let mut caches: Vec<PathBuf> = std::fs::read_dir(npx_root)
-            .ok()?
-            .filter_map(|e| e.ok())
-            .map(|e| e.path().join("node_modules"))
-            .collect();
+        let mut caches: Vec<PathBuf> = std::fs::read_dir(npx_root).ok()?.filter_map(|e| e.ok()).map(|e| e.path().join("node_modules")).collect();
         caches.sort();
         caches.iter().find_map(|modules| matches(modules))
     })
@@ -130,9 +90,7 @@ pub(crate) fn pinned_cli(project: &Path, npx_root: &Path, version: &str) -> Opti
 /// Resolve an explicitly selected executable, HYPERFRAMES_CLI, PATH, or an already-downloaded copy
 /// of the version the project pins; never install with npx. A failure says exactly what to do.
 pub(crate) fn resolve_video_cli(explicit: Option<&str>, project: Option<&Path>) -> Result<PathBuf> {
-    let configured = explicit
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HYPERFRAMES_CLI").map(PathBuf::from));
+    let configured = explicit.map(PathBuf::from).or_else(|| std::env::var_os("HYPERFRAMES_CLI").map(PathBuf::from));
     let on_path = || {
         let paths: Vec<PathBuf> = std::env::var_os("PATH")
             .into_iter()
@@ -140,12 +98,7 @@ pub(crate) fn resolve_video_cli(explicit: Option<&str>, project: Option<&Path>) 
             .map(|d| d.join("hyperframes"))
             .filter(|p| p.is_file())
             .collect();
-        paths
-            .iter()
-            .find(|p| !p.to_string_lossy().contains("/mise/shims/"))
-            .cloned()
-            .or_else(discover_video_renderer)
-            .or_else(|| paths.into_iter().next())
+        paths.iter().find(|p| !p.to_string_lossy().contains("/mise/shims/")).cloned().or_else(discover_video_renderer).or_else(|| paths.into_iter().next())
     };
     let pinned = project.and_then(|dir| pinned_renderer_version(dir).map(|version| (dir, version)));
     let cached = || {
@@ -159,10 +112,7 @@ pub(crate) fn resolve_video_cli(explicit: Option<&str>, project: Option<&Path>) 
         None=>"HyperFrames executable not found on PATH. Use an existing executable through HYPERFRAMES_CLI=/absolute/path/to/hyperframes (or pass resolve_video_cli=...). Nothing was installed.".into(),
     }))?;
     if !path.is_absolute() || !path.is_file() {
-        return Err(EngineError::InvalidParams(format!(
-            "HyperFrames executable must be an existing absolute file: {}",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("HyperFrames executable must be an existing absolute file: {}", path.display())));
     }
     Ok(path)
 }
@@ -171,23 +121,15 @@ fn discover_video_renderer() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var_os("HOME")?);
     let mise_nodes = home.join(".local/share/mise/installs/node");
     if let Ok(entries) = std::fs::read_dir(&mise_nodes) {
-        let mut bins: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok())
-            .map(|e| e.path().join("bin/hyperframes"))
-            .filter(|p| p.is_file())
-            .collect();
+        let mut bins: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path().join("bin/hyperframes")).filter(|p| p.is_file()).collect();
         bins.sort();
         if let Some(bin) = bins.pop() {
             return Some(bin);
         }
     }
     let npx_root = home.join(".npm/_npx");
-    let mut bins: Vec<PathBuf> = std::fs::read_dir(&npx_root)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path().join("node_modules/.bin/hyperframes"))
-        .filter(|p| p.is_file())
-        .collect();
+    let mut bins: Vec<PathBuf> =
+        std::fs::read_dir(&npx_root).ok()?.filter_map(|e| e.ok()).map(|e| e.path().join("node_modules/.bin/hyperframes")).filter(|p| p.is_file()).collect();
     bins.sort();
     bins.pop()
 }
@@ -260,56 +202,30 @@ fn init_video_project(s: &Session, dir: &Path, executable: Option<&str>) -> Resu
         .output()
         .map_err(|e| EngineError::ExternalTool(cli.display().to_string(), e.to_string()))?;
     if !output.status.success() {
-        return Err(EngineError::ExternalTool(
-            cli.display().to_string(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ));
+        return Err(EngineError::ExternalTool(cli.display().to_string(), String::from_utf8_lossy(&output.stderr).into_owned()));
     }
     ensure_music_audio_role(&project)?;
-    target_project_path(s, dir, "hyperframes").ok_or_else(|| {
-        EngineError::InvalidParams("HyperFrames init did not produce its project files".into())
-    })
+    target_project_path(s, dir, "hyperframes").ok_or_else(|| EngineError::InvalidParams("HyperFrames init did not produce its project files".into()))
 }
 
 /// Existing native project only; all creation goes through the official init command.
-pub(crate) fn ensure_video_target_project(
-    s: &Session,
-    dir: &Path,
-    target: &str,
-) -> Result<PathBuf> {
-    target_project_path(s, dir, target).ok_or_else(|| {
-        EngineError::InvalidParams("No HyperFrames project; upload audio or run video.init".into())
-    })
+pub(crate) fn ensure_video_target_project(s: &Session, dir: &Path, target: &str) -> Result<PathBuf> {
+    target_project_path(s, dir, target).ok_or_else(|| EngineError::InvalidParams("No HyperFrames project; upload audio or run video.init".into()))
 }
 
 pub(crate) fn probe_audio_duration(audio: Option<&Path>) -> Result<f64> {
-    audio.map_or(Ok(30.0), |path| {
-        crate::cmd::film::media_duration(path, false)
-    })
+    audio.map_or(Ok(30.0), |path| crate::cmd::film::media_duration(path, false))
 }
 
 /// The official caption component bound to timed words (`{text,start,end}`) shown in the given index groups.
-pub(crate) fn write_caption_source(
-    dest: &Path,
-    words: &[Value],
-    groups: &[[usize; 2]],
-    duration: f64,
-) -> Result<()> {
-    let text = serde_json::to_string(words)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?
-        .replace('<', "\\u003c");
-    let groups =
-        serde_json::to_string(groups).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+pub(crate) fn write_caption_source(dest: &Path, words: &[Value], groups: &[[usize; 2]], duration: f64) -> Result<()> {
+    let text = serde_json::to_string(words).map_err(|e| EngineError::InvalidParams(e.to_string()))?.replace('<', "\\u003c");
+    let groups = serde_json::to_string(groups).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     let html = include_str!("../../../../../pipeline/templates/timed-captions.html")
         .replace("__AC_WORDS__", &text)
         .replace("__AC_GROUPS__", &groups)
         .replace("__AC_DURATION__", &duration.to_string());
-    let parent = dest.parent().ok_or_else(|| {
-        EngineError::InvalidParams(format!(
-            "Caption destination has no parent: {}",
-            dest.display()
-        ))
-    })?;
+    let parent = dest.parent().ok_or_else(|| EngineError::InvalidParams(format!("Caption destination has no parent: {}", dest.display())))?;
     std::fs::create_dir_all(parent)?;
     std::fs::write(dest, html)?;
     Ok(())
@@ -320,15 +236,12 @@ fn caption_words(dir: &Path) -> Result<Option<(PathBuf, Vec<Value>)>> {
     let Some(transcript) = crate::workshop::transcript_files(dir).into_iter().next() else {
         return Ok(None);
     };
-    let input: Value = serde_json::from_slice(&std::fs::read(&transcript)?)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let input: Value = serde_json::from_slice(&std::fs::read(&transcript)?).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     let words = input
         .as_array()
         .or_else(|| input["words"].as_array())
         .filter(|v| !v.is_empty())
-        .ok_or_else(|| {
-            EngineError::InvalidParams("Native captions require existing timed words".into())
-        })?
+        .ok_or_else(|| EngineError::InvalidParams("Native captions require existing timed words".into()))?
         .clone();
     require_sound_words(&input, &words)?;
     Ok(Some((transcript, words)))
@@ -340,15 +253,10 @@ fn require_sound_words(input: &Value, words: &[Value]) -> Result<()> {
     if input.is_array() {
         let unsound = words.iter().any(|w| {
             w["text"].as_str().is_none_or(|t| t.trim().is_empty())
-                || w["start"]
-                    .as_f64()
-                    .zip(w["end"].as_f64())
-                    .is_none_or(|(a, b)| !a.is_finite() || !b.is_finite() || a < 0.0 || b < a)
+                || w["start"].as_f64().zip(w["end"].as_f64()).is_none_or(|(a, b)| !a.is_finite() || !b.is_finite() || a < 0.0 || b < a)
         });
         if unsound {
-            return Err(EngineError::InvalidParams(
-                "Native caption words require text and valid start/end timestamps".into(),
-            ));
+            return Err(EngineError::InvalidParams("Native caption words require text and valid start/end timestamps".into()));
         }
         return Ok(());
     }
@@ -360,12 +268,7 @@ fn require_sound_words(input: &Value, words: &[Value]) -> Result<()> {
 }
 
 fn caption_digest(words: &[Value]) -> Result<String> {
-    Ok(format!(
-        "{:x}",
-        Sha256::digest(
-            serde_json::to_vec(words).map_err(|e| EngineError::InvalidParams(e.to_string()))?
-        )
-    ))
+    Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(words).map_err(|e| EngineError::InvalidParams(e.to_string()))?)))
 }
 
 /// How an already-present caption source is treated.
@@ -384,10 +287,7 @@ fn caption_reuse(dest: &Path, receipt: &Path, digest: &str) -> Result<CaptionReu
     if !dest.is_file() {
         return Ok(CaptionReuse::Rewrite);
     }
-    let state: Value = std::fs::read(receipt)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or(Value::Null);
+    let state: Value = std::fs::read(receipt).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
     if state["source_kind"] == "artist_lines" {
         return Ok(CaptionReuse::AuthorTrack(
             json!({"ready":state["input_sha256"]==digest,"preserved_existing_caption_track":true,"reason":"Authored lyric track retained; changed timing requires review","source":dest,"provenance":receipt}),
@@ -403,14 +303,7 @@ fn caption_reuse(dest: &Path, receipt: &Path, digest: &str) -> Result<CaptionReu
     Ok(CaptionReuse::Rewrite)
 }
 
-fn write_caption_receipt(
-    receipt: &Path,
-    digest: &str,
-    dest: &Path,
-    transcript: &Path,
-    words: &[Value],
-    duration: f64,
-) -> Result<()> {
+fn write_caption_receipt(receipt: &Path, digest: &str, dest: &Path, transcript: &Path, words: &[Value], duration: f64) -> Result<()> {
     let source_hash = format!("{:x}", Sha256::digest(std::fs::read(dest)?));
     let receipt_bytes=serde_json::to_vec_pretty(&json!({"input_sha256":digest,"source_sha256":source_hash,"transcript":transcript,"word_count":words.len(),"duration":duration,"grouping":"provisional deterministic batches of five; no semantic or listening review claimed","source":"official caption-highlight; native caption-group classes"})).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
     std::fs::write(receipt, receipt_bytes)?;
@@ -424,16 +317,9 @@ fn mount_caption_track(host: &mut String, duration: f64) -> Result<bool> {
         return Ok(false);
     }
     if !host.contains("</body>") {
-        return Err(EngineError::InvalidParams(
-            "Official host has no closing body; caption source retained but no host edit performed"
-                .into(),
-        ));
+        return Err(EngineError::InvalidParams("Official host has no closing body; caption source retained but no host edit performed".into()));
     }
-    let end = host.rfind("</div>").ok_or_else(|| {
-        EngineError::InvalidParams(
-            "Official host has no composition container; no host edit performed".into(),
-        )
-    })?;
+    let end = host.rfind("</div>").ok_or_else(|| EngineError::InvalidParams("Official host has no composition container; no host edit performed".into()))?;
     host.insert_str(end,&format!("<div id=\"caption-highlight\" class=\"clip\" data-composition-id=\"caption-highlight\" {marker} data-track-kind=\"captions\" data-start=\"0\" data-duration=\"{duration}\" data-track-index=\"3\" data-width=\"1920\" data-height=\"1080\"></div>\n"));
     Ok(true)
 }
@@ -462,12 +348,7 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
     if let Some(value) = preserved_caption_track(&host, words.len()) {
         return Ok(value);
     }
-    let duration = probe_audio_duration(s.song_audio.as_deref())?.max(
-        words
-            .iter()
-            .filter_map(|w| w["end"].as_f64())
-            .fold(0.0, f64::max),
-    );
+    let duration = probe_audio_duration(s.song_audio.as_deref())?.max(words.iter().filter_map(|w| w["end"].as_f64()).fold(0.0, f64::max));
     let reused = dest.is_file();
     match caption_reuse(&dest, &receipt, &digest)? {
         CaptionReuse::AuthorTrack(value) => return Ok(value),
@@ -479,10 +360,7 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
         }
         CaptionReuse::Keep => {}
         CaptionReuse::Rewrite => {
-            let groups: Vec<[usize; 2]> = (0..words.len())
-                .step_by(5)
-                .map(|start| [start, (start + 4).min(words.len() - 1)])
-                .collect();
+            let groups: Vec<[usize; 2]> = (0..words.len()).step_by(5).map(|start| [start, (start + 4).min(words.len() - 1)]).collect();
             write_caption_source(&dest, &words, &groups, duration)?;
             write_caption_receipt(&receipt, &digest, &dest, &transcript, &words, duration)?;
         }
@@ -497,15 +375,9 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
 
 /// The target this call names, refused when it is not the supported one.
 fn video_target_of(s: &Session, params: &Value) -> Result<String> {
-    let target = params
-        .get("target")
-        .and_then(Value::as_str)
-        .unwrap_or(&s.video_target)
-        .to_string();
+    let target = params.get("target").and_then(Value::as_str).unwrap_or(&s.video_target).to_string();
     if target != "hyperframes" {
-        return Err(EngineError::InvalidParams(
-            "Magic Studio uses HyperFrames".into(),
-        ));
+        return Err(EngineError::InvalidParams("Magic Studio uses HyperFrames".into()));
     }
     Ok(target)
 }
@@ -516,17 +388,10 @@ fn native_timeline(dir: &Path, params: &Value) -> Result<Value> {
     let runtime = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
     let native = run_tool_in(
         dir,
-        runtime.to_str().ok_or_else(|| {
-            EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
-        })?,
-        &[
-            "timeline".into(),
-            hf.to_string_lossy().into_owned(),
-            "--json".into(),
-        ],
+        runtime.to_str().ok_or_else(|| EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into()))?,
+        &["timeline".into(), hf.to_string_lossy().into_owned(), "--json".into()],
     )?;
-    serde_json::from_str(&native)
-        .map_err(|e| EngineError::InvalidParams(format!("HyperFrames timeline: {e}")))
+    serde_json::from_str(&native).map_err(|e| EngineError::InvalidParams(format!("HyperFrames timeline: {e}")))
 }
 
 /// A connected song must appear as a nonempty audio track in the official timeline.
@@ -537,9 +402,7 @@ fn require_audio_track(s: &Session, native: &Value) -> Result<()> {
         .flatten()
         .any(|t| t["kind"] == "audio" && t["rows"].as_array().is_some_and(|rows| !rows.is_empty()));
     if s.song_audio.is_some() && !has_audio {
-        return Err(EngineError::InvalidParams(
-            "HyperFrames project has no audio track; upload was not completed".into(),
-        ));
+        return Err(EngineError::InvalidParams("HyperFrames project has no audio track; upload was not completed".into()));
     }
     Ok(())
 }
@@ -555,14 +418,7 @@ fn contained_audio(dir: &Path, native: &Value) -> Option<PathBuf> {
         .flat_map(|track| track["rows"].as_array().into_iter().flatten())
         .filter_map(|row| row["src"].as_str())
         .map(|src| hf.join(src))
-        .find(|path| {
-            path.is_file()
-                && path.canonicalize().ok().is_some_and(|p| {
-                    hf.canonicalize()
-                        .ok()
-                        .is_some_and(|root| p.starts_with(root))
-                })
-        })
+        .find(|path| path.is_file() && path.canonicalize().ok().is_some_and(|p| hf.canonicalize().ok().is_some_and(|root| p.starts_with(root))))
 }
 
 /// Point the session at the timeline's contained recording, refusing a first import without one.
@@ -570,17 +426,13 @@ fn adopt_audio(s: &mut Session, dir: &Path, native: &Value, reused: bool) -> Res
     let contained = contained_audio(dir, native);
     if !reused && s.song_audio.is_some() {
         let copied = contained.ok_or_else(|| {
-            EngineError::InvalidParams(
-                "HyperFrames did not return a contained copy of the uploaded recording; project was not marked imported".into(),
-            )
+            EngineError::InvalidParams("HyperFrames did not return a contained copy of the uploaded recording; project was not marked imported".into())
         })?;
         s.song_audio = Some(copied);
         return Ok(());
     }
     if let Some(contained) = contained
-        && s.song_audio
-            .as_ref()
-            .is_none_or(|a| !a.starts_with(dir.join("hyperframes")))
+        && s.song_audio.as_ref().is_none_or(|a| !a.starts_with(dir.join("hyperframes")))
     {
         s.song_audio = Some(contained);
     }
@@ -588,23 +440,11 @@ fn adopt_audio(s: &mut Session, dir: &Path, native: &Value, reused: bool) -> Res
 }
 
 /// The status this initialization reports, with captions and the project path recorded.
-fn init_status(
-    s: &mut Session,
-    dir: &Path,
-    params: &Value,
-    target: &str,
-    native: Value,
-    created: &Path,
-    reused: bool,
-) -> Result<Value> {
+fn init_status(s: &mut Session, dir: &Path, params: &Value, target: &str, native: Value, created: &Path, reused: bool) -> Result<Value> {
     let mut status = workshop_status(s)?;
     status["native_timeline"] = native;
     status["music_assembly"] = Value::Null;
-    status["captions"] = if params["captions"] != false {
-        ensure_native_captions(s, dir)?
-    } else {
-        Value::Null
-    };
+    status["captions"] = if params["captions"] != false { ensure_native_captions(s, dir)? } else { Value::Null };
     status["initialized"] = json!(created);
     status["reused_existing_project"] = json!(reused);
     status["video_complete"] = json!(false);
@@ -614,15 +454,11 @@ fn init_status(
     if s.project_path.is_some() {
         crate::project::write_project_file(s)?;
     }
-    status["initialization_scope"] = json!(
-        "Official editable project with linked song and supplied timing when available; authored visuals and rendered output are separate steps"
-    );
+    status["initialization_scope"] =
+        json!("Official editable project with linked song and supplied timing when available; authored visuals and rendered output are separate steps");
     if !reused {
         let hf = dir.join("hyperframes");
-        status["runtime_executable"] = json!(resolve_video_cli(
-            params["resolve_video_cli"].as_str(),
-            Some(&hf)
-        )?);
+        status["runtime_executable"] = json!(resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?);
     }
     Ok(status)
 }
@@ -636,16 +472,10 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
     }
     let existed = target_project_path(s, &dir, &target).is_some();
     if params["replace_scaffold"] == true {
-        return Err(EngineError::InvalidParams(
-            "Existing projects are edited by HyperFrames; init does not replace them".into(),
-        ));
+        return Err(EngineError::InvalidParams("Existing projects are edited by HyperFrames; init does not replace them".into()));
     }
     let reused = existed;
-    let created = if reused {
-        ensure_video_target_project(s, &dir, &target)?
-    } else {
-        init_video_project(s, &dir, params["resolve_video_cli"].as_str())?
-    };
+    let created = if reused { ensure_video_target_project(s, &dir, &target)? } else { init_video_project(s, &dir, params["resolve_video_cli"].as_str())? };
     if !created.is_file() {
         return Err(EngineError::InvalidParams(format!(
             "video.init did not create an editable HyperFrames project: {}. Official initialization returned no editable project; existing audio/transcript files were preserved.",
@@ -660,34 +490,21 @@ pub fn cmd_video_init(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 fn html_attr_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#x27;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#x27;")
 }
 
 fn check_receipt_artwork(project_root: &Path, data: &Value) -> Result<(PathBuf, String)> {
-    let rec_proj = Path::new(data["project"].as_str().unwrap_or_default())
-        .canonicalize()
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let rec_proj = Path::new(data["project"].as_str().unwrap_or_default()).canonicalize().map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     if rec_proj.parent() != Some(project_root) {
-        return Err(EngineError::InvalidParams(
-            "generation_receipt belongs to another project folder".into(),
-        ));
+        return Err(EngineError::InvalidParams("generation_receipt belongs to another project folder".into()));
     }
     let artwork = Path::new(data["image"].as_str().unwrap_or_default()).canonicalize()?;
     if !artwork.starts_with(project_root) {
-        return Err(EngineError::InvalidParams(
-            "Generated artwork is outside this project".into(),
-        ));
+        return Err(EngineError::InvalidParams("Generated artwork is outside this project".into()));
     }
     let digest = format!("{:x}", Sha256::digest(&std::fs::read(&artwork)?));
     if Some(digest.as_str()) != data["result"]["sha256"].as_str() {
-        return Err(EngineError::InvalidParams(
-            "Generated artwork changed after its receipt; review the new version before placement"
-                .into(),
-        ));
+        return Err(EngineError::InvalidParams("Generated artwork changed after its receipt; review the new version before placement".into()));
     }
     Ok((artwork, digest))
 }
@@ -699,18 +516,11 @@ fn verify_generation_receipt(project: &Path, receipt_rel: Option<&str>) -> Resul
     let project_root = project.canonicalize()?;
     let receipt = project_root.join(rel).canonicalize()?;
     if !receipt.starts_with(&project_root) {
-        return Err(EngineError::InvalidParams(
-            "generation_receipt must belong to this project".into(),
-        ));
+        return Err(EngineError::InvalidParams("generation_receipt must belong to this project".into()));
     }
-    let data: Value = serde_json::from_slice(&std::fs::read(&receipt)?)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-    if data["format"].as_str() != Some("magic.image-generation")
-        || data["result"]["ok"].as_bool() != Some(true)
-    {
-        return Err(EngineError::InvalidParams(
-            "generation_receipt is not a successful native image generation".into(),
-        ));
+    let data: Value = serde_json::from_slice(&std::fs::read(&receipt)?).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    if data["format"].as_str() != Some("magic.image-generation") || data["result"]["ok"].as_bool() != Some(true) {
+        return Err(EngineError::InvalidParams("generation_receipt is not a successful native image generation".into()));
     }
     let (artwork, digest) = check_receipt_artwork(&project_root, &data)?;
     Ok(Some(json!({
@@ -724,55 +534,26 @@ fn verify_generation_receipt(project: &Path, receipt_rel: Option<&str>) -> Resul
     })))
 }
 
-fn validate_placement_params(
-    request: &Value,
-    existing: &Value,
-) -> Result<(f64, f64, [f64; 4], f64)> {
-    let num = |k: &str, def: f64| {
-        request
-            .get(k)
-            .or_else(|| existing.get(k))
-            .and_then(Value::as_f64)
-            .unwrap_or(def)
-    };
+fn validate_placement_params(request: &Value, existing: &Value) -> Result<(f64, f64, [f64; 4], f64)> {
+    let num = |k: &str, def: f64| request.get(k).or_else(|| existing.get(k)).and_then(Value::as_f64).unwrap_or(def);
     let start = num("start", 0.0);
     let duration = num("duration", 1.0);
-    let rect_val = request
-        .get("rect")
-        .or_else(|| existing.get("rect"))
-        .and_then(Value::as_array);
+    let rect_val = request.get("rect").or_else(|| existing.get("rect")).and_then(Value::as_array);
     let rect = if let Some(arr) = rect_val {
         if arr.len() != 4 {
-            return Err(EngineError::InvalidParams(
-                "Invalid timing or placement".into(),
-            ));
+            return Err(EngineError::InvalidParams("Invalid timing or placement".into()));
         }
-        [
-            arr[0].as_f64().unwrap_or(f64::NAN),
-            arr[1].as_f64().unwrap_or(f64::NAN),
-            arr[2].as_f64().unwrap_or(f64::NAN),
-            arr[3].as_f64().unwrap_or(f64::NAN),
-        ]
+        [arr[0].as_f64().unwrap_or(f64::NAN), arr[1].as_f64().unwrap_or(f64::NAN), arr[2].as_f64().unwrap_or(f64::NAN), arr[3].as_f64().unwrap_or(f64::NAN)]
     } else {
         [0.0, 0.0, 1920.0, 1080.0]
     };
-    if !start.is_finite()
-        || !duration.is_finite()
-        || start < 0.0
-        || duration <= 0.0
-        || !rect.iter().all(|v| v.is_finite())
-        || rect[2] <= 0.0
-        || rect[3] <= 0.0
+    if !start.is_finite() || !duration.is_finite() || start < 0.0 || duration <= 0.0 || !rect.iter().all(|v| v.is_finite()) || rect[2] <= 0.0 || rect[3] <= 0.0
     {
-        return Err(EngineError::InvalidParams(
-            "Invalid timing or placement".into(),
-        ));
+        return Err(EngineError::InvalidParams("Invalid timing or placement".into()));
     }
     let rate = num("playback_rate", 1.0);
     if !rate.is_finite() || rate <= 0.0 || rate > 16.0 {
-        return Err(EngineError::InvalidParams(
-            "playback_rate must be in (0,16]".into(),
-        ));
+        return Err(EngineError::InvalidParams("playback_rate must be in (0,16]".into()));
     }
     Ok((start, duration, rect, rate))
 }
@@ -787,26 +568,15 @@ fn ensure_composition_root_html(text: &str) -> Result<(String, usize)> {
     {
         let open_end = body_idx + rel_end + 1;
         let injected = if let Some(close_idx) = lower.rfind("</body>") {
-            format!(
-                "{}\n<div data-composition-id=\"main\">{}</div>\n{}",
-                &text[..open_end],
-                &text[open_end..close_idx],
-                &text[close_idx..]
-            )
+            format!("{}\n<div data-composition-id=\"main\">{}</div>\n{}", &text[..open_end], &text[open_end..close_idx], &text[close_idx..])
         } else {
-            format!(
-                "{}\n<div data-composition-id=\"main\">{}</div>",
-                &text[..open_end],
-                &text[open_end..]
-            )
+            format!("{}\n<div data-composition-id=\"main\">{}</div>", &text[..open_end], &text[open_end..])
         };
         if let Some(pos) = find_composition_open_end(&injected) {
             return Ok((injected, pos));
         }
     }
-    Err(EngineError::InvalidParams(
-        "Composition root missing".into(),
-    ))
+    Err(EngineError::InvalidParams("Composition root missing".into()))
 }
 
 fn find_composition_open_end(text: &str) -> Option<usize> {
@@ -901,20 +671,11 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     std::fs::create_dir_all(&folder)?;
     let key = request["id"]
         .as_str()
-        .filter(|k| {
-            !k.is_empty()
-                && k.chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        })
-        .ok_or_else(|| {
-            EngineError::InvalidParams("id must be a stable filename-safe identifier".into())
-        })?;
+        .filter(|k| !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+        .ok_or_else(|| EngineError::InvalidParams("id must be a stable filename-safe identifier".into()))?;
     let existing_path = folder.join(format!("{key}.json"));
-    let existing: Value = if existing_path.is_file() {
-        serde_json::from_slice(&std::fs::read(&existing_path)?).unwrap_or_else(|_| json!({}))
-    } else {
-        json!({})
-    };
+    let existing: Value =
+        if existing_path.is_file() { serde_json::from_slice(&std::fs::read(&existing_path)?).unwrap_or_else(|_| json!({})) } else { json!({}) };
     let raw_path = request["path"]
         .as_str()
         .or_else(|| existing["media"].as_str())
@@ -923,11 +684,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
         .ok_or_else(|| EngineError::InvalidParams("path is required for a new placement".into()))?;
     let source = Path::new(raw_path).canonicalize()?;
     let generation = verify_generation_receipt(project, request["generation_receipt"].as_str())?;
-    let ext = source
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let ext = source.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if !matches!(ext.as_str(), "webm" | "mp4" | "mov") {
         return Err(EngineError::InvalidParams("Expected a video track".into()));
     }
@@ -937,10 +694,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     let bytes = std::fs::read(&source)?;
     let digest = format!("{:x}", Sha256::digest(&bytes));
     let short_sha = &digest[..12];
-    let orig_ext = source
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("webm");
+    let orig_ext = source.extension().and_then(|e| e.to_str()).unwrap_or("webm");
     let target = folder.join(format!("{key}-{short_sha}.{orig_ext}"));
     if source != target {
         std::fs::copy(&source, &target)?;
@@ -949,16 +703,8 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     let (_, comp_end) = ensure_composition_root_html(&cleaned)?;
     let track_idx = next_track_index(&cleaned);
     let [x, y, w, h] = rect;
-    let char_val = request
-        .get("character")
-        .or_else(|| existing.get("character"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let track_val = request
-        .get("track")
-        .or_else(|| existing.get("track"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
+    let char_val = request.get("character").or_else(|| existing.get("character")).and_then(Value::as_str).unwrap_or("");
+    let track_val = request.get("track").or_else(|| existing.get("track")).and_then(Value::as_str).unwrap_or("");
     let scene_str = request
         .get("scene")
         .or_else(|| existing.get("scene"))
@@ -968,10 +714,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
             other => other.to_string(),
         })
         .unwrap_or_default();
-    let rel_src = target
-        .strip_prefix(&root)
-        .unwrap_or(&target)
-        .to_string_lossy();
+    let rel_src = target.strip_prefix(&root).unwrap_or(&target).to_string_lossy();
     let tag = format!(
         "<video id=\"{key}\" class=\"clip\" src=\"{}\" data-start=\"{start}\" data-duration=\"{duration}\" data-playback-rate=\"{rate}\" data-track-index=\"{track_idx}\" data-magic-scene=\"{}\" data-magic-character=\"{}\" data-magic-track=\"{}\" muted playsinline style=\"position:absolute;left:{x}px;top:{y}px;width:{w}px;height:{h}px;object-fit:contain;z-index:10\"></video>",
         html_attr_escape(&rel_src),
@@ -981,10 +724,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     );
     let backup_dir = root.join(".magic-history");
     std::fs::create_dir_all(&backup_dir)?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?
-        .as_nanos();
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| EngineError::InvalidParams(e.to_string()))?.as_nanos();
     let backup_path = backup_dir.join(format!("index-{stamp}.html"));
     std::fs::copy(&entry, &backup_path)?;
     let at = find_scene_insertion_offset(&cleaned, comp_end);
@@ -1013,11 +753,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
         merged.insert("source_generation".into(), gen_info);
     }
     let out_val = Value::Object(merged);
-    std::fs::write(
-        &existing_path,
-        serde_json::to_vec_pretty(&out_val)
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
-    )?;
+    std::fs::write(&existing_path, serde_json::to_vec_pretty(&out_val).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
     Ok(out_val)
 }
 
@@ -1025,9 +761,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
 pub fn cmd_video_place_track(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     if s.video_target != "hyperframes" {
-        return Err(EngineError::InvalidParams(
-            "Select HyperFrames before placing this track".into(),
-        ));
+        return Err(EngineError::InvalidParams("Select HyperFrames before placing this track".into()));
     }
     let request = params.clone();
     place_track_in_hyperframes(&dir, &request)
@@ -1042,14 +776,10 @@ pub fn cmd_video_server_start(s: &mut Session, params: &Value) -> Result<Value> 
     }
     let native = native_preview(&dir, &flags, params["resolve_video_cli"].as_str())?;
     if native["ready"] != true {
-        return Err(EngineError::ExternalTool(
-            "HyperFrames Studio".into(),
-            native.to_string(),
-        ));
+        return Err(EngineError::ExternalTool("HyperFrames Studio".into(), native.to_string()));
     }
     let mut status = workshop_status(s)?;
-    status["video_server"] =
-        json!({"running":true,"url":native["studioUrl"],"target":"hyperframes"});
+    status["video_server"] = json!({"running":true,"url":native["studioUrl"],"target":"hyperframes"});
     status["native_preview"] = native;
     Ok(status)
 }
@@ -1067,10 +797,7 @@ fn path_exists(path: &Path) -> bool {
 fn unique_stage_dir(parent: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(parent)?;
     for _ in 0..8 {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?
-            .as_nanos();
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| EngineError::InvalidParams(e.to_string()))?.as_nanos();
         let path = parent.join(format!(".magic-video-{}-{stamp}", std::process::id()));
         match std::fs::create_dir(&path) {
             Ok(()) => return Ok(path),
@@ -1078,39 +805,23 @@ fn unique_stage_dir(parent: &Path) -> Result<PathBuf> {
             Err(e) => return Err(e.into()),
         }
     }
-    Err(EngineError::InvalidParams(
-        "Could not create a unique video staging directory".into(),
-    ))
+    Err(EngineError::InvalidParams("Could not create a unique video staging directory".into()))
 }
 
 fn snapshot_times(params: &Value) -> Result<Vec<f64>> {
-    let invalid = || {
-        EngineError::InvalidParams(
-            "video.snapshot requires at=<seconds> or at=[seconds, ...]".into(),
-        )
-    };
+    let invalid = || EngineError::InvalidParams("video.snapshot requires at=<seconds> or at=[seconds, ...]".into());
     let values: Vec<f64> = match &params["at"] {
         Value::Number(n) => vec![n.as_f64().ok_or_else(invalid)?],
-        Value::String(s) => s
-            .split(',')
-            .map(|part| part.trim().parse::<f64>().map_err(|_| invalid()))
-            .collect::<Result<_>>()?,
-        Value::Array(a) => a
-            .iter()
-            .map(|v| v.as_f64().ok_or_else(invalid))
-            .collect::<Result<_>>()?,
+        Value::String(s) => s.split(',').map(|part| part.trim().parse::<f64>().map_err(|_| invalid())).collect::<Result<_>>()?,
+        Value::Array(a) => a.iter().map(|v| v.as_f64().ok_or_else(invalid)).collect::<Result<_>>()?,
         _ => return Err(invalid()),
     };
     if values.is_empty() || values.iter().any(|t| !t.is_finite() || *t < 0.0) {
-        return Err(EngineError::InvalidParams(
-            "Snapshot times must be a non-empty list of finite non-negative seconds".into(),
-        ));
+        return Err(EngineError::InvalidParams("Snapshot times must be a non-empty list of finite non-negative seconds".into()));
     }
     for pair in values.windows(2) {
         if (pair[1] - pair[0]).abs() < 0.001 {
-            return Err(EngineError::InvalidParams(
-                "Snapshot times must be at least 1 ms apart".into(),
-            ));
+            return Err(EngineError::InvalidParams("Snapshot times must be at least 1 ms apart".into()));
         }
     }
     Ok(values)
@@ -1119,36 +830,22 @@ fn snapshot_times(params: &Value) -> Result<Vec<f64>> {
 /// The contained project a snapshot reads, after the target and existence checks.
 fn snapshot_project(s: &Session, params: &Value) -> Result<PathBuf> {
     let dir = project_dir(s)?;
-    let target = params
-        .get("target")
-        .and_then(Value::as_str)
-        .unwrap_or(&s.video_target);
+    let target = params.get("target").and_then(Value::as_str).unwrap_or(&s.video_target);
     if target != "hyperframes" {
-        return Err(EngineError::InvalidParams(
-            "video.snapshot requires target=hyperframes".into(),
-        ));
+        return Err(EngineError::InvalidParams("video.snapshot requires target=hyperframes".into()));
     }
     if !dir.join("hyperframes").join("index.html").is_file() {
-        return Err(EngineError::InvalidParams(
-            "No HyperFrames project in this song. Run video.init with target=hyperframes first."
-                .into(),
-        ));
+        return Err(EngineError::InvalidParams("No HyperFrames project in this song. Run video.init with target=hyperframes first.".into()));
     }
     Ok(dir)
 }
 
 /// The snapshot destination, refused when it already exists.
 fn snapshot_out(s: &Session, params: &Value) -> Result<PathBuf> {
-    let out = params
-        .get("out")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::InvalidParams("video.snapshot requires out=<path>".into()))?;
+    let out = params.get("out").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("video.snapshot requires out=<path>".into()))?;
     let out_path = resolve_workspace_path(s, out);
     if path_exists(&out_path) {
-        return Err(EngineError::InvalidParams(format!(
-            "Output already exists, refusing to overwrite: {}",
-            out_path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("Output already exists, refusing to overwrite: {}", out_path.display())));
     }
     Ok(out_path)
 }
@@ -1179,10 +876,7 @@ fn run_snapshot(cli: &Path, hf: &Path, stage: &Path, at: &str) -> Result<(String
         let _ = std::fs::remove_dir_all(stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
-            format!(
-                "snapshot exited {:?}; stdout: {stdout}; stderr: {stderr}",
-                output.status.code()
-            ),
+            format!("snapshot exited {:?}; stdout: {stdout}; stderr: {stderr}", output.status.code()),
         ));
     }
     Ok((stdout, stderr))
@@ -1198,39 +892,20 @@ fn stage_pngs(stage: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Every requested time must have produced one non-empty PNG.
-fn require_snapshot_pngs(
-    pngs: &[PathBuf],
-    expected: usize,
-    stage: &Path,
-    cli: &Path,
-    logs: (&str, &str),
-) -> Result<()> {
+fn require_snapshot_pngs(pngs: &[PathBuf], expected: usize, stage: &Path, cli: &Path, logs: (&str, &str)) -> Result<()> {
     let (stdout, stderr) = logs;
-    if pngs.len() == expected
-        && !pngs
-            .iter()
-            .any(|p| std::fs::metadata(p).map_or(true, |m| m.len() == 0))
-    {
+    if pngs.len() == expected && !pngs.iter().any(|p| std::fs::metadata(p).map_or(true, |m| m.len() == 0)) {
         return Ok(());
     }
     let _ = std::fs::remove_dir_all(stage);
     Err(EngineError::ExternalTool(
         cli.display().to_string(),
-        format!(
-            "snapshot produced {} non-empty PNGs for {expected} requested times; stdout: {stdout}; stderr: {stderr}",
-            pngs.len()
-        ),
+        format!("snapshot produced {} non-empty PNGs for {expected} requested times; stdout: {stdout}; stderr: {stderr}", pngs.len()),
     ))
 }
 
 /// Publish one PNG without overwriting, by hard link; a failed link drops the staging directory.
-fn publish_one(
-    pngs: &[PathBuf],
-    out_path: &Path,
-    stage: &Path,
-    cli: &Path,
-    logs: (&str, &str),
-) -> Result<PathBuf> {
+fn publish_one(pngs: &[PathBuf], out_path: &Path, stage: &Path, cli: &Path, logs: (&str, &str)) -> Result<PathBuf> {
     let (stdout, stderr) = logs;
     if let Some(p) = out_path.parent() {
         std::fs::create_dir_all(p)?;
@@ -1239,29 +914,17 @@ fn publish_one(
         let _ = std::fs::remove_dir_all(stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
-            format!(
-                "could not publish snapshot without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"
-            ),
+            format!("could not publish snapshot without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"),
         ));
     }
     Ok(out_path.to_path_buf())
 }
 
 /// Publish every PNG into a new directory, unlinking partial work if one link fails.
-fn publish_many(
-    pngs: &[PathBuf],
-    out_path: &Path,
-    cli: &Path,
-    stage: &Path,
-    logs: (&str, &str),
-) -> Result<Vec<PathBuf>> {
+fn publish_many(pngs: &[PathBuf], out_path: &Path, cli: &Path, stage: &Path, logs: (&str, &str)) -> Result<Vec<PathBuf>> {
     let (stdout, stderr) = logs;
-    std::fs::create_dir(out_path).map_err(|e| {
-        EngineError::ExternalTool(
-            cli.display().to_string(),
-            format!("could not create snapshot output directory without overwrite: {e}"),
-        )
-    })?;
+    std::fs::create_dir(out_path)
+        .map_err(|e| EngineError::ExternalTool(cli.display().to_string(), format!("could not create snapshot output directory without overwrite: {e}")))?;
     let mut paths = Vec::with_capacity(pngs.len());
     for source in pngs {
         let target = out_path.join(source.file_name().unwrap_or_default());
@@ -1273,9 +936,7 @@ fn publish_many(
             let _ = std::fs::remove_dir_all(stage);
             return Err(EngineError::ExternalTool(
                 cli.display().to_string(),
-                format!(
-                    "could not publish snapshot without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"
-                ),
+                format!("could not publish snapshot without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"),
             ));
         }
         paths.push(target);
@@ -1289,33 +950,18 @@ pub fn cmd_video_snapshot(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = snapshot_project(s, params)?;
     let times = snapshot_times(params)?;
     let out_path = snapshot_out(s, params)?;
-    let parent = out_path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
+    let parent = out_path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let hf = dir.join("hyperframes");
     let cli = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(&hf))?;
     let stage = unique_stage_dir(parent)?;
-    let at_arg = times
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(",");
+    let at_arg = times.iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
     let (stdout, stderr) = run_snapshot(&cli, &hf, &stage, &at_arg)?;
     let logs = (stdout.as_str(), stderr.as_str());
     let pngs = stage_pngs(&stage)?;
     require_snapshot_pngs(&pngs, times.len(), &stage, &cli, logs)?;
-    let paths = if times.len() == 1 {
-        vec![publish_one(&pngs, &out_path, &stage, &cli, logs)?]
-    } else {
-        publish_many(&pngs, &out_path, &cli, &stage, logs)?
-    };
+    let paths = if times.len() == 1 { vec![publish_one(&pngs, &out_path, &stage, &cli, logs)?] } else { publish_many(&pngs, &out_path, &cli, &stage, logs)? };
     let _ = std::fs::remove_dir_all(&stage);
-    let at_result = if times.len() == 1 {
-        json!(times[0])
-    } else {
-        json!(times)
-    };
+    let at_result = if times.len() == 1 { json!(times[0]) } else { json!(times) };
     Ok(json!({
         "ok": true,
         "command": "video.snapshot",
@@ -1349,65 +995,36 @@ fn sha256_file(path: &Path) -> Result<String> {
 /// arguments; callers requesting a slice receive an explicit error instead of a full-film render.
 pub fn cmd_video_render(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    let target = params
-        .get("target")
-        .and_then(Value::as_str)
-        .unwrap_or(&s.video_target)
-        .to_string();
+    let target = params.get("target").and_then(Value::as_str).unwrap_or(&s.video_target).to_string();
     if target != "hyperframes" {
-        return Err(EngineError::InvalidParams(
-            "video.render requires target=hyperframes".into(),
-        ));
+        return Err(EngineError::InvalidParams("video.render requires target=hyperframes".into()));
     }
     let hf = dir.join("hyperframes");
     if !hf.join("index.html").is_file() {
-        return Err(EngineError::InvalidParams(
-            "No HyperFrames project in this song. Run video.init with target=hyperframes first."
-                .into(),
-        ));
+        return Err(EngineError::InvalidParams("No HyperFrames project in this song. Run video.init with target=hyperframes first.".into()));
     }
-    let out = params
-        .get("out")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::InvalidParams("video.render requires out=<path>".into()))?;
+    let out = params.get("out").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("video.render requires out=<path>".into()))?;
     let out_path = resolve_workspace_path(s, out);
     if path_exists(&out_path) {
-        return Err(EngineError::InvalidParams(format!(
-            "Output already exists, refusing to overwrite: {}",
-            out_path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("Output already exists, refusing to overwrite: {}", out_path.display())));
     }
     if params.get("start").is_some() || params.get("end").is_some() {
-        return Err(EngineError::InvalidParams("The official HyperFrames render command does not support start/end slices; omit both to render the complete composition".into()));
+        return Err(EngineError::InvalidParams(
+            "The official HyperFrames render command does not support start/end slices; omit both to render the complete composition".into(),
+        ));
     }
     let fps = params.get("fps").and_then(Value::as_f64).unwrap_or(24.0);
     if !fps.is_finite() || !(1.0..=240.0).contains(&fps) || fps.fract() != 0.0 {
-        return Err(EngineError::InvalidParams(
-            "fps must be a whole number from 1 through 240".into(),
-        ));
+        return Err(EngineError::InvalidParams("fps must be a whole number from 1 through 240".into()));
     }
-    let workers = params
-        .get("workers")
-        .and_then(Value::as_u64)
-        .map(|v| v as usize)
-        .unwrap_or(4)
-        .clamp(1, 16);
+    let workers = params.get("workers").and_then(Value::as_u64).map(|v| v as usize).unwrap_or(4).clamp(1, 16);
     let hf = dir.join("hyperframes");
     render_video(params, &hf, &out_path, fps, workers)
 }
 
-fn render_video(
-    params: &Value,
-    hf: &Path,
-    out_path: &Path,
-    fps: f64,
-    workers: usize,
-) -> Result<Value> {
+fn render_video(params: &Value, hf: &Path, out_path: &Path, fps: f64, workers: usize) -> Result<Value> {
     let cli = resolve_video_cli(params["resolve_video_cli"].as_str(), Some(hf))?;
-    let parent = out_path
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
+    let parent = out_path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let stage = unique_stage_dir(parent)?;
     let staged = stage.join(out_path.file_name().unwrap_or_default());
     let args = [
@@ -1420,43 +1037,31 @@ fn render_video(
         "--workers".into(),
         workers.to_string(),
     ];
-    let output = std::process::Command::new(&cli)
-        .args(&args)
-        .current_dir(hf)
-        .output()
-        .map_err(|e| {
-            let _ = std::fs::remove_dir_all(&stage);
-            EngineError::ExternalTool(cli.display().to_string(), e.to_string())
-        })?;
+    let output = std::process::Command::new(&cli).args(&args).current_dir(hf).output().map_err(|e| {
+        let _ = std::fs::remove_dir_all(&stage);
+        EngineError::ExternalTool(cli.display().to_string(), e.to_string())
+    })?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     if !output.status.success() {
         let _ = std::fs::remove_dir_all(&stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
-            format!(
-                "render exited {:?}; stdout: {stdout}; stderr: {stderr}",
-                output.status.code()
-            ),
+            format!("render exited {:?}; stdout: {stdout}; stderr: {stderr}", output.status.code()),
         ));
     }
     if std::fs::metadata(&staged).map_or(true, |m| m.len() == 0) {
         let _ = std::fs::remove_dir_all(&stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
-            format!(
-                "render reported success without a non-empty movie; stdout: {stdout}; stderr: {stderr}"
-            ),
+            format!("render reported success without a non-empty movie; stdout: {stdout}; stderr: {stderr}"),
         ));
     }
     let duration = match crate::cmd::film::media_duration(&staged, true) {
         Ok(value) => value,
         Err(e) => {
             let _ = std::fs::remove_dir_all(&stage);
-            return Err(EngineError::ExternalTool(
-                cli.display().to_string(),
-                format!("{e}; render stdout: {stdout}; render stderr: {stderr}"),
-            ));
+            return Err(EngineError::ExternalTool(cli.display().to_string(), format!("{e}; render stdout: {stdout}; render stderr: {stderr}")));
         }
     };
     let bytes = std::fs::metadata(&staged)?.len();
@@ -1465,9 +1070,7 @@ fn render_video(
         let _ = std::fs::remove_dir_all(&stage);
         return Err(EngineError::ExternalTool(
             cli.display().to_string(),
-            format!(
-                "could not publish render without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"
-            ),
+            format!("could not publish render without overwrite: {e}; stdout: {stdout}; stderr: {stderr}"),
         ));
     }
     let _ = std::fs::remove_dir_all(&stage);

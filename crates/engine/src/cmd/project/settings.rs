@@ -33,18 +33,20 @@ fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
-pub(crate) fn file_pub() -> Result<PathBuf> { file() }
+pub(crate) fn file_pub() -> Result<PathBuf> {
+    file()
+}
 fn file() -> Result<PathBuf> {
     crate::cmd::project::catalog::file()
         .and_then(|p| p.parent().map(|p| p.join("settings.json")))
-        .ok_or_else(|| {
-            invalid("Magic Studio config directory unavailable; no recent-project fallback used")
-        })
+        .ok_or_else(|| invalid("Magic Studio config directory unavailable; no recent-project fallback used"))
 }
 
 fn parse(bytes: &[u8]) -> Result<Value> {
-    serde_json::from_slice::<Value>(bytes).ok().filter(Value::is_object)
-        .ok_or_else(||invalid("Invalid Magic Studio settings.json; repair it explicitly. No history fallback used"))
+    serde_json::from_slice::<Value>(bytes)
+        .ok()
+        .filter(Value::is_object)
+        .ok_or_else(|| invalid("Invalid Magic Studio settings.json; repair it explicitly. No history fallback used"))
 }
 
 fn stored() -> Result<Value> {
@@ -62,19 +64,14 @@ fn stored() -> Result<Value> {
 fn absolute(value: &str) -> Result<PathBuf> {
     let path = Path::new(value.trim());
     if value.trim().is_empty() || !path.is_absolute() || value.chars().any(char::is_control) {
-        return Err(invalid(
-            "Project root must be a nonempty absolute directory path",
-        ));
+        return Err(invalid("Project root must be a nonempty absolute directory path"));
     }
     Ok(path.to_path_buf())
 }
 
 fn configured_root(settings: &Value) -> Result<PathBuf> {
     if let Some(v) = settings.get("projects_root") {
-        return absolute(
-            v.as_str()
-                .ok_or_else(|| invalid("Saved projects_root must be a string"))?,
-        );
+        return absolute(v.as_str().ok_or_else(|| invalid("Saved projects_root must be a string"))?);
     }
     let (store, _) = SettingsStore::<MagicPrefs>::open(Location::Auto);
     if let Some(ref root) = store.get().paths.projects_root {
@@ -128,11 +125,7 @@ pub fn characters_root() -> Option<PathBuf> {
 fn read_settings_file(output: &mut fs::File) -> Result<Value> {
     let mut bytes = Vec::new();
     output.read_to_end(&mut bytes)?;
-    if bytes.is_empty() {
-        Ok(json!({}))
-    } else {
-        parse(&bytes)
-    }
+    if bytes.is_empty() { Ok(json!({})) } else { parse(&bytes) }
 }
 
 fn write_settings_file(output: &mut fs::File, settings: &Value) -> Result<()> {
@@ -145,28 +138,14 @@ fn write_settings_file(output: &mut fs::File, settings: &Value) -> Result<()> {
 }
 
 fn persist_root(value: &Value) -> Result<()> {
-    let root = absolute(
-        value
-            .as_str()
-            .ok_or_else(|| invalid("Project root must be a string"))?,
-    )?;
+    let root = absolute(value.as_str().ok_or_else(|| invalid("Project root must be a string"))?)?;
     if !root.is_dir() {
-        return Err(invalid(
-            "Project root directory is unavailable; mount or choose the intended directory first",
-        ));
+        return Err(invalid("Project root directory is unavailable; mount or choose the intended directory first"));
     }
     let root = fs::canonicalize(root)?;
     let path = file()?;
-    fs::create_dir_all(
-        path.parent()
-            .ok_or_else(|| invalid("Config directory unavailable"))?,
-    )?;
-    let mut output = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&path)?;
+    fs::create_dir_all(path.parent().ok_or_else(|| invalid("Config directory unavailable"))?)?;
+    let mut output = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)?;
     output.lock()?;
     let mut settings = read_settings_file(&mut output)?;
     settings["projects_root"] = json!(root);

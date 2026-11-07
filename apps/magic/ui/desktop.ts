@@ -1,20 +1,27 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import * as input from "./control-input";
+import { allowKeys, findElement, surfacesOf as surfaces } from "./control-input";
 
 interface Request { id: number; method: string; params: Record<string, unknown> }
+interface Violation { directive: string; blocked: string; source: string; line: number; document: string }
 
-function surfaces(root = document, x = 0, y = 0): Array<{ doc: Document; x: number; y: number }> {
-  const found = [{ doc: root, x, y }];
-  for (const frame of root.querySelectorAll<HTMLIFrameElement>("iframe")) {
-    if (!frame.getClientRects().length) continue;
-    try { const child = frame.contentDocument; if (child) { const rect = frame.getBoundingClientRect(); found.push(...surfaces(child, x + rect.x, y + rect.y)); } } catch { /* External video players retain their own origin. */ }
+const MAX_VIOLATIONS = 50;
+const INTERACTIVE = 'button,a[href],input,select,textarea,summary,[role="button"],[role="tab"],[role="menuitem"],[role="switch"],[role="checkbox"],[tabindex]:not([tabindex="-1"])';
+const violations: Violation[] = [];
+const watched = new WeakSet<Document>();
+// A CSP that blocks something the app needs fails silently in the page; keep the evidence for ui.inspect.
+function watchViolations() {
+  for (const { doc } of surfaces()) {
+    if (watched.has(doc)) continue;
+    watched.add(doc);
+    doc.addEventListener("securitypolicyviolation", event => {
+      if (violations.length >= MAX_VIOLATIONS) violations.shift();
+      violations.push({ directive: event.violatedDirective, blocked: event.blockedURI, source: event.sourceFile, line: event.lineNumber, document: doc.location.pathname });
+    });
   }
-  return found;
 }
-function findElement(id: string): HTMLElement | null {
-  for (const { doc } of surfaces()) { const element = doc.getElementById(id); if (element) return element; }
-  return null;
-}
+
 function isForm(element: Element | null): element is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
   return !!element && /^(INPUT|SELECT|TEXTAREA)$/.test(element.tagName);
 }
@@ -25,13 +32,18 @@ export async function connectDesktop(
   setView: (view: string) => void,
   refresh: () => Promise<void>,
 ) {
+  watchViolations();
   const unlistenUi = await listen<Request>("magic-ui-request", async ({ payload }) => {
     try {
       const { method, params } = payload;
       let result: unknown;
       switch (method) {
         case "ui.inspect": case "ui.state":
+          watchViolations();
           result = { ...(inspect() as Record<string, unknown>),
+            viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+            focus: input.focusedElement(),
+            cspViolations: violations,
             alerts: surfaces().flatMap(({ doc }) => Array.from(doc.querySelectorAll('[role="alert"]')).map(element => element.textContent?.trim()).filter(Boolean)),
             workspaces: surfaces().filter(surface => surface.doc !== document).map(({ doc }) => {
               const feedback = (doc.defaultView as unknown as { acFeedback?: { snapshot: () => Record<string, unknown> } })?.acFeedback?.snapshot();
@@ -42,6 +54,19 @@ export async function connectDesktop(
               } };
             }) }; break;
         case "ui.elements": {
+          allowKeys(params, "ui.elements", ["prefix", "unidentified"]);
+          if (params.unidentified === true) {
+            // Craft rule: every interactive widget has an automation id. List the ones that do not.
+            const unidentified = surfaces().flatMap(({ doc, x, y }) => Array.from(doc.querySelectorAll<HTMLElement>(INTERACTIVE))
+              .filter(el => !el.id && el.getClientRects().length > 0)
+              .map(el => { const r = el.getBoundingClientRect(); return {
+                tag: el.tagName.toLowerCase(), type: (el as HTMLInputElement).type || undefined,
+                label: el.getAttribute("aria-label") || el.getAttribute("title") || el.textContent?.trim().slice(0, 80) || el.getAttribute("placeholder") || undefined,
+                class: el.className && typeof el.className === "string" ? el.className.slice(0, 80) : undefined,
+                parent: el.closest("[id]")?.id, document: doc.location.pathname, rect: [r.x + x, r.y + y, r.width, r.height],
+              }; }));
+            result = { unidentified }; break;
+          }
           const elements = surfaces().flatMap(({ doc, x, y }) => Array.from(doc.querySelectorAll<HTMLElement>("[id]"))
             .filter(el => el.getClientRects().length > 0 && (!params.prefix || el.id.startsWith(String(params.prefix))))
             .map(el => { const r = el.getBoundingClientRect(); return {
@@ -54,6 +79,7 @@ export async function connectDesktop(
           result = { elements }; break;
         }
         case "ui.set": case "ui.set_view": {
+          if (typeof params.id === "string" && "checked" in params) { result = input.setChecked(params); break; }
           if (typeof params.id === "string") {
             if (Object.keys(params).some(key => !["id", "value"].includes(key))) throw new Error("Form changes accept id and value only");
             const element = findElement(params.id);
@@ -81,14 +107,17 @@ export async function connectDesktop(
           setView(view);
           result = { ok: true, requestedView: view }; break;
         }
-        case "ui.click": case "ui.focus": {
-          if (Object.keys(params).some(key => key !== "id")) throw new Error("Only ID-based click/focus is implemented");
+        case "ui.click": result = input.click(params); break;
+        case "ui.move": result = input.move(params); break;
+        case "ui.drag": result = input.drag(params); break;
+        case "ui.scroll": result = input.scroll(params); break;
+        case "ui.key": result = input.key(params); break;
+        case "ui.type": case "ui.text": result = input.type(params); break;
+        case "ui.focus": {
+          allowKeys(params, "ui.focus", ["id"]);
           const element = findElement(String(params.id));
           if (!element || !element.getClientRects().length || element.matches(":disabled")) throw new Error("Control is missing, hidden, or disabled");
-          if (method === "ui.click") {
-            if (typeof element.click === "function") element.click();
-            else element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-          } else element.focus();
+          element.focus();
           result = { ok: true, id: element.id }; break;
         }
         default: throw new Error(`Unsupported Tauri UI operation: ${method}`);

@@ -130,8 +130,7 @@ impl Config {
 
     fn validate_rail(&self, id: &str, entry: &Entry) -> Result<(), String> {
         if let Some(rail) = &entry.rail
-            && (!self.rails.get(rail).is_some_and(Value::is_object)
-                || !self.slots.get(rail).is_some_and(Value::is_object))
+            && (!self.rails.get(rail).is_some_and(Value::is_object) || !self.slots.get(rail).is_some_and(Value::is_object))
         {
             return Err(format!("{id}: missing configured rail or slot"));
         }
@@ -140,10 +139,7 @@ impl Config {
 
     fn validate_look(&self, id: &str, entry: &Entry) -> Result<(), String> {
         if let Some(look) = &entry.look
-            && !self
-                .looks
-                .get(&entry.component)
-                .is_some_and(|looks| looks.contains(look))
+            && !self.looks.get(&entry.component).is_some_and(|looks| looks.contains(look))
         {
             return Err(format!("{id}: unknown look {look}"));
         }
@@ -151,22 +147,14 @@ impl Config {
     }
 
     fn validate_density(&self, id: &str, entry: &Entry) -> Result<(), String> {
-        if entry
-            .density
-            .as_ref()
-            .is_some_and(|d| !self.densities.contains(d))
-        {
+        if entry.density.as_ref().is_some_and(|d| !self.densities.contains(d)) {
             return Err(format!("{id}: unknown density"));
         }
         Ok(())
     }
 
     fn validate_indicator(&self, id: &str, entry: &Entry) -> Result<(), String> {
-        if entry
-            .indicator
-            .as_ref()
-            .is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden"))
-        {
+        if entry.indicator.as_ref().is_some_and(|v| !matches!(v.as_str(), "icon" | "hidden")) {
             return Err(format!("{id}: unknown indicator"));
         }
         Ok(())
@@ -257,11 +245,7 @@ impl PanelReport {
         let mut report: Self = match serde_json::from_value(panels.clone()) {
             Ok(report) => report,
             Err(error) => Self {
-                error: Some(if panels.is_null() {
-                    "No panel observation".into()
-                } else {
-                    format!("Invalid panel observation: {error}")
-                }),
+                error: Some(if panels.is_null() { "No panel observation".into() } else { format!("Invalid panel observation: {error}") }),
                 ..Default::default()
             },
         };
@@ -270,22 +254,12 @@ impl PanelReport {
         if feedback["connection"] == "not_observed_open" {
             report.available = false;
             report.error = None;
-        } else if feedback["ui_ready"] == false
-            || feedback["frontend_report_age_ms"]
-                .as_u64()
-                .is_some_and(|age| age > 5000)
-        {
+        } else if feedback["ui_ready"] == false || feedback["frontend_report_age_ms"].as_u64().is_some_and(|age| age > 5000) {
             report.available = false;
             report.error = Some("Studio observation is stale or not ready".into());
         }
-        for (key, actual) in [
-            ("total_items", report.items.len()),
-            ("total_unconfigured", report.unconfigured.len()),
-        ] {
-            if panels[key]
-                .as_u64()
-                .is_some_and(|total| total != actual as u64)
-            {
+        for (key, actual) in [("total_items", report.items.len()), ("total_unconfigured", report.unconfigured.len())] {
+            if panels[key].as_u64().is_some_and(|total| total != actual as u64) {
                 report.truncated = true;
             }
         }
@@ -296,29 +270,14 @@ impl PanelReport {
         if !self.available {
             return None;
         }
-        let target = config
-            .elements
-            .get(id)
-            .and_then(|entry| entry.target.as_deref())
-            .unwrap_or(id);
+        let target = config.elements.get(id).and_then(|entry| entry.target.as_deref()).unwrap_or(id);
         self.items.iter().find(|panel| panel.id == target)
     }
 
     pub fn worst(&self) -> Signal {
-        self.items
-            .iter()
-            .map(|p| p.signal)
-            .fold(
-                Signal::Idle,
-                |acc, s| {
-                    if (s as u8) > (acc as u8) { s } else { acc }
-                },
-            )
+        self.items.iter().map(|p| p.signal).fold(Signal::Idle, |acc, s| if (s as u8) > (acc as u8) { s } else { acc })
     }
     pub fn count(&self, reason: Reason) -> usize {
-        self.unconfigured
-            .iter()
-            .filter(|u| u.reason == reason)
-            .count()
+        self.unconfigured.iter().filter(|u| u.reason == reason).count()
     }
 }

@@ -95,10 +95,7 @@ fn read_clips(html: &str) -> Vec<Clip> {
 fn sample_windows(s: &Session, hyperframes: &Path) -> std::result::Result<Value, String> {
     let root = crate::workspace::workspace_root(s);
     let script = root.join("pipeline/sample_cutout_windows.mjs");
-    let args = [
-        script.to_string_lossy().into_owned(),
-        hyperframes.to_string_lossy().into_owned(),
-    ];
+    let args = [script.to_string_lossy().into_owned(), hyperframes.to_string_lossy().into_owned()];
     let out = crate::workspace::run_tool_in(&root, "bun", &args).map_err(|e| e.to_string())?;
     serde_json::from_str(&out).map_err(|e| format!("sampler output is not JSON: {e}"))
 }
@@ -195,31 +192,17 @@ fn fit(c: &Clip, scenes: &[Scene]) -> Value {
 }
 
 fn load(s: &Session, params: &Value) -> Result<(std::path::PathBuf, Vec<Clip>, Vec<Scene>, Value)> {
-    let raw = params
-        .get("project")
-        .and_then(Value::as_str)
-        .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| invalid("missing 'project' (.magic path)"))?;
+    let raw = params.get("project").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or_else(|| invalid("missing 'project' (.magic path)"))?;
     let project_path = crate::workspace::resolve_workspace_path(s, raw);
     if !project_path.is_file() {
-        return Err(invalid(format!(
-            "project not found: {}",
-            project_path.display()
-        )));
+        return Err(invalid(format!("project not found: {}", project_path.display())));
     }
     let dir = project_path.parent().unwrap_or(Path::new("."));
-    let html = std::fs::read_to_string(dir.join("hyperframes/index.html")).map_err(|e| {
-        invalid(format!(
-            "cannot read {}: {e}",
-            dir.join("hyperframes/index.html").display()
-        ))
-    })?;
+    let html = std::fs::read_to_string(dir.join("hyperframes/index.html"))
+        .map_err(|e| invalid(format!("cannot read {}: {e}", dir.join("hyperframes/index.html").display())))?;
     let timeline_path = dir.join("artifacts/action_timeline.json");
     let scenes = match std::fs::read(&timeline_path) {
-        Ok(bytes) => read_scenes(
-            &serde_json::from_slice(&bytes)
-                .map_err(|e| invalid(format!("invalid {}: {e}", timeline_path.display())))?,
-        ),
+        Ok(bytes) => read_scenes(&serde_json::from_slice(&bytes).map_err(|e| invalid(format!("invalid {}: {e}", timeline_path.display())))?),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(e.into()),
     };
@@ -230,28 +213,26 @@ fn load(s: &Session, params: &Value) -> Result<(std::path::PathBuf, Vec<Clip>, V
         }
         Err(e) => json!({"ok": false, "sampler": "pipeline/sample_cutout_windows.mjs", "error": e}),
     };
-    Ok((
-        project_path,
-        apply_windows(read_clips(&html), &sampled),
-        scenes,
-        source,
-    ))
+    Ok((project_path, apply_windows(read_clips(&html), &sampled), scenes, source))
 }
 
 pub fn cues(s: &mut Session, params: &Value) -> Result<Value> {
     let (project, clips, scenes, timing_source) = load(s, params)?;
-    match (
-        params.get("at").and_then(Value::as_f64),
-        params.get("clip").and_then(Value::as_str),
-    ) {
+    match (params.get("at").and_then(Value::as_f64), params.get("clip").and_then(Value::as_str)) {
         (Some(at), None) => {
             let scene = scenes.iter().find(|sc| active(sc.start, sc.end, at));
             let scene_id = scene.map(|sc| sc.id.as_str());
-            let mut cues: Vec<Value> = clips.iter().filter(|c| active(c.start, c.end, at)).map(|c| json!({
-                "kind": "clip", "id": c.id, "scene": scene_id,
-                "start": ms(c.start), "end": ms(c.end), "local": ms(at - c.start), "fit": fit(c, &scenes),
-                "timing": c.timing, "composition": [ms(c.composition.0), ms(c.composition.1)],
-            })).collect();
+            let mut cues: Vec<Value> = clips
+                .iter()
+                .filter(|c| active(c.start, c.end, at))
+                .map(|c| {
+                    json!({
+                        "kind": "clip", "id": c.id, "scene": scene_id,
+                        "start": ms(c.start), "end": ms(c.end), "local": ms(at - c.start), "fit": fit(c, &scenes),
+                        "timing": c.timing, "composition": [ms(c.composition.0), ms(c.composition.1)],
+                    })
+                })
+                .collect();
             for sc in &scenes {
                 for a in &sc.actions {
                     let start = a["at_seconds"].as_f64().unwrap_or(0.0);
@@ -272,10 +253,7 @@ pub fn cues(s: &mut Session, params: &Value) -> Result<Value> {
             }))
         }
         (None, Some(id)) => {
-            let clip = clips
-                .iter()
-                .find(|c| c.id == id)
-                .ok_or_else(|| invalid(format!("no clip with id '{id}' in the composition")))?;
+            let clip = clips.iter().find(|c| c.id == id).ok_or_else(|| invalid(format!("no clip with id '{id}' in the composition")))?;
             // The same source placed under other ids counts as another use of that clip.
             let uses: Vec<Value> = clips.iter()
                 .filter(|c| c.id == id || (clip.src.is_some() && c.src == clip.src))
@@ -284,12 +262,8 @@ pub fn cues(s: &mut Session, params: &Value) -> Result<Value> {
                     "timing": c.timing, "composition": [ms(c.composition.0), ms(c.composition.1)],
                     "scenes": scenes.iter().filter(|sc| c.start < c.end && sc.start < c.end && c.start < sc.end).map(|sc| sc.id.as_str()).collect::<Vec<_>>(),
                 })).collect();
-            Ok(
-                json!({"ok": true, "project": project, "clip": id, "src": clip.src, "timing_source": timing_source, "uses": uses}),
-            )
+            Ok(json!({"ok": true, "project": project, "clip": id, "src": clip.src, "timing_source": timing_source, "uses": uses}))
         }
-        _ => Err(invalid(
-            "give exactly one of 'at' (song seconds) or 'clip' (clip id)",
-        )),
+        _ => Err(invalid("give exactly one of 'at' (song seconds) or 'clip' (clip id)")),
     }
 }

@@ -18,17 +18,11 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
         && let Some(home) = exe.parent().and_then(|p| p.parent())
     {
         let runtime = home.join("runtime");
-        if runtime.join("installation.json").is_file()
-            && runtime
-                .join("pipeline/templates/studio-template.deckcraft")
-                .is_file()
-        {
+        if runtime.join("installation.json").is_file() && runtime.join("pipeline/templates/studio-template.deckcraft").is_file() {
             return runtime;
         }
     }
-    let current_root = |root: &Path| {
-        root.join("Cargo.toml").is_file() && root.join("apps/magic/Cargo.toml").is_file()
-    };
+    let current_root = |root: &Path| root.join("Cargo.toml").is_file() && root.join("apps/magic/Cargo.toml").is_file();
     let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     if let Ok(canon) = manifest_root.canonicalize()
         && current_root(&canon)
@@ -62,12 +56,7 @@ pub(crate) fn user_data_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .filter(|path| path.is_absolute())
-                .map(|home| home.join(".local/share"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from).filter(|path| path.is_absolute()).map(|home| home.join(".local/share")))
 }
 
 /// Resolve a program on the caller's PATH before handing it to a background service.
@@ -79,8 +68,7 @@ pub(crate) fn find_executable(name: &str) -> Result<PathBuf> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            path.metadata()
-                .is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
+            path.metadata().is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
         }
         #[cfg(not(unix))]
         {
@@ -91,17 +79,9 @@ pub(crate) fn find_executable(name: &str) -> Result<PathBuf> {
     let found = if path.components().count() > 1 {
         executable(path).then(|| path.to_path_buf())
     } else {
-        std::env::var_os("PATH").and_then(|paths| {
-            std::env::split_paths(&paths)
-                .map(|dir| dir.join(name))
-                .find(|path| executable(path))
-        })
+        std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(name)).find(|path| executable(path)))
     };
-    found
-        .and_then(|path| std::path::absolute(path).ok())
-        .ok_or_else(|| {
-            EngineError::ExternalTool(name.into(), "executable not found on PATH".into())
-        })
+    found.and_then(|path| std::path::absolute(path).ok()).ok_or_else(|| EngineError::ExternalTool(name.into(), "executable not found on PATH".into()))
 }
 
 /// Hand off a document for editing. The editor owns its window and unsaved changes.
@@ -131,25 +111,15 @@ fn craft_doc_info(path: &Path) -> Option<Value> {
 
 /// Open a project file in the Craft app that owns its format, or the system opener.
 pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Value> {
-    let raw = params["path"]
-        .as_str()
-        .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
+    let raw = params["path"].as_str().filter(|p| !p.trim().is_empty()).ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
     let path = resolve_workspace_path(s, raw);
-    let sniffed = std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| craft_doc::sniff(&bytes))
-        .map(|kind| match kind {
-            craft_doc::Kind::PhotoCraft => "photocraft",
-            craft_doc::Kind::VectorCraft => "vectorcraft",
-            craft_doc::Kind::EffectCraft => "effectcraft",
-            _ => "xdg-open",
-        });
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    let sniffed = std::fs::read(&path).ok().and_then(|bytes| craft_doc::sniff(&bytes)).map(|kind| match kind {
+        craft_doc::Kind::PhotoCraft => "photocraft",
+        craft_doc::Kind::VectorCraft => "vectorcraft",
+        craft_doc::Kind::EffectCraft => "effectcraft",
+        _ => "xdg-open",
+    });
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     let app = sniffed.unwrap_or(match ext.as_str() {
         "cadcraft" | "dxf" | "dwg" => "cadcraft",
         "deckcraft" | "potx" | "pptx" => "deckcraft",
@@ -175,48 +145,40 @@ pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Valu
 /// `layer.*`) directly in-process via `photocraft_engine::Session`. Edited images default to
 /// saving a native `.pcraft` project file alongside the source image.
 pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
-    let raw = p["path"]
-        .as_str()
-        .ok_or_else(|| EngineError::InvalidParams("path is required".into()))?;
+    let raw = p["path"].as_str().ok_or_else(|| EngineError::InvalidParams("path is required".into()))?;
     let path = resolve_workspace_path(s, raw);
     let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
         arr.clone()
     } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-        vec![
-            serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))}),
-        ]
+        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
     } else {
         vec![serde_json::json!({"id": "document.inspect", "params": {}})]
     };
-    let is_query = steps.len() == 1
-        && matches!(
-            steps[0]["id"].as_str(),
-            Some("document.inspect" | "session.inspect" | "command.list")
-        );
-    let save = p["save"]
-        .as_str()
-        .map(|out| resolve_workspace_path(s, out))
-        .or_else(|| (!is_query).then(|| path.with_extension("pcraft")));
+    let is_query = steps.len() == 1 && matches!(steps[0]["id"].as_str(), Some("document.inspect" | "session.inspect" | "command.list"));
+    let save = p["save"].as_str().map(|out| resolve_workspace_path(s, out)).or_else(|| (!is_query).then(|| path.with_extension("pcraft")));
     let mut pairs: Vec<(&str, Value)> = Vec::with_capacity(steps.len());
     for step in &steps {
-        let id = step["id"]
-            .as_str()
-            .or_else(|| step["command"].as_str())
-            .ok_or_else(|| EngineError::InvalidParams("step missing command id".into()))?;
-        let params = step
-            .get("params")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
+        let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| EngineError::InvalidParams("step missing command id".into()))?;
+        let params = step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
         pairs.push((id, params));
     }
     // Via installed photocraft-cli (system app pattern, no in-process linking)
     let cli = find_executable("photocraft-cli").map_err(|e| EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
     let mut cmd = std::process::Command::new(&cli);
     cmd.arg("run").arg(&path);
-    for (id, params) in &pairs { cmd.arg("--cmd").arg(id).arg("--params").arg(params.to_string()); }
-    if let Some(ref out) = save { if let Some(parent) = out.parent() { std::fs::create_dir_all(parent)?; } cmd.arg("--out").arg(out); }
+    for (id, params) in &pairs {
+        cmd.arg("--cmd").arg(id).arg("--params").arg(params.to_string());
+    }
+    if let Some(ref out) = save {
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        cmd.arg("--out").arg(out);
+    }
     let out = cmd.output().map_err(|e| EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
-    if !out.status.success() { return Err(EngineError::ExternalTool("photocraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)))); }
+    if !out.status.success() {
+        return Err(EngineError::ExternalTool("photocraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
+    }
     let info = save.as_deref().or(Some(path.as_path())).and_then(craft_doc_info);
     Ok(serde_json::json!({"ok": true, "path": path, "pcraft": save, "info": info, "via": "photocraft-cli"}))
 }
@@ -225,10 +187,13 @@ pub fn cmd_photo_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
 pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let raw = p["path"].as_str().ok_or_else(|| EngineError::InvalidParams("path=<.ecproj> is required".into()))?;
     let path = resolve_workspace_path(s, raw);
-    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() { arr.clone() }
-        else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-            vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
-        } else { return Err(EngineError::InvalidParams("id=<effectcraft command> or steps=[...] is required".into())); };
+    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
+        arr.clone()
+    } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
+        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+    } else {
+        return Err(EngineError::InvalidParams("id=<effectcraft command> or steps=[...] is required".into()));
+    };
     let cli = find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     let tmp = std::env::temp_dir().join(format!("magic-effect-{}.json", std::process::id()));
     std::fs::write(&tmp, serde_json::to_vec(&steps).unwrap_or_default())?;
@@ -237,7 +202,9 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     // effectcraft-cli run opens project via --args? Use exec per step fallback: run sets project from first file.open step; caller includes file.open if needed.
     let out = cmd.output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     let _ = std::fs::remove_file(&tmp);
-    if !out.status.success() { return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)))); }
+    if !out.status.success() {
+        return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
+    }
     let results: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| serde_json::from_str(l.trim()).ok()).collect();
     let info = craft_doc_info(&path);
     Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results, "via": "effectcraft-cli"}))
@@ -249,20 +216,33 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
 pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     let raw = p["path"].as_str().ok_or_else(|| EngineError::InvalidParams("path is required".into()))?;
     let path = resolve_workspace_path(s, raw);
-    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() { arr.clone() }
-        else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
-            vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
-        } else { vec![serde_json::json!({"id": "document.inspect", "params": {}})] };
-    let is_query = steps.len() == 1 && matches!(steps[0]["id"].as_str(), Some("document.inspect"|"session.inspect"|"command.list"));
-    let save = p["save"].as_str().or_else(|| p["out"].as_str()).map(|o| resolve_workspace_path(s, o)).or_else(|| (!is_query).then(|| path.with_extension("vectorcraft")));
-    let cli = find_executable("vectorcraft-cli").or_else(|_| find_executable("vectorcraft")).map_err(|e| EngineError::ExternalTool("vectorcraft-cli".into(), e.to_string()))?;
+    let steps: Vec<Value> = if let Some(arr) = p["steps"].as_array() {
+        arr.clone()
+    } else if let Some(id) = p["id"].as_str().or_else(|| p["command"].as_str()) {
+        vec![serde_json::json!({"id": id, "params": p.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))})]
+    } else {
+        vec![serde_json::json!({"id": "document.inspect", "params": {}})]
+    };
+    let is_query = steps.len() == 1 && matches!(steps[0]["id"].as_str(), Some("document.inspect" | "session.inspect" | "command.list"));
+    let save = p["save"]
+        .as_str()
+        .or_else(|| p["out"].as_str())
+        .map(|o| resolve_workspace_path(s, o))
+        .or_else(|| (!is_query).then(|| path.with_extension("vectorcraft")));
+    let cli = find_executable("vectorcraft-cli")
+        .or_else(|_| find_executable("vectorcraft"))
+        .map_err(|e| EngineError::ExternalTool("vectorcraft-cli".into(), e.to_string()))?;
     let tmp = std::env::temp_dir().join(format!("magic-vector-{}.json", std::process::id()));
     std::fs::write(&tmp, serde_json::to_vec(&steps).unwrap_or_default())?;
     let mut cmd = std::process::Command::new(&cli);
     cmd.arg("run").arg("--commands").arg(&tmp);
-    if path.is_file() { cmd.arg("--in").arg(&path); }
+    if path.is_file() {
+        cmd.arg("--in").arg(&path);
+    }
     if let Some(ref out) = save {
-        if let Some(parent) = out.parent() { std::fs::create_dir_all(parent)?; }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         cmd.arg("--export").arg(out);
     }
     let out = cmd.output().map_err(|e| EngineError::ExternalTool("vectorcraft-cli".into(), e.to_string()))?;
@@ -285,26 +265,16 @@ pub fn resolve_tool(name: &str) -> String {
         }
     }
     let stored = crate::project_settings::stored_settings();
-    if let Some(cfg_val) = stored
-        .pointer(&format!("/tools/{name}"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(cfg_val) = stored.pointer(&format!("/tools/{name}")).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
         return cfg_val.to_string();
     }
-    if let Some(installed) =
-        std::env::var_os("HOME").and_then(|h| launcher_app(Path::new(&h), name))
-    {
+    if let Some(installed) = std::env::var_os("HOME").and_then(|h| launcher_app(Path::new(&h), name)) {
         return installed;
     }
     if let Ok(found) = find_executable(name) {
         return found.to_string_lossy().into_owned();
     }
-    if let Some(local_bin) = std::env::var_os("HOME")
-        .map(|h| PathBuf::from(h).join(".local/bin").join(name))
-        .filter(|p| p.is_file())
-    {
+    if let Some(local_bin) = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/bin").join(name)).filter(|p| p.is_file()) {
         return local_bin.to_string_lossy().into_owned();
     }
     name.to_string()
@@ -314,9 +284,7 @@ pub fn resolve_tool(name: &str) -> String {
 /// `~/.local/share/applications/ai.storyteller.<name>.desktop`. The launcher rewrites that entry
 /// on every update, so this always names the current build; no version lives in this code.
 fn launcher_app(home: &Path, name: &str) -> Option<String> {
-    let entry = home
-        .join(".local/share/applications")
-        .join(format!("ai.storyteller.{name}.desktop"));
+    let entry = home.join(".local/share/applications").join(format!("ai.storyteller.{name}.desktop"));
     let text = std::fs::read_to_string(entry).ok()?;
     let exec = text.lines().find_map(|l| l.strip_prefix("Exec="))?.trim();
     let program = match exec.strip_prefix('"') {
@@ -338,8 +306,7 @@ impl Drop for ToolSlotGuard {
 }
 
 fn tool_limiter() -> &'static (std::sync::Mutex<usize>, std::sync::Condvar) {
-    static LIMITER: std::sync::OnceLock<(std::sync::Mutex<usize>, std::sync::Condvar)> =
-        std::sync::OnceLock::new();
+    static LIMITER: std::sync::OnceLock<(std::sync::Mutex<usize>, std::sync::Condvar)> = std::sync::OnceLock::new();
     LIMITER.get_or_init(|| (std::sync::Mutex::new(0), std::sync::Condvar::new()))
 }
 
@@ -360,30 +327,16 @@ pub(crate) fn acquire_tool_slot() -> ToolSlotGuard {
 /// Run an external command-line tool in `cwd`, capturing stdout as a String.
 pub(crate) fn run_tool_in(cwd: &Path, tool: &str, args: &[String]) -> Result<String> {
     let _slot = acquire_tool_slot();
-    let executable = if !tool.contains('/') {
-        resolve_tool(tool)
-    } else {
-        tool.to_string()
-    };
-    let output = std::process::Command::new(&executable)
-        .current_dir(cwd)
-        .args(args)
-        .output()
-        .map_err(|e| EngineError::ExternalTool(tool.to_string(), e.to_string()))?;
+    let executable = if !tool.contains('/') { resolve_tool(tool) } else { tool.to_string() };
+    let output =
+        std::process::Command::new(&executable).current_dir(cwd).args(args).output().map_err(|e| EngineError::ExternalTool(tool.to_string(), e.to_string()))?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let detail = if stderr.trim().is_empty() {
-            stdout.trim().to_string()
-        } else {
-            stderr.trim().to_string()
-        };
-        Err(EngineError::ExternalTool(
-            tool.to_string(),
-            format!("exit {:?}: {detail}", output.status.code()),
-        ))
+        let detail = if stderr.trim().is_empty() { stdout.trim().to_string() } else { stderr.trim().to_string() };
+        Err(EngineError::ExternalTool(tool.to_string(), format!("exit {:?}: {detail}", output.status.code())))
     }
 }
 
@@ -392,19 +345,14 @@ pub(crate) const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "m4a", "aac
 
 /// True when `path` has one of `allowed` extensions (case-insensitive).
 pub(crate) fn has_extension(path: &Path, allowed: &[&str]) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| allowed.iter().any(|a| a.eq_ignore_ascii_case(e)))
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| allowed.iter().any(|a| a.eq_ignore_ascii_case(e)))
 }
 
 /// Validate and resolve an audio path for the workshop song.
 pub(crate) fn song_audio_path(s: &crate::Session, raw: &str) -> Result<PathBuf> {
     let path = resolve_workspace_path(s, raw);
     if !path.is_file() || !has_extension(&path, AUDIO_EXTENSIONS) {
-        return Err(EngineError::InvalidParams(format!(
-            "not an audio file: {}",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("not an audio file: {}", path.display())));
     }
     Ok(path)
 }
@@ -432,11 +380,7 @@ pub fn sanitize_asset_id(raw: &str) -> String {
 pub fn asset_id_for_import(typed_name: Option<&str>, path: &Path) -> String {
     typed_name
         .and_then(try_sanitize_asset_id)
-        .or_else(|| {
-            path.file_stem()
-                .and_then(|st| st.to_str())
-                .and_then(try_sanitize_asset_id)
-        })
+        .or_else(|| path.file_stem().and_then(|st| st.to_str()).and_then(try_sanitize_asset_id))
         .unwrap_or_else(|| "asset".to_string())
 }
 

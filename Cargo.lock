@@ -7556,6 +7556,7 @@ dependencies = [
 name = "magic-tauri"
 version = "0.17.0"
 dependencies = [
+ "cairo-rs",
  "clap",
  "log",
  "magic-engine",
@@ -7579,6 +7580,7 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-websocket",
  "tauri-plugin-window-state",
+ "webkit2gtk",
 ]
 
 [[package]]

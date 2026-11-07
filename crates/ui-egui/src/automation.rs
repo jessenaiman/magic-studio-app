@@ -67,11 +67,7 @@ impl Registry {
     }
 
     pub fn all(&self) -> &[Element] {
-        if self.elements.is_empty() {
-            &self.previous
-        } else {
-            &self.elements
-        }
+        if self.elements.is_empty() { &self.previous } else { &self.elements }
     }
 
     pub fn list(&self) -> &[Element] {
@@ -94,17 +90,11 @@ impl Registry {
     }
 
     pub fn query(&self, prefix: &str) -> Vec<&Element> {
-        self.all()
-            .iter()
-            .filter(|e| prefix.is_empty() || e.id.starts_with(prefix))
-            .collect()
+        self.all().iter().filter(|e| prefix.is_empty() || e.id.starts_with(prefix)).collect()
     }
 
     /// Fields registered in the current view whose value is empty (`""`).
     pub fn unconfigured(&self) -> Vec<&Element> {
-        self.all()
-            .iter()
-            .filter(|e| e.value.as_deref().is_some_and(|v| v.trim().is_empty()))
-            .collect()
+        self.all().iter().filter(|e| e.value.as_deref().is_some_and(|v| v.trim().is_empty())).collect()
     }
 }

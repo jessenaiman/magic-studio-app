@@ -111,10 +111,7 @@ impl Clone for Session {
             video_target: self.video_target.clone(),
             active_asset: self.active_asset.clone(),
             last_result: self.last_result.clone(),
-            project_saves: std::sync::atomic::AtomicU64::new(
-                self.project_saves
-                    .load(std::sync::atomic::Ordering::Relaxed),
-            ),
+            project_saves: std::sync::atomic::AtomicU64::new(self.project_saves.load(std::sync::atomic::Ordering::Relaxed)),
             edits_since_save: self.edits_since_save,
             docs: self.docs.clone(),
             history: self.history.clone(),
@@ -126,10 +123,7 @@ impl Clone for Session {
 
 impl Session {
     pub fn user_session() -> Self {
-        Self {
-            record_user_state: true,
-            ..Self::default()
-        }
+        Self { record_user_state: true, ..Self::default() }
     }
 }
 

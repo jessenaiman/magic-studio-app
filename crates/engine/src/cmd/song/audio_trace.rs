@@ -12,9 +12,7 @@ pub(crate) struct AudioTrace {
     pub data: Value,
 }
 fn digest(path: &Path) -> Option<String> {
-    fs::read(path)
-        .ok()
-        .map(|b| format!("{:x}", Sha256::digest(b)))
+    fs::read(path).ok().map(|b| format!("{:x}", Sha256::digest(b)))
 }
 fn resolve(tool: &str) -> Option<PathBuf> {
     let direct = Path::new(tool);
@@ -25,18 +23,11 @@ fn resolve(tool: &str) -> Option<PathBuf> {
         std::env::split_paths(&p)
             .map(|d| d.join(tool))
             .find(|p| p.is_file() && !p.to_string_lossy().contains("/mise/shims/"))
-            .or_else(|| {
-                std::env::split_paths(&p)
-                    .map(|d| d.join(tool))
-                    .find(|p| p.is_file())
-            })
+            .or_else(|| std::env::split_paths(&p).map(|d| d.join(tool)).find(|p| p.is_file()))
     })
 }
 fn summary(stdout: &str) -> Value {
-    let parsed = stdout
-        .lines()
-        .rev()
-        .find_map(|line| serde_json::from_str::<Value>(line).ok());
+    let parsed = stdout.lines().rev().find_map(|line| serde_json::from_str::<Value>(line).ok());
     let mut selected = json!({});
     if let Some(v) = parsed {
         for k in [
@@ -64,12 +55,7 @@ fn summary(stdout: &str) -> Value {
 fn version_args(tool: &str) -> Vec<String> {
     match tool {
         "ffmpeg" => vec!["-version".into()],
-        "npx" => vec![
-            "--offline".into(),
-            "--no-install".into(),
-            "hyperframes".into(),
-            "--version".into(),
-        ],
+        "npx" => vec!["--offline".into(), "--no-install".into(), "hyperframes".into(), "--version".into()],
         _ => vec!["--version".into()],
     }
 }
@@ -100,49 +86,28 @@ impl AudioTrace {
         Ok(trace)
     }
     fn persist(&mut self) -> Result<()> {
-        let mut v = fs::read(&self.path)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-            .filter(Value::is_object)
-            .unwrap_or(json!({}));
+        let mut v = fs::read(&self.path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).filter(Value::is_object).unwrap_or(json!({}));
         let transcript = self.data["transcript_path"].as_str().map(Path::new);
         let hash = transcript.and_then(digest);
         self.data["transcript_sha256"] = json!(hash);
-        let asr = self.data["steps"].as_array().and_then(|rows| {
-            rows.iter()
-                .find(|r| r["stage"] == "transcription" && r["status"] == "success")
-        });
+        let asr = self.data["steps"].as_array().and_then(|rows| rows.iter().find(|r| r["stage"] == "transcription" && r["status"] == "success"));
         if let Some(step) = asr {
             v["producer"] = json!({"tool":"HyperFrames transcribe","transcript_sha256":hash,
                 "engine":step["result"]["engine"],"model":step["result"]["model"],
                 "version_probe":step["version_probe"],"resolved_executable":step["resolved_executable"],
                 "argv":step["argv"],"result":step["result"],"source":"actual subprocess stdout; missing values remain null"});
             self.data["producer_status"] = json!("actual transcription result recorded");
-        } else if hash.is_some()
-            && v["producer"]["transcript_sha256"] == json!(hash)
-            && v["producer"]["tool"].is_string()
-        {
-            self.data["producer_status"] =
-                json!("matching previously recorded producer retained; no transcription this run");
+        } else if hash.is_some() && v["producer"]["transcript_sha256"] == json!(hash) && v["producer"]["tool"].is_string() {
+            self.data["producer_status"] = json!("matching previously recorded producer retained; no transcription this run");
         } else {
-            v["producer"] = json!({"engine":null,"model":null,"tool":null,"transcript_sha256":hash,"source":"unknown; existing file has no matching producer receipt"});
-            self.data["producer_status"] = json!(if hash.is_some() {
-                "unknown original producer; existing outputs reused without ASR"
-            } else {
-                "unknown; no transcript file exists yet"
-            });
+            v["producer"] =
+                json!({"engine":null,"model":null,"tool":null,"transcript_sha256":hash,"source":"unknown; existing file has no matching producer receipt"});
+            self.data["producer_status"] =
+                json!(if hash.is_some() { "unknown original producer; existing outputs reused without ASR" } else { "unknown; no transcript file exists yet" });
         }
         v["analysis_attempt"] = self.data.clone();
-        fs::write(
-            &self.path,
-            serde_json::to_vec_pretty(&v).map_err(|e| EngineError::InvalidParams(e.to_string()))?,
-        )
-        .map_err(|e| {
-            EngineError::InvalidParams(format!(
-                "Cannot save audio receipt {}: {e}",
-                self.path.display()
-            ))
-        })?;
+        fs::write(&self.path, serde_json::to_vec_pretty(&v).map_err(|e| EngineError::InvalidParams(e.to_string()))?)
+            .map_err(|e| EngineError::InvalidParams(format!("Cannot save audio receipt {}: {e}", self.path.display())))?;
         Ok(())
     }
     fn finish_success(&mut self, index: usize, output: String) -> Result<Option<String>> {
@@ -152,14 +117,7 @@ impl AudioTrace {
         Ok(Some(output))
     }
 
-    fn finish_error(
-        &mut self,
-        index: usize,
-        stage: &str,
-        tool: &str,
-        cwd: &Path,
-        error: EngineError,
-    ) -> Result<Option<String>> {
+    fn finish_error(&mut self, index: usize, stage: &str, tool: &str, cwd: &Path, error: EngineError) -> Result<Option<String>> {
         self.data["steps"][index]["status"] = json!("error");
         self.data["steps"][index]["error"] = json!(error.to_string());
         self.data["failed_stage"] = json!(stage);
@@ -172,15 +130,7 @@ impl AudioTrace {
         )))
     }
 
-    pub fn run(
-        &mut self,
-        stage: &str,
-        needed: bool,
-        cwd: &Path,
-        tool: &str,
-        args: &[String],
-        outputs: &[PathBuf],
-    ) -> Result<Option<String>> {
+    pub fn run(&mut self, stage: &str, needed: bool, cwd: &Path, tool: &str, args: &[String], outputs: &[PathBuf]) -> Result<Option<String>> {
         let program = resolve(tool);
         let mut row = json!({"stage":stage,"requested_executable":tool,"resolved_executable":program,
             "real_executable":program.as_ref().and_then(|p|p.canonicalize().ok()),"argv":args,"cwd":cwd,
@@ -189,10 +139,7 @@ impl AudioTrace {
             row["version_probe"] = version_probe(tool, cwd);
         }
         let index = self.data["steps"].as_array().map(Vec::len).unwrap_or(0);
-        self.data["steps"]
-            .as_array_mut()
-            .ok_or_else(|| EngineError::InvalidParams("Invalid audio receipt steps".into()))?
-            .push(row);
+        self.data["steps"].as_array_mut().ok_or_else(|| EngineError::InvalidParams("Invalid audio receipt steps".into()))?.push(row);
         self.persist()?;
         if !needed {
             return Ok(None);
@@ -203,31 +150,23 @@ impl AudioTrace {
         }
     }
     pub fn read_json(&mut self, stage: &str, path: &Path) -> Result<Value> {
-        let result = fs::read(path).map_err(EngineError::from).and_then(|bytes| {
-            serde_json::from_slice::<Value>(&bytes)
-                .map_err(|e| EngineError::InvalidParams(e.to_string()))
-        });
+        let result = fs::read(path)
+            .map_err(EngineError::from)
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).map_err(|e| EngineError::InvalidParams(e.to_string())));
         if let Err(error) = &result {
             self.data["status"] = json!("failed");
             self.data["failed_stage"] = json!(stage);
             self.data["error"] = json!({"path":path,"error":error.to_string()});
             self.persist()?;
         }
-        result.map_err(|e| {
-            EngineError::InvalidParams(format!(
-                "audio.analyze stage={stage}; file={}; {e}; receipt={}",
-                path.display(),
-                self.path.display()
-            ))
-        })
+        result.map_err(|e| EngineError::InvalidParams(format!("audio.analyze stage={stage}; file={}; {e}; receipt={}", path.display(), self.path.display())))
     }
     pub fn import(&mut self, s: &mut crate::Session, p: Value) -> Result<Value> {
         let index = self.data["steps"].as_array().map(Vec::len).unwrap_or(0);
         self.data["steps"].as_array_mut().ok_or_else(||EngineError::InvalidParams("Invalid audio receipt steps".into()))?.push(json!({"stage":"import","command":"workshop.import_transcript","params":p,"status":"running","expected_format":"native word array [{text,start,end,id?}], or object with words; optional original SRT"}));
         self.persist()?;
         let result = s.execute("workshop.import_transcript", p);
-        self.data["steps"][index]["status"] =
-            json!(if result.is_ok() { "success" } else { "error" });
+        self.data["steps"][index]["status"] = json!(if result.is_ok() { "success" } else { "error" });
         self.data["status"] = json!(if result.is_ok() { "complete" } else { "failed" });
         if let Err(e) = &result {
             self.data["steps"][index]["error"] = json!(e.to_string());

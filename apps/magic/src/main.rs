@@ -5,17 +5,7 @@
 //! JSON-lines control channel (`magic --control 7985`) so `magic-cli` and `magic-mcp`
 //! can inspect or drive a live window.
 
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unimplemented,
-        clippy::todo,
-        clippy::unreachable
-    )
-)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -37,10 +27,7 @@ mod lyrics;
 type WakeHandle = Arc<Mutex<Option<egui::Context>>>;
 
 #[derive(Parser)]
-#[command(
-    name = "magic",
-    about = "Magic Studio desktop app (Craft egui + Tauri edition)"
-)]
+#[command(name = "magic", about = "Magic Studio desktop app (Craft egui + Tauri edition)")]
 struct Cli {
     /// Open this `.magic` project at launch
     #[arg(long)]
@@ -68,13 +55,7 @@ struct Cli {
     control_token: Option<String>,
 }
 
-fn handle_control_stream<R: BufRead, W: Write>(
-    reader: R,
-    mut writer: W,
-    expected_token: Option<&str>,
-    tx: &Sender<ControlRequest>,
-    wake: &WakeHandle,
-) {
+fn handle_control_stream<R: BufRead, W: Write>(reader: R, mut writer: W, expected_token: Option<&str>, tx: &Sender<ControlRequest>, wake: &WakeHandle) {
     for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -83,11 +64,7 @@ fn handle_control_stream<R: BufRead, W: Write>(
         let msg: Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
             Err(e) => {
-                let _ = writeln!(
-                    writer,
-                    "{}",
-                    json!({ "id": null, "ok": false, "error": format!("parse error: {e}") })
-                );
+                let _ = writeln!(writer, "{}", json!({ "id": null, "ok": false, "error": format!("parse error: {e}") }));
                 let _ = writer.flush();
                 continue;
             }
@@ -97,30 +74,15 @@ fn handle_control_stream<R: BufRead, W: Write>(
             let given = msg["token"].as_str().unwrap_or_default();
             let ok: bool = exp.as_bytes().ct_eq(given.as_bytes()).into();
             if !ok {
-                let _ = writeln!(
-                    writer,
-                    "{}",
-                    json!({ "id": id, "ok": false, "error": "unauthorized control token" })
-                );
+                let _ = writeln!(writer, "{}", json!({ "id": id, "ok": false, "error": "unauthorized control token" }));
                 let _ = writer.flush();
                 continue;
             }
         }
-        let method = msg["method"]
-            .as_str()
-            .or_else(|| msg["command"].as_str())
-            .unwrap_or_default()
-            .to_owned();
+        let method = msg["method"].as_str().or_else(|| msg["command"].as_str()).unwrap_or_default().to_owned();
         let params = msg.get("params").cloned().unwrap_or_else(|| json!({}));
         let (reply_tx, reply_rx) = channel();
-        if tx
-            .send(ControlRequest {
-                method,
-                params,
-                reply: reply_tx,
-            })
-            .is_err()
-        {
+        if tx.send(ControlRequest { method, params, reply: reply_tx }).is_err() {
             break;
         }
         if let Ok(guard) = wake.lock()
@@ -138,22 +100,10 @@ fn handle_control_stream<R: BufRead, W: Write>(
     }
 }
 
-fn spawn_control_listener(
-    spec: &str,
-    expected_token: Option<String>,
-    tx: Sender<ControlRequest>,
-    wake: WakeHandle,
-) -> Result<String, String> {
-    let addr = if spec.contains(':') {
-        spec.to_owned()
-    } else {
-        format!("127.0.0.1:{spec}")
-    };
+fn spawn_control_listener(spec: &str, expected_token: Option<String>, tx: Sender<ControlRequest>, wake: WakeHandle) -> Result<String, String> {
+    let addr = if spec.contains(':') { spec.to_owned() } else { format!("127.0.0.1:{spec}") };
     let listener = TcpListener::bind(&addr).map_err(|e| format!("bind {addr}: {e}"))?;
-    let local = listener
-        .local_addr()
-        .map(|a| a.to_string())
-        .unwrap_or_else(|_| addr.clone());
+    let local = listener.local_addr().map(|a| a.to_string()).unwrap_or_else(|_| addr.clone());
     std::thread::spawn(move || {
         for incoming in listener.incoming().flatten() {
             let tx = tx.clone();
@@ -163,13 +113,7 @@ fn spawn_control_listener(
                 let Ok(writer_stream) = incoming.try_clone() else {
                     return;
                 };
-                handle_control_stream(
-                    BufReader::new(incoming),
-                    std::io::BufWriter::new(writer_stream),
-                    expected.as_deref(),
-                    &tx,
-                    &wake,
-                );
+                handle_control_stream(BufReader::new(incoming), std::io::BufWriter::new(writer_stream), expected.as_deref(), &tx, &wake);
             });
         }
     });
@@ -177,14 +121,8 @@ fn spawn_control_listener(
 }
 
 #[cfg(unix)]
-fn spawn_unix_control_socket(
-    tx: Sender<ControlRequest>,
-    wake: WakeHandle,
-) -> Option<ControlSocket> {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("magic");
+fn spawn_unix_control_socket(tx: Sender<ControlRequest>, wake: WakeHandle) -> Option<ControlSocket> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir).join("magic");
     let _ = std::fs::create_dir_all(&dir);
     let sock_path = dir.join(format!("{}-1.sock", std::process::id()));
     let _ = std::fs::remove_file(&sock_path);
@@ -197,13 +135,7 @@ fn spawn_unix_control_socket(
                 let Ok(writer_stream) = incoming.try_clone() else {
                     return;
                 };
-                handle_control_stream(
-                    BufReader::new(incoming),
-                    std::io::BufWriter::new(writer_stream),
-                    None,
-                    &tx,
-                    &wake,
-                );
+                handle_control_stream(BufReader::new(incoming), std::io::BufWriter::new(writer_stream), None, &tx, &wake);
             });
         }
     });
@@ -227,19 +159,14 @@ fn main() -> eframe::Result {
         && let Ok(exe) = std::env::current_exe()
     {
         use std::os::unix::process::CommandExt;
-        let _ = std::process::Command::new(exe)
-            .args(std::env::args_os().skip(1))
-            .env("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
-            .exec();
+        let _ = std::process::Command::new(exe).args(std::env::args_os().skip(1)).env("WEBKIT_DISABLE_DMABUF_RENDERER", "1").exec();
     }
     let cli = Cli::parse();
     let startup = cli
         .command
         .map(|method| {
             let params = match cli.params.as_deref() {
-                Some(raw) => {
-                    serde_json::from_str::<Value>(raw).map_err(|error| error.to_string())?
-                }
+                Some(raw) => serde_json::from_str::<Value>(raw).map_err(|error| error.to_string())?,
                 None => json!({}),
             };
             if !params.is_object() {
@@ -253,32 +180,17 @@ fn main() -> eframe::Result {
     let mut session = Session::user_session();
     if let Some(path) = cli.project.as_deref().or(cli.file.as_deref()) {
         let input = std::path::Path::new(path);
-        let command = if cli.lyrics && input.is_dir() {
-            "words.workspace"
-        } else {
-            "project.open"
-        };
+        let command = if cli.lyrics && input.is_dir() { "words.workspace" } else { "project.open" };
         session
             .execute(command, json!({ "path": path }))
-            .map_err(|error| {
-                eframe::Error::AppCreation(Box::new(std::io::Error::other(format!(
-                    "Open {path}: {error}"
-                ))))
-            })?;
+            .map_err(|error| eframe::Error::AppCreation(Box::new(std::io::Error::other(format!("Open {path}: {error}")))))?;
     }
 
     let (tx, control_rx) = channel();
     let wake: WakeHandle = Arc::new(Mutex::new(None));
     if let Some((method, params)) = startup {
         let (reply, result) = channel();
-        tx.send(ControlRequest {
-            method,
-            params,
-            reply,
-        })
-        .map_err(|error| {
-            eframe::Error::AppCreation(Box::new(std::io::Error::other(error.to_string())))
-        })?;
+        tx.send(ControlRequest { method, params, reply }).map_err(|error| eframe::Error::AppCreation(Box::new(std::io::Error::other(error.to_string()))))?;
         std::thread::spawn(move || match result.recv() {
             Ok(Ok(value)) => println!("{value}"),
             Ok(Err(error)) => eprintln!("{}", json!({ "ok": false, "error": error })),
@@ -301,11 +213,7 @@ fn main() -> eframe::Result {
         }
     }
 
-    let initial_view = if cli.lyrics {
-        Some(ViewMode::Lyrics)
-    } else {
-        cli.view.as_deref().and_then(ViewMode::from_name)
-    };
+    let initial_view = if cli.lyrics { Some(ViewMode::Lyrics) } else { cli.view.as_deref().and_then(ViewMode::from_name) };
 
     // wry hosts the Lyrics webview as a child window, which needs X11 (XWayland on Wayland).
     #[cfg(feature = "lyrics-webview")]

@@ -29,28 +29,17 @@ fn modifiers(p: &Value) -> Modifiers {
 impl MagicApp {
     fn point(&self, p: &Value) -> Result<Pos2, String> {
         if let Some(id) = p.get("id").and_then(Value::as_str) {
-            let e = self
-                .auto
-                .find(id)
-                .ok_or_else(|| format!("no element `{id}` (see ui.elements)"))?;
-            return Ok(egui::pos2(
-                e.rect[0] + e.rect[2] * 0.5,
-                e.rect[1] + e.rect[3] * 0.5,
-            ));
+            let e = self.auto.find(id).ok_or_else(|| format!("no element `{id}` (see ui.elements)"))?;
+            return Ok(egui::pos2(e.rect[0] + e.rect[2] * 0.5, e.rect[1] + e.rect[3] * 0.5));
         }
-        let x = p
-            .get("x")
-            .and_then(Value::as_f64)
-            .ok_or("need `id` or `x`,`y`")?;
+        let x = p.get("x").and_then(Value::as_f64).ok_or("need `id` or `x`,`y`")?;
         let y = p.get("y").and_then(Value::as_f64).ok_or("need `y`")?;
         Ok(egui::pos2(x as f32, y as f32))
     }
 
     fn synthetic_input(&mut self, method: &str, p: &Value) -> Result<Value, String> {
         if self.synthetic.len() >= MAX_SYNTHETIC_EVENTS {
-            return Err(
-                "too many synthetic input events are queued; wait for them to be processed".into(),
-            );
+            return Err("too many synthetic input events are queued; wait for them to be processed".into());
         }
         match method {
             "ui.move" => {
@@ -70,14 +59,10 @@ impl MagicApp {
                     modifiers: m,
                     phase: egui::TouchPhase::Move,
                 });
-                self.synthetic
-                    .push(Event::ModifiersChanged(Modifiers::NONE));
+                self.synthetic.push(Event::ModifiersChanged(Modifiers::NONE));
             }
             _ => {
-                let text = p
-                    .get("text")
-                    .and_then(Value::as_str)
-                    .ok_or("missing `text`")?;
+                let text = p.get("text").and_then(Value::as_str).ok_or("missing `text`")?;
                 self.synthetic.push(Event::Text(text.to_owned()));
             }
         }
@@ -85,12 +70,7 @@ impl MagicApp {
     }
 
     /// Answer a documented protocol method, or `None` when `method` is not one of them.
-    pub(crate) fn handle_protocol(
-        &mut self,
-        ctx: &Context,
-        method: &str,
-        p: &Value,
-    ) -> Option<Result<Value, String>> {
+    pub(crate) fn handle_protocol(&mut self, ctx: &Context, method: &str, p: &Value) -> Option<Result<Value, String>> {
         Some(match method {
             "engine.execute" | "ui.menu.invoke" => {
                 let command = p["command"].as_str().or_else(|| p["id"].as_str());
@@ -102,10 +82,7 @@ impl MagicApp {
                     _ => Err("missing `command` (an engine or ui command id)".into()),
                 }
             }
-            "engine.commands" | "ui.menu.list" => self
-                .session
-                .execute("command.list", json!({}))
-                .map_err(|e| e.to_string()),
+            "engine.commands" | "ui.menu.list" => self.session.execute("command.list", json!({})).map_err(|e| e.to_string()),
             // Magic's egui views are not docked: report the one layout there is.
             "ui.docking" => Ok(json!({
                 "ok": true,
@@ -134,24 +111,15 @@ impl MagicApp {
                 .effectcraft_animation
                 .as_mut()
                 .ok_or_else(|| "Open an EffectCraft composition first.".to_owned())
-                .and_then(|composition| {
-                    composition.preview(p["action"].as_str().unwrap_or("state"))
-                }),
+                .and_then(|composition| composition.preview(p["action"].as_str().unwrap_or("state"))),
             #[cfg(not(target_arch = "wasm32"))]
-            "ui.playback" if self.view == ViewMode::Studio => self.studio_program_preview(
-                p["action"].as_str().unwrap_or("state"), p["seconds"].as_f64(),
-            ),
-            "ui.playback" => Err(
-                "ui.playback: the Magic views have no transport; preview runs through the `video.preview` command"
-                    .into(),
-            ),
+            "ui.playback" if self.view == ViewMode::Studio => self.studio_program_preview(p["action"].as_str().unwrap_or("state"), p["seconds"].as_f64()),
+            "ui.playback" => Err("ui.playback: the Magic views have no transport; preview runs through the `video.preview` command".into()),
             "ui.resize" => {
                 let side = |k: &str| p[k].as_f64().filter(|v| (1.0..=16_384.0).contains(v));
                 match (side("width"), side("height")) {
                     (Some(w), Some(h)) => {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                            w as f32, h as f32,
-                        )));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w as f32, h as f32)));
                         Ok(json!({ "ok": true, "width": w, "height": h }))
                     }
                     _ => Err("`width` and `height` must be numbers from 1 to 16384".into()),

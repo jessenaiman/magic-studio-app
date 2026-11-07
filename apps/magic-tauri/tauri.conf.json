@@ -16,22 +16,70 @@
     "devUrl": "http://localhost:1420"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "security": {
-      "csp": null,
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: asset: http://asset.localhost",
+        "media-src": "'self' blob: asset: http://asset.localhost",
+        "font-src": "'self' data: asset: http://asset.localhost",
+        "connect-src": "'self' ipc: http://ipc.localhost asset: http://asset.localhost data: blob: http://127.0.0.1:* http://localhost:*",
+        "frame-src": "'self' blob: http://127.0.0.1:* http://localhost:*",
+        "worker-src": "'self' blob:",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'self'"
+      },
       "assetProtocol": {
         "enable": true,
         "scope": {
           "allow": [
+            "$APPDATA/**",
+            "$APPLOCALDATA/**",
+            "$APPCACHE/**",
+            "$HOME/.local/share/magic/**",
+            "$HOME/.local/share/magic-studio/**",
+            "$HOME/.local/state/magic/**",
+            "$HOME/.local/state/magic-studio/**",
+            "$HOME/.cache/magic/**",
+            "$HOME/.cache/magic-studio/**",
             "$HOME/**",
             "/run/media/**"
           ],
-          "requireLiteralLeadingDot": false
+          "deny": [
+            "**/*token*",
+            "**/*secret*",
+            "**/*credential*",
+            "**/*password*",
+            "**/*.pem",
+            "**/*.key",
+            "**/id_rsa*",
+            "**/id_ed25519*",
+            "**/.env",
+            "**/.env.*"
+          ],
+          "requireLiteralLeadingDot": true
         }
       },
       "capabilities": [
         "default"
-      ]
+      ],
+      "devCsp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:1420",
+        "style-src": "'self' 'unsafe-inline' http://localhost:1420",
+        "img-src": "'self' data: blob: asset: http://asset.localhost",
+        "media-src": "'self' blob: asset: http://asset.localhost",
+        "font-src": "'self' data: asset: http://asset.localhost",
+        "connect-src": "'self' ipc: http://ipc.localhost asset: http://asset.localhost data: blob: http://127.0.0.1:* http://localhost:* ws://localhost:1420 ws://localhost:1421",
+        "frame-src": "'self' blob: http://127.0.0.1:* http://localhost:*",
+        "worker-src": "'self' blob:",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'self'"
+      }
     },
     "windows": [
       {

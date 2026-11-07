@@ -11,34 +11,23 @@ use crate::workspace::resolve_workspace_path;
 use crate::{EngineError, Result, Session};
 
 pub(crate) fn transcript_document(path: &Path) -> Result<Value> {
-    let mut doc: Value = serde_json::from_slice(&std::fs::read(path)?).map_err(|e| {
-        EngineError::InvalidParams(format!("Invalid transcript {}: {e}", path.display()))
-    })?;
+    let mut doc: Value =
+        serde_json::from_slice(&std::fs::read(path)?).map_err(|e| EngineError::InvalidParams(format!("Invalid transcript {}: {e}", path.display())))?;
     if doc.is_array() {
         doc = json!({"words":doc});
     }
     if !doc.is_object() {
-        return Err(EngineError::InvalidParams(
-            "Transcript must be a word array or object with words".into(),
-        ));
+        return Err(EngineError::InvalidParams("Transcript must be a word array or object with words".into()));
     }
     if !doc["paragraphs"].is_array() {
         let captions = path.with_file_name("transcript.srt");
-        doc["paragraphs"] = if captions.is_file() {
-            json!(import_caption_paragraphs(&std::fs::read_to_string(
-                captions
-            )?)?)
-        } else {
-            doc["words"].clone()
-        };
+        doc["paragraphs"] = if captions.is_file() { json!(import_caption_paragraphs(&std::fs::read_to_string(captions)?)?) } else { doc["words"].clone() };
     }
     Ok(doc)
 }
 
 fn timed_span(v: &Value) -> Option<(f64, f64)> {
-    v.get("start")
-        .and_then(Value::as_f64)
-        .zip(v.get("end").and_then(Value::as_f64))
+    v.get("start").and_then(Value::as_f64).zip(v.get("end").and_then(Value::as_f64))
 }
 
 /// A word is usable when its text is nonempty and its timing is finite, nonnegative and ordered.
@@ -50,16 +39,10 @@ fn word_problems(words: &[Value]) -> Vec<String> {
     let mut problems = Vec::new();
     let mut last = f64::MIN;
     for (i, w) in words.iter().enumerate() {
-        let has_text = w
-            .get("text")
-            .and_then(Value::as_str)
-            .is_some_and(|t| !t.trim().is_empty());
+        let has_text = w.get("text").and_then(Value::as_str).is_some_and(|t| !t.trim().is_empty());
         match (has_text, timed_span(w)) {
             (true, Some((a, b))) if word_timing_ok(a, b, last) => last = a,
-            (true, Some(_)) => problems.push(format!(
-                "word {} is out of order or ends before it starts",
-                i + 1
-            )),
+            (true, Some(_)) => problems.push(format!("word {} is out of order or ends before it starts", i + 1)),
             _ => problems.push(format!("word {} needs text, start and end", i + 1)),
         }
         if problems.len() > 5 {
@@ -78,10 +61,7 @@ fn paragraphs_ordered(lines: &[Value]) -> bool {
     let mut previous = 0.0;
     for p in lines {
         match timed_span(p) {
-            Some((a, b))
-                if paragraph_timing_ok(a, b, previous)
-                    && p["text"].as_str().is_some_and(|t| !t.trim().is_empty()) =>
-            {
+            Some((a, b)) if paragraph_timing_ok(a, b, previous) && p["text"].as_str().is_some_and(|t| !t.trim().is_empty()) => {
                 previous = a;
             }
             _ => return false,
@@ -103,7 +83,10 @@ fn duration_problems(doc: &Value, duration: f64) -> Vec<String> {
     for key in ["words", "paragraphs"] {
         for (i, v) in doc[key].as_array().into_iter().flatten().enumerate() {
             if v["end"].as_f64().is_some_and(|end| end > duration + 0.001) {
-                problems.push(format!("{key} item {} ends after the recording ({duration:.6}s). Check matching audio/transcript; original received bytes retained.",i+1));
+                problems.push(format!(
+                    "{key} item {} ends after the recording ({duration:.6}s). Check matching audio/transcript; original received bytes retained.",
+                    i + 1
+                ));
             }
         }
     }
@@ -119,15 +102,10 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
         Some(words) => problems.extend(word_problems(words)),
     }
     match doc.get("paragraphs").and_then(Value::as_array) {
-        None => problems.push(
-            "missing \"paragraphs\": [{text, start, end}] (the sung lines or stanzas)".into(),
-        ),
+        None => problems.push("missing \"paragraphs\": [{text, start, end}] (the sung lines or stanzas)".into()),
         Some(lines) => problems.extend(paragraph_problems(lines)),
     }
-    if let Some(duration) = doc["recording_duration_sec"]
-        .as_f64()
-        .filter(|v| v.is_finite() && *v >= 0.0)
-    {
+    if let Some(duration) = doc["recording_duration_sec"].as_f64().filter(|v| v.is_finite() && *v >= 0.0) {
         problems.extend(duration_problems(doc, duration));
     }
     problems
@@ -135,10 +113,8 @@ pub(crate) fn transcript_problems(doc: &Value) -> Vec<String> {
 
 /// Preserve externally authored cue boundaries using `filmcraft_captions::parse`; never invent word timing from subtitle lines.
 pub(crate) fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
-    let fmt = filmcraft_captions::detect(text.as_bytes(), Some("srt"))
-        .unwrap_or(filmcraft_captions::Format::Srt);
-    let doc = filmcraft_captions::parse(text.as_bytes(), fmt)
-        .map_err(|e| EngineError::InvalidParams(format!("invalid caption file: {e}")))?;
+    let fmt = filmcraft_captions::detect(text.as_bytes(), Some("srt")).unwrap_or(filmcraft_captions::Format::Srt);
+    let doc = filmcraft_captions::parse(text.as_bytes(), fmt).map_err(|e| EngineError::InvalidParams(format!("invalid caption file: {e}")))?;
     if doc.cues.is_empty() {
         return Err(EngineError::InvalidParams("caption file is empty".into()));
     }
@@ -149,9 +125,7 @@ pub(crate) fn import_caption_paragraphs(text: &str) -> Result<Vec<Value>> {
         let end = cue.end.seconds();
         let clean = cue.text.replace('\n', " ").trim().to_string();
         if start < previous - 1e-6 || end < start || clean.is_empty() {
-            return Err(EngineError::InvalidParams(
-                "SRT cues must be ordered, timed and nonempty".into(),
-            ));
+            return Err(EngineError::InvalidParams("SRT cues must be ordered, timed and nonempty".into()));
         }
         previous = start;
         cues.push(json!({"text": clean, "start": start, "end": end}));
@@ -170,22 +144,13 @@ fn read_transcript_source(s: &Session, params: &Value) -> Result<(PathBuf, Value
         .and_then(Value::as_str)
         .map(|p| resolve_workspace_path(s, p))
         .ok_or_else(|| EngineError::InvalidParams("missing transcript 'path'".into()))?;
-    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&source)?)
-        .map_err(|e| EngineError::InvalidParams(format!("not a JSON transcript: {e}")))?;
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&source)?).map_err(|e| EngineError::InvalidParams(format!("not a JSON transcript: {e}")))?;
     Ok((source, doc))
 }
 
 /// Captions, when given, define the paragraphs outright.
-fn prepare_document(
-    s: &Session,
-    params: &Value,
-    doc: &mut Value,
-) -> Result<(Option<String>, &'static str)> {
-    let caption_text = params["captions"]
-        .as_str()
-        .map(|p| resolve_workspace_path(s, p))
-        .map(std::fs::read_to_string)
-        .transpose()?;
+fn prepare_document(s: &Session, params: &Value, doc: &mut Value) -> Result<(Option<String>, &'static str)> {
+    let caption_text = params["captions"].as_str().map(|p| resolve_workspace_path(s, p)).map(std::fs::read_to_string).transpose()?;
     if doc.is_array() {
         *doc = json!({"words": doc.clone()});
     }
@@ -196,12 +161,7 @@ fn prepare_document(
     if doc.get("paragraphs").and_then(Value::as_array).is_none()
         && let Some(words) = doc["words"].as_array()
     {
-        doc["paragraphs"] = json!(
-            words
-                .iter()
-                .map(|w| json!({"text":w["text"],"start":w["start"],"end":w["end"]}))
-                .collect::<Vec<_>>()
-        );
+        doc["paragraphs"] = json!(words.iter().map(|w| json!({"text":w["text"],"start":w["start"],"end":w["end"]})).collect::<Vec<_>>());
         grouping = "provisional word fallback; original word timestamps";
     }
     Ok((caption_text, grouping))
@@ -219,28 +179,15 @@ pub(crate) fn srt_from_paragraphs(doc: &Value) -> Option<String> {
             ..Default::default()
         })
         .collect();
-    let cap_doc = filmcraft_captions::Document {
-        language: Some("en".into()),
-        cues,
-        ..Default::default()
-    };
-    let bytes = filmcraft_captions::write(
-        &cap_doc,
-        filmcraft_captions::Format::Srt,
-        filmcraft_captions::WriteOptions::default(),
-    );
+    let cap_doc = filmcraft_captions::Document { language: Some("en".into()), cues, ..Default::default() };
+    let bytes = filmcraft_captions::write(&cap_doc, filmcraft_captions::Format::Srt, filmcraft_captions::WriteOptions::default());
     String::from_utf8(bytes).ok()
 }
 
 fn audio_mismatch(doc: &Value, song: Option<&PathBuf>) -> Option<String> {
     let recorded = doc.get("audio").and_then(Value::as_str)?;
     let song = song?;
-    (Path::new(recorded) != song.as_path()).then(|| {
-        format!(
-            "transcript is for {recorded}, but this project's song is {}",
-            song.display()
-        )
-    })
+    (Path::new(recorded) != song.as_path()).then(|| format!("transcript is for {recorded}, but this project's song is {}", song.display()))
 }
 
 fn mapped_duration(s: &Session, params: &Value) -> Option<f64> {
@@ -266,20 +213,11 @@ struct RecordingFacts {
     warning: Option<&'static str>,
 }
 
-fn check_recording(
-    s: &Session,
-    params: &Value,
-    doc: &mut Value,
-    problems: &mut Vec<String>,
-) -> RecordingFacts {
+fn check_recording(s: &Session, params: &Value, doc: &mut Value, problems: &mut Vec<String>) -> RecordingFacts {
     let mapped = mapped_duration(s, params);
     let probed = probed_duration(s);
     doc["recording_duration_sec"] = json!(probed);
-    problems.extend(
-        transcript_problems(doc)
-            .into_iter()
-            .filter(|e| e.contains("recording")),
-    );
+    problems.extend(transcript_problems(doc).into_iter().filter(|e| e.contains("recording")));
     if let (Some(recording), Some(mapped_sec)) = (probed, mapped)
         && (recording - mapped_sec).abs() > 0.001
     {
@@ -297,24 +235,13 @@ fn check_recording(
 }
 
 fn transcript_stem(s: &Session) -> String {
-    crate::workspace::sanitize_asset_id(
-        s.project_path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .and_then(|n| n.to_str())
-            .unwrap_or("song"),
-    )
+    crate::workspace::sanitize_asset_id(s.project_path.as_ref().and_then(|p| p.file_stem()).and_then(|n| n.to_str()).unwrap_or("song"))
 }
 
 fn ensure_no_existing_transcript(dir: &Path, stem: &str) -> Result<()> {
     for old in transcript_files(dir) {
-        if old != dir.join(format!("{stem}.transcript.json"))
-            && old != dir.join("hyperframes/transcript.json")
-        {
-            return Err(EngineError::InvalidParams(format!(
-                "project already has a transcript: {} (remove it first)",
-                old.display()
-            )));
+        if old != dir.join(format!("{stem}.transcript.json")) && old != dir.join("hyperframes/transcript.json") {
+            return Err(EngineError::InvalidParams(format!("project already has a transcript: {} (remove it first)", old.display())));
         }
     }
     Ok(())
@@ -322,17 +249,16 @@ fn ensure_no_existing_transcript(dir: &Path, stem: &str) -> Result<()> {
 
 /// Write the words, refusing to replace differing authored data unless `replace` is set.
 fn write_transcript(dest: &Path, doc: &Value, params: &Value) -> Result<()> {
-    let serialized = serde_json::to_vec_pretty(&doc["words"])
-        .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let serialized = serde_json::to_vec_pretty(&doc["words"]).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     if dest.is_file() && !params["replace"].as_bool().unwrap_or(false) {
         let old = transcript_document(dest)?;
         if old["words"] != doc["words"] || old["paragraphs"] != doc["paragraphs"] {
-            return Err(EngineError::InvalidParams("Transcript differs from existing authored data. Inspect received files; pass replace=true only to replace explicitly.".into()));
+            return Err(EngineError::InvalidParams(
+                "Transcript differs from existing authored data. Inspect received files; pass replace=true only to replace explicitly.".into(),
+            ));
         }
     }
-    let parent = dest.parent().ok_or_else(|| {
-        EngineError::InvalidParams("Transcript destination has no parent directory".into())
-    })?;
+    let parent = dest.parent().ok_or_else(|| EngineError::InvalidParams("Transcript destination has no parent directory".into()))?;
     std::fs::create_dir_all(parent)?;
     std::fs::write(dest, serialized)?;
     Ok(())
@@ -347,18 +273,11 @@ fn write_captions(dir: &Path, target: &str, text: String) -> Result<PathBuf> {
 }
 
 fn copy_filmcraft(s: &Session, dir: &Path, params: &Value, stem: &str) -> Result<Option<PathBuf>> {
-    let Some(project) = params
-        .get("filmcraft_project")
-        .and_then(Value::as_str)
-        .map(|p| resolve_workspace_path(s, p))
-    else {
+    let Some(project) = params.get("filmcraft_project").and_then(Value::as_str).map(|p| resolve_workspace_path(s, p)) else {
         return Ok(None);
     };
     if !project.is_file() {
-        return Err(EngineError::InvalidParams(format!(
-            "FilmCraft project not found: {}",
-            project.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("FilmCraft project not found: {}", project.display())));
     }
     let to = dir.join(format!("{stem}.fcproj"));
     std::fs::copy(&project, &to)?;
@@ -366,14 +285,7 @@ fn copy_filmcraft(s: &Session, dir: &Path, params: &Value, stem: &str) -> Result
 }
 
 /// Every file the import wrote, in the order the caller reports them.
-fn write_imports(
-    s: &Session,
-    dir: &Path,
-    params: &Value,
-    doc: &Value,
-    caption_text: Option<String>,
-    stem: &str,
-) -> Result<Vec<PathBuf>> {
+fn write_imports(s: &Session, dir: &Path, params: &Value, doc: &Value, caption_text: Option<String>, stem: &str) -> Result<Vec<PathBuf>> {
     let dest = dir.join("hyperframes/transcript.json");
     write_transcript(&dest, doc, params)?;
     let mut copied = vec![dest];
@@ -389,34 +301,19 @@ fn write_imports(
 /// Keep an upstream producer's receipt when the transcript bytes are unchanged.
 fn merge_prior_producer(dir: &Path, source: &Path, provenance: &mut Value) {
     use sha2::Digest;
-    let Some(raw_hash) = std::fs::read(source)
-        .ok()
-        .map(|bytes| format!("{:x}", sha2::Sha256::digest(bytes)))
-    else {
+    let Some(raw_hash) = std::fs::read(source).ok().map(|bytes| format!("{:x}", sha2::Sha256::digest(bytes))) else {
         return;
     };
-    let prior = std::fs::read(dir.join("transcript-provenance.json"))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+    let prior = std::fs::read(dir.join("transcript-provenance.json")).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
     if let Some(prior) = prior.filter(|v| v["producer"]["transcript_sha256"] == json!(raw_hash)) {
         provenance["producer"] = prior["producer"].clone();
     }
 }
 
-fn write_provenance(
-    dir: &Path,
-    source: &Path,
-    params: &Value,
-    facts: &RecordingFacts,
-    grouping: &str,
-) -> Result<()> {
+fn write_provenance(dir: &Path, source: &Path, params: &Value, facts: &RecordingFacts, grouping: &str) -> Result<()> {
     let mut provenance = json!({"mode":"reused existing transcript; no ASR or transcoding","source":params["original_source"],"captions_source":params["original_captions"],"duration_sec":facts.duration,"duration_source":if facts.probed.is_some(){"authoritative recording probe"}else{"unverified supplied audiomap or unknown"},"duration_warning":facts.warning, "recording_duration_sec":facts.probed,"audiomap_duration_sec":facts.mapped,"provider":"unknown; not recorded by source","model":"unknown; not recorded by source","manual":"~/.agents/skills/media-use/audio/references/transcribe.md","executable":std::env::current_exe().ok(),"version":env!("CARGO_PKG_VERSION"),"tool":"workshop.import_transcript (native Rust; ASR not called)","grouping":grouping});
     merge_prior_producer(dir, source, &mut provenance);
-    std::fs::write(
-        dir.join("transcript-provenance.json"),
-        serde_json::to_vec_pretty(&provenance)
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
-    )?;
+    std::fs::write(dir.join("transcript-provenance.json"), serde_json::to_vec_pretty(&provenance).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
     Ok(())
 }
 
@@ -424,9 +321,7 @@ fn captions_status(s: &mut Session, dir: &Path) -> Result<Value> {
     if ensure_video_target_project(s, dir, &s.video_target).is_ok() {
         return crate::cmd::film::video_target::ensure_native_captions(s, dir);
     }
-    Ok(
-        json!({"ready":false,"reason":"Create the contained HyperFrames project to display these timed lyrics"}),
-    )
+    Ok(json!({"ready":false,"reason":"Create the contained HyperFrames project to display these timed lyrics"}))
 }
 
 fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
@@ -443,10 +338,7 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
     }
     let facts = check_recording(s, params, &mut doc, &mut problems);
     if !problems.is_empty() {
-        return Err(EngineError::InvalidParams(format!(
-            "transcript does not match: {}",
-            problems.join("; ")
-        )));
+        return Err(EngineError::InvalidParams(format!("transcript does not match: {}", problems.join("; "))));
     }
     let stem = transcript_stem(s);
     ensure_no_existing_transcript(&dir, &stem)?;
@@ -466,30 +358,19 @@ fn import_transcript_inner(s: &mut Session, params: &Value) -> Result<Value> {
 
 fn analysis_audio(s: &Session, params: &Value) -> Result<PathBuf> {
     if s.video_target != "hyperframes" {
-        return Err(EngineError::InvalidParams(
-            "Magic Studio uses HyperFrames for song analysis".into(),
-        ));
+        return Err(EngineError::InvalidParams("Magic Studio uses HyperFrames for song analysis".into()));
     }
     params["audio"]
         .as_str()
         .map(|p| resolve_workspace_path(s, p))
         .or_else(|| s.song_audio.clone())
         .filter(|p| p.is_file())
-        .ok_or_else(|| {
-            EngineError::InvalidParams(
-                "no song audio: pass audio=<file> or workshop.set_audio".into(),
-            )
-        })
+        .ok_or_else(|| EngineError::InvalidParams("no song audio: pass audio=<file> or workshop.set_audio".into()))
 }
 
 fn hyperframes_runtime(params: &Value, hf: &Path) -> Result<String> {
-    let runtime = crate::cmd::film::video_target::resolve_video_cli(
-        params["resolve_video_cli"].as_str(),
-        Some(hf),
-    )?;
-    runtime.to_str().map(str::to_string).ok_or_else(|| {
-        EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into())
-    })
+    let runtime = crate::cmd::film::video_target::resolve_video_cli(params["resolve_video_cli"].as_str(), Some(hf))?;
+    runtime.to_str().map(str::to_string).ok_or_else(|| EngineError::InvalidParams("HyperFrames executable path must be UTF-8".into()))
 }
 
 fn transcribe_recording(
@@ -508,15 +389,7 @@ fn transcribe_recording(
             needed,
             hf,
             runtime,
-            &[
-                "transcribe".into(),
-                arg(audio),
-                "-d".into(),
-                arg(hf),
-                "--json".into(),
-                "--model".into(),
-                model.into(),
-            ],
+            &["transcribe".into(), arg(audio), "-d".into(), arg(hf), "--json".into(), "--model".into(), model.into()],
             std::slice::from_ref(&transcript.to_path_buf()),
         )?
         .is_some())
@@ -537,14 +410,7 @@ fn export_captions(
             needed,
             hf,
             runtime,
-            &[
-                "transcribe".into(),
-                arg(transcript),
-                "--to".into(),
-                "srt".into(),
-                "-o".into(),
-                arg(srt),
-            ],
+            &["transcribe".into(), arg(transcript), "--to".into(), "srt".into(), "-o".into(), arg(srt)],
             std::slice::from_ref(&srt.to_path_buf()),
         )?
         .is_some())
@@ -562,25 +428,10 @@ fn transcribe_steps(
 ) -> Result<Vec<&'static str>> {
     let (transcript, srt) = outputs;
     let mut ran = Vec::new();
-    if transcribe_recording(
-        trace,
-        runtime,
-        hf,
-        audio,
-        transcript,
-        model,
-        overwrite || !transcript.is_file(),
-    )? {
+    if transcribe_recording(trace, runtime, hf, audio, transcript, model, overwrite || !transcript.is_file())? {
         ran.push("hyperframes transcribe original recording → transcript.json");
     }
-    if export_captions(
-        trace,
-        runtime,
-        hf,
-        transcript,
-        srt,
-        overwrite || !srt.is_file(),
-    )? {
+    if export_captions(trace, runtime, hf, transcript, srt, overwrite || !srt.is_file())? {
         ran.push("hyperframes transcribe --to srt → transcript.srt");
     }
     Ok(ran)
@@ -604,29 +455,15 @@ fn beat_analysis(
         true,
         hf,
         runtime,
-        &[
-            "audio".into(),
-            arg(audio),
-            "--only".into(),
-            "sections,onsets,moments".into(),
-            "--json".into(),
-        ],
+        &["audio".into(), arg(audio), "--only".into(), "sections,onsets,moments".into(), "--json".into()],
         &[],
     )?;
-    let analysis: Value =
-        serde_json::from_str(output.as_deref().unwrap_or_default()).map_err(|e| {
-            EngineError::InvalidParams(format!("HyperFrames audio returned invalid JSON: {e}"))
-        })?;
+    let analysis: Value = serde_json::from_str(output.as_deref().unwrap_or_default())
+        .map_err(|e| EngineError::InvalidParams(format!("HyperFrames audio returned invalid JSON: {e}")))?;
     if analysis["items"].as_array().is_none_or(Vec::is_empty) {
-        return Err(EngineError::InvalidParams(format!(
-            "HyperFrames audio returned no recording analysis: {analysis}"
-        )));
+        return Err(EngineError::InvalidParams(format!("HyperFrames audio returned no recording analysis: {analysis}")));
     }
-    std::fs::write(
-        hf.join("audio-analysis.json"),
-        serde_json::to_vec_pretty(&analysis)
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?,
-    )?;
+    std::fs::write(hf.join("audio-analysis.json"), serde_json::to_vec_pretty(&analysis).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
     ran.push("hyperframes audio → audio-analysis.json");
     if let Some(step) = crate::cmd::film::video_target::detect_audio_beats(hf, runtime) {
         ran.push(step);
@@ -634,15 +471,9 @@ fn beat_analysis(
     Ok(analysis)
 }
 
-fn transcript_word_count(
-    trace: &mut crate::cmd::song::audio_trace::AudioTrace,
-    transcript: &Path,
-) -> Result<usize> {
+fn transcript_word_count(trace: &mut crate::cmd::song::audio_trace::AudioTrace, transcript: &Path) -> Result<usize> {
     let words = trace.read_json("read_transcript", transcript)?;
-    Ok(words
-        .as_array()
-        .or_else(|| words["words"].as_array())
-        .map_or(0, Vec::len))
+    Ok(words.as_array().or_else(|| words["words"].as_array()).map_or(0, Vec::len))
 }
 
 /// Transcribe and analyze the selected original recording. Uses an explicit `resolve_video_cli`
@@ -652,13 +483,8 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let hf = dir.join("hyperframes");
     let overwrite = params["overwrite"].as_bool().unwrap_or(false);
-    let model = params["model"]
-        .as_str()
-        .unwrap_or("whisper-base")
-        .to_string();
-    if params["resolve_video_cli"].as_str().is_none()
-        && params["engine"].as_str() != Some("hyperframes")
-    {
+    let model = params["model"].as_str().unwrap_or("whisper-base").to_string();
+    if params["resolve_video_cli"].as_str().is_none() && params["engine"].as_str() != Some("hyperframes") {
         return crate::cmd::film::cmd_video_exec(
             s,
             &json!({
@@ -673,25 +499,12 @@ pub fn cmd_audio_analyze(s: &mut Session, params: &Value) -> Result<Value> {
     let transcript = hf.join("transcript.json");
     let srt = hf.join("transcript.srt");
     let mut trace = crate::cmd::song::audio_trace::AudioTrace::new(&dir, &audio, params)?;
-    let mut ran = transcribe_steps(
-        &mut trace,
-        &runtime,
-        &hf,
-        &audio,
-        (&transcript, &srt),
-        &model,
-        overwrite,
-    )?;
+    let mut ran = transcribe_steps(&mut trace, &runtime, &hf, &audio, (&transcript, &srt), &model, overwrite)?;
     let word_count = transcript_word_count(&mut trace, &transcript)?;
     let analysis = beat_analysis(params, &mut trace, &runtime, &hf, &audio, &mut ran)?;
-    trace.import(
-        s,
-        json!({"path":transcript,"captions":srt,"replace":overwrite}),
-    )?;
-    Ok(
-        json!({"ok":true,"target":"hyperframes","ran":ran,"analysis_attempt":trace.data,
+    trace.import(s, json!({"path":transcript,"captions":srt,"replace":overwrite}))?;
+    Ok(json!({"ok":true,"target":"hyperframes","ran":ran,"analysis_attempt":trace.data,
         "provenance_receipt":dir.join("transcript-provenance.json"),"words":word_count,
         "files":{"audio":audio,"transcript":transcript,"captions":srt,"audio_analysis":hf.join("audio-analysis.json"),"beats_dir":hf.join("beats")},"music_analysis":analysis,
-        "next":["Review the words against the recording (`words.plan`), then add reference art (`project.add_asset`)"]}),
-    )
+        "next":["Review the words against the recording (`words.plan`), then add reference art (`project.add_asset`)"]}))
 }

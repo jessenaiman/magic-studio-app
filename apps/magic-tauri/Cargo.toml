@@ -13,6 +13,12 @@ workspace = true
 name = "magic-tauri"
 path = "src/main.rs"
 
+[features]
+# Release builds ship without the webview inspector; debug builds always include it.
+devtools = ["tauri/devtools"]
+# Serve the bundled frontend instead of the dev server; `tauri build` turns this on.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -20,7 +26,7 @@ tauri-build = { version = "2", features = [] }
 magic = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-tauri = { version = "2", features = ["protocol-asset", "devtools"] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
@@ -39,3 +45,9 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-process = "2"
 tauri-plugin-os = "2"
 subtle = { workspace = true }
+
+# Window capture for `ui.screenshot`: WebKitGTK snapshot encoded as PNG by cairo. Both crates are
+# already in the Tauri dependency graph; `png` only exposes cairo's PNG writer.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
+cairo-rs = { version = "0.18", features = ["png"] }

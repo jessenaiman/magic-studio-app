@@ -17,10 +17,7 @@ fn cmd(args: &mut Vec<(&'static str, Value)>, id: &'static str, params: Option<V
 /// Front-most part first, so each fill only repairs the layers still underneath it.
 fn cut_part(args: &mut Vec<(&'static str, Value)>, part: &Value, root: &str) -> Result<()> {
     let id = part["id"].as_str().ok_or_else(|| bad("a part has no id"))?;
-    let outline = part["outline"]
-        .as_array()
-        .filter(|o| o.len() >= 3)
-        .ok_or_else(|| bad(format!("part {id} needs an outline of 3 or more points")))?;
+    let outline = part["outline"].as_array().filter(|o| o.len() >= 3).ok_or_else(|| bad(format!("part {id} needs an outline of 3 or more points")))?;
     let lasso = json!({"points": outline, "antiAlias": true});
     cmd(args, "layer.select", Some(json!({"name": root})));
     cmd(args, "select.lasso", Some(lasso.clone()));
@@ -28,16 +25,8 @@ fn cut_part(args: &mut Vec<(&'static str, Value)>, part: &Value, root: &str) -> 
     cmd(args, "layer.renameLayer", Some(json!({"name": id})));
     cmd(args, "layer.select", Some(json!({"name": root})));
     cmd(args, "select.lasso", Some(lasso));
-    cmd(
-        args,
-        "select.modify.expand",
-        Some(json!({"radius": FILL_MARGIN})),
-    );
-    cmd(
-        args,
-        "edit.contentAwareFill",
-        Some(json!({"sampling": "auto"})),
-    );
+    cmd(args, "select.modify.expand", Some(json!({"radius": FILL_MARGIN})));
+    cmd(args, "edit.contentAwareFill", Some(json!({"sampling": "auto"})));
     cmd(args, "select.deselect", None);
     Ok(())
 }
@@ -46,11 +35,7 @@ fn photocraft_cli() -> Result<std::path::PathBuf> {
     crate::workspace::find_executable("photocraft-cli").map_err(|e| crate::EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))
 }
 
-pub(crate) fn photocraft_run(
-    input: &std::path::Path,
-    steps: &[(&str, Value)],
-    output: Option<&std::path::Path>,
-) -> Result<()> {
+pub(crate) fn photocraft_run(input: &std::path::Path, steps: &[(&str, Value)], output: Option<&std::path::Path>) -> Result<()> {
     // Via installed photocraft-cli (system app pattern). Steps are --cmd/--params pairs.
     let cli = photocraft_cli()?;
     let mut cmd = std::process::Command::new(&cli);
@@ -62,12 +47,17 @@ pub(crate) fn photocraft_run(
         if out == input {
             return Err(crate::EngineError::InvalidParams(format!("refusing to overwrite input {}", input.display())));
         }
-        if let Some(parent) = out.parent() { std::fs::create_dir_all(parent)?; }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         cmd.arg("--out").arg(out);
     }
     let out = cmd.output().map_err(|e| crate::EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
     if !out.status.success() {
-        return Err(crate::EngineError::ExternalTool("photocraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
+        return Err(crate::EngineError::ExternalTool(
+            "photocraft-cli".into(),
+            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)),
+        ));
     }
     Ok(())
 }
@@ -75,7 +65,8 @@ pub(crate) fn photocraft_run(
 /// Each layer's bounds `[x, y, w, h]` from the saved PSD, by layer name.
 fn layer_bounds(psd: &std::path::Path) -> Result<serde_json::Map<String, Value>> {
     let cli = photocraft_cli()?;
-    let out = std::process::Command::new(&cli).arg("info").arg(psd).output().map_err(|e| crate::EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
+    let out =
+        std::process::Command::new(&cli).arg("info").arg(psd).output().map_err(|e| crate::EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
     let doc: Value = serde_json::from_slice(&out.stdout).map_err(|e| crate::EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
     let mut out = serde_json::Map::new();
     for layer in doc["layers"].as_array().into_iter().flatten() {
@@ -101,10 +92,7 @@ fn export_layers(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<S
     for entry in std::fs::read_dir(&dir)?.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         // PhotoCraft names each file layer_<index>_<layer name>.png.
-        if let Some(id) = name
-            .strip_suffix(".png")
-            .and_then(|n| n.splitn(3, '_').nth(2))
-        {
+        if let Some(id) = name.strip_suffix(".png").and_then(|n| n.splitn(3, '_').nth(2)) {
             out.insert(id.to_string(), json!(entry.path()));
         }
     }
@@ -116,27 +104,15 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
     let mut parts = view.parts()?;
     let list = part_list(&parts)?.clone();
     let root = root_part(&list)?.to_string();
-    let image = parts["image"]
-        .as_str()
-        .map(|i| view.dir.join(i))
-        .filter(|i| i.is_file())
-        .ok_or_else(|| bad("parts.json image is missing"))?;
+    let image = parts["image"].as_str().map(|i| view.dir.join(i)).filter(|i| i.is_file()).ok_or_else(|| bad("parts.json image is missing"))?;
     let psd = view.file("psd");
     let pcraft = view.file("pcraft");
     let mut args = Vec::new();
     cmd(&mut args, "layer.renameLayer", Some(json!({"name": root})));
-    for part in list
-        .iter()
-        .rev()
-        .filter(|p| p["id"].as_str() != Some(&root))
-    {
+    for part in list.iter().rev().filter(|p| p["id"].as_str() != Some(&root)) {
         cut_part(&mut args, part, &root)?;
     }
-    cmd(
-        &mut args,
-        "file.saveACopy",
-        Some(json!({"path": psd, "overwrite": true})),
-    );
+    cmd(&mut args, "file.saveACopy", Some(json!({"path": psd, "overwrite": true})));
     photocraft_run(&image, &args, Some(&pcraft))?;
     let bounds = layer_bounds(&psd)?;
     let files = export_layers(&view, &psd)?;
@@ -146,8 +122,6 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         part["file"] = files.get(&id).cloned().unwrap_or(Value::Null);
     }
     view.write_parts(&parts)?;
-    Ok(
-        json!({"ok": true, "psd": psd, "pcraft": pcraft, "layers": bounds,
-        "next": format!("character.rig character={} view={}", view.id, view.view)}),
-    )
+    Ok(json!({"ok": true, "psd": psd, "pcraft": pcraft, "layers": bounds,
+        "next": format!("character.rig character={} view={}", view.id, view.view)}))
 }

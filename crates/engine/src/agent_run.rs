@@ -8,19 +8,8 @@ use crate::{EngineError, Result};
 /// The last `chars` of a stream, with the tail marker that makes a truncation visible.
 fn tail(text: &str, chars: usize) -> String {
     let trimmed = text.trim();
-    let out: String = trimmed
-        .chars()
-        .rev()
-        .take(chars)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    if trimmed.chars().count() > chars {
-        format!("…{out}")
-    } else {
-        out
-    }
+    let out: String = trimmed.chars().rev().take(chars).collect::<String>().chars().rev().collect();
+    if trimmed.chars().count() > chars { format!("…{out}") } else { out }
 }
 
 /// What one agent invocation produced.
@@ -38,22 +27,13 @@ impl AgentRun {
 
     /// The part of the agent's own report worth showing when it failed.
     pub(crate) fn failure_detail(&self) -> String {
-        if !self.stderr.trim().is_empty() {
-            tail(&self.stderr, 800)
-        } else {
-            tail(&self.stdout, 800)
-        }
+        if !self.stderr.trim().is_empty() { tail(&self.stderr, 800) } else { tail(&self.stdout, 800) }
     }
 }
 
 /// Run the agent with a hard timeout, capturing both streams. A long run must not freeze the
 /// app, so on timeout the agent is stopped and whatever it wrote is still checked.
-pub(crate) fn run_agent(
-    program: &str,
-    args: &[String],
-    cwd: &Path,
-    timeout_s: u64,
-) -> Result<AgentRun> {
+pub(crate) fn run_agent(program: &str, args: &[String], cwd: &Path, timeout_s: u64) -> Result<AgentRun> {
     let mut command = std::process::Command::new(program);
     let mut child = command
         .current_dir(cwd)
@@ -67,23 +47,12 @@ pub(crate) fn run_agent(
     let rx_err = spawn_stderr_reader(child.stderr.take());
     let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
     let (code, timed_out) = wait_for_agent_child(&mut child, deadline);
-    let stdout = rx_out
-        .recv_timeout(Duration::from_secs(15))
-        .unwrap_or_default();
-    let stderr = rx_err
-        .recv_timeout(Duration::from_secs(15))
-        .unwrap_or_default();
-    Ok(AgentRun {
-        stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
-        stderr: String::from_utf8_lossy(&stderr).trim().to_string(),
-        code,
-        timed_out,
-    })
+    let stdout = rx_out.recv_timeout(Duration::from_secs(15)).unwrap_or_default();
+    let stderr = rx_err.recv_timeout(Duration::from_secs(15)).unwrap_or_default();
+    Ok(AgentRun { stdout: String::from_utf8_lossy(&stdout).trim().to_string(), stderr: String::from_utf8_lossy(&stderr).trim().to_string(), code, timed_out })
 }
 
-fn spawn_stdout_reader(
-    pipe: Option<std::process::ChildStdout>,
-) -> std::sync::mpsc::Receiver<Vec<u8>> {
+fn spawn_stdout_reader(pipe: Option<std::process::ChildStdout>) -> std::sync::mpsc::Receiver<Vec<u8>> {
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     if let Some(mut pipe) = pipe {
         std::thread::spawn(move || {
@@ -96,9 +65,7 @@ fn spawn_stdout_reader(
     rx
 }
 
-fn spawn_stderr_reader(
-    pipe: Option<std::process::ChildStderr>,
-) -> std::sync::mpsc::Receiver<Vec<u8>> {
+fn spawn_stderr_reader(pipe: Option<std::process::ChildStderr>) -> std::sync::mpsc::Receiver<Vec<u8>> {
     let (tx_err, rx_err) = std::sync::mpsc::channel::<Vec<u8>>();
     if let Some(mut pipe) = pipe {
         std::thread::spawn(move || {

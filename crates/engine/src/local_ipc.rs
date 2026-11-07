@@ -9,19 +9,8 @@ pub fn private_path(path: &std::path::Path, directory: bool) -> Result<(), Strin
     #[cfg(not(target_os = "linux"))]
     return Err("Local endpoint ownership check is not implemented on this platform".into());
     #[cfg(target_os = "linux")]
-    if m.file_type().is_symlink()
-        || m.uid() != uid
-        || m.mode() & 0o077 != 0
-        || if directory {
-            !m.is_dir()
-        } else {
-            !m.file_type().is_socket()
-        }
-    {
-        return Err(format!(
-            "Refusing unowned, non-private, symlinked or wrong-type local endpoint {}",
-            path.display()
-        ));
+    if m.file_type().is_symlink() || m.uid() != uid || m.mode() & 0o077 != 0 || if directory { !m.is_dir() } else { !m.file_type().is_socket() } {
+        return Err(format!("Refusing unowned, non-private, symlinked or wrong-type local endpoint {}", path.display()));
     }
     Ok(())
 }
@@ -29,8 +18,7 @@ pub fn private_path(path: &std::path::Path, directory: bool) -> Result<(), Strin
 pub fn peer(stream: &std::os::unix::net::UnixStream) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
-        let credentials =
-            rustix::net::sockopt::socket_peercred(stream).map_err(|e| e.to_string())?;
+        let credentials = rustix::net::sockopt::socket_peercred(stream).map_err(|e| e.to_string())?;
         if credentials.uid != rustix::process::geteuid() {
             return Err("Refusing local peer: same-user credentials not verified".into());
         }

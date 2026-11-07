@@ -20,26 +20,13 @@ struct Output {
 }
 
 pub fn open() -> Result<Box<dyn StudioAudioOut>, String> {
-    let device = cpal::default_host()
-        .default_output_device()
-        .ok_or("No default output device")?;
-    let config = device
-        .default_output_config()
-        .map_err(|error| error.to_string())?;
-    Ok(Box::new(Output {
-        device,
-        config,
-        stream: None,
-        frames: Arc::default(),
-        failed: Arc::default(),
-    }))
+    let device = cpal::default_host().default_output_device().ok_or("No default output device")?;
+    let config = device.default_output_config().map_err(|error| error.to_string())?;
+    Ok(Box::new(Output { device, config, stream: None, frames: Arc::default(), failed: Arc::default() }))
 }
 
 impl Output {
-    fn stream<T: SizedSample + FromSample<f32>>(
-        &self,
-        mut fill: Fill,
-    ) -> Result<cpal::Stream, String> {
+    fn stream<T: SizedSample + FromSample<f32>>(&self, mut fill: Fill) -> Result<cpal::Stream, String> {
         let channels = self.channels();
         let frames = Arc::clone(&self.frames);
         let failed = Arc::clone(&self.failed);
@@ -90,7 +77,6 @@ impl StudioAudioOut for Output {
         usize::from(self.config.channels()).max(1)
     }
     fn played_frames(&self) -> Option<u64> {
-        (self.stream.is_some() && !self.failed.load(Ordering::Relaxed))
-            .then(|| self.frames.load(Ordering::Relaxed))
+        (self.stream.is_some() && !self.failed.load(Ordering::Relaxed)).then(|| self.frames.load(Ordering::Relaxed))
     }
 }

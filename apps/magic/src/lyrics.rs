@@ -63,23 +63,14 @@ fn handle(bridge: &Bridge, mut stream: TcpStream) -> std::io::Result<()> {
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     if path == "/file" && matches!(method, "GET" | "HEAD") {
         let file = param(query, "p");
-        return local_file(
-            &mut stream,
-            Path::new(&file),
-            method == "HEAD",
-            range.as_deref(),
-        );
+        return local_file(&mut stream, Path::new(&file), method == "HEAD", range.as_deref());
     }
     let (status, kind, body) = match (method, path) {
         ("OPTIONS", _) => ("204 No Content", "text/plain", Vec::new()),
         ("POST", "/exec") => {
             let mut raw = vec![0; length];
             reader.read_exact(&mut raw)?;
-            (
-                "200 OK",
-                "application/json",
-                exec(bridge, &raw).into_bytes(),
-            )
+            ("200 OK", "application/json", exec(bridge, &raw).into_bytes())
         }
         ("GET", _) => static_file(&bridge.ui_root, path),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
@@ -88,13 +79,7 @@ fn handle(bridge: &Bridge, mut stream: TcpStream) -> std::io::Result<()> {
     stream.write_all(&body)
 }
 
-fn write_response_head(
-    stream: &mut TcpStream,
-    status: &str,
-    kind: &str,
-    length: u64,
-    extra: &str,
-) -> std::io::Result<()> {
+fn write_response_head(stream: &mut TcpStream, status: &str, kind: &str, length: u64, extra: &str) -> std::io::Result<()> {
     write!(
         stream,
         "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {length}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, HEAD, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nCache-Control: no-store\r\nConnection: close\r\n{extra}\r\n"
@@ -107,21 +92,9 @@ fn exec(bridge: &Bridge, raw: &[u8]) -> String {
         Err(e) => return json!({ "error": format!("bad request: {e}") }).to_string(),
     };
     let method = request["id"].as_str().unwrap_or_default().to_owned();
-    let params = request
-        .get("params")
-        .cloned()
-        .filter(|p| !p.is_null())
-        .unwrap_or_else(|| json!({}));
+    let params = request.get("params").cloned().filter(|p| !p.is_null()).unwrap_or_else(|| json!({}));
     let (reply, outcome) = channel();
-    if bridge
-        .tx
-        .send(ControlRequest {
-            method,
-            params,
-            reply,
-        })
-        .is_err()
-    {
+    if bridge.tx.send(ControlRequest { method, params, reply }).is_err() {
         return json!({ "error": "window closed" }).to_string();
     }
     if let Ok(guard) = bridge.wake.lock()
@@ -138,60 +111,28 @@ fn exec(bridge: &Bridge, raw: &[u8]) -> String {
 
 fn static_file(root: &Path, path: &str) -> (&'static str, &'static str, Vec<u8>) {
     let relative = Path::new(path.trim_start_matches('/'));
-    let safe = relative
-        .components()
-        .all(|c| matches!(c, Component::Normal(_)));
-    let file = if relative.as_os_str().is_empty() {
-        root.join("lyrics.html")
-    } else {
-        root.join(relative)
-    };
+    let safe = relative.components().all(|c| matches!(c, Component::Normal(_)));
+    let file = if relative.as_os_str().is_empty() { root.join("lyrics.html") } else { root.join(relative) };
     match std::fs::read(&file) {
         Ok(bytes) if safe && file.is_file() => ("200 OK", content_type(&file), bytes),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
     }
 }
 
-fn local_file(
-    stream: &mut TcpStream,
-    path: &Path,
-    head_only: bool,
-    range: Option<&str>,
-) -> std::io::Result<()> {
-    let Ok(mut file) = std::fs::File::open(path).and_then(|file| {
-        if file.metadata()?.is_file() {
-            Ok(file)
-        } else {
-            Err(std::io::ErrorKind::NotFound.into())
-        }
-    }) else {
+fn local_file(stream: &mut TcpStream, path: &Path, head_only: bool, range: Option<&str>) -> std::io::Result<()> {
+    let Ok(mut file) = std::fs::File::open(path).and_then(|file| if file.metadata()?.is_file() { Ok(file) } else { Err(std::io::ErrorKind::NotFound.into()) })
+    else {
         write_response_head(stream, "404 Not Found", "text/plain", 9, "")?;
-        return if head_only {
-            Ok(())
-        } else {
-            stream.write_all(b"not found")
-        };
+        return if head_only { Ok(()) } else { stream.write_all(b"not found") };
     };
     let total = file.metadata()?.len();
     let kind = content_type(path);
     let (start, length) = if let Some(range) = range.filter(|_| !head_only) {
         let Some((start, end)) = byte_range(range, total) else {
-            return write_response_head(
-                stream,
-                "416 Range Not Satisfiable",
-                kind,
-                0,
-                &format!("Accept-Ranges: bytes\r\nContent-Range: bytes */{total}\r\n"),
-            );
+            return write_response_head(stream, "416 Range Not Satisfiable", kind, 0, &format!("Accept-Ranges: bytes\r\nContent-Range: bytes */{total}\r\n"));
         };
         let length = end - start + 1;
-        write_response_head(
-            stream,
-            "206 Partial Content",
-            kind,
-            length,
-            &format!("Accept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{total}\r\n"),
-        )?;
+        write_response_head(stream, "206 Partial Content", kind, length, &format!("Accept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{total}\r\n"))?;
         (start, length)
     } else {
         write_response_head(stream, "200 OK", kind, total, "Accept-Ranges: bytes\r\n")?;
@@ -212,22 +153,12 @@ fn byte_range(header: &str, length: u64) -> Option<(u64, u64)> {
         return (count != 0).then_some((length.saturating_sub(count), last));
     }
     let first = first.parse().ok()?;
-    let end = if end.is_empty() {
-        last
-    } else {
-        end.parse::<u64>().ok()?.min(last)
-    };
+    let end = if end.is_empty() { last } else { end.parse::<u64>().ok()?.min(last) };
     (first <= end).then_some((first, end))
 }
 
 fn content_type(path: &std::path::Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
         "html" => "text/html; charset=utf-8",
         "css" => "text/css",
         "js" => "text/javascript",
@@ -297,20 +228,10 @@ pub struct LyricsWebView {
 
 impl LyricsWebView {
     pub fn new(tx: Sender<ControlRequest>, wake: WakeHandle, ui_root: PathBuf) -> Self {
-        Self {
-            bridge: Some(Bridge { tx, wake, ui_root }),
-            url: None,
-            views: [None, None],
-            shown: [false; 2],
-        }
+        Self { bridge: Some(Bridge { tx, wake, ui_root }), url: None, views: [None, None], shown: [false; 2] }
     }
 
-    fn create(
-        &mut self,
-        frame: &eframe::Frame,
-        bounds: wry::Rect,
-        page: WebWorkspacePage,
-    ) -> Result<wry::WebView, String> {
+    fn create(&mut self, frame: &eframe::Frame, bounds: wry::Rect, page: WebWorkspacePage) -> Result<wry::WebView, String> {
         // GTK starts only now: initialised before the egui window exists it breaks winit's GLX setup.
         gtk::gdk::set_allowed_backends("x11");
         gtk::init().map_err(|e| e.to_string())?;
@@ -318,15 +239,8 @@ impl LyricsWebView {
             let bridge = self.bridge.take().ok_or("Workspace webview unavailable")?;
             self.url = spawn_bridge(bridge);
         }
-        let url = self
-            .url
-            .as_deref()
-            .ok_or("Workspace bridge could not bind a port")?;
-        wry::WebViewBuilder::new()
-            .with_url(page_url(url, page))
-            .with_bounds(bounds)
-            .build_as_child(frame)
-            .map_err(|e| e.to_string())
+        let url = self.url.as_deref().ok_or("Workspace bridge could not bind a port")?;
+        wry::WebViewBuilder::new().with_url(page_url(url, page)).with_bounds(bounds).build_as_child(frame).map_err(|e| e.to_string())
     }
 }
 
@@ -351,19 +265,10 @@ fn page_url(base: &str, page: WebWorkspacePage) -> String {
 }
 
 impl LyricsHost for LyricsWebView {
-    fn show(
-        &mut self,
-        frame: &eframe::Frame,
-        ctx: &egui::Context,
-        rect: egui::Rect,
-        project: &str,
-        page: WebWorkspacePage,
-    ) {
+    fn show(&mut self, frame: &eframe::Frame, ctx: &egui::Context, rect: egui::Rect, project: &str, page: WebWorkspacePage) {
         let bounds = wry::Rect {
-            position: wry::dpi::LogicalPosition::new(f64::from(rect.min.x), f64::from(rect.min.y))
-                .into(),
-            size: wry::dpi::LogicalSize::new(f64::from(rect.width()), f64::from(rect.height()))
-                .into(),
+            position: wry::dpi::LogicalPosition::new(f64::from(rect.min.x), f64::from(rect.min.y)).into(),
+            size: wry::dpi::LogicalSize::new(f64::from(rect.width()), f64::from(rect.height())).into(),
         };
         let index = usize::from(page == WebWorkspacePage::AnimationInspector);
         if let Some(slot) = self.views[index].as_mut() {
@@ -383,14 +288,7 @@ impl LyricsHost for LyricsWebView {
             project.clone_into(&mut slot.project);
         } else {
             match self.create(frame, bounds, page) {
-                Ok(view) => {
-                    self.views[index] = Some(WorkspaceView {
-                        view,
-                        project: project.into(),
-                        page,
-                        visible: true,
-                    })
-                }
+                Ok(view) => self.views[index] = Some(WorkspaceView { view, project: project.into(), page, visible: true }),
                 Err(error) => eprintln!("magic: Workspace webview: {error}"),
             }
         }

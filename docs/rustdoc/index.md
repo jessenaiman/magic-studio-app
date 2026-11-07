@@ -25,9 +25,9 @@ Backstage → explicit bounded observations → saved references and native evid
 ```
 
 Start with the repository's
-[documentation index](https://github.com/jessenaiman/magic-app/blob/HEAD/docs/README.md),
-[command architecture](https://github.com/jessenaiman/magic-app/blob/HEAD/apps/magic-gui/MAGIC.md),
-and [project context](https://github.com/jessenaiman/magic-app/blob/HEAD/PROJECT_CONTEXT.md).
+[documentation index](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/README.md),
+[command architecture](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/apps/magic/MAGIC.md),
+and [system architecture](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/architecture.md).
 Those explain ownership and command boundaries. Rustdoc
 does not infer an architecture graph or document TypeScript/JavaScript APIs.
 Repository links track the default branch; newly added guide pages are not live
@@ -35,11 +35,11 @@ at those links until this documentation commit merges.
 
 ## Scope and provenance
 
-The standard reference follows the selected Rust packages. The native Rust UI
-rewrite is in `apps/magic-gui/`; do not restore the retired web shell to
-satisfy stale documentation or checks.
+The standard reference follows the selected Rust packages. The desktop shell is
+Tauri v2 in `apps/magic-tauri/` with the frontend in `apps/magic/`; `crates/ui-egui`
+is retained only for headless verification tests.
 
-See [build instructions and coverage](https://github.com/jessenaiman/magic-app/blob/HEAD/docs/RUSTDOC.md),
-the [project overview](https://github.com/jessenaiman/magic-app),
-[source attribution](https://github.com/jessenaiman/magic-app/blob/HEAD/SOURCE-ATTRIBUTION.md),
-and [license](https://github.com/jessenaiman/magic-app/blob/HEAD/LICENSE).
+See [build instructions and coverage](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/docs/RUSTDOC.md),
+the [project overview](https://github.com/jessenaiman/magic-studio-app),
+[source attribution](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/ATTRIBUTION.md),
+and [license](https://github.com/jessenaiman/magic-studio-app/blob/HEAD/LICENSE).

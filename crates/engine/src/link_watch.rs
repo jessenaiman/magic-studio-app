@@ -21,10 +21,7 @@ impl FileStamp {
     /// The stamp of `path` now, or `None` when the file does not exist.
     pub fn of(path: &Path) -> Option<Self> {
         let meta = std::fs::metadata(path).ok()?;
-        Some(Self {
-            len: meta.len(),
-            modified: meta.modified().ok(),
-        })
+        Some(Self { len: meta.len(), modified: meta.modified().ok() })
     }
 }
 
@@ -55,10 +52,7 @@ pub fn decide(dirty: bool, changed: bool) -> ReloadDecision {
 /// Helper used by `DocState::save`'s refuse check.
 pub fn save_guard(path: &Path, stamp: Option<FileStamp>) -> Result<()> {
     if changed_on_disk(path, stamp) {
-        return Err(EngineError::InvalidParams(format!(
-            "{} changed outside this session; reload it before saving",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("{} changed outside this session; reload it before saving", path.display())));
     }
     Ok(())
 }

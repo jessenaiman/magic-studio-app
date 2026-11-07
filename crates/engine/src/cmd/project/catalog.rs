@@ -12,32 +12,19 @@ pub fn file() -> Option<PathBuf> {
         .map(|p| p.join("magic/recent_projects.json"))
 }
 pub fn list() -> Vec<String> {
-    file()
-        .and_then(|p| fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    file().and_then(|p| fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 fn canonical(path: &str) -> String {
-    fs::canonicalize(path)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_string())
+    fs::canonicalize(path).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| path.to_string())
 }
 
 /// Never persist test/fixture or temp paths as the user's recent project.
 fn is_transient(path: &str) -> bool {
-    path.contains("/.agent/")
-        || path.contains("/tmp/")
-        || Path::new(path).starts_with(std::env::temp_dir())
+    path.contains("/.agent/") || path.contains("/tmp/") || Path::new(path).starts_with(std::env::temp_dir())
 }
 
 fn open_catalog(target: &Path) -> Result<fs::File, String> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(target)
-        .map_err(|e| e.to_string())?;
+    let file = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(target).map_err(|e| e.to_string())?;
     file.lock().map_err(|e| e.to_string())?;
     Ok(file)
 }
@@ -59,8 +46,7 @@ fn rewrite(file: &mut fs::File, items: &[String]) -> Result<(), String> {
 fn update(path: &str, forget: bool) -> Result<(), String> {
     let path = canonical(path);
     let target = file().ok_or("Config directory unavailable")?;
-    fs::create_dir_all(target.parent().ok_or("Config directory unavailable")?)
-        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(target.parent().ok_or("Config directory unavailable")?).map_err(|e| e.to_string())?;
     let mut file = open_catalog(&target)?;
     let mut items = read_items(&mut file)?;
     items.retain(|p| canonical(p) != path);
@@ -86,18 +72,11 @@ pub fn catalog(s: &mut crate::Session, params: &Value) -> crate::Result<Value> {
     if let Some(forget_path) = params["forget"].as_str() {
         forget(forget_path).map_err(crate::EngineError::InvalidParams)?;
     }
-    let active = s
-        .project_path
-        .as_ref()
-        .map(|p| p.to_string_lossy().into_owned());
+    let active = s.project_path.as_ref().map(|p| p.to_string_lossy().into_owned());
     let mut seen = std::collections::HashSet::new();
     let mut projects: Vec<Value> = list()
         .into_iter()
-        .map(|p| {
-            fs::canonicalize(&p)
-                .map(|v| v.to_string_lossy().into_owned())
-                .unwrap_or(p)
-        })
+        .map(|p| fs::canonicalize(&p).map(|v| v.to_string_lossy().into_owned()).unwrap_or(p))
         .filter(|p| seen.insert(p.clone()))
         .map(|p| {
             let path = Path::new(&p);
@@ -147,24 +126,14 @@ fn readiness(path: &Path) -> Value {
         return json!({"state":"unreadable","openable":false,"next_step":"This file is not a Magic Studio project.","editor_ready":false});
     }
     let dir = path.parent().unwrap_or(path);
-    let audio = doc["workshop"]["audio"]
-        .as_str()
-        .is_some_and(|a| !a.is_empty() && (dir.join(a).is_file() || Path::new(a).is_file()));
-    let transcript = crate::cmd::project::workshop::transcript_files(dir)
-        .iter()
-        .any(|path| {
-            crate::cmd::project::workshop::transcript_document(path)
-                .ok()
-                .is_some_and(|document| {
-                    document["words"]
-                        .as_array()
-                        .is_some_and(|words| !words.is_empty())
-                })
-        });
+    let audio = doc["workshop"]["audio"].as_str().is_some_and(|a| !a.is_empty() && (dir.join(a).is_file() || Path::new(a).is_file()));
+    let transcript = crate::cmd::project::workshop::transcript_files(dir).iter().any(|path| {
+        crate::cmd::project::workshop::transcript_document(path)
+            .ok()
+            .is_some_and(|document| document["words"].as_array().is_some_and(|words| !words.is_empty()))
+    });
     let editor_ready = dir.join("hyperframes/index.html").is_file()
-        || doc["workshop"]["video_project"]
-            .as_str()
-            .is_some_and(|v| !v.is_empty() && (dir.join(v).exists() || Path::new(v).exists()));
+        || doc["workshop"]["video_project"].as_str().is_some_and(|v| !v.is_empty() && (dir.join(v).exists() || Path::new(v).exists()));
     let next = if !audio {
         "Choose existing song audio"
     } else if !transcript {

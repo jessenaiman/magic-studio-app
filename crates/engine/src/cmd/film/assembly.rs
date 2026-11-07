@@ -26,26 +26,16 @@ pub(crate) fn run(_dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> 
 }
 
 pub(crate) fn ids(result: &Value, field: &str) -> Vec<u64> {
-    result[field]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_u64)
-        .collect()
+    result[field].as_array().into_iter().flatten().filter_map(Value::as_u64).collect()
 }
 
 /// The image for one background entry: a registered asset id or a path.
 fn background(s: &Session, dir: &Path, entry: &Value) -> Result<PathBuf> {
     if let Some(path) = entry["path"].as_str() {
         let path = dir.join(path);
-        return path
-            .is_file()
-            .then_some(path.clone())
-            .ok_or_else(|| invalid(format!("No image at {}", path.display())));
+        return path.is_file().then_some(path.clone()).ok_or_else(|| invalid(format!("No image at {}", path.display())));
     }
-    let id = entry["asset"]
-        .as_str()
-        .ok_or_else(|| invalid("each background needs asset or path"))?;
+    let id = entry["asset"].as_str().ok_or_else(|| invalid("each background needs asset or path"))?;
     s.project_assets
         .iter()
         .find(|a| a.id == id)
@@ -57,48 +47,21 @@ fn background(s: &Session, dir: &Path, entry: &Value) -> Result<PathBuf> {
 
 /// Backgrounds in time order with the span each covers, the last one to the end.
 fn spans(times: &[f64], duration: f64) -> Vec<(f64, f64)> {
-    times
-        .iter()
-        .enumerate()
-        .map(|(i, from)| (*from, times.get(i + 1).copied().unwrap_or(duration) - from))
-        .collect()
+    times.iter().enumerate().map(|(i, from)| (*from, times.get(i + 1).copied().unwrap_or(duration) - from)).collect()
 }
 
-fn resolve_scene_image(
-    scene: &Value,
-    dir: &Path,
-    assets: &[crate::ProjectAsset],
-) -> Option<PathBuf> {
-    let asset_id = scene["image_asset_id"]
-        .as_str()
-        .or_else(|| scene["background_asset"].as_str())
-        .or_else(|| scene["asset"].as_str());
+fn resolve_scene_image(scene: &Value, dir: &Path, assets: &[crate::ProjectAsset]) -> Option<PathBuf> {
+    let asset_id = scene["image_asset_id"].as_str().or_else(|| scene["background_asset"].as_str()).or_else(|| scene["asset"].as_str());
     if let Some(id) = asset_id
-        && let Some(path) = assets
-            .iter()
-            .find(|a| a.id == id)
-            .and_then(|a| a.path.as_ref())
-            .map(|p| dir.join(p))
-            .filter(|p| p.is_file())
+        && let Some(path) = assets.iter().find(|a| a.id == id).and_then(|a| a.path.as_ref()).map(|p| dir.join(p)).filter(|p| p.is_file())
     {
         return Some(path);
     }
-    scene["image_path"]
-        .as_str()
-        .or_else(|| scene["illustration"].as_str())
-        .or_else(|| scene["path"].as_str())
-        .map(|p| dir.join(p))
-        .filter(|p| p.is_file())
+    scene["image_path"].as_str().or_else(|| scene["illustration"].as_str()).or_else(|| scene["path"].as_str()).map(|p| dir.join(p)).filter(|p| p.is_file())
 }
 
-fn backgrounds_from_storyboard(
-    board: &Value,
-    dir: &Path,
-    assets: &[crate::ProjectAsset],
-) -> Vec<(f64, PathBuf)> {
-    let list = board["scenes"]
-        .as_array()
-        .or_else(|| board["animations"].as_array());
+fn backgrounds_from_storyboard(board: &Value, dir: &Path, assets: &[crate::ProjectAsset]) -> Vec<(f64, PathBuf)> {
+    let list = board["scenes"].as_array().or_else(|| board["animations"].as_array());
     let mut out: Vec<(f64, PathBuf)> = list
         .into_iter()
         .flatten()
@@ -119,13 +82,8 @@ fn backgrounds_from_storyboard(
 }
 
 fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, PathBuf)>> {
-    let imgs: Vec<PathBuf> = s
-        .project_assets
-        .iter()
-        .filter(|a| a.kind == "image")
-        .filter_map(|a| a.path.as_ref().map(|p| dir.join(p)))
-        .filter(|p| p.is_file())
-        .collect();
+    let imgs: Vec<PathBuf> =
+        s.project_assets.iter().filter(|a| a.kind == "image").filter_map(|a| a.path.as_ref().map(|p| dir.join(p))).filter(|p| p.is_file()).collect();
     if let Ok(bytes) = std::fs::read(dir.join("storyboard/storyboard.json"))
         && let Ok(doc) = serde_json::from_slice::<Value>(&bytes)
     {
@@ -138,9 +96,7 @@ fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, 
         && let Ok(doc) = serde_json::from_slice::<Value>(&bytes)
     {
         let bgs = backgrounds_from_storyboard(&doc, dir, &s.project_assets);
-        let custom = doc["animations"]
-            .as_array()
-            .is_some_and(|a| a.iter().any(|x| x["background_custom"] == true));
+        let custom = doc["animations"].as_array().is_some_and(|a| a.iter().any(|x| x["background_custom"] == true));
         if bgs.len() > 1 || (!bgs.is_empty() && (custom || imgs.len() <= 1)) {
             return Some(bgs);
         }
@@ -149,12 +105,7 @@ fn auto_backgrounds(s: &Session, dir: &Path, duration: f64) -> Option<Vec<(f64, 
         return None;
     }
     let step = (duration / (imgs.len() as f64)).max(1.0);
-    Some(
-        imgs.into_iter()
-            .enumerate()
-            .map(|(i, p)| ((i as f64) * step, p))
-            .collect(),
-    )
+    Some(imgs.into_iter().enumerate().map(|(i, p)| ((i as f64) * step, p)).collect())
 }
 
 /// What the film is made of: song, backgrounds in time order with their images, lettering.
@@ -172,12 +123,8 @@ struct Inputs {
 fn character_clips(dir: &Path, p: &Value) -> Result<Vec<(f64, PathBuf)>> {
     let mut out = Vec::new();
     for entry in p["characters"].as_array().into_iter().flatten() {
-        let clip = entry["clip"]
-            .as_str()
-            .map(|c| dir.join(c))
-            .filter(|c| c.is_file());
-        let clip =
-            clip.ok_or_else(|| invalid(format!("character clip missing: {}", entry["clip"])))?;
+        let clip = entry["clip"].as_str().map(|c| dir.join(c)).filter(|c| c.is_file());
+        let clip = clip.ok_or_else(|| invalid(format!("character clip missing: {}", entry["clip"])))?;
         out.push((entry["from"].as_f64().unwrap_or(0.0), clip));
     }
     out.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -185,50 +132,24 @@ fn character_clips(dir: &Path, p: &Value) -> Result<Vec<(f64, PathBuf)>> {
 }
 
 fn inputs(s: &Session, dir: &Path, p: &Value) -> Result<Inputs> {
-    let name = s
-        .project_path
-        .as_ref()
-        .and_then(|p| p.file_stem())
-        .map_or("Film".into(), |n| n.to_string_lossy().into_owned());
-    let audio = s
-        .song_audio
-        .clone()
-        .map(|a| dir.join(a))
-        .filter(|a| a.is_file())
-        .ok_or_else(|| invalid("No song audio in this project"))?;
+    let name = s.project_path.as_ref().and_then(|p| p.file_stem()).map_or("Film".into(), |n| n.to_string_lossy().into_owned());
+    let audio = s.song_audio.clone().map(|a| dir.join(a)).filter(|a| a.is_file()).ok_or_else(|| invalid("No song audio in this project"))?;
     let lettering = dir.join(p["lettering"].as_str().unwrap_or("lettering/lyrics.mov"));
     if !lettering.is_file() {
-        return Err(invalid(format!(
-            "No lettering render at {}; run words.letter first",
-            lettering.display()
-        )));
+        return Err(invalid(format!("No lettering render at {}; run words.letter first", lettering.display())));
     }
-    let duration = crate::workshop::song_seconds(dir)
-        .ok_or_else(|| invalid("Song length unknown; analyze the song first"))?;
+    let duration = crate::workshop::song_seconds(dir).ok_or_else(|| invalid("Song length unknown; analyze the song first"))?;
     let backgrounds = if let Some(entries) = p["backgrounds"].as_array().filter(|b| !b.is_empty()) {
-        let mut bgs = entries
-            .iter()
-            .map(|e| Ok((e["from"].as_f64().unwrap_or(0.0), background(s, dir, e)?)))
-            .collect::<Result<Vec<_>>>()?;
+        let mut bgs = entries.iter().map(|e| Ok((e["from"].as_f64().unwrap_or(0.0), background(s, dir, e)?))).collect::<Result<Vec<_>>>()?;
         bgs.sort_by(|a, b| a.0.total_cmp(&b.0));
         bgs
     } else {
         auto_backgrounds(s, dir, duration).ok_or_else(|| {
             let known: Vec<&str> = s.project_assets.iter().map(|a| a.id.as_str()).collect();
-            invalid(format!(
-                "backgrounds: [{{\"asset\":id,\"from\":seconds}}, ...] is required; assets: {}",
-                known.join(", ")
-            ))
+            invalid(format!("backgrounds: [{{\"asset\":id,\"from\":seconds}}, ...] is required; assets: {}", known.join(", ")))
         })?
     };
-    Ok(Inputs {
-        name,
-        audio,
-        lettering,
-        backgrounds,
-        characters: character_clips(dir, p)?,
-        duration,
-    })
+    Ok(Inputs { name, audio, lettering, backgrounds, characters: character_clips(dir, p)?, duration })
 }
 
 /// The editor project: a sequence with the audio on A1, backgrounds filling V1 by time,
@@ -250,19 +171,12 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()>
     )?;
     let items = made.get(2).map(|r| ids(r, "items")).unwrap_or_default();
     if items.len() != media.len() {
-        return Err(invalid(format!(
-            "FilmCraft imported {} of {} files",
-            items.len(),
-            media.len()
-        )));
+        return Err(invalid(format!("FilmCraft imported {} of {} files", items.len(), media.len())));
     }
     let nb = film.backgrounds.len();
-    let (audio, stills, lyrics, shots) =
-        (items[0], &items[1..=nb], items[nb + 1], &items[nb + 2..]);
+    let (audio, stills, lyrics, shots) = (items[0], &items[1..=nb], items[nb + 1], &items[nb + 2..]);
     let times: Vec<f64> = film.backgrounds.iter().map(|(t, _)| *t).collect();
-    let mut place = vec![
-        json!({"id": "timeline.place", "params": {"item": audio, "track": "A1", "seconds": 0, "insert": false, "video": false}}),
-    ];
+    let mut place = vec![json!({"id": "timeline.place", "params": {"item": audio, "track": "A1", "seconds": 0, "insert": false, "video": false}})];
     for ((from, length), item) in spans(&times, film.duration).into_iter().zip(stills) {
         place.push(json!({"id": "timeline.place", "params": {"item": item, "track": "V1", "seconds": from, "insert": false, "duration": {"seconds": length}}}));
     }
@@ -271,16 +185,8 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()>
     }
     place.push(json!({"id": "timeline.place", "params": {"item": lyrics, "track": "V3", "seconds": 0, "insert": false, "audio": false}}));
     let placed = run(dir, project, false, &place)?;
-    let clips: Vec<u64> = placed[1..=nb]
-        .iter()
-        .flat_map(|r| ids(r, "clips"))
-        .collect();
-    run(
-        dir,
-        project,
-        false,
-        &[json!({"id": "clip.fillFrame", "params": {"clips": clips}})],
-    )?;
+    let clips: Vec<u64> = placed[1..=nb].iter().flat_map(|r| ids(r, "clips")).collect();
+    run(dir, project, false, &[json!({"id": "clip.fillFrame", "params": {"clips": clips}})])?;
     Ok(())
 }
 
@@ -303,20 +209,10 @@ pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {
     }
     build_film(&dir, &project, &film, p["fps"].as_f64().unwrap_or(30.0))?;
     crate::cmd::film::link(s, &project)?;
-    let exported = if p["export"] == false {
-        None
-    } else {
-        Some(export(&dir, &project, &film.name)?)
-    };
-    let backgrounds: Vec<Value> = film
-        .backgrounds
-        .iter()
-        .map(|(from, image)| json!({"from": from, "image": image}))
-        .collect();
-    Ok(
-        json!({"ok": true, "project": project, "export": exported, "duration": film.duration,
-        "backgrounds": backgrounds, "characters": film.characters.len(), "lettering": film.lettering}),
-    )
+    let exported = if p["export"] == false { None } else { Some(export(&dir, &project, &film.name)?) };
+    let backgrounds: Vec<Value> = film.backgrounds.iter().map(|(from, image)| json!({"from": from, "image": image})).collect();
+    Ok(json!({"ok": true, "project": project, "export": exported, "duration": film.duration,
+        "backgrounds": backgrounds, "characters": film.characters.len(), "lettering": film.lettering}))
 }
 
 #[cfg(test)]

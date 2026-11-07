@@ -7,10 +7,7 @@ fn evaluate_stream_line(s: &mut Session, line_num: usize, trimmed: &str, dry_run
     let Ok(v) = serde_json::from_str::<Value>(trimmed) else {
         return json!({"line": line_num, "ok": false, "error": "invalid json"});
     };
-    let id = v["id"]
-        .as_str()
-        .or_else(|| v["command"].as_str())
-        .unwrap_or("");
+    let id = v["id"].as_str().or_else(|| v["command"].as_str()).unwrap_or("");
     let params = v.get("params").cloned().unwrap_or_else(|| json!({}));
     if !v.is_object() || !params.is_object() {
         return json!({"line": line_num, "id": id, "ok": false, "error": "request and params must be objects"});
@@ -77,14 +74,8 @@ pub fn parse_cli_params(args: &[String]) -> (Value, bool) {
 
 pub fn run_cli(args: Vec<String>) -> i32 {
     if args.first().map(String::as_str) == Some("commands") {
-        let specs: Vec<Value> = crate::command_specs()
-            .iter()
-            .map(|s| s.describe())
-            .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&specs).unwrap_or_default()
-        );
+        let specs: Vec<Value> = crate::command_specs().iter().map(|s| s.describe()).collect();
+        println!("{}", serde_json::to_string_pretty(&specs).unwrap_or_default());
         return 0;
     }
     let mut s = Session::user_session();
@@ -106,11 +97,7 @@ pub fn run_cli(args: Vec<String>) -> i32 {
     match dispatch(&mut s, id, params, dry_run, false) {
         Ok(v) => {
             println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
-            if v.get("ok").and_then(Value::as_bool) == Some(false) {
-                1
-            } else {
-                0
-            }
+            if v.get("ok").and_then(Value::as_bool) == Some(false) { 1 } else { 0 }
         }
         Err(e) => {
             eprintln!("{e}");
@@ -119,36 +106,19 @@ pub fn run_cli(args: Vec<String>) -> i32 {
     }
 }
 
-fn attach_or_open_project(
-    s: &mut Session,
-    id: &str,
-    params: &Value,
-    persistent: bool,
-) -> Result<(), String> {
-    if matches!(
-        id,
-        "project.open" | "project.new" | "project.intake" | "project.attach" | "project.identity"
-    ) {
+fn attach_or_open_project(s: &mut Session, id: &str, params: &Value, persistent: bool) -> Result<(), String> {
+    if matches!(id, "project.open" | "project.new" | "project.intake" | "project.attach" | "project.identity") {
         return Ok(());
     }
     let Some(target) = params["project"].as_str() else {
         return Ok(());
     };
-    let identity = s
-        .execute("project.identity", json!({"path": target}))
-        .map_err(|e| e.to_string())?;
+    let identity = s.execute("project.identity", json!({"path": target})).map_err(|e| e.to_string())?;
     if let Some(project) = identity["project"].as_str()
         && s.project_path.as_deref() != Some(std::path::Path::new(project))
     {
-        s.execute(
-            if persistent {
-                "project.open"
-            } else {
-                "project.attach"
-            },
-            json!({"path": project, "claim_owner": persistent}),
-        )
-        .map_err(|e| e.to_string())?;
+        s.execute(if persistent { "project.open" } else { "project.attach" }, json!({"path": project, "claim_owner": persistent}))
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -157,17 +127,9 @@ fn auto_load_asset(s: &mut Session, id: &str, params: &Value) {
     if !s.assets.is_empty() || s.project_assets.is_empty() || id.starts_with("project.") {
         return;
     }
-    let wanted = params["asset"]
-        .as_str()
-        .or_else(|| params["character"].as_str())
-        .map(str::to_owned)
-        .or_else(|| {
-            s.project_assets
-                .iter()
-                .find(|a| matches!(a.kind.as_str(), "character" | "cutout_rig"))
-                .or_else(|| s.project_assets.first())
-                .map(|a| a.id.clone())
-        });
+    let wanted = params["asset"].as_str().or_else(|| params["character"].as_str()).map(str::to_owned).or_else(|| {
+        s.project_assets.iter().find(|a| matches!(a.kind.as_str(), "character" | "cutout_rig")).or_else(|| s.project_assets.first()).map(|a| a.id.clone())
+    });
     if let Some(aid) = wanted {
         let _ = s.execute("project.load_asset", json!({"id": aid}));
     }
@@ -178,10 +140,7 @@ fn normalize_project_params(id: &str, params: &mut Value, dry_run: bool, persist
     if let Some(obj) = params.as_object_mut() {
         obj.remove("_dry_run");
     }
-    if matches!(id, "project.open" | "project.identity" | "project.attach")
-        && params["path"].is_null()
-        && params["project"].is_string()
-    {
+    if matches!(id, "project.open" | "project.identity" | "project.attach") && params["path"].is_null() && params["project"].is_string() {
         params["path"] = params["project"].clone();
     }
     if persistent && id == "project.open" && !is_dry {
@@ -190,13 +149,7 @@ fn normalize_project_params(id: &str, params: &mut Value, dry_run: bool, persist
     is_dry
 }
 
-pub fn dispatch(
-    s: &mut Session,
-    id: &str,
-    mut params: Value,
-    dry_run: bool,
-    persistent: bool,
-) -> Result<Value, String> {
+pub fn dispatch(s: &mut Session, id: &str, mut params: Value, dry_run: bool, persistent: bool) -> Result<Value, String> {
     if crate::find_command(id).is_none() {
         return Err(format!("Unknown engine command: {id}"));
     }
@@ -218,11 +171,7 @@ pub fn dispatch(
     }
     auto_load_asset(s, id, &params);
     let out = s.execute(id, params).map_err(|e| e.to_string())?;
-    if !is_dry
-        && crate::find_command(id).is_some_and(|c| c.journal)
-        && s.edits_since_save > 0
-        && s.project_path.is_some()
-    {
+    if !is_dry && crate::find_command(id).is_some_and(|c| c.journal) && s.edits_since_save > 0 && s.project_path.is_some() {
         crate::project::write_project_file(s).map_err(|e| e.to_string())?;
     }
     Ok(out)

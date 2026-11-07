@@ -8,9 +8,7 @@ pub fn dirty_reasons(v: &Value, dirty: Option<bool>) -> Vec<Value> {
         reasons.push(json!("engine state differs from saved project"));
     }
     if dirty.is_none() {
-        reasons.push(json!(
-            "engine state unavailable; busy or unreadable saved project"
-        ));
+        reasons.push(json!("engine state unavailable; busy or unreadable saved project"));
     }
     for field in v["draft_fields"].as_array().into_iter().flatten() {
         reasons.push(json!({"draft_field":field}));
@@ -33,10 +31,7 @@ pub fn unsaved_edits(v: &Value, dirty: Option<bool>, edits: Option<u64>) -> Valu
 }
 
 pub fn unsaved_state(v: &Value, dirty: Option<bool>) -> &'static str {
-    if dirty == Some(true)
-        || v["draft_fields"].as_array().is_some_and(|a| !a.is_empty())
-        || v["pending_invokes"].as_u64().unwrap_or(0) > 0
-    {
+    if dirty == Some(true) || v["draft_fields"].as_array().is_some_and(|a| !a.is_empty()) || v["pending_invokes"].as_u64().unwrap_or(0) > 0 {
         return "unsaved_or_pending";
     }
     if dirty == Some(false) && v["phase"] == "ready" {

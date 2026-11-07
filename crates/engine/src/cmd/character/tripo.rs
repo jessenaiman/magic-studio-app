@@ -19,15 +19,9 @@ pub(crate) fn catalog_json() -> Result<Value> {
 }
 
 fn character_id(p: &Value) -> Result<String> {
-    let raw = p["character"]
-        .as_str()
-        .ok_or_else(|| bad("character=<id> is required"))?;
+    let raw = p["character"].as_str().ok_or_else(|| bad("character=<id> is required"))?;
     let id = crate::workspace::sanitize_asset_id(raw);
-    if id.is_empty() {
-        Err(bad("character=<id> is required"))
-    } else {
-        Ok(id)
-    }
+    if id.is_empty() { Err(bad("character=<id> is required")) } else { Ok(id) }
 }
 
 fn resolve_project_path(s: &Session, project_dir: &Path, raw: &str) -> PathBuf {
@@ -57,9 +51,7 @@ fn candidate_3d_dirs(project_dir: &Path, id: &str) -> Vec<PathBuf> {
 }
 
 fn has_matching_ext(path: &Path, exts: &[&str]) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| exts.iter().any(|w| e.eq_ignore_ascii_case(w)))
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| exts.iter().any(|w| e.eq_ignore_ascii_case(w)))
 }
 
 fn collect_files_with_ext(root: &Path, exts: &[&str], max_depth: usize) -> Vec<PathBuf> {
@@ -92,9 +84,7 @@ fn collect_unique_ext(dirs: &[PathBuf], exts: &[&str], max_depth: usize) -> Vec<
 }
 
 fn read_json_optional(path: &Path) -> Option<Value> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
+    std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok())
 }
 
 fn write_json_pretty(path: &Path, value: &Value) -> Result<()> {
@@ -107,11 +97,7 @@ fn write_json_pretty(path: &Path, value: &Value) -> Result<()> {
 }
 
 fn anim_clip_entry(path: &Path, doc: &Value) -> Value {
-    let fallback = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("clip")
-        .trim_end_matches(".anim.json");
+    let fallback = path.file_name().and_then(|n| n.to_str()).unwrap_or("clip").trim_end_matches(".anim.json");
     json!({
         "id": doc["id"].as_str().unwrap_or(fallback),
         "name": doc["name"].as_str().unwrap_or(fallback),
@@ -191,14 +177,7 @@ fn pick_primary_glb(manifest: &Value, glb_files: &[PathBuf]) -> Option<PathBuf> 
         .map(PathBuf::from)
         .filter(|p| p.is_file())
         .or_else(|| {
-            glb_files
-                .iter()
-                .find(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.contains("rigid-case") || n.contains("rigged"))
-                })
-                .cloned()
+            glb_files.iter().find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("rigid-case") || n.contains("rigged"))).cloned()
         })
         .or_else(|| glb_files.first().cloned())
 }
@@ -216,25 +195,12 @@ fn gltf_document(path: &Path) -> Option<Value> {
 
 /// Joints of the model's largest skin.
 fn glb_joint_count(doc: &Value) -> u64 {
-    doc["skins"]
-        .as_array()
-        .and_then(|skins| {
-            skins
-                .iter()
-                .filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64))
-                .max()
-        })
-        .unwrap_or(0)
+    doc["skins"].as_array().and_then(|skins| skins.iter().filter_map(|s| s["joints"].as_array().map(|j| j.len() as u64)).max()).unwrap_or(0)
 }
 
 /// Names of the animation clips stored in the model.
 fn glb_clip_names(doc: &Value) -> Vec<String> {
-    doc["animations"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|a| a["name"].as_str().map(str::to_string))
-        .collect()
+    doc["animations"].as_array().into_iter().flatten().filter_map(|a| a["name"].as_str().map(str::to_string)).collect()
 }
 
 /// Inspect 3D models, rigged FBX/GLB files, Blender scenes, split `.anim.json` clips,
@@ -243,10 +209,7 @@ fn glb_clip_names(doc: &Value) -> Vec<String> {
 /// `_` where character ids may use `-`), so shared models need no copy in the project.
 fn registered_model(s: &Session, id: &str) -> Option<PathBuf> {
     let id = id.replace('-', "_");
-    s.project_assets
-        .iter()
-        .filter(|a| a.kind == "model_3d" && a.id.replace('-', "_") == id)
-        .find_map(|a| a.path.clone().filter(|p| p.is_file()))
+    s.project_assets.iter().filter(|a| a.kind == "model_3d" && a.id.replace('-', "_") == id).find_map(|a| a.path.clone().filter(|p| p.is_file()))
 }
 
 /// What 3D files the character has: the registered model's folder first, then the project's.
@@ -268,14 +231,7 @@ pub(crate) fn inspect_character_3d(s: &Session, project_dir: &Path, id: &str) ->
     let zip_files = collect_unique_ext(&dirs, &["zip"], 2);
     let video_previews = collect_unique_ext(&dirs, &["mp4", "webm", "mov"], 2);
     let (mut anim_clips, import_meta, repair_meta, multistage_meta) = scan_json_metadata(&dirs);
-    append_imported_actions(
-        &mut anim_clips,
-        &import_meta,
-        fbx_files.first(),
-        glb_files.first(),
-        blend_files.first(),
-        video_previews.first(),
-    );
+    append_imported_actions(&mut anim_clips, &import_meta, fbx_files.first(), glb_files.first(), blend_files.first(), video_previews.first());
     let manifest = read_json_optional(&canonical.join("tripo.json")).unwrap_or_else(|| json!({}));
     let primary_glb = pick_primary_glb(&manifest, &glb_files);
     let model_doc = primary_glb.as_deref().and_then(gltf_document);
@@ -314,9 +270,7 @@ pub(crate) fn inspect_character_3d(s: &Session, project_dir: &Path, id: &str) ->
 pub fn cmd_tripo_catalog(_: &mut Session, p: &Value) -> Result<Value> {
     let mut cat = catalog_json()?;
     if let Some(category) = p["category"].as_str().filter(|s| !s.is_empty())
-        && let Some(biped) = cat
-            .pointer_mut("/animation/presets/biped")
-            .and_then(Value::as_array_mut)
+        && let Some(biped) = cat.pointer_mut("/animation/presets/biped").and_then(Value::as_array_mut)
     {
         biped.retain(|item| item["category"].as_str() == Some(category));
     }
@@ -325,32 +279,16 @@ pub fn cmd_tripo_catalog(_: &mut Session, p: &Value) -> Result<Value> {
 
 fn template_provider_meta(provider: &str, tpl: &Value) -> (&'static str, Value) {
     match provider {
-        "google_flow" => (
-            "https://flow.google.com/ (Nano Banana 2.1 · 0 credits via browser relay)",
-            json!("nano_banana_2_1"),
-        ),
+        "google_flow" => ("https://flow.google.com/ (Nano Banana 2.1 · 0 credits via browser relay)", json!("nano_banana_2_1")),
         "codex_luna" => ("codex exec (gpt-6-luna draft)", json!("gpt-6-luna")),
-        _ => (
-            "/v2/studio/image/gen_image_v2",
-            tpl["recommended_model"].clone(),
-        ),
+        _ => ("/v2/studio/image/gen_image_v2", tpl["recommended_model"].clone()),
     }
 }
 
-fn build_breakout_record(
-    kind: &str,
-    p: &Value,
-    reference: &Option<PathBuf>,
-    breakout_dir: &Path,
-    id: &str,
-) -> Result<Value> {
+fn build_breakout_record(kind: &str, p: &Value, reference: &Option<PathBuf>, breakout_dir: &Path, id: &str) -> Result<Value> {
     let catalog = catalog_json()?;
-    let matched_tpl = catalog["breakout_templates"]
-        .as_array()
-        .and_then(|a| a.iter().find(|t| t["id"].as_str() == Some(kind)).cloned());
-    let matched_op = catalog["breakout_operations"]
-        .as_array()
-        .and_then(|a| a.iter().find(|o| o["id"].as_str() == Some(kind)).cloned());
+    let matched_tpl = catalog["breakout_templates"].as_array().and_then(|a| a.iter().find(|t| t["id"].as_str() == Some(kind)).cloned());
+    let matched_op = catalog["breakout_operations"].as_array().and_then(|a| a.iter().find(|o| o["id"].as_str() == Some(kind)).cloned());
     let granularity = p["granularity"].as_str().unwrap_or("medium");
     if !matches!(granularity, "low" | "medium" | "high") {
         return Err(bad("granularity must be low, medium, or high"));
@@ -389,14 +327,8 @@ fn build_breakout_record(
                 let _ = std::fs::create_dir_all(&layers_dir);
                 let steps = [
                     ("layer.removeBackground", json!({})),
-                    (
-                        "file.export.layersToFiles",
-                        json!({"dir": layers_dir, "format": "png", "prefix": id, "trim": true}),
-                    ),
-                    (
-                        "file.saveACopy",
-                        json!({"path": out_png, "overwrite": true}),
-                    ),
+                    ("file.export.layersToFiles", json!({"dir": layers_dir, "format": "png", "prefix": id, "trim": true})),
+                    ("file.saveACopy", json!({"path": out_png, "overwrite": true})),
                 ];
                 match crate::cmd::character::cut::photocraft_run(src, &steps, Some(&out_pcraft)) {
                     Ok(_) => {
@@ -442,25 +374,18 @@ pub fn cmd_tripo_breakout(s: &mut Session, p: &Value) -> Result<Value> {
     let breakout_dir = dir.join("breakouts");
     std::fs::create_dir_all(&breakout_dir)?;
 
-    let reference = p["reference"]
-        .as_str()
-        .filter(|r| !r.trim().is_empty())
-        .map(|r| resolve_project_path(s, &project_dir, r));
+    let reference = p["reference"].as_str().filter(|r| !r.trim().is_empty()).map(|r| resolve_project_path(s, &project_dir, r));
     if let Some(path) = &reference
         && !path.is_file()
     {
-        return Err(bad(format!(
-            "reference image does not exist: {}",
-            path.display()
-        )));
+        return Err(bad(format!("reference image does not exist: {}", path.display())));
     }
     let record = build_breakout_record(kind, p, &reference, &breakout_dir, &id)?;
     let receipt_path = breakout_dir.join(format!("breakout-{kind}.json"));
     write_json_pretty(&receipt_path, &record)?;
 
     let manifest_path = dir.join("tripo.json");
-    let mut manifest =
-        read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
+    let mut manifest = read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
     if !manifest["breakouts"].is_array() {
         manifest["breakouts"] = json!([]);
     }
@@ -480,18 +405,7 @@ pub fn cmd_tripo_breakout(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn validate_rig_options(p: &Value) -> Result<(&str, &str, &str, u64)> {
     let rig_type = p["rig_type"].as_str().unwrap_or("biped");
-    if ![
-        "biped",
-        "quadruped",
-        "hexapod",
-        "octopod",
-        "avian",
-        "serpentine",
-        "aquatic",
-        "others",
-    ]
-    .contains(&rig_type)
-    {
+    if !["biped", "quadruped", "hexapod", "octopod", "avian", "serpentine", "aquatic", "others"].contains(&rig_type) {
         return Err(bad("invalid rig_type"));
     }
     let skel = p["skeleton_preset"].as_str().unwrap_or("mixamo");
@@ -506,14 +420,7 @@ fn validate_rig_options(p: &Value) -> Result<(&str, &str, &str, u64)> {
     Ok((rig_type, skel, topology, max_faces))
 }
 
-fn build_precheck_value(
-    p: &Value,
-    current: &Value,
-    tc_report: &Value,
-    topology: &str,
-    max_faces: u64,
-    t_pose_ready: bool,
-) -> Result<(bool, Value)> {
+fn build_precheck_value(p: &Value, current: &Value, tc_report: &Value, topology: &str, max_faces: u64, t_pose_ready: bool) -> Result<(bool, Value)> {
     let observed_faces = tc_report["triangles"]
         .as_u64()
         .or_else(|| p["face_count"].as_u64())
@@ -565,9 +472,8 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
     let tc_report = model_path
         .as_deref()
         .map(|path| -> Result<Value> {
-            let imported = texturecraft_formats::import_mesh(path).map_err(|e| {
-                crate::EngineError::ExternalTool("texturecraft-formats".into(), e.to_string())
-            })?;
+            let imported =
+                texturecraft_formats::import_mesh(path).map_err(|e| crate::EngineError::ExternalTool("texturecraft-formats".into(), e.to_string()))?;
             let mesh = &imported.mesh;
             Ok(json!({
                 "path": path.display().to_string(),
@@ -578,8 +484,7 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         })
         .transpose()?
         .unwrap_or(Value::Null);
-    let (riggable, precheck) =
-        build_precheck_value(p, &current, &tc_report, topology, max_faces, t_pose_ready)?;
+    let (riggable, precheck) = build_precheck_value(p, &current, &tc_report, topology, max_faces, t_pose_ready)?;
     let rig_payload = json!({
         "endpoint": "/v2/studio/operation/rigging_model",
         "model_version": "v3.0-20260909",
@@ -587,19 +492,11 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
         "spec": (rig_type == "biped").then_some(skeleton_preset),
         "credits": 20,
     });
-    let model_joints = model_path
-        .as_deref()
-        .and_then(gltf_document)
-        .map(|d| glb_joint_count(&d))
-        .unwrap_or(0);
-    let bone_count = current["bone_count"]
-        .as_u64()
-        .unwrap_or(0)
-        .max(model_joints);
+    let model_joints = model_path.as_deref().and_then(gltf_document).map(|d| glb_joint_count(&d)).unwrap_or(0);
+    let bone_count = current["bone_count"].as_u64().unwrap_or(0).max(model_joints);
     let verified_skeleton = bone_count > 0;
     let manifest_path = dir.join("tripo.json");
-    let mut manifest =
-        read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
+    let mut manifest = read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
     manifest["character"] = json!(id);
     manifest["rigged"] = json!(verified_skeleton && riggable);
     manifest["bone_count"] = json!(bone_count);
@@ -632,10 +529,7 @@ pub fn cmd_tripo_rig(s: &mut Session, p: &Value) -> Result<Value> {
 
 fn parse_stage_waypoints(stage: &Value, prev_end: Option<[f64; 2]>) -> Result<([f64; 2], Value)> {
     let Some(wp) = stage.get("waypoints").and_then(Value::as_array) else {
-        let end = [
-            stage["x"].as_f64().unwrap_or(0.0),
-            stage["z"].as_f64().unwrap_or(0.0),
-        ];
+        let end = [stage["x"].as_f64().unwrap_or(0.0), stage["z"].as_f64().unwrap_or(0.0)];
         let start = prev_end.unwrap_or([0.0, 0.0]);
         return Ok((end, json!([[start[0], start[1]], [end[0], end[1]]])));
     };
@@ -643,31 +537,17 @@ fn parse_stage_waypoints(stage: &Value, prev_end: Option<[f64; 2]>) -> Result<([
         return Err(bad("waypoints must be [[x0, z0], [x1, z1]]"));
     }
     let p0 = [
-        wp[0]
-            .get(0)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| bad("invalid waypoint x0"))?,
-        wp[0]
-            .get(1)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| bad("invalid waypoint z0"))?,
+        wp[0].get(0).and_then(Value::as_f64).ok_or_else(|| bad("invalid waypoint x0"))?,
+        wp[0].get(1).and_then(Value::as_f64).ok_or_else(|| bad("invalid waypoint z0"))?,
     ];
     let p1 = [
-        wp[1]
-            .get(0)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| bad("invalid waypoint x1"))?,
-        wp[1]
-            .get(1)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| bad("invalid waypoint z1"))?,
+        wp[1].get(0).and_then(Value::as_f64).ok_or_else(|| bad("invalid waypoint x1"))?,
+        wp[1].get(1).and_then(Value::as_f64).ok_or_else(|| bad("invalid waypoint z1"))?,
     ];
     if let Some(prev) = prev_end
         && ((prev[0] - p0[0]).abs() > 1e-6 || (prev[1] - p0[1]).abs() > 1e-6)
     {
-        return Err(bad(
-            "stage start waypoint must match previous stage end waypoint",
-        ));
+        return Err(bad("stage start waypoint must match previous stage end waypoint"));
     }
     Ok((p1, json!([[p0[0], p0[1]], [p1[0], p1[1]]])))
 }
@@ -718,18 +598,11 @@ fn build_clip_spec(p: &Value, rig_type: &str) -> Result<ClipSpec> {
             return Err(bad("Multi-Stage Motion requires rig_type=biped"));
         }
         let stages = validate_multistage_segments(stages_arr)?;
-        let dur: u64 = stages
-            .iter()
-            .filter_map(|s| s["duration_seconds"].as_u64())
-            .sum();
+        let dur: u64 = stages.iter().filter_map(|s| s["duration_seconds"].as_u64()).sum();
         let raw_name = p["name"].as_str().unwrap_or("multi_stage_motion");
         let cid = crate::workspace::sanitize_asset_id(raw_name);
         return Ok(ClipSpec {
-            id: if cid.is_empty() {
-                "multi_stage".into()
-            } else {
-                cid
-            },
+            id: if cid.is_empty() { "multi_stage".into() } else { cid },
             name: raw_name.to_string(),
             source: "multi_stage_motion",
             category: "interactive".into(),
@@ -757,11 +630,7 @@ fn build_clip_spec(p: &Value, rig_type: &str) -> Result<ClipSpec> {
         let raw_name = p["name"].as_str().unwrap_or(prompt);
         let cid = crate::workspace::sanitize_asset_id(raw_name);
         return Ok(ClipSpec {
-            id: if cid.is_empty() {
-                "ai_motion".into()
-            } else {
-                cid
-            },
+            id: if cid.is_empty() { "ai_motion".into() } else { cid },
             name: raw_name.chars().take(64).collect(),
             source: "ai_animation",
             category: "interactive".into(),
@@ -781,19 +650,9 @@ fn build_clip_spec(p: &Value, rig_type: &str) -> Result<ClipSpec> {
         .pointer(&format!("/animation/presets/{rig_type}"))
         .and_then(Value::as_array)
         .ok_or_else(|| bad(format!("no presets for rig_type={rig_type}")))?;
-    let default_preset = if rig_type == "biped" {
-        "wave_goodbye_01"
-    } else {
-        presets
-            .first()
-            .and_then(|item| item["name"].as_str())
-            .unwrap_or("walk")
-    };
+    let default_preset = if rig_type == "biped" { "wave_goodbye_01" } else { presets.first().and_then(|item| item["name"].as_str()).unwrap_or("walk") };
     let preset_name = p["preset"].as_str().unwrap_or(default_preset);
-    let found = presets
-        .iter()
-        .find(|item| item["name"].as_str() == Some(preset_name))
-        .ok_or_else(|| bad(format!("unknown preset '{preset_name}'")))?;
+    let found = presets.iter().find(|item| item["name"].as_str() == Some(preset_name)).ok_or_else(|| bad(format!("unknown preset '{preset_name}'")))?;
     Ok(ClipSpec {
         id: crate::workspace::sanitize_asset_id(preset_name),
         name: preset_name.replace('_', " "),
@@ -810,13 +669,7 @@ fn build_clip_spec(p: &Value, rig_type: &str) -> Result<ClipSpec> {
     })
 }
 
-fn build_effectcraft_3d_comp(
-    clips_dir: &Path,
-    id: &str,
-    clip_id: &str,
-    duration: f64,
-    model_file: Option<&PathBuf>,
-) -> (Value, Value) {
+fn build_effectcraft_3d_comp(clips_dir: &Path, id: &str, clip_id: &str, duration: f64, model_file: Option<&PathBuf>) -> (Value, Value) {
     let Some(file) = model_file.filter(|f| f.is_file()) else {
         return (Value::Null, Value::Null);
     };
@@ -836,46 +689,26 @@ fn build_effectcraft_3d_comp(
                 "open": true
             }),
         ),
-        super::step(
-            "layer.newModel",
-            json!({"path": file, "name": id, "position": [640, 360]}),
-        ),
+        super::step("layer.newModel", json!({"path": file, "name": id, "position": [640, 360]})),
         super::step("file.saveAs", json!({"path": ec_path})),
     ];
     if super::effectcraft(clips_dir, None, &steps, true).is_err() {
         return (Value::Null, Value::Null);
     }
-    let rendered = crate::cmd::character::effectcraft_frame(
-        &ec_path,
-        &comp_name,
-        (duration * 0.5).min(1.0),
-        0,
-        &frame_path,
-    )
-    .ok()
-    .filter(|_| frame_path.is_file())
-    .map(|_| json!(frame_path))
-    .unwrap_or(Value::Null);
+    let rendered = crate::cmd::character::effectcraft_frame(&ec_path, &comp_name, (duration * 0.5).min(1.0), 0, &frame_path)
+        .ok()
+        .filter(|_| frame_path.is_file())
+        .map(|_| json!(frame_path))
+        .unwrap_or(Value::Null);
     (json!(ec_path), rendered)
 }
 
-fn first_or_param_path(
-    s: &Session,
-    project_dir: &Path,
-    p: &Value,
-    key: &str,
-    fallback: &Value,
-) -> Option<PathBuf> {
+fn first_or_param_path(s: &Session, project_dir: &Path, p: &Value, key: &str, fallback: &Value) -> Option<PathBuf> {
     p[key]
         .as_str()
         .filter(|v| !v.is_empty())
         .map(|v| resolve_project_path(s, project_dir, v))
-        .or_else(|| {
-            fallback
-                .as_str()
-                .or_else(|| fallback.as_array()?.first()?.as_str())
-                .map(PathBuf::from)
-        })
+        .or_else(|| fallback.as_str().or_else(|| fallback.as_array()?.first()?.as_str()).map(PathBuf::from))
 }
 fn clip_specific_glb(clips_dir: &Path, id: &str, clip_id: &str, rig_type: &str) -> Option<PathBuf> {
     let candidates = [
@@ -891,10 +724,7 @@ pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
     let id = character_id(p)?;
     let project_dir = crate::workshop::project_dir(s)?;
     let current = inspect_character_3d(s, &project_dir, &id);
-    let rig_type = p["rig_type"]
-        .as_str()
-        .or_else(|| current["rig_type"].as_str())
-        .unwrap_or("biped");
+    let rig_type = p["rig_type"].as_str().or_else(|| current["rig_type"].as_str()).unwrap_or("biped");
     let animate_in_place = p["animate_in_place"].as_bool().unwrap_or(true);
     let fbx_preset = p["fbx_preset"].as_str().unwrap_or("blender");
     if !["blender", "3dsmax", "maya", "unreal", "unity"].contains(&fbx_preset) {
@@ -913,15 +743,8 @@ pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
         .or_else(|| clip_specific_glb(&clips_dir, &id, &spec.id, rig_type))
         .or_else(|| first_or_param_path(s, &project_dir, p, "glb", &current["primary_glb"]));
     let blend_path = first_or_param_path(s, &project_dir, p, "blend", &current["blend_files"]);
-    let preview_path =
-        first_or_param_path(s, &project_dir, p, "preview", &current["video_previews"]);
-    let (ecproj_3d, rendered_frame) = build_effectcraft_3d_comp(
-        &clips_dir,
-        &id,
-        &spec.id,
-        spec.duration,
-        glb_path.as_ref().or(fbx_path.as_ref()),
-    );
+    let preview_path = first_or_param_path(s, &project_dir, p, "preview", &current["video_previews"]);
+    let (ecproj_3d, rendered_frame) = build_effectcraft_3d_comp(&clips_dir, &id, &spec.id, spec.duration, glb_path.as_ref().or(fbx_path.as_ref()));
     let clip_doc = json!({
         "schema": "magic.tripo.anim.v1",
         "id": spec.id,
@@ -961,8 +784,7 @@ pub fn cmd_tripo_animate(s: &mut Session, p: &Value) -> Result<Value> {
     write_json_pretty(&clip_file, &clip_doc)?;
 
     let manifest_path = dir.join("tripo.json");
-    let mut manifest =
-        read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
+    let mut manifest = read_json_optional(&manifest_path).unwrap_or_else(|| json!({"character": id}));
     manifest["character"] = json!(id);
     manifest["animate_in_place"] = json!(animate_in_place);
     manifest["fbx_preset"] = json!(fbx_preset);

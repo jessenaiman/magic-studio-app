@@ -26,27 +26,18 @@ Run these commands from the repository root, with Rust/Cargo compatible with
 `Cargo.toml`, the native platform libraries required by the Rust workspace and Git available:
 
 ```sh
-cargo build --locked -p magic -p magic-cli
-cargo xtask install
+cargo install --locked --path apps/magic
+cargo install --locked --path apps/magic-cli
 ```
 
-`cargo xtask install` (source in `xtask/`) requires both built executables.
-It copies the executables and the tracked runtime resources under
-`~/.local/share/magic`, links `magic` and `magic-cli` in `~/.local/bin`, and writes the desktop entry and icon. It
-removes what earlier installs left behind: `magic-shell`,
-`python-magic-cli` and the retired Python CLI's environment. Ensure
-`~/.local/bin` is on your `PATH`.
-
-For a release build, use matching profiles:
-
-```sh
-cargo build --locked --release -p magic -p magic-cli
-cargo xtask install --profile release
-```
+Cargo builds in release mode and places `magic` and `magic-cli` in `~/.cargo/bin`; put that folder on your
+`PATH`. The earlier `cargo xtask install` (resource copy, `~/.local/bin` links, desktop entry) was removed: Magic
+installs like any Cargo app. An installation made by the old installer under `~/.local/share/magic` is not updated
+by these commands, and `~/.local/bin/magic-cli` may still point at it; remove those links or put `~/.cargo/bin`
+first on `PATH`.
 
 `cargo add -p magic <crate>` declares a desktop dependency. Cargo fetches and
-compiles project dependencies during the build. Use `cargo install` for standalone
-Rust executables and `cargo xtask install` for Magic's binaries and desktop resources.
+compiles project dependencies during the build. Use `cargo install` for Magic's executables.
 
 To connect the CLI or MCP server to a running Tauri window, start it with
 `--control PORT` and use `magic-cli --bridge 127.0.0.1:PORT ui state` or
@@ -57,7 +48,7 @@ starts a headless session.
 song folder directly as `magic --lyrics /path/to/song`. The folder must contain
 its canonical lyric sheet and timed transcript. A `.magic` file is optional.
 
-`cargo xtask install --help` lists `--prefix`. Rebuild and reinstall after native
+Rebuild and reinstall after native
 changes when authorized. These commands install the legacy egui app and CLI, not the Tauri app; they do not
 install other creative apps, production providers, or GPU models.
 

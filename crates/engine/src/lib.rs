@@ -47,17 +47,7 @@
 //! Repository links track the default branch; new guides appear after this
 //! documentation change merges.
 
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unimplemented,
-        clippy::todo,
-        clippy::unreachable
-    )
-)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
 
 pub mod activity;
 pub mod agent;
@@ -108,10 +98,7 @@ use serde_json::Value;
 /// app) goes through `Session::execute`, so a mistyped value fails the same way everywhere
 /// instead of a handler silently falling back to its default.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
-    let (Ok(Value::Object(expected)), Some(given)) = (
-        serde_json::from_str::<Value>(description),
-        params.as_object(),
-    ) else {
+    let (Ok(Value::Object(expected)), Some(given)) = (serde_json::from_str::<Value>(description), params.as_object()) else {
         return Ok(());
     };
     for (key, value) in given {
@@ -120,15 +107,9 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
             Some(Value::Number(_)) => "number",
             _ => continue,
         };
-        let ok = if wanted == "boolean" {
-            value.is_boolean()
-        } else {
-            value.is_number()
-        };
+        let ok = if wanted == "boolean" { value.is_boolean() } else { value.is_number() };
         if !ok {
-            return Err(EngineError::InvalidParams(format!(
-                "`{key}` must be a {wanted}, got {value}"
-            )));
+            return Err(EngineError::InvalidParams(format!("`{key}` must be a {wanted}, got {value}")));
         }
     }
     Ok(())

@@ -29,5 +29,7 @@
     event: { listen: host.listen },
   };
   window.addEventListener("error", event => host.report(String(event.error || event.message)));
+  // A Content-Security-Policy block is otherwise silent; surface it as a workspace alert.
+  document.addEventListener("securitypolicyviolation", event => host.report(`Blocked by CSP (${event.violatedDirective}): ${event.blockedURI || "inline"}`));
   window.addEventListener("unhandledrejection", event => host.report(String(event.reason)));
 })();

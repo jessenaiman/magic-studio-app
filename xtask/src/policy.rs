@@ -5,55 +5,24 @@ use serde_json::Value;
 use std::process::Command;
 
 /// Magic's own crates and their layers (docs/architecture.md › Layers).
-const LAYERS: &[(&str, u8)] = &[
-    ("magic-engine", 5),
-    ("magic-ui-egui", 6),
-    ("magic-mcp", 6),
-    ("magic", 7),
-    ("magic-cli", 7),
-    ("magic-tui", 7),
-    ("xtask", 7),
-];
+const LAYERS: &[(&str, u8)] =
+    &[("magic-engine", 5), ("magic-ui-egui", 6), ("magic-mcp", 6), ("magic", 7), ("magic-tauri", 7), ("magic-cli", 7), ("magic-tui", 7), ("xtask", 7)];
 
 /// Craft backends (L0–L4): maintained dependencies Magic drives, never edited here.
-const CRAFT_PREFIXES: &[&str] = &[
-    "designcraft-",
-    "effectcraft-",
-    "filmcraft-",
-    "photocraft-",
-    "vectorcraft-",
-    "texturecraft-",
-    "craft-",
-];
+const CRAFT_PREFIXES: &[&str] = &["designcraft-", "effectcraft-", "filmcraft-", "photocraft-", "vectorcraft-", "texturecraft-", "craft-"];
 
 /// Crates that must not appear below L6 (UI toolkits, windowing, OS dialogs).
-const UI_ONLY: &[&str] = &[
-    "craft-ui",
-    "craft-ai-egui",
-    "egui",
-    "eframe",
-    "egui-wgpu",
-    "winit",
-    "rfd",
-    "tauri",
-    "tauri-plugin-dialog",
-];
+const UI_ONLY: &[&str] = &["craft-ui", "craft-ai-egui", "egui", "eframe", "egui-wgpu", "winit", "rfd", "tauri", "tauri-plugin-dialog"];
 
 fn layer_of(name: &str) -> Option<u8> {
     if let Some((_, l)) = LAYERS.iter().find(|(n, _)| *n == name) {
         return Some(*l);
     }
-    CRAFT_PREFIXES
-        .iter()
-        .any(|p| name.starts_with(p))
-        .then_some(4)
+    CRAFT_PREFIXES.iter().any(|p| name.starts_with(p)).then_some(4)
 }
 
-fn metadata() -> Result<Value> {
-    let out = Command::new(env!("CARGO"))
-        .args(["metadata", "--format-version", "1", "--no-deps"])
-        .output()
-        .map_err(|e| e.to_string())?;
+pub(crate) fn metadata() -> Result<Value> {
+    let out = Command::new(env!("CARGO")).args(["metadata", "--format-version", "1", "--no-deps"]).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).into());
     }
@@ -85,9 +54,7 @@ pub(crate) fn layers() -> Result<()> {
     let mut errors = Vec::new();
     for (name, deps) in &crates {
         let Some(l) = layer_of(name) else {
-            errors.push(format!(
-                "{name}: not assigned a layer (add it to xtask LAYERS and docs/architecture.md › Layers)"
-            ));
+            errors.push(format!("{name}: not assigned a layer (add it to xtask LAYERS and docs/architecture.md › Layers)"));
             continue;
         };
         for d in deps {
@@ -96,9 +63,7 @@ pub(crate) fn layers() -> Result<()> {
             }
             let Some(dl) = layer_of(d) else { continue };
             if dl >= l {
-                errors.push(format!(
-                    "{name} (L{l}) depends on {d} (L{dl}): edges must go down"
-                ));
+                errors.push(format!("{name} (L{l}) depends on {d} (L{dl}): edges must go down"));
             }
         }
     }
@@ -112,78 +77,50 @@ pub(crate) fn layers() -> Result<()> {
 
 /// File extensions that count as assets (AGENTS.md §1).
 const ASSET_EXT: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "icns", "bmp", "tif", "tiff", "heic",
-    "avif", "exr", "ttf", "otf", "ttc", "woff", "woff2", "cube", "3dl", "lut", "look", "wav",
-    "mp3", "aac", "flac", "ogg", "opus", "m4a", "aif", "aiff", "mp4", "mov", "m4v", "mkv", "webm",
-    "avi", "mxf", "psd", "ai", "eps", "pdf", "prproj", "ffx", "prfpset", "mogrt", "aep",
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "icns", "bmp", "tif", "tiff", "heic", "avif", "exr", "ttf", "otf", "ttc", "woff", "woff2", "cube",
+    "3dl", "lut", "look", "wav", "mp3", "aac", "flac", "ogg", "opus", "m4a", "aif", "aiff", "mp4", "mov", "m4v", "mkv", "webm", "avi", "mxf", "psd", "ai",
+    "eps", "pdf", "prproj", "ffx", "prfpset", "mogrt", "aep",
 ];
 
 /// Sidecar fields that must be present and non-empty.
 const REQUIRED_FIELDS: &[&str] = &["asset", "title", "author", "source", "license", "added"];
 
 fn repo_files() -> Result<Vec<String>> {
-    let out = Command::new("git")
-        .args(["ls-files", "--cached", "--others", "--exclude-standard"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let out = Command::new("git").args(["ls-files", "--cached", "--others", "--exclude-standard"]).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).into());
     }
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::to_string)
-        .filter(|f| std::path::Path::new(f).exists())
-        .collect())
+    Ok(String::from_utf8_lossy(&out.stdout).lines().map(str::to_string).filter(|f| std::path::Path::new(f).exists()).collect())
 }
 
 fn is_asset(path: &str) -> bool {
-    std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| ASSET_EXT.contains(&e.to_ascii_lowercase().as_str()))
+    std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| ASSET_EXT.contains(&e.to_ascii_lowercase().as_str()))
 }
 
 pub(crate) fn assets() -> Result<()> {
     let files = repo_files()?;
-    let index =
-        std::fs::read_to_string("ATTRIBUTION.md").map_err(|e| format!("ATTRIBUTION.md: {e}"))?;
+    let index = std::fs::read_to_string("ATTRIBUTION.md").map_err(|e| format!("ATTRIBUTION.md: {e}"))?;
     let mut errors = Vec::new();
     let mut n = 0;
     for f in files.iter().filter(|f| is_asset(f)) {
         n += 1;
         let lower = f.to_ascii_lowercase();
         if lower.contains("adobe") || lower.contains("premiere") {
-            errors.push(format!(
-                "{f}: asset paths must not reference Adobe/Premiere (AGENTS.md §1)"
-            ));
+            errors.push(format!("{f}: asset paths must not reference Adobe/Premiere (AGENTS.md §1)"));
         }
         let side = format!("{f}.attribution");
         match std::fs::read_to_string(&side) {
             Err(_) => errors.push(format!("{f}: missing attribution sidecar {side}")),
             Ok(text) => {
                 for field in REQUIRED_FIELDS {
-                    let ok = text.lines().any(|l| {
-                        l.split_once(':')
-                            .is_some_and(|(k, v)| k.trim() == *field && !v.trim().is_empty())
-                    });
+                    let ok = text.lines().any(|l| l.split_once(':').is_some_and(|(k, v)| k.trim() == *field && !v.trim().is_empty()));
                     if !ok {
                         errors.push(format!("{side}: field `{field}` missing or empty"));
                     }
                 }
-                let lic = text.lines().find_map(|l| {
-                    l.split_once(':')
-                        .filter(|(k, _)| k.trim() == "license")
-                        .map(|(_, v)| v.trim().to_ascii_lowercase())
-                });
-                if lic.is_some_and(|l| {
-                    l.contains("-nc")
-                        || l.contains("-nd")
-                        || l.contains("adobe")
-                        || l.contains("proprietary")
-                }) {
-                    errors.push(format!(
-                        "{side}: licence not allowed (no NC/ND, Adobe or proprietary licences)"
-                    ));
+                let lic = text.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.trim() == "license").map(|(_, v)| v.trim().to_ascii_lowercase()));
+                if lic.is_some_and(|l| l.contains("-nc") || l.contains("-nd") || l.contains("adobe") || l.contains("proprietary")) {
+                    errors.push(format!("{side}: licence not allowed (no NC/ND, Adobe or proprietary licences)"));
                 }
             }
         }

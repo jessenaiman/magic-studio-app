@@ -62,7 +62,7 @@ pub struct CommandSpec { // crates/engine/src/commands.rs:26
 
 ## 4. Views — honest state
 
-| View | egui (`ui-egui`) | JS/TS (`apps/magic-cli/ui`, retired #93) | Status |
+| View | egui (`ui-egui`) | JS/TS (`apps/magic-cli/ui`, loaded by the Tauri shell as workspaces) | Status |
 |---|---|---|---|
 | Projects | `lib.rs` refresh | `projects.html` landing only | Stand-in |
 | Storyboard | `storyboard_workspace.rs` | `storyboard-workspace.html` | Working spread, fields editor |
@@ -72,9 +72,9 @@ pub struct CommandSpec { // crates/engine/src/commands.rs:26
 
 ## 5. Control / MCP / API
 
-- `magic-tauri --control 9876`: authenticated JSON-lines control over loopback TCP; shares the session used by Tauri IPC.
+- `magic-tauri --control 9876`: authenticated JSON-lines control over loopback TCP; shares the session used by Tauri IPC. Methods follow FilmCraft: `engine.*`, `ui.inspect/elements/click/move/drag/scroll/key/type/set/focus/resize/screenshot`, `app.quit`.
 - `magic-cli --bridge 127.0.0.1:9876 mcp`: Craft-style `rmcp` tools; no local session or automatic fallback in bridge mode. Omit `--bridge` for explicit headless operation.
-- The separate browser HTTP UI server and duplicate CLI socket implementation are removed.
+- The separate browser HTTP UI server and duplicate CLI socket implementation are removed. `crates/engine/src/studio_sessions.rs` and `local_ipc.rs` are unreferenced remnants of the old Unix-socket transport.
 - See [control-protocol.md](control-protocol.md) for implemented UI operations and the canonical launch instructions.
 
 ## 6. Known deviations (true)

@@ -7,50 +7,54 @@ description: Operate Magic Studio live through magic-cli; inspect views, save pr
 
 ## Discover and work live
 
-Use this checkout's installed `magic-cli`. Read `magic-cli --help` and
-`magic-cli commands FILTER` for the operation needed. Commands and parameters
-come from the installed registry; do not invent them or assume another
-checkout's pipeline exists here.
+Use this checkout's `magic-cli`. Read `magic-cli --help` and `magic-cli commands FILTER`
+for the operation needed. Commands and parameters come from the registry; do not invent them
+or assume another checkout's pipeline exists here.
 
-Work in the visible desktop app so Jesse can watch the production develop.
-Continue the authorized task through ordinary production decisions; discovery
-is the start of the work. Respect an explicit request to pause or discuss.
+Work in the visible desktop app so Jesse can watch the production develop. Continue the
+authorized task through ordinary production decisions; discovery is the start of the work.
+Respect an explicit request to pause or discuss.
+
+The live app is `magic-tauri`, started with an explicit control port and a per-session token
+(see [the control protocol](../../../docs/control-protocol.md)). The bridge is never discovered
+automatically: ask for or read the port, and use the same `MAGIC_CONTROL_TOKEN` as the app.
 
 ```bash
-magic-cli studio open /absolute/Project.magic
-magic-cli studio list
-magic-cli ui feedback
-magic-cli ui state
-magic-cli ui elements
-magic-cli ui look output=/absolute/review.png
+magic-cli --bridge 127.0.0.1:9876 exec project.open path=/absolute/Project.magic
+magic-cli --bridge 127.0.0.1:9876 ui inspect
+magic-cli --bridge 127.0.0.1:9876 ui elements prefix=tab-
+magic-cli --bridge 127.0.0.1:9876 ui screenshot /absolute/review.png
 ```
 
-Check feedback for the intended project/window and actual readiness. Open the
-returned screenshot and inspect it. No responsive window means live UI work
-has not been verified; diagnose the failure before claiming a visible result.
+`ui inspect` reports the actual view, project, alerts, preserved-workspace feedback and any
+Content-Security-Policy blocks. Open the returned screenshot and look at it. No responsive window
+means live UI work has not been verified; diagnose the failure before claiming a visible result.
 
 ## Views and controls
 
-Discover controls with `ui elements`, then use their returned IDs. Current
-source view buttons are:
+Discover controls with `ui elements`, then use their returned IDs. The view tabs are:
 
 | View | Button ID |
 | --- | --- |
-| Storyboard | `tab-project` |
-| Animation | `tab-animation` |
+| Home | `tab-home` |
+| Project | `tab-project` |
+| Storyboard | `tab-storyboard` |
 | Lyrics | `tab-design` |
+| Animation | `tab-animation` |
 | Studio | `tab-studio` |
-| Resources | `tab-skills` |
-| Mayhem | `tab-analytics` |
 
 ```bash
-magic-cli ui click id=tab-animation
-magic-cli ui look output=/absolute/animation-review.png
+magic-cli --bridge 127.0.0.1:9876 ui click tab-animation
+magic-cli --bridge 127.0.0.1:9876 ui screenshot /absolute/animation-review.png
 ```
 
-Confirm IDs in the live controls; installed UI can differ from source.
-Inspect Studio's actual state and linked project before describing its renderer.
-Use `ui set` for controls and the registry command for project operations.
+Controls: `ui click {id | x,y}`, `ui move`, `ui drag from= to=`, `ui scroll`, `ui key Ctrl+K`,
+`ui type text=…`, `ui set id=… value=…` (or `checked=true`), `ui set view=animation`, `ui focus`,
+`ui resize width= height=`, `ui screenshot`. Input is delivered as DOM events (no `:hover`, no
+native drag-and-drop, no cross-origin frames). Confirm IDs in the live controls; the UI can differ
+from source. Inspect Studio's actual state and linked project before describing its renderer.
+Use the registry command for project operations; a delivered click is not proof, so read back state
+and pixels.
 
 ## Storyboard documents
 
@@ -123,10 +127,10 @@ magic-cli storyboard export --path /absolute/storyboard.designcraft --pdf /absol
 ## Save and verify the result
 
 ```bash
-magic-cli project save
-magic-cli ui feedback
-magic-cli ui look output=/absolute/saved-review.png
-magic-cli app errors limit=50
+magic-cli --bridge 127.0.0.1:9876 exec project.save
+magic-cli --bridge 127.0.0.1:9876 ui inspect
+magic-cli --bridge 127.0.0.1:9876 ui screenshot /absolute/saved-review.png
+magic-cli --bridge 127.0.0.1:9876 exec app.errors limit=50
 magic-cli backstage observe path=/absolute/Project.magic
 ```
 
@@ -140,11 +144,12 @@ report if the visible app still runs a different build.
 ## Native Rust verification
 
 The retired Magic audit, review and formatting wrappers are removed. For
-verification authorized by Jesse, use Craft's actual Cargo commands directly:
-`cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings`.
+verification authorized by Jesse, run `cargo xtask ci` (which executes
+`cargo fmt --check`, `cargo xtask layers`, Clippy with `-D warnings`, tests across
+the Tauri and egui package groups, and the `magic-tauri` control-protocol tests;
+GitHub CI invokes the same gate through `storytold/craft-common-actions`).
 Capture each native command's output and exit status without custom scores or
 relabeling failures. Do not run the withdrawn frontend or acceptance checks.
-No Craft CI wrapper has been installed over Magic's existing `xtask`.
 
 Mayhem's `mayhem.evidence` command may read retained historical reports. It does
 not execute a scan. Preserve those reports and user project data.

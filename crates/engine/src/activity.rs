@@ -33,10 +33,7 @@ pub fn enter(id: &str, params: &Value) -> Context {
     Context(previous)
 }
 fn now() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros()).unwrap_or(0)
 }
 fn path() -> Option<PathBuf> {
     std::env::var_os("XDG_STATE_HOME")
@@ -92,34 +89,20 @@ fn notable(event: &Value) -> bool {
 
 /// Page selection reports would each become a root action; they live only in the history.
 fn history_only(event: &Value) -> bool {
-    matches!(
-        event["stage"].as_str(),
-        Some("selection_changed" | "clip_switched")
-    )
+    matches!(event["stage"].as_str(), Some("selection_changed" | "clip_switched"))
 }
 fn read_rows(path: &std::path::Path) -> Vec<Value> {
-    fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect()
+    fs::read_to_string(path).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
 }
 /// Called with the journal lock held, so sequences stay ordered across both files.
 fn remember(path: &std::path::Path, event: &Value) -> std::io::Result<()> {
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
-        return Err(std::io::Error::other(
-            "activity history must not be a symlink",
-        ));
+        return Err(std::io::Error::other("activity history must not be a symlink"));
     }
     let mut rows = read_rows(path);
     rows.push(event.clone());
     let excess = rows.len().saturating_sub(HISTORY_LIMIT);
-    let bytes = rows[excess..]
-        .iter()
-        .map(Value::to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
+    let bytes = rows[excess..].iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n";
     fs::write(path, bytes)?;
     #[cfg(unix)]
     {
@@ -131,19 +114,11 @@ fn remember(path: &std::path::Path, event: &Value) -> std::io::Result<()> {
 fn project(event: &Value) -> String {
     event["project"]
         .as_str()
-        .map(|p| {
-            fs::canonicalize(p)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| p.into())
-        })
+        .map(|p| fs::canonicalize(p).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| p.into()))
         .unwrap_or_else(|| "unassigned".into())
 }
 fn root(event: &Value) -> String {
-    event["root_request_id"]
-        .as_str()
-        .or(event["request_id"].as_str())
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("legacy-{}", event["sequence"]))
+    event["root_request_id"].as_str().or(event["request_id"].as_str()).map(str::to_owned).unwrap_or_else(|| format!("legacy-{}", event["sequence"]))
 }
 /// A request id's project, for rows that recognised one before it was dropped as noise.
 fn request_projects(rows: &[Value]) -> HashMap<String, String> {
@@ -162,8 +137,7 @@ fn request_projects(rows: &[Value]) -> HashMap<String, String> {
 
 /// Cursors and orphaned dispatch stages carry no action of their own.
 fn is_noise(event: &Value) -> bool {
-    event["kind"] == "cursor"
-        || (event["stage"] == "handler_dispatch" && event["request_id"].is_null())
+    event["kind"] == "cursor" || (event["stage"] == "handler_dispatch" && event["request_id"].is_null())
 }
 
 fn adopt_project(event: &mut Value, destinations: &HashMap<String, String>) {
@@ -179,31 +153,18 @@ fn adopt_request(event: &mut Value, assigned: &[Value]) {
     if event["stage"] != "frontend_ack" || !event["request_id"].is_null() {
         return;
     }
-    let prior = assigned.iter().rev().find(|p| {
-        p["command"] == event["command"]
-            && project(p) == project(event)
-            && p["request_id"].is_string()
-    });
+    let prior = assigned.iter().rev().find(|p| p["command"] == event["command"] && project(p) == project(event) && p["request_id"].is_string());
     if let Some(prior) = prior {
         event["request_id"] = prior["request_id"].clone();
     }
 }
 
 /// Stamp the row's project and root, and remember that root under the project.
-fn stamp_row(
-    event: &mut Value,
-    destinations: &HashMap<String, String>,
-    assigned: &[Value],
-    groups: &mut HashMap<String, Vec<String>>,
-) {
+fn stamp_row(event: &mut Value, destinations: &HashMap<String, String>, assigned: &[Value], groups: &mut HashMap<String, Vec<String>>) {
     adopt_project(event, destinations);
     adopt_request(event, assigned);
     let p = project(event);
-    event["project"] = if p == "unassigned" {
-        Value::Null
-    } else {
-        json!(p)
-    };
+    event["project"] = if p == "unassigned" { Value::Null } else { json!(p) };
     let key = root(event);
     event["root_request_id"] = json!(key);
     let roots = groups.entry(p).or_default();
@@ -214,10 +175,7 @@ fn stamp_row(
 
 /// The three most recent roots of every project, as project → roots.
 fn kept_roots(groups: HashMap<String, Vec<String>>) -> HashMap<String, HashSet<String>> {
-    groups
-        .into_iter()
-        .map(|(p, roots)| (p, roots.into_iter().rev().take(3).collect()))
-        .collect()
+    groups.into_iter().map(|(p, roots)| (p, roots.into_iter().rev().take(3).collect())).collect()
 }
 
 /// The newest 64 stages of every retained root, oldest first.
@@ -263,21 +221,14 @@ fn prepare_access(path: &std::path::Path, dir: &std::path::Path) -> std::io::Res
         fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
     }
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
-        return Err(std::io::Error::other(
-            "activity state must not be a symlink",
-        ));
+        return Err(std::io::Error::other("activity state must not be a symlink"));
     }
     Ok(())
 }
 
 /// The receipt file, exclusively locked, readable and writable by this user only.
 fn locked_receipt(path: &std::path::Path) -> std::io::Result<fs::File> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)?;
+    let file = OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?;
     file.lock()?;
     #[cfg(unix)]
     {
@@ -288,16 +239,11 @@ fn locked_receipt(path: &std::path::Path) -> std::io::Result<fs::File> {
 }
 
 fn parse_lines(text: &str) -> Vec<Value> {
-    text.lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect()
+    text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
 }
 
 fn max_sequence(rows: &[Value]) -> u64 {
-    rows.iter()
-        .filter_map(|v| v["sequence"].as_u64())
-        .max()
-        .unwrap_or(0)
+    rows.iter().filter_map(|v| v["sequence"].as_u64()).max().unwrap_or(0)
 }
 
 /// Legacy acknowledgements can be associated only when command and project match a retained root.
@@ -305,11 +251,7 @@ fn adopt_legacy_ack(event: &mut Value, rows: &[Value]) {
     if !event["request_id"].is_null() || event["stage"] != "frontend_ack" {
         return;
     }
-    let previous = rows.iter().rev().find(|v| {
-        v["command"] == event["command"]
-            && project(v) == project(event)
-            && v["request_id"].is_string()
-    });
+    let previous = rows.iter().rev().find(|v| v["command"] == event["command"] && project(v) == project(event) && v["request_id"].is_string());
     if let Some(previous) = previous {
         event["request_id"] = previous["request_id"].clone();
     }
@@ -349,11 +291,7 @@ fn project_dir_for_event(event: &Value) -> Option<PathBuf> {
         .or_else(|| event["outputs"]["path"].as_str())
         .or_else(|| event["inputs"]["path"].as_str())?;
     let p = PathBuf::from(raw);
-    let dir = if p.extension().is_some_and(|ext| ext == "magic") || p.is_file() {
-        p.parent()?.to_path_buf()
-    } else {
-        p
-    };
+    let dir = if p.extension().is_some_and(|ext| ext == "magic") || p.is_file() { p.parent()?.to_path_buf() } else { p };
     dir.is_dir().then_some(dir)
 }
 
@@ -432,22 +370,12 @@ const TRACKED_INPUT_KEYS: &[&str] = &[
     "duration",
 ];
 
-pub fn command(
-    project: Option<&std::path::Path>,
-    id: &str,
-    params: &Value,
-    stage: &str,
-    error: Option<&str>,
-) {
+pub fn command(project: Option<&std::path::Path>, id: &str, params: &Value, stage: &str, error: Option<&str>) {
     let context = CONTEXT.with(|v| v.borrow().clone());
     let mut bounded = json!({});
     for key in TRACKED_INPUT_KEYS {
         if let Some(v) = params.get(*key) {
-            bounded[*key] = if let Some(s) = v.as_str() {
-                json!(s.chars().take(220).collect::<String>())
-            } else {
-                v.clone()
-            };
+            bounded[*key] = if let Some(s) = v.as_str() { json!(s.chars().take(220).collect::<String>()) } else { v.clone() };
         }
     }
     append(
@@ -483,19 +411,13 @@ pub fn errors(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {
     let limit = p["limit"].as_u64().unwrap_or(50).clamp(1, 192) as usize;
     let mut by_sequence = std::collections::BTreeMap::new();
     for event in newer_than(history, selected.as_ref(), cursor) {
-        if matches!(
-            event["stage"].as_str(),
-            Some("engine_error" | "handler_error")
-        ) {
+        if matches!(event["stage"].as_str(), Some("engine_error" | "handler_error")) {
             by_sequence.insert(event["sequence"].as_u64().unwrap_or(0), event);
         }
     }
     let count = by_sequence.len();
     let errors: Vec<Value> = by_sequence.into_values().take(limit).collect();
-    let next = errors
-        .last()
-        .and_then(|e| e["sequence"].as_u64())
-        .unwrap_or(cursor);
+    let next = errors.last().and_then(|e| e["sequence"].as_u64()).unwrap_or(cursor);
     Ok(json!({
         "ok":true, "project":selected, "errors":errors, "retained_error_count":count,
         "next_cursor":next, "has_more":count > limit,
@@ -538,11 +460,8 @@ pub fn result(project: Option<&std::path::Path>, id: &str, value: &Value, elapse
     ] {
         if let Some(v) = value.get(key) {
             let bytes = v.to_string();
-            outputs[key] = if bytes.len() <= 16000 {
-                v.clone()
-            } else {
-                json!({"summary":"output exceeds receipt bound; inspect command result","bytes":bytes.len()})
-            };
+            outputs[key] =
+                if bytes.len() <= 16000 { v.clone() } else { json!({"summary":"output exceeds receipt bound; inspect command result","bytes":bytes.len()}) };
         }
     }
     append(
@@ -564,21 +483,14 @@ fn read_log() -> crate::Result<(String, Vec<Value>)> {
     file.lock_shared()?;
     let mut text = String::new();
     file.read_to_string(&mut text)?;
-    Ok((
-        text,
-        history_path().map(|p| read_rows(&p)).unwrap_or_default(),
-    ))
+    Ok((text, history_path().map(|p| read_rows(&p)).unwrap_or_default()))
 }
 
 fn selected_project(s: &crate::Session, p: &Value) -> Option<String> {
     p["project"]
         .as_str()
         .map(str::to_owned)
-        .or_else(|| {
-            s.project_path
-                .as_ref()
-                .map(|v| v.to_string_lossy().into_owned())
-        })
+        .or_else(|| s.project_path.as_ref().map(|v| v.to_string_lossy().into_owned()))
         .map(|v| project(&json!({"project":v})))
 }
 
@@ -587,21 +499,16 @@ fn group_actions(matching: &[Value]) -> crate::Result<Vec<Value>> {
     let mut actions = Vec::<Value>::new();
     for event in matching {
         let key = root(event);
-        if let Some(action) = actions
-            .iter_mut()
-            .find(|a| a["root_request_id"] == key && a["project"] == event["project"])
-        {
+        if let Some(action) = actions.iter_mut().find(|a| a["root_request_id"] == key && a["project"] == event["project"]) {
             action["last_sequence"] = event["sequence"].clone();
             action["events"]
                 .as_array_mut()
-                .ok_or_else(|| {
-                    crate::EngineError::InvalidParams(
-                        "Activity action events are not an array".into(),
-                    )
-                })?
+                .ok_or_else(|| crate::EngineError::InvalidParams("Activity action events are not an array".into()))?
                 .push(event.clone());
         } else {
-            actions.push(json!({"root_request_id":key,"project":event["project"],"first_sequence":event["sequence"],"last_sequence":event["sequence"],"events":[event]}));
+            actions.push(
+                json!({"root_request_id":key,"project":event["project"],"first_sequence":event["sequence"],"last_sequence":event["sequence"],"events":[event]}),
+            );
         }
     }
     Ok(actions)
@@ -612,23 +519,15 @@ fn next_cursor(events: &[Value], cursor: u64, global: u64, more: bool) -> u64 {
     if !more {
         return global;
     }
-    events
-        .last()
-        .and_then(|v| v["sequence"].as_u64())
-        .unwrap_or(cursor)
+    events.last().and_then(|v| v["sequence"].as_u64()).unwrap_or(cursor)
 }
 
 fn after(rows: Vec<Value>, selected: Option<&String>) -> Vec<Value> {
-    rows.into_iter()
-        .filter(|v| selected.is_none_or(|p| project(v) == *p))
-        .collect()
+    rows.into_iter().filter(|v| selected.is_none_or(|p| project(v) == *p)).collect()
 }
 
 fn newer_than(rows: Vec<Value>, selected: Option<&String>, cursor: u64) -> Vec<Value> {
-    after(rows, selected)
-        .into_iter()
-        .filter(|v| v["sequence"].as_u64().unwrap_or(0) > cursor)
-        .collect()
+    after(rows, selected).into_iter().filter(|v| v["sequence"].as_u64().unwrap_or(0) > cursor).collect()
 }
 
 pub fn events(s: &mut crate::Session, p: &Value) -> crate::Result<Value> {

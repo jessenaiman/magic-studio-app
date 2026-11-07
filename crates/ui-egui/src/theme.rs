@@ -27,39 +27,18 @@ pub const BORDER_STRONG: Color32 = Color32::from_rgb(47, 53, 69);
 
 pub fn apply(ctx: &Context) {
     let mut style = (*ctx.global_style()).clone();
-    style.text_styles.insert(
-        TextStyle::Heading,
-        FontId::new(15.5, FontFamily::Proportional),
-    );
-    style
-        .text_styles
-        .insert(TextStyle::Body, FontId::new(12.5, FontFamily::Proportional));
-    style.text_styles.insert(
-        TextStyle::Button,
-        FontId::new(12.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Small,
-        FontId::new(11.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Monospace,
-        FontId::new(11.5, FontFamily::Monospace),
-    );
+    style.text_styles.insert(TextStyle::Heading, FontId::new(15.5, FontFamily::Proportional));
+    style.text_styles.insert(TextStyle::Body, FontId::new(12.5, FontFamily::Proportional));
+    style.text_styles.insert(TextStyle::Button, FontId::new(12.0, FontFamily::Proportional));
+    style.text_styles.insert(TextStyle::Small, FontId::new(11.0, FontFamily::Proportional));
+    style.text_styles.insert(TextStyle::Monospace, FontId::new(11.5, FontFamily::Monospace));
 
     style.spacing.item_spacing = egui::vec2(6.0, 5.0);
     style.spacing.button_padding = egui::vec2(9.0, 5.0);
     style.spacing.interact_size = egui::vec2(36.0, 24.0);
 
     let mut v = Visuals::dark();
-    craft_ui::theme::WidgetPalette {
-        noninteractive: BG_PANEL,
-        inactive: BG_INPUT,
-        hovered: BG_HOVER,
-        active: BG_ACTIVE,
-        open: BG_HOVER,
-    }
-    .apply_to(
+    craft_ui::theme::WidgetPalette { noninteractive: BG_PANEL, inactive: BG_INPUT, hovered: BG_HOVER, active: BG_ACTIVE, open: BG_HOVER }.apply_to(
         &mut v.widgets,
         CornerRadius::same(5),
         Stroke::new(1.0, TEXT_PRIMARY),

@@ -5,9 +5,10 @@ repository honest — measured claims, minimal diffs, native tool output.
 
 ## Owns
 
-- Repository audits: `magic-cli audit` runs the repository's own checks (cargo
-  clippy, ESLint, Stylelint, Lizard, Wallace, jscpd, PurgeCSS, scope) and prints
-  what they print. Quote the tool output; do not parse, score, or soften it.
+- Repository audits: the repository's own native checks, run directly: `cargo fmt --check`,
+  `cargo clippy -D warnings` and `cargo xtask ci` (the same gate CI runs through craft-common-actions).
+  There is no `magic-cli audit` and no analyzer runner or report file. Quote the tool output; do not parse,
+  score, or soften it.
 - Code fixes: smallest coherent change that resolves the actual problem, in the
   style of the surrounding code. `cargo clippy -- -D warnings` stays clean; a
   fix that breaks a clean check is not a fix.

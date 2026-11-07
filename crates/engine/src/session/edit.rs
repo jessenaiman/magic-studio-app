@@ -10,24 +10,11 @@ use crate::{EngineError, Result, Session};
 
 impl Session {
     /// Set the content of the document of `kind` at `path` (opening it if needed) as one edit.
-    pub fn edit_document(
-        &mut self,
-        kind: &'static str,
-        path: &Path,
-        value: Value,
-    ) -> Result<&mut DocState> {
+    pub fn edit_document(&mut self, kind: &'static str, path: &Path, value: Value) -> Result<&mut DocState> {
         let existing = self.document(kind, path)?.map(|d| d.clone());
         // The undo step keeps the document as it was before this command first edited it.
-        if !self
-            .step_base
-            .iter()
-            .any(|b| b.kind == kind && b.path == path)
-        {
-            self.step_base.push(
-                existing
-                    .clone()
-                    .unwrap_or_else(|| DocState::new(kind, path, Value::Null)),
-            );
+        if !self.step_base.iter().any(|b| b.kind == kind && b.path == path) {
+            self.step_base.push(existing.clone().unwrap_or_else(|| DocState::new(kind, path, Value::Null)));
         }
         if existing.is_none() {
             self.docs.push(DocState::new(kind, path, Value::Null));

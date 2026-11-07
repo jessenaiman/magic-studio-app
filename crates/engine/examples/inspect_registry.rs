@@ -14,10 +14,7 @@ fn main() {
     for spec in specs.iter().take(10) {
         let enabled = (spec.enabled)(&session);
         let status = if enabled.is_ok() { "yes" } else { "no" };
-        println!(
-            "- {:<24} enabled: {:<5} params: {}",
-            spec.id, status, spec.params
-        );
+        println!("- {:<24} enabled: {:<5} params: {}", spec.id, status, spec.params);
     }
     if specs.len() > 10 {
         println!("... and {} more commands.", specs.len() - 10);

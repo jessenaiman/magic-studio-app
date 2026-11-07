@@ -17,13 +17,8 @@ pub fn start(spec: &str, token: &str, dispatch: Dispatch) -> Result<SocketAddr, 
     if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("MAGIC_CONTROL_TOKEN must contain 64 hexadecimal characters".into());
     }
-    let addr: SocketAddr = if spec.contains(':') {
-        spec.to_owned()
-    } else {
-        format!("127.0.0.1:{spec}")
-    }
-    .parse()
-    .map_err(|_| "--control requires a port or loopback IP:port")?;
+    let addr: SocketAddr =
+        if spec.contains(':') { spec.to_owned() } else { format!("127.0.0.1:{spec}") }.parse().map_err(|_| "--control requires a port or loopback IP:port")?;
     if !addr.ip().is_loopback() {
         return Err("--control must bind to loopback".into());
     }
@@ -40,11 +35,7 @@ pub fn start(spec: &str, token: &str, dispatch: Dispatch) -> Result<SocketAddr, 
                 let _ = stream.set_write_timeout(Some(Duration::from_secs(120)));
                 if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     active.fetch_sub(1, Ordering::SeqCst);
-                    let _ = writeln!(
-                        stream,
-                        "{}",
-                        json!({"ok":false,"error":"control connection limit reached"})
-                    );
+                    let _ = writeln!(stream, "{}", json!({"ok":false,"error":"control connection limit reached"}));
                     continue;
                 }
                 let active_worker = active.clone();
@@ -54,9 +45,7 @@ pub fn start(spec: &str, token: &str, dispatch: Dispatch) -> Result<SocketAddr, 
                     .name("magic-control-client".into())
                     .spawn(move || {
                         if let Ok(reader) = stream.try_clone() {
-                            serve_lines(BufReader::new(reader), &mut stream, &token, |m, p| {
-                                dispatch(m, p)
-                            });
+                            serve_lines(BufReader::new(reader), &mut stream, &token, |m, p| dispatch(m, p));
                         }
                         active_worker.fetch_sub(1, Ordering::SeqCst);
                     })
@@ -70,18 +59,10 @@ pub fn start(spec: &str, token: &str, dispatch: Dispatch) -> Result<SocketAddr, 
     Ok(bound)
 }
 
-fn serve_lines<R: BufRead, W: Write>(
-    mut reader: R,
-    mut writer: W,
-    token: &str,
-    dispatch: impl Fn(&str, Value) -> Result<Value, String>,
-) {
+fn serve_lines<R: BufRead, W: Write>(mut reader: R, mut writer: W, token: &str, dispatch: impl Fn(&str, Value) -> Result<Value, String>) {
     loop {
         let mut line = Vec::new();
-        let read = reader
-            .by_ref()
-            .take((MAX_LINE + 1) as u64)
-            .read_until(b'\n', &mut line);
+        let read = reader.by_ref().take((MAX_LINE + 1) as u64).read_until(b'\n', &mut line);
         match read {
             Ok(0) | Err(_) => break,
             _ => {}
@@ -91,26 +72,18 @@ fn serve_lines<R: BufRead, W: Write>(
         } else if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         } else {
-            serde_json::from_slice::<Value>(&line)
-                .map_err(|_| "invalid JSON request")
-                .and_then(|v| {
-                    if !v.is_object() || v["method"].as_str().is_none() {
-                        return Err("request requires a method");
-                    }
-                    if !bool::from(
-                        v["token"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .as_bytes()
-                            .ct_eq(token.as_bytes()),
-                    ) {
-                        return Err("unauthorized control token");
-                    }
-                    if v.get("params").is_some_and(|p| !p.is_object()) {
-                        return Err("params must be an object");
-                    }
-                    Ok(v)
-                })
+            serde_json::from_slice::<Value>(&line).map_err(|_| "invalid JSON request").and_then(|v| {
+                if !v.is_object() || v["method"].as_str().is_none() {
+                    return Err("request requires a method");
+                }
+                if !bool::from(v["token"].as_str().unwrap_or_default().as_bytes().ct_eq(token.as_bytes())) {
+                    return Err("unauthorized control token");
+                }
+                if v.get("params").is_some_and(|p| !p.is_object()) {
+                    return Err("params must be an object");
+                }
+                Ok(v)
+            })
         };
         let request = match parsed {
             Ok(v) => v,
@@ -126,10 +99,7 @@ fn serve_lines<R: BufRead, W: Write>(
             Ok(result) => json!({"id":request["id"],"ok":true,"result":result}),
             Err(error) => json!({"id":request["id"],"ok":false,"error":error}),
         };
-        if writeln!(writer, "{reply}")
-            .and_then(|_| writer.flush())
-            .is_err()
-        {
+        if writeln!(writer, "{reply}").and_then(|_| writer.flush()).is_err() {
             break;
         }
     }
@@ -143,10 +113,7 @@ mod tests {
 
     #[test]
     fn authenticated_requests_preserve_id_and_dispatch_params() {
-        let request = format!(
-            "{}\n",
-            json!({"id":42,"token":TOKEN,"method":"engine.execute","params":{"command":"project.identity"}})
-        );
+        let request = format!("{}\n", json!({"id":42,"token":TOKEN,"method":"engine.execute","params":{"command":"project.identity"}}));
         let mut output = Vec::new();
         serve_lines(request.as_bytes(), &mut output, TOKEN, |method, params| {
             assert_eq!(method, "engine.execute");
@@ -154,24 +121,13 @@ mod tests {
             Ok(json!({"project":"live.magic"}))
         });
         let reply: Value = serde_json::from_slice(&output).expect("JSON reply");
-        assert_eq!(
-            reply,
-            json!({"id":42,"ok":true,"result":{"project":"live.magic"}})
-        );
+        assert_eq!(reply, json!({"id":42,"ok":true,"result":{"project":"live.magic"}}));
     }
 
     #[test]
     fn unauthorized_and_malformed_requests_close_before_dispatch() {
-        for bad in [
-            "{\"method\":\"project.close\"}",
-            "GET / HTTP/1.1",
-            "[]",
-            "{\"token\":\"wrong\",\"method\":\"project.close\"}",
-        ] {
-            let input = format!(
-                "{bad}\n{}\n",
-                json!({"token":TOKEN,"method":"project.close"})
-            );
+        for bad in ["{\"method\":\"project.close\"}", "GET / HTTP/1.1", "[]", "{\"token\":\"wrong\",\"method\":\"project.close\"}"] {
+            let input = format!("{bad}\n{}\n", json!({"token":TOKEN,"method":"project.close"}));
             let calls = Cell::new(0);
             let mut output = Vec::new();
             serve_lines(input.as_bytes(), &mut output, TOKEN, |_, _| {
@@ -186,10 +142,7 @@ mod tests {
 
     #[test]
     fn oversized_and_unterminated_requests_never_dispatch() {
-        for input in [
-            vec![b'x'; MAX_LINE + 1],
-            format!("{}", json!({"token":TOKEN,"method":"project.close"})).into_bytes(),
-        ] {
+        for input in [vec![b'x'; MAX_LINE + 1], format!("{}", json!({"token":TOKEN,"method":"project.close"})).into_bytes()] {
             let calls = Cell::new(0);
             let mut output = Vec::new();
             serve_lines(input.as_slice(), &mut output, TOKEN, |_, _| {

@@ -56,11 +56,7 @@ pub fn scribbles_mark_role() -> Result<Role> {
 
 /// All Craft AI roles declared by Magic Studio.
 pub fn magic_ai_roles() -> Result<Vec<Role>> {
-    Ok(vec![
-        fidget_role()?,
-        scribbles_role()?,
-        scribbles_mark_role()?,
-    ])
+    Ok(vec![fidget_role()?, scribbles_role()?, scribbles_mark_role()?])
 }
 
 /// Inspect the live Craft AI status (`AiClient::standard` + `ToolDesk`) for Magic Studio's roles.
@@ -121,25 +117,13 @@ pub fn craft_ai_status() -> Value {
 
 /// Format any Fidget prompt or response as Markdown with YAML frontmatter and the mandatory
 /// single-line `NOTE:` sentence.
-pub fn format_fidget_markdown(
-    template: &str,
-    save_command: &str,
-    tags: &[String],
-    canvas: Option<[u64; 2]>,
-    body: &str,
-) -> String {
+pub fn format_fidget_markdown(template: &str, save_command: &str, tags: &[String], canvas: Option<[u64; 2]>, body: &str) -> String {
     let trimmed = body.trim();
     if trimmed.starts_with("---\n") && trimmed.contains(FIDGET_NOTE) {
         return trimmed.to_owned();
     }
-    let tags_str = if tags.is_empty() {
-        format!("[magic, fidget, {template}]")
-    } else {
-        format!("[{}]", tags.join(", "))
-    };
-    let canvas_line = canvas
-        .map(|[w, h]| format!("canvas: [{w}, {h}]\n"))
-        .unwrap_or_default();
+    let tags_str = if tags.is_empty() { format!("[magic, fidget, {template}]") } else { format!("[{}]", tags.join(", ")) };
+    let canvas_line = canvas.map(|[w, h]| format!("canvas: [{w}, {h}]\n")).unwrap_or_default();
     format!(
         "---\n\
          role: fidget\n\
@@ -180,12 +164,7 @@ fn layout(kind: &Value, p: &Value) -> Result<String> {
     let mut text = kind["layout"].as_str().unwrap_or_default().to_string();
     if let Some(actions) = kind["actions"].as_object() {
         let name = p["action"].as_str().unwrap_or("walk");
-        let action = actions.get(name).ok_or_else(|| {
-            bad(format!(
-                "action must be one of {}",
-                actions.keys().cloned().collect::<Vec<_>>().join(", ")
-            ))
-        })?;
+        let action = actions.get(name).ok_or_else(|| bad(format!("action must be one of {}", actions.keys().cloned().collect::<Vec<_>>().join(", "))))?;
         text = text
             .replace("{frames}", "8")
             .replace("{action}", &format!("a {name} cycle"))
@@ -201,27 +180,13 @@ fn layout(kind: &Value, p: &Value) -> Result<String> {
 
 /// The full prompt: canvas, layout, the template's rules, the character and the shared rules.
 fn compose(all: &Value, kind: &Value, p: &Value) -> Result<String> {
-    let [w, h] = [
-        kind["canvas"][0].as_u64().unwrap_or(1024),
-        kind["canvas"][1].as_u64().unwrap_or(1536),
-    ];
-    let mut parts = vec![
-        format!("Draw ONE image on a {w} x {h} px canvas."),
-        layout(kind, p)?,
-    ];
-    for rule in kind["rules"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-    {
+    let [w, h] = [kind["canvas"][0].as_u64().unwrap_or(1024), kind["canvas"][1].as_u64().unwrap_or(1536)];
+    let mut parts = vec![format!("Draw ONE image on a {w} x {h} px canvas."), layout(kind, p)?];
+    for rule in kind["rules"].as_array().into_iter().flatten().filter_map(Value::as_str) {
         parts.push(all[rule].as_str().unwrap_or_default().to_string());
     }
     if kind["layout"].as_str() != Some("{prompt}")
-        && !kind["layout"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("{prompt}")
+        && !kind["layout"].as_str().unwrap_or_default().contains("{prompt}")
         && let Some(prompt) = p["prompt"].as_str().filter(|t| !t.trim().is_empty())
     {
         parts.push(format!("Character: {prompt}"));
@@ -244,9 +209,7 @@ pub(crate) struct PreparedDrawing {
 impl PreparedDrawing {
     pub fn prepare(p: &Value, name: &str) -> Result<Self> {
         let all = templates()?;
-        let kind = all["kinds"]
-            .get(name)
-            .ok_or_else(|| bad(format!("unknown drawing kind {name}")))?;
+        let kind = all["kinds"].get(name).ok_or_else(|| bad(format!("unknown drawing kind {name}")))?;
         if p.get("reference").is_some() && p.get("references").is_some() {
             return Err(bad("use reference or references, not both"));
         }
@@ -255,46 +218,24 @@ impl PreparedDrawing {
             Some(Value::String(one)) => vec![json!(one)],
             Some(Value::Array(many)) => many.clone(),
             _ => {
-                return Err(bad(
-                    "references must be an image path or array of image paths",
-                ));
+                return Err(bad("references must be an image path or array of image paths"));
             }
         };
-        if references.len() > 5
-            || references
-                .iter()
-                .any(|r| r.as_str().is_none_or(|s| s.trim().is_empty()))
-        {
-            return Err(bad(
-                "references must contain at most five nonempty image paths",
-            ));
+        if references.len() > 5 || references.iter().any(|r| r.as_str().is_none_or(|s| s.trim().is_empty())) {
+            return Err(bad("references must contain at most five nonempty image paths"));
         }
         if kind["needs_reference"] == true && references.is_empty() {
-            return Err(bad(format!(
-                "{name} needs reference=<image of the character>"
-            )));
+            return Err(bad(format!("{name} needs reference=<image of the character>")));
         }
         if name == "new" && p["prompt"].as_str().is_none_or(|t| t.trim().is_empty()) {
             return Err(bad("new needs prompt=<the character to draw>"));
         }
         let prompt = compose(&all, kind, p)?;
-        let save_command = kind["save_command"]
-            .as_str()
-            .unwrap_or("project.add_asset")
-            .to_owned();
+        let save_command = kind["save_command"].as_str().unwrap_or("project.add_asset").to_owned();
         let save_kind = kind["save_kind"].as_str().unwrap_or("image").to_owned();
         let save_slot = kind["save_slot"].as_str().map(str::to_owned);
-        let tags: Vec<String> = kind["tags"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(str::to_owned)
-            .collect();
-        let canvas = [
-            kind["canvas"][0].as_u64().unwrap_or(1024),
-            kind["canvas"][1].as_u64().unwrap_or(1536),
-        ];
+        let tags: Vec<String> = kind["tags"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect();
+        let canvas = [kind["canvas"][0].as_u64().unwrap_or(1024), kind["canvas"][1].as_u64().unwrap_or(1536)];
         let markdown = format_fidget_markdown(name, &save_command, &tags, Some(canvas), &prompt);
         let mut request = json!({
             "kind": name,
@@ -307,15 +248,7 @@ impl PreparedDrawing {
         if !references.is_empty() {
             request["references"] = json!(references);
         }
-        for key in [
-            "provider",
-            "model",
-            "character",
-            "project",
-            "scene",
-            "action",
-            "count",
-        ] {
+        for key in ["provider", "model", "character", "project", "scene", "action", "count"] {
             if let Some(value) = p.get(key) {
                 request[key] = value.clone();
             }
@@ -343,10 +276,7 @@ impl PreparedDrawing {
 /// Return a final prompt, Markdown brief with YAML frontmatter + `NOTE:`, and references for
 /// `scribbles.generate --params JSON`.
 pub fn cmd_fidget_prepare(_: &mut Session, p: &Value) -> Result<Value> {
-    let name = p["kind"]
-        .as_str()
-        .or_else(|| p["template"].as_str())
-        .unwrap_or("custom");
+    let name = p["kind"].as_str().or_else(|| p["template"].as_str()).unwrap_or("custom");
     let prepared = PreparedDrawing::prepare(p, name)?;
     let mut request = prepared.request;
     request["ok"] = json!(true);

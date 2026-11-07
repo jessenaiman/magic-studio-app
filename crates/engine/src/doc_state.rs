@@ -36,29 +36,13 @@ impl DocState {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
         };
-        let value = serde_json::from_slice(&bytes).map_err(|e| {
-            EngineError::InvalidParams(format!("{} is not valid JSON: {e}", path.display()))
-        })?;
-        Ok(Some(Self {
-            kind,
-            path: path.to_path_buf(),
-            value,
-            revision: 0,
-            dirty: false,
-            stamp: crate::link_watch::FileStamp::of(path),
-        }))
+        let value = serde_json::from_slice(&bytes).map_err(|e| EngineError::InvalidParams(format!("{} is not valid JSON: {e}", path.display())))?;
+        Ok(Some(Self { kind, path: path.to_path_buf(), value, revision: 0, dirty: false, stamp: crate::link_watch::FileStamp::of(path) }))
     }
 
     /// A document whose file does not exist yet.
     pub fn new(kind: &'static str, path: &Path, value: Value) -> Self {
-        Self {
-            kind,
-            path: path.to_path_buf(),
-            value,
-            revision: 0,
-            dirty: true,
-            stamp: None,
-        }
+        Self { kind, path: path.to_path_buf(), value, revision: 0, dirty: true, stamp: None }
     }
 
     /// Whether another writer changed the file since the document last matched it.
@@ -80,8 +64,7 @@ impl DocState {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let payload = serde_json::to_vec_pretty(&self.value)
-            .map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+        let payload = serde_json::to_vec_pretty(&self.value).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
         craft_atomic::atomic_write(&self.path, &payload)?;
         self.stamp = crate::link_watch::FileStamp::of(&self.path);
         self.dirty = false;

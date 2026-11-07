@@ -1,35 +1,36 @@
 # Magic Studio command architecture
 
-`magic` (the app under its short name) launches the native Rust application.
-The desktop and command line share the `magic` binary. The installed `magic-cli` name selects CLI mode.
-No arguments print help.
+Magic follows the Craft app split: one Rust engine whose `Session::execute(id, params)` is the
+only dispatch, a thin desktop shell, and a CLI that runs either headlessly or against the live
+desktop. `apps/magic-tauri` (Tauri v2, React frontend in `apps/magic/ui`) is the desktop app. The egui
+`magic` binary in this directory is a legacy restoration reference. `magic-cli` is a separate
+executable; no arguments print help.
 
 The source of command IDs, labels, parameter documentation, journaling and long-running metadata
 is `crates/engine/src/commands.rs`. The CLI resolves `magic-cli <domain> <verb>` (hyphens for
 underscores) and `magic-cli <domain.verb>` against that registry; it keeps no second dispatch
 table.
 
-The CLI uses one caller session (`apps/magic-cli/src/session.rs`) for project/window
-binding. A selected live project uses its private Unix socket with expected project/instance
-guards (`crates/engine/src/studio_sessions.rs`). An unopened project runs in this process's
-engine (`crates/engine/src/headless.rs`) for the lifetime of the CLI invocation: it claims the project writer lease, retains transient state, executes
-`Session::execute` and saves mutations. Opening a window drops that engine before the GUI takes
-ownership. The transport is automatic. A pinned window that closes or changes projects is an
-error, not a fallback to a different writer; when exactly one window has the pinned project
-after a restart, the binding follows it. Explicit project selection is the only other rebind
-path. The binding file is replaced atomically and never touches the `.magic` document.
+There are exactly two ways to run a command, and the choice is always explicit:
 
-UI project actions use the native Rust app in `apps/magic-gui/` and the
-shared engine. Preserve existing project persistence and command ownership
-while the Rust UI rewrite is underway.
+- **Headless.** `magic-cli [--project /absolute/Project.magic] <command>` runs in this process's engine
+  for the lifetime of the invocation: it claims the project writer lease, executes
+  `Session::execute` and saves mutations.
+- **Live.** `magic-cli --bridge 127.0.0.1:PORT <command>` sends the command over the authenticated
+  control channel to a running `magic-tauri --control PORT` and shares that window's session. Both
+  processes need the same `MAGIC_CONTROL_TOKEN`. A bridge never falls back to a headless engine and
+  there is no automatic window discovery; `--project` cannot be combined with `--bridge` (use
+  `exec project.open path=/absolute/Project.magic`). See [the control protocol](../../docs/control-protocol.md).
 
-Agents use `magic-cli` only; PhotoCraft, EffectCraft, FilmCraft and DeckCraft document operations, plus
-TextureCraft mesh inspection, call linked Rust libraries directly. Separate
-native editor windows still use their installed applications. An agent's
-`magic-cli studio open /absolute/Project.magic` opens the window on the emptiest of workspaces 1–4
-without taking focus; `magic-cli studio list` finds open windows and `magic-cli studio previews`
-lists HyperFrames preview servers. Verification uses the authorized native Cargo commands
-directly; the retired Magic audit/review/formatting runners are removed.
+`crates/engine/src/studio_sessions.rs` and `local_ipc.rs` (the retired per-window Unix-socket
+transport) are not called by the CLI or the Tauri shell and are scheduled for removal.
+
+Agents use `magic-cli` only. PhotoCraft, EffectCraft, FilmCraft and DeckCraft document operations, plus
+TextureCraft mesh inspection, go through those apps' installed CLIs or linked Rust libraries.
+Separate native editor windows still use their installed applications. `magic-cli studio open
+/absolute/Project.magic` runs `project.open` (in the live window with `--bridge`);
+`magic-cli studio list` runs `project.catalog`. Verification uses the authorized native Cargo
+commands directly; the retired Magic audit/review/formatting runners are removed.
 
 See [the Magic skill](SKILL.md) for executable usage and project selection. The matching repo
 skill is `.agents/skills/magic/SKILL.md`. Historical architecture/handoff documents describe

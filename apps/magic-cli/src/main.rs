@@ -1,4 +1,7 @@
 //! `magic-cli`: thin headless CLI over `magic::Session` (modeled on `filmcraft-cli`).
+
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
+
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 use std::io::BufRead;
@@ -8,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[command(
     name = "magic-cli",
     about = "Drive Magic Studio through its Rust engine or a live Tauri session",
-    after_help = "LIVE MAGIC: magic-tauri --control 9876 (share MAGIC_CONTROL_TOKEN with clients)\n  magic-cli --bridge 127.0.0.1:9876 ui inspect\n  magic-cli --bridge 127.0.0.1:9876 mcp\nSTORYBOARD: magic-cli --project song.magic storyboard open --control 7979\n  designcraft-cli app --port 7979 --method document.inspect\n  designcraft-cli mcp --connect 7979\n  storyboard check reports unfilled template slots and layout issues. View navigation stays unrestricted."
+    after_help = "LIVE MAGIC: magic-tauri --control 9876 (share MAGIC_CONTROL_TOKEN with clients)\n  magic-cli --bridge 127.0.0.1:9876 ui inspect\n  magic-cli --bridge 127.0.0.1:9876 ui elements prefix=tab-\n  magic-cli --bridge 127.0.0.1:9876 ui click tab-animation\n  magic-cli --bridge 127.0.0.1:9876 ui key Ctrl+K\n  magic-cli --bridge 127.0.0.1:9876 ui screenshot /tmp/magic.png\n  magic-cli --bridge 127.0.0.1:9876 mcp\nSTORYBOARD: magic-cli --project song.magic storyboard open --control 7979\n  designcraft-cli app --port 7979 --method document.inspect\n  designcraft-cli mcp --connect 7979\n  storyboard check reports unfilled template slots and layout issues. View navigation stays unrestricted."
 )]
 pub struct Cli {
     /// Open this .magic project first (or use the last opened project from session file)
@@ -55,7 +58,8 @@ enum Cmd {
     Mcp,
     /// Control a live desktop window through --bridge
     Ui {
-        /// Live window action (`inspect`, `state`, `feedback`, `unconfigured`, `elements`, `focus`, `view`, `quit`)
+        /// Live window action: `inspect`, `elements`, `click`, `move`, `drag`, `scroll`, `key`, `type`,
+        /// `set`, `focus`, `view`, `resize`, `screenshot`, `quit` (any `ui.<method>` name also works)
         action: String,
         /// Optional argument for `ui focus <id>` or `ui view <mode>`
         target: Option<String>,
@@ -88,8 +92,10 @@ enum Cmd {
 enum SbCmd {
     /// Open the storyboard in DesignCraft with a live control port (separate from Magic's bridge)
     Open {
-        #[arg(long)] path: Option<String>,
-        #[arg(long, default_value_t = 7979)] control: u16,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long, default_value_t = 7979)]
+        control: u16,
     },
     /// Create a storyboard from the template
     New {
@@ -279,12 +285,7 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
             id = "storyboard.pages".into();
             put("path", path.clone().map(Value::String));
         }
-        SbCmd::Cues {
-            lyrics,
-            transcript,
-            sections,
-            per,
-        } => {
+        SbCmd::Cues { lyrics, transcript, sections, per } => {
             id = "storyboard.cues".into();
             put("lyrics", Some(Value::String(lyrics.clone())));
             put("transcript", transcript.clone().map(Value::String));
@@ -296,17 +297,12 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
             let script = match script {
                 Some(s) if s == "-" => {
                     let mut text = String::new();
-                    std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
-                        .map_err(|e| format!("stdin: {e}"))?;
+                    std::io::Read::read_to_string(&mut std::io::stdin(), &mut text).map_err(|e| format!("stdin: {e}"))?;
                     text
                 }
                 Some(s) => {
                     let path = Path::new(&s);
-                    if path.is_file() {
-                        std::fs::read_to_string(path).map_err(|e| format!("{s}: {e}"))?
-                    } else {
-                        s.clone()
-                    }
+                    if path.is_file() { std::fs::read_to_string(path).map_err(|e| format!("{s}: {e}"))? } else { s.clone() }
                 }
                 None => String::new(),
             };
@@ -316,27 +312,14 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
             id = "storyboard.check".into();
             put("path", path.clone().map(Value::String));
         }
-        SbCmd::Slots {
-            path,
-            page,
-            label,
-            scene,
-        } => {
+        SbCmd::Slots { path, page, label, scene } => {
             id = "storyboard.slots".into();
             put("path", path.clone().map(Value::String));
             put("page", page.map(|n| json!(n)));
             put("label", label.clone().map(Value::String));
             put("scene", scene.map(|n| json!(n)));
         }
-        SbCmd::Set {
-            path,
-            page,
-            label,
-            scene,
-            text,
-            image,
-            refs,
-        } => {
+        SbCmd::Set { path, page, label, scene, text, image, refs } => {
             id = "storyboard.set".into();
             put("path", path.clone().map(Value::String));
             put("page", page.map(|n| json!(n)));
@@ -349,21 +332,10 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
                 p.insert("images".into(), pairs(image));
             }
             if !refs.is_empty() {
-                p.insert(
-                    "refs".into(),
-                    Value::Array(refs.iter().map(|r| Value::String(r.clone())).collect()),
-                );
+                p.insert("refs".into(), Value::Array(refs.iter().map(|r| Value::String(r.clone())).collect()));
             }
         }
-        SbCmd::Add {
-            path,
-            archetype,
-            from,
-            at,
-            text,
-            image,
-            refs,
-        } => {
+        SbCmd::Add { path, archetype, from, at, text, image, refs } => {
             id = "storyboard.add".into();
             put("path", path.clone().map(Value::String));
             put("archetype", Some(Value::String(archetype.clone())));
@@ -376,38 +348,19 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
                 p.insert("images".into(), pairs(image));
             }
             if !refs.is_empty() {
-                p.insert(
-                    "refs".into(),
-                    Value::Array(refs.iter().map(|r| Value::String(r.clone())).collect()),
-                );
+                p.insert("refs".into(), Value::Array(refs.iter().map(|r| Value::String(r.clone())).collect()));
             }
         }
-        SbCmd::Section {
-            path,
-            name,
-            based_on,
-            pages,
-        } => {
+        SbCmd::Section { path, name, based_on, pages } => {
             id = "storyboard.section".into();
             put("path", path.clone().map(Value::String));
             put("name", Some(Value::String(name.clone())));
             put("based_on", based_on.clone().map(Value::String));
             if !pages.is_empty() {
-                p.insert(
-                    "pages".into(),
-                    Value::Array(pages.iter().map(|n| json!(n)).collect()),
-                );
+                p.insert("pages".into(), Value::Array(pages.iter().map(|n| json!(n)).collect()));
             }
         }
-        SbCmd::Overlay {
-            path,
-            page,
-            label,
-            slot,
-            image,
-            layer,
-            keep_original,
-        } => {
+        SbCmd::Overlay { path, page, label, slot, image, layer, keep_original } => {
             id = "storyboard.overlay".into();
             put("path", path.clone().map(Value::String));
             put("page", page.map(|n| json!(n)));
@@ -417,14 +370,7 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
             put("layer", layer.clone().map(Value::String));
             put("hide_original", Some(Value::Bool(!*keep_original)));
         }
-        SbCmd::Render {
-            path,
-            page,
-            label,
-            scene,
-            out,
-            scale,
-        } => {
+        SbCmd::Render { path, page, label, scene, out, scale } => {
             id = "storyboard.thumbnail".into();
             put("path", path.clone().map(Value::String));
             put("page", page.map(|n| json!(n)));
@@ -433,12 +379,7 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
             put("out", Some(Value::String(out.clone())));
             put("scale", Some(json!(scale)));
         }
-        SbCmd::Export {
-            path,
-            pdf,
-            png_dir,
-            scale,
-        } => {
+        SbCmd::Export { path, pdf, png_dir, scale } => {
             id = "storyboard.export".into();
             put("path", path.clone().map(Value::String));
             put("pdf", pdf.clone().map(Value::String));
@@ -458,20 +399,13 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
 fn session_file() -> PathBuf {
     std::env::var_os("MAGIC_SESSION_FILE")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|h| PathBuf::from(h).join(".config/magic/cli_session.json"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/magic/cli_session.json")))
         .unwrap_or_else(|| PathBuf::from(".magic_session.json"))
 }
 
 fn load_saved_project() -> Option<String> {
     let text = std::fs::read_to_string(session_file()).ok()?;
-    serde_json::from_str::<Value>(&text)
-        .ok()?
-        .get("project")?
-        .as_str()
-        .map(str::to_owned)
+    serde_json::from_str::<Value>(&text).ok()?.get("project")?.as_str().map(str::to_owned)
 }
 
 fn save_project(path: Option<&str>) {
@@ -503,28 +437,19 @@ fn parse_params(tokens: &[String], raw: Option<&str>) -> Result<Value, String> {
             }
             continue;
         }
-        let (k, v) = token
-            .split_once('=')
-            .ok_or_else(|| format!("Expected key=value, got {token:?}"))?;
+        let (k, v) = token.split_once('=').ok_or_else(|| format!("Expected key=value, got {token:?}"))?;
         params[k] = serde_json::from_str(v).unwrap_or_else(|_| json!(v));
     }
     Ok(params)
 }
 
 fn control_address(spec: &str) -> String {
-    if spec.contains(':') {
-        spec.to_owned()
-    } else {
-        format!("127.0.0.1:{spec}")
-    }
+    if spec.contains(':') { spec.to_owned() } else { format!("127.0.0.1:{spec}") }
 }
 
 fn call_live_control(bridge: Option<&str>, method: &str, params: Value) -> Result<Value, String> {
     let spec = bridge.ok_or("Live UI commands require --bridge ADDRESS")?;
-    let mut remote = magic_mcp::Remote::new(
-        control_address(spec),
-        std::env::var("MAGIC_CONTROL_TOKEN").ok(),
-    );
+    let mut remote = magic_mcp::Remote::new(control_address(spec), std::env::var("MAGIC_CONTROL_TOKEN").ok());
     magic_mcp::Backend::execute(&mut remote, method, params)
 }
 
@@ -543,37 +468,22 @@ fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Resul
     Ok(res)
 }
 
-fn dispatch(
-    session: &mut Option<magic::Session>,
-    bridge: Option<&str>,
-    id: &str,
-    params: Value,
-    dry: bool,
-) -> Result<Value, String> {
+fn dispatch(session: &mut Option<magic::Session>, bridge: Option<&str>, id: &str, params: Value, dry: bool) -> Result<Value, String> {
     if dry {
         Ok(json!({ "dry_run": true, "id": id, "params": params }))
     } else if bridge.is_some() || id.starts_with("ui.") {
         call_live_control(bridge, id, params)
     } else {
-        exec_one(
-            session.as_mut().expect("headless session"),
-            id,
-            params,
-            false,
-        )
+        let session = session.as_mut().ok_or("no headless session: a bridge runs commands in the live app")?;
+        exec_one(session, id, params, false)
     }
 }
 
-fn ui_action(
-    action: &str,
-    target: Option<String>,
-    mut args: Vec<String>,
-    raw: Option<&str>,
-) -> Result<(String, Value), String> {
+fn ui_action(action: &str, target: Option<String>, mut args: Vec<String>, raw: Option<&str>) -> Result<(String, Value), String> {
     let method = match action {
         "inspect" | "state" => "ui.state".into(),
-        "feedback" | "look" => "ui.feedback".into(),
-        "unconfigured" | "empty" => "ui.unconfigured".into(),
+        // The live app reports workspace feedback inside ui.inspect (`workspaces[].feedback`).
+        "feedback" | "look" => "ui.inspect".into(),
         "view" => "ui.set_view".into(),
         "quit" => "app.quit".into(),
         id if id.contains('.') => id.to_owned(),
@@ -581,12 +491,11 @@ fn ui_action(
     };
     if let Some(target) = target {
         match method.as_str() {
-            "ui.focus" | "ui.click" if !target.contains('=') && !target.starts_with('{') => {
-                args.insert(0, format!("id={target}"))
-            }
-            "ui.set_view" if !target.contains('=') && !target.starts_with('{') => {
-                args.insert(0, format!("view={target}"))
-            }
+            "ui.focus" | "ui.click" if !target.contains('=') && !target.starts_with('{') => args.insert(0, format!("id={target}")),
+            "ui.set_view" if !target.contains('=') && !target.starts_with('{') => args.insert(0, format!("view={target}")),
+            "ui.key" if !target.contains('=') && !target.starts_with('{') => args.insert(0, format!("key={target}")),
+            "ui.type" | "ui.text" if !target.contains('=') && !target.starts_with('{') => args.insert(0, format!("text={target}")),
+            "ui.screenshot" if !target.contains('=') && !target.starts_with('{') => args.insert(0, format!("path={target}")),
             _ => args.insert(0, target),
         }
     }
@@ -598,43 +507,28 @@ fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String>
         return match tokens.get(1).map(String::as_str) {
             Some("list") => Ok(("project.catalog".into(), vec![])),
             Some("open") => {
-                let rest = tokens
-                    .get(2)
-                    .map(|p| vec![format!("path={p}")])
-                    .unwrap_or_default();
+                let rest = tokens.get(2).map(|p| vec![format!("path={p}")]).unwrap_or_default();
                 Ok(("project.open".into(), rest))
             }
             _ => Ok(("project.catalog".into(), vec![])),
         };
     }
     let known: Vec<&str> = magic::command_specs().iter().map(|c| c.id).collect();
-    let words: Vec<&String> = tokens
-        .iter()
-        .take_while(|t| !t.contains('=') && !t.starts_with('-') && !t.starts_with('{'))
-        .collect();
+    let words: Vec<&String> = tokens.iter().take_while(|t| !t.contains('=') && !t.starts_with('-') && !t.starts_with('{')).collect();
     for n in (1..=words.len()).rev() {
-        let id = words[..n]
-            .iter()
-            .map(|w| w.replace('-', "_"))
-            .collect::<Vec<_>>()
-            .join(".");
+        let id = words[..n].iter().map(|w| w.replace('-', "_")).collect::<Vec<_>>().join(".");
         if known.contains(&id.as_str()) {
             return Ok((id, tokens[n..].to_vec()));
         }
     }
-    Err(format!(
-        "Unknown command '{}'. Run `magic-cli commands`.",
-        tokens.join(" ")
-    ))
+    Err(format!("Unknown command '{}'. Run `magic-cli commands`.", tokens.join(" ")))
 }
 
 fn main() {
     let cli = Cli::parse();
     let live = cli.bridge.is_some();
     if live && cli.project.is_some() {
-        eprintln!(
-            "--project opens a headless session; with --bridge use exec project.open path=..."
-        );
+        eprintln!("--project opens a headless session; with --bridge use exec project.open path=...");
         std::process::exit(2);
     }
     let mut session = (!live).then(magic::Session::user_session);
@@ -642,10 +536,9 @@ fn main() {
         && let Some(proj) = cli.project.clone().or_else(load_saved_project)
         && std::path::Path::new(&proj).is_file()
     {
-        let _ = session
-            .as_mut()
-            .expect("headless session")
-            .execute("project.open", json!({ "path": proj }));
+        if let Some(session) = session.as_mut() {
+            let _ = session.execute("project.open", json!({ "path": proj }));
+        }
         if cli.project.is_some() {
             save_project(Some(&proj));
         }
@@ -666,25 +559,13 @@ fn main() {
                 println!();
             }
             Some(Cmd::Commands { filter }) => {
-                emit(&dispatch(
-                    &mut session,
-                    bridge,
-                    "command.list",
-                    json!({ "filter": filter.unwrap_or_default() }),
-                    false,
-                )?);
+                emit(&dispatch(&mut session, bridge, "command.list", json!({ "filter": filter.unwrap_or_default() }), false)?);
             }
             Some(Cmd::Describe { id }) => {
-                let v = magic::find_command(&id)
-                    .map(|c| c.describe())
-                    .ok_or_else(|| format!("Unknown command '{id}'"))?;
+                let v = magic::find_command(&id).map(|c| c.describe()).ok_or_else(|| format!("Unknown command '{id}'"))?;
                 emit(&v);
             }
-            Some(Cmd::Exec {
-                command,
-                params,
-                arguments,
-            }) => {
+            Some(Cmd::Exec { command, params, arguments }) => {
                 let p = parse_params(&arguments, params.as_deref())?;
                 let out = dispatch(&mut session, bridge, &command, p, cli.dry_run)?;
                 emit(&out);
@@ -693,9 +574,7 @@ fn main() {
                 let reader: Box<dyn BufRead> = if file == "-" {
                     Box::new(std::io::stdin().lock())
                 } else {
-                    Box::new(std::io::BufReader::new(
-                        std::fs::File::open(&file).map_err(|e| format!("{file}: {e}"))?,
-                    ))
+                    Box::new(std::io::BufReader::new(std::fs::File::open(&file).map_err(|e| format!("{file}: {e}"))?))
                 };
                 for (n, line) in reader.lines().enumerate() {
                     let line = line.map_err(|e| e.to_string())?;
@@ -703,12 +582,8 @@ fn main() {
                     if t.is_empty() || t.starts_with('#') {
                         continue;
                     }
-                    let item: Value =
-                        serde_json::from_str(t).map_err(|e| format!("line {}: {e}", n + 1))?;
-                    let id = item["id"]
-                        .as_str()
-                        .or_else(|| item["command"].as_str())
-                        .unwrap_or_default();
+                    let item: Value = serde_json::from_str(t).map_err(|e| format!("line {}: {e}", n + 1))?;
+                    let id = item["id"].as_str().or_else(|| item["command"].as_str()).unwrap_or_default();
                     let params = item.get("params").cloned().unwrap_or_else(|| json!({}));
                     let res = dispatch(&mut session, bridge, id, params, cli.dry_run)?;
                     println!("{}", json!({ "line": n + 1, "ok": true, "result": res }));
@@ -716,40 +591,23 @@ fn main() {
             }
             Some(Cmd::Mcp) => {
                 if let Some(addr) = cli.bridge {
-                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(
-                        control_address(&addr),
-                        std::env::var("MAGIC_CONTROL_TOKEN").ok(),
-                    ));
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(control_address(&addr), std::env::var("MAGIC_CONTROL_TOKEN").ok()));
                     srv.serve().map_err(|e| e.to_string())?;
                 } else {
-                    let mut srv = magic_mcp::Server::new(magic_mcp::Headless::new(
-                        session.take().expect("headless session"),
-                    ));
+                    let session = session.take().ok_or("no headless session: use --bridge for the live app")?;
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Headless::new(session));
                     srv.serve().map_err(|e| e.to_string())?;
                 }
             }
-            Some(Cmd::Ui {
-                action,
-                target,
-                params,
-                arguments,
-            }) => {
+            Some(Cmd::Ui { action, target, params, arguments }) => {
                 if bridge.is_none() {
                     return Err("Live UI commands require --bridge ADDRESS".into());
                 }
                 let (method, params) = ui_action(&action, target, arguments, params.as_deref())?;
-                let res = if cli.dry_run {
-                    json!({ "dry_run": true, "id": method, "params": params })
-                } else {
-                    call_live_control(bridge, &method, params)?
-                };
+                let res = if cli.dry_run { json!({ "dry_run": true, "id": method, "params": params }) } else { call_live_control(bridge, &method, params)? };
                 emit(&res);
             }
-            Some(Cmd::Storyboard {
-                project,
-                document,
-                command,
-            }) => {
+            Some(Cmd::Storyboard { project, document, command }) => {
                 if bridge.is_some() && project.is_some() {
                     return Err("storyboard --project cannot be combined with --bridge; use exec project.open path=...".into());
                 }
@@ -757,11 +615,9 @@ fn main() {
                 // the session file, so the next command still works on the same project.
                 if let Some(proj) = project.as_deref()
                     && Path::new(proj).is_file()
+                    && let Some(session) = session.as_mut()
                 {
-                    let _ = session
-                        .as_mut()
-                        .expect("headless session")
-                        .execute("project.open", json!({ "path": proj }));
+                    let _ = session.execute("project.open", json!({ "path": proj }));
                 }
                 let (id, params) = storyboard_params(&command, document.as_deref())?;
                 emit(&dispatch(&mut session, bridge, &id, params, cli.dry_run)?);

@@ -15,19 +15,13 @@ impl Session {
     /// on disk reloads when it has no unsaved edits; with unsaved edits on both sides it is an error,
     /// never a silent overwrite. `Ok(None)`: the file does not exist and nothing is open for it.
     pub fn document(&mut self, kind: &'static str, path: &Path) -> Result<Option<&mut DocState>> {
-        let open = self
-            .docs
-            .iter()
-            .position(|d| d.kind == kind && d.path == path);
+        let open = self.docs.iter().position(|d| d.kind == kind && d.path == path);
         let reload = match open {
             Some(i) => {
                 let doc = &self.docs[i];
                 match decide(doc.dirty, doc.changed_on_disk()) {
                     ReloadDecision::Refuse => {
-                        return Err(EngineError::InvalidParams(format!(
-                            "{} changed outside this session while it had unsaved edits",
-                            path.display()
-                        )));
+                        return Err(EngineError::InvalidParams(format!("{} changed outside this session while it had unsaved edits", path.display())));
                     }
                     ReloadDecision::Reload => true,
                     ReloadDecision::Keep => false,
@@ -42,10 +36,7 @@ impl Session {
                 None => return Ok(None),
             }
         }
-        Ok(self
-            .docs
-            .iter_mut()
-            .find(|d| d.kind == kind && d.path == path))
+        Ok(self.docs.iter_mut().find(|d| d.kind == kind && d.path == path))
     }
 
     /// Forget the open documents (the project changed).

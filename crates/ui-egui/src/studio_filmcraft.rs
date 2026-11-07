@@ -20,15 +20,8 @@ pub(crate) struct StudioFilmcraft {
 impl StudioFilmcraft {
     pub fn open(path: &Path) -> Result<Self, String> {
         let mut session = filmcraft_engine::Session::default();
-        session
-            .execute("file.open", json!({ "path": path }))
-            .map_err(|error| error.to_string())?;
-        Ok(Self {
-            app: FilmcraftApp::new(session),
-            path: path.into(),
-            modified: modified(path),
-            first_tick: true,
-        })
+        session.execute("file.open", json!({ "path": path })).map_err(|error| error.to_string())?;
+        Ok(Self { app: FilmcraftApp::new(session), path: path.into(), modified: modified(path), first_tick: true })
     }
 
     pub fn create(path: &Path) -> Result<Self, String> {
@@ -36,25 +29,15 @@ impl StudioFilmcraft {
             return Self::open(path);
         }
         let mut session = filmcraft_engine::Session::default();
-        let name = path
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .unwrap_or("Film");
-        let parent = path
-            .parent()
-            .ok_or("FilmCraft project has no parent directory")?;
+        let name = path.file_stem().and_then(|name| name.to_str()).unwrap_or("Film");
+        let parent = path.parent().ok_or("FilmCraft project has no parent directory")?;
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         for (id, params) in [
             ("file.newProject", json!({ "name": name })),
-            (
-                "file.newSequence",
-                json!({ "name": name, "width": 1920, "height": 1080, "fps": 30 }),
-            ),
+            ("file.newSequence", json!({ "name": name, "width": 1920, "height": 1080, "fps": 30 })),
             ("file.saveAs", json!({ "path": path })),
         ] {
-            session
-                .execute(id, params)
-                .map_err(|error| error.to_string())?;
+            session.execute(id, params).map_err(|error| error.to_string())?;
         }
         Self::open(path)
     }
@@ -82,22 +65,13 @@ impl StudioFilmcraft {
     }
 
     fn preview(&mut self, action: &str, seconds: Option<f64>) -> Result<Value, String> {
-        let duration = self
-            .app
-            .session
-            .active_sequence()
-            .ok_or("Open a FilmCraft sequence first.")?
-            .duration()
-            .seconds();
+        let duration = self.app.session.active_sequence().ok_or("Open a FilmCraft sequence first.")?.duration().seconds();
         if let Some(time) = seconds {
             if !time.is_finite() || !(0.0..=duration).contains(&time) {
                 return Err("Seek within the film timeline.".into());
             }
             self.stop();
-            self.app
-                .session
-                .execute("playhead.set", json!({"seconds": time}))
-                .map_err(|error| error.to_string())?;
+            self.app.session.execute("playhead.set", json!({"seconds": time})).map_err(|error| error.to_string())?;
         }
         match action {
             "state" | "seek" => {}
@@ -107,21 +81,16 @@ impl StudioFilmcraft {
             "toggle" => self.app.toggle_play(1.0),
             _ => return Err("Choose play, stop, toggle, seek, or state.".into()),
         }
-        Ok(
-            json!({"playing": self.is_playing(), "time": self.app.session.playhead().seconds(),
+        Ok(json!({"playing": self.is_playing(), "time": self.app.session.playhead().seconds(),
             "duration": duration, "timeline": self.path, "audio": self.app.audio.is_some(),
-            "audio_clock": self.app.playback.audio_clock}),
-        )
+            "audio_clock": self.app.playback.audio_clock}))
     }
 
     pub fn save(&mut self) -> Result<(), String> {
         if self.changed_on_disk() {
             return Err("FilmCraft project changed on disk. Reopen it before saving.".into());
         }
-        self.app
-            .session
-            .execute("file.save", json!({}))
-            .map_err(|error| error.to_string())?;
+        self.app.session.execute("file.save", json!({})).map_err(|error| error.to_string())?;
         self.modified = modified(&self.path);
         Ok(())
     }
@@ -134,11 +103,7 @@ impl StudioFilmcraft {
             return Err("FilmCraft project changed on disk. Reopen it before importing.".into());
         }
         let clip = clip.canonicalize().map_err(|error| error.to_string())?;
-        let imported = self
-            .app
-            .session
-            .execute("file.import", json!({ "paths": [clip] }))
-            .map_err(|error| error.to_string())?;
+        let imported = self.app.session.execute("file.import", json!({ "paths": [clip] })).map_err(|error| error.to_string())?;
         if imported["items"].as_array().is_none_or(Vec::is_empty) {
             return Err(format!("FilmCraft did not import {}.", clip.display()));
         }
@@ -178,25 +143,14 @@ impl MagicApp {
     pub fn set_studio_audio(&mut self, open: crate::OpenStudioAudio) {
         self.studio_audio = Some(open);
     }
-    pub(crate) fn studio_program_preview(
-        &mut self,
-        action: &str,
-        seconds: Option<f64>,
-    ) -> Result<Value, String> {
-        let path = self
-            .studio_film_path()
-            .ok_or("No FilmCraft project path.")?;
+    pub(crate) fn studio_program_preview(&mut self, action: &str, seconds: Option<f64>) -> Result<Value, String> {
+        let path = self.studio_film_path().ok_or("No FilmCraft project path.")?;
         self.load_studio_film(&path, false)?;
-        self.studio_film
-            .as_mut()
-            .ok_or_else(|| "Open the FilmCraft project first.".to_owned())?
-            .preview(action, seconds)
+        self.studio_film.as_mut().ok_or_else(|| "Open the FilmCraft project first.".to_owned())?.preview(action, seconds)
     }
 
     fn studio_film_path(&self) -> Option<PathBuf> {
-        self.film_state["timeline"]["path"]
-            .as_str()
-            .map(PathBuf::from)
+        self.film_state["timeline"]["path"].as_str().map(PathBuf::from)
     }
 
     fn load_studio_film(&mut self, path: &Path, create: bool) -> Result<(), String> {
@@ -205,16 +159,10 @@ impl MagicApp {
                 return Ok(());
             }
             if current.is_dirty() {
-                return Err(
-                    "Save the open FilmCraft project before switching or reloading.".into(),
-                );
+                return Err("Save the open FilmCraft project before switching or reloading.".into());
             }
         }
-        let mut document = if create {
-            StudioFilmcraft::create(path)?
-        } else {
-            StudioFilmcraft::open(path)?
-        };
+        let mut document = if create { StudioFilmcraft::create(path)? } else { StudioFilmcraft::open(path)? };
         if let Some(open) = self.studio_audio {
             match open() {
                 Ok(audio) => document.app.audio = Some(audio),
@@ -230,20 +178,12 @@ impl MagicApp {
         if !clip.is_file() {
             return Err(format!("Animation file does not exist: {}", clip.display()));
         }
-        let film = self
-            .studio_film_path()
-            .ok_or("Open a Magic project first.")?;
+        let film = self.studio_film_path().ok_or("Open a Magic project first.")?;
         self.load_studio_film(&film, true)?;
-        let document = self
-            .studio_film
-            .as_mut()
-            .ok_or("No FilmCraft project open.")?;
+        let document = self.studio_film.as_mut().ok_or("No FilmCraft project open.")?;
         document.import_animation(clip)?;
         self.refresh_studio();
-        Ok(format!(
-            "Added {} to FilmCraft.",
-            clip.file_name().unwrap_or_default().to_string_lossy()
-        ))
+        Ok(format!("Added {} to FilmCraft.", clip.file_name().unwrap_or_default().to_string_lossy()))
     }
 
     pub(crate) fn set_status_result(&mut self, result: Result<String, String>) {
@@ -259,24 +199,11 @@ impl MagicApp {
         };
     }
 
-    pub(crate) fn studio_toolbar_command(
-        &mut self,
-        ctx: &Context,
-        params: &Value,
-    ) -> Result<Value, String> {
-        let project = self
-            .session
-            .project_path
-            .as_deref()
-            .ok_or("Open a Magic project first.")?;
-        let path = self
-            .studio_film_path()
-            .ok_or("No FilmCraft project path.")?;
+    pub(crate) fn studio_toolbar_command(&mut self, ctx: &Context, params: &Value) -> Result<Value, String> {
+        let project = self.session.project_path.as_deref().ok_or("Open a Magic project first.")?;
+        let path = self.studio_film_path().ok_or("No FilmCraft project path.")?;
         let action = params["action"].as_str().unwrap_or("state");
-        let dirty = self
-            .studio_film
-            .as_ref()
-            .is_some_and(StudioFilmcraft::is_dirty);
+        let dirty = self.studio_film.as_ref().is_some_and(StudioFilmcraft::is_dirty);
         if action == "state" {
             return Ok(json!({
                 "project": project, "path": path, "exists": path.is_file(), "dirty": dirty,
@@ -302,10 +229,7 @@ impl MagicApp {
                 "FilmCraft project reloaded."
             }
             "save" => {
-                self.studio_film
-                    .as_mut()
-                    .ok_or("No FilmCraft project open.")?
-                    .save()?;
+                self.studio_film.as_mut().ok_or("No FilmCraft project open.")?.save()?;
                 self.refresh_studio();
                 "FilmCraft project saved."
             }
@@ -314,9 +238,7 @@ impl MagicApp {
                     return Err("Save the FilmCraft project before importing an animation.".into());
                 }
                 self.dialogs.ask(
-                    craft_dialogs::FileDialog::open()
-                        .title("Import Rendered Animation")
-                        .filter("Video", &["mov", "mp4", "mkv", "webm"]),
+                    craft_dialogs::FileDialog::open().title("Import Rendered Animation").filter("Video", &["mov", "mp4", "mkv", "webm"]),
                     DialogAction::ImportStudioAnimation,
                 );
                 return Ok(json!({"ok": true}));
@@ -333,8 +255,7 @@ impl MagicApp {
                 return Ok(json!({"ok": true, "status": message}));
             }
             "assemble" if !path.is_file() && !dirty => {
-                let result =
-                    self.execute_session_command("video.assemble", json!({"export": false}))?;
+                let result = self.execute_session_command("video.assemble", json!({"export": false}))?;
                 self.handle_command_success("video.assemble", result);
                 "FilmCraft timeline assembled."
             }
@@ -360,10 +281,7 @@ impl MagicApp {
                 }
             }
             "open-preview" => {
-                let preview = self.film_state["preview"]["path"]
-                    .as_str()
-                    .filter(|path| Path::new(path).is_file())
-                    .ok_or("Render a film preview first.")?;
+                let preview = self.film_state["preview"]["path"].as_str().filter(|path| Path::new(path).is_file()).ok_or("Render a film preview first.")?;
                 self.execute_session_command("workspace.open", json!({"path": preview}))?;
                 "Opened film preview."
             }
@@ -376,9 +294,7 @@ impl MagicApp {
     fn studio_film_toolbar(&mut self, ui: &mut Ui, path: &Path) {
         ui.horizontal_wrapped(|ui| {
             if !path.is_file() && secondary_button(ui, "Create FilmCraft Project").clicked() {
-                let result = self
-                    .load_studio_film(path, true)
-                    .map(|()| "Created FilmCraft project.".into());
+                let result = self.load_studio_film(path, true).map(|()| "Created FilmCraft project.".into());
                 self.set_status_result(result);
                 self.refresh_studio();
             }
@@ -394,9 +310,7 @@ impl MagicApp {
             }
             if secondary_button(ui, "Import Rendered Animation…").clicked() {
                 self.dialogs.ask(
-                    craft_dialogs::FileDialog::open()
-                        .title("Import Rendered Animation")
-                        .filter("Video", &["mov", "mp4", "mkv", "webm"]),
+                    craft_dialogs::FileDialog::open().title("Import Rendered Animation").filter("Video", &["mov", "mp4", "mkv", "webm"]),
                     DialogAction::ImportStudioAnimation,
                 );
             }
@@ -413,46 +327,23 @@ impl MagicApp {
 
     pub(crate) fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
-            empty_state(
-                ui,
-                "Open a Project First",
-                "Open a .magic project to edit its film.",
-            );
+            empty_state(ui, "Open a Project First", "Open a .magic project to edit its film.");
             return;
         }
         let Some(path) = self.studio_film_path() else {
-            empty_state(
-                ui,
-                "FilmCraft Project Unavailable",
-                "Magic could not resolve this project's film path.",
-            );
+            empty_state(ui, "FilmCraft Project Unavailable", "Magic could not resolve this project's film path.");
             return;
         };
         if path.is_file()
-            && self
-                .studio_open_error
-                .as_ref()
-                .is_none_or(|(failed, _)| failed != &path)
+            && self.studio_open_error.as_ref().is_none_or(|(failed, _)| failed != &path)
             && let Err(error) = self.load_studio_film(&path, false)
         {
             self.studio_open_error = Some((path.clone(), error));
         }
         if let Some(host) = self.lyrics_host.as_mut() {
-            let rect = ui
-                .allocate_exact_size(egui::vec2(ui.available_width(), 58.0), egui::Sense::hover())
-                .0;
-            let project = self
-                .session
-                .project_path
-                .as_ref()
-                .map(|path| path.to_string_lossy());
-            host.show(
-                frame,
-                ctx,
-                rect,
-                project.as_deref().unwrap_or_default(),
-                WebWorkspacePage::Studio,
-            );
+            let rect = ui.allocate_exact_size(egui::vec2(ui.available_width(), 58.0), egui::Sense::hover()).0;
+            let project = self.session.project_path.as_ref().map(|path| path.to_string_lossy());
+            host.show(frame, ctx, rect, project.as_deref().unwrap_or_default(), WebWorkspacePage::Studio);
         } else {
             self.studio_film_toolbar(ui, &path);
         }
@@ -461,16 +352,8 @@ impl MagicApp {
         {
             ui.label(error);
         }
-        let Some(document) = self
-            .studio_film
-            .as_mut()
-            .filter(|document| document.path() == path)
-        else {
-            empty_state(
-                ui,
-                "Open the FilmCraft Project",
-                "Create the project's film or import an animation to get started.",
-            );
+        let Some(document) = self.studio_film.as_mut().filter(|document| document.path() == path) else {
+            empty_state(ui, "Open the FilmCraft Project", "Create the project's film or import an animation to get started.");
             return;
         };
         document.tick(ctx);
@@ -479,17 +362,9 @@ impl MagicApp {
             .default_size(300.0)
             .min_size(240.0)
             .show(ui, |ui| document.show(ui, PanelKind::Timeline));
-        egui::Panel::left("studio_filmcraft_project")
-            .resizable(true)
-            .default_size(240.0)
-            .min_size(180.0)
-            .show(ui, |ui| document.show(ui, PanelKind::Project));
+        egui::Panel::left("studio_filmcraft_project").resizable(true).default_size(240.0).min_size(180.0).show(ui, |ui| document.show(ui, PanelKind::Project));
         egui::CentralPanel::default().show(ui, |ui| {
-            let label = if document.is_playing() {
-                "Pause Film"
-            } else {
-                "Play Film"
-            };
+            let label = if document.is_playing() { "Pause Film" } else { "Play Film" };
             let preview = secondary_button(ui, label);
             self.auto.add_response("studio-preview", &preview, label);
             if preview.clicked()
@@ -504,7 +379,5 @@ impl MagicApp {
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
-    path.metadata()
-        .and_then(|metadata| metadata.modified())
-        .ok()
+    path.metadata().and_then(|metadata| metadata.modified()).ok()
 }

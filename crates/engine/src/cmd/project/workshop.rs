@@ -18,12 +18,11 @@ use crate::workspace::{has_extension, workspace_root};
 
 // Re-export video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
 pub use crate::cmd::film::video_target::{
-    cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start,
-    cmd_video_server_stop, cmd_video_snapshot,
+    cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start, cmd_video_server_stop, cmd_video_snapshot,
 };
 pub use crate::cmd::project::intake::{
-    cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_remove,
-    cmd_workshop_set_audio, cmd_workshop_set_target, cmd_workshop_split_panels,
+    cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_remove, cmd_workshop_set_audio, cmd_workshop_set_target,
+    cmd_workshop_split_panels,
 };
 pub use crate::cmd::project::transcript::{cmd_audio_analyze, cmd_workshop_import_transcript};
 pub(crate) use crate::cmd::project::transcript::{transcript_document, transcript_problems};
@@ -51,9 +50,7 @@ pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
     }
     let fcproj = video_project_path(dir)?;
     let seq = crate::cmd::film::execute(&fcproj, "sequence.inspect", json!({})).ok()?;
-    seq.get("duration")
-        .and_then(Value::as_f64)
-        .map(|t| t / SEQUENCE_TICKS_PER_SECOND)
+    seq.get("duration").and_then(Value::as_f64).map(|t| t / SEQUENCE_TICKS_PER_SECOND)
 }
 
 /// The studio's own words, kept in data the user edits (never in code).
@@ -66,10 +63,7 @@ pub struct Studio {
 
 /// Read the studio intent from `intent.md` in the song folder, else `STUDIO.md` beside projects.
 pub fn studio(dir: &Path) -> Studio {
-    let candidates = [
-        Some(dir.join("intent.md")),
-        dir.parent().map(|p| p.join("STUDIO.md")),
-    ];
+    let candidates = [Some(dir.join("intent.md")), dir.parent().map(|p| p.join("STUDIO.md"))];
     for path in candidates.into_iter().flatten() {
         if let Ok(text) = std::fs::read_to_string(&path) {
             let mut name = None;
@@ -81,44 +75,21 @@ pub fn studio(dir: &Path) -> Studio {
                 }
             }
             let intent = body.join("\n").trim().to_string();
-            return Studio {
-                name,
-                intent: (!intent.is_empty()).then_some(intent),
-                source: Some(path),
-            };
+            return Studio { name, intent: (!intent.is_empty()).then_some(intent), source: Some(path) };
         }
     }
-    Studio {
-        name: None,
-        intent: None,
-        source: None,
-    }
+    Studio { name: None, intent: None, source: None }
 }
 
 /// Skill files an agent should read for a stage.
 fn skill_hints(s: &Session, dir: &Path, names: &[&str]) -> String {
-    let roots = [
-        Some(workspace_root(s).join(".agents/skills")),
-        dir.parent()
-            .and_then(Path::parent)
-            .map(|p| p.join(".agents/skills")),
-    ];
+    let roots = [Some(workspace_root(s).join(".agents/skills")), dir.parent().and_then(Path::parent).map(|p| p.join(".agents/skills"))];
     let found: Vec<String> = names
         .iter()
-        .filter_map(|n| {
-            roots
-                .iter()
-                .flatten()
-                .map(|r| r.join(n).join("SKILL.md"))
-                .find(|p| p.is_file())
-        })
+        .filter_map(|n| roots.iter().flatten().map(|r| r.join(n).join("SKILL.md")).find(|p| p.is_file()))
         .map(|p| p.display().to_string())
         .collect();
-    if found.is_empty() {
-        String::new()
-    } else {
-        format!("\nSkills: {}", found.join(", "))
-    }
+    if found.is_empty() { String::new() } else { format!("\nSkills: {}", found.join(", ")) }
 }
 
 /// What an agent needs to start a stage.
@@ -131,13 +102,9 @@ pub(crate) fn brief_header(dir: &Path) -> String {
     let studio = studio(dir);
     let intent = match (&studio.intent, &studio.source) {
         (Some(intent), Some(src)) => format!("{intent}\n(from {})\n", src.display()),
-        _ => format!(
-            "No studio intent yet: write it in {project}/intent.md or STUDIO.md beside the projects.\n"
-        ),
+        _ => format!("No studio intent yet: write it in {project}/intent.md or STUDIO.md beside the projects.\n"),
     };
-    format!(
-        "{intent}Project folder: {project}\nWorkshop state: magic-cli exec workshop.status (run project.open path=<the .magic> first)\n"
-    )
+    format!("{intent}Project folder: {project}\nWorkshop state: magic-cli exec workshop.status (run project.open path=<the .magic> first)\n")
 }
 
 pub(crate) fn stage_body(s: &Session, dir: &Path, stage: &str) -> String {
@@ -166,13 +133,7 @@ pub(crate) fn files_in(dir: &Path, only: Option<&[&str]>) -> Vec<PathBuf> {
         .flatten()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| {
-            p.is_file()
-                && !p
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with('.'))
-        })
+        .filter(|p| p.is_file() && !p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('.')))
         .filter(|p| only.is_none_or(|exts| has_extension(p, exts)))
         .collect();
     files.sort();
@@ -184,25 +145,14 @@ pub(crate) fn transcript_files(dir: &Path) -> Vec<PathBuf> {
     if native.is_file() {
         return vec![native];
     }
-    files_in(dir, Some(&["json"]))
-        .into_iter()
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(".transcript.json"))
-        })
-        .collect()
+    files_in(dir, Some(&["json"])).into_iter().filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".transcript.json"))).collect()
 }
 
 /// Storyboard panels, in order: `storyboard/panel-NN.`.
 pub(crate) fn panel_files(dir: &Path) -> Vec<PathBuf> {
     files_in(&dir.join(STORYBOARD_DIR), Some(IMAGE_EXTENSIONS))
         .into_iter()
-        .filter(|p| {
-            p.file_stem()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("panel-"))
-        })
+        .filter(|p| p.file_stem().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("panel-")))
         .collect()
 }
 
@@ -210,10 +160,7 @@ pub(crate) fn video_project_path(dir: &Path) -> Option<PathBuf> {
     transcript_files(dir)
         .iter()
         .find_map(|t| {
-            let name = t
-                .file_name()?
-                .to_str()?
-                .replace(".transcript.json", ".fcproj");
+            let name = t.file_name()?.to_str()?.replace(".transcript.json", ".fcproj");
             let fcproj = t.with_file_name(name);
             fcproj.is_file().then_some(fcproj)
         })
@@ -231,31 +178,17 @@ pub(crate) fn workshop_asset_files(dir: &Path) -> Vec<PathBuf> {
         }
     };
     push_unique(files_in(&dir.join(ASSETS_DIR), Some(IMAGE_EXTENSIONS)));
-    push_unique(files_in(
-        &dir.join(ASSETS_DIR).join("images"),
-        Some(IMAGE_EXTENSIONS),
-    ));
-    push_unique(files_in(
-        &dir.join(ASSETS_DIR).join("characters/approved-crops"),
-        Some(IMAGE_EXTENSIONS),
-    ));
+    push_unique(files_in(&dir.join(ASSETS_DIR).join("images"), Some(IMAGE_EXTENSIONS)));
+    push_unique(files_in(&dir.join(ASSETS_DIR).join("characters/approved-crops"), Some(IMAGE_EXTENSIONS)));
     if let Ok(chars) = std::fs::read_dir(dir.join(ASSETS_DIR).join("characters")) {
-        let mut char_dirs: Vec<PathBuf> = chars
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .collect();
+        let mut char_dirs: Vec<PathBuf> = chars.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
         char_dirs.sort();
         for cdir in char_dirs {
             push_unique(files_in(&cdir.join("parts"), Some(IMAGE_EXTENSIONS)));
         }
     }
     if let Ok(bgs) = std::fs::read_dir(dir.join(ASSETS_DIR).join("backgrounds")) {
-        let mut bg_dirs: Vec<PathBuf> = bgs
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .collect();
+        let mut bg_dirs: Vec<PathBuf> = bgs.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
         bg_dirs.sort();
         for bdir in bg_dirs {
             push_unique(files_in(&bdir, Some(IMAGE_EXTENSIONS)));
@@ -266,12 +199,7 @@ pub(crate) fn workshop_asset_files(dir: &Path) -> Vec<PathBuf> {
         let mut subdirs: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| {
-                p.is_dir()
-                    && p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("magic-"))
-            })
+            .filter(|p| p.is_dir() && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("magic-")))
             .collect();
         subdirs.sort();
         for sub in subdirs {
@@ -292,48 +220,28 @@ pub(crate) fn project_dir(s: &Session) -> Result<PathBuf> {
         .as_ref()
         .and_then(|p| p.parent())
         .map(Path::to_path_buf)
-        .ok_or_else(|| {
-            EngineError::InvalidParams("no project is open; use project.new or project.open".into())
-        })
+        .ok_or_else(|| EngineError::InvalidParams("no project is open; use project.new or project.open".into()))
 }
 
-fn workshop_transcript_summary(
-    dir: &Path,
-    video_target: &str,
-    transcripts: &[PathBuf],
-    target_chip: &Value,
-) -> (Value, Vec<String>, bool, String, Vec<Value>) {
+fn workshop_transcript_summary(dir: &Path, video_target: &str, transcripts: &[PathBuf], target_chip: &Value) -> (Value, Vec<String>, bool, String, Vec<Value>) {
     let source = transcripts.first().cloned();
-    let doc = source
-        .as_ref()
-        .and_then(|p| transcript_document(p).ok())
-        .unwrap_or(Value::Null);
+    let doc = source.as_ref().and_then(|p| transcript_document(p).ok()).unwrap_or(Value::Null);
     let errors = transcript_problems(&doc);
     let valid = errors.is_empty();
     let why = if source.is_none() {
         "Import existing timed lyrics, or transcribe the linked song.".to_string()
     } else if !valid {
-        format!(
-            "Transcript needs repair: {}. Original inputs are retained.",
-            errors.join("; ")
-        )
+        format!("Transcript needs repair: {}. Original inputs are retained.", errors.join("; "))
     } else if let Some(tool) = doc["source"].as_str() {
         format!(
             "Reused native transcript; recorded tool: {tool}; recorded model: {}. No transcription run in this import.",
             doc["model"].as_str().unwrap_or("unknown")
         )
     } else {
-        "Transcript ready; producer unknown because the supplied file did not record it."
-            .to_string()
+        "Transcript ready; producer unknown because the supplied file did not record it.".to_string()
     };
     let mut outputs: Vec<Value> = transcripts.iter().map(|p| file_chip(p)).collect();
-    for name in [
-        "transcript.json",
-        "transcript.srt",
-        "audio-analysis.json",
-        "audiomap.json",
-        "STORYBOARD.md",
-    ] {
+    for name in ["transcript.json", "transcript.srt", "audio-analysis.json", "audiomap.json", "STORYBOARD.md"] {
         let file = dir.join(video_target).join(name);
         if file.is_file() {
             outputs.push(file_chip(&file));
@@ -344,17 +252,10 @@ fn workshop_transcript_summary(
 }
 
 fn workshop_animated_assets(s: &Session) -> Vec<Value> {
-    s.project_assets
-        .iter()
-        .map(|a| json!({"id": a.id, "name": a.name, "kind": a.kind, "path": a.path}))
-        .collect()
+    s.project_assets.iter().map(|a| json!({"id": a.id, "name": a.name, "kind": a.kind, "path": a.path})).collect()
 }
 
-fn workshop_reference_state(
-    s: &Session,
-    dir: &Path,
-    panels: &[PathBuf],
-) -> (PathBuf, bool, bool, &'static str) {
+fn workshop_reference_state(s: &Session, dir: &Path, panels: &[PathBuf]) -> (PathBuf, bool, bool, &'static str) {
     let pdf = dir.join("storyboard.pdf");
     let has_ref_art = !panels.is_empty();
     let approved = has_ref_art && s.draft_approved;
@@ -378,9 +279,7 @@ fn diagnose_video_setup(s: &Session, dir: &Path) -> Value {
     }
     if s.video_project_path.as_ref().is_none_or(|p| !p.exists()) {
         warnings.push("Project file is not linked to hyperframes/hyperframes.json.");
-        next.push(
-            "Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project.",
-        );
+        next.push("Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project.");
     }
     if let Ok(html) = std::fs::read_to_string(hf.join("index.html"))
         && html.contains("<audio")
@@ -390,16 +289,10 @@ fn diagnose_video_setup(s: &Session, dir: &Path) -> Value {
         next.push("Run `magic-cli exec audio.analyze` to tag the music track and generate beat/section analysis.");
     }
     if !hf.join("audio-analysis.json").is_file() {
-        warnings.push(
-            "hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed).",
-        );
+        warnings.push("hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed).");
         next.push("Run `magic-cli exec audio.analyze` to generate transcript.json, transcript.srt, audio-analysis.json, and beats/.");
     }
-    let has_beats = std::fs::read_dir(hf.join("beats"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .any(|e| e.path().extension().is_some_and(|x| x == "json"));
+    let has_beats = std::fs::read_dir(hf.join("beats")).into_iter().flatten().flatten().any(|e| e.path().extension().is_some_and(|x| x == "json"));
     if !has_beats {
         warnings.push("hyperframes/beats/*.json beat grid is missing.");
         next.push("Run `hyperframes beats hyperframes --json` or `magic-cli exec audio.analyze` to build the Studio beat grid.");
@@ -416,8 +309,9 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
     let transcripts = transcript_files(&dir);
     let panels = panel_files(&dir);
     let assets = workshop_asset_files(&dir);
-    let storyboard = crate::cmd::storyboard::completion(s, &json!({})).unwrap_or_else(|error|
-        json!({"path":dir.join("storyboard.designcraft"),"complete":false,"status":"incomplete","error":error.to_string(),"page_count":0,"pages":[]}));
+    let storyboard = crate::cmd::storyboard::completion(s, &json!({})).unwrap_or_else(
+        |error| json!({"path":dir.join("storyboard.designcraft"),"complete":false,"status":"incomplete","error":error.to_string(),"page_count":0,"pages":[]}),
+    );
     let (pdf, has_ref_art, approved, reference_why) = workshop_reference_state(s, &dir, &panels);
     let song_why = match (audio_ok, liner.is_empty()) {
         (false, _) => "Choose the song's audio.",
@@ -434,13 +328,8 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
             json!({"target": t, "selected": *t == target, "path": path, "exists": path.is_some()})
         })
         .collect();
-    let (
-        supplied_transcript,
-        transcript_errors,
-        transcript_valid,
-        transcript_why,
-        transcript_outputs,
-    ) = workshop_transcript_summary(&dir, target, &transcripts, &target_chip);
+    let (supplied_transcript, transcript_errors, transcript_valid, transcript_why, transcript_outputs) =
+        workshop_transcript_summary(&dir, target, &transcripts, &target_chip);
     let animated = workshop_animated_assets(s);
     let stages = vec![
         json!({"id": "song", "title": "Song", "done": audio_ok, "why": song_why,
@@ -461,10 +350,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
     let storyboard_complete = storyboard["complete"] == true;
     let complete = setup_ready && storyboard_complete;
     let studio_info = studio(&dir);
-    let effective_video_project = s
-        .video_project_path
-        .clone()
-        .or_else(|| active_target_path.clone());
+    let effective_video_project = s.video_project_path.clone().or_else(|| active_target_path.clone());
     let diag = diagnose_video_setup(s, &dir);
     Ok(json!({
         "ok": true,
@@ -489,25 +375,19 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
 
 /// List every registered command, optionally filtered by id/label/params substring.
 pub fn cmd_query_list(s: &mut Session, params: &Value) -> Result<Value> {
-    let f = params
-        .get("filter")
-        .or_else(|| params.get("query"))
-        .and_then(Value::as_str)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
+    let f = params.get("filter").or_else(|| params.get("query")).and_then(Value::as_str).map(str::to_ascii_lowercase).unwrap_or_default();
     let list: Vec<Value> = crate::commands::command_specs()
         .iter()
         .filter(|c| {
-            f.is_empty()
-                || c.id.to_ascii_lowercase().contains(&f)
-                || c.label.to_ascii_lowercase().contains(&f)
-                || c.params.to_ascii_lowercase().contains(&f)
+            f.is_empty() || c.id.to_ascii_lowercase().contains(&f) || c.label.to_ascii_lowercase().contains(&f) || c.params.to_ascii_lowercase().contains(&f)
         })
         .map(|c| {
             let mut description = c.describe();
             let enabled = (c.enabled)(s);
             description["enabled"] = json!(enabled.is_ok());
-            if let Err(reason) = enabled { description["disabled_reason"] = json!(reason); }
+            if let Err(reason) = enabled {
+                description["disabled_reason"] = json!(reason);
+            }
             description
         })
         .collect();
@@ -516,12 +396,7 @@ pub fn cmd_query_list(s: &mut Session, params: &Value) -> Result<Value> {
 
 /// Unified CLI search across commands, connected subjects, workshop files, and storyboard scenes.
 pub fn cmd_project_search(s: &mut Session, params: &Value) -> Result<Value> {
-    let q = params
-        .get("query")
-        .or_else(|| params.get("filter"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .unwrap_or_default();
+    let q = params.get("query").or_else(|| params.get("filter")).and_then(Value::as_str).map(str::trim).unwrap_or_default();
     let q_lower = q.to_ascii_lowercase();
 
     let commands: Vec<Value> = crate::commands::command_specs()
@@ -542,20 +417,12 @@ pub fn cmd_project_search(s: &mut Session, params: &Value) -> Result<Value> {
             q_lower.is_empty()
                 || a.id.to_ascii_lowercase().contains(&q_lower)
                 || a.name.to_ascii_lowercase().contains(&q_lower)
-                || a.path.as_ref().is_some_and(|p| {
-                    p.display()
-                        .to_string()
-                        .to_ascii_lowercase()
-                        .contains(&q_lower)
-                })
+                || a.path.as_ref().is_some_and(|p| p.display().to_string().to_ascii_lowercase().contains(&q_lower))
         })
         .map(|a| json!({"id": a.id, "name": a.name, "kind": a.kind, "path": a.path}))
         .collect();
 
-    let files = cmd_workshop_files(s, &json!({"filter": q}))
-        .ok()
-        .and_then(|v| v.get("files").cloned())
-        .unwrap_or_else(|| json!([]));
+    let files = cmd_workshop_files(s, &json!({"filter": q})).ok().and_then(|v| v.get("files").cloned()).unwrap_or_else(|| json!([]));
 
     Ok(json!({
         "ok": true,

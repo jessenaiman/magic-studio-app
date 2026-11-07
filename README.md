@@ -5,7 +5,7 @@
 Plan scenes, animate artwork, design lyrics, and compose a music video in one
 desktop workspace. The native app and CLI share the same Rust engine.
 
-[Install](#install) · [Production guide](magic.md) ·
+[Install](#install) · [Production guide](apps/magic/agent.md) ·
 [Documentation](docs/README.md) · [Contributing](#contributing)
 
 ## Document ownership and save/load contract
@@ -37,7 +37,7 @@ a selected action, its preview, and the controls used to produce that result. --
 Open **Animation** and select an imported character or prop.
 Prepare cutouts, rigs, and motion with the installed Craft applications
 (PhotoCraft, VectorCraft, EffectCraft, FilmCraft) and place transparent clips
-into the project. See the [production guide](magic.md) for artwork
+into the project. See the [production guide](apps/magic/agent.md) for artwork
 preparation, motion authoring, and composition handoff.
 
 ## Lyrics: make the words part of the picture
@@ -74,9 +74,10 @@ The native desktop package is `magic` and the engine package is `magic-engine`.
 ### Build and install the app and CLI
 
 ```sh
-# Existing checkout: build, run, and rerun checks without installing
-cargo build -p magic -p magic-cli --locked
-cargo run -p magic
+# Existing checkout: build and rerun checks without installing
+cargo build -p magic-tauri -p magic-cli --locked
+# Run the Tauri desktop: apps/magic-tauri/README.md#run-the-tauri-desktop
+# (`cargo run -p magic` starts the legacy egui app)
 cargo xtask ci
 cargo xtask layers
 cargo xtask assets
@@ -86,21 +87,19 @@ Asset rights metadata is pending; SonarCloud, WASM and translations are not conf
 ```sh
 git clone https://github.com/jessenaiman/magic-studio-app.git
 cd magic-studio-app
-cargo build -p magic -p magic-cli --release --locked
-cargo xtask install --profile release
+cargo install --locked --path apps/magic-cli
+(cd apps/magic && bun install && bun run tauri build)   # frontend + release binary: target/release/magic-tauri
 ```
 
-The installer places the `magic` desktop app and the `magic-cli` executable in:
+`cargo install` places `magic-cli` in `~/.cargo/bin`. The desktop is built by `tauri build` rather than
+`cargo install`, which would produce a binary that loads the dev server instead of the bundled frontend;
+copy `target/release/magic-tauri` where you want it. (`bundle.active` is off in `tauri.conf.json`, so no
+installer package is made.) There is no `cargo xtask install`. Run the desktop as described in
+[apps/magic-tauri/README.md](apps/magic-tauri/README.md#run-the-tauri-desktop). The legacy egui `magic` app
+installs with `cargo install --locked --path apps/magic`.
 
-- Commands under `~/.local/bin`.
-- App and runtime resources: `~/.local/share/magic`.
-- A desktop entry and icon under `~/.local/share`.
-
-Ensure `~/.local/bin` is on your `PATH`, then launch:
-
-```sh
-magic
-```
+Ensure `~/.cargo/bin` is on your `PATH`, then launch `magic-tauri` (with a control port and token for
+agent use, see the Tauri README).
 
 Open **File → Application Settings** and choose an existing **Production project
 root** outside the checkout. This selects the destination for new projects;
@@ -109,7 +108,7 @@ it does not move existing ones.
 An installed app opens without a provider key. Supported Craft document operations
 use linked Rust libraries. Opening a separate native editor requires its installed
 application. HyperFrames and FFmpeg remain external runtimes. See the
-[production guide](magic.md).
+[production guide](apps/magic/agent.md).
 The [setup guide](apps/magic/README.md) covers installer
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
@@ -140,5 +139,4 @@ Use the source setup guide for development; rebuild after editing embedded UI.
 ## Credits
 
 Magic Studio is a project by **Jesse Naiman**, incorporating and modifying
-OpenMontage by calesthio and its contributors. See [source attribution](SOURCE-ATTRIBUTION.md),
-[LICENSE](LICENSE), and component notices for upstream authorship and licensing.
+OpenMontage by calesthio and its contributors. See [LICENSE](LICENSE) and component notices for upstream authorship and licensing.

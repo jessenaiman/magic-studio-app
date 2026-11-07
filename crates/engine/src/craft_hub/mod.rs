@@ -100,12 +100,7 @@ impl CraftHub {
     /// 1. First attempts to send the command to the running application via loopback TCP.
     /// 2. If the application is not running (connection refused / timeout), transparently falls
     ///    back to the headless CLI on PATH.
-    pub fn execute(
-        target: CraftTarget,
-        doc: Option<&Path>,
-        command: &str,
-        params: &Value,
-    ) -> Result<Value> {
+    pub fn execute(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value) -> Result<Value> {
         match call_tcp(target, command, params, Duration::from_millis(250)) {
             Ok(result) => Ok(result),
             Err(_) => call_cli(target, doc, command, params),
@@ -113,30 +108,15 @@ impl CraftHub {
     }
 }
 
-fn call_tcp(
-    target: CraftTarget,
-    command: &str,
-    params: &Value,
-    timeout: Duration,
-) -> std::result::Result<Value, String> {
-    let port = std::env::var(target.port_env())
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or_else(|| target.default_port());
+fn call_tcp(target: CraftTarget, command: &str, params: &Value, timeout: Duration) -> std::result::Result<Value, String> {
+    let port = std::env::var(target.port_env()).ok().and_then(|p| p.parse::<u16>().ok()).unwrap_or_else(|| target.default_port());
 
-    let addr: SocketAddr = format!("127.0.0.1:{port}")
-        .parse()
-        .map_err(|e| format!("invalid address: {e}"))?;
+    let addr: SocketAddr = format!("127.0.0.1:{port}").parse().map_err(|e| format!("invalid address: {e}"))?;
 
-    let stream = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| format!("tcp connect failed: {e}"))?;
+    let stream = TcpStream::connect_timeout(&addr, timeout).map_err(|e| format!("tcp connect failed: {e}"))?;
 
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|e| format!("set read timeout: {e}"))?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(5)))
-        .map_err(|e| format!("set write timeout: {e}"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30))).map_err(|e| format!("set read timeout: {e}"))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5))).map_err(|e| format!("set write timeout: {e}"))?;
 
     let token = target.token_env().and_then(|var| std::env::var(var).ok());
 
@@ -154,30 +134,22 @@ fn call_tcp(
         }),
     );
 
-    let mut payload =
-        serde_json::to_vec(&Value::Object(req_obj)).map_err(|e| format!("serialize error: {e}"))?;
+    let mut payload = serde_json::to_vec(&Value::Object(req_obj)).map_err(|e| format!("serialize error: {e}"))?;
     payload.push(b'\n');
 
-    let mut writer = stream
-        .try_clone()
-        .map_err(|e| format!("clone stream: {e}"))?;
-    writer
-        .write_all(&payload)
-        .map_err(|e| format!("write error: {e}"))?;
+    let mut writer = stream.try_clone().map_err(|e| format!("clone stream: {e}"))?;
+    writer.write_all(&payload).map_err(|e| format!("write error: {e}"))?;
     writer.flush().map_err(|e| format!("flush error: {e}"))?;
 
     let mut reader = BufReader::new(stream);
     let mut response_line = String::new();
-    reader
-        .read_line(&mut response_line)
-        .map_err(|e| format!("read error: {e}"))?;
+    reader.read_line(&mut response_line).map_err(|e| format!("read error: {e}"))?;
 
     if response_line.trim().is_empty() {
         return Err("empty response from control server".into());
     }
 
-    let parsed: Value =
-        serde_json::from_str(&response_line).map_err(|e| format!("invalid JSON in reply: {e}"))?;
+    let parsed: Value = serde_json::from_str(&response_line).map_err(|e| format!("invalid JSON in reply: {e}"))?;
 
     if parsed["ok"] == true {
         Ok(parsed.get("result").cloned().unwrap_or(Value::Null))
@@ -187,16 +159,10 @@ fn call_tcp(
     }
 }
 
-fn call_cli(
-    target: CraftTarget,
-    doc: Option<&Path>,
-    command: &str,
-    params: &Value,
-) -> Result<Value> {
+fn call_cli(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value) -> Result<Value> {
     let cli = target.cli_name();
     let mut cmd = Command::new(cli);
-    let params_str =
-        serde_json::to_string(params).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let params_str = serde_json::to_string(params).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
 
     match target {
         CraftTarget::Film => {
@@ -209,20 +175,14 @@ fn call_cli(
             if let Some(path) = doc {
                 cmd.arg("--project").arg(path);
             }
-            cmd.arg("exec")
-                .arg(command)
-                .arg("--params")
-                .arg(&params_str);
+            cmd.arg("exec").arg(command).arg("--params").arg(&params_str);
         }
         CraftTarget::Vector => {
             cmd.arg("run");
             if let Some(path) = doc {
                 cmd.arg("--in").arg(path);
             }
-            cmd.arg("--cmd")
-                .arg(command)
-                .arg("--params")
-                .arg(&params_str);
+            cmd.arg("--cmd").arg(command).arg("--params").arg(&params_str);
         }
         CraftTarget::Photo => {
             cmd.arg("run");
@@ -231,10 +191,7 @@ fn call_cli(
             } else {
                 cmd.arg("--new").arg("{}");
             }
-            cmd.arg("--cmd")
-                .arg(command)
-                .arg("--params")
-                .arg(&params_str);
+            cmd.arg("--cmd").arg(command).arg("--params").arg(&params_str);
         }
         CraftTarget::Design => {
             cmd.arg("run");
@@ -251,32 +208,20 @@ fn call_cli(
         }
     }
 
-    let output = cmd
-        .output()
-        .map_err(|e| EngineError::ExternalTool(cli.to_string(), e.to_string()))?;
+    let output = cmd.output().map_err(|e| EngineError::ExternalTool(cli.to_string(), e.to_string()))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(EngineError::CommandFailed(
-            command.to_string(),
-            stderr.trim().to_string(),
-        ));
+        return Err(EngineError::CommandFailed(command.to_string(), stderr.trim().to_string()));
     }
 
-    let stdout_trim = std::str::from_utf8(&output.stdout)
-        .map_err(|e| EngineError::InvalidParams(format!("invalid UTF-8 from CLI: {e}")))?
-        .trim();
+    let stdout_trim = std::str::from_utf8(&output.stdout).map_err(|e| EngineError::InvalidParams(format!("invalid UTF-8 from CLI: {e}")))?.trim();
 
     if stdout_trim.is_empty() || stdout_trim == "null" {
         return Ok(Value::Null);
     }
 
-    let parsed: Value = serde_json::from_str(stdout_trim)
-        .map_err(|e| EngineError::InvalidParams(format!("invalid JSON from CLI: {e}")))?;
+    let parsed: Value = serde_json::from_str(stdout_trim).map_err(|e| EngineError::InvalidParams(format!("invalid JSON from CLI: {e}")))?;
 
-    if let Some(res) = parsed.get("result") {
-        Ok(res.clone())
-    } else {
-        Ok(parsed)
-    }
+    if let Some(res) = parsed.get("result") { Ok(res.clone()) } else { Ok(parsed) }
 }

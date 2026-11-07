@@ -19,9 +19,7 @@ use crate::{EngineError, Result, Session};
 
 // Re-export the public engine surface that other crates address via `crate::commands::*`.
 pub use crate::project::write_project_file;
-pub use crate::workspace::{
-    asset_id_for_import, resolve_tool, resolve_workspace_path, sanitize_asset_id, workspace_root,
-};
+pub use crate::workspace::{asset_id_for_import, resolve_tool, resolve_workspace_path, sanitize_asset_id, workspace_root};
 
 pub struct CommandSpec {
     pub id: &'static str,
@@ -93,10 +91,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "ui.unconfigured" => true,
         "project.root" => params.get("root").is_none_or(Value::is_null),
         "words.workspace" => params.get("path").is_none_or(Value::is_null),
-        "skills.limits" => {
-            params.get("max_words").is_none_or(Value::is_null)
-                && params.get("max_steps").is_none_or(Value::is_null)
-        }
+        "skills.limits" => params.get("max_words").is_none_or(Value::is_null) && params.get("max_steps").is_none_or(Value::is_null),
         "skills.diagram" => params.get("render").and_then(Value::as_bool) != Some(true),
         "agent.log" => params.get("refresh").and_then(Value::as_bool) != Some(true),
         "app.doctor" => params.get("clean").and_then(Value::as_bool) != Some(true),
@@ -123,10 +118,7 @@ pub(crate) fn always(_: &Session) -> std::result::Result<(), String> {
 /// description. Every caller (CLI, app) goes through `Session::execute`, so a
 /// mistyped value fails the same way everywhere.
 pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
-    let (Ok(Value::Object(expected)), Some(given)) = (
-        serde_json::from_str::<Value>(description),
-        params.as_object(),
-    ) else {
+    let (Ok(Value::Object(expected)), Some(given)) = (serde_json::from_str::<Value>(description), params.as_object()) else {
         return Ok(());
     };
     for (key, value) in given {
@@ -135,15 +127,9 @@ pub fn check_param_types(description: &str, params: &Value) -> Result<()> {
             Some(Value::Number(_)) => "number",
             _ => continue,
         };
-        let ok = if wanted == "boolean" {
-            value.is_boolean()
-        } else {
-            value.is_number()
-        };
+        let ok = if wanted == "boolean" { value.is_boolean() } else { value.is_number() };
         if !ok {
-            return Err(EngineError::InvalidParams(format!(
-                "`{key}` must be a {wanted}, got {value}"
-            )));
+            return Err(EngineError::InvalidParams(format!("`{key}` must be a {wanted}, got {value}")));
         }
     }
     Ok(())

@@ -13,10 +13,7 @@ const ANSWERED_MIN: usize = 21;
 
 /// Method names from the first column of the "Methods" table.
 fn documented_methods() -> Vec<String> {
-    let table = PROTOCOL
-        .split_once("Methods (handlers in")
-        .map(|(_, rest)| rest)
-        .unwrap_or_default();
+    let table = PROTOCOL.split_once("Methods (handlers in").map(|(_, rest)| rest).unwrap_or_default();
     let mut methods = Vec::new();
     for line in table.lines().skip_while(|l| !l.starts_with('|')) {
         if !line.starts_with('|') {
@@ -36,10 +33,7 @@ fn documented_methods() -> Vec<String> {
 #[ignore = "run by `cargo xtask ci` with --nocapture so the report is shown"]
 fn control_protocol_methods_are_answered() {
     let methods = documented_methods();
-    assert!(
-        !methods.is_empty(),
-        "no methods found in docs/control-protocol.md"
-    );
+    assert!(!methods.is_empty(), "no methods found in docs/control-protocol.md");
     let ctx = egui::Context::default();
     let mut app = MagicApp::new(magic::Session::default());
     let mut missing = Vec::new();
@@ -49,18 +43,9 @@ fn control_protocol_methods_are_answered() {
         if unknown {
             missing.push(method.as_str());
         }
-        println!(
-            "{:<8} {method}",
-            if unknown { "missing" } else { "answered" }
-        );
+        println!("{:<8} {method}", if unknown { "missing" } else { "answered" });
     }
     let answered = methods.len() - missing.len();
-    println!(
-        "control protocol: {answered}/{} methods answered",
-        methods.len()
-    );
-    assert!(
-        answered >= ANSWERED_MIN,
-        "control protocol regressed: {answered} answered, at least {ANSWERED_MIN} expected"
-    );
+    println!("control protocol: {answered}/{} methods answered", methods.len());
+    assert!(answered >= ANSWERED_MIN, "control protocol regressed: {answered} answered, at least {ANSWERED_MIN} expected");
 }

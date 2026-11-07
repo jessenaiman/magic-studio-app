@@ -4,10 +4,7 @@ use magic::{Session, command_specs};
 use std::io::{self, Write};
 
 #[derive(Parser)]
-#[command(
-    name = "magic-tui",
-    about = "Magic Studio interactive terminal UI dashboard"
-)]
+#[command(name = "magic-tui", about = "Magic Studio interactive terminal UI dashboard")]
 struct Cli {
     /// Open this `.magic` project at launch
     #[arg(long)]

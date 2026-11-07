@@ -14,13 +14,10 @@ use egui::{CornerRadius, RichText, ScrollArea, Stroke, Ui};
 use serde_json::{Value, json};
 
 use crate::theme::{
-    ACCENT, ACCENT_AMBER, ACCENT_GREEN, ACCENT_TEAL, ACCENT_VIOLET, BG_DEEP, BG_ELEVATED, BG_INPUT,
-    BORDER_STRONG, BORDER_SUBTLE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
+    ACCENT, ACCENT_AMBER, ACCENT_GREEN, ACCENT_TEAL, ACCENT_VIOLET, BG_DEEP, BG_ELEVATED, BG_INPUT, BORDER_STRONG, BORDER_SUBTLE, TEXT_MUTED, TEXT_PRIMARY,
+    TEXT_SECONDARY,
 };
-use crate::widgets::{
-    card_frame, pill_toggle, primary_button, prop_row, secondary_button, section_header,
-    status_badge,
-};
+use crate::widgets::{card_frame, pill_toggle, primary_button, prop_row, secondary_button, section_header, status_badge};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AssistantTab {
@@ -92,16 +89,7 @@ impl AssistantDrawer {
         if let Ok(tpl) = session.execute("scribbles.templates", json!({})) {
             self.craft_ai_status = tpl.get("craft_ai").cloned().unwrap_or_else(|| json!({}));
             if let Some(kinds) = tpl["kinds"].as_object() {
-                let order = [
-                    "new",
-                    "image",
-                    "sheet",
-                    "poses",
-                    "actions",
-                    "storyboard_hero",
-                    "storyboard_sketch",
-                    "custom",
-                ];
+                let order = ["new", "image", "sheet", "poses", "actions", "storyboard_hero", "storyboard_sketch", "custom"];
                 let mut list = Vec::new();
                 for key in order {
                     if let Some(spec) = kinds.get(key) {
@@ -125,23 +113,11 @@ impl AssistantDrawer {
         TemplateEntry {
             id: id.to_owned(),
             label: spec["label"].as_str().unwrap_or(id).to_owned(),
-            canvas: [
-                spec["canvas"][0].as_u64().unwrap_or(1024),
-                spec["canvas"][1].as_u64().unwrap_or(1536),
-            ],
+            canvas: [spec["canvas"][0].as_u64().unwrap_or(1024), spec["canvas"][1].as_u64().unwrap_or(1536)],
             needs_reference: spec["needs_reference"].as_bool().unwrap_or(false),
-            save_command: spec["save_command"]
-                .as_str()
-                .unwrap_or("project.add_asset")
-                .to_owned(),
+            save_command: spec["save_command"].as_str().unwrap_or("project.add_asset").to_owned(),
             save_slot: spec["save_slot"].as_str().map(str::to_owned),
-            tags: spec["tags"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect(),
+            tags: spec["tags"].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect(),
             layout: spec["layout"].as_str().unwrap_or_default().to_owned(),
         }
     }
@@ -152,64 +128,38 @@ impl AssistantDrawer {
         self.active_tab = AssistantTab::Scribbles;
         self.target_scene = scene.max(1);
         self.target_slot = slot.to_owned();
-        self.selected_template = if slot == "hero_image" {
-            "storyboard_hero".into()
-        } else {
-            "storyboard_sketch".into()
-        };
+        self.selected_template = if slot == "hero_image" { "storyboard_hero".into() } else { "storyboard_sketch".into() };
         if self.prompt_input.trim().is_empty() && !cue_hint.trim().is_empty() {
             self.prompt_input = cue_hint.trim().to_owned();
         }
     }
 
     pub fn current_template(&self) -> Option<&TemplateEntry> {
-        self.templates
-            .iter()
-            .find(|t| t.id == self.selected_template)
+        self.templates.iter().find(|t| t.id == self.selected_template)
     }
 
     /// Render the right-side Assistant Drawer and return any engine command `(id, params)` queued
     /// by the user.
-    pub fn show(
-        &mut self,
-        ui: &mut Ui,
-        project_assets: &[magic::ProjectAsset],
-        busy: bool,
-    ) -> Option<(String, Value)> {
+    pub fn show(&mut self, ui: &mut Ui, project_assets: &[magic::ProjectAsset], busy: bool) -> Option<(String, Value)> {
         let mut command_to_run: Option<(String, Value)> = None;
 
         // Top drawer header
         ui.horizontal(|ui| {
-            if pill_toggle(
-                ui,
-                self.active_tab == AssistantTab::Fidget,
-                "Fidget · Briefs",
-                ACCENT_VIOLET,
-            )
-            .on_hover_text("Fidget (`text.complete`): reworks prompts into YAML-frontmatter Markdown templates")
-            .clicked()
+            if pill_toggle(ui, self.active_tab == AssistantTab::Fidget, "Fidget · Briefs", ACCENT_VIOLET)
+                .on_hover_text("Fidget (`text.complete`): reworks prompts into YAML-frontmatter Markdown templates")
+                .clicked()
             {
                 self.active_tab = AssistantTab::Fidget;
             }
-            if pill_toggle(
-                ui,
-                self.active_tab == AssistantTab::Scribbles,
-                "Scribbles · Draw",
-                ACCENT_TEAL,
-            )
-            .on_hover_text("Scribbles (`image.generate`): template-gated image_gen loop with automatic save commands")
-            .clicked()
+            if pill_toggle(ui, self.active_tab == AssistantTab::Scribbles, "Scribbles · Draw", ACCENT_TEAL)
+                .on_hover_text("Scribbles (`image.generate`): template-gated image_gen loop with automatic save commands")
+                .clicked()
             {
                 self.active_tab = AssistantTab::Scribbles;
             }
-            if pill_toggle(
-                ui,
-                self.active_tab == AssistantTab::CraftAiSetup,
-                "Craft AI",
-                ACCENT,
-            )
-            .on_hover_text("Inspect Craft AI roles (`craft-ai-client`) and local agent routing")
-            .clicked()
+            if pill_toggle(ui, self.active_tab == AssistantTab::CraftAiSetup, "Craft AI", ACCENT)
+                .on_hover_text("Inspect Craft AI roles (`craft-ai-client`) and local agent routing")
+                .clicked()
             {
                 self.active_tab = AssistantTab::CraftAiSetup;
             }
@@ -223,32 +173,25 @@ impl AssistantDrawer {
             .corner_radius(CornerRadius::same(5))
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
-                ui.label(
-                    RichText::new(magic::fidget::FIDGET_NOTE)
-                        .size(10.5)
-                        .color(ACCENT_AMBER),
-                );
+                ui.label(RichText::new(magic::fidget::FIDGET_NOTE).size(10.5).color(ACCENT_AMBER));
             });
         ui.add_space(6.0);
 
-        ScrollArea::vertical()
-            .id_salt("assistant_drawer_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.active_tab {
-                AssistantTab::Fidget => {
-                    if let Some(cmd) = self.show_fidget_tab(ui, project_assets, busy) {
-                        command_to_run = Some(cmd);
-                    }
+        ScrollArea::vertical().id_salt("assistant_drawer_scroll").auto_shrink([false, false]).show(ui, |ui| match self.active_tab {
+            AssistantTab::Fidget => {
+                if let Some(cmd) = self.show_fidget_tab(ui, project_assets, busy) {
+                    command_to_run = Some(cmd);
                 }
-                AssistantTab::Scribbles => {
-                    if let Some(cmd) = self.show_scribbles_tab(ui, project_assets, busy) {
-                        command_to_run = Some(cmd);
-                    }
+            }
+            AssistantTab::Scribbles => {
+                if let Some(cmd) = self.show_scribbles_tab(ui, project_assets, busy) {
+                    command_to_run = Some(cmd);
                 }
-                AssistantTab::CraftAiSetup => {
-                    self.show_craft_ai_tab(ui);
-                }
-            });
+            }
+            AssistantTab::CraftAiSetup => {
+                self.show_craft_ai_tab(ui);
+            }
+        });
 
         command_to_run
     }
@@ -259,11 +202,7 @@ impl AssistantDrawer {
             for tpl in &self.templates {
                 let selected = self.selected_template == tpl.id;
                 let border = if selected { ACCENT_TEAL } else { BORDER_SUBTLE };
-                let fill = if selected {
-                    ACCENT_TEAL.gamma_multiply(0.14)
-                } else {
-                    BG_ELEVATED
-                };
+                let fill = if selected { ACCENT_TEAL.gamma_multiply(0.14) } else { BG_ELEVATED };
                 let resp = egui::Frame::new()
                     .fill(fill)
                     .stroke(Stroke::new(1.0, border))
@@ -272,29 +211,14 @@ impl AssistantDrawer {
                     .show(ui, |ui| {
                         ui.set_min_width(ui.available_width());
                         ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(&tpl.label)
-                                    .size(12.0)
-                                    .strong()
-                                    .color(if selected { ACCENT_TEAL } else { TEXT_PRIMARY }),
-                            );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    status_badge(ui, &tpl.save_command, ACCENT);
-                                    if tpl.needs_reference {
-                                        status_badge(ui, "needs ref", ACCENT_AMBER);
-                                    }
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{}×{}",
-                                            tpl.canvas[0], tpl.canvas[1]
-                                        ))
-                                        .size(10.5)
-                                        .color(TEXT_MUTED),
-                                    );
-                                },
-                            );
+                            ui.label(RichText::new(&tpl.label).size(12.0).strong().color(if selected { ACCENT_TEAL } else { TEXT_PRIMARY }));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                status_badge(ui, &tpl.save_command, ACCENT);
+                                if tpl.needs_reference {
+                                    status_badge(ui, "needs ref", ACCENT_AMBER);
+                                }
+                                ui.label(RichText::new(format!("{}×{}", tpl.canvas[0], tpl.canvas[1])).size(10.5).color(TEXT_MUTED));
+                            });
                         });
                         if selected {
                             ui.add_space(2.0);
@@ -318,11 +242,7 @@ impl AssistantDrawer {
         if section_header(ui, "2. Template Parameters & Save Target", true) {
             ui.add_space(4.0);
             card_frame().show(ui, |ui| {
-                ui.label(
-                    RichText::new("Character / Scene Description (`prompt`)")
-                        .size(11.0)
-                        .color(TEXT_SECONDARY),
-                );
+                ui.label(RichText::new("Character / Scene Description (`prompt`)").size(11.0).color(TEXT_SECONDARY));
                 ui.add(
                     egui::TextEdit::multiline(&mut self.prompt_input)
                         .desired_rows(3)
@@ -331,31 +251,19 @@ impl AssistantDrawer {
                 );
 
                 ui.add_space(4.0);
-                ui.label(
-                    RichText::new("Revision / Styling Notes (`notes`, optional)")
-                        .size(11.0)
-                        .color(TEXT_SECONDARY),
-                );
+                ui.label(RichText::new("Revision / Styling Notes (`notes`, optional)").size(11.0).color(TEXT_SECONDARY));
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.notes_input)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("Optional palette, posture, or Improvement notes"),
+                    egui::TextEdit::singleline(&mut self.notes_input).desired_width(f32::INFINITY).hint_text("Optional palette, posture, or Improvement notes"),
                 );
 
                 if self.selected_template == "actions" {
                     ui.add_space(4.0);
                     prop_row(ui, "Action Cycle", |ui| {
-                        craft_ui::ComboBox::from_id_salt("scribbles_action_combo")
-                            .selected_text(&self.selected_action)
-                            .show_ui(ui, |ui| {
-                                for act in ["walk", "run", "jump", "wave", "turn"] {
-                                    ui.selectable_value(
-                                        &mut self.selected_action,
-                                        act.to_owned(),
-                                        act,
-                                    );
-                                }
-                            });
+                        craft_ui::ComboBox::from_id_salt("scribbles_action_combo").selected_text(&self.selected_action).show_ui(ui, |ui| {
+                            for act in ["walk", "run", "jump", "wave", "turn"] {
+                                ui.selectable_value(&mut self.selected_action, act.to_owned(), act);
+                            }
+                        });
                     });
                 }
 
@@ -365,11 +273,7 @@ impl AssistantDrawer {
                     if secondary_button(ui, "Browse…").clicked() {
                         self.browse_reference_requested = true;
                     }
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.reference_path)
-                            .desired_width(130.0)
-                            .hint_text("optional/ref.png"),
-                    );
+                    ui.add(egui::TextEdit::singleline(&mut self.reference_path).desired_width(130.0).hint_text("optional/ref.png"));
                 });
 
                 if !project_assets.is_empty() {
@@ -377,10 +281,7 @@ impl AssistantDrawer {
                         ui.label(RichText::new("Project refs:").size(10.5).color(TEXT_MUTED));
                         for asset in project_assets.iter().take(6) {
                             if let Some(p) = &asset.path
-                                && ui
-                                    .small_button(&asset.name)
-                                    .on_hover_text(p.display().to_string())
-                                    .clicked()
+                                && ui.small_button(&asset.name).on_hover_text(p.display().to_string()).clicked()
                             {
                                 self.reference_path = p.display().to_string();
                             }
@@ -388,10 +289,7 @@ impl AssistantDrawer {
                     });
                 }
 
-                if matches!(
-                    self.selected_template.as_str(),
-                    "storyboard_hero" | "storyboard_sketch"
-                ) {
+                if matches!(self.selected_template.as_str(), "storyboard_hero" | "storyboard_sketch") {
                     ui.add_space(4.0);
                     prop_row(ui, "Target Scene", |ui| {
                         let mut s = self.target_scene as f32;
@@ -400,23 +298,11 @@ impl AssistantDrawer {
                         }
                     });
                     prop_row(ui, "Target Slot", |ui| {
-                        craft_ui::ComboBox::from_id_salt("scribbles_slot_combo")
-                            .selected_text(&self.target_slot)
-                            .show_ui(ui, |ui| {
-                                for slot in [
-                                    "hero_image",
-                                    "sketch_left",
-                                    "sketch_right",
-                                    "source_image",
-                                    "result_image",
-                                ] {
-                                    ui.selectable_value(
-                                        &mut self.target_slot,
-                                        slot.to_owned(),
-                                        slot,
-                                    );
-                                }
-                            });
+                        craft_ui::ComboBox::from_id_salt("scribbles_slot_combo").selected_text(&self.target_slot).show_ui(ui, |ui| {
+                            for slot in ["hero_image", "sketch_left", "sketch_right", "source_image", "result_image"] {
+                                ui.selectable_value(&mut self.target_slot, slot.to_owned(), slot);
+                            }
+                        });
                     });
                 }
 
@@ -446,10 +332,7 @@ impl AssistantDrawer {
         if self.selected_template == "actions" {
             p["action"] = json!(self.selected_action);
         }
-        if matches!(
-            self.selected_template.as_str(),
-            "storyboard_hero" | "storyboard_sketch"
-        ) {
+        if matches!(self.selected_template.as_str(), "storyboard_hero" | "storyboard_sketch") {
             p["scene"] = json!(self.target_scene);
             p["slot"] = json!(self.target_slot);
         }
@@ -461,12 +344,7 @@ impl AssistantDrawer {
         p
     }
 
-    fn show_fidget_tab(
-        &mut self,
-        ui: &mut Ui,
-        project_assets: &[magic::ProjectAsset],
-        busy: bool,
-    ) -> Option<(String, Value)> {
+    fn show_fidget_tab(&mut self, ui: &mut Ui, project_assets: &[magic::ProjectAsset], busy: bool) -> Option<(String, Value)> {
         let mut cmd = None;
         self.show_template_picker(ui);
         ui.add_space(6.0);
@@ -477,14 +355,8 @@ impl AssistantDrawer {
             if primary_button(ui, "Prepare Frontmatter Markdown (Fidget)").clicked() && !busy {
                 cmd = Some(("fidget.prepare".into(), self.build_request_params()));
             }
-            if secondary_button(ui, "Send to Fidget Agent").clicked()
-                && !busy
-                && !self.prompt_input.trim().is_empty()
-            {
-                let save_cmd = self
-                    .current_template()
-                    .map(|t| t.save_command.as_str())
-                    .unwrap_or("project.add_asset");
+            if secondary_button(ui, "Send to Fidget Agent").clicked() && !busy && !self.prompt_input.trim().is_empty() {
+                let save_cmd = self.current_template().map(|t| t.save_command.as_str()).unwrap_or("project.add_asset");
                 cmd = Some((
                     "sprocket.send".into(),
                     json!({
@@ -499,27 +371,18 @@ impl AssistantDrawer {
         });
 
         ui.add_space(6.0);
-        if section_header(
-            ui,
-            "3. Fidget Markdown Output (YAML Frontmatter + NOTE)",
-            true,
-        ) {
+        if section_header(ui, "3. Fidget Markdown Output (YAML Frontmatter + NOTE)", true) {
             ui.add_space(4.0);
             card_frame().show(ui, |ui| {
                 if self.prepared_markdown.is_empty() {
                     ui.label(
-                        RichText::new(
-                            "Click 'Prepare Frontmatter Markdown' above to build the inspectable YAML-frontmatter Markdown brief.",
-                        )
-                        .size(11.5)
-                        .color(TEXT_MUTED),
+                        RichText::new("Click 'Prepare Frontmatter Markdown' above to build the inspectable YAML-frontmatter Markdown brief.")
+                            .size(11.5)
+                            .color(TEXT_MUTED),
                     );
                 } else {
                     ui.add(
-                        egui::TextEdit::multiline(&mut self.prepared_markdown)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_rows(10)
-                            .desired_width(f32::INFINITY),
+                        egui::TextEdit::multiline(&mut self.prepared_markdown).font(egui::TextStyle::Monospace).desired_rows(10).desired_width(f32::INFINITY),
                     );
                     ui.add_space(4.0);
                     if primary_button(ui, "Hand Off Brief to Scribbles →").clicked() {
@@ -531,12 +394,7 @@ impl AssistantDrawer {
         cmd
     }
 
-    fn show_scribbles_tab(
-        &mut self,
-        ui: &mut Ui,
-        project_assets: &[magic::ProjectAsset],
-        busy: bool,
-    ) -> Option<(String, Value)> {
+    fn show_scribbles_tab(&mut self, ui: &mut Ui, project_assets: &[magic::ProjectAsset], busy: bool) -> Option<(String, Value)> {
         let mut cmd = None;
         self.show_template_picker(ui);
         ui.add_space(6.0);
@@ -576,10 +434,7 @@ impl AssistantDrawer {
             if section_header(ui, "Active Fidget Markdown Brief", false) {
                 card_frame().show(ui, |ui| {
                     ui.add(
-                        egui::TextEdit::multiline(&mut self.prepared_markdown)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_rows(7)
-                            .desired_width(f32::INFINITY),
+                        egui::TextEdit::multiline(&mut self.prepared_markdown).font(egui::TextStyle::Monospace).desired_rows(7).desired_width(f32::INFINITY),
                     );
                 });
             }
@@ -590,18 +445,10 @@ impl AssistantDrawer {
             if section_header(ui, "Last Scribbles Save Receipt", true) {
                 card_frame().show(ui, |ui| {
                     if let Some(img) = receipt["image"].as_str() {
-                        ui.label(
-                            RichText::new(format!("Saved PNG: {img}"))
-                                .size(11.0)
-                                .color(ACCENT_GREEN),
-                        );
+                        ui.label(RichText::new(format!("Saved PNG: {img}")).size(11.0).color(ACCENT_GREEN));
                     }
                     if let Some(save_cmd) = receipt["scribbles"]["save_command"].as_str() {
-                        ui.label(
-                            RichText::new(format!("Save Command: {save_cmd}"))
-                                .size(11.0)
-                                .color(TEXT_SECONDARY),
-                        );
+                        ui.label(RichText::new(format!("Save Command: {save_cmd}")).size(11.0).color(TEXT_SECONDARY));
                     }
                 });
             }
@@ -621,33 +468,20 @@ impl AssistantDrawer {
                     card_frame().show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(label).size(12.0).strong().color(TEXT_PRIMARY));
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    let color = if state == "ready" {
-                                        ACCENT_GREEN
-                                    } else {
-                                        ACCENT_AMBER
-                                    };
-                                    status_badge(ui, state, color);
-                                    status_badge(ui, cap, ACCENT);
-                                },
-                            );
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let color = if state == "ready" { ACCENT_GREEN } else { ACCENT_AMBER };
+                                status_badge(ui, state, color);
+                                status_badge(ui, cap, ACCENT);
+                            });
                         });
                         if let Some(reason) = role["status"]["reason"].as_str() {
                             ui.label(
-                                RichText::new(format!(
-                                    "{reason} — falls back to local CLI adapter (`codex` / `opencode` / `omp`)"
-                                ))
-                                .size(11.0)
-                                .color(TEXT_SECONDARY),
+                                RichText::new(format!("{reason} — falls back to local CLI adapter (`codex` / `opencode` / `omp`)"))
+                                    .size(11.0)
+                                    .color(TEXT_SECONDARY),
                             );
                         } else if let Some(model) = role["status"]["model_label"].as_str() {
-                            ui.label(
-                                RichText::new(format!("Bound model: {model}"))
-                                    .size(11.0)
-                                    .color(ACCENT_GREEN),
-                            );
+                            ui.label(RichText::new(format!("Bound model: {model}")).size(11.0).color(ACCENT_GREEN));
                         }
                     });
                     ui.add_space(4.0);
@@ -665,30 +499,14 @@ impl AssistantDrawer {
                     status_badge(ui, active_agent, ACCENT_TEAL);
                 });
                 prop_row(ui, "Model", |ui| {
-                    ui.label(
-                        RichText::new(if active_model.is_empty() {
-                            "(subscription default)"
-                        } else {
-                            active_model
-                        })
-                        .size(11.5)
-                        .color(TEXT_PRIMARY),
-                    );
+                    ui.label(RichText::new(if active_model.is_empty() { "(subscription default)" } else { active_model }).size(11.5).color(TEXT_PRIMARY));
                 });
                 if let Some(agents) = self.agent_config["agents"].as_array() {
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         for a in agents.iter().filter(|a| a["installed"] == true) {
                             if let Some(name) = a["name"].as_str() {
-                                status_badge(
-                                    ui,
-                                    name,
-                                    if name == active_agent {
-                                        ACCENT_GREEN
-                                    } else {
-                                        BORDER_STRONG
-                                    },
-                                );
+                                status_badge(ui, name, if name == active_agent { ACCENT_GREEN } else { BORDER_STRONG });
                             }
                         }
                     });

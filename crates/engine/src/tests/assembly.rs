@@ -6,10 +6,7 @@ fn each_background_runs_until_the_next_and_the_last_to_the_end() {
     let want = [(0.0, 7.74), (7.74, 7.17), (14.91, 18.09)];
     assert_eq!(got.len(), want.len());
     for ((a, b), (c, d)) in got.into_iter().zip(want) {
-        assert!(
-            (a - c).abs() < 1e-9 && (b - d).abs() < 1e-9,
-            "{a},{b} vs {c},{d}"
-        );
+        assert!((a - c).abs() < 1e-9 && (b - d).abs() < 1e-9, "{a},{b} vs {c},{d}");
     }
 }
 
@@ -57,13 +54,6 @@ fn storyboard_backgrounds_resolve_scene_start_times_and_collapse_adjacent_duplic
     });
     let anim_bgs = backgrounds_from_storyboard(&words_doc, &dir, &assets);
     let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(
-        bgs,
-        vec![
-            (0.0, img1.clone()),
-            (8.5, img2.clone()),
-            (14.0, img1.clone()),
-        ]
-    );
+    assert_eq!(bgs, vec![(0.0, img1.clone()), (8.5, img2.clone()), (14.0, img1.clone()),]);
     assert_eq!(anim_bgs, vec![(0.12, img1), (9.4, img2)]);
 }

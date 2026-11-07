@@ -48,7 +48,6 @@
     "core:window:allow-unminimize",
     "core:app:allow-exit",
     "log:default",
-    "shell:default",
     "websocket:default",
     "log:allow-log",
     "websocket:allow-connect",

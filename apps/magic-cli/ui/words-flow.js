@@ -1181,7 +1181,7 @@ class WordsStageController {
     try {
       if (!await this.flushPendingEdits(anim))
         return;
-      await wordsCommand("words.letter", { render: false }).catch(() => {});
+      await wordsCommand("words.letter", { render: false });
       await wordsOpen();
       toast(`Saved ${wordsLabel(anim)} choreography to EffectCraft project`);
     } catch (error) {

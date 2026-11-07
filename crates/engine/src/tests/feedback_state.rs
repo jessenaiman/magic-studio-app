@@ -7,10 +7,7 @@ fn ready() -> Value {
 #[test]
 fn clean_saved_ready_state_reports_no_unsaved_changes() {
     let v = json!({"phase":"ready","draft_fields":[],"pending_invokes":0});
-    assert_eq!(
-        unsaved_state(&v, Some(false)),
-        "no_detected_unsaved_changes"
-    );
+    assert_eq!(unsaved_state(&v, Some(false)), "no_detected_unsaved_changes");
     assert!(dirty_reasons(&v, Some(false)).is_empty());
     assert_eq!(unsaved_edits(&v, Some(false), Some(0)), json!(0));
 }
@@ -39,15 +36,9 @@ fn pending_invokes_block_a_clean_verdict() {
 
 #[test]
 fn acknowledgement_tracks_revision_and_errors() {
-    assert_eq!(
-        acknowledgement(&ready(), 3, 3),
-        "DOM_applied; visual review separate"
-    );
+    assert_eq!(acknowledgement(&ready(), 3, 3), "DOM_applied; visual review separate");
     assert_eq!(acknowledgement(&ready(), 2, 3), "pending");
-    assert_eq!(
-        acknowledgement(&json!({"phase":"error"}), 9, 3),
-        "frontend_error"
-    );
+    assert_eq!(acknowledgement(&json!({"phase":"error"}), 9, 3), "frontend_error");
 }
 
 #[test]

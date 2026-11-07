@@ -14,7 +14,7 @@ Registered official v2 plugins:
 | single-instance | Subsequent launches activate the main window. Launch arguments are not yet forwarded to the frontend. |
 | opener | Existing external file/URL opener with default scopes. |
 | store | Persistent settings API available to the frontend. |
-| shell | Existing shell integration; executable scopes must be configured for frontend process spawning. |
+| shell | Registered but **not granted**: `shell:default` was removed from the capability and the frontend does not use it, so the webview cannot spawn or open anything through it. Add a scoped permission when a feature needs one. |
 | log | Existing application logging. |
 | websocket | Existing WebSocket integration. |
 | http | Fetch API installed and registered; destination scopes must be added when connecting services. No origins are currently allowed. |
@@ -30,6 +30,25 @@ is Rust-only). Generated permission schemas are committed alongside this setup.
 Window customization is part of Tauri core, not an additional plugin. Keep native
 decorations until the custom titlebar has working drag regions and window controls.
 In v2, window configuration belongs under `app.windows` in `tauri.conf.json`.
+
+## Webview security
+
+Set in `tauri.conf.json` and `capabilities/default.json`; verified against a production-protocol build
+(`cargo build -p magic-tauri --features tauri/custom-protocol`) with every view open and no violations:
+
+- **Content-Security-Policy** is enforced (`csp`; `devCsp` relaxes script and websocket sources for
+  `tauri dev` only). Scripts are `'self'` plus WebAssembly; no `eval`, no remote scripts, no remote
+  images or media. Embedded frames and fetches may reach loopback only (the HyperFrames preview
+  server). Blocks are recorded in `ui.inspect` → `cspViolations`, and workspace frames report them as alerts.
+- **`withGlobalTauri` is off.** The React app imports `@tauri-apps/api`; the preserved JavaScript
+  workspaces get their `window.__TAURI__` from `apps/magic/ui/workspaces/tauri-adapter.js`, which forwards
+  to the parent's session.
+- **Asset protocol scope** (`assetProtocol.scope`): `requireLiteralLeadingDot` is on, so hidden folders such as
+  `~/.ssh`, `~/.aws` and `~/.config` are not readable; Magic's own hidden app folders are listed explicitly;
+  credential-looking names are denied. Visible folders under `$HOME` and `/run/media` remain readable so
+  existing projects load. That is still broad: the narrower design is to add each project folder at runtime.
+- **devtools** is a cargo feature (`--features devtools`), off for release builds; debug builds always include the inspector.
+- **shell** is registered but not granted (see the plugin table).
 
 ## Run the Tauri desktop
 

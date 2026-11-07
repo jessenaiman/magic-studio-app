@@ -2,21 +2,16 @@ use crate::commands::CommandSpec;
 use crate::commands::always;
 
 // Import command handlers into this module so the `build()` array can reference them.
-use crate::agent::{
-    cmd_agent_config, cmd_agent_log, cmd_agent_models, cmd_agent_new_chat, cmd_agent_send,
-    cmd_agent_session,
-};
+use crate::agent::{cmd_agent_config, cmd_agent_log, cmd_agent_models, cmd_agent_new_chat, cmd_agent_send, cmd_agent_session};
 use crate::doctor::cmd_app_doctor;
 use crate::project::{
-    cmd_project_add_asset, cmd_project_close, cmd_project_list_assets, cmd_project_load_asset,
-    cmd_project_new, cmd_project_open, cmd_project_remove_asset, cmd_project_save,
-    cmd_project_update_asset,
+    cmd_project_add_asset, cmd_project_close, cmd_project_list_assets, cmd_project_load_asset, cmd_project_new, cmd_project_open, cmd_project_remove_asset,
+    cmd_project_save, cmd_project_update_asset,
 };
 use crate::workshop::{
-    cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_video_init, cmd_video_server_start,
-    cmd_video_server_stop, cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files,
-    cmd_workshop_import_transcript, cmd_workshop_remove, cmd_workshop_set_audio,
-    cmd_workshop_set_target, cmd_workshop_split_panels, cmd_workshop_status,
+    cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_video_init, cmd_video_server_start, cmd_video_server_stop, cmd_workshop_add,
+    cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_import_transcript, cmd_workshop_remove, cmd_workshop_set_audio, cmd_workshop_set_target,
+    cmd_workshop_split_panels, cmd_workshop_status,
 };
 
 // ---------- CommandSpec + registry ----------
@@ -86,7 +81,9 @@ macro_rules! query {
     };
 }
 
-fn specs_settings() -> Vec<CommandSpec> { crate::settings::commands::commands() }
+fn specs_settings() -> Vec<CommandSpec> {
+    crate::settings::commands::commands()
+}
 pub fn build() -> Vec<CommandSpec> {
     let mut specs = Vec::new();
     for section in [
@@ -117,24 +114,14 @@ pub fn build() -> Vec<CommandSpec> {
 
 fn specs_skills_and_crew() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "project.attach",
-            "Attach Project Metadata Without Switching Studio",
-            "{\"path\":\"existing .magic path\"}",
-            crate::project::cmd_project_attach
-        ),
+        query!("project.attach", "Attach Project Metadata Without Switching Studio", "{\"path\":\"existing .magic path\"}", crate::project::cmd_project_attach),
         query!(
             "project.identity",
             "Canonical Project Identity",
             "{\"path\":\"optional existing .magic path; defaults to the open project\"}",
             crate::project::cmd_project_identity
         ),
-        query!(
-            "project.catalog",
-            "Home Project Navigation History",
-            "{}",
-            crate::project_catalog::catalog
-        ),
+        query!("project.catalog", "Home Project Navigation History", "{}", crate::project_catalog::catalog),
         cmd!(
             "project.root",
             "Inspect / Set Production Project Root",
@@ -144,18 +131,8 @@ fn specs_skills_and_crew() -> Vec<CommandSpec> {
             always,
             crate::project_settings::command
         ),
-        query!(
-            "skills.list",
-            "Registered knowledge skills (info blocks)",
-            "{}",
-            crate::skills_registry::cmd_skills_list
-        ),
-        query!(
-            "crew.list",
-            "Magic Studio MOPPETS and shared department AGENTS.md files",
-            "{\"workspace\":\"optional workshop root\"}",
-            crate::crew::cmd_list
-        ),
+        query!("skills.list", "Registered knowledge skills (info blocks)", "{}", crate::skills_registry::cmd_skills_list),
+        query!("crew.list", "Magic Studio MOPPETS and shared department AGENTS.md files", "{\"workspace\":\"optional workshop root\"}", crate::crew::cmd_list),
         cmd!(
             "crew.save",
             "Save one department cast and shared instructions (revision guarded)",
@@ -165,12 +142,7 @@ fn specs_skills_and_crew() -> Vec<CommandSpec> {
             always,
             crate::crew::cmd_save
         ),
-        query!(
-            "skills.info",
-            "One registered skill's info block",
-            "{\"id\":\"skill id\"}",
-            crate::skills_registry::cmd_skills_info
-        ),
+        query!("skills.info", "One registered skill's info block", "{\"id\":\"skill id\"}", crate::skills_registry::cmd_skills_info),
         cmd!(
             "skills.limits",
             "Read / explicitly configure Learning block caps",
@@ -239,12 +211,7 @@ fn specs_backstage() -> Vec<CommandSpec> {
             always,
             crate::skills_registry::cmd_skills_add
         ),
-        query!(
-            "backstage.changes",
-            "Discover Saved-Project Change Notifications",
-            "{}",
-            crate::change_marker::status
-        ),
+        query!("backstage.changes", "Discover Saved-Project Change Notifications", "{}", crate::change_marker::status),
         query!(
             "backstage.events",
             "Recent Activity Receipts",
@@ -267,44 +234,16 @@ fn specs_backstage() -> Vec<CommandSpec> {
 }
 
 fn requires_ui(_: &mut crate::Session, _: &serde_json::Value) -> crate::Result<serde_json::Value> {
-    Err(crate::EngineError::InvalidParams(
-        "requires a live Magic Studio window".into(),
-    ))
+    Err(crate::EngineError::InvalidParams("requires a live Magic Studio window".into()))
 }
 
 fn specs_ui_controls() -> Vec<CommandSpec> {
     vec![
         query!("ui.state", "Live window state", "{}", requires_ui),
-        query!(
-            "ui.elements",
-            "Visible controls",
-            "{\"region\":\"optional CSS selector\"}",
-            requires_ui
-        ),
-        query!(
-            "ui.unconfigured",
-            "Unconfigured controls",
-            "{}",
-            requires_ui
-        ),
-        cmd!(
-            "ui.click",
-            "Click a control",
-            [],
-            None,
-            "{\"id\":\"element ID\",\"instance\":0,\"files\":[]}",
-            always,
-            requires_ui
-        ),
-        cmd!(
-            "ui.set",
-            "Set a control",
-            [],
-            None,
-            "{\"id\":\"element ID\",\"value\":\"value\",\"instance\":0}",
-            always,
-            requires_ui
-        ),
+        query!("ui.elements", "Visible controls", "{\"region\":\"optional CSS selector\"}", requires_ui),
+        query!("ui.unconfigured", "Unconfigured controls", "{}", requires_ui),
+        cmd!("ui.click", "Click a control", [], None, "{\"id\":\"element ID\",\"instance\":0,\"files\":[]}", always, requires_ui),
+        cmd!("ui.set", "Set a control", [], None, "{\"id\":\"element ID\",\"value\":\"value\",\"instance\":0}", always, requires_ui),
         cmd!(
             "ui.text_edit",
             "Edit the focused text field using native WebKit (Linux)",
@@ -314,33 +253,9 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             always,
             requires_ui
         ),
-        cmd!(
-            "ui.menu",
-            "Open a shared File or text context menu",
-            [],
-            None,
-            "{\"menu\":\"file or text\",\"x\":0,\"y\":48}",
-            always,
-            requires_ui
-        ),
-        cmd!(
-            "ui.key",
-            "Press a key",
-            [],
-            None,
-            "{\"key\":\"key name\",\"id\":\"optional element ID\"}",
-            always,
-            requires_ui
-        ),
-        cmd!(
-            "ui.drag",
-            "Drag a control",
-            [],
-            None,
-            "{\"id\":\"optional element ID\",\"from\":[],\"to\":[]}",
-            always,
-            requires_ui
-        ),
+        cmd!("ui.menu", "Open a shared File or text context menu", [], None, "{\"menu\":\"file or text\",\"x\":0,\"y\":48}", always, requires_ui),
+        cmd!("ui.key", "Press a key", [], None, "{\"key\":\"key name\",\"id\":\"optional element ID\"}", always, requires_ui),
+        cmd!("ui.drag", "Drag a control", [], None, "{\"id\":\"optional element ID\",\"from\":[],\"to\":[]}", always, requires_ui),
         cmd!(
             "ui.look",
             "Capture window and state",
@@ -350,65 +265,18 @@ fn specs_ui_controls() -> Vec<CommandSpec> {
             always,
             requires_ui
         ),
-        cmd!(
-            "ui.screenshot",
-            "Capture window",
-            [],
-            None,
-            "{\"output\":\"optional PNG path\"}",
-            always,
-            requires_ui
-        ),
+        cmd!("ui.screenshot", "Capture window", [], None, "{\"output\":\"optional PNG path\"}", always, requires_ui),
     ]
 }
 
 fn specs_ui_inspection() -> Vec<CommandSpec> {
     vec![
-        cmd!(
-            "ui.focus",
-            "Focus window",
-            [],
-            None,
-            "{\"animation_only\":\"optional true: also show only the Animation workspace\"}",
-            always,
-            requires_ui
-        ),
-        cmd!(
-            "ui.eval",
-            "Evaluate window JavaScript",
-            [],
-            None,
-            "{\"js\":\"JavaScript body\"}",
-            always,
-            requires_ui
-        ),
-        cmd!(
-            "app.quit",
-            "Guarded window close",
-            [],
-            None,
-            "{}",
-            always,
-            requires_ui
-        ),
-        query!(
-            "ui.feedback",
-            "Live Studio Feedback",
-            "{\"project\":\"optional canonical project path\"}",
-            requires_ui
-        ),
-        query!(
-            "ui.components",
-            "Rendered Studio Components",
-            "{\"region\":\"#view-project\",\"filter\":\"optional ID filter\",\"limit\":30}",
-            requires_ui
-        ),
-        query!(
-            "ui.controls",
-            "Studio control telemetry",
-            "{\"region\":\"optional region\",\"offset\":0,\"limit\":64}",
-            requires_ui
-        ),
+        cmd!("ui.focus", "Focus window", [], None, "{\"animation_only\":\"optional true: also show only the Animation workspace\"}", always, requires_ui),
+        cmd!("ui.eval", "Evaluate window JavaScript", [], None, "{\"js\":\"JavaScript body\"}", always, requires_ui),
+        cmd!("app.quit", "Guarded window close", [], None, "{}", always, requires_ui),
+        query!("ui.feedback", "Live Studio Feedback", "{\"project\":\"optional canonical project path\"}", requires_ui),
+        query!("ui.components", "Rendered Studio Components", "{\"region\":\"#view-project\",\"filter\":\"optional ID filter\",\"limit\":30}", requires_ui),
+        query!("ui.controls", "Studio control telemetry", "{\"region\":\"optional region\",\"offset\":0,\"limit\":64}", requires_ui),
         cmd!(
             "ui.attention",
             "Request attention at a Studio panel",
@@ -424,15 +292,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             "{\"project\":\"existing .magic path\",\"at\":43.2,\"clip\":\"clip id; give at or clip\"}",
             crate::cmd::film::studio_cues::cues
         ),
-        cmd!(
-            "workspace.open",
-            "Open a File in Its Craft Editor",
-            ["File"],
-            None,
-            "{\"path\":\"file path\"}",
-            always,
-            crate::workspace::cmd_workspace_open
-        ),
+        cmd!("workspace.open", "Open a File in Its Craft Editor", ["File"], None, "{\"path\":\"file path\"}", always, crate::workspace::cmd_workspace_open),
         cmd!(
             "photo.exec",
             "Run PhotoCraft Commands In-Process (.pcraft, .psd, .png, .webp)",
@@ -465,12 +325,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
 
 fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "agent.session",
-            "Current Chat Session",
-            "{}",
-            cmd_agent_session
-        ),
+        query!("agent.session", "Current Chat Session", "{}", cmd_agent_session),
         cmd!(
             "sprocket.send",
             "Send a message to Fidget (the app's in-app agent)",
@@ -480,27 +335,9 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
             always,
             crate::agent::cmd_sprocket_send
         ),
-        query!(
-            "sprocket.status",
-            "Fidget Session Status",
-            "{}",
-            cmd_agent_session
-        ),
-        cmd!(
-            "agent.persist",
-            "Persist the Active Chat Selection to Shared Settings",
-            ["Agent"],
-            None,
-            "{}",
-            always,
-            crate::agent::cmd_agent_persist
-        ),
-        query!(
-            "sprocket.models",
-            "Fidget Model Catalog (local first, then free)",
-            "{}",
-            crate::agent::cmd_sprocket_models
-        ),
+        query!("sprocket.status", "Fidget Session Status", "{}", cmd_agent_session),
+        cmd!("agent.persist", "Persist the Active Chat Selection to Shared Settings", ["Agent"], None, "{}", always, crate::agent::cmd_agent_persist),
+        query!("sprocket.models", "Fidget Model Catalog (local first, then free)", "{}", crate::agent::cmd_sprocket_models),
         cmd!(
             "sprocket.use",
             "Switch Fidget's Model",
@@ -510,44 +347,21 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
             always,
             crate::agent::cmd_sprocket_use
         ),
-        query!(
-            "sprocket.log",
-            "Fidget Transcript / Reply Retrieval",
-            "{\"refresh\":false}",
-            cmd_agent_log
-        ),
+        query!("sprocket.log", "Fidget Transcript / Reply Retrieval", "{\"refresh\":false}", cmd_agent_log),
         query!(
             "agent.config",
             "Current Window Chat Selection",
             "{\"selection\":{\"model\":\"optional active model; shared defaults unchanged\"}}",
             cmd_agent_config
         ),
-        query!(
-            "agent.models",
-            "Available Chat Models",
-            "{\"agent\":\"optional catalog adapter: opencode\"}",
-            cmd_agent_models
-        ),
-        cmd!(
-            "agent.new_chat",
-            "New Agent Chat",
-            ["Agent"],
-            None,
-            "{\"free_only\":false,\"image_task\":false}",
-            always,
-            cmd_agent_new_chat
-        ),
+        query!("agent.models", "Available Chat Models", "{\"agent\":\"optional catalog adapter: opencode\"}", cmd_agent_models),
+        cmd!("agent.new_chat", "New Agent Chat", ["Agent"], None, "{\"free_only\":false,\"image_task\":false}", always, cmd_agent_new_chat),
     ]
 }
 
 fn specs_project() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "project.list_assets",
-            "List Project Assets",
-            "{}",
-            cmd_project_list_assets
-        ),
+        query!("project.list_assets", "List Project Assets", "{}", cmd_project_list_assets),
         cmd!(
             "project.new",
             "New Project",
@@ -557,33 +371,9 @@ fn specs_project() -> Vec<CommandSpec> {
             always,
             cmd_project_new
         ),
-        cmd!(
-            "project.open",
-            "Open Project",
-            ["File"],
-            Some("Cmd+O"),
-            "{\"path\":\"folder/name.magic\"}",
-            always,
-            cmd_project_open
-        ),
-        cmd!(
-            "project.save",
-            "Save Project",
-            ["File"],
-            Some("Cmd+S"),
-            "{\"path\":\"optional_save_as.magic\"}",
-            always,
-            cmd_project_save
-        ),
-        cmd!(
-            "project.close",
-            "Close Project",
-            ["File"],
-            None,
-            "{}",
-            always,
-            cmd_project_close
-        ),
+        cmd!("project.open", "Open Project", ["File"], Some("Cmd+O"), "{\"path\":\"folder/name.magic\"}", always, cmd_project_open),
+        cmd!("project.save", "Save Project", ["File"], Some("Cmd+S"), "{\"path\":\"optional_save_as.magic\"}", always, cmd_project_save),
+        cmd!("project.close", "Close Project", ["File"], None, "{}", always, cmd_project_close),
     ]
 }
 
@@ -598,15 +388,7 @@ fn specs_project_assets() -> Vec<CommandSpec> {
             always,
             cmd_project_add_asset
         ),
-        cmd!(
-            "project.remove_asset",
-            "Remove Project Asset",
-            ["Project Assets"],
-            None,
-            "{\"id\":\"asset_id\"}",
-            always,
-            cmd_project_remove_asset
-        ),
+        cmd!("project.remove_asset", "Remove Project Asset", ["Project Assets"], None, "{\"id\":\"asset_id\"}", always, cmd_project_remove_asset),
         cmd!(
             "project.update_asset",
             "Rename / Reorder Asset",
@@ -616,32 +398,14 @@ fn specs_project_assets() -> Vec<CommandSpec> {
             always,
             cmd_project_update_asset
         ),
-        cmd!(
-            "project.load_asset",
-            "Load Connected Asset",
-            ["Project Assets"],
-            None,
-            "{\"id\":\"asset_id\",\"reload\":false}",
-            always,
-            cmd_project_load_asset
-        ),
+        cmd!("project.load_asset", "Load Connected Asset", ["Project Assets"], None, "{\"id\":\"asset_id\",\"reload\":false}", always, cmd_project_load_asset),
     ]
 }
 
 fn specs_workshop_and_lyrics() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "workshop.status",
-            "Workshop Stages",
-            "{}",
-            cmd_workshop_status
-        ),
-        query!(
-            "song.lyrics",
-            "Song Lyrics (Artist Sheet or Transcript)",
-            "{}",
-            crate::cmd::words::lyrics::cmd_song_lyrics
-        ),
+        query!("workshop.status", "Workshop Stages", "{}", cmd_workshop_status),
+        query!("song.lyrics", "Song Lyrics (Artist Sheet or Transcript)", "{}", crate::cmd::words::lyrics::cmd_song_lyrics),
         cmd!(
             "song.save",
             "Save Song Details",
@@ -662,24 +426,9 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             "{\"path\":\"optional directory containing a canonical lyric sheet and timed transcript\",\"audio\":\"optional audio file\"}",
             crate::cmd::words::cmd_words_workspace
         ),
-        query!(
-            "words.align",
-            "Artist Words vs Timing Reference",
-            "{}",
-            crate::cmd::words::cmd_words_align
-        ),
-        query!(
-            "words.read",
-            "Words Animations",
-            "{\"animation_id\":\"optional\"}",
-            crate::cmd::words::cmd_words_read
-        ),
-        query!(
-            "words.studio_track",
-            "Lyric Clips in the Video",
-            "{}",
-            crate::cmd::words::cmd_words_studio_track
-        ),
+        query!("words.align", "Artist Words vs Timing Reference", "{}", crate::cmd::words::cmd_words_align),
+        query!("words.read", "Words Animations", "{\"animation_id\":\"optional\"}", crate::cmd::words::cmd_words_read),
+        query!("words.studio_track", "Lyric Clips in the Video", "{}", crate::cmd::words::cmd_words_studio_track),
         cmd!(
             "words.lyrics_view",
             "Stage, Lyrics-Only or Scene-Only View of the Video",
@@ -713,15 +462,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             always,
             crate::cmd::words::cmd_words_captions
         ),
-        cmd!(
-            "words.track",
-            "Lyric Line in the Video",
-            ["Design"],
-            None,
-            "{}",
-            always,
-            crate::cmd::words::cmd_words_track
-        ),
+        cmd!("words.track", "Lyric Line in the Video", ["Design"], None, "{}", always, crate::cmd::words::cmd_words_track),
         cmd!(
             "words.design",
             "Design Every Sung Line",
@@ -772,24 +513,8 @@ fn specs_words_part2() -> Vec<CommandSpec> {
             always,
             crate::cmd::words::lettering::cmd_words_publish
         ),
-        cmd!(
-            "edit.undo",
-            "Undo",
-            ["Edit"],
-            Some("Cmd+Z"),
-            "{}",
-            always,
-            crate::session::undo::cmd_edit_undo
-        ),
-        cmd!(
-            "edit.redo",
-            "Redo",
-            ["Edit"],
-            Some("Cmd+Shift+Z"),
-            "{}",
-            always,
-            crate::session::undo::cmd_edit_redo
-        ),
+        cmd!("edit.undo", "Undo", ["Edit"], Some("Cmd+Z"), "{}", always, crate::session::undo::cmd_edit_undo),
+        cmd!("edit.redo", "Redo", ["Edit"], Some("Cmd+Shift+Z"), "{}", always, crate::session::undo::cmd_edit_redo),
         cmd!(
             "words.save",
             "Save Words Animation",
@@ -830,23 +555,13 @@ fn specs_workshop_queries() -> Vec<CommandSpec> {
             "{\"filter\": \"optional substring\", \"group\": \"optional audio|liner_notes|transcript|storyboard|assets|other\"}",
             cmd_workshop_files
         ),
-        query!(
-            "project.search",
-            "Search Project, Files, Storyboard & Commands",
-            "{\"query\": \"search text\"}",
-            cmd_project_search
-        ),
+        query!("project.search", "Search Project, Files, Storyboard & Commands", "{\"query\": \"search text\"}", cmd_project_search),
     ]
 }
 
 fn specs_agent_and_image() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "agent.log",
-            "Agent Transcript / Reply Retrieval",
-            "{\"refresh\":false}",
-            cmd_agent_log
-        ),
+        query!("agent.log", "Agent Transcript / Reply Retrieval", "{\"refresh\":false}", cmd_agent_log),
         cmd!(
             "agent.send",
             "Send to the app agent",
@@ -888,15 +603,7 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             always,
             crate::cmd::film::video_target::cmd_video_place_track
         ),
-        cmd!(
-            "workshop.set_target",
-            "Set Video Target",
-            ["Workshop"],
-            None,
-            "{\"target\": \"hyperframes\"}",
-            always,
-            cmd_workshop_set_target
-        ),
+        cmd!("workshop.set_target", "Set Video Target", ["Workshop"], None, "{\"target\": \"hyperframes\"}", always, cmd_workshop_set_target),
         cmd!(
             "workshop.add",
             "Add Liner Notes / Panels / Assets",
@@ -924,15 +631,7 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             always,
             cmd_workshop_import_transcript
         ),
-        cmd!(
-            "workshop.approve_draft",
-            "Approve Storyboard",
-            ["Workshop"],
-            None,
-            "{\"approved\": true}",
-            always,
-            cmd_workshop_approve_draft
-        ),
+        cmd!("workshop.approve_draft", "Approve Storyboard", ["Workshop"], None, "{\"approved\": true}", always, cmd_workshop_approve_draft),
         cmd!(
             "workshop.remove",
             "Remove Workshop File",
@@ -965,15 +664,7 @@ fn specs_video_and_intake() -> Vec<CommandSpec> {
             always,
             cmd_video_server_start
         ),
-        cmd!(
-            "video.server_stop",
-            "Stop Video Editor Web Server",
-            ["Workshop"],
-            None,
-            "{}",
-            always,
-            cmd_video_server_stop
-        ),
+        cmd!("video.server_stop", "Stop Video Editor Web Server", ["Workshop"], None, "{}", always, cmd_video_server_stop),
         cmd!(
             "video.snapshot",
             "Take one exact frame from HyperFrames",
@@ -1021,24 +712,14 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
             always,
             crate::creation_loop::workflow
         ),
-        query!(
-            "app.doctor",
-            "Doctor: CLI Availability and Video Server Metadata",
-            "{\"clean\": false}",
-            cmd_app_doctor
-        ),
+        query!("app.doctor", "Doctor: CLI Availability and Video Server Metadata", "{\"clean\": false}", cmd_app_doctor),
         query!(
             "app.errors",
             "Recorded Runtime Errors",
             "{\"project\":\"optional absolute .magic path; defaults to selected project\",\"after\":0,\"limit\":50}",
             crate::activity::errors
         ),
-        query!(
-            "command.list",
-            "List Commands",
-            "{\"filter\":\"optional command ID or search text\"}",
-            cmd_query_list
-        ),
+        query!("command.list", "List Commands", "{\"filter\":\"optional command ID or search text\"}", cmd_query_list),
     ]
 }
 
@@ -1063,12 +744,7 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::cmd::character::cmd_character_sprite
         ),
-        query!(
-            "animation.motion_options",
-            "Single-Subject EffectCraft Motion Options",
-            "{}",
-            crate::cmd::character::review::cmd_motion_options
-        ),
+        query!("animation.motion_options", "Single-Subject EffectCraft Motion Options", "{}", crate::cmd::character::review::cmd_motion_options),
         cmd!(
             "animation.prepare_motion",
             "Prepare One Character in EffectCraft",
@@ -1078,27 +754,9 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::cmd::character::review::cmd_prepare_motion
         ),
-        query!(
-            "motion.theatre.read",
-            "Read project timeline",
-            r#"{"expected_project":"path"}"#,
-            crate::project::theatre_state
-        ),
-        cmd!(
-            "motion.theatre.save",
-            "Save project timeline",
-            [],
-            None,
-            r#"{"expected_project":"path","state":{}}"#,
-            always,
-            crate::project::save_theatre_state
-        ),
-        query!(
-            "animation.review",
-            "Animation Review Models and Saved Revisions",
-            "{}",
-            crate::cmd::character::review::cmd_review
-        ),
+        query!("motion.theatre.read", "Read project timeline", r#"{"expected_project":"path"}"#, crate::project::theatre_state),
+        cmd!("motion.theatre.save", "Save project timeline", [], None, r#"{"expected_project":"path","state":{}}"#, always, crate::project::save_theatre_state),
+        query!("animation.review", "Animation Review Models and Saved Revisions", "{}", crate::cmd::character::review::cmd_review),
         cmd!(
             "animation.save_revision",
             "Save Animation Revision",
@@ -1108,12 +766,7 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::cmd::character::review::cmd_save_revision
         ),
-        query!(
-            "character.meta",
-            "Character Views, Parts and Actions",
-            "{\"character\":\"id\"}",
-            crate::cmd::character::cmd_character_meta
-        ),
+        query!("character.meta", "Character Views, Parts and Actions", "{\"character\":\"id\"}", crate::cmd::character::cmd_character_meta),
         cmd!(
             "character.save_marks",
             "Save Adjusted Marks",
@@ -1123,18 +776,8 @@ fn specs_character() -> Vec<CommandSpec> {
             always,
             crate::cmd::character::cmd_character_save_marks
         ),
-        query!(
-            "character.list",
-            "Characters and Their App Files",
-            "{}",
-            crate::cmd::character::cmd_character_list
-        ),
-        query!(
-            "character.actions",
-            "Actions in the Shared Pose Table",
-            "{}",
-            crate::cmd::character::cmd_character_actions
-        ),
+        query!("character.list", "Characters and Their App Files", "{}", crate::cmd::character::cmd_character_list),
+        query!("character.actions", "Actions in the Shared Pose Table", "{}", crate::cmd::character::cmd_character_actions),
         cmd!(
             "character.mark",
             "Mark Parts and Joints (Scribbles)",
@@ -1255,12 +898,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             always,
             crate::scribbles::cmd_scribbles_generate
         ),
-        query!(
-            "scribbles.templates",
-            "Scribbles Templates",
-            "{}",
-            crate::scribbles::cmd_scribbles_templates
-        ),
+        query!("scribbles.templates", "Scribbles Templates", "{}", crate::scribbles::cmd_scribbles_templates),
         cmd!(
             "scribbles.new",
             "New Character (Scribbles)",
@@ -1322,21 +960,25 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 fn specs_storyboard() -> Vec<CommandSpec> {
     vec![
         query!(
-            "storyboard.toc", "DesignCraft Storyboard Contents",
+            "storyboard.toc",
+            "DesignCraft Storyboard Contents",
             "{\"path\":\"optional storyboard.designcraft\"}",
             crate::cmd::storyboard::cmd_storyboard_toc
         ),
         query!(
-            "storyboard.backgrounds", "Storyboard and Project Backdrops",
+            "storyboard.backgrounds",
+            "Storyboard and Project Backdrops",
             "{\"path\":\"optional storyboard.designcraft\"}",
             crate::cmd::storyboard::cmd_storyboard_backgrounds
         ),
         cmd!(
             "storyboard.open",
             "Open Storyboard in DesignCraft with Live Control",
-            ["Storyboard"], None,
+            ["Storyboard"],
+            None,
             "{\"path\":\"optional storyboard.designcraft\",\"control\":7979}",
-            always, crate::cmd::storyboard::cmd_storyboard_open
+            always,
+            crate::cmd::storyboard::cmd_storyboard_open
         ),
         cmd!(
             "storyboard.new",
@@ -1448,48 +1090,12 @@ fn specs_storyboard() -> Vec<CommandSpec> {
 
 fn specs_film() -> Vec<CommandSpec> {
     vec![
-        query!(
-            "video.film",
-            "Film Timeline, Preview and Export Status",
-            "{}",
-            crate::cmd::film::cmd_video_film
-        ),
-        cmd!(
-            "video.preview",
-            "Render a Film Preview (FilmCraft)",
-            ["Studio"],
-            None,
-            "{}",
-            always,
-            crate::cmd::film::cmd_video_preview
-        ),
-        cmd!(
-            "video.export",
-            "Export the Film (FilmCraft)",
-            ["Studio"],
-            None,
-            "{}",
-            always,
-            crate::cmd::film::cmd_video_export
-        ),
-        query!(
-            "video.frame",
-            "Render One Film Frame (FilmCraft)",
-            "{\"seconds\":0}",
-            crate::cmd::film::cmd_video_frame
-        ),
-        query!(
-            "video.open",
-            "Open the Film in FilmCraft",
-            "{}",
-            crate::cmd::film::cmd_video_open
-        ),
-        query!(
-            "video.timeline",
-            "Film Tracks and Clips (FilmCraft)",
-            "{}",
-            crate::cmd::film::cmd_video_timeline
-        ),
+        query!("video.film", "Film Timeline, Preview and Export Status", "{}", crate::cmd::film::cmd_video_film),
+        cmd!("video.preview", "Render a Film Preview (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_preview),
+        cmd!("video.export", "Export the Film (FilmCraft)", ["Studio"], None, "{}", always, crate::cmd::film::cmd_video_export),
+        query!("video.frame", "Render One Film Frame (FilmCraft)", "{\"seconds\":0}", crate::cmd::film::cmd_video_frame),
+        query!("video.open", "Open the Film in FilmCraft", "{}", crate::cmd::film::cmd_video_open),
+        query!("video.timeline", "Film Tracks and Clips (FilmCraft)", "{}", crate::cmd::film::cmd_video_timeline),
         cmd!(
             "video.place_clip",
             "Place a Clip on the Film (FilmCraft)",

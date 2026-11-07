@@ -52,19 +52,14 @@ fn opened_path(path: &str, project: &Path) -> PathBuf {
 }
 
 /// The keys this code writes; anything else already in the file is kept as it is.
-const MANAGED_KEYS: [&str; 7] = [
-    "format", "version", "name", "assets", "workshop", "mode", "song",
-];
+const MANAGED_KEYS: [&str; 7] = ["format", "version", "name", "assets", "workshop", "mode", "song"];
 
 /// The persisted project state, shared by Save and unsaved-change detection.
 pub fn project_document(s: &Session) -> Value {
     let Some(path) = &s.project_path else {
         return Value::Null;
     };
-    let name = path
-        .file_stem()
-        .and_then(|n| n.to_str())
-        .unwrap_or("Untitled");
+    let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or("Untitled");
     let mut doc = json!({"format": PROJECT_FORMAT, "version": 1, "name": name, "assets": s.project_assets,
         "workshop": {"audio": s.song_audio, "draft_approved": s.draft_approved, "target": s.video_target, "video_project": s.video_project_path}});
     let song = json!(s.song);
@@ -81,10 +76,7 @@ pub fn project_document(s: &Session) -> Value {
 /// The file on disk with this session's managed keys replaced.
 fn merged_document(s: &Session, path: &Path) -> Value {
     let current = project_document(s);
-    let mut doc = read_project_document(path)
-        .ok()
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}));
+    let mut doc = read_project_document(path).ok().filter(Value::is_object).unwrap_or_else(|| json!({}));
     for key in MANAGED_KEYS {
         match current.get(key) {
             Some(value) => doc[key] = value.clone(),
@@ -117,9 +109,7 @@ pub fn project_is_dirty(s: &Session, saved: &Value) -> bool {
         normalize_connections(&mut saved, path);
     }
     let current = project_document(s);
-    ["assets", "workshop", "mode", "song"]
-        .iter()
-        .any(|key| saved[*key] != current[*key])
+    ["assets", "workshop", "mode", "song"].iter().any(|key| saved[*key] != current[*key])
 }
 
 /// Writes the open project's asset connections to its `.magic` file.
@@ -131,16 +121,14 @@ pub fn write_project_file(s: &Session) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let text = serde_json::to_string_pretty(&doc)
-        .map_err(|e| EngineError::InvalidParams(format!("cannot encode project: {e}")))?;
+    let text = serde_json::to_string_pretty(&doc).map_err(|e| EngineError::InvalidParams(format!("cannot encode project: {e}")))?;
     let written = write_preserving_lease(path, text.as_bytes());
     // A failed write can still have left partial effects if rollback failed.
     if s.record_user_state {
         crate::change_marker::invalidate();
     }
     written?;
-    s.project_saves
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    s.project_saves.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if s.record_user_state {
         crate::activity::stored(path, text.len());
     }
@@ -160,22 +148,11 @@ fn store_project_bytes(file: &mut std::fs::File, content: &[u8]) -> std::io::Res
     file.set_len(content.len() as u64)?;
     file.sync_data()
 }
-fn write_preserving_lease_using(
-    path: &Path,
-    bytes: &[u8],
-    mut store: impl FnMut(&mut std::fs::File, &[u8]) -> std::io::Result<()>,
-) -> Result<()> {
+fn write_preserving_lease_using(path: &Path, bytes: &[u8], mut store: impl FnMut(&mut std::fs::File, &[u8]) -> std::io::Result<()>) -> Result<()> {
     use std::io::Read;
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)?;
+    let mut file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?;
     if !file.metadata()?.is_file() {
-        return Err(EngineError::InvalidParams(
-            "Project destination must be a regular file; no write performed".into(),
-        ));
+        return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
     }
     let mut before = Vec::new();
     file.read_to_end(&mut before)?;
@@ -188,9 +165,7 @@ fn write_preserving_lease_using(
                 "Project write failed: {error}; restoring prior bytes also failed: {rollback}. Preserve this file and repair storage before retrying"
             ))));
         }
-        return Err(EngineError::Io(std::io::Error::other(format!(
-            "Project write failed; prior bytes restored: {error}"
-        ))));
+        return Err(EngineError::Io(std::io::Error::other(format!("Project write failed; prior bytes restored: {error}"))));
     }
     Ok(())
 }
@@ -203,10 +178,7 @@ pub(crate) fn project_file_path(s: &Session, params: &Value) -> Result<PathBuf> 
         .filter(|p| !p.trim().is_empty())
         .ok_or_else(|| EngineError::InvalidParams("missing project 'path'".into()))?;
     let mut path = crate::workspace::resolve_workspace_path(s, raw);
-    if path
-        .extension()
-        .is_none_or(|e| !e.eq_ignore_ascii_case("magic"))
-    {
+    if path.extension().is_none_or(|e| !e.eq_ignore_ascii_case("magic")) {
         path.as_mut_os_string().push(".magic");
     }
     if path.exists() {
@@ -217,11 +189,7 @@ pub(crate) fn project_file_path(s: &Session, params: &Value) -> Result<PathBuf> 
 
 /// A fresh session for a project: no assets loaded, nothing active.
 fn reset_for_project(s: &mut Session, path: PathBuf, assets: Vec<crate::ProjectAsset>) {
-    let owner = if s.project_path.as_ref() == Some(&path) {
-        s.project_owner.clone()
-    } else {
-        None
-    };
+    let owner = if s.project_path.as_ref() == Some(&path) { s.project_owner.clone() } else { None };
     *s = Session {
         cwd: s.cwd.clone(),
         record_user_state: s.record_user_state,
@@ -235,21 +203,13 @@ fn reset_for_project(s: &mut Session, path: PathBuf, assets: Vec<crate::ProjectA
 
 /// Position of a connected project asset by id.
 fn project_index(s: &Session, params: &Value) -> Result<usize> {
-    let id = params
-        .get("id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| EngineError::InvalidParams("missing project asset 'id'".into()))?;
-    s.project_assets
-        .iter()
-        .position(|a| a.id == id)
-        .ok_or_else(|| EngineError::InvalidParams(format!("project asset '{id}' is not connected")))
+    let id = params.get("id").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("missing project asset 'id'".into()))?;
+    s.project_assets.iter().position(|a| a.id == id).ok_or_else(|| EngineError::InvalidParams(format!("project asset '{id}' is not connected")))
 }
 
 /// List connected project assets and the active one.
 pub fn cmd_project_list_assets(s: &mut Session, _: &Value) -> Result<Value> {
-    Ok(
-        json!({"assets": s.project_assets, "active_asset": s.active_asset, "project": s.project_path}),
-    )
+    Ok(json!({"assets": s.project_assets, "active_asset": s.active_asset, "project": s.project_path}))
 }
 
 // Navigation history is optional global state; a valid project remains created/open if it is unavailable.
@@ -270,8 +230,7 @@ fn link_existing_video_project(s: &mut Session, dir: &Path, steps: &mut Vec<Valu
         return;
     }
     let _ = crate::cmd::film::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
-    s.video_project_path =
-        crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target);
+    s.video_project_path = crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target);
     if s.song_audio.is_none() {
         s.song_audio = crate::cmd::film::video_target::discover_contained_audio(dir);
     }
@@ -285,11 +244,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
     let Some(dir) = path.parent() else {
         return steps;
     };
-    let Some(raw_audio) = params
-        .get("audio")
-        .and_then(Value::as_str)
-        .filter(|v| !v.is_empty())
-    else {
+    let Some(raw_audio) = params.get("audio").and_then(Value::as_str).filter(|v| !v.is_empty()) else {
         link_existing_video_project(s, dir, &mut steps);
         return steps;
     };
@@ -303,28 +258,21 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
             return steps;
         }
     }
-    if let Some(t) = params
-        .get("transcript")
-        .and_then(Value::as_str)
-        .filter(|v| !v.is_empty())
-    {
+    if let Some(t) = params.get("transcript").and_then(Value::as_str).filter(|v| !v.is_empty()) {
         let _ = crate::cmd::project::workshop::cmd_workshop_import_transcript(
             s,
             &json!({"path": t, "captions": params["captions"], "audiomap": params["audiomap"], "replace": true}),
         );
         steps.push(json!({"command": "workshop.import_transcript", "status": "complete"}));
-    } else if params
-        .get("process_audio")
-        .and_then(Value::as_bool)
-        .unwrap_or(true)
-        && params["prepare_only"] != true
-    {
-        let model = params
-            .get("model")
-            .and_then(Value::as_str)
-            .unwrap_or("large-v3");
-        match crate::cmd::project::workshop::cmd_audio_analyze(s, &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]})) {
-            Ok(_) => steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"})),
+    } else if params.get("process_audio").and_then(Value::as_bool).unwrap_or(true) && params["prepare_only"] != true {
+        let model = params.get("model").and_then(Value::as_str).unwrap_or("large-v3");
+        match crate::cmd::project::workshop::cmd_audio_analyze(
+            s,
+            &json!({"analyze_beats": true, "model": model, "resolve_video_cli": params["resolve_video_cli"]}),
+        ) {
+            Ok(_) => {
+                steps.push(json!({"command": "audio.analyze", "status": "complete; transcribed, analyzed sections/onsets/moments, and generated beat grid"}))
+            }
             Err(e) => steps.push(json!({"command": "audio.analyze", "status": "failed", "error": e.to_string()})),
         }
     }
@@ -333,10 +281,7 @@ fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) 
 
 fn check_overwrite(path: &Path, overwrite: bool) -> Result<()> {
     if path.exists() && !overwrite {
-        return Err(EngineError::InvalidParams(format!(
-            "project already exists: {} (pass \"overwrite\": true to replace it)",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("project already exists: {} (pass \"overwrite\": true to replace it)", path.display())));
     }
     Ok(())
 }
@@ -352,13 +297,8 @@ fn claim_new_project(s: &Session, path: &Path) -> Result<std::sync::Arc<std::fs:
     if path.exists() {
         claim(s, path)
     } else {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(path)?;
-        file.try_lock()
-            .map_err(|e| EngineError::InvalidParams(format!("Cannot own new project: {e}")))?;
+        let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(path)?;
+        file.try_lock().map_err(|e| EngineError::InvalidParams(format!("Cannot own new project: {e}")))?;
         Ok(std::sync::Arc::new(file))
     }
 }
@@ -367,10 +307,7 @@ fn claim_new_project(s: &Session, path: &Path) -> Result<std::sync::Arc<std::fs:
 pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
     let mode = project_mode(params)?;
-    let overwrite = params
-        .get("overwrite")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let overwrite = params.get("overwrite").and_then(Value::as_bool).unwrap_or(false);
     check_overwrite(&path, overwrite)?;
     let audio = project_audio_source(s, params)?;
     if let Some(parent) = path.parent() {
@@ -383,11 +320,7 @@ pub fn cmd_project_new(s: &mut Session, params: &Value) -> Result<Value> {
     s.project_mode = mode;
     write_project_file(s)?;
     // An animation study has no song or storyboard to prepare.
-    let steps = if s.project_mode.is_some() {
-        Vec::new()
-    } else {
-        bootstrap_new_project_workshop(s, &path, params)
-    };
+    let steps = if s.project_mode.is_some() { Vec::new() } else { bootstrap_new_project_workshop(s, &path, params) };
     write_project_file(s)?;
     let warnings = recent_warning(s, &path, true);
     let workshop = crate::cmd::project::workshop::workshop_status(s)?;
@@ -408,42 +341,30 @@ fn project_mode(value: &Value) -> Result<Option<String>> {
     match value.get("mode").and_then(Value::as_str) {
         None | Some("project") => Ok(None),
         Some("animation") => Ok(Some("animation".into())),
-        Some(other) => Err(EngineError::InvalidParams(format!(
-            "mode must be animation or project, not {other}"
-        ))),
+        Some(other) => Err(EngineError::InvalidParams(format!("mode must be animation or project, not {other}"))),
     }
 }
 
 fn read_project_document(path: &Path) -> Result<Value> {
     let text = std::fs::read_to_string(path)?;
-    serde_json::from_str(&text)
-        .map_err(|e| EngineError::InvalidParams(format!("invalid project file: {e}")))
+    serde_json::from_str(&text).map_err(|e| EngineError::InvalidParams(format!("invalid project file: {e}")))
 }
 
 fn project_assets_from_doc(path: &Path, doc: &Value) -> Result<Vec<crate::ProjectAsset>> {
-    let mut assets: Vec<crate::ProjectAsset> =
-        serde_json::from_value(doc.get("assets").cloned().unwrap_or_else(|| json!([])))
-            .map_err(|e| EngineError::InvalidParams(format!("invalid project assets: {e}")))?;
+    let mut assets: Vec<crate::ProjectAsset> = serde_json::from_value(doc.get("assets").cloned().unwrap_or_else(|| json!([])))
+        .map_err(|e| EngineError::InvalidParams(format!("invalid project assets: {e}")))?;
     for asset in &mut assets {
         if let Some(source) = &asset.path
             && !source.is_absolute()
         {
-            let parent = path.parent().ok_or_else(|| {
-                EngineError::InvalidParams("Project path has no parent directory".into())
-            })?;
+            let parent = path.parent().ok_or_else(|| EngineError::InvalidParams("Project path has no parent directory".into()))?;
             asset.path = Some(parent.join(source));
         }
     }
     Ok(assets)
 }
 
-fn apply_opened_state(
-    s: &mut Session,
-    path: &Path,
-    doc: &Value,
-    assets: Vec<crate::ProjectAsset>,
-    owner: Option<std::sync::Arc<std::fs::File>>,
-) -> Result<()> {
+fn apply_opened_state(s: &mut Session, path: &Path, doc: &Value, assets: Vec<crate::ProjectAsset>, owner: Option<std::sync::Arc<std::fs::File>>) -> Result<()> {
     let song = serde_json::from_value(doc.get("song").cloned().unwrap_or_else(|| json!({})))
         .map_err(|e| EngineError::InvalidParams(format!("invalid song metadata: {e}")))?;
     reset_for_project(s, path.to_path_buf(), assets);
@@ -452,50 +373,26 @@ fn apply_opened_state(
     }
     s.project_mode = project_mode(doc)?;
     s.song = song;
-    s.song_audio = doc
-        .pointer("/workshop/audio")
-        .and_then(Value::as_str)
-        .map(|source| opened_path(source, path));
-    s.draft_approved = doc
-        .pointer("/workshop/draft_approved")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    if let Some(target) = doc
-        .pointer("/workshop/target")
-        .and_then(Value::as_str)
-        .filter(|t| crate::cmd::project::workshop::VIDEO_TARGETS.contains(t))
-    {
+    s.song_audio = doc.pointer("/workshop/audio").and_then(Value::as_str).map(|source| opened_path(source, path));
+    s.draft_approved = doc.pointer("/workshop/draft_approved").and_then(Value::as_bool).unwrap_or(false);
+    if let Some(target) = doc.pointer("/workshop/target").and_then(Value::as_str).filter(|t| crate::cmd::project::workshop::VIDEO_TARGETS.contains(t)) {
         s.video_target = target.into();
     }
-    s.video_project_path = doc
-        .pointer("/workshop/video_project")
-        .and_then(Value::as_str)
-        .map(|source| opened_path(source, path));
+    s.video_project_path = doc.pointer("/workshop/video_project").and_then(Value::as_str).map(|source| opened_path(source, path));
     Ok(())
 }
 
 /// Open an existing `.magic` session.
 pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
     let path = project_file_path(s, params)?;
-    let owner = if params["claim_owner"] == true {
-        Some(claim(s, &path)?)
-    } else {
-        None
-    };
+    let owner = if params["claim_owner"] == true { Some(claim(s, &path)?) } else { None };
     let doc = read_project_document(&path)?;
     if doc.get("format").and_then(Value::as_str) != Some(PROJECT_FORMAT) {
-        return Err(EngineError::InvalidParams(format!(
-            "{} is not a Magic Studio project",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("{} is not a Magic Studio project", path.display())));
     }
     let assets = project_assets_from_doc(&path, &doc)?;
     // Report connections whose source files have moved instead of dropping them.
-    let missing: Vec<&str> = assets
-        .iter()
-        .filter(|a| a.path.as_ref().is_some_and(|p| !p.exists()))
-        .map(|a| a.id.as_str())
-        .collect::<Vec<_>>();
+    let missing: Vec<&str> = assets.iter().filter(|a| a.path.as_ref().is_some_and(|p| !p.exists())).map(|a| a.id.as_str()).collect::<Vec<_>>();
     let missing = json!(missing);
     apply_opened_state(s, &path, &doc, assets, owner)?;
     repair_opened_workshop_links(s, &path);
@@ -526,8 +423,7 @@ fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
     }
     let mut changed = false;
     if s.video_project_path.as_ref().is_none_or(|p| !p.is_file())
-        && let Some(vp) =
-            crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target)
+        && let Some(vp) = crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target)
     {
         s.video_project_path = Some(vp);
         changed = true;
@@ -548,35 +444,25 @@ fn claim_save_target(target: &Path) -> Result<std::sync::Arc<std::fs::File>> {
         std::fs::create_dir_all(parent)?;
     }
     // Acquire the destination without truncating it, before changing session identity.
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(target)?;
+    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(target)?;
     if !file.metadata()?.is_file() {
-        return Err(EngineError::InvalidParams(
-            "Project destination must be a regular file; no write performed".into(),
-        ));
+        return Err(EngineError::InvalidParams("Project destination must be a regular file; no write performed".into()));
     }
-    file.try_lock().map_err(|_| EngineError::InvalidParams(format!(
-        "Project is owned by another live writer: {}. No Save As write performed; the original project remains selected.", target.display()
-    )))?;
+    file.try_lock().map_err(|_| {
+        EngineError::InvalidParams(format!(
+            "Project is owned by another live writer: {}. No Save As write performed; the original project remains selected.",
+            target.display()
+        ))
+    })?;
     Ok(std::sync::Arc::new(file))
 }
 
 /// Refuse to act when `expected_project` names a different project than the selected one.
 fn project_guard(s: &Session, p: &Value) -> Result<()> {
-    let selected = s
-        .project_path
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidParams("Select the intended project".into()))?
-        .canonicalize()?;
+    let selected = s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Select the intended project".into()))?.canonicalize()?;
     let expected = project_file_path(s, &json!({"path": p["expected_project"]}))?.canonicalize()?;
     if selected != expected {
-        return Err(EngineError::InvalidParams(
-            "expected_project differs from selected project".into(),
-        ));
+        return Err(EngineError::InvalidParams("expected_project differs from selected project".into()));
     }
     Ok(())
 }
@@ -587,9 +473,7 @@ pub fn cmd_project_save(s: &mut Session, params: &Value) -> Result<Value> {
         project_guard(s, params)?;
     }
     if s.project_path.is_none() {
-        return Err(EngineError::InvalidParams(
-            "no project is open; use project.new".into(),
-        ));
+        return Err(EngineError::InvalidParams("no project is open; use project.new".into()));
     }
     let target = match params.get("path") {
         Some(_) => Some(project_file_path(s, params)?),
@@ -620,12 +504,7 @@ fn save_as(s: &mut Session, target: PathBuf) -> Result<Value> {
 
 /// Close the project and clear session state.
 pub fn cmd_project_close(s: &mut Session, _: &Value) -> Result<Value> {
-    *s = Session {
-        cwd: s.cwd.clone(),
-        record_user_state: s.record_user_state,
-        agent_selection: s.agent_selection.clone(),
-        ..Session::default()
-    };
+    *s = Session { cwd: s.cwd.clone(), record_user_state: s.record_user_state, agent_selection: s.agent_selection.clone(), ..Session::default() };
     Ok(json!({"ok": true}))
 }
 
@@ -642,15 +521,12 @@ pub fn ensure_default_asset_project(s: &mut Session) -> Result<PathBuf> {
     } else {
         let _ = cmd_project_new(s, &json!({"path": default_proj, "overwrite": true}));
     }
-    s.project_path.clone().ok_or_else(|| {
-        EngineError::InvalidParams("could not initialize default asset project".into())
-    })
+    s.project_path.clone().ok_or_else(|| EngineError::InvalidParams("could not initialize default asset project".into()))
 }
 
 fn ensure_asset_project(s: &mut Session, params: &Value) -> Result<()> {
     if s.project_path.is_none()
-        && (params.get("isolated").and_then(Value::as_bool) == Some(true)
-            || params.get("use_default_project").and_then(Value::as_bool) == Some(true))
+        && (params.get("isolated").and_then(Value::as_bool) == Some(true) || params.get("use_default_project").and_then(Value::as_bool) == Some(true))
     {
         let _ = ensure_default_asset_project(s)?;
     }
@@ -675,58 +551,25 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
         .map(|p| crate::workspace::resolve_workspace_path(s, p))
         .ok_or_else(|| EngineError::InvalidParams("missing 'path' parameter".into()))?;
     if !path.exists() {
-        return Err(EngineError::InvalidParams(format!(
-            "asset path does not exist: {}",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("asset path does not exist: {}", path.display())));
     }
     let kind = params.get("kind").and_then(Value::as_str).unwrap_or("auto");
-    if ![
-        "auto",
-        "image",
-        "poses",
-        "turnaround",
-        "cutout_rig",
-        "character",
-        "model_3d",
-        "anim_3d",
-    ]
-    .contains(&kind)
-    {
-        return Err(EngineError::InvalidParams(
-            "kind must be auto, image, poses, turnaround, cutout_rig, character, model_3d, or anim_3d".into(),
-        ));
+    if !["auto", "image", "poses", "turnaround", "cutout_rig", "character", "model_3d", "anim_3d"].contains(&kind) {
+        return Err(EngineError::InvalidParams("kind must be auto, image, poses, turnaround, cutout_rig, character, model_3d, or anim_3d".into()));
     }
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("asset")
-        .to_owned();
-    let name = params
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or(&stem)
-        .trim()
-        .to_owned();
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("asset").to_owned();
+    let name = params.get("name").and_then(Value::as_str).unwrap_or(&stem).trim().to_owned();
     if name.is_empty() {
-        return Err(EngineError::InvalidParams(
-            "asset name cannot be empty".into(),
-        ));
+        return Err(EngineError::InvalidParams("asset name cannot be empty".into()));
     }
-    let explicit_id = params
-        .get("id")
-        .and_then(Value::as_str)
-        .and_then(crate::workspace::try_sanitize_asset_id);
+    let explicit_id = params.get("id").and_then(Value::as_str).and_then(crate::workspace::try_sanitize_asset_id);
     Ok(AssetRequest {
         path: Some(path),
         kind: kind.to_owned(),
         name,
         stem,
         load: params.get("load").and_then(Value::as_bool).unwrap_or(false),
-        if_not_exists: params
-            .get("if_not_exists")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
+        if_not_exists: params.get("if_not_exists").and_then(Value::as_bool).unwrap_or(false),
         explicit_id,
     })
 }
@@ -736,12 +579,7 @@ fn outside_project_image(dir: &Path, source: &Path) -> bool {
         && source
             .extension()
             .and_then(|e| e.to_str())
-            .is_some_and(|e| {
-                [
-                    "png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "tif", "tiff", "exr",
-                ]
-                .contains(&e.to_ascii_lowercase().as_str())
-            })
+            .is_some_and(|e| ["png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "tif", "tiff", "exr"].contains(&e.to_ascii_lowercase().as_str()))
 }
 
 fn asset_destination_folder(dir: &Path, params: &Value) -> Result<(PathBuf, PathBuf)> {
@@ -767,22 +605,16 @@ fn asset_destination_folder(dir: &Path, params: &Value) -> Result<(PathBuf, Path
             let folder = dir.join("assets/images").join(name);
             Ok((folder.clone(), folder))
         }
-        _ => {
-            Err(EngineError::InvalidParams(
-                "an image from outside the project needs one destination: \
+        _ => Err(EngineError::InvalidParams(
+            "an image from outside the project needs one destination: \
                          character=<name> (copied to assets/characters/<name>/parts/) or \
                          background=<name> (copied to assets/backgrounds/<name>/) or image=<name> (copied to assets/images/<name>/)"
-                    .into(),
-            ))
-        }
+                .into(),
+        )),
     }
 }
 
-fn copy_destination(
-    s: &Session,
-    params: &Value,
-    path: &Option<PathBuf>,
-) -> Result<Option<(PathBuf, PathBuf)>> {
+fn copy_destination(s: &Session, params: &Value, path: &Option<PathBuf>) -> Result<Option<(PathBuf, PathBuf)>> {
     let Some(dir) = s.project_path.as_ref().and_then(|p| p.parent()) else {
         return Ok(None);
     };
@@ -800,9 +632,7 @@ fn unique_asset_id(s: &Session, base_id: &str, explicit: bool) -> Result<String>
     let mut suffix = 2;
     while s.project_assets.iter().any(|a| a.id == id) || s.assets.contains_key(&id) {
         if explicit {
-            return Err(EngineError::InvalidParams(format!(
-                "asset id '{id}' already exists"
-            )));
+            return Err(EngineError::InvalidParams(format!("asset id '{id}' already exists")));
         }
         id = format!("{base_id}_{suffix}");
         suffix += 1;
@@ -810,22 +640,10 @@ fn unique_asset_id(s: &Session, base_id: &str, explicit: bool) -> Result<String>
     Ok(id)
 }
 
-fn record_provenance(
-    folder: &Path,
-    copy: &Path,
-    source: &Path,
-    meta: &std::fs::Metadata,
-) -> Result<()> {
-    let unix = |t: std::time::SystemTime| {
-        t.duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
-    };
+fn record_provenance(folder: &Path, copy: &Path, source: &Path, meta: &std::fs::Metadata) -> Result<()> {
+    let unix = |t: std::time::SystemTime| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let provenance = folder.join("provenance.json");
-    let mut doc: Value = std::fs::read_to_string(&provenance)
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_else(|| json!({}));
+    let mut doc: Value = std::fs::read_to_string(&provenance).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_else(|| json!({}));
     if !doc["files"].is_array() {
         doc["files"] = json!([]);
     }
@@ -841,10 +659,7 @@ fn record_provenance(
 fn copy_asset_file(folder: &Path, files: &Path, source: &Path) -> Result<PathBuf> {
     let copy = files.join(source.file_name().unwrap_or_default());
     if copy.exists() {
-        return Err(EngineError::InvalidParams(format!(
-            "{} is already in the project; connect that file instead",
-            copy.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("{} is already in the project; connect that file instead", copy.display())));
     }
     std::fs::create_dir_all(files)?;
     std::fs::copy(source, &copy)?;
@@ -854,29 +669,17 @@ fn copy_asset_file(folder: &Path, files: &Path, source: &Path) -> Result<PathBuf
     Ok(copy)
 }
 
-fn reuse_existing_asset(
-    s: &mut Session,
-    path: &Option<PathBuf>,
-    load: bool,
-    if_not_exists: bool,
-) -> Result<Option<Value>> {
+fn reuse_existing_asset(s: &mut Session, path: &Option<PathBuf>, load: bool, if_not_exists: bool) -> Result<Option<Value>> {
     if !if_not_exists {
         return Ok(None);
     }
-    let Some(existing_id) = s
-        .project_assets
-        .iter()
-        .find(|a| path.is_some() && a.path == *path)
-        .map(|a| a.id.clone())
-    else {
+    let Some(existing_id) = s.project_assets.iter().find(|a| path.is_some() && a.path == *path).map(|a| a.id.clone()) else {
         return Ok(None);
     };
     if load {
         cmd_project_load_asset(s, &json!({"id": existing_id}))?;
     }
-    Ok(Some(
-        json!({"ok": true, "asset_id": existing_id, "loaded": load, "assets": s.project_assets}),
-    ))
+    Ok(Some(json!({"ok": true, "asset_id": existing_id, "loaded": load, "assets": s.project_assets})))
 }
 
 fn load_and_save_asset(s: &mut Session, params: &Value, id: &str, load: bool) -> Result<()> {
@@ -892,22 +695,11 @@ fn load_and_save_asset(s: &mut Session, params: &Value, id: &str, load: bool) ->
 /// Connect an asset by path to the open project.
 pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     ensure_asset_project(s, params)?;
-    let AssetRequest {
-        path,
-        kind,
-        name,
-        stem,
-        load,
-        if_not_exists,
-        explicit_id,
-    } = asset_request(s, params)?;
+    let AssetRequest { path, kind, name, stem, load, if_not_exists, explicit_id } = asset_request(s, params)?;
     if let Some(reused) = reuse_existing_asset(s, &path, load, if_not_exists)? {
         return Ok(reused);
     }
-    let base_id = explicit_id
-        .clone()
-        .or_else(|| crate::workspace::try_sanitize_asset_id(&name))
-        .unwrap_or_else(|| crate::workspace::sanitize_asset_id(&stem));
+    let base_id = explicit_id.clone().or_else(|| crate::workspace::try_sanitize_asset_id(&name)).unwrap_or_else(|| crate::workspace::sanitize_asset_id(&stem));
     // With a project open, an image from outside it is copied to its destination in the workshop
     // layout: a character's parts or a background. No destination, no copy: the asset is refused.
     let copy_into = copy_destination(s, params, &path)?;
@@ -916,19 +708,10 @@ pub fn cmd_project_add_asset(s: &mut Session, params: &Value) -> Result<Value> {
     if let (Some((folder, files)), Some(source)) = (&copy_into, &path) {
         stored = Some(copy_asset_file(folder, files, source)?);
     }
-    s.project_assets.push(crate::ProjectAsset {
-        id: id.clone(),
-        name,
-        preset: None,
-        path: stored.clone(),
-        kind,
-        extra: Default::default(),
-    });
+    s.project_assets.push(crate::ProjectAsset { id: id.clone(), name, preset: None, path: stored.clone(), kind, extra: Default::default() });
     load_and_save_asset(s, params, &id, load)?;
-    Ok(
-        json!({"ok": true, "asset_id": id, "loaded": load, "assets": s.project_assets,
-        "copied_to": copy_into.is_some().then_some(&stored)}),
-    )
+    Ok(json!({"ok": true, "asset_id": id, "loaded": load, "assets": s.project_assets,
+        "copied_to": copy_into.is_some().then_some(&stored)}))
 }
 
 /// Remove a connected project asset and unload it.
@@ -937,11 +720,7 @@ pub fn cmd_project_remove_asset(s: &mut Session, params: &Value) -> Result<Value
     let entry = s.project_assets.remove(index);
     s.assets.remove(&entry.id);
     if s.active_asset.as_deref() == Some(&entry.id) {
-        s.active_asset = s
-            .project_assets
-            .iter()
-            .find(|e| s.assets.contains_key(&e.id))
-            .map(|e| e.id.clone());
+        s.active_asset = s.project_assets.iter().find(|e| s.assets.contains_key(&e.id)).map(|e| e.id.clone());
     }
     Ok(json!({"ok": true, "removed": entry.id, "active_asset": s.active_asset}))
 }
@@ -951,12 +730,7 @@ pub fn cmd_project_update_asset(s: &mut Session, params: &Value) -> Result<Value
     let index = project_index(s, params)?;
     let name = params
         .get("name")
-        .map(|v| {
-            v.as_str()
-                .map(str::trim)
-                .filter(|n| !n.is_empty())
-                .ok_or_else(|| EngineError::InvalidParams("asset name cannot be empty".into()))
-        })
+        .map(|v| v.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| EngineError::InvalidParams("asset name cannot be empty".into())))
         .transpose()?;
     let target = params
         .get("index")
@@ -979,11 +753,7 @@ pub fn cmd_project_update_asset(s: &mut Session, params: &Value) -> Result<Value
 
 /// Read an image's size or a Craft document's (`craft_doc::info`) canvas size.
 fn loaded_asset(entry: &crate::ProjectAsset, path: &Path) -> Result<crate::Asset> {
-    let mut asset = crate::Asset {
-        id: entry.id.clone(),
-        path: path.to_path_buf(),
-        ..Default::default()
-    };
+    let mut asset = crate::Asset { id: entry.id.clone(), path: path.to_path_buf(), ..Default::default() };
     if let Ok(reader) = image::ImageReader::open(path).and_then(|r| r.with_guessed_format())
         && reader.format().is_some()
     {
@@ -1004,10 +774,7 @@ fn loaded_asset(entry: &crate::ProjectAsset, path: &Path) -> Result<crate::Asset
             }
         }
     } else if !path.exists() {
-        return Err(EngineError::InvalidParams(format!(
-            "project asset file is missing: {}",
-            path.display()
-        )));
+        return Err(EngineError::InvalidParams(format!("project asset file is missing: {}", path.display())));
     }
     Ok(asset)
 }
@@ -1015,14 +782,9 @@ fn loaded_asset(entry: &crate::ProjectAsset, path: &Path) -> Result<crate::Asset
 /// Load a connected project asset into the session; a failure leaves the previous asset active.
 pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> {
     let entry = s.project_assets[project_index(s, params)?].clone();
-    let reload = params
-        .get("reload")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let reload = params.get("reload").and_then(Value::as_bool).unwrap_or(false);
     if !s.assets.contains_key(&entry.id) || reload {
-        let path = entry.path.as_ref().ok_or_else(|| {
-            EngineError::InvalidParams(format!("project asset '{}' has no file path", entry.id))
-        })?;
+        let path = entry.path.as_ref().ok_or_else(|| EngineError::InvalidParams(format!("project asset '{}' has no file path", entry.id)))?;
         let asset = loaded_asset(&entry, path)?;
         s.assets.insert(entry.id.clone(), asset);
     }
@@ -1046,11 +808,13 @@ pub(crate) fn claim(s: &Session, path: &Path) -> Result<std::sync::Arc<std::fs::
     {
         return Ok(owner.clone());
     }
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
-    file.try_lock().map_err(|_|EngineError::InvalidParams(format!("Project is owned by another live writer: {}. Inspect project.catalog and attach to its existing Studio; no competing write performed.",path.display())))?;
+    let file = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+    file.try_lock().map_err(|_| {
+        EngineError::InvalidParams(format!(
+            "Project is owned by another live writer: {}. Inspect project.catalog and attach to its existing Studio; no competing write performed.",
+            path.display()
+        ))
+    })?;
     Ok(std::sync::Arc::new(file))
 }
 
@@ -1065,10 +829,7 @@ pub fn cmd_project_attach(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 pub fn theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
-    let path = s
-        .project_path
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    let path = s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
     if params["expected_project"].as_str() != path.to_str() {
         return Err(EngineError::InvalidParams("Project changed".into()));
     }
@@ -1078,18 +839,12 @@ pub fn theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
 pub fn save_theatre_state(s: &mut Session, params: &Value) -> Result<Value> {
     theatre_state(s, params)?;
     if !params["state"]["sheetsById"].is_object() {
-        return Err(EngineError::InvalidParams(
-            "Invalid Theatre snapshot".into(),
-        ));
+        return Err(EngineError::InvalidParams("Invalid Theatre snapshot".into()));
     }
-    let path = s
-        .project_path
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
+    let path = s.project_path.as_ref().ok_or_else(|| EngineError::InvalidParams("Open a project".into()))?;
     let mut doc = read_project_document(path)?;
     doc["theatre"] = params["state"].clone();
-    let bytes =
-        serde_json::to_vec_pretty(&doc).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+    let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
     write_preserving_lease(path, &bytes)?;
     Ok(json!({"saved":true,"project":path}))
 }

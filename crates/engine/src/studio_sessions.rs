@@ -61,19 +61,10 @@ pub fn request_slow(path: &Path, id: &str, params: Value) -> Result<Value, Strin
 /// long-running registry command and 30 s for the rest.
 fn reply_deadline(id: &str) -> Result<u64, String> {
     if let Ok(raw) = std::env::var("magic_COMMAND_TIMEOUT_MS") {
-        let ms: f64 = raw
-            .trim()
-            .parse()
-            .ok()
-            .filter(|v: &f64| v.is_finite() && *v > 0.0)
-            .ok_or("magic_COMMAND_TIMEOUT_MS must be a positive number")?;
+        let ms: f64 = raw.trim().parse().ok().filter(|v: &f64| v.is_finite() && *v > 0.0).ok_or("magic_COMMAND_TIMEOUT_MS must be a positive number")?;
         return Ok(((ms / 1000.0).ceil() as u64).max(1));
     }
-    Ok(if crate::find_command(id).is_some_and(|c| c.long_running) {
-        3600
-    } else {
-        30
-    })
+    Ok(if crate::find_command(id).is_some_and(|c| c.long_running) { 3600 } else { 30 })
 }
 #[cfg(unix)]
 fn check_endpoint(path: &Path) -> Result<(), String> {
@@ -83,19 +74,12 @@ fn check_endpoint(path: &Path) -> Result<(), String> {
 
 /// Connect, prove the peer is the Studio, and bound both directions by the same deadline.
 #[cfg(unix)]
-fn connected(
-    path: &Path,
-    timeout_seconds: u64,
-) -> Result<BufReader<std::os::unix::net::UnixStream>, String> {
+fn connected(path: &Path, timeout_seconds: u64) -> Result<BufReader<std::os::unix::net::UnixStream>, String> {
     let stream = connect_with_retry(path)?;
     crate::local_ipc::peer(&stream).map_err(|e| format!("Studio peer check failed: {e}"))?;
     let timeout = Some(Duration::from_secs(timeout_seconds));
-    stream
-        .set_read_timeout(timeout)
-        .map_err(|e| e.to_string())?;
-    stream
-        .set_write_timeout(timeout)
-        .map_err(|e| e.to_string())?;
+    stream.set_read_timeout(timeout).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(timeout).map_err(|e| e.to_string())?;
     Ok(BufReader::new(stream))
 }
 
@@ -107,10 +91,7 @@ fn retryable(error: &std::io::Error) -> bool {
 
 /// One answer line, retried briefly; a silent Studio is reported as busy, not as a raw timeout.
 #[cfg(unix)]
-fn read_reply(
-    reader: &mut BufReader<std::os::unix::net::UnixStream>,
-    timeout_seconds: u64,
-) -> Result<String, String> {
+fn read_reply(reader: &mut BufReader<std::os::unix::net::UnixStream>, timeout_seconds: u64) -> Result<String, String> {
     let mut line = String::new();
     for attempt in 0..4 {
         match reader.read_line(&mut line) {
@@ -135,27 +116,14 @@ fn read_reply(
 #[cfg(unix)]
 fn reply_result(line: &str) -> Result<Value, String> {
     let reply: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
-    if reply["ok"] == true {
-        Ok(reply["result"].clone())
-    } else {
-        Err(reply["error"]
-            .as_str()
-            .unwrap_or("Studio request failed")
-            .into())
-    }
+    if reply["ok"] == true { Ok(reply["result"].clone()) } else { Err(reply["error"].as_str().unwrap_or("Studio request failed").into()) }
 }
 
 #[cfg(unix)]
-pub fn request_within(
-    path: &Path,
-    id: &str,
-    params: Value,
-    timeout_seconds: u64,
-) -> Result<Value, String> {
+pub fn request_within(path: &Path, id: &str, params: Value, timeout_seconds: u64) -> Result<Value, String> {
     check_endpoint(path)?;
     let mut reader = connected(path, timeout_seconds)?;
-    writeln!(reader.get_mut(), "{}", json!({"id":id,"params":params}))
-        .map_err(|e| e.to_string())?;
+    writeln!(reader.get_mut(), "{}", json!({"id":id,"params":params})).map_err(|e| e.to_string())?;
     let line = read_reply(&mut reader, timeout_seconds)?;
     reply_result(&line)
 }
@@ -175,10 +143,7 @@ fn sessions_dir() -> Result<Option<PathBuf>, String> {
 #[cfg(unix)]
 fn other_session_socket(path: &Path) -> bool {
     let own = format!("{}-", std::process::id());
-    !path
-        .file_name()
-        .is_some_and(|n| n.to_string_lossy().starts_with(&own))
-        && path.extension().is_some_and(|e| e == "sock")
+    !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&own)) && path.extension().is_some_and(|e| e == "sock")
 }
 
 #[cfg(unix)]
@@ -235,21 +200,10 @@ pub fn discover() -> Value {
 pub fn for_project(path: &Path) -> Result<Option<Value>, String> {
     let project = canonical(path)?;
     let found = discover();
-    let matches: Vec<Value> = found["sessions"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|s| s["canonical_project"].as_str() == project.to_str())
-        .cloned()
-        .collect();
+    let matches: Vec<Value> =
+        found["sessions"].as_array().into_iter().flatten().filter(|s| s["canonical_project"].as_str() == project.to_str()).cloned().collect();
     if matches.is_empty()
-        && found["errors"].as_array().is_some_and(|v| {
-            v.iter().any(|e| {
-                !e["error"]
-                    .as_str()
-                    .is_some_and(|s| s.starts_with("stale endpoint:"))
-            })
-        })
+        && found["errors"].as_array().is_some_and(|v| v.iter().any(|e| !e["error"].as_str().is_some_and(|s| s.starts_with("stale endpoint:"))))
     {
         return Err(format!("Studio ownership is unknown: {}", found["errors"]));
     }
@@ -260,22 +214,17 @@ fn select(matches: &[Value]) -> Result<Option<Value>, String> {
     if matches.len() < 2 {
         return Ok(matches.first().cloned());
     }
-    let writers = matches
-        .iter()
-        .filter(|s| s["writer_owner"] == true)
-        .collect::<Vec<_>>();
+    let writers = matches.iter().filter(|s| s["writer_owner"] == true).collect::<Vec<_>>();
     if writers.len() == 1 {
         return Ok(Some(writers[0].clone()));
     }
     // Older builds lack the owner field. An explicit read-only attachment cannot be the writer.
-    let possible = matches
-        .iter()
-        .filter(|s| s["writer_owner"] != false)
-        .collect::<Vec<_>>();
+    let possible = matches.iter().filter(|s| s["writer_owner"] != false).collect::<Vec<_>>();
     if writers.is_empty() && possible.len() == 1 {
         return Ok(Some(possible[0].clone()));
     }
-    Err("Multiple Studio sessions report this project; no unique writer. Inspect magic-cli studio list and select the intended project; no command executed".into())
+    Err("Multiple Studio sessions report this project; no unique writer. Inspect magic-cli studio list and select the intended project; no command executed"
+        .into())
 }
 
 /// Shared app opening for desktop, UI and CLI. Existing windows are never replaced.
@@ -296,9 +245,7 @@ fn focus_existing(project: &Path, launch: &Launch) -> Result<Option<Value>, Stri
     let Some(existing) = for_project(project)? else {
         return Ok(None);
     };
-    let endpoint = existing["endpoint"]
-        .as_str()
-        .ok_or("Studio endpoint missing")?;
+    let endpoint = existing["endpoint"].as_str().ok_or("Studio endpoint missing")?;
     let socket = Path::new(endpoint.trim_start_matches("unix:"));
     match request(
         socket,
@@ -327,11 +274,7 @@ fn live_executable(executable: &Path) -> PathBuf {
 }
 
 /// The window this launch asks for: character selection, Animation only, and an explicit project.
-fn launch_command(
-    executable: &Path,
-    project: Option<&Path>,
-    launch: &Launch,
-) -> std::process::Command {
+fn launch_command(executable: &Path, project: Option<&Path>, launch: &Launch) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
     if let Some(ch) = launch.character {
         command.args(["--character", ch]);
@@ -349,10 +292,7 @@ fn launch_command(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
-    command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+    command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     command
 }
 
@@ -361,10 +301,7 @@ fn ready_endpoint(dir: &Path, pid: u32, project: Option<&Path>) -> Option<Value>
     let own = format!("{pid}-");
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
-        if !path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with(&own))
-        {
+        if !path.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&own)) {
             continue;
         }
         let Ok(mut live) = request(&path, "ui.feedback", json!({})) else {
@@ -384,11 +321,7 @@ fn ready_endpoint(dir: &Path, pid: u32, project: Option<&Path>) -> Option<Value>
 }
 
 /// Wait for the window this pid started to report ready, or say how it ended.
-fn await_ready(
-    child: &mut std::process::Child,
-    dir: &Path,
-    project: Option<&Path>,
-) -> Result<Value, String> {
+fn await_ready(child: &mut std::process::Child, dir: &Path, project: Option<&Path>) -> Result<Value, String> {
     let pid = child.id();
     let start = std::time::Instant::now();
     while start.elapsed() < std::time::Duration::from_secs(30) {
@@ -396,23 +329,15 @@ fn await_ready(
             return Ok(live);
         }
         if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            return Err(format!(
-                "Studio process {pid} exited during opening: {status}"
-            ));
+            return Err(format!("Studio process {pid} exited during opening: {status}"));
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    Err(format!(
-        "Studio process {pid} started but has not reported a ready window; it was left running. No other window was changed."
-    ))
+    Err(format!("Studio process {pid} started but has not reported a ready window; it was left running. No other window was changed."))
 }
 
 /// Open Magic Studio with launch options, reusing a window already serving the project.
-pub fn open_with_options(
-    executable: &Path,
-    project: Option<&str>,
-    launch: &Launch,
-) -> Result<Value, String> {
+pub fn open_with_options(executable: &Path, project: Option<&str>, launch: &Launch) -> Result<Value, String> {
     let project = project.map(Path::new).map(canonical).transpose()?;
     if let Some(path) = &project
         && let Some(existing) = focus_existing(path, launch)?
@@ -423,8 +348,6 @@ pub fn open_with_options(
     let dir = runtime.join("magic");
     let executable = live_executable(executable);
     let mut command = launch_command(&executable, project.as_deref(), launch);
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("Cannot launch {}: {e}", executable.display()))?;
+    let mut child = command.spawn().map_err(|e| format!("Cannot launch {}: {e}", executable.display()))?;
     await_ready(&mut child, &dir, project.as_deref())
 }

@@ -35,23 +35,24 @@ a suggested command from one actually run. Drafting a brief does not execute it.
 
 ## One application, one live session
 
-Application: `apps/magic` in the current Magic Studio checkout.
-The native Rust UI rewrite is active. Preserve the retired web UI deletion;
-do not restore frontend dependencies or run the withdrawn checks.
-Read [the command contract](MAGIC.md). The UI, Rust engine and CLI adapters
-share the Rust command registry and the window's engine session. New/Open and project
-workflow controls enter the guarded native dispatch directly; do not add a CLI subprocess loop.
+Application: the Tauri desktop shell `apps/magic-tauri` with its React frontend in `apps/magic/ui`
+(the egui `magic` binary is a legacy restoration reference). The UI, Rust engine and CLI adapters
+share the Rust command registry and the window's single engine session; frontend commands use Tauri
+IPC and never start a second session.
+Read [the command contract](MAGIC.md) and [the control protocol](../../docs/control-protocol.md).
 
-Launch with `magic`. Use `magic-cli --project /absolute/Project.magic` for the intended
-project, or `magic-cli studio open /absolute/Project.magic` to open/select its visible window.
-Verify identity with `magic-cli --project /absolute/Project.magic ui feedback`.
-Routing is automatic; do not ask users or agents to choose bridge ports. Do not start a video
-studio server merely to animate. Other installed applications retain their own documented CLIs.
+Launch the desktop with a control port and token (`apps/magic-tauri/README.md`). Use
+`magic-cli --project /absolute/Project.magic` for headless work on a project, or
+`magic-cli --bridge 127.0.0.1:PORT exec project.open path=/absolute/Project.magic` to open it in the
+live window. Verify identity with `magic-cli --bridge 127.0.0.1:PORT ui inspect`.
+The bridge is explicit: never guess a port and never expect a headless fallback. Do not start a
+video studio server merely to animate. Other installed applications retain their own documented CLIs.
 
-The native computer-use surface is `ui.look`, `ui.state`, `ui.elements`, `ui.click`, `ui.set`,
-`ui.key`, and engine commands. Use stable IDs and typed parameters. For a numbered `@...` target returned by `ui.components`, pass its `component_instance` as `instance` to `ui.click` or `ui.set`; inspect again after the UI changes. The existing Add asset control accepts `magic-cli --project /absolute/Project.magic exec ui.click id=asset-import files='["/absolute/image.png"]'`; this supplies the chosen files to the same UI import handler, which invokes the shared `project.add_asset` command, saves, and leaves them unplaced. To use the existing drag/drop handler, `ui.drag source=<asset tile id> target=<storyboard page id> x=0.5 y=0.5` supplies a drop point as fractions of that page. Inspect the actual placement, then select Save new version. A dispatched drop is not a saved document. Read back changed state and
-pixels; a delivered click or successful command alone is not proof. Use `ui.eval` for diagnostics,
-not as a substitute for missing product commands. Avoid global mouse/focus automation.
+The live computer-use surface is `ui.inspect`, `ui.elements`, `ui.click`, `ui.move`, `ui.drag`,
+`ui.scroll`, `ui.key`, `ui.type`, `ui.set`, `ui.focus`, `ui.resize`, `ui.screenshot` and engine
+commands. Use stable element IDs and typed parameters; inspect again after the UI changes. A delivered
+click or successful command alone is not proof: read back changed state and pixels. Avoid global
+mouse/focus automation.
 
 ## Design contract
 

@@ -8,11 +8,7 @@ fn desktop_apps_resolve_through_the_launcher_entry() {
     std::fs::create_dir_all(&apps).unwrap();
     let build = home.join("photocraft-9.9.9.AppImage");
     std::fs::write(&build, b"").unwrap();
-    std::fs::write(
-        apps.join("ai.storyteller.photocraft.desktop"),
-        format!("[Desktop Entry]\nExec=\"{}\" %F\n", build.display()),
-    )
-    .unwrap();
+    std::fs::write(apps.join("ai.storyteller.photocraft.desktop"), format!("[Desktop Entry]\nExec=\"{}\" %F\n", build.display())).unwrap();
     let found = launcher_app(&home, "photocraft");
     let missing = launcher_app(&home, "vectorcraft");
     std::fs::remove_dir_all(&home).unwrap();

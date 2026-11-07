@@ -63,9 +63,7 @@ fn stage_image(view: &View, p: &Value, s: &Session) -> Result<(std::path::PathBu
         .filter(|i| i.is_file())
         .ok_or_else(|| bad("image=<drawing.png> is required"))?;
     std::fs::create_dir_all(&view.dir)?;
-    let staged = view
-        .dir
-        .join(format!("{}-{}-drawing.png", view.id, view.view));
+    let staged = view.dir.join(format!("{}-{}-drawing.png", view.id, view.view));
     if source != staged {
         std::fs::copy(&source, &staged)?;
     }
@@ -80,10 +78,7 @@ fn check_marks(view: &View, staged: &std::path::Path) -> Result<Value> {
     let known = skeleton["parts"].as_array().cloned().unwrap_or_default();
     for part in list {
         if !known.contains(&part["id"]) {
-            return Err(bad(format!(
-                "Scribbles marked an unknown part {}",
-                part["id"]
-            )));
+            return Err(bad(format!("Scribbles marked an unknown part {}", part["id"])));
         }
     }
     parts["image"] = json!(staged.file_name().map(|n| n.to_string_lossy().into_owned()));
@@ -98,21 +93,11 @@ pub fn cmd_character_mark(s: &mut Session, p: &Value) -> Result<Value> {
     let (staged, size) = stage_image(&view, p, s)?;
     let timeout = p["timeout_s"].as_u64().unwrap_or(600);
     let codex = crate::workspace::resolve_tool("codex");
-    let run = crate::agent_run::run_agent(
-        &codex,
-        &codex_args(&view, &staged, size),
-        &view.dir,
-        timeout,
-    )?;
+    let run = crate::agent_run::run_agent(&codex, &codex_args(&view, &staged, size), &view.dir, timeout)?;
     if !run.succeeded() {
-        return Err(EngineError::ExternalTool(
-            "codex".into(),
-            format!("Scribbles did not finish marking: {}", run.failure_detail()),
-        ));
+        return Err(EngineError::ExternalTool("codex".into(), format!("Scribbles did not finish marking: {}", run.failure_detail())));
     }
     let parts = check_marks(&view, &staged)?;
-    Ok(
-        json!({"ok": true, "parts": view.dir.join("parts.json"), "marked": parts["parts"],
-        "next": format!("review the marks, then character.cut character={} view={}", view.id, view.view)}),
-    )
+    Ok(json!({"ok": true, "parts": view.dir.join("parts.json"), "marked": parts["parts"],
+        "next": format!("review the marks, then character.cut character={} view={}", view.id, view.view)}))
 }

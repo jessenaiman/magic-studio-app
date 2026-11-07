@@ -14,32 +14,17 @@ fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 fn object<'a>(value: &'a Value, context: &str) -> Result<&'a serde_json::Map<String, Value>> {
-    value
-        .as_object()
-        .ok_or_else(|| invalid(format!("{context} must be an object")))
+    value.as_object().ok_or_else(|| invalid(format!("{context} must be an object")))
 }
 fn id(p: &Value) -> Result<&str> {
     let id = p["id"].as_str().unwrap_or("");
-    if id.is_empty()
-        || id.len() > 96
-        || id.contains("..")
-        || !id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
-    {
-        return Err(invalid(
-            "Learning id must be 1–96 letters, digits, - _ or .; no path components",
-        ));
+    if id.is_empty() || id.len() > 96 || id.contains("..") || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)) {
+        return Err(invalid("Learning id must be 1–96 letters, digits, - _ or .; no path components"));
     }
     Ok(id)
 }
 fn root(s: &Session) -> PathBuf {
-    s.project_path
-        .as_ref()
-        .and_then(|p| p.parent())
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| crate::workspace::workspace_root(s))
-        .join("learning")
+    s.project_path.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf).unwrap_or_else(|| crate::workspace::workspace_root(s)).join("learning")
 }
 fn legacy_file() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
@@ -52,12 +37,7 @@ fn read_json(p: &Path) -> Result<Value> {
         Ok(b) => serde_json::from_slice::<Value>(&b)
             .ok()
             .filter(Value::is_object)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "Invalid {}; preserved for explicit repair",
-                    p.display()
-                ))
-            }),
+            .ok_or_else(|| invalid(format!("Invalid {}; preserved for explicit repair", p.display()))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(json!({})),
         Err(e) => Err(e.into()),
     }
@@ -71,28 +51,20 @@ fn seeds() -> Value {
         record["name"] = json!(title(md).unwrap_or(id));
         v[*id] = record;
     }
-    v["ffmpeg-skill"] = json!({"id":"ffmpeg-skill","name":"ffmpeg-skill","category":"reference","status":"researching","source":"https://github.com/kajisho5/ffmpeg-skill"});
+    v["ffmpeg-skill"] =
+        json!({"id":"ffmpeg-skill","name":"ffmpeg-skill","category":"reference","status":"researching","source":"https://github.com/kajisho5/ffmpeg-skill"});
     v
 }
 const TASKS: &[(&str, &str)] = &[
-    (
-        "resolve-project",
-        include_str!("../manual/resolve-project.md"),
-    ),
+    ("resolve-project", include_str!("../manual/resolve-project.md")),
     ("choose-audio", include_str!("../manual/choose-audio.md")),
     ("timing-skill", include_str!("../manual/timing-skill.md")),
     ("import-timing", include_str!("../manual/import-timing.md")),
     ("prepare-art", include_str!("../manual/prepare-art.md")),
     ("author-motion", include_str!("../manual/author-motion.md")),
-    (
-        "review-release",
-        include_str!("../manual/review-release.md"),
-    ),
+    ("review-release", include_str!("../manual/review-release.md")),
     ("report-note", include_str!("../manual/report-note.md")),
-    (
-        "approve-alternative",
-        include_str!("../manual/approve-alternative.md"),
-    ),
+    ("approve-alternative", include_str!("../manual/approve-alternative.md")),
     ("fix-source", include_str!("../manual/fix-source.md")),
     ("recheck-fix", include_str!("../manual/recheck-fix.md")),
     ("full-review", include_str!("../manual/full-review.md")),
@@ -155,11 +127,7 @@ fn records(s: &Session) -> Result<Value> {
     }
     merge_registry(&mut all, &root(s).join("index.json"), "Learning index")?;
     for path in learning_files(&root(s))? {
-        let ident = path
-            .file_stem()
-            .and_then(|v| v.to_str())
-            .unwrap_or_default()
-            .to_string();
+        let ident = path.file_stem().and_then(|v| v.to_str()).unwrap_or_default().to_string();
         let md = fs::read_to_string(&path)?;
         apply_markdown(&md, &ident, &mut all)?;
     }
@@ -228,21 +196,14 @@ pub fn cmd_skills_list(s: &mut Session, _: &Value) -> Result<Value> {
             out.push(rendered(s, id, v)?);
         }
     }
-    out.sort_by_key(|v| {
-        (
-            v["id"] != "resolve-project",
-            v["name"].as_str().unwrap_or("").to_lowercase(),
-        )
-    });
+    out.sort_by_key(|v| (v["id"] != "resolve-project", v["name"].as_str().unwrap_or("").to_lowercase()));
     Ok(json!({"ok":true,"count":out.len(),"skills":out,"directory":root(s)}))
 }
 pub fn cmd_skills_info(s: &mut Session, p: &Value) -> Result<Value> {
     let ident = id(p)?;
     let _lock = read_lock(s)?;
     let all = records(s)?;
-    let record = all
-        .get(ident)
-        .ok_or_else(|| invalid(format!("Learning block '{ident}' not found")))?;
+    let record = all.get(ident).ok_or_else(|| invalid(format!("Learning block '{ident}' not found")))?;
     Ok(json!({"ok":true,"skill":rendered(s,ident,record)?}))
 }
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -258,43 +219,26 @@ fn title(md: &str) -> Option<&str> {
             }
         }
     }
-    lines.find_map(|l| {
-        l.strip_prefix("# ")
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-    })
+    lines.find_map(|l| l.strip_prefix("# ").map(str::trim).filter(|s| !s.is_empty()))
 }
 fn mutate(s: &mut Session, p: &Value, action: &str) -> Result<Value> {
     let ident = id(p)?.to_string();
     let dir = root(s);
-    if p["_expected_directory"]
-        .as_str()
-        .is_some_and(|v| Path::new(v) != dir)
-    {
+    if p["_expected_directory"].as_str().is_some_and(|v| Path::new(v) != dir) {
         return Err(invalid("Learning project changed; draft retained"));
     }
     fs::create_dir_all(&dir)?;
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(dir.join("index.lock"))?;
+    let lock = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(dir.join("index.lock"))?;
     lock.lock()?;
     let all = records(s)?;
     let previous = all.get(&ident);
-    let mut record = previous
-        .cloned()
-        .unwrap_or_else(|| json!({"id":ident,"status":"researching","verification":"draft"}));
+    let mut record = previous.cloned().unwrap_or_else(|| json!({"id":ident,"status":"researching","verification":"draft"}));
     object(&record, "Learning record")?;
     let old_md = markdown(s, &record, &ident)?;
     // Managed writes require the revision from info/list; legacy metadata-only adds remain compatible.
-    let needs_guard =
-        previous.is_some() && (action != "add" || dir.join(format!("{ident}.md")).exists());
+    let needs_guard = previous.is_some() && (action != "add" || dir.join(format!("{ident}.md")).exists());
     if needs_guard && p["expected_revision"].as_str() != Some(revision(&record, &old_md).as_str()) {
-        return Err(invalid(
-            "Learning conflict: content changed or expected_revision missing; read skills.info and compare before retrying",
-        ));
+        return Err(invalid("Learning conflict: content changed or expected_revision missing; read skills.info and compare before retrying"));
     }
     let mut md = old_md;
     match action {
@@ -309,9 +253,7 @@ fn mutate(s: &mut Session, p: &Value, action: &str) -> Result<Value> {
         }
         _ => {
             for (k, v) in p.as_object().ok_or_else(|| invalid("Expected object"))? {
-                if !k.starts_with('_')
-                    && !["id", "markdown", "expected_revision"].contains(&k.as_str())
-                {
+                if !k.starts_with('_') && !["id", "markdown", "expected_revision"].contains(&k.as_str()) {
                     record[k] = v.clone();
                 }
             }
@@ -321,11 +263,7 @@ fn mutate(s: &mut Session, p: &Value, action: &str) -> Result<Value> {
                 }
                 md = content.into();
             } else if previous.is_none() {
-                md = format!(
-                    "# {}\n\n{}\n",
-                    p["name"].as_str().unwrap_or(&ident),
-                    p["description"].as_str().unwrap_or("")
-                );
+                md = format!("# {}\n\n{}\n", p["name"].as_str().unwrap_or(&ident), p["description"].as_str().unwrap_or(""));
             }
             if let Some(t) = title(&md) {
                 record["name"] = json!(t);
@@ -336,8 +274,7 @@ fn mutate(s: &mut Session, p: &Value, action: &str) -> Result<Value> {
         }
     }
     let (_, header) = frontmatter(&md);
-    let structured =
-        record["kind"] == "task" || header.as_ref().is_some_and(|v| v["kind"] == "task");
+    let structured = record["kind"] == "task" || header.as_ref().is_some_and(|v| v["kind"] == "task");
     if let Some(meta) = header {
         let params = object(p, "Learning parameters")?;
         for (k, v) in object(&meta, "Learning frontmatter")? {
@@ -356,26 +293,11 @@ fn mutate(s: &mut Session, p: &Value, action: &str) -> Result<Value> {
         }
         let (body, _) = frontmatter(&md);
         let mut metadata = record.clone();
-        let metadata_object = metadata
-            .as_object_mut()
-            .ok_or_else(|| invalid("Learning record must be an object"))?;
-        for k in [
-            "name",
-            "description",
-            "markdown",
-            "revision",
-            "document_path",
-            "block",
-            "limits",
-            "validation",
-        ] {
+        let metadata_object = metadata.as_object_mut().ok_or_else(|| invalid("Learning record must be an object"))?;
+        for k in ["name", "description", "markdown", "revision", "document_path", "block", "limits", "validation"] {
             metadata_object.remove(k);
         }
-        md = format!(
-            "---\n{}\n---\n{}",
-            serde_json::to_string_pretty(&metadata).map_err(|e| invalid(e.to_string()))?,
-            body
-        );
+        md = format!("---\n{}\n---\n{}", serde_json::to_string_pretty(&metadata).map_err(|e| invalid(e.to_string()))?, body);
         atomic_write(&dir.join(format!("{ident}.md")), md.as_bytes())?;
         return Ok(json!({"ok":true,"skill":rendered(s,&ident,&record)?}));
     }
@@ -383,10 +305,7 @@ fn mutate(s: &mut Session, p: &Value, action: &str) -> Result<Value> {
     index[&ident] = record.clone();
     // Refuse corrupt index before changing the Markdown file.
     atomic_write(&dir.join(format!("{ident}.md")), md.as_bytes())?;
-    atomic_write(
-        &dir.join("index.json"),
-        &serde_json::to_vec_pretty(&index).map_err(|e| invalid(e.to_string()))?,
-    )?;
+    atomic_write(&dir.join("index.json"), &serde_json::to_vec_pretty(&index).map_err(|e| invalid(e.to_string()))?)?;
     Ok(json!({"ok":true,"skill":rendered(s,&ident,&record)?}))
 }
 pub fn cmd_skills_add(s: &mut Session, p: &Value) -> Result<Value> {
@@ -414,45 +333,21 @@ fn public(ip: IpAddr) -> bool {
                 && v.octets()[0] < 224
                 && !(v.octets()[0] == 100 && (64..128).contains(&v.octets()[1]))
         }
-        IpAddr::V6(v) => v
-            .to_ipv4_mapped()
-            .map(|a| public(IpAddr::V4(a)))
-            .unwrap_or_else(|| v.segments()[0] & 0xe000 == 0x2000),
+        IpAddr::V6(v) => v.to_ipv4_mapped().map(|a| public(IpAddr::V4(a))).unwrap_or_else(|| v.segments()[0] & 0xe000 == 0x2000),
     }
 }
 fn fetch_source(source: &str) -> Result<String> {
     if source.starts_with("https://") {
-        let authority = source
-            .trim_start_matches("https://")
-            .split('/')
-            .next()
-            .unwrap_or("");
-        if authority.is_empty()
-            || authority
-                .bytes()
-                .any(|b| !b.is_ascii_alphanumeric() && !b".-".contains(&b))
-        {
-            return Err(invalid(
-                "Import needs an https URL with a public DNS hostname; no credentials or custom port",
-            ));
+        let authority = source.trim_start_matches("https://").split('/').next().unwrap_or("");
+        if authority.is_empty() || authority.bytes().any(|b| !b.is_ascii_alphanumeric() && !b".-".contains(&b)) {
+            return Err(invalid("Import needs an https URL with a public DNS hostname; no credentials or custom port"));
         }
-        let ips: Vec<_> = (authority, 443)
-            .to_socket_addrs()
-            .map_err(|e| invalid(format!("Source lookup failed: {e}")))?
-            .map(|v| v.ip())
-            .collect();
+        let ips: Vec<_> = (authority, 443).to_socket_addrs().map_err(|e| invalid(format!("Source lookup failed: {e}")))?.map(|v| v.ip()).collect();
         if ips.is_empty() || ips.iter().any(|v| !public(*v)) {
             return Err(invalid("Source must resolve only to public IPv4 addresses"));
         }
         let chosen = ips.iter().find(|v| v.is_ipv4()).unwrap_or(&ips[0]);
-        let pin = format!(
-            "{authority}:443:{}",
-            if chosen.is_ipv6() {
-                format!("[{chosen}]")
-            } else {
-                chosen.to_string()
-            }
-        );
+        let pin = format!("{authority}:443:{}", if chosen.is_ipv6() { format!("[{chosen}]") } else { chosen.to_string() });
         // No redirects: each new destination needs its own source review, avoiding private-host redirects.
         let out = Command::new("curl")
             .args([
@@ -474,13 +369,7 @@ fn fetch_source(source: &str) -> Result<String> {
             ])
             .output()?;
         if !out.status.success() {
-            return Err(invalid(format!(
-                "Source fetch failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-                    .chars()
-                    .take(240)
-                    .collect::<String>()
-            )));
+            return Err(invalid(format!("Source fetch failed: {}", String::from_utf8_lossy(&out.stderr).chars().take(240).collect::<String>())));
         }
         if out.stdout.len() > 262144 {
             return Err(invalid("Source exceeds 256 KiB"));
@@ -488,16 +377,11 @@ fn fetch_source(source: &str) -> Result<String> {
         return String::from_utf8(out.stdout).map_err(|_| invalid("Source must be UTF-8 text"));
     }
     if source.contains("://") {
-        return Err(invalid(
-            "Only reviewed https URLs or existing local skill/package paths are imported",
-        ));
+        return Err(invalid("Only reviewed https URLs or existing local skill/package paths are imported"));
     }
     let p = Path::new(source);
     let p = if p.is_dir() {
-        [p.join("SKILL.md"), p.join("README.md")]
-            .into_iter()
-            .find(|p| p.is_file())
-            .ok_or_else(|| invalid("Local package has no SKILL.md or README.md"))?
+        [p.join("SKILL.md"), p.join("README.md")].into_iter().find(|p| p.is_file()).ok_or_else(|| invalid("Local package has no SKILL.md or README.md"))?
     } else {
         p.into()
     };
@@ -508,14 +392,9 @@ fn fetch_source(source: &str) -> Result<String> {
 }
 pub fn cmd_skills_import(s: &mut Session, p: &Value) -> Result<Value> {
     id(p)?;
-    let source = p["source"]
-        .as_str()
-        .ok_or_else(|| invalid("Missing source URL or existing package path"))?;
+    let source = p["source"].as_str().ok_or_else(|| invalid("Missing source URL or existing package path"))?;
     let excerpt = fetch_source(source)?;
-    let name = p["name"]
-        .as_str()
-        .or_else(|| title(&excerpt))
-        .unwrap_or("Imported reference");
+    let name = p["name"].as_str().or_else(|| title(&excerpt)).unwrap_or("Imported reference");
     let mut params = p.clone();
     params["name"] = json!(name);
     params["status"] = json!("researching");
@@ -534,9 +413,7 @@ fn frontmatter(md: &str) -> (&str, Option<Value>) {
     if let Some(rest) = plain.strip_prefix("---\n")
         && let Some(end) = rest.find("\n---\n")
     {
-        let meta = serde_json::from_str::<Value>(&rest[..end])
-            .ok()
-            .filter(Value::is_object);
+        let meta = serde_json::from_str::<Value>(&rest[..end]).ok().filter(Value::is_object);
         return (&rest[end + 5..], meta);
     }
     (md, None)
@@ -559,25 +436,8 @@ fn parse_task(md: &str) -> Value {
     let mut block = json!({"title":title(md).unwrap_or(""),"input":clean("input"),"output":clean("output"),"check":clean("check"),"condition":clean("condition"),"fallback":clean("fallback")});
     let notes = parts
         .iter()
-        .filter(|(k, _)| {
-            ![
-                "input",
-                "output",
-                "check",
-                "condition",
-                "fallback",
-                "command",
-                "skill",
-                "source",
-            ]
-            .contains(&k.as_str())
-        })
-        .map(|(_, v)| {
-            v.lines()
-                .filter(|l| !l.starts_with("# "))
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
+        .filter(|(k, _)| !["input", "output", "check", "condition", "fallback", "command", "skill", "source"].contains(&k.as_str()))
+        .map(|(_, v)| v.lines().filter(|l| !l.starts_with("# ")).collect::<Vec<_>>().join(" "))
         .collect::<Vec<_>>()
         .join(" ");
     block["notes"] = json!(notes);
@@ -585,29 +445,16 @@ fn parse_task(md: &str) -> Value {
         let mut value = clean(kind);
         if !value.is_empty() {
             if value.starts_with("```") {
-                value = value
-                    .lines()
-                    .skip(1)
-                    .take_while(|l| !l.starts_with("```"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                value = value.lines().skip(1).take_while(|l| !l.starts_with("```")).collect::<Vec<_>>().join("\n");
             }
             block["action"] = json!({"kind":kind,"ref":value});
             break;
         }
     }
-    let words = [
-        "title",
-        "input",
-        "output",
-        "check",
-        "condition",
-        "fallback",
-        "notes",
-    ]
-    .iter()
-    .map(|k| block[*k].as_str().unwrap_or("").split_whitespace().count())
-    .sum::<usize>();
+    let words = ["title", "input", "output", "check", "condition", "fallback", "notes"]
+        .iter()
+        .map(|k| block[*k].as_str().unwrap_or("").split_whitespace().count())
+        .sum::<usize>();
     let steps = body
         .lines()
         .filter(|l| {
@@ -622,12 +469,7 @@ fn parse_task(md: &str) -> Value {
 }
 fn validate_task(block: &Value, policy: &Value) -> Vec<String> {
     let mut errors = vec![];
-    for (key, label) in [
-        ("title", "title"),
-        ("input", "Input"),
-        ("output", "Output"),
-        ("check", "observable Check"),
-    ] {
+    for (key, label) in [("title", "title"), ("input", "Input"), ("output", "Output"), ("check", "observable Check")] {
         if block[key].as_str().unwrap_or("").is_empty() {
             errors.push(format!("A task needs {label}"));
         }
@@ -635,50 +477,29 @@ fn validate_task(block: &Value, policy: &Value) -> Vec<String> {
     if block["action"]["ref"].as_str().unwrap_or("").is_empty() {
         errors.push("A task needs an exact Command, Skill or Source".into());
     }
-    if block["action"]["ref"]
-        .as_str()
-        .is_some_and(|v| v.chars().count() > 2048)
-    {
+    if block["action"]["ref"].as_str().is_some_and(|v| v.chars().count() > 2048) {
         errors.push("Action reference exceeds 2048 characters".into());
     }
-    for (actual, limit, label) in [
-        ("word_count", "max_words", "word"),
-        ("step_count", "max_steps", "step"),
-    ] {
+    for (actual, limit, label) in [("word_count", "max_words", "word"), ("step_count", "max_steps", "step")] {
         if let Some(max) = policy[limit].as_u64()
             && block[actual].as_u64().unwrap_or(0) > max
         {
-            errors.push(format!(
-                "Task exceeds {max} {label} limit; shorten explicitly. Nothing was truncated"
-            ));
+            errors.push(format!("Task exceeds {max} {label} limit; shorten explicitly. Nothing was truncated"));
         }
     }
     errors
 }
 fn limits(s: &Session) -> Result<Value> {
     let v = read_json(&root(s).join("limits.json"))?;
-    if v["max_words"].is_u64() && v["max_steps"].is_u64() {
-        Ok(v)
-    } else {
-        Ok(json!({"confirmed":false,"max_words":null,"max_steps":null}))
-    }
+    if v["max_words"].is_u64() && v["max_steps"].is_u64() { Ok(v) } else { Ok(json!({"confirmed":false,"max_words":null,"max_steps":null})) }
 }
 pub fn cmd_skills_limits(s: &mut Session, p: &Value) -> Result<Value> {
     if p.get("max_words").is_some() || p.get("max_steps").is_some() {
-        let words = p["max_words"]
-            .as_u64()
-            .filter(|v| (1..=1000).contains(v))
-            .ok_or_else(|| invalid("Set max_words explicitly between 1 and 1000"))?;
-        let steps = p["max_steps"]
-            .as_u64()
-            .filter(|v| (1..=100).contains(v))
-            .ok_or_else(|| invalid("Set max_steps explicitly between 1 and 100"))?;
+        let words = p["max_words"].as_u64().filter(|v| (1..=1000).contains(v)).ok_or_else(|| invalid("Set max_words explicitly between 1 and 1000"))?;
+        let steps = p["max_steps"].as_u64().filter(|v| (1..=100).contains(v)).ok_or_else(|| invalid("Set max_steps explicitly between 1 and 100"))?;
         let dir = root(s);
         fs::create_dir_all(&dir)?;
-        let bytes = serde_json::to_vec_pretty(
-            &json!({"max_words":words,"max_steps":steps,"confirmed":true}),
-        )
-        .map_err(|e| invalid(e.to_string()))?;
+        let bytes = serde_json::to_vec_pretty(&json!({"max_words":words,"max_steps":steps,"confirmed":true})).map_err(|e| invalid(e.to_string()))?;
         atomic_write(&dir.join("limits.json"), &bytes)?;
     }
     Ok(json!({"ok":true,"limits":limits(s)?}))
@@ -687,22 +508,8 @@ pub fn cmd_skills_limits(s: &mut Session, p: &Value) -> Result<Value> {
 /// The task IDs each diagram kind projects, in drawing order.
 fn diagram_ids(kind: &str) -> Result<Vec<&'static str>> {
     match kind {
-        "production" => Ok(vec![
-            "resolve-project",
-            "choose-audio",
-            "timing-skill",
-            "import-timing",
-            "prepare-art",
-            "author-motion",
-            "review-release",
-        ]),
-        "correction" => Ok(vec![
-            "report-note",
-            "approve-alternative",
-            "fix-source",
-            "recheck-fix",
-            "full-review",
-        ]),
+        "production" => Ok(vec!["resolve-project", "choose-audio", "timing-skill", "import-timing", "prepare-art", "author-motion", "review-release"]),
+        "correction" => Ok(vec!["report-note", "approve-alternative", "fix-source", "recheck-fix", "full-review"]),
         _ => Err(invalid("Diagram kind is production or correction")),
     }
 }
@@ -731,11 +538,7 @@ fn diagram_edges(all: &Value, present: &[String]) -> Vec<Value> {
         let Some(next) = all[ident]["next"].as_array() else {
             continue;
         };
-        for target in next
-            .iter()
-            .filter_map(Value::as_str)
-            .filter(|n| present.iter().any(|p| p == n))
-        {
+        for target in next.iter().filter_map(Value::as_str).filter(|n| present.iter().any(|p| p == n)) {
             let mut edge = json!({"id":format!("{ident}-to-{target}"),"from":ident,"to":target,"variant":"default"});
             if target == "report-note" {
                 edge["variant"] = json!("dashed");
@@ -754,16 +557,8 @@ fn diagram_edges(all: &Value, present: &[String]) -> Vec<Value> {
 }
 
 fn diagram_spec(kind: &str, nodes: Vec<Value>, edges: Vec<Value>, present: Vec<String>) -> Value {
-    let lane_label = if kind == "production" {
-        "Production path — manual steps"
-    } else {
-        "Approved correction loop"
-    };
-    let title = if kind == "production" {
-        "Music-video production tasks"
-    } else {
-        "Approved correction loop"
-    };
+    let lane_label = if kind == "production" { "Production path — manual steps" } else { "Approved correction loop" };
+    let title = if kind == "production" { "Music-video production tasks" } else { "Approved correction loop" };
     json!({"schema_version":2,"diagram_type":"workflow","meta":{"title":title,"subtitle":"Editable task records drive this manual view; no automatic execution or approval is implied.","quality_profile":"showcase","animation":"none","output":format!("{kind}.html")},"lanes":[json!({"id":"tasks","label":lane_label}),],"mainPath":present,"nodes":nodes,"edges":edges})
 }
 
@@ -771,10 +566,7 @@ fn diagram_spec(kind: &str, nodes: Vec<Value>, edges: Vec<Value>, present: Vec<S
 fn archify_script() -> Result<PathBuf> {
     std::env::var_os("ARCHIFY_SCRIPT")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|h| PathBuf::from(h).join(".codex/skills/archify/bin/archify.mjs"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex/skills/archify/bin/archify.mjs")))
         .ok_or_else(|| invalid("Installed Archify script not configured"))
 }
 
@@ -782,22 +574,12 @@ fn script_exists(script: &std::path::Path) -> Result<()> {
     if script.is_file() {
         return Ok(());
     }
-    Err(invalid(
-        "Archify is unavailable. Set ARCHIFY_SCRIPT to the existing installed bin/archify.mjs; nothing was installed",
-    ))
+    Err(invalid("Archify is unavailable. Set ARCHIFY_SCRIPT to the existing installed bin/archify.mjs; nothing was installed"))
 }
 
 /// Run the installed finalizer on the written candidate; its log is the failure evidence.
-fn finalize(
-    dir: &std::path::Path,
-    script: &std::path::Path,
-    candidate: &std::path::Path,
-    output: &str,
-    evidence: &std::path::Path,
-) -> Result<()> {
-    let candidate_name = candidate
-        .file_name()
-        .ok_or_else(|| invalid("Archify candidate has no file name"))?;
+fn finalize(dir: &std::path::Path, script: &std::path::Path, candidate: &std::path::Path, output: &str, evidence: &std::path::Path) -> Result<()> {
+    let candidate_name = candidate.file_name().ok_or_else(|| invalid("Archify candidate has no file name"))?;
     let result = Command::new("node")
         .arg(script)
         .args(["finalize", "workflow"])
@@ -813,14 +595,8 @@ fn finalize(
     Err(invalid(format!(
         "Archify finalize failed; candidate retained at {}. {} {}",
         candidate.display(),
-        String::from_utf8_lossy(&result.stdout)
-            .chars()
-            .take(1600)
-            .collect::<String>(),
-        String::from_utf8_lossy(&result.stderr)
-            .chars()
-            .take(400)
-            .collect::<String>()
+        String::from_utf8_lossy(&result.stdout).chars().take(1600).collect::<String>(),
+        String::from_utf8_lossy(&result.stderr).chars().take(400).collect::<String>()
     )))
 }
 
@@ -834,15 +610,10 @@ pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
     let edges = diagram_edges(&all, &present);
     let spec = diagram_spec(kind, nodes, edges, present);
     if p["render"] != true {
-        return Ok(
-            json!({"ok":true,"spec":spec,"editable_format":"Archify workflow schema v2 JSON; task Markdown is the instruction source"}),
-        );
+        return Ok(json!({"ok":true,"spec":spec,"editable_format":"Archify workflow schema v2 JSON; task Markdown is the instruction source"}));
     }
     let dir = root(s);
-    if p["_expected_directory"]
-        .as_str()
-        .is_some_and(|v| Path::new(v) != dir)
-    {
+    if p["_expected_directory"].as_str().is_some_and(|v| Path::new(v) != dir) {
         return Err(invalid("Learning project changed; diagram request refused"));
     }
     fs::create_dir_all(&dir)?;
@@ -851,10 +622,7 @@ pub fn cmd_skills_diagram(s: &mut Session, p: &Value) -> Result<Value> {
     let candidate = dir.join(format!("{kind}.workflow.json"));
     let bytes = serde_json::to_vec_pretty(&spec).map_err(|e| invalid(e.to_string()))?;
     atomic_write(&candidate, &bytes)?;
-    let evidence = dir
-        .join(".archify-evidence")
-        .join(kind)
-        .join(format!("{:x}", Sha256::digest(&bytes)));
+    let evidence = dir.join(".archify-evidence").join(kind).join(format!("{:x}", Sha256::digest(&bytes)));
     let output = format!("{kind}.html");
     finalize(&dir, &script, &candidate, &output, &evidence)?;
     let html = fs::read_to_string(dir.join(&output))?;

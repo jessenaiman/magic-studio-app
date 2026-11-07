@@ -2,7 +2,7 @@
 use crate::{CommandSpec, Result, Session};
 use serde_json::{Value, json};
 
-fn spec(id: &'static str, label: &'static str, params: &'static str, run: fn(&mut Session, &Value)->Result<Value>, journal: bool) -> CommandSpec {
+fn spec(id: &'static str, label: &'static str, params: &'static str, run: fn(&mut Session, &Value) -> Result<Value>, journal: bool) -> CommandSpec {
     CommandSpec { id, label, menu: &[], shortcut: None, params, help: "", example: "", long_running: false, enabled: crate::commands::always, run, journal }
 }
 fn schema(s: &mut Session, p: &Value) -> Result<Value> {
@@ -17,8 +17,10 @@ fn set(_s: &mut Session, p: &Value) -> Result<Value> {
     let key = p.get("key").and_then(Value::as_str).ok_or_else(|| crate::EngineError::InvalidParams("need `key`".into()))?;
     let value = p.get("value").cloned().ok_or_else(|| crate::EngineError::InvalidParams("need `value`".into()))?;
     // Validate against schema
-    let known = super::fields_with_cat().iter().any(|(_,f)| f.key==key);
-    if !known { return Err(crate::EngineError::InvalidParams(format!("unknown setting `{key}`; see prefs.schema")));}
+    let known = super::fields_with_cat().iter().any(|(_, f)| f.key == key);
+    if !known {
+        return Err(crate::EngineError::InvalidParams(format!("unknown setting `{key}`; see prefs.schema")));
+    }
     // Persist via project settings file (same file project.root uses)
     let settings = crate::cmd::project::settings::stored_settings();
     let mut obj = settings.as_object().cloned().unwrap_or_default();

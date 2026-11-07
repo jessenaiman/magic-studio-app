@@ -27,17 +27,11 @@ fn a_hero_is_styled_and_animated_on_its_own_characters_at_its_sung_time() {
     assert_eq!(all[0].text(), "X marks the spot,");
     assert_eq!(all[0].range(3), (12, 17));
     let (steps, summary) = build_steps(&recipe(), &all, 33.0);
-    let styled = steps
-        .iter()
-        .find(|s| s["command"] == "layer.setText")
-        .unwrap();
+    let styled = steps.iter().find(|s| s["command"] == "layer.setText").unwrap();
     assert_eq!(styled["params"]["range"], json!([12, 17]));
     assert_eq!(styled["params"]["font"], "C059");
-    let pop: Vec<f64> = steps
-        .iter()
-        .filter(|s| s["params"]["path"] == "text/animators/animator/properties/scale")
-        .filter_map(|s| s["params"]["time"].as_f64())
-        .collect();
+    let pop: Vec<f64> =
+        steps.iter().filter(|s| s["params"]["path"] == "text/animators/animator/properties/scale").filter_map(|s| s["params"]["time"].as_f64()).collect();
     assert_eq!(pop.len(), 3);
     assert!((pop[1] - 1.32).abs() < 1e-9);
     assert_eq!(summary[0]["hero"]["word"], "spot,");
@@ -46,10 +40,7 @@ fn a_hero_is_styled_and_animated_on_its_own_characters_at_its_sung_time() {
 #[test]
 fn lines_show_before_they_are_sung_and_never_overlap() {
     let (_, summary) = build_steps(&recipe(), &lines(&aligned()), 33.0);
-    let (out0, in1) = (
-        summary[0]["out"].as_f64().unwrap(),
-        summary[1]["in"].as_f64().unwrap(),
-    );
+    let (out0, in1) = (summary[0]["out"].as_f64().unwrap(), summary[1]["in"].as_f64().unwrap());
     assert!(summary[0]["in"].as_f64().unwrap() == 0.0);
     assert!(in1 >= out0, "{out0} {in1}");
     assert!((in1 - 3.25).abs() < 1e-9);
@@ -112,10 +103,7 @@ fn spatial_line_design_places_each_item_and_rotates_and_animates_trim_strokes() 
         }
     });
     let (steps, _) = build_steps_with_designs(&recipe(), &designs, &lines(&aligned()), 33.0);
-    let texts: Vec<&Value> = steps
-        .iter()
-        .filter(|s| s["command"] == "layer.newText")
-        .collect();
+    let texts: Vec<&Value> = steps.iter().filter(|s| s["command"] == "layer.newText").collect();
     assert_eq!(texts.len(), 3);
     assert_eq!(texts[0]["params"]["name"], "l1_item0");
     assert_eq!(texts[0]["params"]["box"][0], 344.0);
@@ -123,27 +111,14 @@ fn spatial_line_design_places_each_item_and_rotates_and_animates_trim_strokes() 
     assert_eq!(texts[1]["params"]["name"], "l1_item1");
     assert_eq!(texts[1]["params"]["box"][0], 708.0);
     assert_eq!(texts[1]["params"]["box"][1], 30.0);
-    let rot = steps
-        .iter()
-        .find(|s| s["params"]["layer"] == "l1_item1" && s["params"]["path"] == "transform/rotation")
-        .unwrap();
+    let rot = steps.iter().find(|s| s["params"]["layer"] == "l1_item1" && s["params"]["path"] == "transform/rotation").unwrap();
     assert_eq!(rot["params"]["value"], -7.0);
-    let svg = steps
-        .iter()
-        .find(|s| s["command"] == "edit.pasteSvg")
-        .unwrap();
+    let svg = steps.iter().find(|s| s["command"] == "edit.pasteSvg").unwrap();
     assert_eq!(svg["params"]["name"], "l1_draw0_0");
     let trim_keys: Vec<(f64, f64)> = steps
         .iter()
-        .filter(|s| {
-            s["params"]["layer"] == "l1_draw0_0" && s["params"]["path"] == "contents/trim/end"
-        })
-        .map(|s| {
-            (
-                s["params"]["time"].as_f64().unwrap(),
-                s["params"]["value"].as_f64().unwrap(),
-            )
-        })
+        .filter(|s| s["params"]["layer"] == "l1_draw0_0" && s["params"]["path"] == "contents/trim/end")
+        .map(|s| (s["params"]["time"].as_f64().unwrap(), s["params"]["value"].as_f64().unwrap()))
         .collect();
     assert_eq!(trim_keys, vec![(0.59, 0.0), (1.14, 100.0)]);
 }
@@ -156,22 +131,10 @@ fn authored_word_curves_trim_to_the_word_cue_and_key_the_native_layer() {
     }]}});
     let (steps, _) = build_steps_with_designs(&recipe(), &design, &lines(&aligned()), 33.0);
     let item = "l1_item0";
-    let keys: Vec<_> = steps
-        .iter()
-        .filter(|s| s["command"] == "prop.addKey" && s["params"]["layer"] == item)
-        .collect();
+    let keys: Vec<_> = steps.iter().filter(|s| s["command"] == "prop.addKey" && s["params"]["layer"] == item).collect();
     assert_eq!(keys.len(), 8);
-    assert!(
-        keys.iter()
-            .any(|s| s["params"]["path"] == "transform/position"
-                && s["params"]["time"] == 1.26
-                && s["params"]["value"] == json!([630.0, 95.0]))
-    );
-    assert!(
-        steps
-            .windows(2)
-            .any(|s| s[0]["params"]["time"] == 1.26 && s[1]["params"]["op"] == "trimInToTime")
-    );
+    assert!(keys.iter().any(|s| s["params"]["path"] == "transform/position" && s["params"]["time"] == 1.26 && s["params"]["value"] == json!([630.0, 95.0])));
+    assert!(steps.windows(2).any(|s| s[0]["params"]["time"] == 1.26 && s[1]["params"]["op"] == "trimInToTime"));
 }
 
 #[test]
@@ -179,15 +142,9 @@ fn recipe_hero_stroke_emits_svg_trim_shape_layer() {
     let mut r = recipe();
     r["heroes"]["spot"]["stroke"] = json!("underline");
     let (steps, _) = build_steps(&r, &lines(&aligned()), 33.0);
-    let svg = steps
-        .iter()
-        .find(|s| s["command"] == "edit.pasteSvg")
-        .unwrap();
+    let svg = steps.iter().find(|s| s["command"] == "edit.pasteSvg").unwrap();
     assert_eq!(svg["params"]["name"], "l1_stroke");
-    let trim_item = steps
-        .iter()
-        .find(|s| s["command"] == "layer.addShapeItem")
-        .unwrap();
+    let trim_item = steps.iter().find(|s| s["command"] == "layer.addShapeItem").unwrap();
     assert_eq!(trim_item["params"]["layer"], "l1_stroke");
     assert_eq!(trim_item["params"]["kind"], "trim");
 }
@@ -198,24 +155,8 @@ fn runtime_words_tools_queries_effectcraft_and_filmcraft_catalogs() {
     let tools = crate::cmd::words::stage::runtime_words_tools(&lib);
     assert!(tools["moves"].as_array().is_some_and(|a| !a.is_empty()));
     assert!(tools["strokes"].as_array().is_some_and(|a| !a.is_empty()));
-    assert!(
-        tools["effectcraft"]["text_presets"]
-            .as_array()
-            .is_some_and(|a| !a.is_empty())
-    );
-    assert!(
-        tools["effectcraft"]["paint_presets"]
-            .as_array()
-            .is_some_and(|a| !a.is_empty())
-    );
-    assert!(
-        tools["effectcraft"]["effects"]
-            .as_array()
-            .is_some_and(|a| !a.is_empty())
-    );
-    assert!(
-        tools["filmcraft"]["effects"]
-            .as_array()
-            .is_some_and(|a| !a.is_empty())
-    );
+    assert!(tools["effectcraft"]["text_presets"].as_array().is_some_and(|a| !a.is_empty()));
+    assert!(tools["effectcraft"]["paint_presets"].as_array().is_some_and(|a| !a.is_empty()));
+    assert!(tools["effectcraft"]["effects"].as_array().is_some_and(|a| !a.is_empty()));
+    assert!(tools["filmcraft"]["effects"].as_array().is_some_and(|a| !a.is_empty()));
 }

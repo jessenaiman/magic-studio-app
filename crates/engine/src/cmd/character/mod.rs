@@ -43,19 +43,13 @@ pub(crate) struct View {
 
 impl View {
     pub(crate) fn from_params(s: &Session, p: &Value) -> Result<Self> {
-        let id = p["character"]
-            .as_str()
-            .map(crate::workspace::sanitize_asset_id)
-            .filter(|id| !id.is_empty())
-            .ok_or_else(|| bad("character=<id> is required"))?;
+        let id =
+            p["character"].as_str().map(crate::workspace::sanitize_asset_id).filter(|id| !id.is_empty()).ok_or_else(|| bad("character=<id> is required"))?;
         let view = p["view"].as_str().unwrap_or("front").to_string();
         if !matches!(view.as_str(), "front" | "back" | "side") {
             return Err(bad("view must be front, back or side"));
         }
-        let dir = crate::workshop::project_dir(s)?
-            .join("assets/characters")
-            .join(&id)
-            .join(&view);
+        let dir = crate::workshop::project_dir(s)?.join("assets/characters").join(&id).join(&view);
         Ok(Self { id, view, dir })
     }
 
@@ -69,12 +63,7 @@ impl View {
 
     pub(crate) fn parts(&self) -> Result<Value> {
         let path = self.dir.join("parts.json");
-        let text = std::fs::read_to_string(&path).map_err(|_| {
-            bad(format!(
-                "{} has no parts.json; run character.mark first",
-                self.dir.display()
-            ))
-        })?;
+        let text = std::fs::read_to_string(&path).map_err(|_| bad(format!("{} has no parts.json; run character.mark first", self.dir.display())))?;
         serde_json::from_str(&text).map_err(|e| bad(format!("{}: {e}", path.display())))
     }
 
@@ -86,36 +75,18 @@ impl View {
 
     pub(crate) fn require(&self, ext: &str, step: &str) -> Result<PathBuf> {
         let path = self.file(ext);
-        if path.is_file() {
-            Ok(path)
-        } else {
-            Err(bad(format!(
-                "{} is missing; run {step} first",
-                path.display()
-            )))
-        }
+        if path.is_file() { Ok(path) } else { Err(bad(format!("{} is missing; run {step} first", path.display()))) }
     }
 }
 
 fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
-    if !matches!(
-        id,
-        "file.open" | "file.save" | "file.saveAs" | "file.import" | "layer.newModel"
-    ) {
+    if !matches!(id, "file.open" | "file.save" | "file.saveAs" | "file.import" | "layer.newModel") {
         return params.clone();
     }
     let mut out = params.clone();
-    if let Some(p) = out
-        .get("path")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(p) = out.get("path").and_then(Value::as_str).filter(|s| !s.is_empty()) {
         let path = Path::new(p);
-        let full = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            base.join(path)
-        };
+        let full = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
         out["path"] = json!(full);
     }
     if let Some(paths) = out.get("paths").and_then(Value::as_array) {
@@ -124,11 +95,7 @@ fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
             .map(|v| match v.as_str() {
                 Some(s) if !s.is_empty() => {
                     let path = Path::new(s);
-                    let full = if path.is_absolute() {
-                        path.to_path_buf()
-                    } else {
-                        base.join(path)
-                    };
+                    let full = if path.is_absolute() { path.to_path_buf() } else { base.join(path) };
                     json!(full)
                 }
                 _ => v.clone(),
@@ -142,19 +109,12 @@ fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
 fn open_effectcraft(project: &Path) -> Result<effectcraft_engine::Session> {
     let mut session = effectcraft_host::session();
     let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    session
-        .execute_checked("file.open", json!({"path": path}))
-        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    session.execute_checked("file.open", json!({"path": path})).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
     Ok(session)
 }
 
 /// Run EffectCraft's native registry in-process; no CLI or temporary command file.
-pub(crate) fn effectcraft(
-    dir: &Path,
-    project: Option<&Path>,
-    steps: &[Value],
-    save: bool,
-) -> Result<Vec<Value>> {
+pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], save: bool) -> Result<Vec<Value>> {
     let base = project.and_then(Path::parent).unwrap_or(dir);
     let mut session = match project {
         Some(path) => open_effectcraft(path)?,
@@ -162,39 +122,38 @@ pub(crate) fn effectcraft(
     };
     let mut out = Vec::with_capacity(steps.len());
     for step in steps {
-        let id = step["id"]
-            .as_str()
-            .or_else(|| step["command"].as_str())
-            .ok_or_else(|| bad(format!("missing command id in {step}")))?;
+        let id = step["id"].as_str().or_else(|| step["command"].as_str()).ok_or_else(|| bad(format!("missing command id in {step}")))?;
         let raw_params = step.get("params").cloned().unwrap_or_else(|| json!({}));
         let params = resolve_effectcraft_params(base, id, &raw_params);
-        let value = session.execute_checked(id, params).map_err(|e| {
-            EngineError::ExternalTool("effectcraft-engine".into(), format!("{id}: {e}"))
-        })?;
+        let value = session.execute_checked(id, params).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), format!("{id}: {e}")))?;
         out.push(value);
     }
     if let Some(path) = project.filter(|_| save) {
-        session
-            .execute_checked("file.saveAs", json!({"path": path}))
-            .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+        session.execute_checked("file.saveAs", json!({"path": path})).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
     }
     Ok(out)
 }
 
-pub(crate) fn effectcraft_frame(
-    project: &Path,
-    comp: &str,
-    seconds: f64,
-    max_side: u32,
-    output: &Path,
-) -> Result<()> {
+pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_side: u32, output: &Path) -> Result<()> {
     // Via installed effectcraft-cli render-frame (system app pattern)
     let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if let Some(parent) = output.parent() { std::fs::create_dir_all(parent)?; }
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let out = std::process::Command::new(&cli)
-        .arg("--project").arg(project).arg("render-frame").arg("--comp").arg(comp).arg("--time").arg(seconds.max(0.0).to_string())
-        .arg("--max-side").arg(max_side.to_string()).arg("--out").arg(output)
-        .output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+        .arg("--project")
+        .arg(project)
+        .arg("render-frame")
+        .arg("--comp")
+        .arg(comp)
+        .arg("--time")
+        .arg(seconds.max(0.0).to_string())
+        .arg("--max-side")
+        .arg(max_side.to_string())
+        .arg("--out")
+        .arg(output)
+        .output()
+        .map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     if !out.status.success() {
         return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
     }
@@ -207,18 +166,10 @@ pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value>
     for id in existing {
         let _ = session.execute("renderQueue.setRender", json!({"id": id, "render": false}));
     }
-    let added = session
-        .execute_checked("renderQueue.add", params)
-        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
-    let item_id = added["id"].as_u64().ok_or_else(|| {
-        EngineError::ExternalTool(
-            "effectcraft-engine".into(),
-            format!("renderQueue.add returned no id: {added}"),
-        )
-    })?;
-    session
-        .start_render(true)
-        .map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    let added = session.execute_checked("renderQueue.add", params).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
+    let item_id =
+        added["id"].as_u64().ok_or_else(|| EngineError::ExternalTool("effectcraft-engine".into(), format!("renderQueue.add returned no id: {added}")))?;
+    session.start_render(true).map_err(|e| EngineError::ExternalTool("effectcraft-engine".into(), e.to_string()))?;
     while session.is_rendering() {
         session.poll_render();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -228,17 +179,9 @@ pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value>
         .render_queue
         .iter()
         .find(|i| i.id == item_id)
-        .ok_or_else(|| {
-            EngineError::ExternalTool(
-                "effectcraft-engine".into(),
-                format!("render queue item {item_id} missing after render"),
-            )
-        })?;
+        .ok_or_else(|| EngineError::ExternalTool("effectcraft-engine".into(), format!("render queue item {item_id} missing after render")))?;
     if item.status != effectcraft_engine::project::render_queue::RenderStatus::Done {
-        return Err(EngineError::ExternalTool(
-            "effectcraft-engine".into(),
-            format!("render status: {:?}", item.status),
-        ));
+        return Err(EngineError::ExternalTool("effectcraft-engine".into(), format!("render status: {:?}", item.status)));
     }
     Ok(added)
 }
@@ -253,10 +196,7 @@ pub(crate) fn step(command: &str, params: Value) -> Value {
 
 /// The parts in back-to-front order, each with `id`, `parent`, `joint` and `outline`.
 pub(crate) fn part_list(parts: &Value) -> Result<&Vec<Value>> {
-    parts["parts"]
-        .as_array()
-        .filter(|a| !a.is_empty())
-        .ok_or_else(|| bad("parts.json lists no parts"))
+    parts["parts"].as_array().filter(|a| !a.is_empty()).ok_or_else(|| bad("parts.json lists no parts"))
 }
 
 /// The one part without a parent: the body everything else hangs from.
@@ -288,12 +228,7 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
         .collect();
     let root = project_dir.join("assets/characters");
     // Character folders in the project, then 3D models registered where they live.
-    let mut ids: Vec<String> = std::fs::read_dir(&root)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
+    let mut ids: Vec<String> = std::fs::read_dir(&root).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     for asset in s.project_assets.iter().filter(|a| a.kind == "model_3d") {
         let id = asset.id.replace('_', "-");
         if !ids.contains(&id) {
@@ -342,11 +277,7 @@ pub fn cmd_character_frame(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn rendered_pngs(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut frames: Vec<PathBuf> = std::fs::read_dir(dir)?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "png"))
-        .collect();
+    let mut frames: Vec<PathBuf> = std::fs::read_dir(dir)?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "png")).collect();
     frames.sort();
     Ok(frames)
 }
@@ -354,18 +285,12 @@ fn rendered_pngs(dir: &Path) -> Result<Vec<PathBuf>> {
 /// The folder, `.ecproj` and comp to render: a sprite (`sprite=<name>`) or a rigged view.
 fn render_target(s: &Session, p: &Value) -> Result<(PathBuf, PathBuf, String)> {
     if let Some(name) = p["sprite"].as_str() {
-        let id = p["character"]
-            .as_str()
-            .map(crate::workspace::sanitize_asset_id)
-            .ok_or_else(|| bad("character=<id> is required"))?;
+        let id = p["character"].as_str().map(crate::workspace::sanitize_asset_id).ok_or_else(|| bad("character=<id> is required"))?;
         let dir = sprite::sprite_dir(s, &id, name)?;
         let comp = format!("{id}-{name}");
         let project = dir.join(format!("{comp}.ecproj"));
         if !project.is_file() {
-            return Err(bad(format!(
-                "{} is missing; run character.sprite first",
-                project.display()
-            )));
+            return Err(bad(format!("{} is missing; run character.sprite first", project.display())));
         }
         return Ok((dir, project, comp));
     }
@@ -381,16 +306,10 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
     let (base, project, name, comp) = if let Some(path) = external {
         let dir = crate::workshop::project_dir(s)?;
         let project = dir.join(path).canonicalize()?;
-        if !project
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
-        {
+        if !project.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj")) {
             return Err(bad("Choose an EffectCraft .ecproj file"));
         }
-        let name = project
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("animation");
+        let name = project.file_stem().and_then(|stem| stem.to_str()).unwrap_or("animation");
         let name = crate::workspace::sanitize_asset_id(name);
         (dir.join("film"), project, name, p["comp"].clone())
     } else {
@@ -398,17 +317,11 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         (base, project, comp.clone(), json!(comp))
     };
     let start = p["start"].as_f64().unwrap_or(0.0).max(0.0);
-    let end = p["end"]
-        .as_f64()
-        .filter(|e| *e > start)
-        .unwrap_or(start + 1.0);
+    let end = p["end"].as_f64().filter(|e| *e > start).unwrap_or(start + 1.0);
     let fps = p["fps"].as_u64().unwrap_or(24).clamp(1, 60);
     let clip = p["format"].as_str() == Some("clip");
     let name = if external.is_some() {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| bad(error.to_string()))?
-            .as_nanos();
+        let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| bad(error.to_string()))?.as_nanos();
         format!("{name}-{timestamp}")
     } else {
         format!("{name}-{start:.2}-{end:.2}")
@@ -429,11 +342,7 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
             "proresProfile": "4444", "resolution": if clip { "full" } else { "half" }
         }),
     )?;
-    let frames = if clip {
-        Vec::new()
-    } else {
-        rendered_pngs(&dir)?
-    };
+    let frames = if clip { Vec::new() } else { rendered_pngs(&dir)? };
     Ok(json!({"ok": true, "start": start, "end": end, "fps": fps,
         "clip": clip.then_some(&out), "frames": frames}))
 }
@@ -442,34 +351,16 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_character_set(s: &mut Session, p: &Value) -> Result<Value> {
     let view = View::from_params(s, p)?;
     let project = view.require("ecproj", "character.rig")?;
-    let part = p["part"]
-        .as_str()
-        .ok_or_else(|| bad("part=<layer> is required"))?;
+    let part = p["part"].as_str().ok_or_else(|| bad("part=<layer> is required"))?;
     let prop = p["prop"].as_str().unwrap_or("rotation");
-    if !matches!(
-        prop,
-        "position" | "rotation" | "scale" | "anchor" | "opacity"
-    ) {
-        return Err(bad(
-            "prop must be position, rotation, scale, anchor or opacity",
-        ));
+    if !matches!(prop, "position" | "rotation" | "scale" | "anchor" | "opacity") {
+        return Err(bad("prop must be position, rotation, scale, anchor or opacity"));
     }
-    let value = p
-        .get("value")
-        .cloned()
-        .ok_or_else(|| bad("value is required"))?;
+    let value = p.get("value").cloned().ok_or_else(|| bad("value is required"))?;
     let time = p["time"].as_f64().unwrap_or(0.0);
     let key = json!({"layer": part, "path": format!("transform/{prop}"), "time": time,
         "timeBase": "comp", "value": value});
-    effectcraft(
-        &view.dir,
-        Some(&project),
-        &[
-            step("comp.open", json!({"comp": view.comp()})),
-            step("prop.addKey", key),
-        ],
-        true,
-    )?;
+    effectcraft(&view.dir, Some(&project), &[step("comp.open", json!({"comp": view.comp()})), step("prop.addKey", key)], true)?;
     Ok(json!({"ok": true, "project": project, "part": part, "prop": prop, "time": time}))
 }
 
@@ -483,9 +374,7 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
         "effectcraft" => ("effectcraft", view.require("ecproj", "character.rig")?),
         "photocraft" => ("photocraft", view.require("psd", "character.cut")?),
         other => {
-            return Err(bad(format!(
-                "app must be effectcraft, photocraft or blender, not {other}"
-            )));
+            return Err(bad(format!("app must be effectcraft, photocraft or blender, not {other}")));
         }
     };
     crate::workspace::open_editor(app, &file)?;

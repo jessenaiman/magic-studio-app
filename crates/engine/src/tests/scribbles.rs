@@ -9,16 +9,10 @@ fn scribbles_rejects_untemplated_raw_prompt() {
 
 #[test]
 fn scribbles_resolves_template_from_kind_or_frontmatter() {
-    let (req, meta) =
-        resolve_template_request(&json!({"kind": "new", "prompt": "a felt fox"})).unwrap();
+    let (req, meta) = resolve_template_request(&json!({"kind": "new", "prompt": "a felt fox"})).unwrap();
     assert_eq!(meta["kind"], json!("new"));
     assert_eq!(meta["save_command"], json!("project.add_asset"));
-    assert!(
-        req["markdown"]
-            .as_str()
-            .unwrap()
-            .contains(crate::fidget::FIDGET_NOTE)
-    );
+    assert!(req["markdown"].as_str().unwrap().contains(crate::fidget::FIDGET_NOTE));
 
     let md = crate::fidget::format_fidget_markdown(
         "storyboard_hero",

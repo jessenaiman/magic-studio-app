@@ -3,17 +3,7 @@
 //! Shared across the native desktop binary (`apps/magic-gui`) and the browser WASM shell
 //! (`apps/magic-web`). All domain state and persistence live in [`magic::Session`].
 
-#![cfg_attr(
-    not(test),
-    deny(
-        clippy::unwrap_used,
-        clippy::expect_used,
-        clippy::panic,
-        clippy::unimplemented,
-        clippy::todo,
-        clippy::unreachable
-    )
-)]
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable))]
 
 pub mod assistant;
 pub mod automation;
@@ -37,20 +27,17 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, OnceLock};
 
-use egui::{
-    ColorImage, Context, CornerRadius, RichText, ScrollArea, Sense, Stroke, TextureHandle, Ui,
-};
+use egui::{ColorImage, Context, CornerRadius, RichText, ScrollArea, Sense, Stroke, TextureHandle, Ui};
 use magic::Session;
 use serde_json::{Value, json};
 
 use crate::assistant::{AssistantDrawer, AssistantTab};
 use crate::theme::{
-    ACCENT, ACCENT_AMBER, ACCENT_RED, ACCENT_TEAL, ACCENT_VIOLET, BG_DEEP, BG_ELEVATED, BG_PANEL,
-    BORDER_STRONG, BORDER_SUBTLE, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
+    ACCENT, ACCENT_AMBER, ACCENT_RED, ACCENT_TEAL, ACCENT_VIOLET, BG_DEEP, BG_ELEVATED, BG_PANEL, BORDER_STRONG, BORDER_SUBTLE, TEXT_MUTED, TEXT_PRIMARY,
+    TEXT_SECONDARY,
 };
 use crate::widgets::{
-    card_frame, draw_spark_icon, empty_state, frame_outline, hot_number, pill_toggle,
-    primary_button, prop_row, secondary_button, section_header, status_badge,
+    card_frame, draw_spark_icon, empty_state, frame_outline, hot_number, pill_toggle, primary_button, prop_row, secondary_button, section_header, status_badge,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,14 +115,7 @@ pub enum WebWorkspacePage {
 /// The native webview host. egui reserves the rectangle and handles navigation.
 pub trait LyricsHost {
     /// Show the designer inside `rect` (egui points); reload it when `project` changes.
-    fn show(
-        &mut self,
-        frame: &eframe::Frame,
-        ctx: &Context,
-        rect: egui::Rect,
-        project: &str,
-        page: WebWorkspacePage,
-    );
+    fn show(&mut self, frame: &eframe::Frame, ctx: &Context, rect: egui::Rect, project: &str, page: WebWorkspacePage);
     /// Hide any webview that did not receive a layout this frame.
     fn finish_frame(&mut self);
 }
@@ -252,11 +232,7 @@ pub struct MagicApp {
 impl MagicApp {
     pub fn new(mut session: Session) -> Self {
         let (worker_tx, worker_rx) = channel();
-        let initial_view = if session.project_path.is_some() {
-            ViewMode::Storyboard
-        } else {
-            ViewMode::Projects
-        };
+        let initial_view = if session.project_path.is_some() { ViewMode::Storyboard } else { ViewMode::Projects };
         let mut assistant = AssistantDrawer::default();
         assistant.refresh_from_session(&mut session);
         #[cfg(not(target_arch = "wasm32"))]
@@ -355,11 +331,7 @@ impl MagicApp {
 
     pub fn refresh_all(&mut self) {
         if let Ok(cat) = self.session.execute("project.catalog", json!({})) {
-            self.catalog_items = cat["projects"]
-                .as_array()
-                .cloned()
-                .or_else(|| cat["items"].as_array().cloned())
-                .unwrap_or_default();
+            self.catalog_items = cat["projects"].as_array().cloned().or_else(|| cat["items"].as_array().cloned()).unwrap_or_default();
         }
         self.assistant.refresh_from_session(&mut self.session);
         if self.session.project_path.is_some() {
@@ -390,10 +362,7 @@ impl MagicApp {
                 && let Some(parent) = proj.parent()
             {
                 let out_dir = parent.join("cache/storyboard");
-                let _ = self.session.execute(
-                    "storyboard.thumbnail",
-                    json!({ "out_dir": out_dir, "scale": 0.25 }),
-                );
+                let _ = self.session.execute("storyboard.thumbnail", json!({ "out_dir": out_dir, "scale": 0.25 }));
             }
         }
         if let Ok(chk) = self.session.execute("storyboard.check", json!({})) {
@@ -431,9 +400,7 @@ impl MagicApp {
         let Some(parent) = proj.parent() else {
             return;
         };
-        let out = parent
-            .join("cache/storyboard")
-            .join(format!("page-{}.png", self.selected_page));
+        let out = parent.join("cache/storyboard").join(format!("page-{}.png", self.selected_page));
         if self
             .session
             .execute(
@@ -452,33 +419,14 @@ impl MagicApp {
 
     pub fn refresh_lyrics(&mut self) {
         if let Ok(lyr) = self.session.execute("song.lyrics", json!({})) {
-            let sheet = if lyr["sheet"].is_object() {
-                &lyr["sheet"]
-            } else {
-                &lyr
-            };
-            self.song_title = sheet["song"]["title"]
-                .as_str()
-                .or_else(|| sheet["title"].as_str())
-                .unwrap_or_default()
-                .to_owned();
-            self.song_album = sheet["song"]["album"]
-                .as_str()
-                .or_else(|| sheet["album"].as_str())
-                .unwrap_or_default()
-                .to_owned();
+            let sheet = if lyr["sheet"].is_object() { &lyr["sheet"] } else { &lyr };
+            self.song_title = sheet["song"]["title"].as_str().or_else(|| sheet["title"].as_str()).unwrap_or_default().to_owned();
+            self.song_album = sheet["song"]["album"].as_str().or_else(|| sheet["album"].as_str()).unwrap_or_default().to_owned();
             self.song_notes = sheet["notes"]
                 .as_str()
                 .or_else(|| sheet["artist_note"].as_str())
                 .map(str::to_owned)
-                .or_else(|| {
-                    sheet["notes"].as_array().map(|arr| {
-                        arr.iter()
-                            .filter_map(Value::as_str)
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                })
+                .or_else(|| sheet["notes"].as_array().map(|arr| arr.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")))
                 .unwrap_or_default();
             self.lyrics_sections = sheet["sections"].as_array().cloned().unwrap_or_default();
             if let Some(raw) = sheet["lyrics"].as_str() {
@@ -486,33 +434,18 @@ impl MagicApp {
             } else if !self.lyrics_sections.is_empty() {
                 let mut blocks = Vec::new();
                 for sec in &self.lyrics_sections {
-                    let sec_id = sec["label"]
-                        .as_str()
-                        .or_else(|| sec["section"].as_str())
-                        .or_else(|| sec["id"].as_str())
-                        .unwrap_or("section");
-                    let lines: Vec<String> = sec["lines"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|l| l["text"].as_str().or_else(|| l.as_str()))
-                        .map(str::to_owned)
-                        .collect();
+                    let sec_id = sec["label"].as_str().or_else(|| sec["section"].as_str()).or_else(|| sec["id"].as_str()).unwrap_or("section");
+                    let lines: Vec<String> =
+                        sec["lines"].as_array().into_iter().flatten().filter_map(|l| l["text"].as_str().or_else(|| l.as_str())).map(str::to_owned).collect();
                     blocks.push(format!("[{sec_id}]\n{}", lines.join("\n")));
                 }
                 self.song_lyrics_text = blocks.join("\n\n");
             }
         }
         if let Ok(ws) = self.session.execute("workshop.status", json!({})) {
-            let audio = ws["audio"]["path"].as_str().or_else(|| {
-                ws["stages"]
-                    .as_array()?
-                    .iter()
-                    .find(|s| s["id"] == "song")?["inputs"]
-                    .as_array()?
-                    .first()?["path"]
-                    .as_str()
-            });
+            let audio = ws["audio"]["path"]
+                .as_str()
+                .or_else(|| ws["stages"].as_array()?.iter().find(|s| s["id"] == "song")?["inputs"].as_array()?.first()?["path"].as_str());
             if let Some(a) = audio {
                 self.song_audio_path = a.to_owned();
             }
@@ -561,13 +494,7 @@ impl MagicApp {
         }
     }
 
-    fn start_command_worker(
-        &mut self,
-        ctx: &Context,
-        id: &str,
-        params: Value,
-        follow_up: Option<&'static str>,
-    ) {
+    fn start_command_worker(&mut self, ctx: &Context, id: &str, params: Value, follow_up: Option<&'static str>) {
         let mut bg_session = Session {
             project_path: self.session.project_path.clone(),
             project_assets: self.session.project_assets.clone(),
@@ -590,11 +517,7 @@ impl MagicApp {
                 next.clone_into(&mut id);
                 outcome = bg_session.execute(next, params);
             }
-            let _ = tx.send(WorkerResult {
-                id,
-                project,
-                outcome: outcome.map_err(|error| error.to_string()),
-            });
+            let _ = tx.send(WorkerResult { id, project, outcome: outcome.map_err(|error| error.to_string()) });
             ctx.request_repaint();
         });
     }
@@ -603,23 +526,12 @@ impl MagicApp {
         let previous_project = self.session.project_path.clone();
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let switches_project = matches!(id, "project.new" | "project.open" | "project.close")
-                || (id == "project.save" && params["path"].is_string());
+            let switches_project = matches!(id, "project.new" | "project.open" | "project.close") || (id == "project.save" && params["path"].is_string());
             if switches_project {
-                if self
-                    .effectcraft_animation
-                    .as_ref()
-                    .is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty)
-                {
-                    return Err(
-                        "Save the open EffectCraft composition before changing projects.".into(),
-                    );
+                if self.effectcraft_animation.as_ref().is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty) {
+                    return Err("Save the open EffectCraft composition before changing projects.".into());
                 }
-                if self
-                    .studio_film
-                    .as_ref()
-                    .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty)
-                {
+                if self.studio_film.as_ref().is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) {
                     return Err("Save the open FilmCraft project before changing projects.".into());
                 }
             }
@@ -657,11 +569,7 @@ impl MagicApp {
             }
             "fidget.prepare" => {
                 if let Some(fidget) = val.get("fidget") {
-                    self.assistant.prepared_markdown = fidget["markdown"]
-                        .as_str()
-                        .or_else(|| val["markdown"].as_str())
-                        .unwrap_or_default()
-                        .to_owned();
+                    self.assistant.prepared_markdown = fidget["markdown"].as_str().or_else(|| val["markdown"].as_str()).unwrap_or_default().to_owned();
                     self.assistant.prepared_fidget = Some(fidget.clone());
                 }
             }
@@ -670,23 +578,17 @@ impl MagicApp {
                     self.assistant.prepared_markdown = md.to_owned();
                 }
             }
-            "scribbles.generate" | "scribbles.new" | "scribbles.image" | "scribbles.sheet"
-            | "scribbles.poses" | "scribbles.actions" | "scribbles.custom" => {
+            "scribbles.generate" | "scribbles.new" | "scribbles.image" | "scribbles.sheet" | "scribbles.poses" | "scribbles.actions" | "scribbles.custom" => {
                 self.assistant.last_receipt = Some(val);
                 if let Some(path) = self.session.project_path.clone() {
-                    let _ = self
-                        .session
-                        .execute("project.open", json!({ "path": path }));
+                    let _ = self.session.execute("project.open", json!({ "path": path }));
                 }
                 self.refresh_all();
             }
             cmd if cmd.starts_with("storyboard.") => {
                 self.refresh_storyboard();
             }
-            cmd if cmd.starts_with("song.")
-                || cmd.starts_with("words.")
-                || cmd.starts_with("workshop.") =>
-            {
+            cmd if cmd.starts_with("song.") || cmd.starts_with("words.") || cmd.starts_with("workshop.") => {
                 self.refresh_lyrics();
                 self.refresh_storyboard();
             }
@@ -699,8 +601,7 @@ impl MagicApp {
                         _ => None,
                     }
                 {
-                    let result = self
-                        .open_effectcraft_composition_at(Path::new(path), val["start"].as_f64());
+                    let result = self.open_effectcraft_composition_at(Path::new(path), val["start"].as_f64());
                     self.set_status_result(result);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
@@ -708,9 +609,7 @@ impl MagicApp {
                     let pending = self.pending_studio_render.take();
                     if let Some(project) = self.session.project_path.as_ref()
                         && let Some(clip) = val["clip"].as_str().map(PathBuf::from)
-                        && project
-                            .parent()
-                            .is_some_and(|parent| clip.starts_with(parent))
+                        && project.parent().is_some_and(|parent| clip.starts_with(parent))
                     {
                         self.studio_rendered_animation = Some((project.clone(), clip.clone()));
                         if pending.as_ref() == Some(project) {
@@ -719,21 +618,13 @@ impl MagicApp {
                         }
                     }
                 }
-                if let Some(frame_path) = val["path"]
-                    .as_str()
-                    .or_else(|| val["image"].as_str())
-                    .or_else(|| val["frame"].as_str())
-                {
+                if let Some(frame_path) = val["path"].as_str().or_else(|| val["image"].as_str()).or_else(|| val["frame"].as_str()) {
                     self.character_frame_path = Some(PathBuf::from(frame_path));
                 }
                 self.refresh_animation();
             }
             cmd if cmd.starts_with("video.") => {
-                if let Some(frame_path) = val["path"]
-                    .as_str()
-                    .or_else(|| val["image"].as_str())
-                    .or_else(|| val["frame"].as_str())
-                {
+                if let Some(frame_path) = val["path"].as_str().or_else(|| val["image"].as_str()).or_else(|| val["frame"].as_str()) {
                     self.studio_frame_path = Some(PathBuf::from(frame_path));
                 }
                 self.refresh_studio();
@@ -752,9 +643,7 @@ impl MagicApp {
                     let result = match answer {
                         craft_dialogs::Answer::Paths(paths) => Ok(json!({ "path": paths.first() })),
                         craft_dialogs::Answer::Unavailable(error) => Err(error),
-                        craft_dialogs::Answer::Cancelled | craft_dialogs::Answer::Message(_) => {
-                            Ok(json!({ "path": null }))
-                        }
+                        craft_dialogs::Answer::Cancelled | craft_dialogs::Answer::Message(_) => Ok(json!({ "path": null })),
                     };
                     let _ = reply.send(result);
                 }
@@ -769,11 +658,7 @@ impl MagicApp {
                                 self.run_command(ctx, "project.open", json!({ "path": display }));
                             }
                             DialogAction::OpenLyricsFolder => {
-                                self.run_command(
-                                    ctx,
-                                    "words.workspace",
-                                    json!({ "path": display }),
-                                );
+                                self.run_command(ctx, "words.workspace", json!({ "path": display }));
                             }
                             DialogAction::CreateProjectFolder => {
                                 self.new_project_path = display;
@@ -782,10 +667,7 @@ impl MagicApp {
                                 self.song_audio_path = display;
                             }
                             DialogAction::StoryboardHeroImage { scene: _ } => {
-                                let slot = self
-                                    .pending_storyboard_slot
-                                    .take()
-                                    .unwrap_or_else(|| "hero_image".into());
+                                let slot = self.pending_storyboard_slot.take().unwrap_or_else(|| "hero_image".into());
                                 self.slot_images.insert(slot, display);
                             }
                             DialogAction::AddProjectAsset => {
@@ -802,9 +684,7 @@ impl MagicApp {
                                 let result = self
                                     .effectcraft_animation
                                     .as_mut()
-                                    .ok_or_else(|| {
-                                        "Open an EffectCraft composition first.".to_owned()
-                                    })
+                                    .ok_or_else(|| "Open an EffectCraft composition first.".to_owned())
                                     .and_then(|composition| composition.save_as(&path))
                                     .map(|()| format!("Saved animation to {}", path.display()));
                                 self.set_status_result(result);
@@ -859,10 +739,7 @@ impl MagicApp {
         }
         for req in pending {
             #[cfg(not(target_arch = "wasm32"))]
-            if matches!(
-                req.method.as_str(),
-                "ui.projects.pick" | "ui.animation.pick_drawing" | "ui.storyboard.pick_image"
-            ) {
+            if matches!(req.method.as_str(), "ui.projects.pick" | "ui.animation.pick_drawing" | "ui.storyboard.pick_image") {
                 self.open_web_project_picker(req);
                 continue;
             }
@@ -881,26 +758,16 @@ impl MagicApp {
             _ => (ViewMode::Projects, req.params["kind"].as_str()),
         };
         if self.view != expected_view || self.web_project_picker.is_some() {
-            let _ = req
-                .reply
-                .send(Err("The file picker is unavailable.".into()));
+            let _ = req.reply.send(Err("The file picker is unavailable.".into()));
             return;
         }
         let dialog = match kind {
-            Some("project") => FileDialog::open()
-                .title("Open Magic Studio project")
-                .filter("Magic project", &["magic"]),
-            Some("audio") => FileDialog::open()
-                .title("Choose song audio")
-                .filter("Audio", &["wav", "mp3", "flac", "m4a", "ogg", "aac"]),
-            Some("image") => FileDialog::open()
-                .title("Choose approved character art")
-                .filter("Image", &["png", "webp", "jpg", "jpeg", "psd"]),
+            Some("project") => FileDialog::open().title("Open Magic Studio project").filter("Magic project", &["magic"]),
+            Some("audio") => FileDialog::open().title("Choose song audio").filter("Audio", &["wav", "mp3", "flac", "m4a", "ogg", "aac"]),
+            Some("image") => FileDialog::open().title("Choose approved character art").filter("Image", &["png", "webp", "jpg", "jpeg", "psd"]),
             Some("folder") => FileDialog::folder().title("Choose project folder"),
             _ => {
-                let _ = req
-                    .reply
-                    .send(Err("Choose project, audio, image, or folder.".into()));
+                let _ = req.reply.send(Err("Choose project, audio, image, or folder.".into()));
                 return;
             }
         };
@@ -914,9 +781,7 @@ impl MagicApp {
             if self.session.lyrics_workspace.is_some() {
                 return out;
             }
-            out.push(
-                json!({ "id": "project", "reason": "No project open", "fix": "project.open" }),
-            );
+            out.push(json!({ "id": "project", "reason": "No project open", "fix": "project.open" }));
             return out;
         }
         if self.song_audio_path.trim().is_empty() {
@@ -934,12 +799,7 @@ impl MagicApp {
         out
     }
 
-    fn handle_control_request(
-        &mut self,
-        ctx: &Context,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, String> {
+    fn handle_control_request(&mut self, ctx: &Context, method: &str, params: Value) -> Result<Value, String> {
         if let Some(reply) = self.handle_protocol(ctx, method, &params) {
             return reply;
         }
@@ -971,10 +831,7 @@ impl MagicApp {
                 "widgets": self.auto.list(),
             })),
             "ui.feedback" => {
-                let mut fb = self
-                    .session
-                    .execute("ui.feedback", json!({}))
-                    .unwrap_or_else(|_| json!({}));
+                let mut fb = self.session.execute("ui.feedback", json!({})).unwrap_or_else(|_| json!({}));
                 fb["view"] = json!(self.view.id());
                 fb["unconfigured"] = json!(unconf);
                 fb["widgets_count"] = json!(self.auto.list().len());
@@ -1008,59 +865,33 @@ impl MagicApp {
                 Ok(json!({ "ok": found, "id": id }))
             }
             "ui.projects.open" if self.view == ViewMode::Projects => {
-                let path = params["path"]
-                    .as_str()
-                    .ok_or("A project path is required.")?;
-                let result =
-                    self.handle_control_request(ctx, "project.open", json!({ "path": path }))?;
+                let path = params["path"].as_str().ok_or("A project path is required.")?;
+                let result = self.handle_control_request(ctx, "project.open", json!({ "path": path }))?;
                 if let Some(view) = params["view"].as_str().and_then(ViewMode::from_name) {
                     self.view = view;
                 }
                 Ok(result)
             }
             #[cfg(not(target_arch = "wasm32"))]
-            "ui.studio.toolbar" if self.view == ViewMode::Studio => {
-                self.studio_toolbar_command(ctx, &params)
-            }
+            "ui.studio.toolbar" if self.view == ViewMode::Studio => self.studio_toolbar_command(ctx, &params),
             #[cfg(not(target_arch = "wasm32"))]
-            "words.letter"
-                if params["studio"] == true
-                    && self
-                        .studio_film
-                        .as_ref()
-                        .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) =>
-            {
+            "words.letter" if params["studio"] == true && self.studio_film.as_ref().is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) => {
                 Err("Save the open FilmCraft project before updating its lyrics.".into())
             }
             #[cfg(not(target_arch = "wasm32"))]
-            "words.publish"
-                if self
-                    .studio_film
-                    .as_ref()
-                    .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) =>
-            {
+            "words.publish" if self.studio_film.as_ref().is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) => {
                 Err("Save the open FilmCraft project before updating its lyrics.".into())
             }
             #[cfg(not(target_arch = "wasm32"))]
-            "video.exec"
-                if params["save"] != false
-                    && self
-                        .studio_film
-                        .as_ref()
-                        .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) =>
-            {
+            "video.exec" if params["save"] != false && self.studio_film.as_ref().is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) => {
                 Err("Save the open FilmCraft project before editing it through the CLI.".into())
             }
             #[cfg(not(target_arch = "wasm32"))]
-            "ui.animation.controls" if self.view == ViewMode::Animation => {
-                self.animation_workspace_command(ctx, &params)
-            }
+            "ui.animation.controls" if self.view == ViewMode::Animation => self.animation_workspace_command(ctx, &params),
             #[cfg(not(target_arch = "wasm32"))]
             "ui.animation.controls" => Err("Open Animation to edit its composition.".into()),
             #[cfg(not(target_arch = "wasm32"))]
-            "ui.storyboard.workspace" if self.view == ViewMode::Storyboard => {
-                self.storyboard_workspace_command(&params)
-            }
+            "ui.storyboard.workspace" if self.view == ViewMode::Storyboard => self.storyboard_workspace_command(&params),
             #[cfg(not(target_arch = "wasm32"))]
             "ui.studio.import_animation" if self.view == ViewMode::Studio => {
                 let path = params["path"].as_str().ok_or("path is required")?;
@@ -1069,10 +900,7 @@ impl MagicApp {
                 Ok(json!({ "ok": true, "status": result }))
             }
             "ui.set_view" => {
-                let target = params["view"]
-                    .as_str()
-                    .or_else(|| params["id"].as_str())
-                    .unwrap_or_default();
+                let target = params["view"].as_str().or_else(|| params["id"].as_str()).unwrap_or_default();
                 let Some(v) = ViewMode::from_name(target) else {
                     return Err(format!("Unknown view `{target}`"));
                 };
@@ -1097,9 +925,7 @@ impl MagicApp {
                         self.assistant.active_tab = AssistantTab::Scribbles;
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    "lyrics-open-folder"
-                        if self.view == ViewMode::Lyrics && self.session.project_path.is_none() =>
-                    {
+                    "lyrics-open-folder" if self.view == ViewMode::Lyrics && self.session.project_path.is_none() => {
                         self.open_lyrics_folder_dialog();
                     }
                     #[cfg(not(target_arch = "wasm32"))]
@@ -1108,19 +934,13 @@ impl MagicApp {
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     "animation-preview" if self.view == ViewMode::Animation => {
-                        self.handle_control_request(
-                            ctx,
-                            "ui.playback",
-                            json!({"action":"toggle"}),
-                        )?;
+                        self.handle_control_request(ctx, "ui.playback", json!({"action":"toggle"}))?;
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     "studio-preview" if self.view == ViewMode::Studio => {
                         self.studio_program_preview("toggle", None)?;
                     }
-                    id if self.view == ViewMode::Animation
-                        && id.starts_with("animation-asset-") =>
-                    {
+                    id if self.view == ViewMode::Animation && id.starts_with("animation-asset-") => {
                         let asset = id.trim_start_matches("animation-asset-");
                         self.select_animation_asset(asset)?;
                     }
@@ -1128,9 +948,7 @@ impl MagicApp {
                         return Err(format!("Unknown UI element `{target}`"));
                     }
                 }
-                Ok(
-                    json!({ "ok": true, "view": self.view.id(), "assistant_open": self.assistant.open }),
-                )
+                Ok(json!({ "ok": true, "view": self.view.id(), "assistant_open": self.assistant.open }))
             }
             "ui.set" => {
                 let id = params["id"].as_str().unwrap_or_default();
@@ -1155,13 +973,7 @@ impl MagicApp {
             other => {
                 if other.starts_with("words.")
                     && let Some(expected) = params["_expected_project"].as_str()
-                    && self
-                        .session
-                        .project_path
-                        .as_ref()
-                        .or(self.session.lyrics_workspace.as_ref())
-                        .and_then(|path| path.to_str())
-                        != Some(expected)
+                    && self.session.project_path.as_ref().or(self.session.lyrics_workspace.as_ref()).and_then(|path| path.to_str()) != Some(expected)
                 {
                     return Err("The open Lyrics source changed.".into());
                 }
@@ -1174,13 +986,7 @@ impl MagicApp {
 
     fn load_texture(&mut self, ctx: &Context, path: &Path) -> Option<TextureHandle> {
         let meta = std::fs::metadata(path).ok()?;
-        let stamp = meta.len()
-            ^ meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+        let stamp = meta.len() ^ meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
         if let Some((cached_stamp, tex)) = self.textures.get(path)
             && *cached_stamp == stamp
         {
@@ -1189,15 +995,9 @@ impl MagicApp {
         let bytes = std::fs::read(path).ok()?;
         let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
         let size = [decoded.width() as usize, decoded.height() as usize];
-        let color_image =
-            ColorImage::from_rgba_unmultiplied(size, decoded.as_flat_samples().as_slice());
-        let handle = ctx.load_texture(
-            path.to_string_lossy(),
-            color_image,
-            egui::TextureOptions::LINEAR,
-        );
-        self.textures
-            .insert(path.to_path_buf(), (stamp, handle.clone()));
+        let color_image = ColorImage::from_rgba_unmultiplied(size, decoded.as_flat_samples().as_slice());
+        let handle = ctx.load_texture(path.to_string_lossy(), color_image, egui::TextureOptions::LINEAR);
+        self.textures.insert(path.to_path_buf(), (stamp, handle.clone()));
         Some(handle)
     }
 
@@ -1208,24 +1008,13 @@ impl MagicApp {
             // Brand cluster
             let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), Sense::hover());
             draw_spark_icon(ui.painter(), icon_rect, ACCENT_TEAL);
-            ui.label(
-                RichText::new("Magic Studio")
-                    .size(13.5)
-                    .strong()
-                    .color(TEXT_PRIMARY),
-            );
+            ui.label(RichText::new("Magic Studio").size(13.5).strong().color(TEXT_PRIMARY));
 
             if let Some(proj) = &self.session.project_path {
-                let name = proj
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("project");
+                let name = proj.file_stem().and_then(|s| s.to_str()).unwrap_or("project");
                 status_badge(ui, name, ACCENT_TEAL);
             } else if let Some(folder) = &self.session.lyrics_workspace {
-                let name = folder
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("Lyrics folder");
+                let name = folder.file_name().and_then(|name| name.to_str()).unwrap_or("Lyrics folder");
                 status_badge(ui, name, ACCENT_TEAL);
             } else {
                 status_badge(ui, "No project open", TEXT_MUTED);
@@ -1234,17 +1023,9 @@ impl MagicApp {
             ui.separator();
 
             // Mode switcher tabs
-            for mode in [
-                ViewMode::Projects,
-                ViewMode::Storyboard,
-                ViewMode::Lyrics,
-                ViewMode::Animation,
-                ViewMode::Motion,
-                ViewMode::Studio,
-            ] {
+            for mode in [ViewMode::Projects, ViewMode::Storyboard, ViewMode::Lyrics, ViewMode::Animation, ViewMode::Motion, ViewMode::Studio] {
                 let resp = pill_toggle(ui, self.view == mode, mode.label(), ACCENT);
-                self.auto
-                    .add_response(&format!("nav-{}", mode.id()), &resp, mode.label());
+                self.auto.add_response(&format!("nav-{}", mode.id()), &resp, mode.label());
                 if resp.clicked() {
                     self.view = mode;
                 }
@@ -1252,12 +1033,9 @@ impl MagicApp {
 
             // Right-aligned Fidget & Scribbles drawer buttons + Save
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let scribbles_active =
-                    self.assistant.open && self.assistant.active_tab == AssistantTab::Scribbles;
-                let scrib_resp = pill_toggle(ui, scribbles_active, "✨ Scribbles", ACCENT_TEAL)
-                    .on_hover_text("Open Scribbles template-gated image generator");
-                self.auto
-                    .add_response("drawer-scribbles", &scrib_resp, "Scribbles");
+                let scribbles_active = self.assistant.open && self.assistant.active_tab == AssistantTab::Scribbles;
+                let scrib_resp = pill_toggle(ui, scribbles_active, "✨ Scribbles", ACCENT_TEAL).on_hover_text("Open Scribbles template-gated image generator");
+                self.auto.add_response("drawer-scribbles", &scrib_resp, "Scribbles");
                 if scrib_resp.clicked() {
                     if scribbles_active {
                         self.assistant.open = false;
@@ -1267,12 +1045,9 @@ impl MagicApp {
                     }
                 }
 
-                let fidget_active =
-                    self.assistant.open && self.assistant.active_tab == AssistantTab::Fidget;
-                let fidget_resp = pill_toggle(ui, fidget_active, "⚙ Fidget", ACCENT_VIOLET)
-                    .on_hover_text("Open Fidget Markdown frontmatter prompt architect");
-                self.auto
-                    .add_response("drawer-fidget", &fidget_resp, "Fidget");
+                let fidget_active = self.assistant.open && self.assistant.active_tab == AssistantTab::Fidget;
+                let fidget_resp = pill_toggle(ui, fidget_active, "⚙ Fidget", ACCENT_VIOLET).on_hover_text("Open Fidget Markdown frontmatter prompt architect");
+                self.auto.add_response("drawer-fidget", &fidget_resp, "Fidget");
                 if fidget_resp.clicked() {
                     if fidget_active {
                         self.assistant.open = false;
@@ -1284,8 +1059,7 @@ impl MagicApp {
 
                 if self.session.project_path.is_some() {
                     let save_resp = secondary_button(ui, "Save Project");
-                    self.auto
-                        .add_response("btn-save-project", &save_resp, "Save Project");
+                    self.auto.add_response("btn-save-project", &save_resp, "Save Project");
                     if save_resp.clicked() {
                         self.run_command(ctx, "project.save", json!({}));
                     }
@@ -1293,7 +1067,6 @@ impl MagicApp {
             });
         });
     }
-
 
     fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Settings");
@@ -1314,7 +1087,9 @@ impl MagicApp {
                                     let mut val = f["value"].as_bool().unwrap_or(false);
                                     let resp = ui.checkbox(&mut val, label);
                                     self.auto.add_response(&id, &resp, label);
-                                    if resp.changed() { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                    if resp.changed() {
+                                        let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val}));
+                                    }
                                 }
                                 "int" | "float" => {
                                     let min = kind["min"].as_f64().unwrap_or(0.0) as f32;
@@ -1322,18 +1097,24 @@ impl MagicApp {
                                     let mut val = f["value"].as_f64().unwrap_or(min as f64) as f32;
                                     let resp = ui.add(egui::Slider::new(&mut val, min..=max).text(label));
                                     self.auto.add_response(&id, &resp, label);
-                                    if resp.changed() { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                    if resp.changed() {
+                                        let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val}));
+                                    }
                                 }
                                 "choice" => {
                                     let cur = f["value"].as_str().unwrap_or("").to_string();
                                     let mut val = cur.clone();
-                                    let resp = egui::ComboBox::from_id_salt(&id).selected_text(&cur).show_ui(ui, |ui| {
+                                    let resp = craft_ui::ComboBox::from_id_salt(&id).selected_text(&cur).show_ui(ui, |ui| {
                                         if let Some(choices) = kind["choices"].as_array() {
-                                            for c in choices { ui.selectable_value(&mut val, c["value"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or("")); }
+                                            for c in choices {
+                                                ui.selectable_value(&mut val, c["value"].as_str().unwrap_or("").to_string(), c["label"].as_str().unwrap_or(""));
+                                            }
                                         }
                                     });
                                     self.auto.add_response(&id, &resp.response, label);
-                                    if val != cur { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                    if val != cur {
+                                        let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val}));
+                                    }
                                 }
                                 _ => {
                                     let mut val = f["value"].as_str().unwrap_or("").to_string();
@@ -1341,7 +1122,9 @@ impl MagicApp {
                                     // label above
                                     ui.label(label);
                                     self.auto.add_response(&id, &resp, label);
-                                    if resp.changed() { let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val})); }
+                                    if resp.changed() {
+                                        let _ = self.session.execute("prefs.set", serde_json::json!({"key":key,"value":val}));
+                                    }
                                 }
                             }
                         }
@@ -1352,192 +1135,118 @@ impl MagicApp {
     }
     fn show_projects_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if let Some(host) = self.lyrics_host.as_mut() {
-            let project = self
-                .session
-                .project_path
-                .as_ref()
-                .map(|path| path.to_string_lossy());
+            let project = self.session.project_path.as_ref().map(|path| path.to_string_lossy());
             let rect = ui.available_rect_before_wrap();
             ui.allocate_rect(rect, Sense::hover());
-            host.show(
-                frame,
-                ctx,
-                rect,
-                project.as_deref().unwrap_or_default(),
-                WebWorkspacePage::Projects,
-            );
+            host.show(frame, ctx, rect, project.as_deref().unwrap_or_default(), WebWorkspacePage::Projects);
             return;
         }
-        ScrollArea::vertical()
-            .id_salt("projects_view_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    ui.heading(RichText::new("Projects").size(18.0).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if primary_button(ui, "Open .magic Project…").clicked() {
-                            self.dialogs.ask(
-                                craft_dialogs::FileDialog::open()
-                                    .title("Open Magic Studio Project")
-                                    .filter("Magic Studio Project", &["magic"]),
-                                DialogAction::OpenProject,
-                            );
-                        }
-                        if secondary_button(ui, "Refresh Catalog").clicked() {
-                            self.refresh_all();
-                        }
-                    });
+        ScrollArea::vertical().id_salt("projects_view_scroll").auto_shrink([false, false]).show(ui, |ui| {
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.heading(RichText::new("Projects").size(18.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if primary_button(ui, "Open .magic Project…").clicked() {
+                        self.dialogs.ask(
+                            craft_dialogs::FileDialog::open().title("Open Magic Studio Project").filter("Magic Studio Project", &["magic"]),
+                            DialogAction::OpenProject,
+                        );
+                    }
+                    if secondary_button(ui, "Refresh Catalog").clicked() {
+                        self.refresh_all();
+                    }
                 });
-                ui.add_space(8.0);
+            });
+            ui.add_space(8.0);
 
-                // Create New Project Card
-                if section_header(ui, "Create New Project", true) {
+            // Create New Project Card
+            if section_header(ui, "Create New Project", true) {
+                ui.add_space(4.0);
+                card_frame().show(ui, |ui| {
+                    prop_row(ui, "Project File", |ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if secondary_button(ui, "Save As…").clicked() {
+                            self.dialogs.ask(
+                                craft_dialogs::FileDialog::save().title("Create Magic Project").file_name("song.magic").filter("Magic Project", &["magic"]),
+                                DialogAction::CreateProjectFolder,
+                            );
+                        }
+                        ui.add(egui::TextEdit::singleline(&mut self.new_project_path).desired_width(340.0).hint_text("/path/to/my-song/my-song.magic"));
+                    });
+                    prop_row(ui, "Mode", |ui| {
+                        craft_ui::ComboBox::from_id_salt("new_project_mode_combo").selected_text(&self.new_project_mode).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.new_project_mode, "project".into(), "project (full song & storyboard)");
+                            ui.selectable_value(&mut self.new_project_mode, "animation".into(), "animation (character study)");
+                        });
+                    });
+                    prop_row(ui, "Audio (opt)", |ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if secondary_button(ui, "Browse…").clicked() {
+                            self.dialogs.ask(
+                                craft_dialogs::FileDialog::open().title("Select Project Audio").filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"]),
+                                DialogAction::AddProjectAsset,
+                            );
+                        }
+                        ui.add(egui::TextEdit::singleline(&mut self.new_project_audio).desired_width(340.0).hint_text("optional song audio path"));
+                    });
                     ui.add_space(4.0);
-                    card_frame().show(ui, |ui| {
-                        prop_row(ui, "Project File", |ui| {
-                            #[cfg(not(target_arch = "wasm32"))]
-                            if secondary_button(ui, "Save As…").clicked() {
-                                self.dialogs.ask(
-                                    craft_dialogs::FileDialog::save()
-                                        .title("Create Magic Project")
-                                        .file_name("song.magic")
-                                        .filter("Magic Project", &["magic"]),
-                                    DialogAction::CreateProjectFolder,
-                                );
-                            }
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.new_project_path)
-                                    .desired_width(340.0)
-                                    .hint_text("/path/to/my-song/my-song.magic"),
-                            );
+                    if primary_button(ui, "Create & Open Project").clicked() && !self.new_project_path.trim().is_empty() {
+                        let mut p = json!({
+                            "path": self.new_project_path.trim(),
+                            "mode": self.new_project_mode,
                         });
-                        prop_row(ui, "Mode", |ui| {
-                            craft_ui::ComboBox::from_id_salt("new_project_mode_combo")
-                                .selected_text(&self.new_project_mode)
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut self.new_project_mode,
-                                        "project".into(),
-                                        "project (full song & storyboard)",
-                                    );
-                                    ui.selectable_value(
-                                        &mut self.new_project_mode,
-                                        "animation".into(),
-                                        "animation (character study)",
-                                    );
+                        if !self.new_project_audio.trim().is_empty() {
+                            p["audio"] = json!(self.new_project_audio.trim());
+                        }
+                        self.run_command(ctx, "project.new", p);
+                    }
+                });
+            }
+
+            ui.add_space(10.0);
+            if section_header(ui, "Recent Projects (`project.catalog`)", true) {
+                ui.add_space(4.0);
+                if self.catalog_items.is_empty() {
+                    empty_state(ui, "No recent Magic Studio projects", "Create a new .magic project above or click 'Open .magic Project…'.");
+                } else {
+                    let items = self.catalog_items.clone();
+                    for item in items {
+                        let path = item["path"].as_str().unwrap_or_default().to_owned();
+                        let name = item["name"].as_str().or_else(|| item["title"].as_str()).unwrap_or(&path).to_owned();
+                        let mode = item["mode"].as_str().unwrap_or("project");
+                        card_frame().show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new(&name).size(13.5).strong().color(TEXT_PRIMARY));
+                                    ui.label(RichText::new(&path).size(11.0).color(TEXT_MUTED));
                                 });
-                        });
-                        prop_row(ui, "Audio (opt)", |ui| {
-                            #[cfg(not(target_arch = "wasm32"))]
-                            if secondary_button(ui, "Browse…").clicked() {
-                                self.dialogs.ask(
-                                    craft_dialogs::FileDialog::open()
-                                        .title("Select Project Audio")
-                                        .filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"]),
-                                    DialogAction::AddProjectAsset,
-                                );
-                            }
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.new_project_audio)
-                                    .desired_width(340.0)
-                                    .hint_text("optional song audio path"),
-                            );
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if primary_button(ui, "Open").clicked() {
+                                        self.run_command(ctx, "project.open", json!({ "path": path }));
+                                    }
+                                    status_badge(ui, mode, ACCENT);
+                                });
+                            });
                         });
                         ui.add_space(4.0);
-                        if primary_button(ui, "Create & Open Project").clicked()
-                            && !self.new_project_path.trim().is_empty()
-                        {
-                            let mut p = json!({
-                                "path": self.new_project_path.trim(),
-                                "mode": self.new_project_mode,
-                            });
-                            if !self.new_project_audio.trim().is_empty() {
-                                p["audio"] = json!(self.new_project_audio.trim());
-                            }
-                            self.run_command(ctx, "project.new", p);
-                        }
-                    });
-                }
-
-                ui.add_space(10.0);
-                if section_header(ui, "Recent Projects (`project.catalog`)", true) {
-                    ui.add_space(4.0);
-                    if self.catalog_items.is_empty() {
-                        empty_state(
-                            ui,
-                            "No recent Magic Studio projects",
-                            "Create a new .magic project above or click 'Open .magic Project…'.",
-                        );
-                    } else {
-                        let items = self.catalog_items.clone();
-                        for item in items {
-                            let path = item["path"].as_str().unwrap_or_default().to_owned();
-                            let name = item["name"]
-                                .as_str()
-                                .or_else(|| item["title"].as_str())
-                                .unwrap_or(&path)
-                                .to_owned();
-                            let mode = item["mode"].as_str().unwrap_or("project");
-                            card_frame().show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.vertical(|ui| {
-                                        ui.label(
-                                            RichText::new(&name)
-                                                .size(13.5)
-                                                .strong()
-                                                .color(TEXT_PRIMARY),
-                                        );
-                                        ui.label(RichText::new(&path).size(11.0).color(TEXT_MUTED));
-                                    });
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            if primary_button(ui, "Open").clicked() {
-                                                self.run_command(
-                                                    ctx,
-                                                    "project.open",
-                                                    json!({ "path": path }),
-                                                );
-                                            }
-                                            status_badge(ui, mode, ACCENT);
-                                        },
-                                    );
-                                });
-                            });
-                            ui.add_space(4.0);
-                        }
                     }
                 }
-            });
+            }
+        });
     }
 
     fn show_storyboard_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
-            empty_state(
-                ui,
-                "Open a Project First",
-                "Switch to the Projects tab to open or create a .magic project.",
-            );
+            empty_state(ui, "Open a Project First", "Switch to the Projects tab to open or create a .magic project.");
             return;
         }
 
         if let Some(host) = self.lyrics_host.as_mut() {
-            let project = self
-                .session
-                .project_path
-                .as_ref()
-                .map(|path| path.to_string_lossy());
+            let project = self.session.project_path.as_ref().map(|path| path.to_string_lossy());
             let rect = ui.available_rect_before_wrap();
             ui.allocate_rect(rect, Sense::hover());
-            host.show(
-                frame,
-                ctx,
-                rect,
-                project.as_deref().unwrap_or_default(),
-                WebWorkspacePage::Storyboard,
-            );
+            host.show(frame, ctx, rect, project.as_deref().unwrap_or_default(), WebWorkspacePage::Storyboard);
             return;
         }
 
@@ -1546,113 +1255,66 @@ impl MagicApp {
             .resizable(true)
             .default_size(250.0)
             .min_size(200.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_PANEL)
-                    .inner_margin(egui::Margin::same(8))
-                    .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
-            )
+            .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::same(8)).stroke(Stroke::new(1.0, BORDER_SUBTLE)))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("PAGES & SCENES")
-                            .size(11.0)
-                            .strong()
-                            .color(TEXT_SECONDARY),
-                    );
+                    ui.label(RichText::new("PAGES & SCENES").size(11.0).strong().color(TEXT_SECONDARY));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if secondary_button(ui, "+ Scene")
-                            .on_hover_text(
-                                "Add a new scene page from the template (`storyboard.add`)",
-                            )
-                            .clicked()
-                        {
-                            self.run_command(
-                                ctx,
-                                "storyboard.add",
-                                json!({ "archetype": "scene" }),
-                            );
+                        if secondary_button(ui, "+ Scene").on_hover_text("Add a new scene page from the template (`storyboard.add`)").clicked() {
+                            self.run_command(ctx, "storyboard.add", json!({ "archetype": "scene" }));
                         }
-                        if self.storyboard_pages.is_empty()
-                            && primary_button(ui, "New Board").clicked()
-                        {
+                        if self.storyboard_pages.is_empty() && primary_button(ui, "New Board").clicked() {
                             self.run_command(ctx, "storyboard.new", json!({}));
                         }
                     });
                 });
                 ui.add_space(6.0);
 
-                ScrollArea::vertical()
-                    .id_salt("sb_pages_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        let pages = self.storyboard_pages.clone();
-                        for (idx, p) in pages.iter().enumerate() {
-                            let archetype = p["archetype"].as_str().unwrap_or("page");
-                            let name = p["name"].as_str().unwrap_or(archetype);
-                            let scene_num = p["scene"].as_u64();
-                            let selected = self.selected_page == idx;
-                            let border = if selected { ACCENT_TEAL } else { BORDER_SUBTLE };
-                            let fill = if selected {
-                                ACCENT_TEAL.gamma_multiply(0.16)
-                            } else {
-                                BG_ELEVATED
-                            };
-                            let resp = egui::Frame::new()
-                                .fill(fill)
-                                .stroke(Stroke::new(1.0, border))
-                                .corner_radius(CornerRadius::same(6))
-                                .inner_margin(egui::Margin::symmetric(8, 6))
-                                .show(ui, |ui| {
-                                    ui.set_min_width(ui.available_width());
-                                    ui.horizontal(|ui| {
-                                        let badge = if let Some(sc) = scene_num {
-                                            format!("Scene {sc}")
-                                        } else {
-                                            format!("P{}", idx + 1)
-                                        };
-                                        status_badge(
-                                            ui,
-                                            &badge,
-                                            if scene_num.is_some() {
-                                                ACCENT_TEAL
-                                            } else {
-                                                ACCENT
-                                            },
-                                        );
-                                        ui.label(
-                                            RichText::new(name)
-                                                .size(12.0)
-                                                .strong()
-                                                .color(TEXT_PRIMARY),
-                                        );
-                                    });
-                                    // Show scene thumbnail if rendered in cache/storyboard
-                                    if let Some(sc) = scene_num
-                                        && let Some(proj) = self.session.project_path.as_ref()
-                                        && let Some(parent) = proj.parent()
-                                    {
-                                        let thumb = parent
-                                            .join("cache/storyboard")
-                                            .join(format!("scene-{sc}.png"));
-                                        if let Some(tex) = self.load_texture(ctx, &thumb) {
-                                            ui.add_space(4.0);
-                                            let w = ui.available_width();
-                                            let h = w * (9.0 / 16.0);
-                                            ui.image((tex.id(), egui::vec2(w, h)));
-                                        }
+                ScrollArea::vertical().id_salt("sb_pages_scroll").auto_shrink([false, false]).show(ui, |ui| {
+                    let pages = self.storyboard_pages.clone();
+                    for (idx, p) in pages.iter().enumerate() {
+                        let archetype = p["archetype"].as_str().unwrap_or("page");
+                        let name = p["name"].as_str().unwrap_or(archetype);
+                        let scene_num = p["scene"].as_u64();
+                        let selected = self.selected_page == idx;
+                        let border = if selected { ACCENT_TEAL } else { BORDER_SUBTLE };
+                        let fill = if selected { ACCENT_TEAL.gamma_multiply(0.16) } else { BG_ELEVATED };
+                        let resp = egui::Frame::new()
+                            .fill(fill)
+                            .stroke(Stroke::new(1.0, border))
+                            .corner_radius(CornerRadius::same(6))
+                            .inner_margin(egui::Margin::symmetric(8, 6))
+                            .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.horizontal(|ui| {
+                                    let badge = if let Some(sc) = scene_num { format!("Scene {sc}") } else { format!("P{}", idx + 1) };
+                                    status_badge(ui, &badge, if scene_num.is_some() { ACCENT_TEAL } else { ACCENT });
+                                    ui.label(RichText::new(name).size(12.0).strong().color(TEXT_PRIMARY));
+                                });
+                                // Show scene thumbnail if rendered in cache/storyboard
+                                if let Some(sc) = scene_num
+                                    && let Some(proj) = self.session.project_path.as_ref()
+                                    && let Some(parent) = proj.parent()
+                                {
+                                    let thumb = parent.join("cache/storyboard").join(format!("scene-{sc}.png"));
+                                    if let Some(tex) = self.load_texture(ctx, &thumb) {
+                                        ui.add_space(4.0);
+                                        let w = ui.available_width();
+                                        let h = w * (9.0 / 16.0);
+                                        ui.image((tex.id(), egui::vec2(w, h)));
                                     }
-                                })
-                                .response
-                                .interact(Sense::click());
-                            if resp.clicked() {
-                                self.selected_page = idx;
-                                self.load_selected_page_slots();
-                                self.render_selected_page_preview();
-                            }
-                            ui.add_space(4.0);
+                                }
+                            })
+                            .response
+                            .interact(Sense::click());
+                        if resp.clicked() {
+                            self.selected_page = idx;
+                            self.load_selected_page_slots();
+                            self.render_selected_page_preview();
                         }
-                    });
+                        ui.add_space(4.0);
+                    }
+                });
             });
 
         // Right Rail: Slot Inspector for selected page
@@ -1660,26 +1322,13 @@ impl MagicApp {
             .resizable(true)
             .default_size(310.0)
             .min_size(250.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_PANEL)
-                    .inner_margin(egui::Margin::same(8))
-                    .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
-            )
+            .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::same(8)).stroke(Stroke::new(1.0, BORDER_SUBTLE)))
             .show(ui, |ui| {
                 let page_meta = self.storyboard_pages.get(self.selected_page).cloned();
-                let current_scene = page_meta
-                    .as_ref()
-                    .and_then(|p| p["scene"].as_u64())
-                    .map(|n| n as usize);
+                let current_scene = page_meta.as_ref().and_then(|p| p["scene"].as_u64()).map(|n| n as usize);
 
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("PAGE SLOTS (`storyboard.set`)")
-                            .size(11.0)
-                            .strong()
-                            .color(TEXT_SECONDARY),
-                    );
+                    ui.label(RichText::new("PAGE SLOTS (`storyboard.set`)").size(11.0).strong().color(TEXT_SECONDARY));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if primary_button(ui, "Apply Edits").clicked() {
                             let mut fields = serde_json::Map::new();
@@ -1706,199 +1355,121 @@ impl MagicApp {
                 });
                 ui.add_space(6.0);
 
-                ScrollArea::vertical()
-                    .id_salt("sb_slots_inspector_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if section_header(ui, "Text Slots", true) {
-                            ui.add_space(4.0);
-                            let keys: Vec<String> = self.slot_fields.keys().cloned().collect();
-                            for k in keys {
-                                if let Some(val) = self.slot_fields.get_mut(&k) {
-                                    ui.label(
-                                        RichText::new(&k).size(11.0).color(TEXT_SECONDARY),
-                                    );
-                                    if k.contains("body") || k.contains("notes") || k == "cue" {
-                                        ui.add(
-                                            egui::TextEdit::multiline(val)
-                                                .desired_rows(2)
-                                                .desired_width(f32::INFINITY),
-                                        );
-                                    } else {
-                                        ui.add(
-                                            egui::TextEdit::singleline(val)
-                                                .desired_width(f32::INFINITY),
-                                        );
-                                    }
-                                    ui.add_space(3.0);
+                ScrollArea::vertical().id_salt("sb_slots_inspector_scroll").auto_shrink([false, false]).show(ui, |ui| {
+                    if section_header(ui, "Text Slots", true) {
+                        ui.add_space(4.0);
+                        let keys: Vec<String> = self.slot_fields.keys().cloned().collect();
+                        for k in keys {
+                            if let Some(val) = self.slot_fields.get_mut(&k) {
+                                ui.label(RichText::new(&k).size(11.0).color(TEXT_SECONDARY));
+                                if k.contains("body") || k.contains("notes") || k == "cue" {
+                                    ui.add(egui::TextEdit::multiline(val).desired_rows(2).desired_width(f32::INFINITY));
+                                } else {
+                                    ui.add(egui::TextEdit::singleline(val).desired_width(f32::INFINITY));
                                 }
+                                ui.add_space(3.0);
                             }
                         }
+                    }
 
-                        ui.add_space(6.0);
-                        if section_header(ui, "Image Slots & Scribbles Handoff", true) {
-                            ui.add_space(4.0);
-                            let img_keys: Vec<String> = self.slot_images.keys().cloned().collect();
-                            let cue_hint = self
-                                .slot_fields
-                                .get("cue")
-                                .cloned()
-                                .unwrap_or_default();
-                            for k in img_keys {
-                                card_frame().show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            RichText::new(&k)
-                                                .size(11.5)
-                                                .strong()
-                                                .color(TEXT_PRIMARY),
-                                        );
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if secondary_button(ui, "✨ Draw in Scribbles")
-                                                    .on_hover_text(
-                                                        "Open Scribbles with a template that saves directly to this slot",
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    self.assistant.open_for_storyboard_slot(
-                                                        current_scene.unwrap_or(1),
-                                                        &k,
-                                                        &cue_hint,
-                                                    );
-                                                }
-                                                #[cfg(not(target_arch = "wasm32"))]
-                                                if ui.small_button("Browse…").clicked() {
-                                                    self.pending_storyboard_slot = Some(k.clone());
-                                                    self.dialogs.ask(
-                                                        craft_dialogs::FileDialog::open()
-                                                            .title("Select Storyboard Image")
-                                                            .filter("Image", &["png", "jpg", "jpeg"]),
-                                                        DialogAction::StoryboardHeroImage {
-                                                            scene: current_scene.unwrap_or(1),
-                                                        },
-                                                    );
-                                                }
-                                            },
-                                        );
+                    ui.add_space(6.0);
+                    if section_header(ui, "Image Slots & Scribbles Handoff", true) {
+                        ui.add_space(4.0);
+                        let img_keys: Vec<String> = self.slot_images.keys().cloned().collect();
+                        let cue_hint = self.slot_fields.get("cue").cloned().unwrap_or_default();
+                        for k in img_keys {
+                            card_frame().show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(&k).size(11.5).strong().color(TEXT_PRIMARY));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if secondary_button(ui, "✨ Draw in Scribbles")
+                                            .on_hover_text("Open Scribbles with a template that saves directly to this slot")
+                                            .clicked()
+                                        {
+                                            self.assistant.open_for_storyboard_slot(current_scene.unwrap_or(1), &k, &cue_hint);
+                                        }
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        if ui.small_button("Browse…").clicked() {
+                                            self.pending_storyboard_slot = Some(k.clone());
+                                            self.dialogs.ask(
+                                                craft_dialogs::FileDialog::open().title("Select Storyboard Image").filter("Image", &["png", "jpg", "jpeg"]),
+                                                DialogAction::StoryboardHeroImage { scene: current_scene.unwrap_or(1) },
+                                            );
+                                        }
                                     });
-                                    if let Some(slot_val) = self.slot_images.get_mut(&k) {
-                                        ui.add(
-                                            egui::TextEdit::singleline(slot_val)
-                                                .desired_width(f32::INFINITY)
-                                                .hint_text("/path/to/image.png"),
-                                        );
-                                    }
                                 });
-                                ui.add_space(4.0);
-                            }
-                        }
-
-                        if !self.unfilled_checks.is_empty() {
-                            ui.add_space(6.0);
-                            if section_header(
-                                ui,
-                                &format!("Template Defaults ({})", self.unfilled_checks.len()),
-                                false,
-                            ) {
-                                for item in self.unfilled_checks.iter().take(12) {
-                                    let slot = item["slot"].as_str().unwrap_or_default();
-                                    let page = item["page"].as_u64().unwrap_or(0);
-                                    ui.label(
-                                        RichText::new(format!("Page {page} · {slot}"))
-                                            .size(10.5)
-                                            .color(ACCENT_AMBER),
-                                    );
+                                if let Some(slot_val) = self.slot_images.get_mut(&k) {
+                                    ui.add(egui::TextEdit::singleline(slot_val).desired_width(f32::INFINITY).hint_text("/path/to/image.png"));
                                 }
+                            });
+                            ui.add_space(4.0);
+                        }
+                    }
+
+                    if !self.unfilled_checks.is_empty() {
+                        ui.add_space(6.0);
+                        if section_header(ui, &format!("Template Defaults ({})", self.unfilled_checks.len()), false) {
+                            for item in self.unfilled_checks.iter().take(12) {
+                                let slot = item["slot"].as_str().unwrap_or_default();
+                                let page = item["page"].as_u64().unwrap_or(0);
+                                ui.label(RichText::new(format!("Page {page} · {slot}")).size(10.5).color(ACCENT_AMBER));
                             }
                         }
-                    });
+                    }
+                });
             });
 
         // Center Spread Canvas
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_DEEP)
-                    .inner_margin(egui::Margin::same(12)),
-            )
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!(
-                            "Spread Preview — Page {}",
-                            self.selected_page + 1
-                        ))
-                        .size(13.0)
-                        .strong()
-                        .color(TEXT_PRIMARY),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if secondary_button(ui, "Export PDF").clicked()
-                            && let Some(proj) = self.session.project_path.as_ref()
-                            && let Some(parent) = proj.parent()
-                        {
-                            let pdf = parent.join("storyboard.pdf");
-                            self.run_command(
-                                ctx,
-                                "storyboard.export",
-                                json!({ "pdf": pdf }),
-                            );
-                        }
-                        if secondary_button(ui, "Re-render Spread").clicked() {
-                            self.render_selected_page_preview();
-                        }
-                    });
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG_DEEP).inner_margin(egui::Margin::same(12))).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("Spread Preview — Page {}", self.selected_page + 1)).size(13.0).strong().color(TEXT_PRIMARY));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if secondary_button(ui, "Export PDF").clicked()
+                        && let Some(proj) = self.session.project_path.as_ref()
+                        && let Some(parent) = proj.parent()
+                    {
+                        let pdf = parent.join("storyboard.pdf");
+                        self.run_command(ctx, "storyboard.export", json!({ "pdf": pdf }));
+                    }
+                    if secondary_button(ui, "Re-render Spread").clicked() {
+                        self.render_selected_page_preview();
+                    }
                 });
-                ui.add_space(8.0);
-
-                if let Some(preview_path) = self.preview_image_path.clone()
-                    && let Some(tex) = self.load_texture(ctx, &preview_path)
-                {
-                    let avail = ui.available_size();
-                    let tex_size = tex.size_vec2();
-                    let scale = (avail.x / tex_size.x)
-                        .min(avail.y / tex_size.y)
-                        .clamp(0.1, 1.5);
-                    let draw_size = tex_size * scale;
-                    ui.centered_and_justified(|ui| {
-                        let resp = ui.image((tex.id(), draw_size));
-                        frame_outline(ui.painter(), resp.rect, BORDER_STRONG);
-                    });
-                } else {
-                    empty_state(
-                        ui,
-                        "No Storyboard Spread Rendered Yet",
-                        "Click 'New Board' in the left rail to initialize storyboard.designcraft from the template.",
-                    );
-                }
             });
+            ui.add_space(8.0);
+
+            if let Some(preview_path) = self.preview_image_path.clone()
+                && let Some(tex) = self.load_texture(ctx, &preview_path)
+            {
+                let avail = ui.available_size();
+                let tex_size = tex.size_vec2();
+                let scale = (avail.x / tex_size.x).min(avail.y / tex_size.y).clamp(0.1, 1.5);
+                let draw_size = tex_size * scale;
+                ui.centered_and_justified(|ui| {
+                    let resp = ui.image((tex.id(), draw_size));
+                    frame_outline(ui.painter(), resp.rect, BORDER_STRONG);
+                });
+            } else {
+                empty_state(
+                    ui,
+                    "No Storyboard Spread Rendered Yet",
+                    "Click 'New Board' in the left rail to initialize storyboard.designcraft from the template.",
+                );
+            }
+        });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn open_lyrics_folder_dialog(&mut self) {
-        self.dialogs.ask(
-            craft_dialogs::FileDialog::folder().title("Open Lyrics Folder"),
-            DialogAction::OpenLyricsFolder,
-        );
+        self.dialogs.ask(craft_dialogs::FileDialog::folder().title("Open Lyrics Folder"), DialogAction::OpenLyricsFolder);
     }
 
     fn show_lyrics_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         let standalone = self.session.lyrics_workspace.is_some();
-        let document = self
-            .session
-            .project_path
-            .as_ref()
-            .or(self.session.lyrics_workspace.as_ref())
-            .cloned();
+        let document = self.session.project_path.as_ref().or(self.session.lyrics_workspace.as_ref()).cloned();
         #[cfg(not(target_arch = "wasm32"))]
         if self.session.project_path.is_none() {
-            let label = if standalone {
-                "Change Lyrics Folder…"
-            } else {
-                "Open Lyrics Folder…"
-            };
+            let label = if standalone { "Change Lyrics Folder…" } else { "Open Lyrics Folder…" };
             let open = secondary_button(ui, label);
             self.auto.add_response("lyrics-open-folder", &open, label);
             if open.clicked() {
@@ -1906,11 +1477,7 @@ impl MagicApp {
             }
         }
         let Some(project) = document else {
-            empty_state(
-                ui,
-                "Open Lyrics",
-                "Choose a song folder with its lyric sheet and timed transcript, or open a Magic project.",
-            );
+            empty_state(ui, "Open Lyrics", "Choose a song folder with its lyric sheet and timed transcript, or open a Magic project.");
             return;
         };
         if self.lyrics_host.is_some() && (standalone || !self.lyrics_song_details) {
@@ -1920,174 +1487,100 @@ impl MagicApp {
             let rect = ui.available_rect_before_wrap();
             ui.allocate_rect(rect, Sense::hover());
             if let Some(host) = self.lyrics_host.as_mut() {
-                host.show(
-                    frame,
-                    ctx,
-                    rect,
-                    &project.display().to_string(),
-                    WebWorkspacePage::Lyrics,
-                );
+                host.show(frame, ctx, rect, &project.display().to_string(), WebWorkspacePage::Lyrics);
             }
             return;
         }
-        ScrollArea::vertical()
-            .id_salt("lyrics_view_scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("Lyrics");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let save_resp = primary_button(ui, "Save Song Details (`song.save`)");
-                        self.auto
-                            .add_response("btn-save-song", &save_resp, "Save Song Details");
-                        if save_resp.clicked() {
-                            self.run_command(
-                                ctx,
-                                "song.save",
-                                json!({
-                                    "title": self.song_title,
-                                    "album": self.song_album,
-                                    "lyrics": self.song_lyrics_text,
-                                    "notes": self.song_notes,
-                                    "document": self.words_doc,
-                                }),
+        ScrollArea::vertical().id_salt("lyrics_view_scroll").auto_shrink([false, false]).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading("Lyrics");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let save_resp = primary_button(ui, "Save Song Details (`song.save`)");
+                    self.auto.add_response("btn-save-song", &save_resp, "Save Song Details");
+                    if save_resp.clicked() {
+                        self.run_command(
+                            ctx,
+                            "song.save",
+                            json!({
+                                "title": self.song_title,
+                                "album": self.song_album,
+                                "lyrics": self.song_lyrics_text,
+                                "notes": self.song_notes,
+                                "document": self.words_doc,
+                            }),
+                        );
+                    }
+                    if self.lyrics_host.is_some() && secondary_button(ui, "◂ Lyrics designer").clicked() {
+                        self.lyrics_song_details = false;
+                    }
+                });
+            });
+            ui.add_space(6.0);
+
+            if section_header(ui, "Song Audio (`workshop.set_audio`)", true) {
+                card_frame().show(ui, |ui| {
+                    prop_row(ui, "Audio File", |ui| {
+                        let link_resp = primary_button(ui, "Link Audio");
+                        self.auto.add_response("btn-link-audio", &link_resp, "Link Audio");
+                        if link_resp.clicked() && !self.song_audio_path.trim().is_empty() {
+                            self.run_command(ctx, "workshop.set_audio", json!({ "path": self.song_audio_path.trim() }));
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if secondary_button(ui, "Browse…").clicked() {
+                            self.dialogs.ask(
+                                craft_dialogs::FileDialog::open().title("Select Song Audio").filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"]),
+                                DialogAction::SongAudio,
                             );
                         }
-                        if self.lyrics_host.is_some()
-                            && secondary_button(ui, "◂ Lyrics designer").clicked()
-                        {
-                            self.lyrics_song_details = false;
+                        let audio_resp = ui.add(egui::TextEdit::singleline(&mut self.song_audio_path).desired_width(300.0));
+                        self.auto.add_field("song.audio", &audio_resp, "Audio File", &self.song_audio_path);
+                    });
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        let beats_resp = secondary_button(ui, "Analyze Song Beats (`audio.analyze`)");
+                        self.auto.add_response("btn-analyze-beats", &beats_resp, "Analyze Song Beats");
+                        if beats_resp.clicked() {
+                            self.run_command(ctx, "audio.analyze", json!({}));
+                        }
+                        let design_resp = secondary_button(ui, "Design Sung Lines (`words.design`)");
+                        self.auto.add_response("btn-design-lines", &design_resp, "Design Sung Lines");
+                        if design_resp.clicked() {
+                            self.run_command(ctx, "words.design", json!({}));
+                        }
+                        let letter_resp = secondary_button(ui, "Letter in EffectCraft (`words.letter`)");
+                        self.auto.add_response("btn-letter-effectcraft", &letter_resp, "Letter in EffectCraft");
+                        if letter_resp.clicked() {
+                            self.run_command(ctx, "words.letter", json!({}));
                         }
                     });
                 });
-                ui.add_space(6.0);
+            }
 
-                if section_header(ui, "Song Audio (`workshop.set_audio`)", true) {
-                    card_frame().show(ui, |ui| {
-                        prop_row(ui, "Audio File", |ui| {
-                            let link_resp = primary_button(ui, "Link Audio");
-                            self.auto
-                                .add_response("btn-link-audio", &link_resp, "Link Audio");
-                            if link_resp.clicked() && !self.song_audio_path.trim().is_empty() {
-                                self.run_command(
-                                    ctx,
-                                    "workshop.set_audio",
-                                    json!({ "path": self.song_audio_path.trim() }),
-                                );
-                            }
-                            #[cfg(not(target_arch = "wasm32"))]
-                            if secondary_button(ui, "Browse…").clicked() {
-                                self.dialogs.ask(
-                                    craft_dialogs::FileDialog::open()
-                                        .title("Select Song Audio")
-                                        .filter("Audio", &["mp3", "wav", "flac", "ogg", "m4a"]),
-                                    DialogAction::SongAudio,
-                                );
-                            }
-                            let audio_resp = ui.add(
-                                egui::TextEdit::singleline(&mut self.song_audio_path)
-                                    .desired_width(300.0),
-                            );
-                            self.auto.add_field(
-                                "song.audio",
-                                &audio_resp,
-                                "Audio File",
-                                &self.song_audio_path,
-                            );
-                        });
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            let beats_resp =
-                                secondary_button(ui, "Analyze Song Beats (`audio.analyze`)");
-                            self.auto.add_response(
-                                "btn-analyze-beats",
-                                &beats_resp,
-                                "Analyze Song Beats",
-                            );
-                            if beats_resp.clicked() {
-                                self.run_command(ctx, "audio.analyze", json!({}));
-                            }
-                            let design_resp =
-                                secondary_button(ui, "Design Sung Lines (`words.design`)");
-                            self.auto.add_response(
-                                "btn-design-lines",
-                                &design_resp,
-                                "Design Sung Lines",
-                            );
-                            if design_resp.clicked() {
-                                self.run_command(ctx, "words.design", json!({}));
-                            }
-                            let letter_resp =
-                                secondary_button(ui, "Letter in EffectCraft (`words.letter`)");
-                            self.auto.add_response(
-                                "btn-letter-effectcraft",
-                                &letter_resp,
-                                "Letter in EffectCraft",
-                            );
-                            if letter_resp.clicked() {
-                                self.run_command(ctx, "words.letter", json!({}));
-                            }
-                        });
+            ui.add_space(8.0);
+            if section_header(ui, "Song Metadata & Lyrics Sheet", true) {
+                card_frame().show(ui, |ui| {
+                    prop_row(ui, "Song Title", |ui| {
+                        let resp = ui.add(egui::TextEdit::singleline(&mut self.song_title).desired_width(320.0));
+                        self.auto.add_field("song.title", &resp, "Song Title", &self.song_title);
                     });
-                }
-
-                ui.add_space(8.0);
-                if section_header(ui, "Song Metadata & Lyrics Sheet", true) {
-                    card_frame().show(ui, |ui| {
-                        prop_row(ui, "Song Title", |ui| {
-                            let resp = ui.add(
-                                egui::TextEdit::singleline(&mut self.song_title)
-                                    .desired_width(320.0),
-                            );
-                            self.auto.add_field(
-                                "song.title",
-                                &resp,
-                                "Song Title",
-                                &self.song_title,
-                            );
-                        });
-                        prop_row(ui, "Album", |ui| {
-                            let resp = ui.add(
-                                egui::TextEdit::singleline(&mut self.song_album)
-                                    .desired_width(320.0),
-                            );
-                            self.auto
-                                .add_field("song.album", &resp, "Album", &self.song_album);
-                        });
-                        ui.add_space(4.0);
-                        ui.label(
-                            RichText::new("Canonical Artist Lyrics")
-                                .size(11.5)
-                                .color(TEXT_SECONDARY),
-                        );
-                        let lyr_resp = ui.add(
-                            egui::TextEdit::multiline(&mut self.song_lyrics_text)
-                                .desired_rows(12)
-                                .desired_width(f32::INFINITY),
-                        );
-                        self.auto.add_field(
-                            "song.lyrics",
-                            &lyr_resp,
-                            "Canonical Artist Lyrics",
-                            &self.song_lyrics_text,
-                        );
+                    prop_row(ui, "Album", |ui| {
+                        let resp = ui.add(egui::TextEdit::singleline(&mut self.song_album).desired_width(320.0));
+                        self.auto.add_field("song.album", &resp, "Album", &self.song_album);
                     });
-                }
-            });
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("Canonical Artist Lyrics").size(11.5).color(TEXT_SECONDARY));
+                    let lyr_resp = ui.add(egui::TextEdit::multiline(&mut self.song_lyrics_text).desired_rows(12).desired_width(f32::INFINITY));
+                    self.auto.add_field("song.lyrics", &lyr_resp, "Canonical Artist Lyrics", &self.song_lyrics_text);
+                });
+            }
+        });
     }
 
     fn select_animation_asset(&mut self, id: &str) -> Result<(), String> {
-        let asset = self
-            .session
-            .project_assets
-            .iter()
-            .find(|asset| asset.id == id)
-            .ok_or_else(|| format!("Unknown Animation asset `{id}`"))?;
+        let asset = self.session.project_assets.iter().find(|asset| asset.id == id).ok_or_else(|| format!("Unknown Animation asset `{id}`"))?;
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = asset.path.clone()
-            && path
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
+            && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj"))
         {
             let message = self.open_effectcraft_composition(&path)?;
             self.set_status_result(Ok(message));
@@ -2103,20 +1596,11 @@ impl MagicApp {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn open_effectcraft_composition_at(
-        &mut self,
-        path: &Path,
-        seconds: Option<f64>,
-    ) -> Result<String, String> {
-        if self
-            .effectcraft_animation
-            .as_ref()
-            .is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty)
-        {
+    fn open_effectcraft_composition_at(&mut self, path: &Path, seconds: Option<f64>) -> Result<String, String> {
+        if self.effectcraft_animation.as_ref().is_some_and(animation_effectcraft::AnimationEffectcraft::is_dirty) {
             return Err("Save the open EffectCraft composition first.".into());
         }
-        let mut composition = animation_effectcraft::AnimationEffectcraft::open(path)
-            .map_err(|error| format!("Open {}: {error}", path.display()))?;
+        let mut composition = animation_effectcraft::AnimationEffectcraft::open(path).map_err(|error| format!("Open {}: {error}", path.display()))?;
         if let Some(seconds) = seconds {
             composition.seek(seconds)?;
         }
@@ -2129,17 +1613,8 @@ impl MagicApp {
         if self.busy_command.is_some() {
             return Err("Wait for the current operation before rendering.".into());
         }
-        let params = self
-            .effectcraft_animation
-            .as_ref()
-            .ok_or("Open an EffectCraft project first.")?
-            .studio_render_request()?;
-        self.pending_studio_render = Some(
-            self.session
-                .project_path
-                .clone()
-                .ok_or("Open a Magic project first.")?,
-        );
+        let params = self.effectcraft_animation.as_ref().ok_or("Open an EffectCraft project first.")?.studio_render_request()?;
+        self.pending_studio_render = Some(self.session.project_path.clone().ok_or("Open a Magic project first.")?);
         self.run_command(ctx, "character.render", params);
         Ok(())
     }
@@ -2148,42 +1623,24 @@ impl MagicApp {
     fn effectcraft_animation_toolbar(&mut self, ctx: &Context, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             let open = secondary_button(ui, "Open EffectCraft Project…");
-            self.auto.add_response(
-                "animation-open-effectcraft",
-                &open,
-                "Open EffectCraft Project",
-            );
+            self.auto.add_response("animation-open-effectcraft", &open, "Open EffectCraft Project");
             if open.clicked() {
                 self.dialogs.ask(
-                    craft_dialogs::FileDialog::open()
-                        .title("Open EffectCraft Project")
-                        .filter("EffectCraft Project", &["ecproj"]),
+                    craft_dialogs::FileDialog::open().title("Open EffectCraft Project").filter("EffectCraft Project", &["ecproj"]),
                     DialogAction::OpenEffectcraftComposition,
                 );
             }
-            let rig_button = ui.add_enabled(
-                !self.selected_character.is_empty(),
-                egui::Button::new("Open Character Rig"),
-            );
-            self.auto.add_response(
-                "animation-open-character-rig",
-                &rig_button,
-                "Open Character Rig",
-            );
+            let rig_button = ui.add_enabled(!self.selected_character.is_empty(), egui::Button::new("Open Character Rig"));
+            self.auto.add_response("animation-open-character-rig", &rig_button, "Open Character Rig");
             if rig_button.clicked() {
                 let params = json!({ "character": self.selected_character });
                 match self.session.execute("character.meta", params) {
                     Ok(metadata) => {
-                        let rig =
-                            metadata["views"]
-                                .as_array()
-                                .into_iter()
-                                .flatten()
-                                .find_map(|view| {
-                                    (view["view"].as_str() == Some(self.selected_view.as_str()))
-                                        .then(|| view["ecproj"].as_str())
-                                        .flatten()
-                                });
+                        let rig = metadata["views"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .find_map(|view| (view["view"].as_str() == Some(self.selected_view.as_str())).then(|| view["ecproj"].as_str()).flatten());
                         let result = if let Some(path) = rig {
                             self.open_effectcraft_composition(Path::new(path))
                         } else {
@@ -2195,28 +1652,16 @@ impl MagicApp {
                 }
             }
             if let Some(composition) = self.effectcraft_animation.as_mut() {
-                let preview_label = if composition.is_playing() {
-                    "Pause Preview"
-                } else {
-                    "Play Preview"
-                };
+                let preview_label = if composition.is_playing() { "Pause Preview" } else { "Play Preview" };
                 let preview = secondary_button(ui, preview_label);
-                self.auto
-                    .add_response("animation-preview", &preview, preview_label);
+                self.auto.add_response("animation-preview", &preview, preview_label);
                 if preview.clicked()
                     && let Err(error) = composition.preview("toggle")
                 {
                     self.status_line = error;
                 }
-                let save = ui.add_enabled(
-                    composition.is_dirty(),
-                    egui::Button::new("Save EffectCraft Project"),
-                );
-                self.auto.add_response(
-                    "animation-save-effectcraft",
-                    &save,
-                    "Save EffectCraft Project",
-                );
+                let save = ui.add_enabled(composition.is_dirty(), egui::Button::new("Save EffectCraft Project"));
+                self.auto.add_response("animation-save-effectcraft", &save, "Save EffectCraft Project");
                 if save.clicked() {
                     self.status_line = match composition.save() {
                         Ok(()) => "Saved EffectCraft project.".into(),
@@ -2225,9 +1670,7 @@ impl MagicApp {
                 }
                 if secondary_button(ui, "Save Animation As…").clicked() {
                     self.dialogs.ask(
-                        craft_dialogs::FileDialog::save()
-                            .title("Save EffectCraft Project As")
-                            .filter("EffectCraft Project", &["ecproj"]),
+                        craft_dialogs::FileDialog::save().title("Save EffectCraft Project As").filter("EffectCraft Project", &["ecproj"]),
                         DialogAction::SaveEffectcraftCompositionAs,
                     );
                 }
@@ -2241,8 +1684,7 @@ impl MagicApp {
                             .suffix(" s")
                             .update_while_editing(false),
                     );
-                    self.auto
-                        .add_response("animation-duration", &duration, "Composition duration");
+                    self.auto.add_response("animation-duration", &duration, "Composition duration");
                     if duration.changed()
                         && let Err(error) = composition.set_duration(seconds)
                     {
@@ -2251,8 +1693,7 @@ impl MagicApp {
                 }
                 ui.label(composition.name());
                 let send = secondary_button(ui, "Render to Studio");
-                self.auto
-                    .add_response("animation-send-to-studio", &send, "Render to Studio");
+                self.auto.add_response("animation-send-to-studio", &send, "Render to Studio");
                 if send.clicked()
                     && let Err(error) = self.send_active_animation_to_studio(ctx)
                 {
@@ -2264,52 +1705,30 @@ impl MagicApp {
 
     fn show_motion_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         let Some(project) = self.session.project_path.as_ref() else {
-            empty_state(
-                ui,
-                "Open a Project First",
-                "Open a .magic project to view its motion compositions.",
-            );
+            empty_state(ui, "Open a Project First", "Open a .magic project to view its motion compositions.");
             return;
         };
         let Some(host) = self.lyrics_host.as_mut() else {
-            empty_state(
-                ui,
-                "Motion Webview Unavailable",
-                "Open Motion in the desktop build with webview support.",
-            );
+            empty_state(ui, "Motion Webview Unavailable", "Open Motion in the desktop build with webview support.");
             return;
         };
         let rect = ui.available_rect_before_wrap();
         ui.allocate_rect(rect, Sense::hover());
-        host.show(
-            frame,
-            ctx,
-            rect,
-            &project.display().to_string(),
-            WebWorkspacePage::Motion,
-        );
+        host.show(frame, ctx, rect, &project.display().to_string(), WebWorkspacePage::Motion);
     }
 
     fn show_animation_view(&mut self, ctx: &Context, ui: &mut Ui, frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
-            empty_state(
-                ui,
-                "Open a Project First",
-                "Switch to Projects to open a .magic project or character study.",
-            );
+            empty_state(ui, "Open a Project First", "Switch to Projects to open a .magic project or character study.");
             return;
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(composition) = self.effectcraft_animation.as_mut() {
-            egui::Panel::bottom("animation_effectcraft_timeline")
-                .resizable(true)
-                .default_size(280.0)
-                .min_size(240.0)
-                .show(ui, |ui| {
-                    ui.set_min_height(ui.available_height());
-                    composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Timeline);
-                });
+            egui::Panel::bottom("animation_effectcraft_timeline").resizable(true).default_size(280.0).min_size(240.0).show(ui, |ui| {
+                ui.set_min_height(ui.available_height());
+                composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Timeline);
+            });
         }
 
         // Single full webview (animation.html includes assets rail + canvas + inspector + timeline).
@@ -2332,20 +1751,10 @@ impl MagicApp {
         egui::Panel::left("animation_left_rail")
             .resizable(true)
             .default_size(240.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_PANEL)
-                    .inner_margin(egui::Margin::same(8))
-                    .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
-            )
+            .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::same(8)).stroke(Stroke::new(1.0, BORDER_SUBTLE)))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("CHARACTERS & ASSETS")
-                            .size(11.0)
-                            .strong()
-                            .color(TEXT_SECONDARY),
-                    );
+                    ui.label(RichText::new("CHARACTERS & ASSETS").size(11.0).strong().color(TEXT_SECONDARY));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if secondary_button(ui, "+ Scribbles").clicked() {
                             self.assistant.open = true;
@@ -2356,105 +1765,62 @@ impl MagicApp {
                 });
                 ui.add_space(6.0);
 
-                ScrollArea::vertical()
-                    .id_salt("anim_chars_scroll")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        for ch in &self.characters {
-                            let id = ch["id"].as_str().unwrap_or_default().to_owned();
-                            let selected = self.selected_character == id;
-                            let button = pill_toggle(ui, selected, &id, ACCENT_TEAL);
-                            self.auto.add_response(
-                                &format!("animation-character-{id}"),
-                                &button,
-                                &id,
-                            );
-                            if button.clicked() {
-                                self.selected_character = id;
-                            }
+                ScrollArea::vertical().id_salt("anim_chars_scroll").auto_shrink([false, false]).show(ui, |ui| {
+                    for ch in &self.characters {
+                        let id = ch["id"].as_str().unwrap_or_default().to_owned();
+                        let selected = self.selected_character == id;
+                        let button = pill_toggle(ui, selected, &id, ACCENT_TEAL);
+                        self.auto.add_response(&format!("animation-character-{id}"), &button, &id);
+                        if button.clicked() {
+                            self.selected_character = id;
                         }
-                        ui.separator();
-                        ui.label(
-                            RichText::new("Connected Project Assets")
-                                .size(11.0)
-                                .color(TEXT_MUTED),
-                        );
-                        let assets = self.session.project_assets.clone();
-                        for asset in assets {
-                            card_frame().show(ui, |ui| {
-                                ui.label(
-                                    RichText::new(&asset.name)
-                                        .size(11.5)
-                                        .strong()
-                                        .color(TEXT_PRIMARY),
-                                );
-                                ui.horizontal(|ui| {
-                                    status_badge(ui, &asset.kind, ACCENT);
-                                    let is_composition = asset.path.as_ref().is_some_and(|path| {
-                                        path.extension().is_some_and(|extension| {
-                                            extension.eq_ignore_ascii_case("ecproj")
-                                        })
-                                    });
-                                    let select = ui.small_button(if is_composition {
-                                        "Open Composition"
-                                    } else {
-                                        "Select"
-                                    });
-                                    self.auto.add_response(
-                                        &format!("animation-asset-{}", asset.id),
-                                        &select,
-                                        &asset.name,
-                                    );
-                                    if select.clicked()
-                                        && let Err(error) = self.select_animation_asset(&asset.id)
-                                    {
-                                        self.last_error = Some(error);
-                                    }
-                                });
+                    }
+                    ui.separator();
+                    ui.label(RichText::new("Connected Project Assets").size(11.0).color(TEXT_MUTED));
+                    let assets = self.session.project_assets.clone();
+                    for asset in assets {
+                        card_frame().show(ui, |ui| {
+                            ui.label(RichText::new(&asset.name).size(11.5).strong().color(TEXT_PRIMARY));
+                            ui.horizontal(|ui| {
+                                status_badge(ui, &asset.kind, ACCENT);
+                                let is_composition =
+                                    asset.path.as_ref().is_some_and(|path| path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("ecproj")));
+                                let select = ui.small_button(if is_composition { "Open Composition" } else { "Select" });
+                                self.auto.add_response(&format!("animation-asset-{}", asset.id), &select, &asset.name);
+                                if select.clicked()
+                                    && let Err(error) = self.select_animation_asset(&asset.id)
+                                {
+                                    self.last_error = Some(error);
+                                }
                             });
-                            ui.add_space(3.0);
-                        }
-                    });
+                        });
+                        ui.add_space(3.0);
+                    }
+                });
             });
 
         // Right Inspector: Pipeline & Keyframes
         egui::Panel::right("animation_right_inspector")
             .resizable(true)
             .default_size(290.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_PANEL)
-                    .inner_margin(egui::Margin::same(8))
-                    .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
-            )
+            .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::same(8)).stroke(Stroke::new(1.0, BORDER_SUBTLE)))
             .show(ui, |ui| {
                 if section_header(ui, "2D Puppet Pipeline", true) {
                     ui.add_space(4.0);
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Character", |ui| {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.selected_character)
-                                    .desired_width(140.0),
-                            );
+                            ui.add(egui::TextEdit::singleline(&mut self.selected_character).desired_width(140.0));
                         });
                         prop_row(ui, "View", |ui| {
-                            craft_ui::ComboBox::from_id_salt("char_view_combo")
-                                .selected_text(&self.selected_view)
-                                .show_ui(ui, |ui| {
-                                    for v in ["front", "back", "side"] {
-                                        ui.selectable_value(
-                                            &mut self.selected_view,
-                                            v.to_owned(),
-                                            v,
-                                        );
-                                    }
-                                });
+                            craft_ui::ComboBox::from_id_salt("char_view_combo").selected_text(&self.selected_view).show_ui(ui, |ui| {
+                                for v in ["front", "back", "side"] {
+                                    ui.selectable_value(&mut self.selected_view, v.to_owned(), v);
+                                }
+                            });
                         });
                         ui.add_space(4.0);
                         ui.horizontal_wrapped(|ui| {
-                            if secondary_button(ui, "1. Mark (Scribbles)").clicked()
-                                && !self.selected_character.is_empty()
-                            {
+                            if secondary_button(ui, "1. Mark (Scribbles)").clicked() && !self.selected_character.is_empty() {
                                 self.run_command(
                                     ctx,
                                     "character.mark",
@@ -2464,9 +1830,7 @@ impl MagicApp {
                                     }),
                                 );
                             }
-                            if secondary_button(ui, "2. Cut (PhotoCraft)").clicked()
-                                && !self.selected_character.is_empty()
-                            {
+                            if secondary_button(ui, "2. Cut (PhotoCraft)").clicked() && !self.selected_character.is_empty() {
                                 self.run_command(
                                     ctx,
                                     "character.cut",
@@ -2476,9 +1840,7 @@ impl MagicApp {
                                     }),
                                 );
                             }
-                            if secondary_button(ui, "3. Rig (EffectCraft)").clicked()
-                                && !self.selected_character.is_empty()
-                            {
+                            if secondary_button(ui, "3. Rig (EffectCraft)").clicked() && !self.selected_character.is_empty() {
                                 self.run_command(
                                     ctx,
                                     "character.rig",
@@ -2497,31 +1859,18 @@ impl MagicApp {
                     ui.add_space(4.0);
                     card_frame().show(ui, |ui| {
                         prop_row(ui, "Action", |ui| {
-                            craft_ui::ComboBox::from_id_salt("char_action_combo")
-                                .selected_text(&self.anim_action)
-                                .show_ui(ui, |ui| {
-                                    for a in [
-                                        "idle",
-                                        "walk_down",
-                                        "walk_up",
-                                        "walk_left",
-                                        "walk_right",
-                                        "jump",
-                                        "turn",
-                                        "wave",
-                                    ] {
-                                        ui.selectable_value(&mut self.anim_action, a.to_owned(), a);
-                                    }
-                                });
+                            craft_ui::ComboBox::from_id_salt("char_action_combo").selected_text(&self.anim_action).show_ui(ui, |ui| {
+                                for a in ["idle", "walk_down", "walk_up", "walk_left", "walk_right", "jump", "turn", "wave"] {
+                                    ui.selectable_value(&mut self.anim_action, a.to_owned(), a);
+                                }
+                            });
                         });
                         prop_row(ui, "Time (s)", |ui| {
                             hot_number(ui, &mut self.anim_time, 0.0..=60.0, 0.05, "s");
                         });
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
-                            if primary_button(ui, "Key Action").clicked()
-                                && !self.selected_character.is_empty()
-                            {
+                            if primary_button(ui, "Key Action").clicked() && !self.selected_character.is_empty() {
                                 self.run_command(
                                     ctx,
                                     "character.action",
@@ -2534,9 +1883,7 @@ impl MagicApp {
                                     }),
                                 );
                             }
-                            if secondary_button(ui, "Render Clip").clicked()
-                                && !self.selected_character.is_empty()
-                            {
+                            if secondary_button(ui, "Render Clip").clicked() && !self.selected_character.is_empty() {
                                 self.run_command(
                                     ctx,
                                     "character.render",
@@ -2557,9 +1904,7 @@ impl MagicApp {
                     card_frame().show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             for app in ["effectcraft", "photocraft", "blender"] {
-                                if secondary_button(ui, app).clicked()
-                                    && !self.selected_character.is_empty()
-                                {
+                                if secondary_button(ui, app).clicked() && !self.selected_character.is_empty() {
                                     self.run_command(
                                         ctx,
                                         "character.open",
@@ -2578,93 +1923,82 @@ impl MagicApp {
     }
 
     fn show_animation_stage(&mut self, ctx: &Context, ui: &mut Ui) {
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_DEEP)
-                    .inner_margin(egui::Margin::same(12)),
-            )
-            .show(ui, |ui| {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    self.effectcraft_animation_toolbar(ctx, ui);
-                    if let Some(composition) = self.effectcraft_animation.as_mut() {
-                        composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Composition);
-                        return;
-                    }
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG_DEEP).inner_margin(egui::Margin::same(12))).show(ui, |ui| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.effectcraft_animation_toolbar(ctx, ui);
+                if let Some(composition) = self.effectcraft_animation.as_mut() {
+                    composition.show(ui, effectcraft_ui_egui::dock::PanelKind::Composition);
+                    return;
                 }
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("EffectCraft Puppet Stage")
-                            .size(13.0)
-                            .strong()
-                            .color(TEXT_PRIMARY),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if secondary_button(ui, "Sample Frame (`character.frame`)").clicked()
-                            && !self.selected_character.is_empty()
-                        {
-                            self.run_command(
-                                ctx,
-                                "character.frame",
-                                json!({
-                                    "character": self.selected_character,
-                                    "view": self.selected_view,
-                                    "time": self.anim_time,
-                                }),
-                            );
-                        }
-                        hot_number(ui, &mut self.anim_time, 0.0..=30.0, 0.05, "s");
-                    });
-                });
-                ui.add_space(8.0);
-                // Old TSX AnimationView auto-loaded frame on select; do same so canvas isn't empty.
-                if self.character_frame_path.is_none() && !self.selected_character.is_empty() {
-                    self.run_command(ctx, "character.frame", serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}));
-                }
-                if let Some(frame_path) = self.character_frame_path.clone()
-                    && let Some(tex) = self.load_texture(ctx, &frame_path)
-                {
-                    let avail = ui.available_size();
-                    let tex_size = tex.size_vec2();
-                    let scale = (avail.x / tex_size.x)
-                        .min(avail.y / tex_size.y)
-                        .clamp(0.1, 1.5);
-                    ui.centered_and_justified(|ui| {
-                        let resp = ui.image((tex.id(), tex_size * scale));
-                        frame_outline(ui.painter(), resp.rect, BORDER_STRONG);
-                    });
-                } else {
-                    empty_state(
-                        ui,
-                        "Open an Animation",
-                        "Open an EffectCraft composition from the asset list, or select a character and open its rig.",
-                    );
-                }
-                // Timeline scrubber below canvas (old TSX: anim-time-scrub + Refresh Frame)
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    ui.label(format!("Time ({:.2}s)", self.anim_time));
-                    let scrub = ui.add(egui::Slider::new(&mut self.anim_time, 0.0..=30.0).show_value(false));
-                    self.auto.add_response("anim-time-scrub", &scrub, "Time scrubber");
-                    if scrub.changed() && !self.selected_character.is_empty() {
-                        self.run_command(ctx, "character.frame", serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}));
+            }
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("EffectCraft Puppet Stage").size(13.0).strong().color(TEXT_PRIMARY));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if secondary_button(ui, "Sample Frame (`character.frame`)").clicked() && !self.selected_character.is_empty() {
+                        self.run_command(
+                            ctx,
+                            "character.frame",
+                            json!({
+                                "character": self.selected_character,
+                                "view": self.selected_view,
+                                "time": self.anim_time,
+                            }),
+                        );
                     }
-                    if secondary_button(ui, "Refresh Frame").clicked() && !self.selected_character.is_empty() {
-                        self.run_command(ctx, "character.frame", serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}));
-                    }
+                    hot_number(ui, &mut self.anim_time, 0.0..=30.0, 0.05, "s");
                 });
             });
+            ui.add_space(8.0);
+            // Old TSX AnimationView auto-loaded frame on select; do same so canvas isn't empty.
+            if self.character_frame_path.is_none() && !self.selected_character.is_empty() {
+                self.run_command(
+                    ctx,
+                    "character.frame",
+                    serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}),
+                );
+            }
+            if let Some(frame_path) = self.character_frame_path.clone()
+                && let Some(tex) = self.load_texture(ctx, &frame_path)
+            {
+                let avail = ui.available_size();
+                let tex_size = tex.size_vec2();
+                let scale = (avail.x / tex_size.x).min(avail.y / tex_size.y).clamp(0.1, 1.5);
+                ui.centered_and_justified(|ui| {
+                    let resp = ui.image((tex.id(), tex_size * scale));
+                    frame_outline(ui.painter(), resp.rect, BORDER_STRONG);
+                });
+            } else {
+                empty_state(ui, "Open an Animation", "Open an EffectCraft composition from the asset list, or select a character and open its rig.");
+            }
+            // Timeline scrubber below canvas (old TSX: anim-time-scrub + Refresh Frame)
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label(format!("Time ({:.2}s)", self.anim_time));
+                let scrub = ui.add(egui::Slider::new(&mut self.anim_time, 0.0..=30.0).show_value(false));
+                self.auto.add_response("anim-time-scrub", &scrub, "Time scrubber");
+                if scrub.changed() && !self.selected_character.is_empty() {
+                    self.run_command(
+                        ctx,
+                        "character.frame",
+                        serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}),
+                    );
+                }
+                if secondary_button(ui, "Refresh Frame").clicked() && !self.selected_character.is_empty() {
+                    self.run_command(
+                        ctx,
+                        "character.frame",
+                        serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}),
+                    );
+                }
+            });
+        });
     }
 
     #[cfg(target_arch = "wasm32")]
     fn show_studio_view(&mut self, ctx: &Context, ui: &mut Ui, _frame: &eframe::Frame) {
         if self.session.project_path.is_none() {
-            empty_state(
-                ui,
-                "Open a Project First",
-                "Switch to Projects to open a .magic project.",
-            );
+            empty_state(ui, "Open a Project First", "Switch to Projects to open a .magic project.");
             return;
         }
         egui::CentralPanel::default()
@@ -2780,12 +2114,7 @@ impl eframe::App for MagicApp {
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
-        if ctx.input(|input| input.viewport().close_requested())
-            && self
-                .studio_film
-                .as_ref()
-                .is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty)
-        {
+        if ctx.input(|input| input.viewport().close_requested()) && self.studio_film.as_ref().is_some_and(studio_filmcraft::StudioFilmcraft::is_dirty) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.view = ViewMode::Studio;
             self.status_line = "Save the open FilmCraft project before closing Magic.".into();
@@ -2794,12 +2123,7 @@ impl eframe::App for MagicApp {
         // Top Navigation & Assistant Bar
         egui::Panel::top("magic_top_bar")
             .exact_size(40.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_PANEL)
-                    .inner_margin(egui::Margin::symmetric(12, 6))
-                    .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
-            )
+            .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::symmetric(12, 6)).stroke(Stroke::new(1.0, BORDER_SUBTLE)))
             .show(ui, |ui| {
                 self.show_top_bar(ctx, ui);
             });
@@ -2807,19 +2131,10 @@ impl eframe::App for MagicApp {
         // Bottom Status Bar
         egui::Panel::bottom("magic_status_bar")
             .exact_size(24.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_PANEL)
-                    .inner_margin(egui::Margin::symmetric(12, 3))
-                    .stroke(Stroke::new(1.0, BORDER_SUBTLE)),
-            )
+            .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::symmetric(12, 3)).stroke(Stroke::new(1.0, BORDER_SUBTLE)))
             .show(ui, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        RichText::new("Fidget (text.complete) · Scribbles (image.generate)")
-                            .size(10.5)
-                            .color(TEXT_MUTED),
-                    );
+                    ui.label(RichText::new("Fidget (text.complete) · Scribbles (image.generate)").size(10.5).color(TEXT_MUTED));
                     let running;
                     let (status, color) = if let Some(busy) = &self.busy_command {
                         running = format!("Running {busy}…");
@@ -2833,11 +2148,7 @@ impl eframe::App for MagicApp {
                         if self.busy_command.is_some() {
                             ui.spinner();
                         }
-                        ui.add(
-                            egui::Label::new(RichText::new(status).size(11.0).color(color))
-                                .truncate(),
-                        )
-                        .on_hover_text(status);
+                        ui.add(egui::Label::new(RichText::new(status).size(11.0).color(color)).truncate()).on_hover_text(status);
                     });
                 });
             });
@@ -2851,12 +2162,7 @@ impl eframe::App for MagicApp {
                 .resizable(true)
                 .default_size(390.0)
                 .min_size(320.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(BG_PANEL)
-                        .inner_margin(egui::Margin::same(10))
-                        .stroke(Stroke::new(1.0, BORDER_STRONG)),
-                )
+                .frame(egui::Frame::new().fill(BG_PANEL).inner_margin(egui::Margin::same(10)).stroke(Stroke::new(1.0, BORDER_STRONG)))
                 .show(ui, |ui| {
                     queued_cmd = self.assistant.show(ui, &assets, busy);
                 });
@@ -2866,30 +2172,23 @@ impl eframe::App for MagicApp {
             #[cfg(not(target_arch = "wasm32"))]
             if self.assistant.browse_reference_requested {
                 self.assistant.browse_reference_requested = false;
-                self.dialogs.ask(
-                    craft_dialogs::FileDialog::open()
-                        .title("Select Reference PNG")
-                        .filter("PNG Image", &["png"]),
-                    DialogAction::AssistantReferenceImage,
-                );
+                self.dialogs
+                    .ask(craft_dialogs::FileDialog::open().title("Select Reference PNG").filter("PNG Image", &["png"]), DialogAction::AssistantReferenceImage);
             }
         }
 
         // Main Workspace View
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(BG_DEEP)
-                    .inner_margin(egui::Margin::same(8)),
-            )
-            .show(ui, |ui| match self.view {
-                ViewMode::Projects => { self.show_projects_view(ctx, ui, frame); self.show_settings_panel(ui); },
-                ViewMode::Storyboard => self.show_storyboard_view(ctx, ui, frame),
-                ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
-                ViewMode::Animation => self.show_animation_view(ctx, ui, frame),
-                ViewMode::Motion => self.show_motion_view(ctx, ui, frame),
-                ViewMode::Studio => self.show_studio_view(ctx, ui, frame),
-            });
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG_DEEP).inner_margin(egui::Margin::same(8))).show(ui, |ui| match self.view {
+            ViewMode::Projects => {
+                self.show_projects_view(ctx, ui, frame);
+                self.show_settings_panel(ui);
+            }
+            ViewMode::Storyboard => self.show_storyboard_view(ctx, ui, frame),
+            ViewMode::Lyrics => self.show_lyrics_view(ctx, ui, frame),
+            ViewMode::Animation => self.show_animation_view(ctx, ui, frame),
+            ViewMode::Motion => self.show_motion_view(ctx, ui, frame),
+            ViewMode::Studio => self.show_studio_view(ctx, ui, frame),
+        });
 
         if let Some(host) = self.lyrics_host.as_mut() {
             host.finish_frame();
