@@ -40,6 +40,7 @@ class FeedbackController {
       companions: window.magicCompanions?.snapshot() || null,
       panels,
       theatre: typeof theatreFeedback === "function" ? theatreFeedback() : null,
+      animation: typeof animationFeedback === "function" ? animationFeedback() : null,
       chat_selector: this.chatSelector(),
       rendered: this.paneRendered(),
       phase: this.phase,

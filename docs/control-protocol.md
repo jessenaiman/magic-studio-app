@@ -36,9 +36,9 @@ retryable message. UI requests wait at most 10 seconds for a frontend response.
 | --- | --- |
 | `engine.execute` | `{command, params}` dispatches to the same session as Tauri IPC. |
 | `engine.commands` | Returns registry descriptions. |
-| `ui.inspect` / `ui.state` | Returns actual frontend view, requested view, project, busy state and status. |
-| `ui.elements` | `{prefix?}` returns visible DOM IDs, labels, enabled state and bounds. |
-| `ui.set` / `ui.set_view` | `{view}` requests navigation. Read `ui.inspect` to observe the rendered result. |
+| `ui.inspect` / `ui.state` | Returns actual frontend view, requested view, project, busy state, alerts, and preserved-workspace feedback. |
+| `ui.elements` | `{prefix?}` returns DOM IDs, labels, values, enabled state and bounds across the active view and its same-origin workspace frames. |
+| `ui.set` / `ui.set_view` | `{view}` requests navigation. `ui.set {id,value}` changes a supported form control. Read `ui.inspect` or `ui.elements` to observe the result. |
 | `ui.click` | `{id}` clicks a visible, enabled DOM element. |
 | `ui.focus` | `{id}` focuses a DOM element; `{}` focuses the native window. |
 | `app.quit` | Exits the application after replying; no save prompt. Save first. |

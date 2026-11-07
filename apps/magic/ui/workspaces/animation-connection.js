@@ -1,5 +1,9 @@
 // Connect the preserved pre-egui inspectors to the current GLB and Theatre data.
 function connectRestoredAnimation() {
+  window.addEventListener("message", event => {
+    if (event.origin !== location.origin || event.source !== magicTheatre.frame?.contentWindow || !event.data?.magicTheatre) return;
+    if (event.data.type === "ready") { const field = $("motion-part-angle"); if (field) field.disabled = false; }
+  });
   const show3D = animationView.show3D.bind(animationView);
   animationView.show3D = async (...args) => {
     await show3D(...args);
@@ -43,9 +47,11 @@ function connectRestoredAnimation() {
     const field = new InspectorNumberField({ id: "motion-part-angle", label: "Rotation", min: -45, max: 45, step: 1, value: magicTheatre.rotations[part] || 0, unit: "°", control: "dial", change: value => {
       if (!part) return;
       magicTheatre.rotations[part] = value;
+      if (magicTheatre.part === part) magicTheatre.rotation = value;
       magicTheatre.frame?.contentWindow.postMessage({ magicTheatre: true, type: "set_rotation", part, rotation: value }, location.origin);
       animationDraw();
     } });
+    field.input.disabled = magicTheatre.availability !== "ready";
     const expression = motionSection("Expression & pose", [el("p", { class: "muted" }, part?.replace(/^mixamorig[:_]?/, "") || "Select a bone"), field.node], true);
     $("motion-layers")?.after(expression);
     void theatreContext();

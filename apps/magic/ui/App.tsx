@@ -1,12 +1,10 @@
-import { RestoredWorkspace } from "./components/RestoredWorkspace";
+import { PreservedWorkspaces } from "./components/RestoredWorkspace";
 import { invoke } from "@tauri-apps/api/core";
 import { connectDesktop } from "./desktop";
 import React, { useEffect, useRef, useState } from "react";
 import { executeCommand, WorkshopData } from "./api";
-import { AnimationView } from "./views/AnimationView";
 import { FilmView } from "./views/FilmView";
 import { HomeView } from "./views/HomeView";
-import { LyricsView } from "./views/LyricsView";
 import { StoryboardView } from "./views/StoryboardView";
 
 export type ViewMode =
@@ -85,9 +83,6 @@ export const App: React.FC = () => {
     return () => { disposed = true; ++refreshVersion.current; disconnect?.(); };
   }, []);
 
-  const songStage = data?.status?.stages?.find((s) => s.id === "song");
-  const audioInput = songStage?.inputs?.[0];
-  const assets = data?.assets?.assets || [];
   const projectName =
     data?.name ||
     projectPath?.split("/").pop()?.replace(/\.magic$/, "") ||
@@ -171,6 +166,7 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div style={{ overflow: "hidden", height: "100%" }}>
+        {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
         {view === "home" || !projectPath ? (
           <HomeView onOpenProject={openProject} onToast={showToast} />
         ) : view === "storyboard" ? (
@@ -180,24 +176,9 @@ export const App: React.FC = () => {
             onRefresh={() => refreshProject()}
             onToast={showToast}
           />
-        ) : view === "design" ? (
-          <LyricsView
-            projectPath={projectPath}
-            audioPath={audioInput?.path}
-            onToast={showToast}
-          />
-        ) : view === "animation" ? (
-          <AnimationView
-            projectPath={projectPath}
-            assets={assets}
-            onRefresh={() => refreshProject()}
-            onToast={showToast}
-          />
         ) : view === "studio" ? (
           <FilmView projectPath={projectPath} onToast={showToast} />
-        ) : (
-          <RestoredWorkspace key={projectPath} project={projectPath} page="project-workspace.html" title="Project workspace" onToast={showToast} />
-        )}
+        ) : null}
       </div>
 
       {/* Bottom Status Footer */}

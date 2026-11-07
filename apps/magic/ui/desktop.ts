@@ -38,7 +38,7 @@ export async function connectDesktop(
               return { title: doc.title, feedback: feedback && {
                 rendered: feedback.rendered, phase: feedback.phase, project: feedback.project, view: feedback.view,
                 errors: feedback.errors, pending_invokes: feedback.pending_invokes,
-                draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre,
+                draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre, animation: feedback.animation,
               } };
             }) }; break;
         case "ui.elements": {
@@ -70,6 +70,7 @@ export async function connectDesktop(
             const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set;
             setter?.call(element, value);
             element.dispatchEvent(new Event(element.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
+            if (element.value !== value) throw new Error("The control did not accept the requested value");
             result = { ok: true, id: params.id, value: element.value }; break;
           }
           const keys = Object.keys(params);

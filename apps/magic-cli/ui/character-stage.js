@@ -179,6 +179,7 @@ class Tripo3DStage {
     const loop = () => {
       if (!this.renderer)
         return;
+      if (window.__magicWorkspaceVisible === false) { this.rafId = requestAnimationFrame(loop); return; }
       this.controls?.update();
       if (this.gridHelper)
         this.gridHelper.visible = Boolean(motion.grid);

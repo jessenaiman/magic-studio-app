@@ -60,6 +60,7 @@
         wordsPanel.motionMediaStale = source?.stale;
       }
       await wordsOpen();
+      await acFeedback.report("ready");
     });
   </script>
 </body>

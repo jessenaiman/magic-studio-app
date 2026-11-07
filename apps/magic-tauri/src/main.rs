@@ -115,12 +115,16 @@ fn dispatch(
         _ => {}
     }
     let changed = !magic::commands::is_read_only_command(id, &params);
-    let result = desktop
-        .session
-        .lock()
-        .map_err(|e| e.to_string())?
-        .execute(id, params)
-        .map_err(|e| e.to_string())?;
+    let mut session = desktop.session.lock().map_err(|e| e.to_string())?;
+    if let Some(expected) = params.get("_expected_project").and_then(Value::as_str)
+        && session.project_path.as_ref().and_then(|path| path.to_str()) != Some(expected)
+    {
+        return Err(
+            "The active project changed; the previous workspace command was not run".into(),
+        );
+    }
+    let result = session.execute(id, params).map_err(|e| e.to_string())?;
+    drop(session);
     if notify && changed {
         app.emit("magic-session-changed", ())
             .map_err(|e| e.to_string())?;

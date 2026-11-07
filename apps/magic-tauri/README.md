@@ -60,8 +60,16 @@ The frontend and control listener share one engine session. Project opening runs
 in Tauri setup, after single-instance detection. A duplicate launch activates the
 existing window; use the explicit bridge to open another project or change views.
 
-Deferred: updater/signing, distribution, deep links, workspace UI restoration,
-and UI operations beyond those documented in the control protocol.
+Project, Animation, and Lyrics use the preserved sources in `apps/magic-cli/ui`,
+packaged by `apps/magic/vite.restored-workspaces.ts`. Their adapter calls the parent
+Tauri session directly; it does not start the retired HTTP UI server. Visited
+editors stay mounted across view changes to preserve drafts and selection, while
+hidden playback pauses. Studio's React component is unchanged. The new storyboard
+view continues to use DesignCraft.
+
+Deferred: updater/signing, distribution, deep links, advanced authoring operations
+whose native replacements are not yet available, and UI operations beyond those
+documented in the control protocol.
 
 Build checks:
 
