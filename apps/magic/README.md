@@ -45,7 +45,7 @@ Registered official v2 plugins:
 | window-state | Automatically saves and restores window state. |
 | single-instance | Subsequent launches activate the main window. Launch arguments are not yet forwarded to the frontend. |
 | opener | Existing external file/URL opener with default scopes. |
-| store | Persistent settings API available to the frontend. |
+| store | Registered but **not granted**: user prefs/layout persist only in `config.toml` (`craft-settings`, one authority). Window position is `window-state`. No `LazyStore` JSON — add a scoped file only for ephemeral frontend-only state (never prefs/duplicates `config.toml`). |
 | shell | Registered but **not granted**: `shell:default` was removed from the capability and the frontend does not use it, so the webview cannot spawn or open anything through it. Add a scoped permission when a feature needs one. |
 | log | Existing application logging. |
 | websocket | Existing WebSocket integration. |
