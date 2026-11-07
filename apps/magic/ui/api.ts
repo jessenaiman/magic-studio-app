@@ -138,6 +138,7 @@ export interface LyricDesignItem {
 }
 
 export interface WordsReadResponse {
+  kinetic_library?: Record<string, Record<string, { name: string }>>;
   document?: { animations?: WordsAnimation[] };
   in_video?: string[];
   fonts?: Array<{ family: string; path: string; weight?: string }>;

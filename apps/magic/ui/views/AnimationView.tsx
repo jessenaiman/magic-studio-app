@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   CharacterMetaResponse,
   CharacterSummary,
@@ -7,6 +7,8 @@ import {
   pickFile,
   ProjectAsset,
 } from "../api";
+
+const ModelStage = React.lazy(() => import("../components/ModelStage").then(module => ({ default: module.ModelStage })));
 
 interface AnimationViewProps {
   projectPath: string;
@@ -25,6 +27,9 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
   onRefresh,
   onToast,
 }) => {
+  const selectionRequest = useRef(0);
+  const [modelPath, setModelPath] = useState("");
+  const [modelClip, setModelClip] = useState("");
   const [characters, setCharacters] = useState<CharacterSummary[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>("");
   const [selectedView, setSelectedView] = useState<string>("front");
@@ -59,13 +64,17 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
   };
 
   const selectCharacter = async (charId: string, view = "front") => {
+    const request = ++selectionRequest.current;
     setSelectedCharId(charId);
     setSelectedView(view);
+    setMeta(null); setFramePath(""); setModelPath(""); setModelClip("");
     try {
       const m = await executeCommand<CharacterMetaResponse>("character.meta", {
         character: charId,
       });
+      if (request !== selectionRequest.current) return;
       setMeta(m);
+      setModelPath(m.tripo_3d?.primary_glb || "");
       const parts =
         m.views?.find((v) => v.view === view)?.parts || m.parts || [];
       if (parts.length > 0) {
@@ -74,14 +83,15 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
       if (m.shots && m.shots.length > 0) {
         setLastRenderedClip(m.shots[m.shots.length - 1].path);
       }
-      await refreshFrame(charId, view, propTime);
-    } catch {
-      setMeta(null);
+      if (m.views?.some(item => item.view === view && item.ecproj)) await refreshFrame(charId, view, propTime);
+    } catch (error) {
+      if (request === selectionRequest.current) { setMeta(null); onToast(String(error)); }
     }
   };
 
   const refreshFrame = async (charId: string, view: string, time: number) => {
     if (!charId) return;
+    const request = selectionRequest.current;
     try {
       const res = await executeCommand<{ frame?: string; path?: string }>(
         "character.frame",
@@ -93,7 +103,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         },
       );
       const p = res.frame || res.path || "";
-      if (p) setFramePath(`${p}?t=${Date.now()}`);
+      if (p && request === selectionRequest.current) setFramePath(`${p}?t=${Date.now()}`);
     } catch {
       // character may not have a rigged .ecproj yet
     }
@@ -101,6 +111,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
 
   useEffect(() => {
     void loadCharacters();
+    return () => { ++selectionRequest.current; };
   }, [projectPath]);
 
   const handleImportAsset = async () => {
@@ -325,7 +336,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
               >
                 <span>{c.name || c.id}</span>
                 <span className="muted" style={{ fontSize: "11px" }}>
-                  {(c.views || ["front"]).join(", ")}
+                  {c.tripo_3d?.primary_glb ? "3D · animated model" : (c.views || []).join(", ")}
                 </span>
               </button>
             ))}
@@ -408,7 +419,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "flex-start",
           gap: "12px",
           overflow: "auto",
         }}
@@ -426,7 +437,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
             {selectedCharId ? `· ${selectedCharId} (${selectedView})` : ""}
           </strong>
           <div style={{ display: "flex", gap: "6px" }}>
-            {selectedCharId && (
+            {selectedCharId && !modelPath && (
               <>
                 <button
                   id="anim-open-effectcraft"
@@ -463,8 +474,10 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
           id="anim-stage-preview"
           style={{
             width: "100%",
-            maxWidth: "760px",
-            aspectRatio: "16 / 9",
+            maxWidth: modelPath ? undefined : "760px",
+            flex: modelPath ? 1 : undefined,
+            minHeight: modelPath ? 340 : undefined,
+            aspectRatio: modelPath ? undefined : "16 / 9",
             background: "#0d1016",
             border: "1px solid var(--border, #2a313c)",
             borderRadius: "8px",
@@ -474,9 +487,13 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
             overflow: "hidden",
           }}
         >
-          {framePath ? (
+          {modelPath ? (
+            <React.Suspense fallback={<p>Loading 3D stage…</p>}>
+              <ModelStage path={modelPath} onClip={(name, duration) => { setModelClip(name); setShotDuration(duration); }} />
+            </React.Suspense>
+          ) : framePath ? (
             <img
-              src={fileUrl(framePath.split("?")[0])}
+              src={`${fileUrl(framePath.split("?")[0])}?${framePath.split("?")[1] || ""}`}
               alt={selectedCharId}
               style={{
                 maxWidth: "100%",
@@ -493,8 +510,8 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
           )}
         </div>
 
-        {/* Time Scrubber */}
-        <div
+        {/* EffectCraft time scrubber; GLB playback owns its own clock. */}
+        {!modelPath && <div
           style={{
             width: "100%",
             display: "flex",
@@ -525,7 +542,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
           >
             Refresh Frame
           </button>
-        </div>
+        </div>}
 
         {inspectJson && (
           <pre
@@ -558,6 +575,25 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         }}
       >
         <strong>Motion & Layer Inspector</strong>
+        {modelPath ? <>
+          <label style={{ display: "grid", gap: 6 }}>Model
+            <select id="animation-model-select" value={modelPath} onChange={event => setModelPath(event.target.value)}>
+              {[...new Set([meta?.tripo_3d?.primary_glb, ...(meta?.tripo_3d?.glb_files || [])].filter((path): path is string => !!path))].map(path => <option key={path} value={path}>{path.split("/").pop()}</option>)}
+            </select>
+          </label>
+          <p className="muted">Play and compare the saved animation clips. Preview controls do not change the source model.</p>
+          <p style={{ overflowWrap: "anywhere" }}>{modelClip || "No embedded animation selected"}</p>
+          <label style={{ display: "grid", gap: 6 }}>Motion duration (seconds)
+            <input id="animation-motion-duration" type="number" min={.1} step={.1} value={shotDuration} onChange={event => setShotDuration(Number(event.target.value))} />
+          </label>
+          <button id="animation-prepare-motion" className="start" disabled={busy || !modelClip || shotDuration <= 0 || modelPath !== meta?.tripo_3d?.primary_glb}
+            onClick={async () => { setBusy(true); try {
+              const result = await executeCommand("animation.prepare_motion", { character: selectedCharId, clip: modelClip, option: "baseline", duration: shotDuration });
+              setInspectJson(JSON.stringify(result, null, 2)); onToast("Prepared the selected motion clip"); await onRefresh();
+            } catch (error) { onToast(String(error)); } finally { setBusy(false); } }}>Prepare motion clip</button>
+          <button id="animation-open-blender" className="ghost" onClick={() => void executeCommand("character.open", { character: selectedCharId, app: "blender" }).catch(error => onToast(String(error)))}>Open character in Blender</button>
+          <p className="muted">Use the primary character model to prepare motion. Other models are available here for comparison.</p>
+        </> : <>
 
         <label style={{ display: "grid", gap: "4px", fontSize: "12px" }}>
           <span>Part / Layer</span>
@@ -721,6 +757,7 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         >
           Place Clip on Film Timeline
         </button>
+        </>}
       </aside>
     </div>
   );

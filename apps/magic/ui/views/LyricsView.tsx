@@ -1,9 +1,11 @@
+import { LyricCanvas } from "../components/LyricCanvas";
 import React, { useEffect, useRef, useState } from "react";
 import {
   executeCommand,
   lyricSections,
   fileUrl,
   WordsAnimation,
+  LyricDesignItem,
   WordsLineItem,
   WordsReadResponse,
 } from "../api";
@@ -19,6 +21,11 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   audioPath,
   onToast,
 }) => {
+  const [draftDesign, setDraftDesign] = useState<WordsAnimation["design"]>({});
+  const [selectedWord, setSelectedWord] = useState<number | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [library, setLibrary] = useState<Record<string, Record<string, { name: string }>>>({});
   const [animations, setAnimations] = useState<WordsAnimation[]>([]);
   const [selectedAnimId, setSelectedAnimId] = useState<string>("");
   const [selectedLineIdx, setSelectedLineIdx] = useState<number>(0);
@@ -37,6 +44,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   const loadWords = async () => {
     try {
       const res = await executeCommand<WordsReadResponse>("words.read");
+      setLibrary(res.kinetic_library || {});
       const list = lyricSections(res);
       setAnimations(list);
       if (list.length > 0) {
@@ -50,6 +58,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   };
 
   const selectAnimation = (anim: WordsAnimation) => {
+    setDraftDesign(structuredClone(anim.design || {})); setSelectedWord(null); setDirty(false);
     setSelectedAnimId(anim.animation_id);
     setSelectedLineIdx(0);
     setFontSize(anim.style?.size ?? 84);
@@ -69,6 +78,13 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   const currentAnim = animations.find((a) => a.animation_id === selectedAnimId);
   const lines: WordsLineItem[] = currentAnim?.lines || [];
   const activeLine = lines[selectedLineIdx] || lines[0];
+  const lineId = activeLine?.line_id || "line";
+  const items = draftDesign?.[lineId]?.items || [];
+  const selectedItem = selectedWord == null ? undefined : items[selectedWord];
+  const changeItem = (index: number, patch: Partial<LyricDesignItem>) => {
+    setDraftDesign(design => ({ ...design, [lineId]: { ...design?.[lineId], items: (design?.[lineId]?.items || []).map((item, i) => i === index ? { ...item, ...patch } : item) } }));
+    setDirty(true);
+  };
 
   const handleSaveDesign = async () => {
     if (!currentAnim) return;
@@ -85,10 +101,11 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
         x: posX,
         y: posY,
       };
-      await executeCommand("words.save", {
+      const result = await executeCommand<{ ok: boolean; conflict?: boolean; reason?: string }>("words.save", {
         animation_id: currentAnim.animation_id,
         expected_source_revision: currentAnim.source_revision ?? 0,
         style,
+        design: draftDesign,
         kinetic: {
           ...(currentAnim.kinetic || {}),
           style,
@@ -96,6 +113,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
           entrance,
         },
       });
+      if (!result.ok || result.conflict) throw new Error(result.reason || "The lyric section changed; reload before saving.");
       await executeCommand("words.apply", {
         animation_id: currentAnim.animation_id,
         use: true,
@@ -139,7 +157,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   };
 
   const seekToLine = (line: WordsLineItem, idx: number) => {
-    setSelectedLineIdx(idx);
+    setSelectedLineIdx(idx); setSelectedWord(null);
     if (typeof line.start === "number" && audioRef.current) {
       audioRef.current.currentTime = line.start;
       setCurrentTime(line.start);
@@ -195,7 +213,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                   anim.animation_id === selectedAnimId ? "start" : "ghost"
                 }
                 style={{ textAlign: "left", justifyContent: "space-between" }}
-                onClick={() => selectAnimation(anim)}
+                onClick={() => { if (!dirty || window.confirm("Discard unsaved lyric edits?")) selectAnimation(anim); }}
               >
                 <span>{anim.title || anim.section || anim.animation_id}</span>
                 {anim.used_in_video && (
@@ -280,7 +298,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
               disabled={busy || !currentAnim}
               onClick={handleSaveDesign}
             >
-              {busy ? "Saving…" : "Save Design"}
+              {busy ? "Saving…" : dirty ? "Save Design •" : "Save Design"}
             </button>
           </div>
         </div>
@@ -289,6 +307,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
         <div
           id="words-spatial-stage"
           onClick={(e) => {
+            if (items.length) return;
             const rect = e.currentTarget.getBoundingClientRect();
             const nx = Math.round(((e.clientX - rect.left) / rect.width) * 100);
             const ny = Math.round(((e.clientY - rect.top) / rect.height) * 100);
@@ -310,6 +329,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
           }}
           title="Click anywhere on the 16:9 stage to position the selected lyric line"
         >
+          {items.length ? <LyricCanvas items={items} words={currentAnim?.words || []} selected={selectedWord} time={currentTime} playing={playing} onSelect={setSelectedWord} onChange={changeItem} /> : (
           <div
             style={{
               position: "absolute",
@@ -333,6 +353,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
               currentAnim?.words?.map((w) => w.text).join(" ") ||
               "Select or design a lyric section"}
           </div>
+          )}
           <span
             className="muted"
             style={{
@@ -360,6 +381,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
               ref={audioRef}
               id="words-audio-player"
               controls
+              onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
               src={fileUrl(audioPath)}
               onTimeUpdate={(e) => {
                 const t = e.currentTarget.currentTime;
@@ -402,14 +424,22 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
         }}
       >
         <strong>Typography & Motion Inspector</strong>
+        {!!items.length && <label>Editing
+          <select id="words-edit-target" value={selectedWord ?? "section"} onChange={event => setSelectedWord(event.target.value === "section" ? null : Number(event.target.value))}>
+            <option value="section">Section defaults</option>
+            {items.map((item, i) => <option key={i} value={i}>{item.text || item.word_ids?.join(", ")}</option>)}
+          </select>
+          <p className="muted">Select a word to edit its authored styling, or drag it on the stage. Existing motion keys are preserved.</p>
+        </label>}
 
         <label style={{ display: "grid", gap: "4px", fontSize: "12px" }}>
           <span>Font Family</span>
           <select
             id="words-font"
-            value={fontFamily}
-            onChange={(e) => setFontFamily(e.target.value)}
+            value={selectedItem?.font || fontFamily}
+            onChange={(e) => { if (selectedWord != null) changeItem(selectedWord, { font: e.target.value }); else { setFontFamily(e.target.value); setDirty(true); } }}
           >
+            <option value={selectedItem?.font || fontFamily}>{selectedItem?.font || fontFamily} (current)</option>
             <option value="Inter">Inter</option>
             <option value="Montserrat">Montserrat</option>
             <option value="Playfair Display">Playfair Display</option>
@@ -419,14 +449,14 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
         </label>
 
         <label style={{ display: "grid", gap: "4px", fontSize: "12px" }}>
-          <span>Font Size ({fontSize}px)</span>
+          <span>Font Size ({selectedItem?.size ?? fontSize}px)</span>
           <input
             id="words-size"
             type="range"
             min={32}
             max={180}
-            value={fontSize}
-            onChange={(e) => setFontSize(Number(e.target.value))}
+            value={selectedItem?.size ?? fontSize}
+            onChange={(e) => { if (selectedWord != null) changeItem(selectedWord, { size: Number(e.target.value) }); else { setFontSize(Number(e.target.value)); setDirty(true); } }}
           />
         </label>
 
@@ -436,8 +466,8 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
             <input
               id="words-color"
               type="color"
-              value={fontColor}
-              onChange={(e) => setFontColor(e.target.value)}
+              value={selectedItem?.color || fontColor}
+              onChange={(e) => { if (selectedWord != null) changeItem(selectedWord, { color: e.target.value }); else { setFontColor(e.target.value); setDirty(true); } }}
             />
             <code>{fontColor}</code>
           </div>
@@ -463,10 +493,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
             value={layout}
             onChange={(e) => setLayout(e.target.value)}
           >
-            <option value="center-stack">Center Stack</option>
-            <option value="lower-third">Lower Third</option>
-            <option value="split-callout">Split Callout</option>
-            <option value="diagonal-burst">Diagonal Burst</option>
+            {Object.entries(library.layouts || { [layout]: { name: layout } }).map(([id, item]) => <option key={id} value={id}>{item.name}</option>)}
           </select>
         </label>
 
@@ -477,10 +504,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
             value={entrance}
             onChange={(e) => setEntrance(e.target.value)}
           >
-            <option value="per-word-rise">Per-Word Rise</option>
-            <option value="typewriter">Typewriter</option>
-            <option value="pop-scale">Pop Scale</option>
-            <option value="fade-slide">Fade Slide</option>
+            {Object.entries(library.entrances || { [entrance]: { name: entrance } }).map(([id, item]) => <option key={id} value={id}>{item.name}</option>)}
           </select>
         </label>
 
