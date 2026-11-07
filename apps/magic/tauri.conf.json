@@ -15,11 +15,16 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["$HOME/**", "/run/media/**"],
+          "allow": [
+            "$HOME/**",
+            "/run/media/**"
+          ],
           "requireLiteralLeadingDot": false
         }
       },
-      "capabilities": ["default"]
+      "capabilities": [
+        "default"
+      ]
     },
     "windows": [
       {
@@ -33,6 +38,94 @@
   },
   "bundle": {
     "active": false,
-    "icon": ["icons/icon.png"]
+    "icon": [
+      "icons/icon.png"
+    ]
+  },
+  "plugins": {
+    "cli": {
+      "description": "Magic Studio \u2014 CommandSpec registry CLI (162 commands via magic-engine)",
+      "args": [
+        {
+          "name": "project",
+          "long": "project",
+          "takesValue": true,
+          "description": "Open .magic project"
+        },
+        {
+          "name": "view",
+          "takesValue": true,
+          "possibleValues": [
+            "projects",
+            "storyboard",
+            "lyrics",
+            "animation",
+            "motion",
+            "studio"
+          ],
+          "description": "Start on a view"
+        },
+        {
+          "name": "control",
+          "takesValue": true,
+          "description": "--control PORT loopback bridge (127.0.0.1 + token)"
+        },
+        {
+          "name": "lyrics",
+          "description": "Open Lyrics (song folder, no .magic)"
+        }
+      ],
+      "subcommands": {
+        "mcp": {
+          "description": "Serve MCP on stdio / --bridge"
+        },
+        "ui": {
+          "description": "Inspect live window",
+          "args": [
+            {
+              "name": "action",
+              "possibleValues": [
+                "inspect",
+                "elements",
+                "view",
+                "feedback"
+              ]
+            }
+          ]
+        },
+        "storyboard": {
+          "description": "Storyboard document",
+          "subcommands": {
+            "pages": {},
+            "slots": {},
+            "set": {},
+            "export": {}
+          }
+        },
+        "commands": {
+          "description": "List engine commands"
+        },
+        "exec": {
+          "description": "Run one command",
+          "args": [
+            {
+              "name": "id",
+              "index": 1,
+              "takesValue": true
+            }
+          ]
+        },
+        "describe": {
+          "description": "Describe one command",
+          "args": [
+            {
+              "name": "id",
+              "index": 1,
+              "takesValue": true
+            }
+          ]
+        }
+      }
+    }
   }
 }
