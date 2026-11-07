@@ -126,7 +126,7 @@ fn specs_skills_and_crew() -> Vec<CommandSpec> {
         query!(
             "project.identity",
             "Canonical Project Identity",
-            "{\"path\":\"existing .magic path\"}",
+            "{\"path\":\"optional existing .magic path; defaults to the open project\"}",
             crate::project::cmd_project_identity
         ),
         query!(

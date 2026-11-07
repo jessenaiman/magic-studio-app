@@ -1032,7 +1032,11 @@ pub fn cmd_project_load_asset(s: &mut Session, params: &Value) -> Result<Value> 
 
 /// Canonical paths identify existing projects without changing their file format.
 pub fn cmd_project_identity(s: &mut Session, p: &Value) -> Result<Value> {
-    let path = project_file_path(s, p)?;
+    let path = if p.get("path").is_some() {
+        project_file_path(s, p)?
+    } else {
+        s.project_path.clone().ok_or_else(|| EngineError::InvalidParams("No project is open".into()))?
+    };
     let path = std::fs::canonicalize(path)?;
     Ok(json!({"ok":true,"project":path,"project_id":path,"identity_kind":"canonical path"}))
 }

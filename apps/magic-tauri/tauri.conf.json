@@ -4,8 +4,14 @@
   "identifier": "ai.storyteller.magicstudio",
   "version": "0.17.0",
   "build": {
-    "beforeDevCommand": "bun run dev --prefix ../magic",
-    "beforeBuildCommand": "bun run build --prefix ../magic",
+    "beforeDevCommand": {
+      "script": "bun run dev",
+      "cwd": "../magic"
+    },
+    "beforeBuildCommand": {
+      "script": "bun run build",
+      "cwd": "../magic"
+    },
     "frontendDist": "../magic/dist",
     "devUrl": "http://localhost:1420"
   },
@@ -42,91 +48,5 @@
     "icon": [
       "icons/icon.png"
     ]
-  },
-  "plugins": {
-    "cli": {
-      "description": "Magic Studio \u2014 CommandSpec registry CLI (162 commands via magic-engine)",
-      "args": [
-        {
-          "name": "project",
-          "long": "project",
-          "takesValue": true,
-          "description": "Open .magic project"
-        },
-        {
-          "name": "view",
-          "takesValue": true,
-          "possibleValues": [
-            "projects",
-            "storyboard",
-            "lyrics",
-            "animation",
-            "motion",
-            "studio"
-          ],
-          "description": "Start on a view"
-        },
-        {
-          "name": "control",
-          "takesValue": true,
-          "description": "--control PORT loopback bridge (127.0.0.1 + token)"
-        },
-        {
-          "name": "lyrics",
-          "description": "Open Lyrics (song folder, no .magic)"
-        }
-      ],
-      "subcommands": {
-        "mcp": {
-          "description": "Serve MCP on stdio / --bridge"
-        },
-        "ui": {
-          "description": "Inspect live window",
-          "args": [
-            {
-              "name": "action",
-              "possibleValues": [
-                "inspect",
-                "elements",
-                "view",
-                "feedback"
-              ]
-            }
-          ]
-        },
-        "storyboard": {
-          "description": "Storyboard document",
-          "subcommands": {
-            "pages": {},
-            "slots": {},
-            "set": {},
-            "export": {}
-          }
-        },
-        "commands": {
-          "description": "List engine commands"
-        },
-        "exec": {
-          "description": "Run one command",
-          "args": [
-            {
-              "name": "id",
-              "index": 1,
-              "takesValue": true
-            }
-          ]
-        },
-        "describe": {
-          "description": "Describe one command",
-          "args": [
-            {
-              "name": "id",
-              "index": 1,
-              "takesValue": true
-            }
-          ]
-        }
-      }
-    }
   }
 }

@@ -1,10 +1,8 @@
 //! `magic-cli`: thin headless CLI over `magic::Session` (modeled on `filmcraft-cli`).
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
-
-mod ui_server;
 
 #[derive(Parser)]
 #[command(
@@ -15,7 +13,7 @@ pub struct Cli {
     /// Open this .magic project first (or use the last opened project from session file)
     #[arg(long, global = true)]
     pub project: Option<String>,
-    /// Connect to a running `magic --control <PORT>` window (or auto-discover Unix socket)
+    /// Connect to a running `magic-tauri --control <PORT>` window
     #[arg(long, global = true)]
     pub bridge: Option<String>,
     /// Preview mutations without applying them
@@ -53,21 +51,11 @@ enum Cmd {
         file: String,
     },
     /// Serve the Model Context Protocol (JSON-RPC 2.0 over stdio)
-    Mcp {
-        /// Optional loopback `--control` address of a running `magic` desktop window
-        #[arg(long)]
-        connect: Option<String>,
-        /// Optional bearer token for the `--control` channel
-        #[arg(long)]
-        token: Option<String>,
-        /// Follow a live local Magic window on Unix, or use a headless session when none is open
-        #[arg(long, conflicts_with_all = ["connect", "bridge", "project"])]
-        follow_window: bool,
-    },
-    /// Open the Magic web UI (or inspect a live desktop window: `magic-cli ui inspect|state|feedback|unconfigured|elements`)
+    Mcp,
+    /// Control a live desktop window through --bridge
     Ui {
-        /// Optional live window action (`inspect`, `state`, `feedback`, `unconfigured`, `elements`, `focus`, `view`, `quit`)
-        action: Option<String>,
+        /// Live window action (`inspect`, `state`, `feedback`, `unconfigured`, `elements`, `focus`, `view`, `quit`)
+        action: String,
         /// Optional argument for `ui focus <id>` or `ui view <mode>`
         target: Option<String>,
         /// JSON parameters for the live UI action
@@ -75,12 +63,6 @@ enum Cmd {
         params: Option<String>,
         /// Additional parameters as key=value pairs
         arguments: Vec<String>,
-        /// Loopback port to serve on when launching the web UI
-        #[arg(long, default_value_t = 8765)]
-        port: u16,
-        /// Print the address instead of opening the browser
-        #[arg(long)]
-        no_open: bool,
     },
     /// Work on a storyboard document built from the neutral template
     Storyboard {
@@ -518,41 +500,6 @@ fn parse_params(tokens: &[String], raw: Option<&str>) -> Result<Value, String> {
     Ok(params)
 }
 
-#[cfg(unix)]
-fn connect_live_socket() -> Result<Option<std::os::unix::net::UnixStream>, String> {
-    use std::io::ErrorKind::{ConnectionRefused, NotFound};
-    use std::os::unix::net::UnixStream;
-
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("magic");
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == NotFound => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-    let mut live = None;
-    for entry in entries {
-        let path = entry.map_err(|error| error.to_string())?.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("sock") {
-            continue;
-        }
-        match UnixStream::connect(&path) {
-            Ok(_) if live.is_some() => {
-                return Err(
-                    "Multiple Magic windows are open. Select one with an explicit control address."
-                        .into(),
-                );
-            }
-            Ok(stream) => live = Some(stream),
-            Err(error) if matches!(error.kind(), ConnectionRefused | NotFound) => {}
-            Err(error) => return Err(format!("connect {}: {error}", path.display())),
-        }
-    }
-    Ok(live)
-}
-
 fn control_address(spec: &str) -> String {
     if spec.contains(':') {
         spec.to_owned()
@@ -562,80 +509,12 @@ fn control_address(spec: &str) -> String {
 }
 
 fn call_live_control(bridge: Option<&str>, method: &str, params: Value) -> Result<Value, String> {
-    if let Some(spec) = bridge {
-        let addr = control_address(spec);
-        let stream =
-            std::net::TcpStream::connect(&addr).map_err(|e| format!("connect {addr}: {e}"))?;
-        stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(300)))
-            .map_err(|e| e.to_string())?;
-        call_control_stream(stream, method, params)
-    } else {
-        #[cfg(unix)]
-        {
-            let stream = connect_live_socket()?.ok_or_else(|| {
-                "No running Magic desktop window found (start `magic` or pass `--bridge <PORT>`)"
-                    .to_string()
-            })?;
-            call_unix_control(stream, method, params)
-        }
-        #[cfg(not(unix))]
-        {
-            return Err("Pass `--bridge <PORT>` to connect to a running Magic window".into());
-        }
-    }
-}
-
-#[cfg(unix)]
-fn call_unix_control(
-    stream: std::os::unix::net::UnixStream,
-    method: &str,
-    params: Value,
-) -> Result<Value, String> {
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(300)))
-        .map_err(|e| e.to_string())?;
-    call_control_stream(stream, method, params)
-}
-
-fn call_control_stream(
-    mut stream: impl Read + Write,
-    method: &str,
-    params: Value,
-) -> Result<Value, String> {
-    writeln!(
-        stream,
-        "{}",
-        json!({ "id": 1, "method": method, "params": params })
-    )
-    .map_err(|e| e.to_string())?;
-    stream.flush().map_err(|e| e.to_string())?;
-    let mut reply_line = String::new();
-    BufReader::new(stream)
-        .read_line(&mut reply_line)
-        .map_err(|e| e.to_string())?;
-    let parsed: Value =
-        serde_json::from_str(reply_line.trim()).map_err(|e| format!("invalid reply: {e}"))?;
-    if parsed["ok"].as_bool() == Some(true) {
-        Ok(parsed["result"].clone())
-    } else {
-        Err(parsed["error"]
-            .as_str()
-            .unwrap_or("control request failed")
-            .to_owned())
-    }
-}
-
-struct FollowWindow(magic_mcp::Headless);
-
-impl magic_mcp::Backend for FollowWindow {
-    fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
-        #[cfg(unix)]
-        if let Some(stream) = connect_live_socket()? {
-            return call_unix_control(stream, id, params);
-        }
-        self.0.execute(id, params)
-    }
+    let spec = bridge.ok_or("Live UI commands require --bridge ADDRESS")?;
+    let mut remote = magic_mcp::Remote::new(
+        control_address(spec),
+        std::env::var("MAGIC_CONTROL_TOKEN").ok(),
+    );
+    magic_mcp::Backend::execute(&mut remote, method, params)
 }
 
 fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Result<Value, String> {
@@ -654,16 +533,23 @@ fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Resul
 }
 
 fn dispatch(
-    session: &mut magic::Session,
+    session: &mut Option<magic::Session>,
     bridge: Option<&str>,
     id: &str,
     params: Value,
     dry: bool,
 ) -> Result<Value, String> {
-    if dry || !(bridge.is_some() || id.starts_with("ui.")) {
-        exec_one(session, id, params, dry)
-    } else {
+    if dry {
+        Ok(json!({ "dry_run": true, "id": id, "params": params }))
+    } else if bridge.is_some() || id.starts_with("ui.") {
         call_live_control(bridge, id, params)
+    } else {
+        exec_one(
+            session.as_mut().expect("headless session"),
+            id,
+            params,
+            false,
+        )
     }
 }
 
@@ -733,11 +619,22 @@ fn resolve_shorthand(tokens: &[String]) -> Result<(String, Vec<String>), String>
 
 fn main() {
     let cli = Cli::parse();
-    let mut session = magic::Session::user_session();
-    if let Some(proj) = cli.project.clone().or_else(load_saved_project)
+    let live = cli.bridge.is_some();
+    if live && cli.project.is_some() {
+        eprintln!(
+            "--project opens a headless session; with --bridge use exec project.open path=..."
+        );
+        std::process::exit(2);
+    }
+    let mut session = (!live).then(magic::Session::user_session);
+    if !live
+        && let Some(proj) = cli.project.clone().or_else(load_saved_project)
         && std::path::Path::new(&proj).is_file()
     {
-        let _ = session.execute("project.open", json!({ "path": proj }));
+        let _ = session
+            .as_mut()
+            .expect("headless session")
+            .execute("project.open", json!({ "path": proj }));
         if cli.project.is_some() {
             save_project(Some(&proj));
         }
@@ -758,8 +655,9 @@ fn main() {
                 println!();
             }
             Some(Cmd::Commands { filter }) => {
-                emit(&exec_one(
+                emit(&dispatch(
                     &mut session,
+                    bridge,
                     "command.list",
                     json!({ "filter": filter.unwrap_or_default() }),
                     false,
@@ -805,23 +703,17 @@ fn main() {
                     println!("{}", json!({ "line": n + 1, "ok": true, "result": res }));
                 }
             }
-            Some(Cmd::Mcp {
-                connect,
-                token,
-                follow_window,
-            }) => {
-                if let Some(addr) = connect.or(cli.bridge) {
+            Some(Cmd::Mcp) => {
+                if let Some(addr) = cli.bridge {
                     let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(
                         control_address(&addr),
-                        token,
+                        std::env::var("MAGIC_CONTROL_TOKEN").ok(),
                     ));
                     srv.serve().map_err(|e| e.to_string())?;
-                } else if follow_window {
-                    let mut srv =
-                        magic_mcp::Server::new(FollowWindow(magic_mcp::Headless::new(session)));
-                    srv.serve().map_err(|e| e.to_string())?;
                 } else {
-                    let mut srv = magic_mcp::Server::new(magic_mcp::Headless::new(session));
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Headless::new(
+                        session.take().expect("headless session"),
+                    ));
                     srv.serve().map_err(|e| e.to_string())?;
                 }
             }
@@ -830,32 +722,35 @@ fn main() {
                 target,
                 params,
                 arguments,
-                port,
-                no_open,
             }) => {
-                if let Some(act) = action {
-                    let (method, params) = ui_action(&act, target, arguments, params.as_deref())?;
-                    let res = if cli.dry_run {
-                        exec_one(&mut session, &method, params, true)?
-                    } else {
-                        call_live_control(bridge, &method, params)?
-                    };
-                    emit(&res);
-                } else {
-                    ui_server::serve(&mut session, port, !no_open)?;
+                if bridge.is_none() {
+                    return Err("Live UI commands require --bridge ADDRESS".into());
                 }
+                let (method, params) = ui_action(&action, target, arguments, params.as_deref())?;
+                let res = if cli.dry_run {
+                    json!({ "dry_run": true, "id": method, "params": params })
+                } else {
+                    call_live_control(bridge, &method, params)?
+                };
+                emit(&res);
             }
             Some(Cmd::Storyboard {
                 project,
                 document,
                 command,
             }) => {
+                if bridge.is_some() && project.is_some() {
+                    return Err("storyboard --project cannot be combined with --bridge; use exec project.open path=...".into());
+                }
                 // A project named here applies to this invocation only: it is not written to
                 // the session file, so the next command still works on the same project.
                 if let Some(proj) = project.as_deref()
                     && Path::new(proj).is_file()
                 {
-                    let _ = session.execute("project.open", json!({ "path": proj }));
+                    let _ = session
+                        .as_mut()
+                        .expect("headless session")
+                        .execute("project.open", json!({ "path": proj }));
                 }
                 let (id, params) = storyboard_params(&command, document.as_deref())?;
                 emit(&dispatch(&mut session, bridge, &id, params, cli.dry_run)?);

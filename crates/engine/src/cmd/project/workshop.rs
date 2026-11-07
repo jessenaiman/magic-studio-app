@@ -522,7 +522,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
 }
 
 /// List every registered command, optionally filtered by id/label/params substring.
-pub fn cmd_query_list(_s: &mut Session, params: &Value) -> Result<Value> {
+pub fn cmd_query_list(s: &mut Session, params: &Value) -> Result<Value> {
     let f = params
         .get("filter")
         .or_else(|| params.get("query"))
@@ -537,7 +537,13 @@ pub fn cmd_query_list(_s: &mut Session, params: &Value) -> Result<Value> {
                 || c.label.to_ascii_lowercase().contains(&f)
                 || c.params.to_ascii_lowercase().contains(&f)
         })
-        .map(|c| c.describe())
+        .map(|c| {
+            let mut description = c.describe();
+            let enabled = (c.enabled)(s);
+            description["enabled"] = json!(enabled.is_ok());
+            if let Err(reason) = enabled { description["disabled_reason"] = json!(reason); }
+            description
+        })
         .collect();
     Ok(json!({"count": list.len(), "commands": list}))
 }

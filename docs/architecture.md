@@ -14,7 +14,7 @@ Design principles:
 ## 1. Layers (`xtask/src/policy.rs`, enforced by `cargo xtask layers`)
 
 ```
-L7  apps/magic · apps/magic-cli · apps/magic-tui · xtask
+L7  apps/magic-tauri (active desktop) · apps/magic (legacy egui) · apps/magic-cli · apps/magic-tui · xtask
 L6  crates/ui-egui (magic-ui-egui) · crates/mcp (magic-mcp)
 L5  crates/engine (magic-engine)
 L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
@@ -26,7 +26,8 @@ L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
 | `magic-engine` | L5 | `Session`, 162 commands in `cmd/<domain>/`, `session/execute.rs`, `undo.rs`, `guard.rs`, `workspace.rs` (drives Craft CLIs / in-process Sessions) |
 | `magic-ui-egui` | L6 | egui views: `lib.rs` (Projects/Storyboard/Lyrics/Animation/Studio), `animation_effectcraft.rs`, `studio_filmcraft.rs`, `storyboard_workspace.rs`, `control.rs` |
 | `magic-mcp` | L6 | MCP stdio server, headless or `--bridge` to running app |
-| `magic` | L7 | Desktop binary (eframe/wgpu), `magic --control PORT`, `magic --lyrics` |
+| `magic-tauri` | L7 | Active desktop shell: React/Tauri, one managed engine session, authenticated `--control` listener |
+| `magic` | L7 | Legacy egui desktop retained as restoration reference |
 | `magic-cli` | L7 | Headless CLI: `commands/describe/exec/run/mcp/ui/storyboard`, `--bridge`, `--project` |
 | `magic-tui` | L7 | Terminal UI |
 | `xtask` | L7 | `ci` (fmt/clippy/layers/control-protocol), `layers`, `install` |
@@ -71,13 +72,14 @@ pub struct CommandSpec { // crates/engine/src/commands.rs:26
 
 ## 5. Control / MCP / API
 
-- `magic --control 9876`: JSON-lines, `MAGIC_CONTROL_TOKEN` (64 hex), methods `engine.execute`, `ui.inspect/elements/click/screenshot/animation.controls/playback` (`ui-egui/src/control.rs`).
-- `magic-cli mcp`: stdio, `--bridge 127.0.0.1:9876` or headless Session. Tools: `command_list/run/batch`, `ui_*`, `doc_inspect`.
-- API: not implemented — same registry would serve HTTP; currently CLI/MCP only.
+- `magic-tauri --control 9876`: authenticated JSON-lines control over loopback TCP; shares the session used by Tauri IPC.
+- `magic-cli --bridge 127.0.0.1:9876 mcp`: Craft-style `rmcp` tools; no local session or automatic fallback in bridge mode. Omit `--bridge` for explicit headless operation.
+- The separate browser HTTP UI server and duplicate CLI socket implementation are removed.
+- See [control-protocol.md](control-protocol.md) for implemented UI operations and the canonical launch instructions.
 
 ## 6. Known deviations (true)
 
-- Tauri webview + npm in `apps/magic` (#97), `apps/magic-cli/ui` JS sprawl (#93) — both violate Pure Rust rule, both are the *only* working canvas/preview UI.
+- Tauri is the chosen active shell; the frontend remains in `apps/magic/ui`. Older `apps/magic-cli/ui` assets and egui views remain restoration references, not parallel Tauri configurations.
 - Craft git deps without `rev` in `Cargo.lock` (#91).
 - `target/analytics/{audit,lizard}.json` stale, references deleted `apps/src-tauri` — Mayhem reads it, nothing regenerates it.
 - `f64` seconds, no `Tick` — no exact time guarantee.

@@ -192,7 +192,7 @@ pub(crate) fn effectcraft_frame(
     let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     if let Some(parent) = output.parent() { std::fs::create_dir_all(parent)?; }
     let out = std::process::Command::new(&cli)
-        .arg("render-frame").arg("--comp").arg(comp).arg("--time").arg(seconds.max(0.0).to_string())
+        .arg("--project").arg(project).arg("render-frame").arg("--comp").arg(comp).arg("--time").arg(seconds.max(0.0).to_string())
         .arg("--max-side").arg(max_side.to_string()).arg("--out").arg(output)
         .output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     if !out.status.success() {

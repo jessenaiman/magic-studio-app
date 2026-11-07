@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { connectDesktop } from "./desktop";
+import React, { useEffect, useRef, useState } from "react";
 import { executeCommand, pickFile, WorkshopData } from "./api";
 import { AnimationView } from "./views/AnimationView";
 import { FilmView } from "./views/FilmView";
@@ -25,28 +27,25 @@ export const App: React.FC = () => {
     setToastMsg(msg);
   };
 
-  const refreshProject = async (pathOverride?: string) => {
-    const activePath = pathOverride ?? projectPath;
-    if (!activePath) return;
-    try {
-      const status = await executeCommand<WorkshopData>("workshop.status", {
-        project: activePath,
-      });
-      setData(status);
-    } catch (err) {
-      showToast(String(err));
-    }
+  const liveState = useRef({ view, projectPath, busy, toastMsg });
+  liveState.current = { view, projectPath, busy, toastMsg };
+  const refreshVersion = useRef(0);
+  const refreshProject = async (initial = false) => {
+    const version = ++refreshVersion.current;
+    const snapshot = await invoke<{ project: string | null; data: WorkshopData | null; initialView: ViewMode }>("session_snapshot");
+    if (version !== refreshVersion.current) return;
+    const changed = snapshot.project !== liveState.current.projectPath;
+    setProjectPath(snapshot.project);
+    setData(snapshot.data);
+    if (initial) setView(snapshot.initialView);
+    else if (changed) setView(snapshot.project ? "project" : "home");
   };
 
   const openProject = async (path: string, initialView: ViewMode = "project") => {
     setBusy(true);
     try {
       await executeCommand("project.open", { path });
-      setProjectPath(path);
-      const status = await executeCommand<WorkshopData>("workshop.status", {
-        project: path,
-      });
-      setData(status);
+      await refreshProject();
       setView(initialView);
       showToast(`Opened ${path.split("/").pop()}`);
     } catch (err) {
@@ -59,28 +58,30 @@ export const App: React.FC = () => {
   const closeProject = async () => {
     try {
       await executeCommand("project.close");
-    } catch {
-      // ignore if already closed
-    }
-    setProjectPath(null);
-    setData(null);
-    setView("home");
+      await refreshProject();
+      setView("home");
+    } catch (error) { showToast(String(error)); }
   };
 
   useEffect(() => {
+    let disposed = false;
+    let disconnect: (() => void) | undefined;
     void (async () => {
-      try {
-        const id = await executeCommand<{ path?: string; project?: string }>(
-          "project.identity",
-        );
-        const current = id.path || id.project;
-        if (current) {
-          await openProject(current, "project");
-        }
-      } catch {
-        // start at Home when no project is open on startup
-      }
-    })();
+      disconnect = await connectDesktop(
+        () => {
+          const state = liveState.current;
+          return { ok: true, renderer: "tauri", ready: true,
+            view: state.projectPath ? state.view : "home", requestedView: state.view,
+            project: state.projectPath, busy: state.busy, status: state.toastMsg };
+        },
+        next => setView(next as ViewMode),
+        () => refreshProject(),
+      );
+      if (disposed) { disconnect(); return; }
+      await refreshProject(true);
+      if (!disposed) await invoke("desktop_ready");
+    })().catch(error => showToast(String(error)));
+    return () => { disposed = true; ++refreshVersion.current; disconnect?.(); };
   }, []);
 
   const songStage = data?.status?.stages?.find((s) => s.id === "song");

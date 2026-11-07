@@ -1,9 +1,9 @@
 # Magic Studio setup
 
-This is the authoritative guide for running an installed Magic Studio app and
-building/installing it from this repository.
+For the current Tauri application, see the [Tauri setup guide](../magic-tauri/README.md).
+This page describes the legacy egui application and CLI installation.
 
-## Use the installed app
+## Use the legacy egui app
 
 ```sh
 magic
@@ -20,7 +20,7 @@ or model download just to open. Configure a provider only when the chosen
 production task needs it. Keep project media in the user-selected production
 folder rather than in this source tree.
 
-## Build and install from source
+## Build and install the legacy egui app from source
 
 Run these commands from the repository root, with Rust/Cargo compatible with
 `Cargo.toml`, the native platform libraries required by the Rust workspace and Git available:
@@ -48,17 +48,17 @@ cargo xtask install --profile release
 compiles project dependencies during the build. Use `cargo install` for standalone
 Rust executables and `cargo xtask install` for Magic's binaries and desktop resources.
 
-On Unix, `magic-cli mcp --follow-window` uses the one open Magic window, including
-`magic --lyrics`, and uses a headless session when no window is open. For an
-explicit target, start Magic with `--control PORT` and pass
-`magic-cli mcp --connect 127.0.0.1:PORT`.
+To connect the CLI or MCP server to a running Tauri window, start it with
+`--control PORT` and use `magic-cli --bridge 127.0.0.1:PORT ui state` or
+`magic-cli --bridge 127.0.0.1:PORT mcp`. Without `--bridge`, `magic-cli mcp`
+starts a headless session.
 
 `magic --lyrics` opens the Lyrics editor and offers a folder picker. Pass the
 song folder directly as `magic --lyrics /path/to/song`. The folder must contain
 its canonical lyric sheet and timed transcript. A `.magic` file is optional.
 
 `cargo xtask install --help` lists `--prefix`. Rebuild and reinstall after native
-changes when authorized. These commands install Magic Studio only; they do not
+changes when authorized. These commands install the legacy egui app and CLI, not the Tauri app; they do not
 install other creative apps, production providers, or GPU models.
 
 ## Production tools and development

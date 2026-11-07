@@ -84,20 +84,7 @@ pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
 
-pub(crate) fn filmcraft_run(project: &Path, steps: &[Value], save: bool) -> Result<Vec<Value>> {
-    // Via installed filmcraft-cli run (system app pattern). Steps include file.open/save as needed by caller.
-    let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let tmp = std::env::temp_dir().join(format!("magic-film-{}.jsonl", std::process::id()));
-    let mut lines = Vec::new();
-    if project.is_file() { lines.push(serde_json::json!({"id":"file.open","params":{"path":project}})); }
-    lines.extend(steps.iter().cloned());
-    if save { lines.push(serde_json::json!({"id":"file.saveAs","params":{"path":project}})); }
-    std::fs::write(&tmp, lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n"))?;
-    let out = std::process::Command::new(&cli).arg("run").arg(&tmp).output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let _ = std::fs::remove_file(&tmp);
-    if !out.status.success() { return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)))); }
-    Ok(String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| serde_json::from_str(l.trim()).ok()).collect())
-}
+
 pub(crate) fn open_filmcraft(project: &Path) -> Result<filmcraft_engine::Session> {
     let mut session = filmcraft_engine::Session::default();
     let path = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
@@ -165,7 +152,7 @@ pub(crate) fn publish_lyrics(s: &Session, movie: &Path) -> Result<Value> {
 
 pub(crate) fn execute(project: &Path, id: &str, params: Value) -> Result<Value> {
     let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
-    let out = std::process::Command::new(&cli).arg("exec").arg(id).arg(params.to_string()).output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
+    let out = std::process::Command::new(&cli).arg("--project").arg(project).arg("exec").arg(id).arg(params.to_string()).output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
     if !out.status.success() { return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)))); }
     serde_json::from_slice(&out.stdout).map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))
 }
@@ -256,7 +243,7 @@ pub(crate) fn frame(project: &Path, seconds: f64, output: &Path) -> Result<()> {
     let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
     if let Some(parent) = output.parent() { std::fs::create_dir_all(parent)?; }
     let out = std::process::Command::new(&cli)
-        .arg("render").arg("--seconds").arg(seconds.to_string()).arg("--out").arg(output)
+        .arg("--project").arg(project).arg("render").arg("--seconds").arg(seconds.to_string()).arg("--out").arg(output)
         .output().map_err(|e| EngineError::ExternalTool("filmcraft-cli".into(), e.to_string()))?;
     if !out.status.success() {
         return Err(EngineError::ExternalTool("filmcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
