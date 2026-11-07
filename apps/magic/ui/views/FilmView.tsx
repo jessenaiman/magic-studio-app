@@ -189,7 +189,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
 
       {/* Optional settings stay collapsed; exporting itself opens no dialog. */}
       <details id="film-export-settings">
-      <summary aria-label="Export settings and interchange" title="Export settings and interchange">⚙</summary>
+      <summary id="film-export-settings-toggle" aria-label="Export settings and interchange" title="Export settings and interchange">⚙</summary>
       <div
         style={{
           display: "flex",
@@ -261,6 +261,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
             className="ghost"
             disabled={busy || !film?.timeline?.exists}
             onClick={() => void handleExportInterchange("fcpxml")}
+            id="film-export-fcpxml"
             title="Export Final Cut Pro FCPXML via filmcraft_engine"
           >
             FCPXML
@@ -269,6 +270,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
             className="ghost"
             disabled={busy || !film?.timeline?.exists}
             onClick={() => void handleExportInterchange("otio")}
+            id="film-export-otio"
             title="Export OpenTimelineIO via filmcraft_engine"
           >
             OTIO
@@ -277,6 +279,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
             className="ghost"
             disabled={busy || !film?.timeline?.exists}
             onClick={() => void handleExportInterchange("edl")}
+            id="film-export-edl"
             title="Export CMX3600 EDL via filmcraft_engine"
           >
             EDL

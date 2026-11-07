@@ -266,6 +266,7 @@ fn main() {
         lifecycle: lifecycle::Lifecycle::default(),
     });
     tauri::Builder::default()
+        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Duplicate launches must not open a second session or silently lose arguments.
             if args.len() > 1 {
@@ -278,6 +279,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

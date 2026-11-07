@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import * as input from "./control-input";
 import { workspaceDrafts } from "./workspace-drafts";
+import { mediaState } from "./control-media";
+import { requestAuthoringTime } from "./authoring-navigation";
 import { allowKeys, findElement, surfacesOf as surfaces } from "./control-input";
 
 interface Request { id: number; method: string; params: Record<string, unknown> }
@@ -78,6 +80,7 @@ export async function connectDesktop(
               tag: el.tagName.toLowerCase(), enabled: !el.matches(":disabled"),
               value: isForm(el) ? el.value : undefined,
               data: { ...el.dataset },
+              media: mediaState(el),
               rect: [r.x + x, r.y + y, r.width, r.height],
             }; }));
           result = { elements }; break;
@@ -104,11 +107,18 @@ export async function connectDesktop(
             result = { ok: true, id: params.id, value: element.value }; break;
           }
           const keys = Object.keys(params);
-          if (keys.some(k => k !== "view")) throw new Error("Only the view field is supported by ui.set");
+          if (keys.some(k => !["view","time"].includes(k))) throw new Error("View navigation accepts view and optional authoring time");
           const aliases: Record<string, string> = { projects: "project", lyrics: "design" };
           const view = aliases[String(params.view)] || String(params.view);
           if (!["home", "project", "storyboard", "design", "motion", "gallery", "animation", "studio"].includes(view)) throw new Error("Unknown view");
+          if (params.time !== undefined) {
+            if (!["design","motion"].includes(view) || typeof params.time !== "number" || !Number.isFinite(params.time) || params.time < 0) throw new Error("Authoring time requires Lyrics or Motion and nonnegative seconds");
+            const project=(inspect() as {project?:string}).project;
+            if (!project) throw new Error("Open a project before selecting an authoring moment");
+            requestAuthoringTime(project,params.time);
+          }
           setView(view);
+          if (params.time !== undefined) for (const frame of document.querySelectorAll("iframe")) frame.contentWindow?.postMessage({magicReviewTime:true},location.origin);
           result = { ok: true, requestedView: view }; break;
         }
         case "ui.click": result = input.click(params); break;

@@ -56,7 +56,8 @@
         }
       },
       "capabilities": [
-        "default"
+        "default",
+        "desktop-capability"
       ],
       "devCsp": {
         "default-src": "'self'",

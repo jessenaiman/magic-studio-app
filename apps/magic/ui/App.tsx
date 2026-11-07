@@ -34,6 +34,7 @@ export const App: React.FC = () => {
   const liveState = useRef({ view, projectPath, busy, toastMsg });
   liveState.current = { view, projectPath, busy, toastMsg };
   const refreshVersion = useRef(0);
+  const initialized = useRef(false);
   const transferBusy = useRef(false);
   const refreshProject = async (initial = false) => {
     const version = ++refreshVersion.current;
@@ -42,8 +43,9 @@ export const App: React.FC = () => {
     const changed = snapshot.project !== liveState.current.projectPath;
     setProjectPath(snapshot.project);
     setData(snapshot.data);
-    if (initial) setView(snapshot.initialView);
+    if (initial && !initialized.current) setView(snapshot.initialView);
     else if (changed) setView(snapshot.project ? "project" : "home");
+    initialized.current = true;
   };
 
   const openProject = async (path: string, initialView: ViewMode = "project") => {
@@ -109,7 +111,9 @@ export const App: React.FC = () => {
       if (!disposed) await invoke("desktop_ready");
     })().catch(error => showToast(String(error)));
     return () => { disposed = true; ++refreshVersion.current; disconnect?.(); };
-  }, []);
+    // Rebind native listeners when the control module changes during development;
+    // an old listener otherwise keeps reporting the previous draft contract.
+  }, [connectDesktop]);
 
   const projectName =
     data?.name ||

@@ -195,13 +195,19 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
         return Err(EngineError::InvalidParams("id=<effectcraft command> or steps=[...] is required".into()));
     };
     let cli = find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    let tmp = std::env::temp_dir().join(format!("magic-effect-{}.json", std::process::id()));
-    std::fs::write(&tmp, serde_json::to_vec(&steps).unwrap_or_default())?;
     let mut cmd = std::process::Command::new(&cli);
-    cmd.arg("run").arg("--commands").arg(&tmp);
-    // effectcraft-cli run opens project via --args? Use exec per step fallback: run sets project from first file.open step; caller includes file.open if needed.
-    let out = cmd.output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    let _ = std::fs::remove_file(&tmp);
+    cmd.arg("run").arg("--project").arg(&path).arg("--commands").arg("-");
+    if p["save"] == true {
+        cmd.arg("--save");
+    }
+    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let bytes = serde_json::to_vec(&steps).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+        stdin.write_all(&bytes)?;
+    }
+    let out = child.wait_with_output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     if !out.status.success() {
         return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
     }

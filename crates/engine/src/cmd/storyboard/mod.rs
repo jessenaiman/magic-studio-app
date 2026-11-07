@@ -45,6 +45,7 @@ struct Slot {
     image: Option<String>,
     bounds: Option<[f64; 4]>,
     hidden: bool,
+    empty: bool,
 }
 
 /// One page of the storyboard: its archetype, the section it belongs to, and its slots.
@@ -86,6 +87,7 @@ impl PageSlots {
                         "image": s.image,
                         "bounds": s.bounds,
                         "hidden": s.hidden,
+                        "empty": s.empty,
                     })
                 })
                 .collect(),
@@ -146,13 +148,16 @@ fn doc_path(s: &Session, p: &Value) -> Result<PathBuf> {
 struct Board {
     dc: Dc,
     path: PathBuf,
+    stamp: Option<crate::link_watch::FileStamp>,
 }
 
 impl Board {
     fn open(path: &Path) -> Result<Self> {
+        let stamp = crate::link_watch::FileStamp::of(path);
         let mut dc = Dc::new();
         dc.execute("file.open", &json!({"path": path})).map_err(fail)?;
-        Ok(Self { dc, path: path.to_path_buf() })
+        crate::link_watch::save_guard(path, stamp)?;
+        Ok(Self { dc, path: path.to_path_buf(), stamp })
     }
 
     fn run(&mut self, id: &str, params: Value) -> Result<Value> {
@@ -161,7 +166,9 @@ impl Board {
 
     fn save(&mut self) -> Result<()> {
         let path = self.path.clone();
+        crate::link_watch::save_guard(&path, self.stamp)?;
         self.run("file.save", json!({"path": path}))?;
+        self.stamp = crate::link_watch::FileStamp::of(&path);
         Ok(())
     }
 
@@ -266,12 +273,25 @@ impl Board {
                     _ => ("other", None, None),
                 };
                 labels.insert(item.label.clone(), item.id.0);
-                slots.push(Slot { label: item.label.clone(), id: item.id.0, kind, text, image, bounds: bounds.get(&item.id.0).copied(), hidden: item.hidden });
+                slots.push(Slot {
+                    label: item.label.clone(),
+                    id: item.id.0,
+                    kind,
+                    text,
+                    image,
+                    bounds: bounds.get(&item.id.0).copied(),
+                    hidden: item.hidden,
+                    empty: kind == "other",
+                });
             }
             for slot in &mut slots {
-                if slot.kind == "other" && labels.contains_key(&format!("{}_hint", slot.label)) {
+                let numbered = |value: &str| !value.is_empty() && value.bytes().all(|c| c.is_ascii_digit());
+                let scene_map = slot.label.strip_prefix("cover_songmap_").is_some_and(numbered);
+                let reference_thumb = slot.label.rsplit_once("_thumb_").is_some_and(|(_, suffix)| numbered(suffix));
+                if slot.kind == "other" && (labels.contains_key(&format!("{}_hint", slot.label)) || scene_map || reference_thumb) {
                     slot.kind = "image";
                 }
+                slot.empty &= slot.kind == "image";
             }
             let section = spread.pages.first().and_then(|p| p.parent).and_then(|id| parents.get(&id.0).cloned());
             pages.push(PageSlots { index, archetype: archetype_of(&labels).to_string(), section, slots });
@@ -477,8 +497,8 @@ pub fn cmd_storyboard_cues(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// The template's slot texts, by label: what a field still holds before anyone fills it.
 ///
-/// A template default in brackets ("[Project title]") is a slot waiting for content. A plain
-/// default ("MATERIAL & SCALE") is a heading that is meant to stay.
+/// A bracketed template line ("[Project title]"), even after a static prefix line, marks
+/// a slot waiting for content. A plain default ("MATERIAL & SCALE") is a heading.
 fn template_defaults() -> Result<HashMap<String, String>> {
     let dir = std::env::temp_dir().join(format!("magic-storyboard-template-{}", std::process::id()));
     std::fs::create_dir_all(&dir)?;
@@ -494,7 +514,7 @@ fn template_defaults() -> Result<HashMap<String, String>> {
         for slot in page.slots {
             let Some(text) = slot.text else { continue };
             let text = text.trim();
-            if text.starts_with('[') && text.ends_with(']') {
+            if text.lines().map(str::trim).any(|line| line.starts_with('[') && line.ends_with(']')) {
                 defaults.insert(slot.label, text.to_string());
             }
         }
@@ -509,7 +529,7 @@ fn fix_command(label: &str) -> String {
 
 /// `storyboard.check`: the fields that still hold the template's default.
 ///
-/// A slot whose text is still the template's bracketed default has never been filled. A hidden
+/// A slot whose text still matches a template default containing a bracketed line is unfilled. A hidden
 /// hint is not one of them: the hint is hidden once its image is placed. The command that
 /// fills a slot is reported with it, so a missing block traces straight to the CLI call that
 /// changes it.
@@ -1067,4 +1087,66 @@ pub fn cmd_storyboard_toc(s: &mut Session, p: &Value) -> Result<Value> {
         })
         .collect();
     Ok(json!({"ok":true,"path":path,"chapters":chapters}))
+}
+
+#[cfg(test)]
+mod save_guard_tests {
+    use super::*;
+
+    #[test]
+    fn blank_scene_map_visual_is_an_empty_image_slot() {
+        let dir = std::env::temp_dir().join(format!("magic-storyboard-visual-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("board.designcraft");
+        std::fs::write(&path, TEMPLATE).unwrap();
+        let pages = Board::open(&path).unwrap().pages().unwrap();
+        let slot = pages.iter().flat_map(|p| p.slots_json().as_array().cloned().unwrap()).find(|s| s["label"] == "cover_songmap_1").unwrap();
+        assert_eq!(slot["kind"], "image");
+        assert_eq!(slot["empty"], true);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn scene_map_placeholder_is_unfilled_until_text_changes() {
+        let dir = std::env::temp_dir().join(format!("magic-storyboard-placeholder-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("board.designcraft");
+        std::fs::write(&path, TEMPLATE).unwrap();
+        let mut session = Session::default();
+        let params = json!({"path": path});
+        let unfilled = |report: &Value| {
+            report["pages"].as_array().unwrap().iter().flat_map(|p| p["unfilled"].as_array().unwrap()).any(|s| s["label"] == "cover_songmap_action_1")
+        };
+        assert!(unfilled(&cmd_storyboard_check(&mut session, &params).unwrap()));
+        cmd_storyboard_set(&mut session, &json!({"path": path, "label":"cover_songmap_action_1", "fields":{"cover_songmap_action_1":"S01\nThe bird flies"}}))
+            .unwrap();
+        assert!(!unfilled(&cmd_storyboard_check(&mut session, &params).unwrap()));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn unchanged_document_can_be_saved_twice() {
+        let dir = std::env::temp_dir().join(format!("magic-storyboard-save-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("board.designcraft");
+        std::fs::write(&path, TEMPLATE).unwrap();
+        let mut board = Board::open(&path).unwrap();
+        board.save().unwrap();
+        board.save().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn save_rejects_external_file_change_without_overwriting_it() {
+        let dir = std::env::temp_dir().join(format!("magic-storyboard-conflict-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("board.designcraft");
+        std::fs::write(&path, TEMPLATE).unwrap();
+        let mut board = Board::open(&path).unwrap();
+        let replacement = b"external change: do not overwrite";
+        std::fs::write(&path, replacement).unwrap();
+        assert!(board.save().is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), replacement);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

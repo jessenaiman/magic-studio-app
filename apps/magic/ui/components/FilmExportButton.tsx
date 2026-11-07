@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { executeCommand } from "../api";
 import { ExportReport, exportIconState } from "../export-state";
+import { workspaceDrafts } from "../workspace-drafts";
 import "../export-button.css";
 
 function editorDrafts() {
-  return [...document.querySelectorAll("iframe")].some(frame => {
-    try {
-      const workspace = frame.contentWindow as unknown as {acFeedback?: {snapshot: () => {authoring?: {draftDesigns?: number; draftStyleFields?: number}}}};
-      const draft = workspace?.acFeedback?.snapshot().authoring;
-      return !!(draft?.draftDesigns || draft?.draftStyleFields);
-    } catch { return false; }
-  });
+  const state = workspaceDrafts();
+  return state.dirty || state.saving;
 }
 
 export function FilmExportButton({project, options, disabled, onBusy, onToast}: {

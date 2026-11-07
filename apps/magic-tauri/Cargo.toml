@@ -44,9 +44,13 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-process = "2"
 tauri-plugin-os = "2"
 subtle = { workspace = true }
+tauri-plugin-persisted-scope = "2"
 
 # Window capture for `ui.screenshot`: WebKitGTK snapshot encoded as PNG by cairo. Both crates are
 # already in the Tauri dependency graph; `png` only exposes cairo's PNG writer.
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2.0"
 cairo-rs = { version = "0.18", features = ["png"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-positioner = "2"

@@ -6,8 +6,10 @@ import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { executeCommand } from "../api";
+import { takeAuthoringTime } from "../authoring-navigation";
 
 interface Host {
+  takeReviewTime: () => number | undefined;
   isActive: () => boolean;
   authoringMode: () => string | undefined;
   navigate: (view: string) => Promise<unknown>;
@@ -31,6 +33,7 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
     let active = true;
     const registry: Map<string, Host> = window.__MAGIC_WORKSPACE_HOSTS__ ||= new Map<string, Host>();
     registry.set(id, {
+      takeReviewTime: () => page==="lyrics.html"?takeAuthoringTime(project):undefined,
       isActive: () => activeView.current,
       authoringMode: () => modeRef.current,
       navigate: view => executeCommand("ui.set", { view }),

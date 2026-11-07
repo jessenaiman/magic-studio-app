@@ -314,7 +314,7 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
         ),
         cmd!(
             "effect.exec",
-            "Run EffectCraft Commands In-Process (.ecproj)",
+            "Run Native EffectCraft Commands (.ecproj)",
             ["Animation"],
             None,
             "{\"path\":\".ecproj path\",\"id\":\"comp.settings|comp.workArea|layer.newText|layer.newShape|edit.splitLayer|edit.history.list\",\"params\":{},\"save\":true}",
@@ -439,6 +439,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
         ),
         query!("words.align", "Artist Words vs Timing Reference", "{}", crate::cmd::words::cmd_words_align),
         query!("words.read", "Words Animations", "{\"animation_id\":\"optional\"}", crate::cmd::words::cmd_words_read),
+        query!("words.preview_frame", "Native Saved Lyrics or Drawing Frame", r#"{"time":24.3,"kind":"lyrics|motion"}"#, crate::cmd::words::preview::frame),
         query!("words.motion.properties", "Native Word Transform Properties", "{}", crate::cmd::words::native_motion::properties),
         query!(
             "words.motion.curve",

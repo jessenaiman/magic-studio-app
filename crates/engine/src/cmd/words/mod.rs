@@ -18,6 +18,7 @@ pub mod lyrics;
 pub(crate) mod lyrics_layout;
 pub(crate) mod motion_curve;
 pub(crate) mod native_motion;
+pub(crate) mod preview;
 pub(crate) mod stage;
 pub(crate) mod validate;
 

@@ -4,6 +4,19 @@
   if (!host) throw new Error("The workspace must be opened inside Magic Studio");
   window.__magicWorkspaceVisible = host.isActive();
   window.__magicAuthoringMode = host.authoringMode?.() || "design";
+  window.magicApplyReviewTime = () => {
+    const time=host.takeReviewTime?.();
+    if(time===undefined || typeof wordsPanel==="undefined")return;
+    for(const animation of wordsPanel.read?.document?.animations||[]) {
+      const line=wordsLines(animation).find(line=>{const span=wordsLineSpan(animation,line.id);return time>=span.start&&time<span.end;});
+      if(!line)continue;
+      wordsTimelineController.selectLine(animation,line);
+      wordsPanel.time=time;
+      wordsSeekSong(time);
+      return;
+    }
+    host.report("No lyric moment at the selected review time");
+  };
   // Lifecycle checks include mounted editors even when their workspace is hidden.
   window.magicDraftSnapshot = () => {
     if (typeof acFeedback === "undefined" || acFeedback.phase !== "ready") return {dirty:true,drafts:["Workspace is still loading"],saving:false};
@@ -22,6 +35,9 @@
     if (typeof theatreFeedback === "function" && theatreFeedback().live_edits === "needs_save") drafts.push("Motion keyframes");
     return {dirty:drafts.length > 0,drafts,saving:typeof animationReview !== "undefined" && !!animationReview.saving};
   };
+  window.addEventListener("message", event => {
+    if(event.source===parent&&event.origin===location.origin&&event.data?.magicReviewTime&&window.__magicWorkspaceVisible&&typeof wordsPanel!=="undefined"&&wordsPanel.read)window.magicApplyReviewTime();
+  });
   window.addEventListener("message", event => {
     if (event.source !== parent || event.origin !== location.origin || !event.data?.magicAssetsImported || typeof state === "undefined" || event.data.magicAssetsImported !== state.project || state.view !== "project") return;
     void host.invoke("session_snapshot").then(snapshot => {
@@ -46,6 +62,7 @@
         state.data = snapshot.data;
         if (state.view === "project") { await loadSongLyrics(); projectView.render(); }
         if (state.view === "design" && !wordsPanel.designs.size && !Object.keys(wordsPanel.styleEdits).length) await wordsOpen();
+        if (state.view === "design") window.magicApplyReviewTime();
       }).catch(error => host.report(String(error)));
     }
     if (!event.data.active) {

@@ -64,6 +64,7 @@
         wordsPanel.motionMediaStale = source?.stale;
       }
       await wordsOpen();
+      window.magicApplyReviewTime?.();
       await acFeedback.report("ready");
     });
   </script>
