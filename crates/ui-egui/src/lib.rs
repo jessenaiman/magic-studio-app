@@ -2639,6 +2639,10 @@ impl MagicApp {
                     });
                 });
                 ui.add_space(8.0);
+                // Old TSX AnimationView auto-loaded frame on select; do same so canvas isn't empty.
+                if self.character_frame_path.is_none() && !self.selected_character.is_empty() {
+                    self.run_command(ctx, "character.frame", serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}));
+                }
                 if let Some(frame_path) = self.character_frame_path.clone()
                     && let Some(tex) = self.load_texture(ctx, &frame_path)
                 {
@@ -2658,6 +2662,19 @@ impl MagicApp {
                         "Open an EffectCraft composition from the asset list, or select a character and open its rig.",
                     );
                 }
+                // Timeline scrubber below canvas (old TSX: anim-time-scrub + Refresh Frame)
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(format!("Time ({:.2}s)", self.anim_time));
+                    let scrub = ui.add(egui::Slider::new(&mut self.anim_time, 0.0..=30.0).show_value(false));
+                    self.auto.add_response("anim-time-scrub", &scrub, "Time scrubber");
+                    if scrub.changed() && !self.selected_character.is_empty() {
+                        self.run_command(ctx, "character.frame", serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}));
+                    }
+                    if secondary_button(ui, "Refresh Frame").clicked() && !self.selected_character.is_empty() {
+                        self.run_command(ctx, "character.frame", serde_json::json!({"character": self.selected_character, "view": self.selected_view, "time": self.anim_time}));
+                    }
+                });
             });
     }
 
