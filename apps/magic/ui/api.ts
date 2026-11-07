@@ -48,16 +48,16 @@ export interface StoryboardLink {
   rect: [number, number, number, number];
 }
 
+export interface StoryboardIssue { page?: number; kind: string; severity: string; message: string; item?: number }
+export interface StoryboardCheckPage {
+  page: number; archetype: string; status?: "incomplete" | "review" | "complete";
+  unfilled: Array<{ label: string; text?: string; fix: string }>;
+  issues?: StoryboardIssue[];
+}
 export interface StoryboardData {
-  deck?: string;
-  previews?: string[];
-  page_titles?: string[];
-  page_cues?: Array<Array<{ text: string; start?: number; end?: number }>>;
-  page_size?: [number, number];
-  layout?: {
-    links?: StoryboardLink[];
-  };
-  error?: string;
+  path?: string; complete?: boolean; status?: string; page_count?: number; count?: number;
+  pages?: StoryboardCheckPage[]; error?: string;
+  preflight?: { errors: number; issues: StoryboardIssue[] };
 }
 
 export interface ProjectAsset {
@@ -74,6 +74,8 @@ export interface WorkshopData {
   name?: string;
   status?: {
     stages?: StageInfo[];
+    complete?: boolean;
+    storyboard_complete?: boolean;
     asset_files?: StageInputOutput[];
   };
   storyboard?: StoryboardData;
@@ -84,6 +86,8 @@ export interface WorkshopData {
 
 export interface WordsWordItem {
   word_id: string;
+  line_id?: string;
+  sung_id?: string;
   text: string;
   start?: number;
   end?: number;
@@ -122,16 +126,33 @@ export interface WordsAnimation {
   style?: WordsStyle;
   lines?: WordsLineItem[];
   words?: WordsWordItem[];
-  kinetic?: Record<string, unknown>;
+  scope?: { section?: string; occurrence?: number };
+  design?: Record<string, { items?: LyricDesignItem[]; draws?: unknown[] }>;
+  kinetic?: { style?: WordsStyle; layout?: string; entrance?: string; [key: string]: unknown };
+}
+
+export interface LyricDesignItem {
+  text: string; x: number; y: number; size?: number; color?: string; font?: string;
+  weight?: number; italic?: boolean; rotate?: number; outline?: string;
+  word_ids?: string[]; motion_keys?: number[][]; [key: string]: unknown;
 }
 
 export interface WordsReadResponse {
+  document?: { animations?: WordsAnimation[] };
+  in_video?: string[];
+  fonts?: Array<{ family: string; path: string; weight?: string }>;
   animations?: WordsAnimation[];
   audio?: string;
   recipe_path?: string;
 }
 
+export interface Character3D {
+  primary_glb?: string; glb_files?: string[]; model_clips?: string[]; rigged?: boolean;
+  video_previews?: string[];
+}
+
 export interface CharacterSummary {
+  tripo_3d?: Character3D;
   id: string;
   name?: string;
   views?: string[];
@@ -151,6 +172,7 @@ export interface CharacterPart {
 }
 
 export interface CharacterMetaResponse {
+  tripo_3d?: Character3D;
   character?: string;
   views?: Array<{
     view: string;
@@ -252,5 +274,25 @@ export async function pickFile(options: {
     filters: options.extensions
       ? [{ name: options.title, extensions: options.extensions }]
       : undefined,
+  });
+}
+
+// Translate the engine document once; never discard the authored design/kinetic data.
+export function lyricSections(response: WordsReadResponse): WordsAnimation[] {
+  return (response.document?.animations || []).map(animation => {
+    const grouped = new Map<string, WordsLineItem>();
+    for (const word of animation.words || []) {
+      const id = word.line_id || word.sung_id || "line";
+      const line = grouped.get(id) || { line_id: id, text: "", words: [] };
+      line.words!.push(word);
+      line.text = line.words!.map(item => item.text).join(" ");
+      if (typeof word.start === "number") line.start = Math.min(line.start ?? word.start, word.start);
+      if (typeof word.end === "number") line.end = Math.max(line.end ?? word.end, word.end);
+      grouped.set(id, line);
+    }
+    return { ...animation, lines: [...grouped.values()],
+      title: animation.title || animation.scope?.section?.replace(/_/g, " ") || animation.animation_id,
+      style: { ...animation.kinetic?.style, ...animation.style },
+      used_in_video: response.in_video?.includes(animation.animation_id) };
   });
 }

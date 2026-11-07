@@ -671,6 +671,11 @@ fn fix_command(label: &str) -> String {
 /// fills a slot is reported with it, so a missing block traces straight to the CLI call that
 /// changes it.
 pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
+    completion(s, p)
+}
+
+/// Saved DesignCraft document completeness, shared by CLI and the workspace indicators.
+pub(crate) fn completion(s: &Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
     let pages = b.pages()?;
     let defaults = template_defaults()?;
@@ -712,7 +717,19 @@ pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
             "unfilled": unfilled,
         }));
     }
-    Ok(json!({"ok": true, "path": b.path, "count": count, "pages": report}))
+    let preflight = b.run("preflight.run", json!({}))?;
+    let errors = preflight["errors"].as_u64().unwrap_or(0);
+    for page in &mut report {
+        let issues: Vec<Value> = preflight["issues"].as_array().into_iter().flatten()
+            .filter(|issue| issue["page"] == page["page"]).cloned().collect();
+        page["status"] = json!(if page["unfilled"].as_array().is_some_and(|v| !v.is_empty()) { "incomplete" }
+            else if !issues.is_empty() { "review" } else { "complete" });
+        page["issues"] = json!(issues);
+    }
+    let complete = !pages.is_empty() && count == 0 && errors == 0;
+    Ok(json!({"ok": true, "path": b.path, "count": count, "page_count":pages.len(),
+        "complete":complete, "status":if count > 0 || pages.is_empty() { "incomplete" } else if errors > 0 { "review" } else { "complete" },
+        "pages": report, "preflight":preflight}))
 }
 
 /// `storyboard.run`: run a command script against the storyboard.
@@ -1280,3 +1297,28 @@ pub fn cmd_storyboard_export(s: &mut Session, p: &Value) -> Result<Value> {
 #[cfg(test)]
 #[path = "../../tests/storyboard.rs"]
 mod tests;
+
+/// Open the canonical storyboard in the installed DesignCraft editor with live control.
+pub fn cmd_storyboard_open(s: &mut Session, p: &Value) -> Result<Value> {
+    use std::process::{Command, Stdio};
+    let path = doc_path(s, p)?;
+    if !path.is_file() { return Err(bad("Create the DesignCraft storyboard first with storyboard.new")); }
+    let port = p.get("control").and_then(Value::as_u64).unwrap_or(7979);
+    if port == 0 || port > u16::MAX as u64 { return Err(bad("control must be a port from 1 to 65535")); }
+    let addr = std::net::SocketAddr::from(([127,0,0,1], port as u16));
+    let reused = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(300)).is_ok();
+    if reused {
+        let cli = crate::workspace::find_executable("designcraft-cli")?;
+        let output = Command::new(cli).args(["app", "--port", &port.to_string(), "file.open"])
+            .arg(json!({"path":path}).to_string()).output()?;
+        if !output.status.success() { return Err(bad(&String::from_utf8_lossy(&output.stderr))); }
+    } else {
+        let app = crate::workspace::find_executable("designcraft")?;
+        let mut child = Command::new(app).arg("--control").arg(port.to_string()).arg(&path)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+        std::thread::spawn(move || child.wait());
+    }
+    Ok(json!({"ok":true,"path":path,"control":port,"reused":reused,
+        "inspect":format!("designcraft-cli app --port {port} --method document.inspect"),
+        "mcp":format!("designcraft-cli mcp --connect {port}")}))
+}

@@ -172,9 +172,9 @@ async fn session_snapshot(app: tauri::AppHandle) -> Result<Value, String> {
         let mut session = desktop.session.lock().map_err(|e| e.to_string())?;
         let project = session.project_path.clone();
         let data = if project.is_some() {
-            session
-                .execute("workshop.status", json!({}))
-                .map_err(|e| e.to_string())?
+            let status = session.execute("workshop.status", json!({})).map_err(|e| e.to_string())?;
+            let assets = session.execute("project.list_assets", json!({})).map_err(|e| e.to_string())?;
+            json!({"project": project, "status": status, "storyboard": status.get("storyboard"), "assets": assets})
         } else {
             Value::Null
         };

@@ -1322,6 +1322,13 @@ fn specs_scribbles() -> Vec<CommandSpec> {
 fn specs_storyboard() -> Vec<CommandSpec> {
     vec![
         cmd!(
+            "storyboard.open",
+            "Open Storyboard in DesignCraft with Live Control",
+            ["Storyboard"], None,
+            "{\"path\":\"optional storyboard.designcraft\",\"control\":7979}",
+            always, crate::cmd::storyboard::cmd_storyboard_open
+        ),
+        cmd!(
             "storyboard.new",
             "New Storyboard from the Neutral Template",
             ["Storyboard"],

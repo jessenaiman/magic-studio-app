@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   executeCommand,
+  lyricSections,
   fileUrl,
   WordsAnimation,
   WordsLineItem,
@@ -36,7 +37,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   const loadWords = async () => {
     try {
       const res = await executeCommand<WordsReadResponse>("words.read");
-      const list = res.animations || [];
+      const list = lyricSections(res);
       setAnimations(list);
       if (list.length > 0) {
         const target =
@@ -55,8 +56,8 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
     setFontColor(anim.style?.color ?? "#ffffff");
     setFontFamily(anim.style?.font ?? "Inter");
     setTextAlign(anim.style?.align ?? "center");
-    setLayout(anim.style?.layout ?? "center-stack");
-    setEntrance(anim.style?.entrance ?? "per-word-rise");
+    setLayout(anim.kinetic?.layout ?? anim.style?.layout ?? "center-stack");
+    setEntrance(anim.kinetic?.entrance ?? anim.style?.entrance ?? "per-word-rise");
     setPosX(anim.style?.x ?? 50);
     setPosY(anim.style?.y ?? 50);
   };
@@ -74,6 +75,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
     setBusy(true);
     try {
       const style = {
+        ...currentAnim.style,
         size: fontSize,
         color: fontColor,
         font: fontFamily,
@@ -97,7 +99,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
       await executeCommand("words.apply", {
         animation_id: currentAnim.animation_id,
         use: true,
-      }).catch(() => {});
+      });
       await loadWords();
       onToast(`Saved lyrics design for ${currentAnim.animation_id}`);
     } catch (err) {
@@ -181,8 +183,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
 
         {animations.length === 0 ? (
           <p className="muted" style={{ fontSize: "12px" }}>
-            No lyric animations yet. Click <strong>Auto-Design</strong> to build
-            sections from the song transcript.
+            No saved lyric sections yet. Link the original lyric sheet in Project before designing the song.
           </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>

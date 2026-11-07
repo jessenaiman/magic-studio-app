@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(
     name = "magic-cli",
-    about = "Drive Magic Studio from the shell via magic"
+    about = "Drive Magic Studio through its Rust engine or a live Tauri session",
+    after_help = "LIVE MAGIC: magic-tauri --control 9876 (share MAGIC_CONTROL_TOKEN with clients)\n  magic-cli --bridge 127.0.0.1:9876 ui inspect\n  magic-cli --bridge 127.0.0.1:9876 mcp\nSTORYBOARD: magic-cli --project song.magic storyboard open --control 7979\n  designcraft-cli app --port 7979 --method document.inspect\n  designcraft-cli mcp --connect 7979\n  storyboard check reports unfilled template slots and layout issues. View navigation stays unrestricted."
 )]
 pub struct Cli {
     /// Open this .magic project first (or use the last opened project from session file)
@@ -85,6 +86,11 @@ enum Cmd {
 /// fixed while the text and images inside it change.
 #[derive(Subcommand)]
 enum SbCmd {
+    /// Open the storyboard in DesignCraft with a live control port (separate from Magic's bridge)
+    Open {
+        #[arg(long)] path: Option<String>,
+        #[arg(long, default_value_t = 7979)] control: u16,
+    },
     /// Create a storyboard from the template
     New {
         #[arg(long)]
@@ -259,6 +265,11 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
     };
     let id;
     match command {
+        SbCmd::Open { path, control } => {
+            id = "storyboard.open".into();
+            put("path", path.clone().map(Value::String));
+            put("control", Some(json!(control)));
+        }
         SbCmd::New { path, overwrite } => {
             id = "storyboard.new".into();
             put("path", path.clone().map(Value::String));

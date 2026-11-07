@@ -179,7 +179,7 @@ export const App: React.FC = () => {
             {(
               [
                 ["project", "Project"],
-                ["storyboard", "Storyboard (.deckcraft)"],
+                ["storyboard", "Storyboard"],
                 ["design", "Lyrics (.ecproj)"],
                 ["animation", "Animation (.pcraft / .ecproj)"],
                 ["studio", "Studio (.fcproj)"],
@@ -191,6 +191,9 @@ export const App: React.FC = () => {
                 className={view === id ? "start" : "ghost"}
                 onClick={() => setView(id)}
               >
+                {id === "storyboard" && <span aria-label={data?.storyboard?.complete ? "Storyboard complete" : "Storyboard incomplete"}
+                  title={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields; ${data?.storyboard?.preflight?.errors ?? 0} layout errors`}
+                  style={{ color: data?.storyboard?.complete ? "#5bd69b" : data?.storyboard?.status === "review" ? "#eabb62" : "#ed8796", marginRight: 6 }}>●</span>}
                 {label}
               </button>
             ))}
@@ -204,6 +207,7 @@ export const App: React.FC = () => {
           <HomeView onOpenProject={openProject} onToast={showToast} />
         ) : view === "storyboard" ? (
           <StoryboardView
+            projectPath={projectPath}
             storyboard={data?.storyboard}
             onRefresh={() => refreshProject()}
             onToast={showToast}
@@ -302,9 +306,9 @@ export const App: React.FC = () => {
                   style={{ textAlign: "left" }}
                   onClick={() => setView("storyboard")}
                 >
-                  DeckCraft Storyboard:{" "}
-                  {data?.storyboard?.deck
-                    ? data.storyboard.deck.split("/").pop()
+                  DesignCraft Storyboard:{" "}
+                  {data?.storyboard?.path
+                    ? data.storyboard.path.split("/").pop()
                     : "Not created yet"}
                 </button>
                 <button
@@ -333,7 +337,8 @@ export const App: React.FC = () => {
 
             <main style={{ height: "100%", overflow: "hidden" }}>
               <StoryboardView
-                storyboard={data?.storyboard}
+                projectPath={projectPath}
+            storyboard={data?.storyboard}
                 onRefresh={() => refreshProject()}
                 onToast={showToast}
               />
