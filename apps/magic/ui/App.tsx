@@ -137,6 +137,7 @@ export const App: React.FC = () => {
       {/* Top App Bar */}
       <header
         id="app-bar"
+        data-tauri-drag-region="deep"
         style={{
           display: "flex",
           alignItems: "center",

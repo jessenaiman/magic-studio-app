@@ -1,5 +1,23 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { arch, eol, exeExtension, family, locale, platform, type as osTypeFn, version } from "@tauri-apps/plugin-os";
+import { formatOsInfo, type OsInfo } from "./os-info";
+
+export type { OsInfo };
+export { isMacOSPlatform, isWindowsPlatform, isUnixFamily, modifierLabel } from "./os-info";
+
+export async function getOsInfo(): Promise<OsInfo> {
+  return formatOsInfo({
+    platform: platform(),
+    family: family(),
+    arch: arch(),
+    version: version(),
+    osType: osTypeFn(),
+    exeExtension: exeExtension(),
+    eol: eol(),
+    locale: await locale(),
+  });
+}
 
 export interface ProjectSummary {
   name: string;

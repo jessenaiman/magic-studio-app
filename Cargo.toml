@@ -14,18 +14,6 @@ repository = "https://github.com/jessenaiman/magic-studio-app"
 magic = { package = "magic-engine", path = "crates/engine" }
 magic-mcp = { path = "crates/mcp" }
 
-# Craft engines and domain crates (version-independent git tracking for `cargo update`)
-designcraft-engine = { git = "https://github.com/storytold/designcraft" }
-designcraft-render = { git = "https://github.com/storytold/designcraft" }
-effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
-effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
-filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
-filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
-filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
-texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
-
 # Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking)
 craft-atomic = { git = "https://github.com/storytold/craft-libs" }
 craft-doc = { git = "https://github.com/storytold/craft-libs" }

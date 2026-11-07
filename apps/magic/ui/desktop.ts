@@ -4,6 +4,7 @@ import * as input from "./control-input";
 import { workspaceDrafts } from "./workspace-drafts";
 import { mediaState } from "./control-media";
 import { requestAuthoringTime } from "./authoring-navigation";
+import { getOsInfo } from "./api";
 import { allowKeys, findElement, surfacesOf as surfaces } from "./control-input";
 
 interface Request { id: number; method: string; params: Record<string, unknown> }
@@ -50,6 +51,7 @@ export async function connectDesktop(
             viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
             focus: input.focusedElement(),
             cspViolations: violations,
+            os: await getOsInfo().catch(() => null),
             alerts: surfaces().flatMap(({ doc }) => Array.from(doc.querySelectorAll('[role="alert"]')).map(element => element.textContent?.trim()).filter(Boolean)),
             workspaces: surfaces().filter(surface => surface.doc !== document).map(({ doc }) => {
               const feedback = (doc.defaultView as unknown as { acFeedback?: { snapshot: () => Record<string, unknown> } })?.acFeedback?.snapshot();

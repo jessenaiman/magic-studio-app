@@ -22,23 +22,13 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 ureq = { workspace = true }
 
-# Craft engines and shared Craft libraries called directly in-process
+# Shared Craft libraries called directly in-process
 craft-ai-client = { workspace = true }
 craft-ai-core = { workspace = true }
 craft-atomic = { workspace = true }
 craft-doc = { workspace = true }
 craft-docpath = { workspace = true }
 craft-settings = { workspace = true }
-designcraft-engine = { workspace = true }
-designcraft-render = { workspace = true }
-effectcraft-engine = { workspace = true }
-effectcraft-host = { workspace = true }
-filmcraft-audio-dsp = { workspace = true }
-filmcraft-captions = { workspace = true }
-filmcraft-engine = { workspace = true }
-filmcraft-media = { workspace = true }
-filmcraft-time = { workspace = true }
-texturecraft-formats = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true }

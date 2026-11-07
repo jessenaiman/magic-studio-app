@@ -31,7 +31,25 @@
     "clipboard-manager:allow-clear",
     "window-state:default",
     "notification:default",
-    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "http://127.0.0.1:*"
+        },
+        {
+          "url": "http://localhost:*"
+        }
+      ],
+      "deny": [
+        {
+          "url": "https://api.openai.com/*"
+        },
+        {
+          "url": "https://api.storyteller.ai/*"
+        }
+      ]
+    },
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-unregister-all",
