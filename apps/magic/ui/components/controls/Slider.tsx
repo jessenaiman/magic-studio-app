@@ -16,6 +16,7 @@ interface SliderProps {
 }
 
 export function Slider({ id, label, value, min, max, step = 1, unit = "", disabled = false, onChange }: SliderProps) {
+  const fillPct = Math.max(0, Math.min(100, ((value - min) / (max - min || 1)) * 100));
   return (
     <div className="craft-number" data-disabled={disabled ? "true" : undefined}>
       <label className="craft-number-title" htmlFor={id}>
@@ -32,6 +33,7 @@ export function Slider({ id, label, value, min, max, step = 1, unit = "", disabl
           step={step}
           value={value}
           disabled={disabled}
+          style={{ "--range-fill": `${fillPct}%` } as React.CSSProperties}
           onChange={(event) => onChange(Number(event.currentTarget.value))}
         />
       </span>

@@ -740,7 +740,7 @@ fn specs_character() -> Vec<CommandSpec> {
             "Sprite Cycle from a Scribbles Sheet (PhotoCraft, EffectCraft)",
             ["Animation"],
             None,
-            "{\"character\":\"id\",\"action\":\"walk|run|jump|wave|turn\",\"sheet\":\"Scribbles action sheet PNG\",\"name\":\"optional sprite name; default the action\",\"columns\":4,\"rows\":2,\"fps\":12,\"duration\":4,\"mirror\":false}",
+            "{\"character\":\"id\",\"action\":\"walk|run|jump|wave|turn|sing\",\"sheet\":\"Scribbles action sheet PNG\",\"name\":\"optional sprite name; default the action\",\"columns\":4,\"rows\":2,\"fps\":12,\"duration\":4,\"mirror\":false}",
             always,
             crate::cmd::character::cmd_character_sprite
         ),
@@ -910,7 +910,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
         query!(
             "fidget.prepare",
             "Prepare Final Drawing Prompt and References (Fidget)",
-            r#"{"kind":"new|image|sheet|poses|actions|custom (default custom)","prompt":"character or drawing","reference":"image path or array","notes":"optional","action":"walk|run|jump|wave|turn","provider":"optional","model":"optional","character":"optional id","project":"optional .magic","name":"optional","timeout_s":900}"#,
+            r#"{"kind":"new|image|sheet|poses|actions|custom (default custom)","prompt":"character or drawing","reference":"image path or array","notes":"optional","action":"walk|run|jump|wave|turn|sing","provider":"optional","model":"optional","character":"optional id","project":"optional .magic","name":"optional","timeout_s":900}"#,
             crate::fidget::cmd_fidget_prepare
         ),
         cmd!(
@@ -964,7 +964,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Action Frames (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
             always,
             crate::scribbles::cmd_scribbles_actions
         ),
@@ -973,7 +973,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Overlapping Layers from One Image (Scribbles)",
             ["Scribbles"],
             None,
-            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn\"}",
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
             always,
             crate::scribbles::cmd_scribbles_layers
         ),

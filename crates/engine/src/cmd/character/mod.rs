@@ -369,8 +369,9 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
             views.push(json!({"view": "front", "parts": false, "drawing": cutout, "psd": false, "ecproj": false}));
         }
         let tripo_3d = tripo::inspect_character_3d(s, &project_dir, &canonical_id);
-        if !views.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
-            out.push(json!({"id": canonical_id, "views": views, "tripo_3d": tripo_3d}));
+        let sprites = sprite_summaries(&folder);
+        if !views.is_empty() || !sprites.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
+            out.push(json!({"id": canonical_id, "views": views, "sprites": sprites, "tripo_3d": tripo_3d}));
         }
     }
     Ok(json!({"ok": true, "characters": out}))
@@ -465,6 +466,28 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         "clip": (clip || gif).then_some(&out), "frames": frames}))
 }
 
+/// A character's sprite cycles: name, EffectCraft project and newest animated preview.
+fn sprite_summaries(folder: &Path) -> Vec<Value> {
+    let newest = |dir: &Path, ext: &str| {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|found| found == ext))
+            .max_by_key(|path| std::fs::metadata(path).and_then(|m| m.modified()).ok())
+    };
+    let mut dirs: Vec<PathBuf> =
+        std::fs::read_dir(folder.join("sprites")).into_iter().flatten().flatten().map(|entry| entry.path()).filter(|path| path.is_dir()).collect();
+    dirs.sort();
+    dirs.iter()
+        .filter_map(|dir| {
+            let ecproj = newest(dir, "ecproj")?;
+            Some(json!({"name": dir.file_name().map(|n| n.to_string_lossy().into_owned()), "ecproj": ecproj, "preview": newest(&dir.join("clips"), "gif")}))
+        })
+        .collect()
+}
+
 /// The project's own animation documents, which live outside the character folders.
 fn animation_documents(s: &Session) -> Result<Vec<Value>> {
     let root = crate::workshop::project_dir(s)?;
@@ -485,7 +508,10 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
     let views_of = |c: &Value| c["views"].as_array().into_iter().flatten().filter_map(|v| v["view"].as_str().map(str::to_owned)).collect::<Vec<_>>();
     let characters: Vec<Value> = all.iter().map(|c| json!({"id": c["id"], "views": views_of(c)})).collect();
     let documents = animation_documents(s)?;
-    let chosen = p["character"].as_str().and_then(|id| all.iter().find(|c| c["id"] == id)).or_else(|| all.iter().find(|c| !views_of(c).is_empty()));
+    let chosen = p["character"]
+        .as_str()
+        .and_then(|id| all.iter().find(|c| c["id"] == id))
+        .or_else(|| all.iter().find(|c| !views_of(c).is_empty() || c["sprites"].as_array().is_some_and(|s| !s.is_empty())));
     let Some(character) = chosen else {
         return Ok(json!({"ok": true, "characters": characters, "documents": documents, "selected": null}));
     };
@@ -501,7 +527,7 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
         .filter(|path| path.extension().is_some_and(|ext| ext == "mov" || ext == "mp4"))
         .max_by_key(|path| std::fs::metadata(path).and_then(|m| m.modified()).ok());
     Ok(
-        json!({"ok": true, "characters": characters, "documents": documents, "selected": {"character": id, "view": view, "time": time, "frame": frame, "clip": clip}}),
+        json!({"ok": true, "characters": characters, "documents": documents, "selected": {"character": id, "view": view, "time": time, "frame": frame, "clip": clip, "sprites": character["sprites"]}}),
     )
 }
 
