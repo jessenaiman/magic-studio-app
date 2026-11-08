@@ -74,6 +74,7 @@ fn generate_via_guarded_codex(prompt: &str, references: &[PathBuf], dir: &Path, 
     cmd.arg("--")
         .arg(format!("Use your native built-in image_gen.imagegen tool exactly once to generate: {prompt}.{attached} Do not retry or run other tools."));
 
+    crate::workspace::scrub_inherited_credentials(&mut cmd);
     let output = cmd.output().map_err(|e| EngineError::ExternalTool("codex".into(), format!("Failed to launch codex: {e}")))?;
     if !output.status.success() {
         return Err(invalid(&format!("Codex image execution failed (exit {:?}): {}", output.status.code(), String::from_utf8_lossy(&output.stderr))));

@@ -17,7 +17,9 @@ fn stamp() -> u128 {
 
 /// Query Omarchy's configured coding agent without launching it.
 pub fn default_agent() -> Option<String> {
-    Command::new("omarchy")
+    let mut command = Command::new("omarchy");
+    crate::workspace::scrub_inherited_credentials(&mut command);
+    command
         .args(["default", "agent"])
         .output()
         .ok()
@@ -425,7 +427,9 @@ fn run(dir: &Path, tool: &str, args: &[String]) -> Result<String> {
         options.mode(0o600);
     }
     let file = options.open(&reply)?;
-    let output = Command::new(program).current_dir(dir).args(args).stdout(file).output();
+    let mut command = Command::new(program);
+    crate::workspace::scrub_inherited_credentials(&mut command);
+    let output = command.current_dir(dir).args(args).stdout(file).output();
     let bytes = fs::read(&reply).unwrap_or_default();
     let _ = fs::remove_file(&reply);
     let output = output.map_err(|_| invalid(format!("Cannot start selected agent `{tool}`; check its installed CLI locally. No fallback attempted")))?;

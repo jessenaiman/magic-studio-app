@@ -12,6 +12,21 @@ use serde_json::Value;
 use crate::{EngineError, Result};
 
 /// Return the canonical current Magic Studio workspace, independent of the caller working directory.
+/// Removes credentials this engine holds from a child process's environment.
+///
+/// The app keeps `MAGIC_CONTROL_TOKEN` (the loopback control credential) and, when a Craft AI
+/// store uses one, `CRAFT_AI_SECRET_*` in its own environment. Chat agents and Codex inherit the
+/// environment, so without this a child can copy the control credential into its own session
+/// state, logs or scratch files.
+pub fn scrub_inherited_credentials(command: &mut std::process::Command) {
+    for (key, _) in std::env::vars_os() {
+        let Some(name) = key.to_str() else { continue };
+        if name == "MAGIC_CONTROL_TOKEN" || name.starts_with("CRAFT_AI_SECRET_") {
+            command.env_remove(name);
+        }
+    }
+}
+
 pub fn workspace_root(s: &crate::Session) -> PathBuf {
     // Installed binaries resolve their bundled runtime before any development checkout.
     if let Ok(exe) = std::env::current_exe()
