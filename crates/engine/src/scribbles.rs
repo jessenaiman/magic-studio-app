@@ -194,6 +194,7 @@ kind_command!(cmd_scribbles_image, "image");
 kind_command!(cmd_scribbles_sheet, "sheet");
 kind_command!(cmd_scribbles_poses, "poses");
 kind_command!(cmd_scribbles_actions, "actions");
+kind_command!(cmd_scribbles_layers, "layers");
 kind_command!(cmd_scribbles_custom, "custom");
 
 /// Templates remain discoverable at the existing compatibility endpoint.

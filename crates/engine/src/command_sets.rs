@@ -36,6 +36,7 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"scribbles.sheet"
             | b"scribbles.poses"
             | b"scribbles.actions"
+            | b"scribbles.layers"
             | b"scribbles.custom"
             | b"character.mark"
             | b"character.cut"
@@ -957,6 +958,15 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn\"}",
             always,
             crate::scribbles::cmd_scribbles_actions
+        ),
+        cmd!(
+            "scribbles.layers",
+            "Overlapping Layers from One Image (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn\"}",
+            always,
+            crate::scribbles::cmd_scribbles_layers
         ),
         cmd!(
             "scribbles.custom",
