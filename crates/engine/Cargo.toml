@@ -29,12 +29,9 @@ craft-atomic = { workspace = true }
 craft-audio = { workspace = true }
 craft-doc = { workspace = true }
 craft-docpath = { workspace = true }
-craft-ecproj-format = { workspace = true }
 craft-media = { workspace = true }
-craft-pcraft-format = { workspace = true }
 craft-settings = { workspace = true }
 craft-update = { workspace = true }
-craft-vectorcraft-format = { workspace = true }
 designcraft-engine = { workspace = true }
 designcraft-render = { workspace = true }
 effectcraft-engine = { workspace = true }
