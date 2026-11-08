@@ -43,7 +43,7 @@ const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast
     }
   };
   return (
-    <section id="stage-assets-panel" aria-label="Stage Assets & Animate" style={{ border: "1px solid var(--border, #2a313c)", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+    <section id="stage-assets-panel" aria-label="Stage Assets & Animate" style={{ gridColumn: "1 / -1", border: "1px solid var(--border, #2a313c)", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <strong>Stage Assets &amp; Animate <span className="muted">({assets.length})</span></strong>
         <button id="stage-tab-characters" className={tab === "characters" ? "start" : "ghost"} onClick={() => setTab("characters")}>Characters / Animate ({characters.length})</button>
@@ -59,19 +59,34 @@ const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast
       </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingTop: 8 }}>
         {visible.map((asset) => (
-          <div key={asset.id} style={{ width: 150, flex: "0 0 auto", border: "1px solid var(--border, #2a313c)", borderRadius: 6, overflow: "hidden" }}>
+          <div
+            key={asset.id}
+            role="button"
+            tabIndex={0}
+            title={asset.name || asset.id}
+            onClick={() => void run(async () => {
+              await executeCommand("character.open", { id: asset.id });
+              await executeCommand("ui.set", { view: "animation" });
+            })}
+            style={{ position: "relative", width: 150, flex: "0 0 auto", border: "1px solid var(--border, #2a313c)", borderRadius: 6, overflow: "hidden", cursor: "pointer" }}
+          >
+            <button
+              id={`stage-asset-remove-${asset.id}`}
+              className="ghost"
+              aria-label={`Remove ${asset.name || asset.id}`}
+              title={`Remove ${asset.name || asset.id} from project`}
+              onClick={(event) => {
+                event.stopPropagation();
+                void run(() => executeCommand("project.remove_asset", { id: asset.id }), true);
+              }}
+              style={{ position: "absolute", top: 4, right: 4, padding: "0 5px", fontSize: 11, lineHeight: "16px", borderRadius: 8, background: "rgba(0,0,0,0.55)" }}
+            >×</button>
             {/\.(png|jpe?g|webp|gif|svg)$/i.test(asset.path || "")
               ? <img src={fileUrl(asset.path)} alt="" style={{ width: "100%", height: 84, objectFit: "cover", display: "block" }} />
               : <div className="muted" style={{ height: 84, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{asset.kind === "model_3d" ? "3D RIG" : "PART"}</div>}
             <div style={{ padding: "6px 8px" }}>
-              <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={asset.name || asset.id}>{asset.name || asset.id}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, marginTop: 2 }}>
-                <button className="ghost" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => void run(async () => {
-                  await executeCommand("character.open", { id: asset.id });
-                  await executeCommand("ui.set", { view: "animation" });
-                })}>{subtitle(asset)}</button>
-                <button id={`stage-asset-remove-${asset.id}`} className="ghost" title={`Remove ${asset.name || asset.id}`} onClick={() => void run(() => executeCommand("project.remove_asset", { id: asset.id }), true)}>×</button>
-              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asset.name || asset.id}</div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{subtitle(asset)}</div>
             </div>
           </div>
         ))}
