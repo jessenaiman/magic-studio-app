@@ -74,8 +74,18 @@ pub(crate) fn photocraft_run(input: &std::path::Path, steps: &[(&str, Value)], o
     Ok(())
 }
 
-/// Document dimensions `(width, height)` from `photocraft-cli info`.
+/// Document dimensions `(width, height)` via `craft_doc::outline` (for Craft files), `image::image_dimensions`, or `photocraft-cli info`.
 pub(crate) fn photocraft_dimensions(path: &std::path::Path) -> Result<(u32, u32)> {
+    if let Ok(bytes) = std::fs::read(path)
+        && craft_doc::sniff(&bytes).is_some()
+        && let Ok(outline) = craft_doc::outline(&bytes, &craft_doc::Limits::default())
+        && let Some(c) = outline.canvas
+    {
+        return Ok((c.width, c.height));
+    }
+    if let Ok(dims) = image::image_dimensions(path) {
+        return Ok(dims);
+    }
     let cli = photocraft_cli()?;
     let out = std::process::Command::new(&cli)
         .arg("info")
