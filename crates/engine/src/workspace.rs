@@ -299,7 +299,7 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     };
     let cli = find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     let mut cmd = std::process::Command::new(&cli);
-    cmd.arg("run").arg("--project").arg(&path).arg("--commands").arg("-");
+    cmd.arg("--json").arg("--project").arg(&path).arg("run").arg("--commands").arg("-");
     if p["save"] == true {
         cmd.arg("--save");
     }
@@ -314,7 +314,13 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     if !out.status.success() {
         return Err(EngineError::ExternalTool("effectcraft-cli".into(), format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr))));
     }
-    let results: Vec<Value> = String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| serde_json::from_str(l.trim()).ok()).collect();
+    // `--json` makes EffectCraft answer one array of `{command, result}`, one per step.
+    let results: Value = serde_json::from_slice(&out.stdout).map_err(|e| {
+        EngineError::ExternalTool(
+            "effectcraft-cli".into(),
+            format!("batch reply is not JSON: {e}: {}", String::from_utf8_lossy(&out.stdout).chars().take(200).collect::<String>()),
+        )
+    })?;
     let info = craft_doc_info(&path);
     Ok(serde_json::json!({"ok": true, "path": path, "info": info, "results": results, "via": "effectcraft-cli"}))
 }
