@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { executeCommand } from "../../../api";
+import { Slider, Toggle } from "../../../components/controls";
 
 /**
  * The settings page, as React. First step of the JS → TS/TSX → Rust migration: the smallest
  * legacy page (27 lines of `settings.js`) with no shared globals, its commands (`prefs.schema`,
- * `prefs.set`) already implemented in Rust.
+ * `prefs.set`) already implemented in Rust, and its controls from the app's one vocabulary
+ * (`components/controls` → global.css).
  */
 
 type Kind =
@@ -32,13 +34,9 @@ interface Schema {
   categories: Category[];
 }
 
-function numeric(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
+const numeric = (value: unknown, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+const text = (value: unknown): string => (typeof value === "string" ? value : "");
 
 function FieldControl({ field }: { field: Field }) {
   const [value, setValue] = useState<unknown>(field.value);
@@ -60,58 +58,49 @@ function FieldControl({ field }: { field: Field }) {
 
   const { kind } = field;
   const id = `settings.${field.key}`;
-  let control;
   if (kind.type === "bool") {
-    control = (
-      <input
+    return <Toggle id={id} label={field.label} checked={value === true} onChange={(next) => void save(next)} />;
+  }
+  if (kind.type === "int" || kind.type === "float") {
+    return (
+      <Slider
         id={id}
-        type="checkbox"
-        className="craft-switch"
-        checked={value === true}
-        onChange={(event) => void save(event.currentTarget.checked)}
-      />
-    );
-  } else if (kind.type === "int" || kind.type === "float") {
-    const min = numeric(kind.min, 0);
-    const max = numeric(kind.max, 100);
-    control = (
-      <input
-        id={id}
-        type="range"
-        className="control-range"
-        min={min}
-        max={max}
+        label={state === "failed" ? `${field.label} · not saved` : field.label}
+        value={numeric(value, numeric(kind.min, 0))}
+        min={numeric(kind.min, 0)}
+        max={numeric(kind.max, 100)}
         step={kind.type === "int" ? 1 : 0.1}
-        value={numeric(value, min)}
-        onChange={(event) => void save(Number(event.currentTarget.value))}
-      />
-    );
-  } else if (kind.type === "choice") {
-    control = (
-      <select id={id} value={text(value)} onChange={(event) => void save(event.currentTarget.value)}>
-        {kind.choices.map((choice) => (
-          <option key={choice.value} value={choice.value}>{choice.label}</option>
-        ))}
-      </select>
-    );
-  } else {
-    control = (
-      <input
-        id={id}
-        type="text"
-        value={text(value)}
-        onChange={(event) => void save(event.currentTarget.value)}
+        unit={kind.unit ?? ""}
+        onChange={(next) => void save(next)}
       />
     );
   }
-
+  if (kind.type === "choice") {
+    return (
+      <div className="inspector-field craft-number">
+        <label className="craft-number-title" htmlFor={id}>
+          <span className="craft-control-label">{field.label}</span>
+          <output className="craft-number-readout">{state === "saving" ? "Saving…" : state === "failed" ? "Not saved" : ""}</output>
+        </label>
+        <span className="craft-number-body">
+          <select id={id} className="field" value={text(value)} onChange={(event) => void save(event.currentTarget.value)}>
+            {kind.choices.map((choice) => (
+              <option key={choice.value} value={choice.value}>{choice.label}</option>
+            ))}
+          </select>
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="inspector-field craft-number">
-      <label htmlFor={id} className="craft-number-title">
+      <label className="craft-number-title" htmlFor={id}>
         <span className="craft-control-label">{field.label}</span>
-        <output className="craft-number-readout">{state === "saving" ? "Saving…" : state === "failed" ? "Not saved" : String(value ?? "")}</output>
+        <output className="craft-number-readout">{state === "saving" ? "Saving…" : state === "failed" ? "Not saved" : ""}</output>
       </label>
-      <span className="craft-number-body">{control}</span>
+      <span className="craft-number-body">
+        <input id={id} className="field" type="text" value={text(value)} onChange={(event) => void save(event.currentTarget.value)} />
+      </span>
     </div>
   );
 }
