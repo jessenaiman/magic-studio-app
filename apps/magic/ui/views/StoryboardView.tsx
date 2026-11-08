@@ -171,7 +171,12 @@ export const StoryboardView:React.FC<Props>=({projectPath,storyboard,onRefresh,o
                 role="button" tabIndex={0} aria-label={`${slot.display}: click to edit, right-click to copy a chat link`}
                 onClick={()=>setEditing(active?null:key)} onKeyDown={event=>{if(event.key==="Enter")setEditing(active?null:key);}}
                 onContextMenu={event=>{event.preventDefault();copyLink(page.page,slot.label);}}><title>{slot.display}</title></rect>
-              {active&&<foreignObject className="sb-canvas-editor" x={b[0]} y={b[1]} width={Math.max(b[2]-b[0],420)} height={Math.max(b[3]-b[1],260)}>{editor(slot,"sb-canvas")}</foreignObject>}
+              {active&&(()=>{
+                // Kept inside the page: a frame near an edge opens its editor inward.
+                const w=Math.min(Math.max(b[2]-b[0],420),vx1-vx),h=Math.min(Math.max(b[3]-b[1],260),vy1-vy);
+                const x=Math.max(vx,Math.min(b[0],vx1-w)),y=Math.max(vy,Math.min(b[1],vy1-h));
+                return <foreignObject className="sb-canvas-editor" x={x} y={y} width={w} height={h}>{editor(slot,"sb-canvas")}</foreignObject>;
+              })()}
             </g>;
           })}
         </svg>
