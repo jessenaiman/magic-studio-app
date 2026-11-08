@@ -13,7 +13,7 @@ class TimelineController {
       const [px, py] = layer.pivot || [0, 0];
       const out = { rotation: [], scale: [], x: [], y: [], opacity: [] };
       for (const frame of sample.frames) {
-        const l = frame.layers[i];
+        const l = frame?.layers?.[i];
         const [a, b, c, d, e, f] = l?.matrix || [1, 0, 0, 1, 0, 0];
         out.rotation.push(Math.atan2(b, a) * 180 / Math.PI);
         out.scale.push(Math.hypot(a, b));
@@ -153,7 +153,13 @@ class TimelineController {
     const series = this.series(sample, meta);
     const rows = motion.rest ? [] : this.rows(meta, series, track);
     if (!rows.length) {
-      box.replaceChildren(el("p", { class: "panel-empty inline muted" }, motion.rest ? "Rest pose · nothing moves. Choose an action or clip." : "This clip animates no channels."));
+      const isRenderedFrames = typeof sample.frames?.[0] === "string";
+      const emptyNote = motion.rest
+        ? "Rest pose · nothing moves. Choose an action or clip."
+        : isRenderedFrames
+          ? `Playing ${sample.frames.length} rendered EffectCraft frames (${sample.duration.toFixed(2)}s @ ${sample.fps} fps).`
+          : "This clip animates no channels.";
+      box.replaceChildren(el("p", { class: "panel-empty inline muted" }, emptyNote));
       return;
     }
     const duration = sample.duration || 1;

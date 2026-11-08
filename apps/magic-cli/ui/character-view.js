@@ -128,7 +128,7 @@ class DrawnActionPlayer extends ActionPlayer {
     animationPause();
     const msg = `${motion.character} · keying ${action.replaceAll("_", " ")} in EffectCraft…`;
     motion.stageHeader.rename(msg);
-    setScribblesLoadingWidget(true, msg, "scribbles-puppet.gif");
+    setScribblesLoadingWidget(true, msg, "scribbles-work.gif");
     try {
       const keyed = await motionCommand("character.action", { character: motion.character, view, action });
       const render = await motionCommand("character.render", { character: motion.character, view, start: keyed.start, end: keyed.end, fps: CHARACTER_FPS });
