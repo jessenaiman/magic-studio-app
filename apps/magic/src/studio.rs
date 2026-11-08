@@ -117,6 +117,17 @@ pub(super) fn open(path: PathBuf) -> Result<Value, String> {
     Ok(json!({"ok": true, "timeline": path, "window": "opened"}))
 }
 
+/// Sends the engine's film commands to the open window, so they never edit its file behind it.
+pub(super) fn install_film_host() {
+    magic::CraftHub::set_film_host(Box::new(|doc, command, params| {
+        let slot = STUDIO.get()?.live.lock().ok()?;
+        let live = slot.as_ref().filter(|live| std::fs::canonicalize(&live.path).ok() == std::fs::canonicalize(doc).ok())?;
+        Some(request(live, "engine.execute", json!({"command": command, "params": params})).and_then(|reply| {
+            if reply["ok"] == true { Ok(reply["result"].clone()) } else { Err(reply["error"].as_str().unwrap_or("FilmCraft refused the command").to_owned()) }
+        }))
+    }));
+}
+
 /// `video.open`: the project's timeline in FilmCraft.
 pub(super) fn open_project(app: &tauri::AppHandle) -> Result<Value, String> {
     let film = super::state(app).session.lock().map_err(|e| e.to_string())?.execute("video.film", json!({})).map_err(|e| e.to_string())?;

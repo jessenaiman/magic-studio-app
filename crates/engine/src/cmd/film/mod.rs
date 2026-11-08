@@ -68,9 +68,32 @@ pub(crate) fn timeline_file(s: &Session) -> Result<Value> {
     Ok(file_info(&film(s)?.project))
 }
 
+/// Runs `steps` in the open FilmCraft window, or `None` if it does not have `project` open.
+fn run_in_window(project: &Path, save: bool, steps: &[Value]) -> Option<Result<Vec<Value>>> {
+    let mut results = Vec::with_capacity(steps.len());
+    for (index, step) in steps.iter().enumerate() {
+        let id = step["id"].as_str().or_else(|| step["command"].as_str())?;
+        let params = step.get("params").cloned().unwrap_or_else(|| json!({}));
+        let last = index + 1 == steps.len();
+        match crate::CraftHub::in_process(crate::CraftTarget::Film, Some(project), id, &params, save && last) {
+            Some(Ok(value)) => results.push(value),
+            Some(Err(error)) => return Some(Err(error)),
+            None if index == 0 => return None,
+            None => return Some(Err(EngineError::ExternalTool("filmcraft".into(), format!("FilmCraft closed during {id}")))),
+        }
+    }
+    Some(Ok(results))
+}
+
 /// Run a JSONL batch of commands on `project` (or a fresh session when `fresh` is true or
 /// `project` does not exist yet), optionally saving back to `project`.
 pub(crate) fn run_steps(project: Option<&Path>, fresh: bool, save: bool, steps: &[Value]) -> Result<Vec<Value>> {
+    if !fresh
+        && let Some(project) = project
+        && let Some(results) = run_in_window(project, save, steps)
+    {
+        return results;
+    }
     use std::io::Write;
     use std::process::{Command, Stdio};
 
@@ -536,7 +559,6 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
     let clip = p["clip"].as_str().map(PathBuf::from).filter(|c| c.is_file()).ok_or_else(|| bad("clip=<rendered .mov or .mp4> is required"))?;
     let from = p.get("from_tick").or_else(|| p.get("from")).and_then(parse_tick).unwrap_or(Tick::ZERO).max(Tick::ZERO);
     let fps = p.get("fps").and_then(crate::time::parse_frame_rate).unwrap_or(crate::time::FrameRate::FPS_30);
-    let start_frame = fps.frame_at(from).max(0);
     let track = p["track"].as_str().unwrap_or(crate::cmd::film::assembly::CHARACTER_TRACK);
     if s.project_mode.is_some() && !f.project.is_file() {
         if let Some(folder) = f.project.parent() {
@@ -554,7 +576,7 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
         .first()
         .and_then(|r| crate::cmd::film::assembly::ids(r, "items").first().copied())
         .ok_or_else(|| bad(format!("FilmCraft did not import {}", clip.display())))?;
-    let place = json!({"id": "timeline.place", "params": {"item": item, "track": track, "frame": start_frame,
+    let place = json!({"id": "timeline.place", "params": {"item": item, "track": track, "seconds": from.seconds(),
         "insert": false, "audio": false}});
     let placed = crate::cmd::film::assembly::run(&f.dir, &project, false, &[place])?;
     let clips = placed.first().map(|r| crate::cmd::film::assembly::ids(r, "clips")).unwrap_or_default();
@@ -566,7 +588,6 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
         "timeline": project,
         "track": track,
         "from_tick": from.0,
-        "frame": start_frame,
         "clips": clips,
         "next": "video.preview to watch it"
     }))

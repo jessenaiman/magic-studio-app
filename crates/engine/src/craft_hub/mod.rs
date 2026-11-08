@@ -117,6 +117,12 @@ fn target_token(target: CraftTarget) -> Option<String> {
     None
 }
 
+/// Runs a command in a Craft app that lives in this process, or `None` if it does not have `doc`
+/// open.
+pub type FilmHost = Box<dyn Fn(&Path, &str, &Value) -> Option<std::result::Result<Value, String>> + Send + Sync>;
+
+static FILM_HOST: std::sync::OnceLock<FilmHost> = std::sync::OnceLock::new();
+
 pub struct CraftHub;
 
 enum TcpOutcome {
@@ -126,6 +132,27 @@ enum TcpOutcome {
 }
 
 impl CraftHub {
+    /// Registers the FilmCraft that runs inside this process, so film commands reach its window.
+    pub fn set_film_host(host: FilmHost) {
+        let _ = FILM_HOST.set(host);
+    }
+
+    /// Runs `command` in the in-process FilmCraft when it has `doc` open, saving afterwards when
+    /// asked. `None` when it does not, so the caller can use the file on disk.
+    pub(crate) fn in_process(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value, save: bool) -> Option<Result<Value>> {
+        if target != CraftTarget::Film {
+            return None;
+        }
+        let (host, doc) = (FILM_HOST.get()?, doc?);
+        let result = host(doc, command, params)?.and_then(|value| {
+            if save {
+                host(doc, "file.save", &json!({})).unwrap_or_else(|| Err("FilmCraft closed before saving".into()))?;
+            }
+            Ok(value)
+        });
+        Some(result.map_err(|error| EngineError::CommandFailed(command.to_string(), error)))
+    }
+
     /// Execute a command against a Craft target application.
     ///
     /// 1. Connects to the live app via loopback TCP (`--control`). When `doc` is given, verifies the
@@ -133,6 +160,9 @@ impl CraftHub {
     /// 2. Falls back to `<app>-cli` ONLY when TCP connect is refused/unreachable or the live app is
     ///    editing a different document — never after a connected live command errors or times out.
     pub fn execute(target: CraftTarget, doc: Option<&Path>, command: &str, params: &Value) -> Result<Value> {
+        if let Some(result) = Self::in_process(target, doc, command, params, false) {
+            return result;
+        }
         let addr = target_addr(target)?;
         let token = target_token(target);
         match call_tcp_at(target, addr, token.as_deref(), doc, command, params, false, Duration::from_millis(250)) {
@@ -144,6 +174,9 @@ impl CraftHub {
     /// Execute a mutating command against `doc` and persist it (`file.save` / `app.save` on a live
     /// `--control` session, or `--save` / `--out` via `<app>-cli` when not open live).
     pub fn execute_and_save(target: CraftTarget, doc: &Path, command: &str, params: &Value) -> Result<Value> {
+        if let Some(result) = Self::in_process(target, Some(doc), command, params, true) {
+            return result;
+        }
         let addr = target_addr(target)?;
         let token = target_token(target);
         match call_tcp_at(target, addr, token.as_deref(), Some(doc), command, params, true, Duration::from_millis(250)) {
@@ -154,6 +187,9 @@ impl CraftHub {
 
     /// Send `command` to the live app ONLY if it is running AND currently has `doc` open.
     pub fn try_live(target: CraftTarget, doc: &Path, command: &str, params: &Value, save: bool) -> Option<Result<Value>> {
+        if let Some(result) = Self::in_process(target, Some(doc), command, params, save) {
+            return Some(result);
+        }
         let addr = target_addr(target).ok()?;
         let token = target_token(target);
         match call_tcp_at(target, addr, token.as_deref(), Some(doc), command, params, save, Duration::from_millis(250)) {

@@ -328,6 +328,7 @@ fn main() {
             keymap::key_pressed
         ])
         .setup(move |app| {
+            studio::install_film_host();
             if let Some(path) = &cli.project {
                 dispatch(app.handle(), "project.open", json!({"path":path}), false)?;
             }
