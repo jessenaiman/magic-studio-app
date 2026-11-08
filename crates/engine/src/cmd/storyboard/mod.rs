@@ -260,48 +260,25 @@ fn read_designcraft_document_json(path: &Path) -> Result<Value> {
     Err(fail("document.json not found in .designcraft archive"))
 }
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static TEMP_SEQ: AtomicU64 = AtomicU64::new(1);
-
-struct ScopedTempDir(PathBuf);
-
-impl ScopedTempDir {
-    fn new(prefix: &str) -> Result<Self> {
-        let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("{prefix}-{}-{seq}", std::process::id()));
-        std::fs::create_dir_all(&dir).map_err(fail)?;
-        Ok(Self(dir))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for ScopedTempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-/// An open storyboard document and the frames of each of its scenes.
+/// An open storyboard document and the frames of each of its scenes: a DesignCraft work copy
+/// held by CraftHub ([`crate::craft_hub::CraftDoc`]).
 struct Board {
-    path: PathBuf,
-    work_path: PathBuf,
-    _temp_dir: ScopedTempDir,
-    stamp: Option<crate::link_watch::FileStamp>,
+    doc: crate::craft_hub::CraftDoc,
 }
 
 impl Board {
     fn open(path: &Path) -> Result<Self> {
-        let stamp = crate::link_watch::FileStamp::of(path);
-        let temp_dir = ScopedTempDir::new("magic-storyboard-work")?;
-        let work_path = temp_dir.path().join("storyboard.designcraft");
-        std::fs::copy(path, &work_path).map_err(fail)?;
-        let _ = read_designcraft_document_json(&work_path)?;
-        crate::link_watch::save_guard(path, stamp)?;
-        Ok(Self { path: path.to_path_buf(), work_path, _temp_dir: temp_dir, stamp })
+        let doc = crate::craft_hub::CraftDoc::open(crate::craft_hub::CraftTarget::Design, path)?;
+        let _ = read_designcraft_document_json(doc.work_path())?;
+        Ok(Self { doc })
+    }
+
+    fn path(&self) -> &Path {
+        self.doc.path()
+    }
+
+    fn work_path(&self) -> &Path {
+        self.doc.work_path()
     }
 
     fn run(&mut self, id: &str, params: Value) -> Result<Value> {
@@ -309,52 +286,16 @@ impl Board {
     }
 
     fn run_batch(&mut self, steps: &[(&str, Value)]) -> Result<Vec<Value>> {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-
-        let mutates = steps.iter().any(|(id, _)| !matches!(*id, "document.inspect" | "object.findByLabel" | "story.get" | "preflight.run"));
-        let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
-        let mut cmd = Command::new(&cli);
-        cmd.arg("script").arg("-").arg("--in").arg(&self.work_path);
-        if mutates {
-            cmd.arg("--save").arg(&self.work_path);
-        }
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = cmd.spawn().map_err(fail)?;
-        let payload: Vec<Value> = steps.iter().map(|(id, params)| json!({"command": id, "params": params})).collect();
-        let bytes = serde_json::to_vec(&payload).map_err(fail)?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(&bytes).map_err(fail)?;
-        }
-        let out = child.wait_with_output().map_err(fail)?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if let Ok(report) = serde_json::from_slice::<Value>(&out.stdout)
-                && let Some(err) = report["failed"]["error"].as_str()
-            {
-                return Err(fail(err));
-            }
-            return Err(fail(stderr.trim()));
-        }
-        let report: Value = serde_json::from_slice(&out.stdout).map_err(fail)?;
-        if let Some(err) = report["failed"]["error"].as_str() {
-            return Err(fail(err));
-        }
-        Ok(report["results"].as_array().cloned().unwrap_or_default())
+        self.doc.batch(steps)
     }
 
     fn save(&mut self) -> Result<()> {
-        let path = self.path.clone();
-        crate::link_watch::save_guard(&path, self.stamp)?;
-        let bytes = std::fs::read(&self.work_path)?;
-        craft_atomic::atomic_write(&path, &bytes)?;
-        self.stamp = crate::link_watch::FileStamp::of(&path);
-        Ok(())
+        self.doc.save()
     }
 
     /// Label -> frame id per spread, for `labels` and `scene_id` (which marks a scene spread).
     fn frames(&mut self, labels: &[String]) -> Result<Vec<Labels>> {
-        let doc = read_designcraft_document_json(&self.work_path)?;
+        let doc = read_designcraft_document_json(self.work_path())?;
         let spreads = doc["spreads"].as_array().cloned().unwrap_or_default();
         let want: std::collections::HashSet<&str> = labels.iter().map(String::as_str).chain(["scene_id"]).collect();
         let mut out = vec![HashMap::new(); spreads.len()];
@@ -379,7 +320,7 @@ impl Board {
     }
 
     fn text(&mut self, frame: u64) -> Result<String> {
-        let doc = read_designcraft_document_json(&self.work_path)?;
+        let doc = read_designcraft_document_json(self.work_path())?;
         for spread in doc["spreads"].as_array().into_iter().flatten() {
             for item in spread["items"].as_array().into_iter().flatten() {
                 if item["id"].as_u64() == Some(frame) {
@@ -395,7 +336,7 @@ impl Board {
     }
 
     fn set_text(&mut self, frame: u64, text: &str) -> Result<()> {
-        let doc = read_designcraft_document_json(&self.work_path)?;
+        let doc = read_designcraft_document_json(self.work_path())?;
         let mut story_id = None;
         for spread in doc["spreads"].as_array().into_iter().flatten() {
             for item in spread["items"].as_array().into_iter().flatten() {
@@ -471,7 +412,7 @@ impl Board {
                 }
             }
         }
-        let doc = read_designcraft_document_json(&self.work_path)?;
+        let doc = read_designcraft_document_json(self.work_path())?;
         // Parent spread id -> its label ("A-Parent"), for the section a page belongs to.
         let parents: HashMap<u64, String> = doc["parents"]
             .as_array()
@@ -504,7 +445,9 @@ impl Board {
                     }
                     Some("graphic") => {
                         let image = item["content"]["asset"].as_u64().and_then(|aid| assets[aid.to_string()]["link"].as_str()).map(|raw| {
-                            craft_docpath::resolve_absolute(raw, Some(&self.path)).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| raw.to_string())
+                            craft_docpath::resolve_absolute(raw, Some(self.path()))
+                                .map(|p| p.to_string_lossy().into_owned())
+                                .unwrap_or_else(|_| raw.to_string())
                         });
                         ("image", None, image)
                     }
@@ -889,7 +832,7 @@ fn read_completion(path: &Path) -> Result<Value> {
         page["issues"] = json!(issues);
     }
     let complete = !pages.is_empty() && count == 0 && errors == 0;
-    Ok(json!({"ok": true, "path": b.path, "count": count, "page_count":pages.len(),
+    Ok(json!({"ok": true, "path": b.path(), "count": count, "page_count":pages.len(),
         "complete":complete, "status":if count > 0 || pages.is_empty() { "incomplete" } else if errors > 0 { "review" } else { "complete" },
         "pages": report, "preflight":preflight}))
 }
@@ -1022,7 +965,7 @@ pub fn cmd_storyboard_run(s: &mut Session, p: &Value) -> Result<Value> {
         "ok": failed.is_none(),
         "completed": results.len(),
         "results": results,
-        "path": b.path,
+        "path": b.path(),
     });
     if let Some((step, command, error)) = failed {
         out["failed"] = json!({"step": step, "command": command, "error": error});
@@ -1118,7 +1061,7 @@ pub fn cmd_storyboard_lyrics(s: &mut Session, p: &Value) -> Result<Value> {
     b.save()?;
     Ok(json!({
         "ok": true,
-        "path": b.path,
+        "path": b.path(),
         "lyrics": lyrics,
         "cues": cues.len(),
         "written": written,
@@ -1158,7 +1101,7 @@ pub fn cmd_storyboard_scenes(s: &mut Session, p: &Value) -> Result<Value> {
     for (i, &sp) in scenes.iter().enumerate() {
         list.push(scene_summary(&mut b, i + 1, sp, &frames[sp])?);
     }
-    Ok(json!({"ok": true, "path": b.path, "scenes": list}))
+    Ok(json!({"ok": true, "path": b.path(), "scenes": list}))
 }
 
 /// `storyboard.pages`: every page with its archetype, section and labelled slots.
@@ -1166,7 +1109,7 @@ pub fn cmd_storyboard_pages(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
     let pages = b.pages()?;
     let list = pages.iter().map(PageSlots::to_json).collect::<Vec<_>>();
-    Ok(json!({"ok": true, "path": b.path, "pages": list}))
+    Ok(json!({"ok": true, "path": b.path(), "pages": list}))
 }
 
 /// `storyboard.slots`: the labelled slots of one page.
@@ -1180,7 +1123,7 @@ pub fn cmd_storyboard_slots(s: &mut Session, p: &Value) -> Result<Value> {
         p.get("label").and_then(Value::as_str).and_then(|lbl| slots.as_array().and_then(|arr| arr.iter().find(|s| s["label"].as_str() == Some(lbl)).cloned()));
     Ok(json!({
         "ok": true,
-        "path": b.path,
+        "path": b.path(),
         "page": page.index,
         "scene": scene_number_for(&pages, index),
         "archetype": page.archetype,
@@ -1227,7 +1170,7 @@ pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
         "page": page.index,
         "scene": scene_number_for(&pages, index),
         "archetype": page.archetype,
-        "path": b.path
+        "path": b.path()
     }))
 }
 
@@ -1302,7 +1245,7 @@ pub fn cmd_storyboard_add(s: &mut Session, p: &Value) -> Result<Value> {
         "page": index,
         "scene": scene_number,
         "archetype": archetype,
-        "path": b.path
+        "path": b.path()
     }))
 }
 
@@ -1320,7 +1263,7 @@ pub fn cmd_storyboard_section(s: &mut Session, p: &Value) -> Result<Value> {
         b.run("layout.pages.applyParent", json!({"pages": pages, "parent": label}))?;
     }
     b.save()?;
-    Ok(json!({"ok": true, "section": label, "pages": pages, "path": b.path}))
+    Ok(json!({"ok": true, "section": label, "pages": pages, "path": b.path()}))
 }
 
 /// `storyboard.overlay`: place new art over a slot, keeping the original underneath for review.
@@ -1358,18 +1301,18 @@ pub fn cmd_storyboard_overlay(s: &mut Session, p: &Value) -> Result<Value> {
         "overlay": overlay,
         "preserved": slot.id,
         "layer": layer_id,
-        "path": b.path,
+        "path": b.path(),
     }))
 }
 
 fn render_png(b: &mut Board, page: usize, scale: f64) -> Result<Vec<u8>> {
     let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
-    let tmp = ScopedTempDir::new("magic-sb-page")?;
+    let tmp = crate::craft_hub::ScopedTempDir::new("magic-sb-page")?;
     let out_path = tmp.path().join("page.png");
     let out = std::process::Command::new(&cli)
         .arg("run")
         .arg("--in")
-        .arg(&b.work_path)
+        .arg(b.work_path())
         .arg("--page")
         .arg(page.to_string())
         .arg("--scale")
@@ -1410,7 +1353,7 @@ fn render_rail(doc: &Path, scale: f64) -> Result<Value> {
         let out = std::process::Command::new(&cli)
             .arg("run")
             .arg("--in")
-            .arg(&b.work_path)
+            .arg(b.work_path())
             .arg("--scale")
             .arg(scale.to_string())
             .arg("--all-pages")

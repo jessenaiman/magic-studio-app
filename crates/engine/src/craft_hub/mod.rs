@@ -7,6 +7,9 @@
 //! - <https://github.com/storytold/photocraft/blob/a3ea9a4277e1e1067acbb30d592c56e9545b949d/apps/photocraft/src/control_server.rs>
 //! - <https://github.com/storytold/vectorcraft/blob/a479c8baa1b783b5002f8ebd02391aa3395b5b49/apps/vectorcraft/src/control_server.rs>
 
+mod doc;
+pub(crate) use doc::{CraftDoc, ScopedTempDir};
+
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
