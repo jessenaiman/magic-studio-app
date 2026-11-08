@@ -22,16 +22,10 @@ Use this skill when preparing 2D character artwork for rigging or building layer
 1. **Open Animation-Ready Stance**: Feet planted shoulder-width apart with clear background between the legs; arms held ~20° away from the body with clear gap between each arm and torso; hands open; no limb overlapping another limb (`https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation`).
 2. **Complete Hidden Geometry**: Never crop an asset flush at the seam where it meets another part. Paint the full underlying torso/shoulder behind the arm and the full neck beneath the head so rotation never exposes a gap.
 3. **Rounded Circular Joint Caps**: Overlapping limb ends (shoulders, elbows, knees) must have circular rounded caps centered on the joint pivot so rotating the limb keeps the silhouette seamless.
-4. **Targeted Sub-Layer Articulation (`drawn_refine.py` pattern)**: When a drawn pose cel only needs one articulating limb or prop (e.g., a conducting forearm or spinning chest fan):
+4. **Targeted Sub-Layer Articulation**: When a drawn pose cel only needs one articulating limb or prop (e.g., a conducting forearm or spinning chest fan):
    - Apply a subtract mask (`mask.new` with `mode: "subtract"`) around that sub-part on the base pose cel.
    - Add a second layer of the same sheet above it with an add mask (`mask.new`), set its anchor at the anatomical joint socket or rotor hub, and keyframe `transform/rotation`.
 5. **Replacement Cels / Slot Swapping**: Use hold-opacity layer swaps (`0%` / `100%`) for hand gestures (`fist`, `open`, `point`, `wave`) and facial expressions (`neutral`, `happy`, `surprised`, `focused`) rather than rotating a static hand drawing into an impossible pose.
-
-## Reference Scripts in This Repo
-
-- [`projects/make-it-sound-human/motion/authoring/drawn_cut.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_cut.py): Foot-anchored pose-cel masking (`cel()`), squash-and-stretch, and EffectCraft batch authoring via `effect.exec`.
-- [`projects/make-it-sound-human/motion/authoring/drawn_acting.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_acting.py): Pose-to-pose character acting sequences and masked rotating prop layers (e.g. chest fan blades).
-- [`projects/make-it-sound-human/motion/authoring/drawn_refine.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_refine.py): Subtract/add mask isolation for articulating a painted forearm on a pose cel.
 
 ## Sources
 

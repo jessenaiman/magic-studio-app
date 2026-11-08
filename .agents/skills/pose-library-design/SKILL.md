@@ -31,13 +31,7 @@ Use timed pose sequences driven by story beats (`anticipation -> extreme -> over
 2. **Anticipation & Squash/Stretch**: Before a major action beat or impact, key a 2–4 frame anticipation (`turn` opposite by `5°–8°` or `scale` `[109, 116]`), snap to the impact (`scale` `[119, 103]`), and settle back to `[112, 112]`.
 3. **Readable Holds**: Do not continuously tween every limb with sine waves. Hold key poses so the silhouette and facial expression read clearly against the scene and lyrics.
 
-## Reference Scripts in This Repo
-
-- [`projects/make-it-sound-human/motion/authoring/drawn_cut.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_cut.py)
-- [`projects/make-it-sound-human/motion/authoring/drawn_acting.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_acting.py)
-- [`projects/make-it-sound-human/motion/authoring/drawn_shots.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_shots.py)
-
 ## Sources
 
 - School of Motion — *Walk Cycle in After Effects & Pose-to-Pose Blocking*: https://schoolofmotion.com/blog/walk-cycle-after-effects
-- Esoteric Software Spine — *How to cut your assets for animation*: https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation
+- Esoteric Software Spine — *How to cut your assets for animation*: https://esotericsoftware.com/blog/walk-cycle-after-effects
