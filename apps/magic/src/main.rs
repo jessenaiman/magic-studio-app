@@ -336,6 +336,7 @@ fn main() {
                         dispatch(&handle, id, params, true)
                     }),
                 )?;
+                state(app.handle()).session.lock().map_err(|_| "engine session lock poisoned")?.control_address = Some(address);
                 diag(format_args!("magic: control listening on {address}"));
             }
             Ok(())

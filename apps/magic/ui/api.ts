@@ -100,10 +100,24 @@ export interface StoryboardLink {
 }
 
 export interface StoryboardIssue { page?: number; kind: string; severity: string; message: string; item?: number }
+/** One slot's state from `storyboard.check`: `empty` is an image slot nothing requires. */
+export interface StoryboardSlotStatus { status: "incomplete" | "review" | "complete" | "empty"; issues: string[] }
 export interface StoryboardCheckPage {
   page: number; archetype: string; status?: "incomplete" | "review" | "complete";
   unfilled: Array<{ label: string; text?: string; fix: string }>;
   issues?: StoryboardIssue[];
+  slots?: Record<string, StoryboardSlotStatus>;
+}
+/** A labelled frame from `storyboard.pages`; `bounds` are in the page's own `bounds` space. */
+export interface StoryboardSlot {
+  id: number; label: string; kind: "text" | "image" | "other";
+  group: string; display: string; editable: boolean;
+  text?: string | null; image?: string | null;
+  bounds?: [number, number, number, number] | null; hidden: boolean; empty: boolean;
+}
+export interface StoryboardPage {
+  page: number; archetype: string; section?: string | null; title: string;
+  bounds: [number, number, number, number]; groups: string[]; slots: StoryboardSlot[];
 }
 export interface StoryboardData {
   path?: string; complete?: boolean; status?: string; page_count?: number; count?: number;

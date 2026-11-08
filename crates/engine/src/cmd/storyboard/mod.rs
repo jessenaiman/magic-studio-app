@@ -51,7 +51,76 @@ struct PageSlots {
     index: usize,
     archetype: String,
     section: Option<String>,
+    /// The spread's own rectangle `[x0, y0, x1, y1]`, the space slot `bounds` are given in.
+    bounds: [f64; 4],
     slots: Vec<Slot>,
+}
+
+/// Inspector groups, in the order the Storyboard view lists them.
+///
+/// These come from slot label conventions in the embedded template, not from DesignCraft: the
+/// document carries no semantic grouping, so this table is presentation only.
+const SLOT_GROUPS: &[&str] = &["Scene map", "Locations & references", "Design brief", "Artwork", "Notes and sources", "Template formatting"];
+
+/// The marker labels whose text names a page, in priority order.
+const TITLE_LABELS: &[&str] = &["cover_title", "world_heading", "char_heading", "scene_title", "scene_id"];
+
+/// `scene_` followed by a scene number 1-9 anywhere in the label (`scene_1_title`).
+fn has_scene_number(label: &str) -> bool {
+    label.match_indices("scene_").any(|(at, m)| label[at + m.len()..].bytes().next().is_some_and(|c| (b'1'..=b'9').contains(&c)))
+}
+
+/// The inspector group a slot belongs to, from its label and kind.
+fn slot_group(label: &str, kind: &str) -> &'static str {
+    const FORMATTING_SUFFIXES: &[&str] = &["_heading", "_kicker", "_badge", "_revision", "_tag", "_hint"];
+    if label.contains("page_no_") || FORMATTING_SUFFIXES.iter().any(|s| label.ends_with(s)) {
+        "Template formatting"
+    } else if label.contains("reg_") || label.contains("ref_") || label.contains("reference") {
+        "Locations & references"
+    } else if label.contains("scene_map") || label.contains("map_") || has_scene_number(label) {
+        "Scene map"
+    } else if kind == "image" {
+        "Artwork"
+    } else if ["note", "caption", "credit", "source"].iter().any(|w| label.contains(w)) {
+        "Notes and sources"
+    } else {
+        "Design brief"
+    }
+}
+
+/// The readable name of a slot label (`cover_songmap_3` -> `Scene 3 · visual`).
+fn slot_display(label: &str) -> String {
+    let rest = ["cover_", "world_", "char_", "scene_"].iter().find_map(|p| label.strip_prefix(p)).unwrap_or(label);
+    let numbered = |s: &str| !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit());
+    if let Some(n) = rest.strip_prefix("songmap_action_").filter(|n| numbered(n)) {
+        return format!("Scene {n} · action and location");
+    }
+    if let Some(n) = rest.strip_prefix("songmap_").filter(|n| numbered(n)) {
+        return format!("Scene {n} · visual");
+    }
+    rest.replace('_', " ")
+}
+
+impl PageSlots {
+    /// The page's name: the text of its first title marker, or its archetype and number.
+    fn title(&self) -> String {
+        TITLE_LABELS
+            .iter()
+            .find_map(|marker| self.slot(marker).and_then(|s| s.text.as_deref()).map(str::trim).filter(|t| !t.is_empty()))
+            .map_or_else(|| format!("{} {}", self.archetype, self.index + 1), str::to_string)
+    }
+
+    /// The groups this page's editable slots fall into, in [`SLOT_GROUPS`] order.
+    fn groups(&self) -> Vec<&'static str> {
+        SLOT_GROUPS.iter().copied().filter(|g| self.slots.iter().any(|s| s.editable() && slot_group(&s.label, s.kind) == *g)).collect()
+    }
+}
+
+impl Slot {
+    /// A visible text or image frame the Storyboard view offers for editing.
+    fn editable(&self) -> bool {
+        !self.hidden && self.kind != "other"
+    }
 }
 
 impl PageSlots {
@@ -68,6 +137,9 @@ impl PageSlots {
             "page": self.index,
             "archetype": self.archetype,
             "section": self.section,
+            "title": self.title(),
+            "bounds": self.bounds,
+            "groups": self.groups(),
             "slots": self.slots_json(),
         })
     }
@@ -81,6 +153,9 @@ impl PageSlots {
                         "label": s.label,
                         "id": s.id,
                         "kind": s.kind,
+                        "group": slot_group(&s.label, s.kind),
+                        "display": slot_display(&s.label),
+                        "editable": s.editable(),
                         "text": s.text,
                         "image": s.image,
                         "bounds": s.bounds,
@@ -367,6 +442,24 @@ impl Board {
     /// spread space.
     fn pages(&mut self) -> Result<Vec<PageSlots>> {
         let inspect = self.run("document.inspect", json!({}))?;
+        let rect = |b: &Value| -> Option<[f64; 4]> {
+            let b = b.as_array().filter(|b| b.len() == 4)?;
+            Some([b[0].as_f64()?, b[1].as_f64()?, b[2].as_f64()?, b[3].as_f64()?])
+        };
+        // Each spread's rectangle is the union of its pages' bounds.
+        let spread_bounds: Vec<Option<[f64; 4]>> = inspect["spreads"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|spread| {
+                spread["pages"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|pg| rect(&pg["bounds"]))
+                    .reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])])
+            })
+            .collect();
         let mut bounds: HashMap<u64, [f64; 4]> = HashMap::new();
         for spread in inspect["spreads"].as_array().into_iter().flatten() {
             for item in spread["items"].as_array().into_iter().flatten() {
@@ -439,7 +532,9 @@ impl Board {
                 slot.empty &= slot.kind == "image";
             }
             let section = spread["pages"].as_array().and_then(|ps| ps.first()).and_then(|p| p["parent"].as_u64()).and_then(|pid| parents.get(&pid).cloned());
-            pages.push(PageSlots { index, archetype: archetype_of(&labels).to_string(), section, slots });
+            let bounds =
+                spread_bounds.get(index).copied().flatten().ok_or_else(|| fail(format!("document.inspect reports no page bounds for spread {index}")))?;
+            pages.push(PageSlots { index, archetype: archetype_of(&labels).to_string(), section, bounds, slots });
         }
         Ok(pages)
     }
@@ -727,7 +822,28 @@ pub(crate) fn completion(s: &Session, p: &Value) -> Result<Value> {
     }
     let preflight = b.run("preflight.run", json!({}))?;
     let errors = preflight["errors"].as_u64().unwrap_or(0);
-    for page in &mut report {
+    for (page, slots) in report.iter_mut().zip(&pages) {
+        // Each editable slot: incomplete (unfilled, or an error on its frame), review (other
+        // findings on its frame), empty (an image slot nothing requires), or complete.
+        let unfilled: std::collections::HashSet<String> =
+            page["unfilled"].as_array().into_iter().flatten().filter_map(|u| u["label"].as_str().map(str::to_string)).collect();
+        let mut slot_report = serde_json::Map::new();
+        for slot in slots.slots.iter().filter(|s| s.editable()) {
+            let findings: Vec<&Value> = preflight["issues"].as_array().into_iter().flatten().filter(|issue| issue["item"].as_u64() == Some(slot.id)).collect();
+            let missing = unfilled.contains(&slot.label);
+            let status = if missing || findings.iter().any(|f| f["severity"] == "error") {
+                "incomplete"
+            } else if !findings.is_empty() {
+                "review"
+            } else if slot.kind == "image" && (slot.empty || slot.image.is_none()) {
+                "empty"
+            } else {
+                "complete"
+            };
+            let messages: Vec<&Value> = findings.iter().map(|f| &f["message"]).collect();
+            slot_report.insert(slot.label.clone(), json!({"status": status, "issues": messages}));
+        }
+        page["slots"] = Value::Object(slot_report);
         let issues: Vec<Value> = preflight["issues"].as_array().into_iter().flatten().filter(|issue| issue["page"] == page["page"]).cloned().collect();
         page["status"] = json!(if page["unfilled"].as_array().is_some_and(|v| !v.is_empty()) {
             "incomplete"
@@ -1040,6 +1156,29 @@ pub fn cmd_storyboard_slots(s: &mut Session, p: &Value) -> Result<Value> {
     }))
 }
 
+/// `storyboard.link`: one line to paste into a chat that names a page or slot and the
+/// `magic-cli` call that reads it, addressed to this session: its live `--bridge` when the
+/// desktop has a control listener, otherwise the project file.
+pub fn cmd_storyboard_link(s: &mut Session, p: &Value) -> Result<Value> {
+    let page = p.get("page").and_then(Value::as_u64).ok_or_else(|| bad("give the `page` index"))?;
+    let label = p.get("label").and_then(Value::as_str).filter(|l| !l.is_empty());
+    if let Some(l) = label
+        && !l.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
+        return Err(bad("a slot `label` is letters, digits and underscores"));
+    }
+    let target = match (s.control_address, &s.project_path) {
+        (Some(addr), _) => format!("--bridge {addr}"),
+        (None, Some(project)) => format!("--project '{}'", project.display()),
+        (None, None) => return Err(bad("open a project first")),
+    };
+    let (name, query) = match label {
+        Some(l) => (format!("Storyboard page {}, slot {l}", page + 1), format!("page={page} label={l}")),
+        None => (format!("Storyboard page {}", page + 1), format!("page={page}")),
+    };
+    Ok(json!({"ok": true, "text": format!("{name}: magic-cli {target} exec storyboard.slots {query}")}))
+}
+
 /// `storyboard.set`: change one page's text, images and contact strip, then save.
 pub fn cmd_storyboard_set(s: &mut Session, p: &Value) -> Result<Value> {
     let mut b = Board::open(&doc_path(s, p)?)?;
@@ -1211,9 +1350,79 @@ fn render_png(b: &mut Board, page: usize, scale: f64) -> Result<Vec<u8>> {
     std::fs::read(&out_path).map_err(fail)
 }
 
-/// `storyboard.thumbnail`: render one page (`out`) or all scene thumbnails (`out_dir`) as PNG.
+/// Milliseconds since the epoch at which `path` was last modified.
+fn modified_ms(path: &Path) -> Result<u64> {
+    let at = std::fs::metadata(path)?.modified()?;
+    Ok(at.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)))
+}
+
+/// The storyboard's preview folder, beside the document: `storyboard/.preview`.
+fn preview_dir(doc: &Path) -> PathBuf {
+    doc.with_file_name("storyboard").join(".preview")
+}
+
+/// Every page rendered at `scale` into `storyboard/.preview/rail-<scale>/page-NNN.png`, reused
+/// while the document is unchanged since the last render.
+fn render_rail(doc: &Path, scale: f64) -> Result<Value> {
+    let dir = preview_dir(doc).join(format!("rail-{}", (scale * 100.0).round()));
+    let source = modified_ms(doc)?;
+    let marker = dir.join(".source-modified");
+    let fresh = std::fs::read_to_string(&marker).ok().and_then(|t| t.trim().parse::<u64>().ok()) == Some(source);
+    if !fresh {
+        let b = Board::open(doc)?;
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir)?;
+        let cli = crate::workspace::find_executable("designcraft-cli").map_err(fail)?;
+        let out = std::process::Command::new(&cli)
+            .arg("run")
+            .arg("--in")
+            .arg(&b.work_path)
+            .arg("--scale")
+            .arg(scale.to_string())
+            .arg("--all-pages")
+            .arg(&dir)
+            .output()
+            .map_err(fail)?;
+        if !out.status.success() {
+            return Err(fail(String::from_utf8_lossy(&out.stderr).trim()));
+        }
+        craft_atomic::atomic_write(&marker, source.to_string().as_bytes())?;
+    }
+    let mut files: Vec<PathBuf> =
+        std::fs::read_dir(&dir)?.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "png")).collect();
+    files.sort();
+    Ok(json!({"ok": true, "rail": true, "files": files, "modified": source, "cached": fresh}))
+}
+
+/// One page rendered at `scale` into `storyboard/.preview/page-<index>-<scale>.png`, reused
+/// while it is newer than the document.
+fn render_preview_page(doc: &Path, index: usize, scale: f64) -> Result<Value> {
+    let out = preview_dir(doc).join(format!("page-{index}-{}.png", (scale * 100.0).round()));
+    let source = modified_ms(doc)?;
+    let fresh = modified_ms(&out).is_ok_and(|rendered| rendered >= source);
+    if !fresh {
+        let mut b = Board::open(doc)?;
+        let png = render_png(&mut b, index, scale)?;
+        std::fs::create_dir_all(preview_dir(doc))?;
+        craft_atomic::atomic_write(&out, &png)?;
+    }
+    Ok(json!({"ok": true, "page": index, "out": out, "modified": modified_ms(&out)?, "cached": fresh}))
+}
+
+/// `storyboard.thumbnail`: render one page (`out`), all scene thumbnails (`out_dir`), every page
+/// for the page rail (`rail`), or one page into the storyboard's own preview folder (`page` alone).
 pub fn cmd_storyboard_thumbnail(s: &mut Session, p: &Value) -> Result<Value> {
-    let mut b = Board::open(&doc_path(s, p)?)?;
+    let doc = doc_path(s, p)?;
+    let has = |key: &str| p.get(key).and_then(Value::as_str).is_some_and(|v| !v.trim().is_empty());
+    if p.get("rail").and_then(Value::as_bool) == Some(true) {
+        return render_rail(&doc, p.get("scale").and_then(Value::as_f64).unwrap_or(0.16));
+    }
+    if !has("out") && !has("out_dir") {
+        let index = p.get("page").and_then(Value::as_u64).ok_or_else(|| bad("give `page`, `rail`, `out` or `out_dir`"))?;
+        let index = usize::try_from(index).map_err(|_| bad("`page` is out of range"))?;
+        return render_preview_page(&doc, index, p.get("scale").and_then(Value::as_f64).unwrap_or(0.5));
+    }
+    let mut b = Board::open(&doc)?;
     let pages = b.pages()?;
     let scale = p.get("scale").and_then(Value::as_f64).unwrap_or(0.5);
     if let Some(raw_dir) = p.get("out_dir").and_then(Value::as_str).filter(|d| !d.trim().is_empty()) {

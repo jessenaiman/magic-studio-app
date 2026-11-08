@@ -35,6 +35,8 @@ pub struct Session {
     pub project_mode: Option<String>,
     /// User-facing sessions publish Home history and recent receipts; passive library/tests do not.
     pub record_user_state: bool,
+    /// The desktop's `--control` listener, when it has one: the address `magic-cli --bridge` reaches.
+    pub control_address: Option<std::net::SocketAddr>,
     /// Active chat selection belongs to this engine/window, never to project serialization.
     pub agent_selection: Option<Value>,
     /// File stamp of the open `.magic` file at last load or atomic save (`link_watch::FileStamp`).
@@ -75,6 +77,7 @@ impl Default for Session {
             video_project_path: None,
             project_mode: None,
             record_user_state: false,
+            control_address: None,
             agent_selection: None,
             project_stamp: std::cell::Cell::new(None),
             song_audio: None,
@@ -103,6 +106,7 @@ impl Clone for Session {
             video_project_path: self.video_project_path.clone(),
             project_mode: self.project_mode.clone(),
             record_user_state: self.record_user_state,
+            control_address: self.control_address,
             agent_selection: self.agent_selection.clone(),
             project_stamp: std::cell::Cell::new(self.project_stamp.get()),
             song_audio: self.song_audio.clone(),

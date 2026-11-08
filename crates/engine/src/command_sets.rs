@@ -750,7 +750,7 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
             always,
             crate::creation_loop::workflow
         ),
-        query!("app.doctor", "Doctor: CLI Availability and Video Server Metadata", "{\"clean\": false}", cmd_app_doctor),
+        query!("app.doctor", "Doctor: Install and Environment Checks", "{}", cmd_app_doctor),
         query!(
             "app.errors",
             "Recorded Runtime Errors",
@@ -1075,6 +1075,12 @@ fn specs_storyboard() -> Vec<CommandSpec> {
             "{\"path\":\"optional\",\"page\":0,\"label\":\"optional slot name\",\"scene\":1}",
             crate::cmd::storyboard::cmd_storyboard_slots
         ),
+        query!(
+            "storyboard.link",
+            "Chat Link for a Storyboard Page or Slot",
+            "{\"page\":0,\"label\":\"optional slot name\"}",
+            crate::cmd::storyboard::cmd_storyboard_link
+        ),
         cmd!(
             "storyboard.set",
             "Edit a Page: Text, Images, Contact Strip",
@@ -1113,8 +1119,8 @@ fn specs_storyboard() -> Vec<CommandSpec> {
         ),
         query!(
             "storyboard.thumbnail",
-            "Render One Storyboard Page to PNG",
-            "{\"path\":\"optional\",\"page\":0,\"scene\":1,\"out\":\"/absolute/scene.png\",\"scale\":0.5}",
+            "Render Storyboard Pages to PNG",
+            "{\"path\":\"optional\",\"page\":0,\"scene\":1,\"out\":\"optional /absolute/scene.png; without it the page renders into storyboard/.preview and is reused until the document changes\",\"rail\":\"true renders every page into storyboard/.preview in one pass\",\"scale\":0.5}",
             crate::cmd::storyboard::cmd_storyboard_thumbnail
         ),
         query!(
