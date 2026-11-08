@@ -751,7 +751,12 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
             always,
             crate::creation_loop::workflow
         ),
-        query!("app.doctor", "Doctor: Install and Environment Checks", "{}", cmd_app_doctor),
+        query!(
+            "app.doctor",
+            "Doctor: Install, Environment and Update Checks",
+            "{\"updates\":\"true (default) checks each Craft app for a newer release over the network; false skips it\"}",
+            cmd_app_doctor
+        ),
         query!(
             "app.errors",
             "Recorded Runtime Errors",

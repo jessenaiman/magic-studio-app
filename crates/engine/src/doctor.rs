@@ -80,9 +80,61 @@ fn checks(s: &Session) -> Vec<Check> {
     out
 }
 
-/// `app.doctor`: the install and environment checks.
-pub fn cmd_app_doctor(s: &mut Session, _: &Value) -> Result<Value> {
-    let checks: Vec<Value> = checks(s).iter().map(Check::to_json).collect();
+/// Whether each installed Craft app Magic drives has a newer release, from the Craft installer's
+/// own detection and GitHub release check (`craft-update`). Network trouble is a warning: the
+/// tools still run, the check just could not say whether they are current.
+fn update_checks() -> Vec<Check> {
+    // GitHub allows 60 anonymous API requests an hour per address; the token `gh` and CI use
+    // (GH_TOKEN, GITHUB_TOKEN), when set, raises that to the account's limit.
+    let token = ["GH_TOKEN", "GITHUB_TOKEN"].iter().find_map(|var| std::env::var(var).ok().filter(|t| !t.trim().is_empty()));
+    let http = match craft_update::Http::new(concat!("MagicStudio/", env!("CARGO_PKG_VERSION"))) {
+        Ok(http) => http.with_github_token(token),
+        Err(error) => return vec![Check::problem("warn", "updates", format!("cannot check for updates: {error}"), "Check the network connection")],
+    };
+    let manifest = craft_update::manifest::Manifest::default();
+    let snapshot = craft_update::detect::Snapshot::take();
+    CraftTarget::ALL
+        .iter()
+        .filter_map(|target| craft_update::suite::by_id(target.name()))
+        .map(|app| {
+            let name = format!("update:{}", app.id);
+            let Some(installed) = craft_update::detect::detect(app, &manifest, &snapshot).and_then(|i| i.version) else {
+                return Check::problem(
+                    "warn",
+                    name,
+                    format!("{}'s installed version could not be read", app.name),
+                    format!("Install {} with the ArtCraft Launcher", app.name),
+                );
+            };
+            match craft_update::check_for_update(app, &http, &installed.to_string()) {
+                Ok(None) => Check::ok(name, format!("{} {installed} is the latest release", app.name)),
+                Ok(Some(release)) => {
+                    let latest = release.version.map_or_else(|| release.tag.clone(), |v| v.to_string());
+                    Check::problem(
+                        "warn",
+                        name,
+                        format!("{} {latest} is available (installed {installed})", app.name),
+                        format!("Update with the ArtCraft Launcher, or from {}", release.html_url),
+                    )
+                }
+                Err(error) => Check::problem(
+                    "warn",
+                    name,
+                    format!("could not check {} for updates: {error}", app.name),
+                    "Check the network connection, or set GH_TOKEN to lift GitHub's anonymous request limit",
+                ),
+            }
+        })
+        .collect()
+}
+
+/// `app.doctor`: the install and environment checks; `updates: false` skips the network check.
+pub fn cmd_app_doctor(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut found = checks(s);
+    if p.get("updates").and_then(Value::as_bool) != Some(false) {
+        found.extend(update_checks());
+    }
+    let checks: Vec<Value> = found.iter().map(Check::to_json).collect();
     Ok(json!({"ok": true, "checks": checks}))
 }
 

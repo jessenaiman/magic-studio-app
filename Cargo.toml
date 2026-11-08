@@ -20,6 +20,7 @@ craft-audio = { git = "https://github.com/storytold/craft-libs", features = ["de
 craft-doc = { git = "https://github.com/storytold/craft-libs" }
 craft-docpath = { git = "https://github.com/storytold/craft-libs" }
 craft-settings = { git = "https://github.com/storytold/craft-libs" }
+craft-update = { git = "https://github.com/storytold/craft-libs" }
 
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
 craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }
