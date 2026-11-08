@@ -50,8 +50,10 @@ const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast
         <button id="stage-add-asset" className="ghost sb-stage-add" onClick={() => void run(async () => {
           const selected = await pickFile({ title: "Add Asset", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "glb", "gltf"] });
           if (typeof selected === "string" && selected) {
-            // The engine decides the kind (image or 3D model) from the file.
-            const added = await executeCommand<{ asset_id: string }>("project.add_asset", { path: selected, load: false });
+            // The engine decides the kind (image or 3D model) from the file; `image` names the
+            // assets/images/<name>/ folder an outside image is copied into.
+            const name = (selected.split(/[/\\]/).pop() || selected).replace(/\.[^.]+$/, "");
+            const added = await executeCommand<{ asset_id: string }>("project.add_asset", { path: selected, name, image: name, load: false });
             onToast(`Added ${added.asset_id}`);
           }
         }, true)}>+ Add Asset</button>

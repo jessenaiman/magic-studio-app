@@ -5,9 +5,11 @@ export async function importDroppedArtwork(paths: string[], project: string, run
   if (!files.length) return 0;
   let imported = 0;
   for (const path of files) {
+    // `image` names the assets/images/<name>/ folder an outside file is copied into.
+    const name = path.split(/[/\\]/).pop()!.replace(/\.[^.]+$/, "");
     try {
       // The engine refuses a file that is not an image and names it.
-      await run("project.add_asset", {path, kind:"image", load:false, _expected_project:project});
+      await run("project.add_asset", {path, kind:"image", name, image:name, load:false, _expected_project:project});
       imported++;
     } catch (error) { throw new Error(`Imported ${imported} of ${files.length} artwork files: ${String(error)}`); }
   }
