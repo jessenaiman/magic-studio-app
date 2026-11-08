@@ -29,6 +29,8 @@ fn cut_part(args: &mut Vec<(&'static str, Value)>, part: &Value, root: &str, beh
     cmd(args, "layer.renameLayer", Some(json!({"name": id})));
     if behind_root {
         cmd(args, "layer.arrange.sendToBack", None);
+    } else {
+        cmd(args, "layer.arrange.bringToFront", None);
     }
     cmd(args, "select.deselect", None);
     if let Some(clone_params) = part.get("clone_stamp").filter(|v| v.is_object()) {
@@ -247,7 +249,7 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         let root_idx = list.iter().position(|p| p["id"].as_str() == Some(&root)).unwrap_or(0);
         let mut args = Vec::new();
         cmd(&mut args, "layer.renameLayer", Some(json!({"name": root})));
-        for part in list[root_idx + 1..].iter().rev() {
+        for part in &list[root_idx + 1..] {
             cut_part(&mut args, part, &root, false)?;
         }
         for part in list[..root_idx].iter().rev() {

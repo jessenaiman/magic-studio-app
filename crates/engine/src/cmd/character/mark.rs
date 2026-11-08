@@ -122,10 +122,7 @@ fn ensure_redrawn_body_plate(s: &mut Session, view: &View, size: (u32, u32), p: 
             }
             super::cut::photocraft_run(
                 src,
-                &[
-                    ("image.imageSize", json!({"width": size.0, "height": size.1})),
-                    ("file.saveACopy", json!({"path": &plate, "overwrite": true})),
-                ],
+                &[("image.imageSize", json!({"width": size.0, "height": size.1})), ("file.saveACopy", json!({"path": &plate, "overwrite": true}))],
                 None,
             )?;
             return Ok(Some(plate));
@@ -153,23 +150,33 @@ fn box_polygon(b: &[Value], size: (u32, u32)) -> Option<Value> {
 /// body plate, eye, and pectoral fin separate cleanly along the craft seams without clipping fins.
 fn disc_parent_coral_outline(id: &str) -> Option<Value> {
     match id {
-        "fin_dorsal" => Some(json!([
-            [70, 148], [69, 90], [88, 22], [115, 2], [156, 2], [202, 36], [228, 69], [200, 74], [145, 92], [102, 128]
-        ])),
-        "tail" => Some(json!([
-            [2, 114], [48, 138], [86, 168], [92, 187], [84, 205], [38, 250], [2, 250]
-        ])),
+        "fin_dorsal" => Some(json!([[70, 148], [69, 90], [88, 22], [115, 2], [156, 2], [202, 36], [228, 69], [200, 74], [145, 92], [102, 128]])),
+        "tail" => Some(json!([[2, 114], [48, 138], [86, 168], [92, 187], [84, 205], [38, 250], [2, 250]])),
         "body" => Some(json!([
-            [64, 174], [85, 135], [128, 92], [182, 69], [225, 65], [262, 74], [305, 102], [332, 145],
-            [339, 178], [332, 215], [306, 260], [265, 286], [240, 322], [210, 322], [218, 290],
-            [168, 325], [110, 351], [86, 344], [74, 280], [75, 224], [64, 196]
+            [64, 174],
+            [85, 135],
+            [128, 92],
+            [182, 69],
+            [225, 65],
+            [262, 74],
+            [305, 102],
+            [332, 145],
+            [339, 178],
+            [332, 215],
+            [306, 260],
+            [265, 286],
+            [240, 322],
+            [210, 322],
+            [218, 290],
+            [168, 325],
+            [110, 351],
+            [86, 344],
+            [74, 280],
+            [75, 224],
+            [64, 196]
         ])),
-        "eye" => Some(json!([
-            [266, 140], [283, 134], [300, 140], [307, 157], [300, 174], [283, 181], [266, 174], [259, 157]
-        ])),
-        "fin_pectoral_near" => Some(json!([
-            [175, 195], [208, 190], [235, 194], [244, 206], [234, 226], [205, 258], [176, 262], [160, 244], [156, 218]
-        ])),
+        "eye" => Some(json!([[266, 140], [283, 134], [300, 140], [307, 157], [300, 174], [283, 181], [266, 174], [259, 157]])),
+        "fin_pectoral_near" => Some(json!([[175, 195], [208, 190], [235, 194], [244, 206], [234, 226], [205, 258], [176, 262], [160, 244], [156, 218]])),
         _ => None,
     }
 }
@@ -188,8 +195,8 @@ fn import_rig_marks(s: &mut Session, view: &View, p: &Value) -> Result<Option<Va
     let (staged, size) = stage_image(view, p, s)?;
     let plate = ensure_redrawn_body_plate(s, view, size, p)?;
     let anim_dir = char_dir.join("parts/animation-layers");
-    let has_clean_anim_layers = anim_dir.join("scale_row_01.png").is_file()
-        || (plate.is_none() && anim_dir.join("body.png").is_file() && view.id != "disc_parent_coral");
+    let has_clean_anim_layers =
+        anim_dir.join("scale_row_01.png").is_file() || (plate.is_none() && anim_dir.join("body.png").is_file() && view.id != "disc_parent_coral");
     let layers = rig["layers"].as_array().cloned().unwrap_or_default();
     let seg_layers = &rig["segmented_source"]["layers"];
     let skeleton: Value = serde_json::from_str(POSES).map_err(|e| bad(e.to_string()))?;
@@ -204,9 +211,7 @@ fn import_rig_marks(s: &mut Session, view: &View, p: &Value) -> Result<Option<Va
             continue;
         }
         let parent = layer.get("parent").cloned().unwrap_or(Value::Null);
-        let joint = point(&layer["pivot"])
-            .or_else(|| point(&seg_layers[id]["pivot"]))
-            .unwrap_or([f64::from(size.0) / 2.0, f64::from(size.1) / 2.0]);
+        let joint = point(&layer["pivot"]).or_else(|| point(&seg_layers[id]["pivot"])).unwrap_or([f64::from(size.0) / 2.0, f64::from(size.1) / 2.0]);
         let mut entry = json!({
             "id": id,
             "parent": parent,
@@ -222,13 +227,9 @@ fn import_rig_marks(s: &mut Session, view: &View, p: &Value) -> Result<Option<Va
                 entry["source"] = json!(candidate);
             }
         }
-        let outline = if view.id == "disc_parent_coral" {
-            disc_parent_coral_outline(id)
-        } else {
-            None
-        }
-        .or_else(|| seg_layers[id]["box"].as_array().and_then(|b| box_polygon(b, size)))
-        .unwrap_or_else(|| json!([[0, 0], [size.0, 0], [size.0, size.1], [0, size.1]]));
+        let outline = if view.id == "disc_parent_coral" { disc_parent_coral_outline(id) } else { None }
+            .or_else(|| seg_layers[id]["box"].as_array().and_then(|b| box_polygon(b, size)))
+            .unwrap_or_else(|| json!([[0, 0], [size.0, 0], [size.0, size.1], [0, size.1]]));
         entry["outline"] = outline;
         parts_arr.push(entry);
     }

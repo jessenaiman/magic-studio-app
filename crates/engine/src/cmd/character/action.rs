@@ -103,12 +103,7 @@ fn library_slot(parts: &Value, name: &str, p: &Value) -> (Option<Value>, f64) {
 
 /// Evaluate an authored `parts/rig.json` track (with `oscillate` and `keys` entries) into
 /// EffectCraft `prop.addKey` steps on `comp`.
-fn rig_track_keys(
-    view: &View,
-    name: &str,
-    rest: &HashMap<String, [f64; 2]>,
-    when: &Placement,
-) -> Option<(f64, bool, Vec<Value>, Vec<String>)> {
+fn rig_track_keys(view: &View, name: &str, rest: &HashMap<String, [f64; 2]>, when: &Placement) -> Option<(f64, bool, Vec<Value>, Vec<String>)> {
     let rig_path = view.dir.parent()?.join("parts/rig.json");
     let text = std::fs::read_to_string(rig_path).ok()?;
     let rig: Value = serde_json::from_str(&text).ok()?;

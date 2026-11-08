@@ -47,6 +47,7 @@ pub(crate) struct CraftDoc {
     target: CraftTarget,
     path: PathBuf,
     work_path: PathBuf,
+    input_path: PathBuf,
     stamp: Option<FileStamp>,
     _work_dir: ScopedTempDir,
 }
@@ -68,7 +69,7 @@ impl CraftDoc {
         let work_dir = ScopedTempDir::new(&format!("magic-{}-work", target.name()))?;
         let name = path.file_name().ok_or_else(|| EngineError::InvalidParams(format!("{} has no file name", path.display())))?;
         let work_path = work_dir.0.join(name);
-        Ok(Self { target, path: path.to_path_buf(), work_path, stamp: None, _work_dir: work_dir })
+        Ok(Self { target, path: path.to_path_buf(), input_path: work_path.clone(), work_path, stamp: None, _work_dir: work_dir })
     }
 
     /// Copy `source` to a private work file whose `save` writes atomically to `path`.
@@ -77,9 +78,17 @@ impl CraftDoc {
         let work_dir = ScopedTempDir::new(&format!("magic-{}-work", target.name()))?;
         let name = path.file_name().ok_or_else(|| EngineError::InvalidParams(format!("{} has no file name", path.display())))?;
         let work_path = work_dir.0.join(name);
-        std::fs::copy(source, &work_path)?;
+        let src_name = source.file_name().unwrap_or(name);
+        let input_path = if src_name == name {
+            std::fs::copy(source, &work_path)?;
+            work_path.clone()
+        } else {
+            let src_copy = work_dir.0.join(src_name);
+            std::fs::copy(source, &src_copy)?;
+            src_copy
+        };
         crate::link_watch::save_guard(path, stamp)?;
-        Ok(Self { target, path: path.to_path_buf(), work_path, stamp, _work_dir: work_dir })
+        Ok(Self { target, path: path.to_path_buf(), work_path, input_path, stamp, _work_dir: work_dir })
     }
 
     /// The original document.
@@ -96,7 +105,10 @@ impl CraftDoc {
     /// changes it, and return each step's result.
     pub(crate) fn batch(&mut self, steps: &[(&str, Value)]) -> Result<Vec<Value>> {
         let mutates = steps.iter().any(|(id, _)| !READ_ONLY.contains(id));
-        let mut cmd = batch_command(self.target, &self.work_path, steps, mutates)?;
+        let mut cmd = batch_command(self.target, &self.input_path, &self.work_path, steps, mutates)?;
+        if mutates {
+            self.input_path = self.work_path.clone();
+        }
         let use_stdin = !matches!(self.target, CraftTarget::Photo);
         if use_stdin {
             cmd.stdin(Stdio::piped());
@@ -137,21 +149,21 @@ impl CraftDoc {
     }
 }
 
-/// The app's command line that runs `steps` against `work`, saving it in place when `save` is set.
-fn batch_command(target: CraftTarget, work: &Path, steps: &[(&str, Value)], save: bool) -> Result<Command> {
+/// The app's command line that runs `steps` against `input`, saving to `work` when `save` is set.
+fn batch_command(target: CraftTarget, input: &Path, work: &Path, steps: &[(&str, Value)], save: bool) -> Result<Command> {
     let cli = crate::workspace::find_executable(target.cli_name()).map_err(|e| EngineError::ExternalTool(target.cli_name().into(), e.to_string()))?;
     let mut cmd = Command::new(cli);
     match target {
         CraftTarget::Design => {
-            cmd.arg("script").arg("-").arg("--in").arg(work);
+            cmd.arg("script").arg("-").arg("--in").arg(input);
             if save {
                 cmd.arg("--save").arg(work);
             }
         }
         CraftTarget::Effect => {
             cmd.arg("--json");
-            if work.is_file() {
-                cmd.arg("--project").arg(work);
+            if input.is_file() {
+                cmd.arg("--project").arg(input);
                 if save {
                     cmd.arg("--save");
                 }
@@ -164,18 +176,21 @@ fn batch_command(target: CraftTarget, work: &Path, steps: &[(&str, Value)], save
             cmd.arg("run").arg("--commands").arg("-");
         }
         CraftTarget::Photo => {
-            cmd.arg("run").arg(work);
+            cmd.arg("run").arg(input);
             for (id, params) in steps {
                 cmd.arg("--cmd").arg(id).arg("--params").arg(params.to_string());
             }
             if save {
-                cmd.arg("--out").arg(work).arg("--in-place");
+                cmd.arg("--out").arg(work);
+                if input == work {
+                    cmd.arg("--in-place");
+                }
             }
         }
         CraftTarget::Vector => {
             cmd.arg("run");
-            if work.is_file() {
-                cmd.arg("--in").arg(work);
+            if input.is_file() {
+                cmd.arg("--in").arg(input);
             }
             cmd.arg("--commands").arg("-");
             if save {

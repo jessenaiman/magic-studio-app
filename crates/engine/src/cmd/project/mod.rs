@@ -476,11 +476,8 @@ fn sync_hyperframes_storyboard(s: &mut Session, dir: &Path) {
         return;
     };
     let existing = scenes_val["scenes"].as_array().cloned().unwrap_or_default();
-    let needs_seed = existing.len() <= 1
-        && existing
-            .first()
-            .and_then(|sc| sc["fields"]["title"].as_str())
-            .is_none_or(|t| t.trim().is_empty() || t.contains('['));
+    let needs_seed =
+        existing.len() <= 1 && existing.first().and_then(|sc| sc["fields"]["title"].as_str()).is_none_or(|t| t.trim().is_empty() || t.contains('['));
     if !needs_seed {
         return;
     }
@@ -491,30 +488,15 @@ fn sync_hyperframes_storyboard(s: &mut Session, dir: &Path) {
             break;
         }
         let Ok(md) = std::fs::read_to_string(&md_path) else { continue };
-        let scene_title = md
-            .lines()
-            .find_map(|l| l.strip_prefix("# "))
-            .map(str::trim)
-            .unwrap_or("Scene")
-            .to_string();
-        let time = md
-            .lines()
-            .find_map(|l| l.strip_prefix("time:"))
-            .map(str::trim)
-            .unwrap_or("")
-            .to_string();
+        let scene_title = md.lines().find_map(|l| l.strip_prefix("# ")).map(str::trim).unwrap_or("Scene").to_string();
+        let time = md.lines().find_map(|l| l.strip_prefix("time:")).map(str::trim).unwrap_or("").to_string();
         let ref_rel = md
             .lines()
             .find_map(|l| l.strip_prefix("reference:"))
             .map(str::trim)
             .map(str::to_string)
             .unwrap_or_else(|| format!("storyboard/scene-{idx}-reference.png"));
-        let purpose = md
-            .lines()
-            .find_map(|l| l.strip_prefix("- Scene plan:"))
-            .map(str::trim)
-            .unwrap_or("")
-            .to_string();
+        let purpose = md.lines().find_map(|l| l.strip_prefix("- Scene plan:")).map(str::trim).unwrap_or("").to_string();
         let mut fields = json!({
             "running_title": title,
             "scene_id": format!("SCENE {idx:02}"),
@@ -523,14 +505,7 @@ fn sync_hyperframes_storyboard(s: &mut Session, dir: &Path) {
             "purpose": purpose,
         });
         if let Some(prompt_idx) = md.find("## Reference prompt") {
-            let prompt_body: String = md[prompt_idx..]
-                .lines()
-                .skip(1)
-                .take_while(|l| !l.starts_with("## "))
-                .collect::<Vec<_>>()
-                .join(" ")
-                .trim()
-                .to_string();
+            let prompt_body: String = md[prompt_idx..].lines().skip(1).take_while(|l| !l.starts_with("## ")).collect::<Vec<_>>().join(" ").trim().to_string();
             if !prompt_body.is_empty() {
                 fields["exact_prompt"] = json!(prompt_body);
             }

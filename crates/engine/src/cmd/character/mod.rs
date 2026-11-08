@@ -54,7 +54,8 @@ pub(crate) fn character_folder(project_dir: &Path, id: &str) -> PathBuf {
 /// Find an initial cutout drawing for `<character_folder>` when no `<view>/parts.json` exists yet.
 /// Prefers the intact cast/lineup composite over partial layer files in `parts/`.
 pub(crate) fn find_initial_cutout(char_folder: &Path) -> Option<PathBuf> {
-    if let (Some(name), Some(project)) = (char_folder.file_name().and_then(|n| n.to_str()), char_folder.parent().and_then(Path::parent)) {
+    if let (Some(name), Some(project)) = (char_folder.file_name().and_then(|n| n.to_str()), char_folder.parent().and_then(Path::parent).and_then(Path::parent))
+    {
         for candidate in [
             project.join("hyperframes/assets/cast").join(format!("{name}.png")),
             project.join("assets/characters/approved-crops").join(format!("{name}_from-lineup-v2.png")),
