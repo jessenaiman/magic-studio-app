@@ -45,14 +45,9 @@ Registered official v2 plugins:
 | window-state | Automatically saves and restores window state. |
 | single-instance | Subsequent launches activate the main window. Launch arguments are not yet forwarded to the frontend. |
 | opener | Existing external file/URL opener with default scopes. |
-| store | Registered but **not granted**: `store:default` was removed from the capability and the frontend does not use it (`tauri-plugin-store` has no per-file capability scope—granting `store:default` or `store:allow-load` exposes every JSON file in `app_data_dir`). User settings persist only in `config.toml` via `craft-settings` (`prefs.schema`, `prefs.get`, `prefs.set`), and window geometry uses `window-state`. |
-| shell | Registered but **not granted**: `shell:default` was removed from the capability and the frontend does not use it, so the webview cannot spawn or open anything through it. Add a scoped permission when a feature needs one. |
 | log | Existing application logging. |
-| websocket | Existing WebSocket integration. |
-| http | Loopback-only (`http://127.0.0.1:*`, `http://localhost:*`) for local preview servers, with explicit `deny` on `https://api.openai.com/*` and `https://api.storyteller.ai/*` (remote API credentials stay in Rust). |
 | notification | Native notification API available; request OS permission through a user-facing action when needed. |
 | global-shortcut | Registration APIs available; no system-wide shortcuts are registered automatically. |
-| process | Exit/relaunch APIs available. |
 | os | Platform information APIs available. |
 
 Capabilities live in `capabilities/default.json` and apply to the main window.
@@ -82,7 +77,6 @@ Set in `tauri.conf.json` and `capabilities/default.json`; verified against a pro
   app exits; switching projects does not revoke earlier grants. Hidden paths and credential-looking
   names remain subject to the configured deny patterns.
 - **devtools** is a cargo feature (`--features devtools`), off for release builds; debug builds always include the inspector.
-- **shell** is registered but not granted (see the plugin table).
 
 ## Run the desktop
 

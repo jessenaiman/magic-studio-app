@@ -30,20 +30,15 @@ serde_json = { workspace = true }
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
-tauri-plugin-store = "2"
-tauri-plugin-shell = "2"
 tauri-plugin-log = "2"
-tauri-plugin-websocket = "2"
 log = "0.4"
 clap = { version = "4.6", features = ["derive", "env"] }
 tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-http = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-process = "2"
 tauri-plugin-os = "2"
 subtle = { workspace = true }
 tauri-plugin-persisted-scope = "2"
