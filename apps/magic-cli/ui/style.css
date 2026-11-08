@@ -679,6 +679,9 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 
 /* Unified footer across Project, Animation and Studio. */
 .app-footer { flex:none; height:var(--footer-h, var(--size-30)); display:flex; align-items:center; gap:var(--size-14); padding:0 var(--size-10); border-top:var(--size-1) solid var(--line); background:var(--surface); color:var(--muted); font-size:var(--text-sm); position:relative; z-index:13; }
+/* Embedded in the React shell: that shell owns the one footer (issue #123). app.js marks a
+   top-level browser document with .magic-browser; everything else keeps this footer hidden. */
+html:not(.magic-browser) #app-footer { display:none !important; }
 #footer-instance { flex:none;white-space:nowrap;color:var(--text); }
 .footer-stages { display:flex; gap:var(--size-2); flex:none; }
 .footer-stage, .footer-item { display:inline-flex; align-items:center; gap:var(--size-5); padding:var(--size-2) var(--size-7); border-radius:var(--size-6); white-space:nowrap; color:var(--muted); }
@@ -1240,6 +1243,7 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
 }
 
 .pf-panel {
+  min-width: 0;
   background: #13171f;
   border: 1px solid #262e3b;
   border-radius: 10px;
@@ -1262,6 +1266,13 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
   font-weight: 700;
   color: #e6edf3;
   letter-spacing: -0.01em;
+}
+
+.pf-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .pf-count {
@@ -1366,16 +1377,21 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
 }
 
 .pf-list {
-  max-height: 230px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
 .pf-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   width: 100%;
   text-align: left;
-  padding: 5px 14px;
+  padding: 8px 14px;
   background: #171d27;
   border: 0;
   border-top: 1px solid #202734;
@@ -1395,13 +1411,112 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
 }
 
 .pf-row {
+  --file-color: #9daabd;
   display: grid;
-  grid-template-columns: 20px 34px minmax(140px, 1.4fr) minmax(110px, 1fr) minmax(110px, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) 50px minmax(90px, 0.45fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 5px 14px;
+  gap: 12px;
+  min-height: 52px;
+  padding: 7px 14px;
   border-bottom: 1px solid #1b212b;
   font-size: 12.5px;
+}
+
+.pf-family-film { --file-color: #76bba3; }
+.pf-family-design { --file-color: #d8b07b; }
+.pf-family-motion { --file-color: #b09bd7; }
+.pf-family-image { --file-color: #7db7c7; }
+.pf-family-vector { --file-color: #c7ba7c; }
+.pf-family-model { --file-color: #a2b98b; }
+.pf-family-audio { --file-color: #c399b5; }
+.pf-family-project { --file-color: #73bcb4; }
+
+.pf-file-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--file-color) 22%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--file-color) 8%, transparent);
+  color: var(--file-color);
+}
+
+.pf-type {
+  color: var(--file-color);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.pf-file-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.pf-file-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.pf-asset-mark {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--file-color);
+}
+
+.pf-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #293444;
+  background: #10151d;
+}
+
+.pf-preview > img {
+  width: 200px;
+  max-width: 40%;
+  height: 130px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #090d13;
+}
+
+.pf-preview-detail {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.pf-preview-detail .pf-row-actions { flex-wrap: wrap; }
+.pf-preview > .pf-reveal-btn { align-self: flex-start; flex: none; }
+.pf-preview-name { padding: 0; text-align: left; }
+.pf-preview-trigger { cursor: zoom-in; }
+.pf-preview-trigger:focus-visible, .pf-preview-name:focus-visible { outline: 2px solid #5bd69b; outline-offset: 2px; }
+.pf-row.previewing { background: #1b2b30; }
+
+@media (max-width: 1100px) {
+  .pf-row {
+    grid-template-columns: 34px minmax(100px, 1fr) 42px auto;
+    gap: 10px;
+  }
+  .pf-row > .pf-meta { display: none; }
 }
 
 .pf-row:hover {

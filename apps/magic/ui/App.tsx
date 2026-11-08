@@ -1,4 +1,5 @@
 import { PreservedWorkspaces } from "./components/RestoredWorkspace";
+import { AppFooter } from "./components/AppFooter";
 import { Tooltip } from "./components/Tooltip";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -34,15 +35,23 @@ export const App: React.FC = () => {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [data, setData] = useState<WorkshopData | null>(null);
   const [toastMsg, setToastMsg] = useState<string>("");
+  const [toastVisible, setToastVisible] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
   const [audioPlaying, setAudioPlaying] = useState<boolean>(false);
   const [audioTime, setAudioTime] = useState<number>(0);
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
 
+  // Engine/command errors and operation feedback land here, as a transient toast. The footer
+  // is status-only: raw errors such as "invalid parameters: …" must never render there.
   const showToast = useCallback((msg: string) => {
     setToastMsg(msg);
+    setToastVisible(true);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToastVisible(false), 6000);
   }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   const liveState = useRef({ view, projectPath, busy, toastMsg });
   liveState.current = { view, projectPath, busy, toastMsg };
@@ -69,7 +78,7 @@ export const App: React.FC = () => {
       setView(initialView);
       showToast(`Opened ${path.split("/").pop()}`);
     } catch (err) {
-      showToast(String(err));
+      showToast(`Could not open ${path}: ${err}`);
     } finally {
       setBusy(false);
     }
@@ -81,7 +90,7 @@ export const App: React.FC = () => {
       await executeCommand("project.close");
       await refreshProject();
       setView("home");
-    } catch (error) { showToast(String(error)); }
+    } catch (error) { showToast(`Could not close the project: ${error}`); }
   };
 
   const launchCraftApp = async (app: string, label: string) => {
@@ -89,7 +98,7 @@ export const App: React.FC = () => {
       await executeCommand("workspace.open", { app });
       showToast(`Launched ${label}`);
     } catch (error) {
-      showToast(String(error));
+      showToast(`Could not launch ${label}: ${error}`);
     }
   };
 
@@ -109,7 +118,7 @@ export const App: React.FC = () => {
         for (const frame of document.querySelectorAll("iframe")) frame.contentWindow?.postMessage({magicAssetsImported:project}, location.origin);
         setView("project");
         showToast(`Imported ${count} artwork file${count === 1 ? "" : "s"} · choose where to place them`);
-      }).catch(error => { if (!disposed) showToast(String(error)); })
+      }).catch(error => { if (!disposed) showToast(`Artwork import failed: ${error}`); })
         .finally(() => { transferBusy.current = false; if (!disposed) setBusy(false); });
     }).then(stop => { if (disposed) stop(); else unlisten = stop; }).catch(error => showToast(`File drop unavailable: ${error}`));
     return () => { disposed = true; unlisten?.(); };
@@ -132,9 +141,15 @@ export const App: React.FC = () => {
       if (disposed) { disconnect(); return; }
       await refreshProject(true);
       if (!disposed) await invoke("desktop_ready");
-    })().catch(error => showToast(String(error)));
+    })().catch(error => showToast(`Desktop connection failed: ${error}`));
     return () => { disposed = true; ++refreshVersion.current; disconnect?.(); };
   }, [connectDesktop]);
+
+  useEffect(() => {
+    // The footer lives across view switches, so refresh the single engine snapshot it reads
+    // when returning from an iframe editor; stages/context must not go stale in the shell.
+    if (projectPath && initialized.current) void refreshProject().catch(error => showToast(`Project refresh failed: ${error}`));
+  }, [view]);
 
   const projectName =
     data?.name ||
@@ -153,7 +168,7 @@ export const App: React.FC = () => {
     const el = audioRef.current;
     if (!el || !songAudioPath) return;
     if (el.paused) {
-      void el.play().catch((err) => showToast(String(err)));
+      void el.play().catch((err) => showToast(`Audio preview failed: ${err}`));
     } else {
       el.pause();
     }
@@ -207,7 +222,7 @@ export const App: React.FC = () => {
           <button
             id="window-snap"
             className="top-icon-ghost"
-            onClick={() => void toggleWindowSnap().then((to) => showToast(`Window moved to ${to}`)).catch((e) => showToast(String(e)))}
+            onClick={() => void toggleWindowSnap().then((to) => showToast(`Window moved to ${to}`)).catch((e) => showToast(`Window snap failed: ${e}`))}
           >
             ⇱
           </button>
@@ -359,16 +374,17 @@ export const App: React.FC = () => {
         ) : null}
       </div>
 
-      {/* Bottom Status Footer */}
-      <footer
-        id="app-footer"
-        className="app-status-footer"
-      >
-        <span id="footer-status">
-          {busy ? "Working…" : toastMsg || (projectPath ? `Saved · ${projectPath}` : "Ready")}
-        </span>
-        <span className="muted">Tauri v2 · React + Strict TypeScript</span>
-      </footer>
+      {/* One footer outside the view host: it survives every view switch (issue #123). */}
+      <AppFooter
+        view={view}
+        data={data}
+        projectPath={projectPath}
+        onNavigate={setView}
+        onToast={showToast}
+      />
+
+      {/* Engine errors and operation feedback are transient toasts, never footer text. */}
+      <div id="app-toast" className={`toast app-toast ${toastVisible ? "show" : ""}`} role="status" aria-live="polite">{toastMsg}</div>
     </div>
   );
 };

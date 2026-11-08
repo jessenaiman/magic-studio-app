@@ -1,3 +1,7 @@
+// Browser mode (a top-level magic-cli ui tab) owns the legacy footer. The React shell embeds
+// copies of index.html; style.css keeps #app-footer hidden until this marks a top-level
+// document, so an embedded copy never renders it while a browser tab shows it immediately.
+if (window.self === window.top) document.documentElement.classList.add("magic-browser");
 const { invoke: nativeInvoke, convertFileSrc } = window.__TAURI__.core;
 function stampEngineParams(params, action, companion) {
   return { ...params, params: { ...params.params, _origin: action ? "UI click" : "UI callback", _client: "Studio user (unverified label)", _control: action?.control, _request_id: action?.request_id || params.params?._request_id || companion?.request } };
@@ -255,7 +259,10 @@ class AppFooterController {
     $("footer-save-state").title = this.saveStateTitle(motionUnsaved, unsaved);
   }
   render() {
-    if (!$("app-footer"))
+    // Browser mode (a top-level magic-cli ui tab) owns this footer. The React shell embeds
+    // copies of index.html and renders the single footer itself, so an embedded copy must
+    // never render or update the legacy one (issue #123). style.css hides it as well.
+    if (window.self !== window.top || !$("app-footer"))
       return;
     this.renderStages();
     const context = this.contextText();

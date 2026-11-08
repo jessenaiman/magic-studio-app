@@ -3,6 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!--
+    Browser mode (magic-cli ui, a top-level tab) owns the legacy footer. The React shell
+    embeds copies of this document for its project and animation workspaces, and the shell
+    renders the one app footer there, so style.css keeps #app-footer hidden until app.js
+    marks a top-level document, and app.js skips its footer renderer when framed.
+  -->
   <title>Magic Studio</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="animation-review.css" />

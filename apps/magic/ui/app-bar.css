@@ -220,7 +220,7 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
 }
 
 /* App shell, bar and footer (was inline styles in App.tsx). */
-.app-shell { display: grid; grid-template-rows: 52px 1fr 28px; height: 100vh; width: 100vw; background: var(--bg, #0e1116); color: var(--text, #e6edf3); overflow: hidden; }
+.app-shell { display: grid; grid-template-rows: 52px minmax(0, 1fr) 30px; height: 100vh; width: 100vw; background: var(--bg, #0e1116); color: var(--text, #e6edf3); overflow: hidden; }
 .app-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #0d1117; border-bottom: 1px solid #232a35; gap: 12px; }
 .app-identity-row { display: flex; align-items: center; gap: 8px; }
 .app-logo { color: #eabb62; }
@@ -230,5 +230,23 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
 .app-storyboard-dot.complete { color: #5bd69b; }
 .app-storyboard-dot.review { color: #eabb62; }
 .app-storyboard-dot.incomplete { color: #ed8796; }
-.app-view-host { overflow: hidden; height: 100%; }
-.app-status-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 11px; background: #0d1117; border-top: 1px solid #232a35; }
+.app-view-host { overflow: hidden; height: 100%; min-height: 0; }
+
+/* The shell's one application footer (issue #123). It is a grid row of .app-shell, so it is
+   never inside .app-view-host or an iframe and is not recreated by a view document. */
+.app-footer { display: flex; align-items: center; gap: 12px; min-width: 0; height: 100%; padding: 0 12px; font-size: 11px; background: #0d1117; border-top: 1px solid #232a35; color: #9aa4b2; }
+.app-footer-stages { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.app-footer-stage { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 2px 7px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
+.app-footer-stage:hover { background: #161b22; color: #e6edf3; }
+.app-footer-stage[data-current] { background: #161b22; color: #e6edf3; }
+.app-footer-stage:focus-visible { outline: 1px solid #6cb6ff; outline-offset: -1px; }
+.app-footer-dot { width: 7px; height: 7px; border-radius: 50%; background: #5b6472; flex: none; }
+.app-footer-dot.ready, .app-footer-save-ready .app-footer-dot { background: #5bd69b; }
+.app-footer-dot.needs-attention, .app-footer-save-needs-attention .app-footer-dot { background: #eabb62; }
+.app-footer-dot.failed, .app-footer-save-failed .app-footer-dot { background: #ed8796; }
+.app-footer-dot.working, .app-footer-save-working .app-footer-dot { background: #6cb6ff; }
+.app-footer-context { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.app-footer-save { display: inline-flex; align-items: center; gap: 5px; flex: none; white-space: nowrap; color: #9aa4b2; }
+/* Engine/command errors are transient toasts above the footer, never footer text. */
+.app-toast { bottom: 42px; max-width: min(680px, 90vw); text-align: center; z-index: 40; }
+@media (max-width: 860px) { .app-footer-stage { padding: 4px; } .app-footer-stage-label { display: none; } }

@@ -83,14 +83,28 @@ export interface TranscriptLine {
 
 export interface StageInfo {
   id: string;
+  title?: string;
+  done?: boolean;
+  optional?: boolean;
+  /** From `workshop_status`: `ready`, `needs-work` or `failed`. */
+  state?: string;
   inputs?: StageInputOutput[];
   outputs?: StageInputOutput[];
   why?: string;
+  /** Animated subjects listed by the `animate` stage. */
+  assets?: Array<{ id?: string; name?: string; path?: string }>;
   document?: {
     words?: TranscriptWord[];
     lines?: TranscriptLine[];
     text?: string;
   };
+}
+
+/** One footer workflow stage from `status.prerequisites` in `project.snapshot`. */
+export interface StagePrerequisite {
+  id?: string;
+  state?: string;
+  detail?: string;
 }
 
 export interface StoryboardLink {
@@ -102,11 +116,23 @@ export interface StoryboardLink {
 export interface StoryboardIssue { page?: number; kind: string; severity: string; message: string; item?: number }
 /** One slot's state from `storyboard.check`: `empty` is an image slot nothing requires. */
 export interface StoryboardSlotStatus { status: "incomplete" | "review" | "complete" | "empty"; issues: string[] }
+export interface StoryboardUntraced {
+  page?: number;
+  label?: string;
+  name?: string;
+  path?: string;
+  link?: string;
+  pages?: number[];
+  fix?: string;
+  reason?: string;
+}
 export interface StoryboardCheckPage {
   page: number; archetype: string; status?: "incomplete" | "review" | "complete";
   unfilled: Array<{ label: string; text?: string; fix: string }>;
   issues?: StoryboardIssue[];
   slots?: Record<string, StoryboardSlotStatus>;
+  /** Issue #122: image links with no matching project asset (once `storyboard.check` reports them). */
+  untraced?: StoryboardUntraced[] | number;
 }
 /** A labelled frame from `storyboard.pages`; `bounds` are in the page's own `bounds` space. */
 export interface StoryboardSlot {
@@ -122,6 +148,8 @@ export interface StoryboardPage {
 export interface StoryboardData {
   path?: string; complete?: boolean; status?: string; page_count?: number; count?: number;
   pages?: StoryboardCheckPage[]; error?: string;
+  /** Issue #122: top-level report of image links with no project asset (none is invented here). */
+  untraced?: StoryboardUntraced[] | number;
   preflight?: { errors: number; issues: StoryboardIssue[] };
 }
 
@@ -141,8 +169,11 @@ export interface WorkshopData {
   name?: string;
   status?: {
     stages?: StageInfo[];
+    /** Footer stage states from `workshop_status`; an object, with an array tolerated for older payloads. */
+    prerequisites?: Record<string, StagePrerequisite> | StagePrerequisite[];
     complete?: boolean;
     storyboard_complete?: boolean;
+    film_timeline?: { exists?: boolean; path?: string };
     asset_files?: StageInputOutput[];
   };
   storyboard?: StoryboardData;
