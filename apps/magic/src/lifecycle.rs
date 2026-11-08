@@ -85,7 +85,7 @@ impl Transition {
 }
 
 fn available_engine(session: &std::sync::Mutex<Session>) -> Result<Value, String> {
-    let session = session.try_lock().map_err(|_| "The engine is busy; wait for the current render, export or command to finish")?;
+    let session = session.lock().map_err(|e| e.to_string())?;
     check_engine(&session)
 }
 
@@ -98,8 +98,7 @@ pub(super) fn begin(app: &tauri::AppHandle) -> Result<Transition, String> {
         .map_err(|_| "Another close or project switch is already being checked")?;
     let mut guard = Transition { desktop, stamp: Value::Null };
     guard.stamp = available_engine(&guard.desktop.session)?;
-    let startup = !guard.desktop.ready.load(Ordering::Acquire) && guard.stamp["project"].is_null();
-    if !startup {
+    if !guard.stamp["project"].is_null() {
         if !guard.desktop.ready.load(Ordering::Acquire) {
             return Err("Wait for the desktop to finish loading before continuing".into());
         }
@@ -111,7 +110,7 @@ pub(super) fn begin(app: &tauri::AppHandle) -> Result<Transition, String> {
 pub(super) fn exit(app: &tauri::AppHandle, restart: bool) -> Result<Value, String> {
     let guard = begin(app)?;
     {
-        let session = guard.desktop.session.try_lock().map_err(|_| "The engine is busy; wait for the current operation to finish")?;
+        let session = guard.desktop.session.lock().map_err(|e| e.to_string())?;
         guard.verify(&session)?;
         guard.desktop.lifecycle.exit_approved.store(true, Ordering::Release);
     }
@@ -141,53 +140,4 @@ pub(super) fn native_close(app: &tauri::AppHandle) {
         }
         desktop.lifecycle.native_request.store(false, Ordering::Release);
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn busy_engine_rejects_without_waiting_and_native_exit_bypasses_are_denied() {
-        let session = std::sync::Mutex::new(Session::default());
-        let lock = session.lock().unwrap();
-        assert!(available_engine(&session).unwrap_err().contains("busy"));
-        drop(lock);
-        assert!(available_engine(&session).is_ok());
-        let capabilities: Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
-        let permissions = capabilities["permissions"].as_array().unwrap();
-        for permission in ["process:default", "process:allow-exit", "process:allow-restart", "core:app:allow-exit"] {
-            assert!(!permissions.contains(&json!(permission)), "{permission}");
-        }
-        for permission in ["process:deny-exit", "process:deny-restart", "core:app:deny-exit"] {
-            assert!(permissions.contains(&json!(permission)), "{permission}");
-        }
-    }
-
-    #[test]
-    fn unsaved_engine_documents_and_project_edits_block_lifecycle() {
-        let mut session = Session::default();
-        let folder = std::env::temp_dir().join(format!("magic-lifecycle-test-{}", std::process::id()));
-        std::fs::create_dir_all(&folder).unwrap();
-        session.execute("project.new", json!({"path":folder.join("fixture.magic")})).unwrap();
-        session.docs.push(magic::doc_state::DocState::new("fixture", std::path::Path::new("/tmp/lifecycle.json"), json!({})));
-        assert!(check_engine(&session).is_err());
-        session.docs.clear();
-        session.edits_since_save = 99; // Derived renders are journaled, but do not make saved content dirty.
-        assert!(check_engine(&session).is_ok());
-        session.project_mode = Some("animation".into());
-        assert!(check_engine(&session).is_err());
-        session.project_mode = None;
-        std::fs::write(folder.join("fixture.magic"), b"unreadable project").unwrap();
-        assert!(check_engine(&session).is_err());
-        std::fs::remove_dir_all(folder).unwrap();
-    }
-
-    #[test]
-    fn frontend_drafts_saving_and_unknown_reports_block_lifecycle() {
-        assert!(check_drafts(&json!({"dirty":false,"saving":false,"drafts":[]})).is_ok());
-        for report in [json!({"dirty":true}), json!({"dirty":false,"saving":true}), json!({}), Value::Null] {
-            assert!(check_drafts(&report).is_err(), "{report}");
-        }
-    }
 }

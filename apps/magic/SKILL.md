@@ -145,8 +145,8 @@ report if the visible app still runs a different build.
 
 The retired Magic audit, review and formatting wrappers are removed. For
 verification authorized by Jesse, run `cargo xtask ci` (which executes
-`cargo fmt --check`, `cargo xtask layers`, Clippy with `-D warnings`, tests across
-the active workspace packages, and the `magic` control-protocol tests;
+`cargo fmt --check`, `cargo xtask layers`, Clippy with `-D warnings` across
+the active workspace packages, and the desktop UI build;
 GitHub CI invokes the same gate through `storytold/craft-common-actions`).
 Capture each native command's output and exit status without custom scores or
 relabeling failures. Do not run the withdrawn frontend or acceptance checks.

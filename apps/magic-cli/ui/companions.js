@@ -19,7 +19,7 @@ class CompanionPetsController {
     this.media = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)") || { matches: false, addEventListener() {} };
     this.enabled = localStorage.getItem("magic.companions") === "true";
     document.body.dataset.companionsEnabled = String(this.enabled);
-    for (const name of ["sproket", "gaffer"]) {
+    for (const name of ["fidget", "scribbles"]) {
       const node = el("pre", { id: `companion-${name}`, "aria-hidden": "true", inert: "" });
       this.nodes[name] = node;
       this.pets[name] = { pose: "rest", box: null, slot: null, signal: 0, timer: null, step: 0, lastBurstAt: 0 };
@@ -145,8 +145,8 @@ class CompanionPetsController {
     return {
       newest,
       targets: {
-        sproket: { box: worst?.id || null, signal: worst?.signal || 0, pose: worst ? worst.signal === 3 ? "alert" : "work" : "rest" },
-        gaffer: { box: newest?.id || null, signal: newest?.signal || 0, pose: newest ? newest.state === "working" || newest.signal >= 2 ? "work" : "rest" : "asleep" }
+        fidget: { box: worst?.id || null, signal: worst?.signal || 0, pose: worst ? worst.signal === 3 ? "alert" : "work" : "rest" },
+        scribbles: { box: newest?.id || null, signal: newest?.signal || 0, pose: newest ? newest.state === "working" || newest.signal >= 2 ? "work" : "rest" : "asleep" }
       }
     };
   }
@@ -234,8 +234,8 @@ class CompanionPetsController {
       project: this.project,
       reducedMotion: this.media.matches,
       hidden: document.hidden,
-      sproket: { ...this.pets.sproket },
-      gaffer: { ...this.pets.gaffer },
+      fidget: { ...this.pets.fidget },
+      scribbles: { ...this.pets.scribbles },
       boxes: this.boxes ? this.boxes.panels().items : []
     };
   };

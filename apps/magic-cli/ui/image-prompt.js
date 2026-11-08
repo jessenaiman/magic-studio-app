@@ -184,7 +184,7 @@ class ImagePromptController {
       }
     } }, "Copy command");
     const settings = el("div", { id: "image-settings" }, el("label", { for: "image-model" }, "Model"), model, el("details", {}, el("summary", {}, "CLI command"), command, copy));
-    settings.hidden = $("gaffer-config-toggle")?.getAttribute("aria-expanded") !== "true";
+    settings.hidden = $("scribbles-config-toggle")?.getAttribute("aria-expanded") !== "true";
     const body = [el("label", { for: "image-prompt" }, "Prompt"), prompt, status, generate, settings, ...this.resultElements(draft)];
     window.uiRegistry.fact({ id: "magic-image-pane", project: state.project, state: this.paneState(draft), reason: draft.error || null, source: "artwork result" });
     return el("div", { id: "image-tools-body" }, ...body);

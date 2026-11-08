@@ -202,6 +202,22 @@ pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Valu
     }
     let raw = params["path"].as_str().filter(|p| !p.trim().is_empty()).ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
     let path = resolve_workspace_path(s, raw);
+    let requested_app = params.get("app").and_then(Value::as_str).map(str::trim).filter(|a| !a.is_empty());
+    if let Some(app) = requested_app {
+        let allowed = ["photocraft", "vectorcraft", "designcraft", "effectcraft", "filmcraft", "texturecraft", "blender"];
+        if !allowed.contains(&app) {
+            return Err(EngineError::InvalidParams(format!("unsupported Craft app '{app}'")));
+        }
+        let target = if app == "photocraft" && path.with_extension("pcraft").is_file() {
+            path.with_extension("pcraft")
+        } else if app == "vectorcraft" && path.with_extension("vectorcraft").is_file() {
+            path.with_extension("vectorcraft")
+        } else {
+            path
+        };
+        open_editor(app, &target)?;
+        return Ok(serde_json::json!({"ok": true, "app": app, "path": target}));
+    }
     let sniffed = std::fs::read(&path).ok().and_then(|bytes| craft_doc::sniff(&bytes)).map(|kind| match kind {
         craft_doc::Kind::PhotoCraft => "photocraft",
         craft_doc::Kind::VectorCraft => "vectorcraft",

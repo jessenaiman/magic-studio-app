@@ -14,6 +14,8 @@ name = "magic"
 path = "src/main.rs"
 
 [features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
 # Release builds ship without the webview inspector; debug builds always include it.
 devtools = ["tauri/devtools"]
 

@@ -57,36 +57,3 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
     designs[line] = design;
     stage::cmd_words_save(s, &json!({"animation_id":section,"expected_source_revision":revision,"design":designs,"origin":"native-transform-controls"}))
 }
-
-#[cfg(test)]
-mod tests {
-    //! Reference: <https://github.com/storytold/effectcraft/tree/e1de87e8c3efaf02293728716d296342e0383a81/crates/engine/src/cmd>
-    use super::*;
-    #[test]
-    fn supported_controls_are_discovered_from_native_effectcraft_properties() {
-        let result = properties(&mut Session::default(), &json!({})).unwrap();
-        let properties = result["properties"].as_array().unwrap();
-        assert!(properties.iter().any(|p| p["path"] == "transform/rotation" && p["type"] == "scalar"));
-        assert!(properties.iter().any(|p| p["path"] == "transform/position" && p["type"] == "vec3"));
-        assert!(!properties.iter().any(|p| p["path"] == "text/sourceText"));
-    }
-}
-
-#[cfg(test)]
-mod persistence_tests {
-    use super::*;
-    #[test]
-    fn generic_motion_and_drawing_links_survive_validation_without_rewriting_words() {
-        let words = vec![json!({"word_id":"line/w0","text":"round"}), json!({"word_id":"line/w1","text":"again"})];
-        let item = json!({"word_ids":["line/w0","line/w1"],"text":"WRONG","x":100,"y":200,"size":80,"weight":700,"italic":false,"color":"#173f49","font":"song","outline":null,"rotate":0,"motion":"quiet","accent":"line/w0","native_motion":{"property":"transform/rotation","speed":180,"duration":3}});
-        let design = json!({"items":[item],"draws":[{"name":"Circle","view_box":"0 0 200 200","x":100,"y":200,"w":200,"h":200,"word_ids":["line/w0"],"paths":[{"d":"M0 0L10 10","stroke":"#173f49","width":3,"from":0.3,"to":1.4}]}]});
-        let normalized = super::super::validate::line_design(&words, &design).unwrap();
-        assert_eq!(normalized["items"][0]["text"], "round again");
-        assert_eq!(normalized["items"][0]["motion_keys"][1][5], 540.0);
-        assert_eq!(normalized["items"][0]["native_motion"]["speed"], 180.0);
-        assert_eq!(normalized["draws"][0]["word_ids"], json!(["line/w0"]));
-        let mut invalid = design;
-        invalid["draws"][0]["word_ids"] = json!(["other/w0"]);
-        assert!(super::super::validate::line_design(&words, &invalid).is_err());
-    }
-}

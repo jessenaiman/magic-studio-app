@@ -69,6 +69,36 @@ pub fn cmd_character_rig(s: &mut Session, p: &Value) -> Result<Value> {
         let id = part["id"].as_str().unwrap_or_default();
         let parent = part["parent"].as_str().unwrap_or("root");
         steps.push(step("layer.setParent", json!({"layers": [id], "parent": parent, "compensate": true})));
+        if let (Some(pins), Some(bounds)) = (part["pins"].as_array(), part["bounds"].as_array().filter(|b| b.len() == 4)) {
+            let ox = bounds[0].as_f64().unwrap_or(0.0);
+            let oy = bounds[1].as_f64().unwrap_or(0.0);
+            let bw = bounds[2].as_f64().unwrap_or(0.0);
+            let bh = bounds[3].as_f64().unwrap_or(0.0);
+            let mut pin_names = Vec::new();
+            for pin_pt in pins {
+                if let Some([px, py]) = point(pin_pt) {
+                    let lx = px - ox;
+                    let ly = py - oy;
+                    if lx >= 0.0 && lx <= bw && ly >= 0.0 && ly <= bh {
+                        steps.push(step("puppet.addPin", json!({"layer": id, "kind": "position", "position": [lx, ly]})));
+                        pin_names.push(format!("Puppet Pin {}", pin_names.len() + 1));
+                    }
+                }
+            }
+            if pin_names.len() >= 2 {
+                steps.push(step(
+                    "puppet.follow",
+                    json!({
+                        "layer": id,
+                        "leader": pin_names[0],
+                        "pins": &pin_names[1..],
+                        "delay": 0.08,
+                        "amount": 100,
+                        "cascade": true
+                    }),
+                ));
+            }
+        }
     }
     steps.push(step("file.saveAs", json!({"path": project})));
     effectcraft(&view.dir, None, &steps, true)?;

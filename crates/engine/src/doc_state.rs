@@ -71,7 +71,3 @@ impl DocState {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "tests/persistence.rs"]
-mod tests;

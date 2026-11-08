@@ -634,7 +634,7 @@ kbd { display: inline-block; font: var(--size-10)/1 ui-monospace, monospace; bor
 .anim-part-inspector .motion-range { max-width:none; min-width:0; }
 .anim-part-inspector > .icon { justify-self:start; }
 
-/* Sproket: one compact header bar; settings fold below it. */
+/* Fidget: one compact header bar; settings fold below it. */
 .agent-connection { color:var(--muted); font-weight:500; font-size:var(--text-xs); }
 .agent-head-actions .ghost { padding:var(--size-4) var(--size-9); font-size:var(--text-xs); }
 #agent-config-toggle[aria-expanded="true"] { border-color:var(--accent); color:var(--text); }
@@ -1785,3 +1785,52 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
   overflow: auto;
   min-height: 0;
 }
+
+.scribbles-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scribbles-btn img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.scribbles-loading-widget {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid #eabb62;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+}
+
+.scribbles-loading-widget[hidden] {
+  display: none !important;
+}
+
+.scribbles-loading-widget img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #161f2c;
+}
+
+.scribbles-loading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+

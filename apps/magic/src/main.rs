@@ -162,11 +162,7 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         }
         None
     };
-    let mut session = if transition.is_some() {
-        desktop.session.try_lock().map_err(|_| "The engine is busy; wait for the current operation to finish".to_string())?
-    } else {
-        desktop.session.lock().map_err(|e| e.to_string())?
-    };
+    let mut session = desktop.session.lock().map_err(|e| e.to_string())?;
     if let Some(transition) = &transition {
         transition.verify(&session)?;
     }

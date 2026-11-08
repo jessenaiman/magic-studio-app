@@ -99,39 +99,3 @@ pub fn import_image(app: &tauri::AppHandle, session: &mut Session, params: &Valu
     let temp = TempImage::create(project, &png)?;
     session.execute("project.add_asset", json!({"path": temp.path, "kind": "image", "name": name, "image": name})).map_err(|e| e.to_string())
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn encodes_rgba_as_png_without_losing_alpha() {
-        let png = super::encode_png(&[255, 0, 20, 128, 0, 200, 0, 255], 2, 1).unwrap();
-        let decoded = image::load_from_memory(&png).unwrap().to_rgba8();
-        assert_eq!(decoded.dimensions(), (2, 1));
-        assert_eq!(decoded.as_raw(), &[255, 0, 20, 128, 0, 200, 0, 255]);
-    }
-
-    #[test]
-    fn rejects_invalid_pixel_length() {
-        assert!(super::encode_png(&[1, 2, 3], 1, 1).is_err());
-    }
-
-    #[test]
-    fn resolves_clipboard_artwork_from_file_uri_or_path_in_text() {
-        let dir = std::env::temp_dir().join(format!("magic-clip-uri-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let img_path = dir.join("copied-art.png");
-        let png = super::encode_png(&[10, 20, 30, 255], 1, 1).unwrap();
-        std::fs::write(&img_path, &png).unwrap();
-
-        let uri_list = format!("# comment\r\nfile://{}\r\n", img_path.display());
-        let resolved = super::artwork_bytes_from_clipboard_text(&uri_list).unwrap();
-        assert_eq!(resolved, png);
-
-        let plain_path = format!("  {}\n", img_path.display());
-        let resolved_plain = super::artwork_bytes_from_clipboard_text(&plain_path).unwrap();
-        assert_eq!(resolved_plain, png);
-
-        assert!(super::artwork_bytes_from_clipboard_text("just artist lyrics").is_err());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}

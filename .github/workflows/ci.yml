@@ -1,7 +1,7 @@
 name: CI
 
 # Quality gates for every push to main and every pull request (`cargo xtask ci`: fmt, layers, clippy,
-# tests, control protocol), through the suite's shared gate workflow in craft-common-actions, as the
+# ui), through the suite's shared gate workflow in craft-common-actions, as the
 # Craft apps do. Magic has no wasm crates, so extra rustup targets are switched off.
 on:
   push:
@@ -23,7 +23,15 @@ jobs:
     uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
     with:
       targets: ""
+      tools: ""
       timeout-minutes: 60
+      command: |
+        if ! command -v bun >/dev/null 2>&1; then
+          curl -fsSL https://bun.sh/install | bash
+          export PATH="$HOME/.bun/bin:$PATH"
+        fi
+        (cd apps/magic && bun install --frozen-lockfile)
+        cargo xtask ci
       packages: >-
         pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxcursor-dev
         libxrandr-dev libxi-dev libfontconfig1-dev libfreetype-dev mesa-vulkan-drivers

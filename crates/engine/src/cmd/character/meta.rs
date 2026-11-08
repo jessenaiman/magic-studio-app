@@ -43,12 +43,36 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
             views.push(view_summary(&view));
         }
     }
+    let project_dir = crate::workshop::project_dir(s)?;
+    let raw_id = p["character"].as_str().map(crate::workspace::sanitize_asset_id).unwrap_or_default();
+    let char_folder = super::character_folder(&project_dir, &raw_id);
+    let char_id = char_folder.file_name().map(|n| crate::workspace::sanitize_asset_id(&n.to_string_lossy())).filter(|s| !s.is_empty()).unwrap_or(raw_id);
+    if views.is_empty()
+        && let Some(cutout) = super::find_initial_cutout(&char_folder)
+    {
+        let size = super::cut::photocraft_dimensions(&cutout)
+            .ok()
+            .or_else(|| image::image_dimensions(&cutout).ok())
+            .map(|(w, h)| json!([w, h]))
+            .unwrap_or(Value::Null);
+        views.push(json!({
+            "view": "front",
+            "drawing": cutout,
+            "size": size,
+            "status": "unmarked cutout; click Mark parts… to mark with Scribbles",
+            "parts": Value::Null,
+            "actions": Value::Null,
+            "marked": false,
+            "cut": false,
+            "rigged": false,
+            "ecproj": Value::Null,
+            "revision": revision(&cutout),
+        }));
+    }
     let table: Value = serde_json::from_str(POSES).map_err(|e| bad(e.to_string()))?;
     let actions = super::action::action_summaries(&table);
-    let project_dir = crate::workshop::project_dir(s)?;
-    let char_id = p["character"].as_str().map(crate::workspace::sanitize_asset_id).unwrap_or_default();
     let tripo_3d = super::tripo::inspect_character_3d(s, &project_dir, &char_id);
-    Ok(json!({"ok": true, "character": p["character"], "skeleton": table["skeleton"],
+    Ok(json!({"ok": true, "character": char_id, "skeleton": table["skeleton"],
         "views": views, "actions": actions, "tripo_3d": tripo_3d}))
 }
 

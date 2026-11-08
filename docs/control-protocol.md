@@ -2,9 +2,12 @@
 
 Magic follows the Craft split: one Rust engine/session, a thin desktop shell,
 and a CLI that runs either headlessly or against the live desktop. Tauri replaces
-egui in the active shell. The reference is FilmCraft's
-[control transport](https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/apps/filmcraft/src/control_server.rs)
-and [rmcp server](https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/crates/automation/src/server.rs).
+egui in the active shell. The references are FilmCraft's
+[control protocol](https://github.com/storytold/filmcraft/blob/main/docs/control-protocol.md),
+[control transport](https://github.com/storytold/filmcraft/blob/main/apps/filmcraft/src/control_server.rs),
+[CLI `--bridge` client](https://github.com/storytold/filmcraft/blob/main/apps/filmcraft-cli/src/main.rs),
+and [rmcp server](https://github.com/storytold/filmcraft/blob/main/crates/automation/src/server.rs),
+alongside EffectCraft's [MCP guide](https://github.com/storytold/effectcraft/blob/main/docs/mcp.md).
 
 ## Launch and connect
 
@@ -33,7 +36,7 @@ retryable message. UI requests wait at most 10 seconds for a frontend response.
 ## Implemented desktop methods
 
 Method names, parameters and error rules follow FilmCraft's
-[control protocol](https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/docs/control-protocol.md).
+[control protocol](https://github.com/storytold/filmcraft/blob/main/docs/control-protocol.md).
 A parameter a method does not name is an error (`unknown parameter ...`), never ignored.
 
 | Method | Params | Behavior |

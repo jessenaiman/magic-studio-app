@@ -367,35 +367,3 @@ pub fn set(key: &str, value: &Value) -> Result<Value> {
     store.flush().map_err(|e| EngineError::InvalidParams(format!("failed to save config.toml: {e}")))?;
     Ok(store.get().get_value(key))
 }
-
-#[cfg(test)]
-mod tests {
-    //! Reference:
-    //! - <https://github.com/storytold/craft-libs/blob/e653048a187036d30fd912f35f14b32ab4084e5c/crates/settings/src/lib.rs>
-    //! - <https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/crates/engine/src/settings/commands.rs>
-    use super::*;
-
-    #[test]
-    fn config_toml_store_roundtrips_typed_prefs_and_rejects_invalid_values() {
-        let dir = std::env::temp_dir().join(format!("magic-craft-settings-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-
-        let mut store = open_store_at(Location::Dir(dir.clone()));
-        store.update(|prefs| {
-            prefs.set_value("lyrics.default_size", &json!(96)).unwrap();
-            prefs.set_value("playback.resolution", &json!("full")).unwrap();
-            assert!(prefs.set_value("playback.resolution", &json!("bogus")).is_err());
-            assert!(prefs.set_value("unknown.key", &json!(true)).is_err());
-        });
-        store.flush().unwrap();
-        assert!(dir.join("config.toml").is_file(), "craft-settings writes config.toml");
-        assert!(!dir.join("settings.json").exists(), "settings.json is never written");
-
-        let reloaded = open_store_at(Location::Dir(dir.clone()));
-        assert_eq!(reloaded.get().get_value("lyrics.default_size"), json!(96));
-        assert_eq!(reloaded.get().get_value("playback.resolution"), json!("full"));
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}

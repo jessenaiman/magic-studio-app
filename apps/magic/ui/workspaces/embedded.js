@@ -30,6 +30,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (view === "project") projectView.render();
     else {
       connectRestoredAnimation();
+      window.addEventListener("message", event => {
+        if (event.origin !== location.origin || !event.data?.magicOpenAnimationCharacter) return;
+        const { character } = event.data.magicOpenAnimationCharacter;
+        if (character && typeof animationView !== "undefined") {
+          sessionStorage.setItem(`magic.restore.character:${state.project}`, character);
+          void animationView.openCharacter(character);
+        }
+      });
       const character = sessionStorage.getItem(`magic.restore.character:${state.project}`);
       if (character) { motion.character = character; motion.explicitCharacter = true; }
       await animationOpen();

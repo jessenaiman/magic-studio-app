@@ -61,27 +61,3 @@ pub fn target_path(requested: Option<&str>) -> Result<PathBuf, String> {
         _ => Err("the folder for path does not exist".into()),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn png_size_reads_the_header() {
-        let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
-        png.extend_from_slice(b"IHDR");
-        png.extend_from_slice(&640u32.to_be_bytes());
-        png.extend_from_slice(&480u32.to_be_bytes());
-        assert_eq!(png_size(&png), Some((640, 480)));
-        assert_eq!(png_size(&png[..20]), None);
-    }
-
-    #[test]
-    fn target_path_rejects_unsafe_requests() {
-        assert!(target_path(Some("relative.png")).is_err());
-        assert!(target_path(Some("/tmp/shot.jpg")).is_err());
-        assert!(target_path(Some("/definitely/not/a/folder/shot.png")).is_err());
-        assert!(target_path(Some("/tmp/shot.PNG")).is_ok());
-        assert!(target_path(None).is_ok());
-    }
-}

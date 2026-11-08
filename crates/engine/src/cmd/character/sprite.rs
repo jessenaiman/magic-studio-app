@@ -14,11 +14,16 @@ pub(crate) fn sprite_dir(s: &Session, id: &str, name: &str) -> Result<PathBuf> {
     Ok(crate::workshop::project_dir(s)?.join("assets/characters").join(id).join("sprites").join(name))
 }
 
-/// Crop the sheet's cells (left to right, top to bottom) into frame_0001.png, frame_0002.png, …
-fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32)) -> Result<Vec<PathBuf>> {
-    let (w, h) = image::image_dimensions(sheet)?;
+/// Remove background once on the full sheet in PhotoCraft, then crop, trim transparent margins, and
+/// re-pad each cell (`anchor: "bottom"` for grounded actions, `"center"` for airborne actions)
+/// using PhotoCraft's native `image.crop` → `image.trim` → `image.canvasSize` pipeline.
+fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32), lock_baseline: bool) -> Result<Vec<PathBuf>> {
+    let clean_sheet = dir.join("sheet-cutout.png");
+    crate::cmd::character::cut::photocraft_run(sheet, &[("layer.removeBackground", json!({"refine": true}))], Some(&clean_sheet))?;
+    let (w, h) = crate::cmd::character::cut::photocraft_dimensions(&clean_sheet)?;
     let (cols, rows) = grid;
     let (cw, ch) = (w / cols, h / rows);
+    let anchor = if lock_baseline { "bottom" } else { "center" };
     let frames = dir.join("frames");
     if frames.is_dir() {
         std::fs::remove_dir_all(&frames)?;
@@ -28,7 +33,15 @@ fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32)) -> Result<Vec<PathBuf
     for i in 0..cols * rows {
         let file = frames.join(format!("frame_{:04}.png", i + 1));
         let crop = json!({"x": (i % cols) * cw, "y": (i / cols) * ch, "width": cw, "height": ch});
-        crate::cmd::character::cut::photocraft_run(sheet, &[("image.crop", crop), ("layer.removeBackground", json!({"refine": true}))], Some(&file))?;
+        crate::cmd::character::cut::photocraft_run(
+            &clean_sheet,
+            &[
+                ("image.crop", crop),
+                ("image.trim", json!({"basedOn": "transparentPixels"})),
+                ("image.canvasSize", json!({"width": cw, "height": ch, "anchor": anchor})),
+            ],
+            Some(&file),
+        )?;
         out.push(file);
     }
     Ok(out)
@@ -49,7 +62,8 @@ pub fn cmd_character_sprite(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = sprite_dir(s, &id, &name)?;
     std::fs::create_dir_all(&dir)?;
     std::fs::copy(&sheet, dir.join("sheet.png"))?;
-    let frames = crop_frames(&dir, &dir.join("sheet.png"), grid)?;
+    let lock_baseline = !matches!(action, "jump" | "fly");
+    let frames = crop_frames(&dir, &dir.join("sheet.png"), grid, lock_baseline)?;
     let comp = format!("{id}-{name}");
     let project = dir.join(format!("{comp}.ecproj"));
     let mut steps = vec![

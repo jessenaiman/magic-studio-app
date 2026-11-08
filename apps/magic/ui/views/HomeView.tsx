@@ -404,7 +404,9 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
             return (
               <div
                 key={p.path}
+                id={`home-card-${idx}`}
                 className={`project-card ${attached ? "attached" : ""}`}
+                onClick={() => void onOpenProject(p.path, "project")}
                 onMouseEnter={(e) => {
                   const m = e.currentTarget.querySelector(".card-menu");
                   if (m) m.classList.add("open");

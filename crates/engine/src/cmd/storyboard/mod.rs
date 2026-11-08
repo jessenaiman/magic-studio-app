@@ -347,11 +347,11 @@ impl Board {
         Ok(())
     }
 
-    fn set_image(&mut self, frame: u64, hint: Option<u64>, path: &str) -> Result<()> {
+    fn set_image(&mut self, frame: u64, hint: Option<u64>, path: &str, fit_mode: &str) -> Result<()> {
         let mut steps = vec![
             ("place.load", json!({"path": path})),
             ("place.drop", json!({"x": 0, "y": 0, "frame": frame})),
-            ("object.fit", json!({"mode": "fillProportionally", "ids": [frame]})),
+            ("object.fit", json!({"mode": fit_mode, "ids": [frame]})),
         ];
         if let Some(h) = hint {
             steps.push(("object.setFlags", json!({"ids": [h], "hidden": true})));
@@ -410,7 +410,9 @@ impl Board {
                         ("text", text, None)
                     }
                     Some("graphic") => {
-                        let image = item["content"]["asset"].as_u64().and_then(|aid| assets[aid.to_string()]["link"].as_str()).map(str::to_string);
+                        let image = item["content"]["asset"].as_u64().and_then(|aid| assets[aid.to_string()]["link"].as_str()).map(|raw| {
+                            craft_docpath::resolve_absolute(raw, Some(&self.path)).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| raw.to_string())
+                        });
                         ("image", None, image)
                     }
                     _ => ("other", None, None),
@@ -490,7 +492,7 @@ fn fill_refs(b: &mut Board, frames: &Labels, strip_bounds: Option<[f64; 4]>, ref
         b.run("object.setFlags", json!({"ids": [frame], "hidden": !used}))?;
         if used {
             place_rect(b, frame, slots[n - 1])?;
-            b.set_image(frame, None, &refs[n - 1])?;
+            b.set_image(frame, None, &refs[n - 1], "fillProportionally")?;
         }
     }
     Ok(())
@@ -507,11 +509,12 @@ fn fill_scene(s: &Session, b: &mut Board, page: &PageSlots, frames: &Labels, p: 
             b.lock(frame)?;
         }
     }
+    let fit_mode = p.get("fit").and_then(Value::as_str).unwrap_or("fillProportionally");
     for (label, value) in p.get("images").and_then(Value::as_object).into_iter().flatten() {
         let raw = value.as_str().ok_or_else(|| bad("`images` values are file paths"))?;
         let resolved = crate::workspace::resolve_workspace_path(s, raw);
         let frame = *frames.get(label).ok_or_else(|| bad(&format!("this page has no slot labelled `{label}`")))?;
-        b.set_image(frame, frames.get(&format!("{label}_hint")).copied(), &resolved.to_string_lossy())?;
+        b.set_image(frame, frames.get(&format!("{label}_hint")).copied(), &resolved.to_string_lossy(), fit_mode)?;
     }
     if let Some(refs) = p.get("refs").and_then(Value::as_array) {
         let refs: Vec<String> =
@@ -1022,6 +1025,9 @@ pub fn cmd_storyboard_slots(s: &mut Session, p: &Value) -> Result<Value> {
     let pages = b.pages()?;
     let index = page_index(&pages, p)?;
     let page = &pages[index];
+    let slots = page.slots_json();
+    let slot =
+        p.get("label").and_then(Value::as_str).and_then(|lbl| slots.as_array().and_then(|arr| arr.iter().find(|s| s["label"].as_str() == Some(lbl)).cloned()));
     Ok(json!({
         "ok": true,
         "path": b.path,
@@ -1029,7 +1035,8 @@ pub fn cmd_storyboard_slots(s: &mut Session, p: &Value) -> Result<Value> {
         "scene": scene_number_for(&pages, index),
         "archetype": page.archetype,
         "section": page.section,
-        "slots": page.slots_json(),
+        "slot": slot,
+        "slots": slots,
     }))
 }
 

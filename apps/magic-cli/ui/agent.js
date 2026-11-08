@@ -422,8 +422,8 @@ Extra arguments: ${extra}`;
   }
   toggle(open = !this.open) {
     if (open)
-      workshopDrawers.open("sproket");
-    else if (workshopDrawers.active === "sproket")
+      workshopDrawers.open("fidget");
+    else if (workshopDrawers.active === "fidget")
       workshopDrawers.close();
   }
   async attachFiles(files) {
@@ -523,7 +523,7 @@ const workshopDrawers = createTopDrawers({
       refreshModels();
   },
   onChange: (name) => {
-    agent.open = name === "sproket";
+    agent.open = name === "fidget";
     $("agent").setAttribute("aria-hidden", String(!agent.open));
     window.magicCompanions?.sync();
     clearInterval(agent.timer);
@@ -537,8 +537,8 @@ const workshopDrawers = createTopDrawers({
           agentReloadLog();
       }, 1500);
     }
-    if (name === "sproket" || name === "gaffer")
-      $(name === "sproket" ? "agent-input" : "image-prompt")?.focus();
+    if (name === "fidget" || name === "scribbles")
+      $(name === "fidget" ? "agent-input" : "image-prompt")?.focus();
   }
 });
 window.workshopDrawers = workshopDrawers;

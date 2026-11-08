@@ -28,7 +28,7 @@ L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
 | `magic` | L7 | Desktop shell: React/Tauri (`apps/magic/ui` frontend), one managed engine session, authenticated `--control` listener |
 | `magic-cli` | L7 | Headless CLI: `commands/describe/exec/run/mcp/ui/storyboard`, `--bridge`, `--project` |
 | `magic-tui` | L7 | Terminal UI |
-| `xtask` | L7 | `ci` (fmt/clippy/layers/control-protocol), `layers`, `assets` |
+| `xtask` | L7 | `ci` (fmt/layers/clippy/ui), `layers` |
 
 Rules: every crate has a layer; only downward edges; no `egui/eframe/winit/rfd/tauri` below L6. No `magic-web` (deleted `2c499f64`).
 

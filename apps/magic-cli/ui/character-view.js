@@ -75,6 +75,38 @@ class ActionPlayer {
   }
 }
 
+function setScribblesLoadingWidget(active, message = "", anim = "scribbles-work.gif") {
+  let widget = $("scribbles-loading-widget");
+  if (!active) {
+    if (widget) widget.hidden = true;
+    const badge = $("scribbles-rest-badge");
+    if (badge) badge.src = "scribbles-cat-rest.png";
+    return;
+  }
+  const stage = $("motion-stage") || $("character-prepare");
+  if (!widget && stage) {
+    widget = el(
+      "div",
+      { id: "scribbles-loading-widget", class: "scribbles-loading-widget", role: "status", "aria-live": "polite" },
+      el("img", { id: "scribbles-loading-gif", src: anim, alt: "Scribbles working" }),
+      el("div", { class: "scribbles-loading-copy" },
+        el("strong", {}, "Scribbles Moppet Cat"),
+        el("span", { id: "scribbles-loading-text", class: "muted" }, message)
+      )
+    );
+    stage.append(widget);
+  }
+  if (widget) {
+    widget.hidden = false;
+    const gif = $("scribbles-loading-gif");
+    if (gif && gif.getAttribute("src") !== anim) gif.src = anim;
+    const text = $("scribbles-loading-text");
+    if (text) text.textContent = message;
+  }
+  const badge = $("scribbles-rest-badge");
+  if (badge) badge.src = anim;
+}
+
 class DrawnActionPlayer extends ActionPlayer {
   view(action) {
     const rigged = (motion.meta?.views || []).filter((v) => v.rigged).map((v) => v.view);
@@ -94,7 +126,9 @@ class DrawnActionPlayer extends ActionPlayer {
       return;
     }
     animationPause();
-    motion.stageHeader.rename(`${motion.character} · keying ${action.replaceAll("_", " ")} in EffectCraft…`);
+    const msg = `${motion.character} · keying ${action.replaceAll("_", " ")} in EffectCraft…`;
+    motion.stageHeader.rename(msg);
+    setScribblesLoadingWidget(true, msg, "scribbles-puppet.gif");
     try {
       const keyed = await motionCommand("character.action", { character: motion.character, view, action });
       const render = await motionCommand("character.render", { character: motion.character, view, start: keyed.start, end: keyed.end, fps: CHARACTER_FPS });
@@ -104,6 +138,8 @@ class DrawnActionPlayer extends ActionPlayer {
     } catch (error) {
       toast(String(error));
       motion.stageHeader.rename(`${motion.character} · ${error}`);
+    } finally {
+      setScribblesLoadingWidget(false);
     }
   }
 }
@@ -153,13 +189,16 @@ function characterShowRest() {
 function characterPreparePanel() {
   const view = motion.meta?.view;
   const status = el("p", { id: "character-prepare-status", class: "muted", role: "status" }, !view ? "Choose a drawing of this character to start." : !view.marked ? "Mark the parts and joints of this drawing." : !view.cut ? "Drag joints and outline points until they sit right, then cut and rig." : view.rigged ? `${view.view} view is rigged in EffectCraft.` : "Cut; rig it next.");
-  const busy = async (label, run) => {
+  const busy = async (label, run, anim = "scribbles-work.gif") => {
     status.textContent = label;
+    setScribblesLoadingWidget(true, label, anim);
     try {
       await run();
       await animationRefresh();
     } catch (error) {
       status.textContent = String(error);
+    } finally {
+      setScribblesLoadingWidget(false);
     }
   };
   const viewPicker = el("select", { id: "character-prepare-view", "aria-label": "Drawn view" }, ...["front", "side", "back"].map((v) => el("option", { value: v }, v)));
@@ -170,10 +209,11 @@ function characterPreparePanel() {
     "data-commands": "character.mark",
     title: "Scribbles marks parts and joints on a drawing",
     onclick: async () => {
-      const image = await window.__TAURI__.dialog.open({ title: "Choose the drawing to animate", filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }] });
+      const existing = !view?.marked && view?.drawing ? view.drawing : null;
+      const image = existing || await window.__TAURI__.dialog.open({ title: "Choose the drawing to animate", filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }] });
       if (!image)
         return;
-      await busy("Scribbles is marking the parts… (a few minutes)", () => motionCommand("character.mark", { character: motion.character || "character", view: viewPicker.value, image }));
+      await busy("Scribbles is marking the parts… (a few minutes)", () => motionCommand("character.mark", { character: motion.character || "character", view: viewPicker.value, image }), "scribbles-work.gif");
     }
   }, "Mark parts…");
   const save = el("button", {
@@ -204,7 +244,12 @@ function characterPreparePanel() {
   openEc.disabled = !view?.rigged;
   openPc.disabled = !view?.cut;
   openBl.disabled = !(motion.meta?.tripo_3d?.blend_files?.length > 0);
-  const scribbles = el("button", { id: "character-scribbles", class: "ghost", "data-commands": "scribbles.templates", onclick: () => openScribbles() }, "Scribbles…");
+  const scribbles = el(
+    "button",
+    { id: "character-scribbles", class: "ghost scribbles-btn", "data-commands": "scribbles.templates", onclick: () => openScribbles() },
+    el("img", { id: "scribbles-rest-badge", src: "scribbles-cat-rest.png", alt: "", width: 22, height: 22 }),
+    el("span", {}, "Scribbles…")
+  );
   const tripoBreakout = characterPartsControls(busy);
   const tripoRigAnim = characterRigMotionControls(busy);
   return el("div", { class: "panel-fields", id: "character-prepare" }, scribbles, new InspectorField("View", viewPicker).node, mark, save, cutRig, status, el("div", { class: "motion-path-actions" }, openPc, openEc, openBl), tripoBreakout, tripoRigAnim);

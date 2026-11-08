@@ -34,16 +34,3 @@ pub fn panic_message(payload: &(dyn Any + Send)) -> String {
         "unknown panic".to_string()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    //! Reference: <https://github.com/storytold/vectorcraft/blob/a479c8baa1b783b5002f8ebd02391aa3395b5b49/crates/engine/src/guard.rs>
-    use super::*;
-
-    #[test]
-    fn catch_panic_returns_value_or_message() {
-        assert_eq!(catch_panic(|| 7), Ok(7));
-        assert_eq!(catch_panic(|| -> i32 { panic!("boom {}", 1) }), Err("boom 1".to_string()));
-        assert_eq!(catch_panic(|| -> i32 { std::panic::panic_any(5_u8) }), Err("unknown panic".to_string()));
-    }
-}

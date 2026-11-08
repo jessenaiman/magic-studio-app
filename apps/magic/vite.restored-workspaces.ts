@@ -12,7 +12,7 @@ export function restoredWorkspaces(): Plugin {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (/\.(html|js|css|json|svg|png|webp|jpg|jpeg|woff2?)$/.test(entry.name)) files.set(relative(source, path).replaceAll("\\", "/"), path);
+      else if (/\.(html|js|css|json|svg|png|gif|webp|jpg|jpeg|woff2?)$/.test(entry.name)) files.set(relative(source, path).replaceAll("\\", "/"), path);
     }
   };
   walk(source); files.set("tauri-adapter.js", adapter);
@@ -44,7 +44,7 @@ export function restoredWorkspaces(): Plugin {
         const name = path.slice("/workspaces/".length);
         if (name === "vendor.js") { response.statusCode = 302; response.setHeader("Location", "/ui/workspaces/vendor.ts"); response.end(); return; }
         if (!files.has(name)) return next();
-        const type = name.endsWith(".js") ? "text/javascript" : name.endsWith(".css") ? "text/css" : name.endsWith(".html") ? "text/html" : name.endsWith(".json") ? "application/json" : name.endsWith(".svg") ? "image/svg+xml" : "application/octet-stream";
+        const type = name.endsWith(".js") ? "text/javascript" : name.endsWith(".css") ? "text/css" : name.endsWith(".html") ? "text/html" : name.endsWith(".json") ? "application/json" : name.endsWith(".svg") ? "image/svg+xml" : name.endsWith(".gif") ? "image/gif" : name.endsWith(".png") ? "image/png" : "application/octet-stream";
         response.setHeader("Content-Type", type); response.setHeader("Cache-Control", "no-store"); response.end(content(name));
       });
     },

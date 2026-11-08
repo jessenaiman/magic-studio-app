@@ -34,6 +34,36 @@ fn bad(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
 }
 
+/// Resolve the character folder under `<project>/assets/characters/`, matching existing directories case-insensitively.
+pub(crate) fn character_folder(project_dir: &Path, id: &str) -> PathBuf {
+    let root = project_dir.join("assets/characters");
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.eq_ignore_ascii_case(id)
+                || crate::workspace::sanitize_asset_id(&name) == id
+                || id.starts_with(&format!("{}_", crate::workspace::sanitize_asset_id(&name)))
+            {
+                return entry.path();
+            }
+        }
+    }
+    root.join(id)
+}
+
+/// Find an initial cutout drawing in `<character_folder>/parts/` when no `<view>/parts.json` exists yet.
+pub(crate) fn find_initial_cutout(char_folder: &Path) -> Option<PathBuf> {
+    let parts_dir = char_folder.join("parts");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&parts_dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && crate::workspace::has_extension(p, &["png", "webp", "jpg", "jpeg"]))
+        .collect();
+    files.sort();
+    files.into_iter().next()
+}
+
 /// One drawn view of one character.
 pub(crate) struct View {
     pub id: String,
@@ -43,13 +73,16 @@ pub(crate) struct View {
 
 impl View {
     pub(crate) fn from_params(s: &Session, p: &Value) -> Result<Self> {
-        let id =
+        let raw_id =
             p["character"].as_str().map(crate::workspace::sanitize_asset_id).filter(|id| !id.is_empty()).ok_or_else(|| bad("character=<id> is required"))?;
         let view = p["view"].as_str().unwrap_or("front").to_string();
         if !matches!(view.as_str(), "front" | "back" | "side") {
             return Err(bad("view must be front, back or side"));
         }
-        let dir = crate::workshop::project_dir(s)?.join("assets/characters").join(&id).join(&view);
+        let project_dir = crate::workshop::project_dir(s)?;
+        let char_dir = character_folder(&project_dir, &raw_id);
+        let id = char_dir.file_name().map(|n| crate::workspace::sanitize_asset_id(&n.to_string_lossy())).filter(|s| !s.is_empty()).unwrap_or(raw_id);
+        let dir = char_dir.join(&view);
         Ok(Self { id, view, dir })
     }
 
@@ -200,6 +233,7 @@ pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_si
         .arg(seconds.max(0.0).to_string())
         .arg("--max-side")
         .arg(max_side.to_string())
+        .arg("--transparent")
         .arg("--out")
         .arg(output)
         .output()
@@ -311,23 +345,33 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
             continue;
         }
         let folder = root.join(&id);
-        let views: Vec<Value> = ["front", "side", "back"]
+        let canonical_id = crate::workspace::sanitize_asset_id(&id);
+        let mut views: Vec<Value> = ["front", "side", "back"]
             .iter()
             .filter(|v| folder.join(v).is_dir())
             .map(|v| {
                 let dir = folder.join(v);
-                let has = |ext: &str| dir.join(format!("{id}-{v}.{ext}")).is_file();
+                let has = |ext: &str| dir.join(format!("{canonical_id}-{v}.{ext}")).is_file() || dir.join(format!("{id}-{v}.{ext}")).is_file();
                 let drawing = std::fs::read_to_string(dir.join("parts.json"))
                     .ok()
                     .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-                    .and_then(|p| p["image"].as_str().map(|i| dir.join(i)));
+                    .and_then(|p| p["image"].as_str().map(|i| dir.join(i)))
+                    .or_else(|| {
+                        let staged = dir.join(format!("{canonical_id}-{v}-drawing.png"));
+                        staged.is_file().then_some(staged)
+                    });
                 json!({"view": v, "parts": dir.join("parts.json").is_file(), "drawing": drawing,
                     "psd": has("psd"), "ecproj": has("ecproj")})
             })
             .collect();
-        let tripo_3d = tripo::inspect_character_3d(s, &project_dir, &id);
+        if views.is_empty()
+            && let Some(cutout) = find_initial_cutout(&folder)
+        {
+            views.push(json!({"view": "front", "parts": false, "drawing": cutout, "psd": false, "ecproj": false}));
+        }
+        let tripo_3d = tripo::inspect_character_3d(s, &project_dir, &canonical_id);
         if !views.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
-            out.push(json!({"id": id, "views": views, "tripo_3d": tripo_3d}));
+            out.push(json!({"id": canonical_id, "views": views, "tripo_3d": tripo_3d}));
         }
     }
     Ok(json!({"ok": true, "characters": out}))
@@ -389,7 +433,9 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
     let start = p["start"].as_f64().unwrap_or(0.0).max(0.0);
     let end = p["end"].as_f64().filter(|e| *e > start).unwrap_or(start + 1.0);
     let fps = p["fps"].as_u64().unwrap_or(24).clamp(1, 60);
-    let clip = p["format"].as_str() == Some("clip");
+    let fmt_req = p["format"].as_str().unwrap_or("png");
+    let clip = fmt_req == "clip" || fmt_req == "prores";
+    let gif = fmt_req == "gif";
     let name = if external.is_some() {
         let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| bad(error.to_string()))?.as_nanos();
         format!("{name}-{timestamp}")
@@ -399,6 +445,9 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
     let (dir, out) = if clip {
         let dir = base.join("clips");
         (dir.clone(), dir.join(format!("{name}.mov")))
+    } else if gif {
+        let dir = base.join("clips");
+        (dir.clone(), dir.join(format!("{name}.gif")))
     } else {
         let dir = base.join("frames").join(&name);
         (dir.clone(), dir.join("frame.png"))
@@ -408,13 +457,13 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         &project,
         json!({
             "comp": comp, "output": out, "start": start, "end": end, "frameRate": fps,
-            "channels": "rgba", "format": if clip { "prores" } else { "png" },
+            "channels": "rgba", "format": if clip { "prores" } else if gif { "gif" } else { "png" },
             "proresProfile": "4444", "resolution": if clip { "full" } else { "half" }
         }),
     )?;
-    let frames = if clip { Vec::new() } else { rendered_pngs(&dir)? };
+    let frames = if clip || gif { Vec::new() } else { rendered_pngs(&dir)? };
     Ok(json!({"ok": true, "start": start, "end": end, "fps": fps,
-        "clip": clip.then_some(&out), "frames": frames}))
+        "clip": (clip || gif).then_some(&out), "frames": frames}))
 }
 
 /// Key one transform value of one part at one time (a canvas drag).

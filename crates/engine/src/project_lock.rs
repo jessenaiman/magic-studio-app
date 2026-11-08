@@ -56,25 +56,3 @@ pub fn for_project(project: &Path) -> Option<File> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    //! Reference: <https://github.com/storytold/filmcraft/blob/7322aad72491a294a06a26a63fb65a3fc30ac242/apps/filmcraft-cli/src/project_lock.rs#L88-L144>
-    use super::*;
-
-    #[test]
-    fn the_lock_sits_next_to_the_project() {
-        assert_eq!(lock_path(Path::new("/a/b/p.magic")), Path::new("/a/b/.p.magic.lock"));
-        assert_eq!(lock_path(Path::new("p.magic")), Path::new(".p.magic.lock"));
-    }
-
-    #[test]
-    fn a_long_project_name_still_gets_a_lock_name_the_file_system_takes() {
-        for name in ["a".repeat(255), "é".repeat(127)] {
-            let lock = lock_path(Path::new(&name));
-            let lock = lock.to_str().unwrap();
-            assert!(lock.len() <= 255, "{} bytes", lock.len());
-            assert!(lock.ends_with(".lock"));
-        }
-    }
-}

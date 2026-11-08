@@ -23,9 +23,7 @@ class ScribblesDialog {
     const link = el("a", { id: "scribbles-template-link", href: "#", class: "muted" });
     const layout = el("p", { id: "scribbles-layout", class: "muted" });
     const sent = el("textarea", { id: "scribbles-sent-prompt", class: "field", rows: 8, readonly: true, "aria-label": "Prompt sent to Scribbles" });
-    const image = el("img", { id: "scribbles-image", alt: "Scribbles drawing" });
-    if (reference)
-      image.src = String(convertFileSrc(reference));
+    const image = el("img", { id: "scribbles-image", alt: "Scribbles drawing", src: reference ? String(convertFileSrc(reference)) : "scribbles-cat-rest.png" });
     const status = el("p", { id: "scribbles-status", class: "muted", role: "status" }, "Choose a kind, then Draw.");
     const actionField = new InspectorField("Action", action).node;
     const describe = () => {
@@ -49,7 +47,11 @@ class ScribblesDialog {
           return;
         this.busy = true;
         draw.disabled = true;
+        const prevSrc = image.src;
+        image.src = "scribbles-work.gif";
         status.textContent = "Scribbles is drawing… (a few minutes)";
+        if (typeof setScribblesLoadingWidget === "function")
+          setScribblesLoadingWidget(true, "Scribbles is drawing…", "scribbles-work.gif");
         try {
           const params = { character, reference: ref.value || undefined, prompt: prompt.value || undefined, notes: notes.value || undefined };
           if (kind.value === "actions")
@@ -60,10 +62,13 @@ class ScribblesDialog {
           status.textContent = `${result.width} × ${result.height}${result.scribbles.canvas_matches ? "" : ` · template asks ${result.scribbles.canvas.join(" × ")}`} · ${result.image}`;
           status.append(fileButton({ path: result.image, name: String(result.image).split("/").pop() }));
         } catch (error) {
+          image.src = prevSrc || "scribbles-cat-alert.png";
           status.textContent = String(error);
         } finally {
           this.busy = false;
           draw.disabled = false;
+          if (typeof setScribblesLoadingWidget === "function")
+            setScribblesLoadingWidget(false);
         }
       }
     }, "Draw");

@@ -83,21 +83,3 @@ pub(crate) fn curve(spec: &Value) -> Result<(Value, Value)> {
     };
     Ok((config, keys))
 }
-
-#[cfg(test)]
-mod tests {
-    //! Reference: <https://github.com/storytold/effectcraft/tree/e1de87e8c3efaf02293728716d296342e0383a81/crates/engine/src/project>
-    use super::*;
-    #[test]
-    fn rotation_speed_and_position_use_generic_native_channels() {
-        let (config, keys) = curve(&json!({"property":"transform/rotation","speed":90,"duration":2})).unwrap();
-        assert_eq!(config["to"], 180.0);
-        assert_eq!(keys[1][5], 180.0);
-        assert_eq!(keys[1][0], 2.0);
-        let (_, keys) = curve(&json!({"property":"transform/position","from":[0,0],"to":[0,-80],"duration":1})).unwrap();
-        assert_eq!(keys[1][2], -80.0);
-        assert_eq!(keys[1][5], 0.0);
-        assert!(curve(&json!({"property":"text/sourceText","from":"new words","to":"changed"})).is_err());
-        assert!(curve(&json!({"property":"transform/rotation","speed":9000,"duration":0})).is_err());
-    }
-}

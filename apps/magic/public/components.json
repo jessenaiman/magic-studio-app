@@ -969,22 +969,22 @@
       "target": "magic-chat-pane",
       "indicator": "hidden"
     },
-    "companion-sproket": {
+    "companion-fidget": {
       "component": "ambient-companion",
       "target": "magic-chat-pane",
       "indicator": "hidden"
     },
-    "companion-sproket-sprite": {
+    "companion-fidget-sprite": {
       "component": "companion-sprite",
       "target": "magic-chat-pane",
       "indicator": "hidden"
     },
-    "companion-gaffer": {
+    "companion-scribbles": {
       "component": "ambient-companion",
       "target": "magic-image-pane",
       "indicator": "hidden"
     },
-    "companion-gaffer-sprite": {
+    "companion-scribbles-sprite": {
       "component": "companion-sprite",
       "target": "magic-image-pane",
       "indicator": "hidden"
@@ -1343,19 +1343,19 @@
       "target": "magic-chat-pane",
       "indicator": "icon"
     },
-    "gaffer-toggle": {
+    "scribbles-toggle": {
       "component": "ghost",
       "label": "Scribbles artwork",
       "target": "magic-image-pane",
       "indicator": "icon"
     },
-    "gaffer-close": {
+    "scribbles-drawer-close": {
       "component": "icon",
       "label": "Close Scribbles artwork",
       "indicator": "hidden",
       "target": "magic-image-pane"
     },
-    "gaffer-config-toggle": {
+    "scribbles-config-toggle": {
       "component": "icon",
       "label": "Artwork settings",
       "target": "magic-image-pane",
@@ -1967,11 +1967,11 @@
     }
   },
   "companions": {
-    "sproket": {
+    "fidget": {
       "home": "magic-chat-pane",
       "role": "issue/chat"
     },
-    "gaffer": {
+    "scribbles": {
       "home": "magic-image-pane",
       "role": "artwork"
     }

@@ -9,6 +9,51 @@ use serde_json::{Value, json};
 use crate::workspace::resolve_tool;
 use crate::{Result, Session};
 
+/// `monitoring.prerequisites`: one state per footer stage, for the footer, Mayhem and any
+/// consumer that reads `data.monitoring.prerequisites` from the session snapshot. Computed
+/// from the same project state as `workshop_status` — no polling, no journal, no new scans.
+pub(crate) fn prerequisites(s: &Session, status: &Value) -> Value {
+    let stage = |id: &str| status["stages"].as_array().and_then(|stages| stages.iter().find(|s| s["id"] == id));
+    let p = |id: &str| {
+        stage(id)
+            .map(|s| json!({"state": stage_state(s), "detail": s["why"].as_str().unwrap_or("").to_string()}))
+            .unwrap_or_else(|| json!({"state":"not-started","detail":"not started"}))
+    };
+    let sb = &status["storyboard"];
+    let sb_state = match (sb["error"].as_str(), sb["complete"].as_bool()) {
+        (Some(error), _) => ("failed", error.to_string()),
+        (None, Some(true)) => ("ready", "storyboard complete".to_string()),
+        (None, _) => ("needs-work", format!("{} unfilled fields", sb["count"].as_u64().unwrap_or(0))),
+    };
+    let timeline = &status["film_timeline"];
+    let studio = match timeline["exists"].as_bool() {
+        Some(true) => ("ready", timeline["path"].as_str().unwrap_or("film timeline linked").to_string()),
+        _ => ("needs-work", "no film timeline linked".to_string()),
+    };
+    json!({
+        "song": p("song"),
+        "lyrics": p("lyrics"),
+        "transcript": p("transcript"),
+        "storyboard": {"state": sb_state.0, "detail": sb_state.1},
+        "animate": p("animate"),
+        "studio": {"state": studio.0, "detail": studio.1},
+    })
+}
+
+fn stage_state(s: &Value) -> &'static str {
+    if s["done"] == json!(true) {
+        return "ready";
+    }
+    if s["problems"].as_array().is_some_and(|problems| !problems.is_empty()) {
+        return role_state::failed;
+    }
+    "needs-work"
+}
+
+mod role_state {
+    pub(crate) const failed: &str = "failed";
+}
+
 pub fn cmd_app_doctor(s: &mut Session, params: &Value) -> Result<Value> {
     let clean = params.get("clean").and_then(Value::as_bool).unwrap_or(false);
 

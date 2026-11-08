@@ -94,6 +94,8 @@ From this directory, after `bun install`:
 ```sh
 export MAGIC_CONTROL_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 bun run tauri dev -- -- --control 9876 --view projects
+# Or launch the built release binary directly from the repository root:
+# ./target/release/magic --control 9876 --view project --project /absolute/Project.magic
 ```
 
 Use the same token environment for the CLI/MCP process. From the repository root:
@@ -101,12 +103,15 @@ Use the same token environment for the CLI/MCP process. From the repository root
 ```sh
 cargo build -p magic-cli
 ./target/debug/magic-cli --bridge 127.0.0.1:9876 ui inspect
+./target/debug/magic-cli --bridge 127.0.0.1:9876 exec project.identity
 ./target/debug/magic-cli --bridge 127.0.0.1:9876 mcp
 ```
 
-See [the control protocol](../../docs/control-protocol.md) for the supported
-operations, MCP tools, headless mode, and retired invocation forms. Installed
-binaries must be rebuilt/reinstalled before using the new interface.
+References for these launch, `--control` / `--bridge`, and MCP instructions:
+- Local contracts: [Control protocol & MCP](../../docs/control-protocol.md) · [Command architecture](MAGIC.md) · [Magic skill](SKILL.md) · [`CraftHub` bridge](../../crates/engine/src/craft_hub/mod.rs)
+- Upstream Craft & Tauri references: [FilmCraft control protocol (`storytold/filmcraft`)](https://github.com/storytold/filmcraft/blob/main/docs/control-protocol.md) · [FilmCraft CLI `--bridge` (`apps/filmcraft-cli/src/main.rs`)](https://github.com/storytold/filmcraft/blob/main/apps/filmcraft-cli/src/main.rs) · [EffectCraft MCP (`storytold/effectcraft`)](https://github.com/storytold/effectcraft/blob/main/docs/mcp.md) · [EffectCraft control protocol (`storytold/effectcraft`)](https://github.com/storytold/effectcraft/blob/main/docs/control-protocol.md) · [ArtCraft Tauri dev setup (`storytold/artcraft`)](https://github.com/storytold/artcraft/blob/main/_docs/dev_setup.md) · [Tauri v2 security capabilities (`v2.tauri.app`)](https://v2.tauri.app/security/capabilities/)
+
+Installed binaries must be rebuilt/reinstalled before using new engine or UI changes.
 
 The frontend and control listener share one engine session. Project opening runs
 in Tauri setup, after single-instance detection. A duplicate launch activates the

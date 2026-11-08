@@ -59,15 +59,18 @@ fn codex_args(view: &View, image: &std::path::Path, size: (u32, u32)) -> Vec<Str
 fn stage_image(view: &View, p: &Value, s: &Session) -> Result<(std::path::PathBuf, (u32, u32))> {
     let source = p["image"]
         .as_str()
+        .filter(|i| !i.trim().is_empty())
         .map(|i| crate::workspace::resolve_workspace_path(s, i))
         .filter(|i| i.is_file())
+        .or_else(|| view.dir.parent().and_then(super::find_initial_cutout))
         .ok_or_else(|| bad("image=<drawing.png> is required"))?;
     std::fs::create_dir_all(&view.dir)?;
     let staged = view.dir.join(format!("{}-{}-drawing.png", view.id, view.view));
     if source != staged {
         std::fs::copy(&source, &staged)?;
     }
-    Ok((staged.clone(), image::image_dimensions(&staged)?))
+    let dims = super::cut::photocraft_dimensions(&staged).or_else(|_| image::image_dimensions(&staged).map_err(|e| bad(e.to_string())))?;
+    Ok((staged, dims))
 }
 
 fn check_marks(view: &View, staged: &std::path::Path) -> Result<Value> {
