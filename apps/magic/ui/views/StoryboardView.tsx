@@ -162,7 +162,7 @@ export const StoryboardView:React.FC<Props>=({projectPath,storyboard,onRefresh,o
       <button id="storyboard-open-editor" className="ghost" disabled={!!busy||!pages.length} onClick={()=>void action("Opening DesignCraft…",()=>executeCommand("storyboard.open",{_expected_project:projectPath}))}>Open in DesignCraft ↗</button></header>
       <div id="sb-cards" className={`sb-spread ${zoom===100?"fit":"zoomed"}`}>{preview&&page?<div className={`sb-spread-stage sb-zoom-${zoom}`}>
         <img src={preview} alt={page.title}/>
-        <svg className="sb-overlay" viewBox={`${vx} ${vy} ${vx1-vx} ${vy1-vy}`} preserveAspectRatio="none">
+        <svg className="sb-overlay" viewBox={`${vx} ${vy} ${vx1-vx} ${vy1-vy}`} preserveAspectRatio="xMidYMid meet">
           {slots.map(slot=>{
             const b=slot.bounds;if(!b||b[2]<=b[0]||b[3]<=b[1])return null;
             const key=slotKey(slot),active=editing===key,state=slotState(slot);

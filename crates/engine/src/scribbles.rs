@@ -8,6 +8,9 @@
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 
+/// Request keys that say where a drawing is saved (`storyboard.set` page, scene, slot, ...).
+const SAVE_TARGET_KEYS: &[&str] = &["path", "page", "scene", "slot", "label"];
+
 fn resolve_template_request(p: &Value) -> Result<(Value, Value)> {
     let all = crate::fidget::templates()?;
     let kinds = &all["kinds"];
@@ -38,7 +41,14 @@ fn resolve_template_request(p: &Value) -> Result<(Value, Value)> {
     // 2. Explicit `kind` or `template` parameter -> prepare via Fidget
     if let Some(kind_name) = p["kind"].as_str().or_else(|| p["template"].as_str()) {
         let prepared = crate::fidget::PreparedDrawing::prepare(p, kind_name)?;
-        return Ok((prepared.request, prepared.fidget));
+        let mut request = prepared.request;
+        // Where the drawing is saved belongs to the caller, not the template: keep it.
+        for key in SAVE_TARGET_KEYS {
+            if let Some(v) = p.get(*key) {
+                request[*key] = v.clone();
+            }
+        }
+        return Ok((request, prepared.fidget));
     }
 
     // 3. Prompt or markdown carries Fidget YAML frontmatter (`---\n...template: <kind>...`)
@@ -71,16 +81,19 @@ fn resolve_template_request(p: &Value) -> Result<(Value, Value)> {
 }
 
 fn apply_template_save_command(s: &mut Session, request: &Value, metadata: &Value, generated: &Value) -> Result<Value> {
-    let save_cmd = metadata["save_command"].as_str().unwrap_or("project.add_asset");
+    let save_cmd = metadata["save_command"].as_str().ok_or_else(|| EngineError::InvalidParams("the Scribbles template names no save_command".into()))?;
     let image_path = generated["image"].as_str().unwrap_or_default();
     if save_cmd == "storyboard.set" && !image_path.is_empty() && (request.get("scene").is_some() || request.get("page").is_some()) {
-        let slot = request["slot"].as_str().or_else(|| metadata["save_slot"].as_str()).unwrap_or("hero_image");
+        let slot = request["slot"]
+            .as_str()
+            .or_else(|| metadata["save_slot"].as_str())
+            .ok_or_else(|| EngineError::InvalidParams("pass `slot`: this Scribbles template names no storyboard slot".into()))?;
         let mut set_params = json!({
             "images": { slot: image_path }
         });
-        for key in ["path", "page", "scene", "label"] {
-            if let Some(v) = request.get(key) {
-                set_params[key] = v.clone();
+        for key in SAVE_TARGET_KEYS.iter().filter(|k| **k != "slot") {
+            if let Some(v) = request.get(*key) {
+                set_params[*key] = v.clone();
             }
         }
         let receipt = s.execute("storyboard.set", set_params)?;
@@ -110,20 +123,24 @@ pub fn cmd_scribbles_generate(s: &mut Session, p: &Value) -> Result<Value> {
     if request["prompt"].as_str().is_none_or(|v| v.trim().is_empty()) {
         return Err(EngineError::InvalidParams("Scribbles needs a nonempty final prompt".into()));
     }
+    // The provider comes from the request or from the Scribbles settings, nowhere else:
+    // an unset choice is an error that says how to make it.
     let settings = crate::project_settings::stored_settings();
-    for key in ["provider", "model"] {
-        if request.get(key).is_none() {
-            if let Some(value) = settings["scribbles"].get(key) {
-                request[key] = value.clone();
-            } else if key == "model" {
-                request[key] = crate::fidget::templates()?["model"].clone();
-            }
-        }
-        if let Some(value) = request.get(key)
-            && value.as_str().is_none_or(|v| v.trim().is_empty())
-        {
-            return Err(EngineError::InvalidParams(format!("scribbles {key} must be a nonempty string")));
-        }
+    if request.get("provider").is_none_or(Value::is_null) {
+        request["provider"] = settings["scribbles"].get("provider").filter(|v| !v.is_null()).cloned().ok_or_else(|| {
+            EngineError::InvalidParams(
+                "no Scribbles provider is chosen: pass `provider`, or set it with `magic-cli exec prefs.set key=scribbles.provider value=codex`".into(),
+            )
+        })?;
+    }
+    if request["provider"].as_str().is_none_or(|v| v.trim().is_empty()) {
+        return Err(EngineError::InvalidParams("scribbles provider must be a nonempty string".into()));
+    }
+    // A template that saves into the storyboard needs to know where, before anything is drawn.
+    if metadata["save_command"] == "storyboard.set" && request.get("page").is_none() && request.get("scene").is_none() {
+        return Err(EngineError::InvalidParams(
+            "this Scribbles template saves into the storyboard: pass `page` or `scene` (and `slot` to override the template's slot)".into(),
+        ));
     }
     let count = request.get("count").and_then(Value::as_u64).unwrap_or(1);
     if !(1..=4).contains(&count) {

@@ -25,14 +25,11 @@ pub struct ProjectPrefs {
 #[serde(default)]
 pub struct ImagePrefs {
     pub provider: String,
-    pub endpoint: Option<String>,
-    pub model: Option<String>,
-    pub api_key_env: Option<String>,
 }
 
 impl Default for ImagePrefs {
     fn default() -> Self {
-        Self { provider: "codex".into(), endpoint: None, model: None, api_key_env: None }
+        Self { provider: "codex".into() }
     }
 }
 
@@ -271,9 +268,8 @@ impl MagicPrefs {
             "project.root" => opt_str_json(&self.project.root),
             "project.characters_root" => opt_str_json(&self.project.characters_root),
             "image.provider" => json!(self.image.provider),
-            "image.endpoint" => opt_str_json(&self.image.endpoint),
-            "image.model" => opt_str_json(&self.image.model),
             "scribbles.template" => opt_str_json(&self.scribbles.template),
+            "scribbles.provider" => opt_str_json(&self.scribbles.provider),
             "lyrics.default_size" => json!(self.lyrics.default_size),
             "lyrics.outline" => json!(self.lyrics.outline),
             "animation.loop_preview" => json!(self.animation.loop_preview),
@@ -308,9 +304,8 @@ impl MagicPrefs {
             "project.root" => self.project.root = opt_str_from_value(value),
             "project.characters_root" => self.project.characters_root = opt_str_from_value(value),
             "image.provider" => self.image.provider = value.as_str().unwrap_or("codex").to_owned(),
-            "image.endpoint" => self.image.endpoint = opt_str_from_value(value),
-            "image.model" => self.image.model = opt_str_from_value(value),
             "scribbles.template" => self.scribbles.template = opt_str_from_value(value),
+            "scribbles.provider" => self.scribbles.provider = opt_str_from_value(value),
             "lyrics.default_size" => self.lyrics.default_size = value.as_i64().unwrap_or(72),
             "lyrics.outline" => self.lyrics.outline = value.as_bool().unwrap_or(true),
             "animation.loop_preview" => self.animation.loop_preview = value.as_bool().unwrap_or(true),

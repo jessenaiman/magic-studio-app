@@ -53,17 +53,19 @@ pub fn fields_with_cat() -> Vec<(&'static str, Field)> {
         ("project", Field { key: "project.characters_root", label: "Characters root", kind: Kind::Path, wired: true, enabled_by: None }),
         (
             "image",
+            Field { key: "image.provider", label: "Image provider", kind: Kind::Choice(&[("codex", "Codex (subscription)")]), wired: true, enabled_by: None },
+        ),
+        ("image", Field { key: "scribbles.template", label: "Scribbles template", kind: Kind::Text, wired: true, enabled_by: None }),
+        (
+            "image",
             Field {
-                key: "image.provider",
-                label: "Image provider",
-                kind: Kind::Choice(&[("codex", "Codex (subscription)"), ("http", "HTTP API")]),
+                key: "scribbles.provider",
+                label: "Scribbles provider",
+                kind: Kind::Choice(&[("codex", "Codex (subscription)")]),
                 wired: true,
                 enabled_by: None,
             },
         ),
-        ("image", Field { key: "image.endpoint", label: "Image endpoint", kind: Kind::Text, wired: true, enabled_by: Some("image.provider") }),
-        ("image", Field { key: "image.model", label: "Image model", kind: Kind::Text, wired: true, enabled_by: Some("image.provider") }),
-        ("image", Field { key: "scribbles.template", label: "Scribbles template", kind: Kind::Text, wired: true, enabled_by: None }),
         (
             "lyrics",
             Field {

@@ -1,4 +1,5 @@
-//! Native image generation using direct HTTP (OpenAI / standard image endpoints) or guarded Codex.
+//! Image generation through the Codex subscription service (`codex exec` and its built-in image
+//! tool). There is no image API path: Magic never sends prompts to a paid image endpoint.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -6,7 +7,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 fn invalid(message: &str) -> EngineError {
@@ -38,82 +39,52 @@ fn prepare_output_dir(s: &Session) -> Result<(PathBuf, PathBuf)> {
     Ok((dir.join("asset.png"), dir.join("generation.json")))
 }
 
-fn generate_via_openai_api(prompt: &str, key: &str, endpoint: Option<&str>, out: &Path) -> Result<()> {
-    let url = endpoint.unwrap_or("https://api.openai.com/v1/images/generations");
-    let payload = json!({
-        "model": "dall-e-3",
-        "prompt": prompt,
-        "n": 1,
-        "size": "1024x1024",
-        "response_format": "b64_json"
-    });
-
-    let resp = ureq::post(url)
-        .header("Authorization", &format!("Bearer {key}"))
-        .header("Content-Type", "application/json")
-        .config()
-        .timeout_global(Some(Duration::from_secs(120)))
-        .build()
-        .send_json(&payload)
-        .map_err(|e| invalid(&format!("Direct API request failed: {e}")))?;
-
-    let body: Value = serde_json::from_reader(resp.into_body().into_reader()).map_err(|e| invalid(&format!("Failed to parse API JSON: {e}")))?;
-
-    let b64 = body["data"][0]["b64_json"].as_str().ok_or_else(|| invalid("API response missing b64_json image data"))?;
-
-    let cleaned: String = b64.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-    let bytes = craft_ai_core::payload::base64_decode(&cleaned).ok_or_else(|| invalid("Failed to decode base64 image data from API"))?;
-
-    crate::doc_state::write_file(out, bytes).map_err(|e| invalid(&format!("Failed to write PNG: {e}")))?;
-    Ok(())
-}
-
-fn generate_via_guarded_codex(prompt: &str, dir: &Path, out: &Path) -> Result<()> {
-    let mut cmd = Command::new("codex");
-    cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write", "--cd"])
-        .arg(dir)
-        .args(["--config", "model_reasoning_effort=\"low\""])
-        .arg("--")
-        .arg(format!("Use your native built-in image_gen.imagegen tool exactly once to generate: {prompt}. Do not retry or run other tools."));
-
-    let output = cmd.output().map_err(|e| EngineError::ExternalTool("codex".into(), format!("Failed to launch codex: {e}")))?;
-
-    if !output.status.success() {
-        return Err(invalid(&format!("Codex image execution failed (exit {:?}): {}", output.status.code(), String::from_utf8_lossy(&output.stderr))));
-    }
-
-    // Check if staged in codex cache or output dir
-    let home = std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")));
-
-    if let Some(h) = home {
-        // Look for newest generated image in ~/.codex/generated_images
-        let gen_dir = h.join("generated_images");
-        if let Ok(entries) = fs::read_dir(&gen_dir) {
-            let mut newest: Option<(PathBuf, SystemTime)> = None;
-            for entry in entries.flatten() {
-                if let Ok(meta) = entry.metadata()
-                    && meta.is_dir()
-                    && let Ok(files) = fs::read_dir(entry.path())
-                {
-                    for f in files.flatten() {
-                        if f.path().extension().is_some_and(|e| e == "png")
-                            && let Ok(f_meta) = f.metadata()
-                            && let Ok(time) = f_meta.modified()
-                            && newest.as_ref().is_none_or(|(_, t)| time > *t)
-                        {
-                            newest = Some((f.path(), time));
-                        }
-                    }
-                }
-            }
-            if let Some((src, _)) = newest {
-                fs::copy(&src, out).map_err(|e| invalid(&format!("Failed to copy PNG: {e}")))?;
-                return Ok(());
+/// Every PNG under Codex's image cache (`$CODEX_HOME` or `~/.codex`, `generated_images/*/`).
+fn codex_cached_images() -> Result<std::collections::HashSet<PathBuf>> {
+    let home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")))
+        .ok_or_else(|| invalid("neither CODEX_HOME nor HOME is set, so the Codex image cache cannot be found"))?;
+    let mut found = std::collections::HashSet::new();
+    let Ok(entries) = fs::read_dir(home.join("generated_images")) else {
+        return Ok(found);
+    };
+    for dir in entries.flatten().filter(|e| e.path().is_dir()) {
+        for file in fs::read_dir(dir.path())?.flatten() {
+            if file.path().extension().is_some_and(|e| e == "png") {
+                found.insert(file.path());
             }
         }
     }
+    Ok(found)
+}
 
-    Err(invalid("Codex completed but no generated image was found in output cache"))
+/// Draw with Codex's built-in image tool, attaching `references` as images. Only a PNG this run
+/// created counts: when Codex finishes without drawing, that is an error, never an older image.
+fn generate_via_guarded_codex(prompt: &str, references: &[PathBuf], dir: &Path, out: &Path) -> Result<()> {
+    let before = codex_cached_images()?;
+    let mut cmd = Command::new("codex");
+    cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write", "--cd"])
+        .arg(dir)
+        .args(["--config", "model_reasoning_effort=\"low\""]);
+    for reference in references {
+        cmd.arg("--image").arg(reference);
+    }
+    let attached = if references.is_empty() { String::new() } else { " Match the attached reference image(s) for character design and finish.".into() };
+    cmd.arg("--")
+        .arg(format!("Use your native built-in image_gen.imagegen tool exactly once to generate: {prompt}.{attached} Do not retry or run other tools."));
+
+    let output = cmd.output().map_err(|e| EngineError::ExternalTool("codex".into(), format!("Failed to launch codex: {e}")))?;
+    if !output.status.success() {
+        return Err(invalid(&format!("Codex image execution failed (exit {:?}): {}", output.status.code(), String::from_utf8_lossy(&output.stderr))));
+    }
+    let mut made: Vec<PathBuf> = codex_cached_images()?.difference(&before).cloned().collect();
+    made.sort_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok());
+    let src = made.pop().ok_or_else(|| {
+        invalid(&format!("Codex finished without drawing an image: {}", String::from_utf8_lossy(&output.stdout).lines().last().unwrap_or("no output")))
+    })?;
+    fs::copy(&src, out).map_err(|e| invalid(&format!("Failed to copy PNG: {e}")))?;
+    Ok(())
 }
 
 /// Public engine entrypoint to generate a single image and register it in the session.
@@ -126,25 +97,26 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
     let settings = crate::project_settings::stored_settings();
     let img_settings = &settings["image"];
 
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .ok()
-        .or_else(|| img_settings["api_key"].as_str().map(str::to_string))
-        .or_else(|| img_settings["api_key_env"].as_str().and_then(|env| std::env::var(env).ok()));
-
-    let endpoint = std::env::var("magic_IMAGE_ENDPOINT").ok().or_else(|| img_settings["endpoint"].as_str().map(str::to_string));
-
+    // The provider is the request's or the image.provider setting's; there is no implicit one.
     let provider = p
         .get("provider")
         .and_then(Value::as_str)
         .or_else(|| img_settings["provider"].as_str())
-        .unwrap_or_else(|| if api_key.is_some() { "openai" } else { "codex" });
+        .ok_or_else(|| invalid("no image provider is chosen: pass `provider`, or set it with `magic-cli exec prefs.set key=image.provider value=codex`"))?;
+    let references: Vec<PathBuf> = p["references"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| {
+            let path = r.as_str().map(|raw| crate::workspace::resolve_workspace_path(s, raw)).ok_or_else(|| invalid("`references` are image paths"))?;
+            if path.is_file() { Ok(path) } else { Err(invalid(&format!("reference image {} does not exist", path.display()))) }
+        })
+        .collect::<Result<_>>()?;
 
-    if let Some(ref key) = api_key {
-        generate_via_openai_api(prompt, key, endpoint.as_deref(), &out_png)?;
-    } else if provider == "codex" {
-        generate_via_guarded_codex(prompt, work_dir, &out_png)?;
-    } else {
-        return Err(invalid("No OPENAI_API_KEY set and provider is not codex. Set OPENAI_API_KEY or configure image.provider in config.toml."));
+    match provider {
+        "codex" => generate_via_guarded_codex(prompt, &references, work_dir, &out_png)?,
+        // Images come from the Codex subscription service only, never a paid image API.
+        other => return Err(invalid(&format!("unknown image provider `{other}`: images are drawn through the Codex service (provider=codex)"))),
     }
 
     let (width, height, sha256) = validated_png(&out_png)?;

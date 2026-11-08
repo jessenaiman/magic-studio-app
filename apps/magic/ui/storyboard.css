@@ -7,6 +7,9 @@
 /* Page canvas: the rendered page with an SVG layer in the document's own coordinates. */
 .sb-spread-stage{position:relative;flex:none;box-shadow:0 5px 20px #0005}
 .sb-spread-stage>img{display:block;width:100%;height:auto}
+/* Fit: the page and its slot layer both scale to fit the panel and centre (contain / meet). */
+.sb-spread.fit .sb-spread-stage{width:100%;height:100%;box-shadow:none}
+.sb-spread.fit .sb-spread-stage>img{height:100%;object-fit:contain}
 .sb-zoom-100{width:100%}.sb-zoom-150{width:150%}.sb-zoom-200{width:200%}
 .sb-overlay{position:absolute;inset:0;width:100%;height:100%}
 .sb-slot{fill:transparent;stroke:transparent;stroke-width:2;vector-effect:non-scaling-stroke;cursor:pointer}
