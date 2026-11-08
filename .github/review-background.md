@@ -5,7 +5,7 @@ these rules and report any violation as a finding.
 
 - The apps do the work. Images, layers, masks, motion, rigs, renders and edits go through the
   installed apps' own CLI or MCP commands (PhotoCraft, VectorCraft, EffectCraft, FilmCraft,
-  DeckCraft, Codex image generation as "Scribbles"). Code in this repository only chains those
+  Codex image generation as "Scribbles"). Code in this repository only chains those
   calls through `magic-cli`. Flag any code that computes pixels, curves, keyframes, IK, matting or
   layout itself instead of asking an app.
 - No scraping of human-readable tool output when the tool offers a machine format (JSON, SARIF).

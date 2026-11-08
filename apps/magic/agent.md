@@ -119,15 +119,12 @@ Work in your Moppet-named worktree and branch. Commit explicit task-owned paths 
 for review before merging; do not commit implementation directly to main. Report evidence and limitations.
 Do not add behavioral tests until Jesse personally navigates/observes and approves the UI behavior.
 
-For PDF validation, inspect fields through PdfCraft's document/form tools, not by searching raw PDF
-bytes (object streams may be compressed). A `pdfcraft-cli run` process owns its open documents:
-keep open → inspect/edit → save in one `--script` invocation, then reopen the saved copy to verify.
 Never put test text in the user's storyboard. Import approved transcript word arrays with the existing
 authored SRT via `workshop.import_transcript path=… captions=…`; preserve both wording and timings.
 
 Every new UI operation must invoke a shared command with Rust engine and CLI access. Do not implement a
 second behavior in a button handler. Use `workshop.build_storyboard template=magic source=<folder>`
-for the visual movie document; it produces an editable DeckCraft deck, linked PDF and previews.
+for the visual movie document; it produces an editable DesignCraft storyboard, linked PDF and previews.
 Use `agent.new_chat` to start fresh while preserving previous history. A prepared transparent image
 is not evidence of successful extraction, joint detection or articulated animation: report the actual
 stage and verify identity against the selected scene artwork before processing.

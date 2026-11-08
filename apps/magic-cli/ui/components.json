@@ -56,11 +56,6 @@
     "compact"
   ],
   "elements": {
-    "storyboard-edit-deck": {
-      "component": "start",
-      "label": "Edit in DeckCraft",
-      "indicator": "hidden"
-    },
     "storyboard-page-nav": {
       "component": "ghost",
       "label": "Storyboard page",

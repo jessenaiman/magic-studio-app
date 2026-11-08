@@ -24,7 +24,6 @@ pub enum CraftTarget {
     Effect,
     Vector,
     Design,
-    Deck,
     Texture,
 }
 
@@ -37,7 +36,6 @@ impl CraftTarget {
             Self::Effect => "effectcraft",
             Self::Vector => "vectorcraft",
             Self::Design => "designcraft",
-            Self::Deck => "deckcraft",
             Self::Texture => "texturecraft",
         }
     }
@@ -50,7 +48,6 @@ impl CraftTarget {
             Self::Effect => "effectcraft-cli",
             Self::Vector => "vectorcraft-cli",
             Self::Design => "designcraft-cli",
-            Self::Deck => "deckcraft-cli",
             Self::Texture => "texturecraft-cli",
         }
     }
@@ -63,7 +60,6 @@ impl CraftTarget {
             Self::Effect => 9878,
             Self::Photo => 9879,
             Self::Vector => 9880,
-            Self::Deck => 9881,
             Self::Texture => 9882,
         }
     }
@@ -76,7 +72,6 @@ impl CraftTarget {
             Self::Effect => "EFFECTCRAFT_CONTROL_PORT",
             Self::Photo => "PHOTOCRAFT_CONTROL_PORT",
             Self::Vector => "VECTORCRAFT_CONTROL_PORT",
-            Self::Deck => "DECKCRAFT_CONTROL_PORT",
             Self::Texture => "TEXTURECRAFT_CONTROL_PORT",
         }
     }
@@ -273,10 +268,6 @@ impl ControlConn {
                 let info = self.send_raw("document.inspect", json!({}))?;
                 Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
             }
-            CraftTarget::Deck => {
-                let info = self.execute_engine("document.inspect", &json!({}))?;
-                Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
-            }
             CraftTarget::Texture => {
                 let info = self.send_raw("session.inspect", json!({}))?;
                 Ok(info["path"].as_str().is_some_and(|p| same_canonical_path(Path::new(p), expected)))
@@ -286,7 +277,7 @@ impl ControlConn {
 
     fn save_open_document(&mut self, doc: &Path) -> Result<()> {
         match self.target {
-            CraftTarget::Film | CraftTarget::Design | CraftTarget::Vector | CraftTarget::Deck => {
+            CraftTarget::Film | CraftTarget::Design | CraftTarget::Vector => {
                 let _ = self.execute_engine("file.save", &json!({}))?;
             }
             CraftTarget::Effect | CraftTarget::Texture => {
@@ -430,15 +421,6 @@ fn call_cli_with_save(target: CraftTarget, doc: Option<&Path>, command: &str, pa
                     cmd.arg("-o").arg(path);
                 }
             }
-        }
-        CraftTarget::Deck => {
-            if let Some(path) = doc {
-                cmd.arg("--project").arg(path);
-                if save {
-                    cmd.arg("--save");
-                }
-            }
-            cmd.arg("exec").arg(command).arg(&params_str);
         }
     }
 

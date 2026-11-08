@@ -11,23 +11,8 @@ use crate::cmd::project::workshop::{IMAGE_EXTENSIONS, project_dir, song_seconds}
 use crate::workspace::{AUDIO_EXTENSIONS, has_extension, resolve_workspace_path};
 use crate::{EngineError, Result, Session};
 
-const CRAFT_DOC_EXTS: &[&str] = &[
-    "designcraft",
-    "idml",
-    "deckcraft",
-    "pdfcraft",
-    "ecproj",
-    "fcproj",
-    "pcraft",
-    "psd",
-    "vectorcraft",
-    "vcraft",
-    "drawcraft",
-    "tcraft",
-    "mcraft",
-    "cadcraft",
-    "solidcraft",
-];
+const CRAFT_DOC_EXTS: &[&str] =
+    &["designcraft", "idml", "ecproj", "fcproj", "pcraft", "psd", "vectorcraft", "vcraft", "drawcraft", "tcraft", "mcraft", "cadcraft", "solidcraft"];
 
 struct FileClass {
     group: &'static str,
@@ -52,23 +37,14 @@ fn classify_file(path: &Path) -> Option<FileClass> {
             open_label: "Open in DesignCraft ↗",
             is_craft_project: true,
         }),
-        "deckcraft" => Some(FileClass {
-            group: "design_pdf",
-            group_label: "Design & PDF",
-            group_order: 1,
-            craft_priority: 2,
-            badge: "DK",
-            open_label: "Open in DeckCraft ↗",
-            is_craft_project: true,
-        }),
-        "pdf" | "pdfcraft" => Some(FileClass {
+        "pdf" => Some(FileClass {
             group: "design_pdf",
             group_label: "Design & PDF",
             group_order: 1,
             craft_priority: 3,
             badge: "PDF",
             open_label: "Open",
-            is_craft_project: ext == "pdfcraft",
+            is_craft_project: false,
         }),
         "ecproj" => Some(FileClass {
             group: "effect_film",
@@ -415,7 +391,7 @@ pub fn cmd_project_trunk(s: &mut Session, _params: &Value) -> Result<Value> {
 
 fn target_subfolder_for_ext(ext: &str) -> &'static str {
     match ext {
-        "designcraft" | "idml" | "deckcraft" | "pdf" | "pdfcraft" => "storyboard",
+        "designcraft" | "idml" | "pdf" => "storyboard",
         "ecproj" => "lettering",
         "fcproj" | "mp4" | "mov" | "webm" | "mkv" => "film",
         "pcraft" | "psd" => "assets/backgrounds",

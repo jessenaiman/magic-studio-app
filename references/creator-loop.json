@@ -292,9 +292,9 @@
     {
       "id": "board",
       "label": "Complete the storyboard",
-      "view": "Storyboard → DeckCraft",
-      "command": "magic-cli ui click id=tab-storyboard\nmagic-cli ui click id=sb-open-deck",
-      "pipeline": "Open the project’s existing deck in DeckCraft. Fill the section cues, shots, staging, continuity and links to editable artwork. The open action requires a saved deck.",
+      "view": "Storyboard → DesignCraft",
+      "command": "magic-cli ui click id=tab-storyboard\nmagic-cli ui click id=storyboard-open-editor",
+      "pipeline": "Open the project’s existing storyboard in DesignCraft. Fill the section cues, shots, staging, continuity and links to editable artwork. The open action requires a saved storyboard.",
       "verify": "Reopen the saved deck. Check every section and follow its asset links."
     },
     {

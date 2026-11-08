@@ -108,7 +108,7 @@ it does not move existing ones.
 
 An installed app opens without a provider key. Shared foundation crates come from
 [`storytold/craft-libs`](https://github.com/storytold/craft-libs), while sibling Craft applications
-(DesignCraft, EffectCraft, FilmCraft, PhotoCraft, VectorCraft, DeckCraft, TextureCraft) are driven
+(DesignCraft, EffectCraft, FilmCraft, PhotoCraft, VectorCraft, TextureCraft) are driven
 through [`CraftHub`](crates/engine/src/craft_hub/mod.rs) over `--control` or their installed `<app>-cli`
 binaries on `PATH`. Opening a separate native editor requires its installed
 application. HyperFrames and FFmpeg remain external runtimes. See the

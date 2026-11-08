@@ -18,7 +18,7 @@ pub fn workspace_root(s: &crate::Session) -> PathBuf {
         && let Some(home) = exe.parent().and_then(|p| p.parent())
     {
         let runtime = home.join("runtime");
-        if runtime.join("installation.json").is_file() && runtime.join("pipeline/templates/studio-template.deckcraft").is_file() {
+        if runtime.join("installation.json").is_file() {
             return runtime;
         }
     }
@@ -160,7 +160,6 @@ fn find_project_craft_doc(s: &crate::Session, app: &str) -> Option<PathBuf> {
         "photocraft" => find_first_with_ext(dir, &["pcraft", "psd"], 4),
         "vectorcraft" => find_first_with_ext(dir, &["vectorcraft", "vcraft", "drawcraft"], 4),
         "texturecraft" => find_first_with_ext(dir, &["tcraft", "mcraft"], 4),
-        "deckcraft" => find_first_with_ext(dir, &["deckcraft"], 3),
         _ => None,
     }
 }
@@ -190,7 +189,7 @@ pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Valu
     if params.get("path").and_then(Value::as_str).is_none_or(|p| p.trim().is_empty())
         && let Some(app) = params.get("app").and_then(Value::as_str).map(str::trim).filter(|a| !a.is_empty())
     {
-        let allowed = ["photocraft", "vectorcraft", "designcraft", "effectcraft", "filmcraft", "texturecraft", "deckcraft"];
+        let allowed = ["photocraft", "vectorcraft", "designcraft", "effectcraft", "filmcraft", "texturecraft"];
         if !allowed.contains(&app) {
             return Err(EngineError::InvalidParams(format!("unsupported Craft app '{app}'")));
         }
@@ -212,13 +211,11 @@ pub fn cmd_workspace_open(s: &mut crate::Session, params: &Value) -> Result<Valu
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     let app = sniffed.unwrap_or(match ext.as_str() {
         "cadcraft" | "dxf" | "dwg" => "cadcraft",
-        "deckcraft" | "potx" | "pptx" => "deckcraft",
         "designcraft" | "idml" => "designcraft",
         "ecproj" => "effectcraft",
         "fcproj" => "filmcraft",
         "mcraft" => "materialcraft",
         "pcraft" | "psd" => "photocraft",
-        "pdfcraft" => "pdfcraft",
         "solidcraft" | "step" | "stp" => "solidcraft",
         "soundcraft" => "soundcraft",
         "tcraft" => "texturecraft",
@@ -479,7 +476,3 @@ pub fn asset_id_for_import(typed_name: Option<&str>, path: &Path) -> String {
         .or_else(|| path.file_stem().and_then(|st| st.to_str()).and_then(try_sanitize_asset_id))
         .unwrap_or_else(|| "asset".to_string())
 }
-
-#[cfg(test)]
-#[path = "tests/workspace.rs"]
-mod tests;
