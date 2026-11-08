@@ -40,6 +40,10 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
     void refreshFilm();
   }, [projectPath]);
 
+  useEffect(() => {
+    if (film?.timeline?.exists) void executeCommand("video.open").catch((err) => setStatusText(String(err)));
+  }, [projectPath, film?.timeline?.exists]);
+
   const runFilmAction = async (label: string, fn: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);

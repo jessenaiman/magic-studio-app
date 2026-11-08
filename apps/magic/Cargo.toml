@@ -29,6 +29,11 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tauri = { version = "2", features = ["protocol-asset"] }
 craft-dialogs = { workspace = true }
+craft-keymap = { workspace = true }
+filmcraft-engine = { workspace = true }
+filmcraft-ui-egui = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "clipboard", "wayland", "x11"] }
+cpal = "0.16"
 tauri-plugin-opener = "2"
 tauri-plugin-log = "2"
 log = "0.4"
@@ -46,6 +51,7 @@ tauri-plugin-persisted-scope = "2"
 # Window capture for `ui.screenshot`: WebKitGTK snapshot encoded as PNG by cairo. Both crates are
 # already in the Tauri dependency graph; `png` only exposes cairo's PNG writer.
 [target.'cfg(target_os = "linux")'.dependencies]
+winit = "0.30"
 webkit2gtk = "2.0"
 cairo-rs = { version = "0.18", features = ["png"] }
 

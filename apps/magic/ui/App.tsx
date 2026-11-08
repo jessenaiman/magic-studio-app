@@ -152,6 +152,18 @@ export const App: React.FC = () => {
     if (projectPath && initialized.current) void refreshProject().catch(error => showToast(`Project refresh failed: ${error}`));
   }, [view]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((!event.ctrlKey && !event.metaKey) || ["Control", "Meta", "Shift", "Alt"].includes(event.key)) return;
+      const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+      const chord = `Cmd+${event.altKey ? "Alt+" : ""}${event.shiftKey ? "Shift+" : ""}${key}`;
+      const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName ?? "");
+      void invoke("key_pressed", { chord, typing }).catch(error => showToast(String(error)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showToast]);
+
   const projectName =
     data?.name ||
     projectPath?.split("/").pop()?.replace(/\.magic$/, "") ||

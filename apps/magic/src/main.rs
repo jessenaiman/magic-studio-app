@@ -7,7 +7,10 @@ mod capture;
 mod clipboard_image;
 mod control;
 mod dialogs;
+mod keymap;
 mod lifecycle;
+mod studio;
+mod studio_audio;
 
 use clap::Parser;
 use magic::Session;
@@ -119,7 +122,6 @@ fn resize(app: &tauri::AppHandle, params: &Value) -> Result<Value, String> {
 }
 
 fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Result<Value, String> {
-    let desktop = state(app);
     match id {
         "engine.execute" | "ui.menu.invoke" => {
             let command = params["command"].as_str().or_else(|| params["id"].as_str()).ok_or("missing command")?;
@@ -148,10 +150,18 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         "ui.screenshot" => return screenshot(app, &params),
         "ui.resize" => return resize(app, &params),
         "ui.dialog.state" | "ui.dialog.override" => return dialogs::control(app, id, &params),
+        "ui.filmcraft" => return studio::control(&params),
+        "video.open" => return studio::open_project(app),
+        "ui.keymap.press" => return keymap::control(app, &params),
         "ui.feedback" | "ui.look" => return ui_request(app, "ui.inspect", params),
         id if id.starts_with("ui.") => return ui_request(app, id, params),
         _ => {}
     }
+    run_engine_command(app, id, params, notify)
+}
+
+fn run_engine_command(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Result<Value, String> {
+    let desktop = state(app);
     let changed = !magic::commands::is_read_only_command(id, &params);
     if desktop.lifecycle.exiting() {
         return Err("Magic is closing or restarting; the command was not run".into());
@@ -308,7 +318,15 @@ fn main() {
                 lifecycle::native_close(window.app_handle());
             }
         })
-        .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, record_ui_error, ui_reply, session_snapshot, dialogs::pick_file])
+        .invoke_handler(tauri::generate_handler![
+            execute_command,
+            desktop_ready,
+            record_ui_error,
+            ui_reply,
+            session_snapshot,
+            dialogs::pick_file,
+            keymap::key_pressed
+        ])
         .setup(move |app| {
             if let Some(path) = &cli.project {
                 dispatch(app.handle(), "project.open", json!({"path":path}), false)?;
