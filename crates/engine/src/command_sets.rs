@@ -766,6 +766,7 @@ fn specs_diagnostics() -> Vec<CommandSpec> {
             "{\"updates\":\"true (default) checks each Craft app for a newer release over the network; false skips it\"}",
             cmd_app_doctor
         ),
+        query!("app.update", "Check for a Newer Release", "{}", crate::update::cmd_app_update),
         query!(
             "app.errors",
             "Recorded Runtime Errors",

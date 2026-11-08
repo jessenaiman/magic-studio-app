@@ -78,6 +78,7 @@ pub mod scribbles;
 pub mod session;
 pub mod settings;
 pub mod skills_registry;
+pub mod update;
 pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
