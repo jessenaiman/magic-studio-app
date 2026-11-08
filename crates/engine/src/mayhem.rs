@@ -69,6 +69,6 @@ pub fn evidence(s: &mut Session, params: &Value) -> Result<Value> {
     let status = crate::cmd::project::workshop::workshop_status(s).unwrap_or(Value::Null);
     Ok(json!({"root":root,"report":report,"activity":crate::herdr::activity(s, params),"commands":commands,
         "cli_events":crate::activity::events(s, &json!({"limit":192}))?,
-        "monitoring": {"prerequisites": crate::cmd::project::workshop::prerequisites(&status)},
+        "monitoring": {"prerequisites": status["prerequisites"]},
         "logs":logs(&root)}))
 }

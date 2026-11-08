@@ -332,7 +332,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
     let (supplied_transcript, transcript_errors, transcript_valid, transcript_why, transcript_outputs) =
         workshop_transcript_summary(&dir, target, &transcripts, &target_chip);
     let animated = workshop_animated_assets(s);
-    let stages = vec![
+    let mut stages = vec![
         json!({"id": "song", "title": "Song", "done": audio_ok, "why": song_why,
             "inputs": s.song_audio.iter().map(|p| file_chip(p)).chain(liner.iter().map(|p| file_chip(p))).collect::<Vec<_>>(),
             "outputs": vec![target_chip], "brief": stage_brief(s, &dir, "song")}),
@@ -347,13 +347,16 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
             "why": if animated.is_empty() { "Drag an asset into Stage 4 to create an animated subject (static scenes need none)." } else { "Pick an animated subject to rig or preview; static assets stay on video tracks." },
             "inputs": assets.iter().map(|p| file_chip(p)).collect::<Vec<_>>(), "assets": animated, "brief": stage_brief(s, &dir, "animate")}),
     ];
+    for stage in &mut stages {
+        stage["state"] = json!(stage_state(stage));
+    }
     let setup_ready = stages.iter().take(2).all(|st| st["done"] == json!(true));
     let storyboard_complete = storyboard["complete"] == true;
     let complete = setup_ready && storyboard_complete;
     let studio_info = studio(&dir);
     let effective_video_project = s.video_project_path.clone().or_else(|| active_target_path.clone());
     let diag = diagnose_video_setup(s, &dir);
-    Ok(json!({
+    let mut status = json!({
         "ok": true,
         "project_dir": dir,
         "complete": complete,
@@ -371,7 +374,9 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         "diagnostics": diag,
         "next_steps": diag["next_steps"],
         "stages": stages
-    }))
+    });
+    status["prerequisites"] = prerequisites(&status);
+    Ok(status)
 }
 
 /// List every registered command, optionally filtered by id/label/params substring.
@@ -441,12 +446,13 @@ pub fn cmd_workshop_status(s: &mut Session, _: &Value) -> Result<Value> {
 }
 
 /// One progress state per footer stage (`song`, `lyrics`, `transcript`, `storyboard`, `animate`,
-/// `studio`), read from a `workshop.status` result: `ready`, `needs-work`, `failed` or `not-started`.
-pub(crate) fn prerequisites(status: &Value) -> Value {
+/// `studio`): `ready`, `needs-work`, `failed` or `not-started`. Stages carry their own `state`;
+/// the storyboard and studio states come from their own reports.
+fn prerequisites(status: &Value) -> Value {
     let stage = |id: &str| status["stages"].as_array().and_then(|stages| stages.iter().find(|s| s["id"] == id));
     let p = |id: &str| {
         stage(id)
-            .map(|s| json!({"state": stage_state(s), "detail": s["why"].as_str().unwrap_or("").to_string()}))
+            .map(|s| json!({"state": s["state"], "detail": s["why"].as_str().unwrap_or("").to_string()}))
             .unwrap_or_else(|| json!({"state":"not-started","detail":"not started"}))
     };
     let sb = &status["storyboard"];

@@ -41,6 +41,8 @@ pub struct Session {
     pub agent_selection: Option<Value>,
     /// File stamp of the open `.magic` file at last load or atomic save (`link_watch::FileStamp`).
     pub project_stamp: std::cell::Cell<Option<crate::link_watch::FileStamp>>,
+    /// The last storyboard `completion` report, reused while its document is unchanged.
+    pub(crate) storyboard_completion: std::cell::RefCell<Option<crate::cmd::storyboard::CompletionCache>>,
     /// The selected recording; uploads use the copy inside the contained HyperFrames project.
     pub song_audio: Option<PathBuf>,
     /// Editable song details, stored only in this project's `.magic` document.
@@ -80,6 +82,7 @@ impl Default for Session {
             control_address: None,
             agent_selection: None,
             project_stamp: std::cell::Cell::new(None),
+            storyboard_completion: std::cell::RefCell::new(None),
             song_audio: None,
             song: crate::cmd::song::song_metadata::SongMetadata::default(),
             draft_approved: false,
@@ -109,6 +112,8 @@ impl Clone for Session {
             control_address: self.control_address,
             agent_selection: self.agent_selection.clone(),
             project_stamp: std::cell::Cell::new(self.project_stamp.get()),
+            // A copy reads its own reports.
+            storyboard_completion: std::cell::RefCell::new(None),
             song_audio: self.song_audio.clone(),
             song: self.song.clone(),
             draft_approved: self.draft_approved,

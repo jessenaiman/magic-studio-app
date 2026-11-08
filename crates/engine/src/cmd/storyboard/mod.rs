@@ -740,7 +740,17 @@ pub fn cmd_storyboard_cues(s: &mut Session, p: &Value) -> Result<Value> {
 ///
 /// A bracketed template line ("[Project title]"), even after a static prefix line, marks
 /// a slot waiting for content. A plain default ("MATERIAL & SCALE") is a heading.
-fn template_defaults() -> Result<HashMap<String, String>> {
+fn template_defaults() -> Result<&'static HashMap<String, String>> {
+    // The template is embedded, so its defaults are read once per process.
+    static DEFAULTS: std::sync::OnceLock<HashMap<String, String>> = std::sync::OnceLock::new();
+    if let Some(defaults) = DEFAULTS.get() {
+        return Ok(defaults);
+    }
+    let defaults = read_template_defaults()?;
+    Ok(DEFAULTS.get_or_init(|| defaults))
+}
+
+fn read_template_defaults() -> Result<HashMap<String, String>> {
     let dir = std::env::temp_dir().join(format!("magic-storyboard-template-{}", std::process::id()));
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("storyboard.designcraft");
@@ -778,9 +788,33 @@ pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
     completion(s, p)
 }
 
+/// A `completion` report and the saved document it describes.
+#[derive(Debug)]
+pub(crate) struct CompletionCache {
+    path: PathBuf,
+    stamp: crate::link_watch::FileStamp,
+    report: Value,
+}
+
 /// Saved DesignCraft document completeness, shared by CLI and the workspace indicators.
+///
+/// The report is kept on the session and reused while the document's [`FileStamp`] is
+/// unchanged, so status reads that do not follow an edit run no DesignCraft process.
+///
+/// [`FileStamp`]: crate::link_watch::FileStamp
 pub(crate) fn completion(s: &Session, p: &Value) -> Result<Value> {
-    let mut b = Board::open(&doc_path(s, p)?)?;
+    let path = doc_path(s, p)?;
+    let stamp = crate::link_watch::FileStamp::of(&path);
+    if let Some(cached) = s.storyboard_completion.borrow().as_ref().filter(|c| c.path == path && Some(c.stamp) == stamp) {
+        return Ok(cached.report.clone());
+    }
+    let report = read_completion(&path)?;
+    *s.storyboard_completion.borrow_mut() = stamp.map(|stamp| CompletionCache { path, stamp, report: report.clone() });
+    Ok(report)
+}
+
+fn read_completion(path: &Path) -> Result<Value> {
+    let mut b = Board::open(path)?;
     let pages = b.pages()?;
     let defaults = template_defaults()?;
     let mut report = Vec::new();
