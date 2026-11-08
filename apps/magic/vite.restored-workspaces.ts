@@ -5,7 +5,7 @@ import type { Plugin } from "vite";
 
 // Package the retained UI source directly. No second source copy and no HTTP engine server.
 export function restoredWorkspaces(): Plugin {
-  const source = fileURLToPath(new URL("../magic-cli/ui/", import.meta.url));
+  const source = fileURLToPath(new URL("./ui/workspaces/retained/", import.meta.url));
   const adapter = fileURLToPath(new URL("./ui/workspaces/tauri-adapter.js", import.meta.url));
   const files = new Map<string, string>();
   const walk = (directory: string) => {

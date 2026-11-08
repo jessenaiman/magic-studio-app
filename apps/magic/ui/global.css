@@ -1,2 +1,2 @@
 /* One base component stylesheet for the shell and restored workspaces. */
-@import "../../magic-cli/ui/global.css";
+@import "./workspaces/retained/global.css";
