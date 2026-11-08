@@ -1,7 +1,7 @@
 {
   "model": "gpt-6-luna",
   "note": "NOTE: This template is a working structure, not a final specification — follow it to the best of your ability and report any areas or commands that need improvement after use.",
-  "shared": "Felt-plush storybook character art for 2D animation. Plain transparent background, no text, labels, frames, shadows or props. Nothing touches the canvas edge. Clean solid silhouette edge with no loose fibres or specks. Every drawing of the character keeps the same design, palette, proportions and scale.",
+  "shared": "Match the attached reference's art style, design, materials, palette and proportions exactly; with no reference, use felt-plush storybook character art for 2D animation. Plain transparent background; if transparency is unavailable, use one perfectly flat solid pure magenta (#FF00FF) with no gradient, shading or glow anywhere on it, and no magenta in the character. No text, labels, frames, shadows or props. Nothing touches a cell or canvas edge. Clean solid silhouette edge with no loose fibres or specks. Every drawing of the character keeps the same design, palette, proportions and scale.",
   "stance": "Animation-ready stance: standing upright, feet planted shoulder-width apart with a clear gap of background between the legs from the crotch to the floor, arms held slightly away from the body (about 20 degrees) with a clear gap between each arm and the body, hands open, head level. Every limb is fully visible and not overlapping another limb.",
   "kinds": {
     "new": {
@@ -97,7 +97,7 @@
         "actions",
         "sprite-sheet"
       ],
-      "layout": "{frames} consecutive animation frames of the attached character performing {action}, {view}, in a grid of 4 columns x 2 rows of equal cells (384 x 512 px each), read left to right then top to bottom: {keys}. Each figure about 440 px tall, the planted foot on the cell baseline at 490 px from the cell top, same scale and same horizontal centre in every cell so the frames play in place as a sprite cycle.",
+      "layout": "{frames} consecutive animation frames of the attached character performing {action}, {view}, in a grid of 4 columns x 2 rows of equal cells (384 x 512 px each), read left to right then top to bottom: {keys}. Each figure about 440 px tall, the planted foot on the cell baseline at 490 px from the cell top, same scale and same horizontal centre in every cell so the frames play in place as a sprite cycle, and the last frame leads back into the first when the action loops.",
       "actions": {
         "walk": {
           "view": "side view facing right",
@@ -118,6 +118,10 @@
         "turn": {
           "view": "turning on the spot",
           "keys": "front, three-quarter right, right profile, three-quarter back right, back, three-quarter back left, left profile, three-quarter left"
+        },
+        "sing": {
+          "keys": "rest; small inhale with shoulders rising; mouth opening; head tilting back on the high note; arm sweeping out; arm at full extension; arm returning; settle back toward rest",
+          "view": "front view, singing to camera"
         }
       },
       "rules": []
