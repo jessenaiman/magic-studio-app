@@ -1,53 +1,39 @@
 ---
 name: character-rigging
-description: Build data-driven 2D character rigs for local animation: parts, pivots, layers, constraints, views, and reusable rig packages.
+description: Build data-driven 2D character rigs and layered compositions in EffectCraft: open-stance asset prep, rounded joint caps, replacement cels, and subtract/add sub-layer articulation.
 license: MIT
 ---
 
 # Character Rigging
 
-Use this skill when building Magic Studio `rig_plan` artifacts or renderer input
-for local 2D character animation.
+Use this skill when preparing 2D character artwork for rigging or building layered EffectCraft (`.ecproj`) character compositions in Magic Studio.
 
-## Proven Patterns
+## Golden Rule: Never Cookie-Cut a Posed Painting
 
-- Keep runtime code generic; make each character a data package.
-- Split characters into independently transformable parts.
-- Define pivots in the same coordinate space as the artwork.
-- Store constraints on moving parts to prevent impossible rotations.
-- Keep layer order explicit; do not rely on SVG source order after generation.
-- Start with one view and add views only when the shot list requires them.
+- **NEVER slice polygons out of a single posed 3/4 or hands-on-hips character painting (`character.cut`) to build a rotating skeletal rig.**
+- When an arm or hand overlaps the torso in a source painting, polygon-cutting steals torso border pixels, leaves holes behind, and waves a hip-pressed fist in mid-air.
+- Instead, choose one of the three legitimate 2D animation workflows below based on the shot requirements:
+  1. **Pose-to-Pose Acting Cels (`scribbles.poses` / `Toasty - pose cels.png`)**: Full-body acting poses in a $3 \times 2$ grid (`512×512` cells) anchored at the planted feet, masked non-destructively in EffectCraft (`mask.new`) and animated with anticipation/overshoot/settle (`position`, `rotation`, `scale` squash-and-stretch).
+  2. **Frame-by-Frame Action Sprite Cycles (`scribbles.actions` → `character.sprite`)**: 8 consecutive action frames in a $4 \times 2$ grid (`384×512` cells, planted foot baseline at `y = 490 px`) for walk, run, jump, wave, or turn cycles, looped via EffectCraft Time Remapping (`loopOut("cycle")`).
+  3. **Skeletal / Layered Rig from an Open Stance or Exploded Parts (`scribbles.image` + Sub-Layer Articulation)**: Only rig separated parts when the character is drawn in an open, non-overlapping stance (`stance` rule in `crates/engine/src/scribbles/templates.json`) or with clean hidden overlap and rounded circular joint caps.
 
-## Rig Package
+## Asset Preparation Rules (Esoteric Software Spine / 2D Cutout Standard)
 
-```json
-{
-  "character_id": "mouse",
-  "rig_type": "svg_rig",
-  "parts": [
-    { "id": "body", "kind": "torso", "layer": 10 },
-    { "id": "head", "kind": "head", "layer": 30, "parent": "body" },
-    { "id": "arm_right", "kind": "limb", "layer": 40, "parent": "body" }
-  ],
-  "joints": {
-    "head": { "pivot": [320, 180], "rotation": [-20, 20] },
-    "arm_right": { "pivot": [390, 310], "rotation": [-70, 95] }
-  }
-}
-```
+1. **Open Animation-Ready Stance**: Feet planted shoulder-width apart with clear background between the legs; arms held ~20° away from the body with clear gap between each arm and torso; hands open; no limb overlapping another limb (`https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation`).
+2. **Complete Hidden Geometry**: Never crop an asset flush at the seam where it meets another part. Paint the full underlying torso/shoulder behind the arm and the full neck beneath the head so rotation never exposes a gap.
+3. **Rounded Circular Joint Caps**: Overlapping limb ends (shoulders, elbows, knees) must have circular rounded caps centered on the joint pivot so rotating the limb keeps the silhouette seamless.
+4. **Targeted Sub-Layer Articulation (`drawn_refine.py` pattern)**: When a drawn pose cel only needs one articulating limb or prop (e.g., a conducting forearm or spinning chest fan):
+   - Apply a subtract mask (`mask.new` with `mode: "subtract"`) around that sub-part on the base pose cel.
+   - Add a second layer of the same sheet above it with an add mask (`mask.new`), set its anchor at the anatomical joint socket or rotor hub, and keyframe `transform/rotation`.
+5. **Replacement Cels / Slot Swapping**: Use hold-opacity layer swaps (`0%` / `100%`) for hand gestures (`fist`, `open`, `point`, `wave`) and facial expressions (`neutral`, `happy`, `surprised`, `focused`) rather than rotating a static hand drawing into an impossible pose.
 
-## Quality Checklist
+## Reference Scripts in This Repo
 
-- Every moving part has a pivot.
-- Every child part has a parent where hierarchy matters.
-- Mouth shapes are separate assets or separate path groups.
-- Eyes and pupils are separate when gaze needs to change.
-- Props are separate if the character touches or carries them.
+- [`projects/make-it-sound-human/motion/authoring/drawn_cut.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_cut.py): Foot-anchored pose-cel masking (`cel()`), squash-and-stretch, and EffectCraft batch authoring via `effect.exec`.
+- [`projects/make-it-sound-human/motion/authoring/drawn_acting.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_acting.py): Pose-to-pose character acting sequences and masked rotating prop layers (e.g. chest fan blades).
+- [`projects/make-it-sound-human/motion/authoring/drawn_refine.py`](../../../projects/make-it-sound-human/motion/authoring/drawn_refine.py): Subtract/add mask isolation for articulating a painted forearm on a pose cel.
 
 ## Sources
 
-- SVG transform-origin behavior is browser-defined and can be sensitive to
-  coordinate space; prefer explicit SVG-coordinate pivots when using GSAP
-  `svgOrigin`: https://gsap.com/docs/v3/GSAP/CorePlugins/CSS/
-- Remotion animations must be frame-driven and deterministic via current frame:
-  https://www.remotion.dev/docs/use-current-frame
+- Esoteric Software Spine — *How to cut your assets for animation*: https://esotericsoftware.com/blog/How-to-cut-your-assets-for-animation
+- School of Motion — *Walk Cycle in After Effects & Pose-to-Pose Blocking*: https://schoolofmotion.com/blog/walk-cycle-after-effects
