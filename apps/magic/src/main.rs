@@ -233,17 +233,10 @@ async fn session_snapshot(app: tauri::AppHandle) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let desktop = state(&app);
         let mut session = desktop.session.lock().map_err(|e| e.to_string())?;
-        let project = session.project_path.clone();
-        let data = if project.is_some() {
-            let status = session.execute("workshop.status", json!({})).map_err(|e| e.to_string())?;
-            let assets = session.execute("project.list_assets", json!({})).map_err(|e| e.to_string())?;
-            let trunk = session.execute("project.trunk", json!({})).unwrap_or_else(|_| json!({"files": []}));
-            json!({"project": project, "status": status, "storyboard": status.get("storyboard"), "assets": assets, "trunk": trunk})
-        } else {
-            Value::Null
-        };
-        asset_scope::allow(&app, &session, &data)?;
-        Ok(json!({"project":project,"data":data,"initialView":desktop.initial_view}))
+        let mut snapshot = session.execute("project.snapshot", json!({})).map_err(|e| e.to_string())?;
+        asset_scope::allow(&app, &session, &snapshot["data"])?;
+        snapshot["initialView"] = json!(desktop.initial_view);
+        Ok(snapshot)
     })
     .await
     .map_err(|e| e.to_string())?

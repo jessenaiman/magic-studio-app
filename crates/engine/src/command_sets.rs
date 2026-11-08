@@ -372,6 +372,7 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
 fn specs_project() -> Vec<CommandSpec> {
     vec![
         query!("project.list_assets", "List Project Assets", "{}", cmd_project_list_assets),
+        query!("project.snapshot", "Everything a View Draws for the Open Project", "{}", crate::cmd::project::cmd_project_snapshot),
         cmd!(
             "project.new",
             "New Project",

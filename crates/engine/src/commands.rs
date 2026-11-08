@@ -63,6 +63,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "storyboard.backgrounds"
         | "project.identity"
         | "project.list_assets"
+        | "project.snapshot"
         | "project.search"
         | "workshop.status"
         | "workshop.files"

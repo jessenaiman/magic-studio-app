@@ -205,6 +205,20 @@ fn project_index(s: &Session, params: &Value) -> Result<usize> {
     s.project_assets.iter().position(|a| a.id == id).ok_or_else(|| EngineError::InvalidParams(format!("project asset '{id}' is not connected")))
 }
 
+/// `project.snapshot`: everything a view needs to draw the open project in one reply: the workshop
+/// status (with the storyboard report), the assets with their roles and the project trunk.
+/// A part that cannot be read is reported with its error, never replaced by an empty value.
+pub fn cmd_project_snapshot(s: &mut Session, _: &Value) -> Result<Value> {
+    let Some(project) = s.project_path.clone() else {
+        return Ok(json!({"project": null, "data": null}));
+    };
+    let status = crate::cmd::project::workshop::workshop_status(s)?;
+    let assets = cmd_project_list_assets(s, &json!({}))?;
+    let trunk = s.execute("project.trunk", json!({})).unwrap_or_else(|error| json!({"files": [], "error": error.to_string()}));
+    let storyboard = status.get("storyboard").cloned().unwrap_or(Value::Null);
+    Ok(json!({"project": project, "data": {"project": project, "status": status, "storyboard": storyboard, "assets": assets, "trunk": trunk}}))
+}
+
 /// Where an asset sits in the project's layout: `background` under `assets/backgrounds/`,
 /// `character` under `assets/characters/`, otherwise `image`. The import destinations
 /// (`background=`, `character=`, `image=`) put files there, so the folder is the role.
