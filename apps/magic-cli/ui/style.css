@@ -1766,3 +1766,22 @@ html:has(.lyrics-workspace-page), .lyrics-workspace-page { margin: 0; height: 10
   border-color: #6ee7b7;
   color: #062117;
 }
+
+/* Project view: Project Files is the sole panel — full workspace width and height,
+   with the file list scrolling inside it. */
+.project-workspace-stack {
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+}
+
+.project-workspace-stack > .pf-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.project-workspace-stack .pf-list {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+}

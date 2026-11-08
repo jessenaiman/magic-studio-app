@@ -1,10 +1,85 @@
-import React, { useEffect, useRef, useState } from "react";
-import { executeCommand, fileUrl, pickFile, StoryboardData } from "../api";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { executeCommand, fileUrl, pickFile, ProjectAsset, StoryboardData } from "../api";
 import "../storyboard.css";
 
 interface Slot {id:number;label:string;kind:string;text?:string;image?:string;hidden?:boolean;empty?:boolean}
 interface Page {page:number;archetype:string;slots:Slot[]}
 interface Props {projectPath:string;storyboard?:StoryboardData;onRefresh:()=>Promise<void>;onToast:(message:string)=>void}
+
+const isPlate = (asset: ProjectAsset) => {
+  const path = (asset.path || "").replace(/\\/g, "/").toLowerCase();
+  const name = (asset.name || asset.id || "").toLowerCase();
+  return path.includes("/backgrounds/") || path.includes("/plates/") || /\b(background|backdrop|plate|world|clearing|river)\b/.test(name);
+};
+
+// Stage Assets & Animate (moved here from the Project view): characters and scene plates
+// staged for the storyboard. Cards keep their original actions.
+const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast }) => {
+  const [assets, setAssets] = useState<ProjectAsset[]>([]);
+  const [tab, setTab] = useState<"characters" | "plates">("characters");
+  const load = useCallback(async () => {
+    try {
+      const snapshot = await invoke<{ data?: { assets?: { assets?: ProjectAsset[] } } }>("session_snapshot");
+      setAssets(snapshot.data?.assets?.assets ?? []);
+    } catch (cause) {
+      onToast(String(cause));
+    }
+  }, [onToast]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const plates = assets.filter(isPlate);
+  const characters = assets.filter((asset) => !isPlate(asset));
+  const visible = tab === "plates" ? plates : characters;
+  const subtitle = (asset: ProjectAsset) =>
+    isPlate(asset) ? "Scene Plate · Storyboard →" : asset.kind === "model_3d" || /\.(glb|gltf)$/i.test(asset.path || "") ? "3D Rig · Animate →" : "Cutout · Animate →";
+  const run = async (fn: () => Promise<unknown>, refresh = false) => {
+    try {
+      await fn();
+      if (refresh) await load();
+    } catch (cause) {
+      onToast(String(cause));
+    }
+  };
+  return (
+    <section id="stage-assets-panel" aria-label="Stage Assets & Animate" style={{ border: "1px solid var(--border, #2a313c)", borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <strong>Stage Assets &amp; Animate <span className="muted">({assets.length})</span></strong>
+        <button id="stage-tab-characters" className={tab === "characters" ? "start" : "ghost"} onClick={() => setTab("characters")}>Characters / Animate ({characters.length})</button>
+        <button id="stage-tab-plates" className={tab === "plates" ? "start" : "ghost"} onClick={() => setTab("plates")}>Backgrounds &amp; Plates ({plates.length})</button>
+        <button id="stage-add-asset" className="ghost" style={{ marginLeft: "auto" }} onClick={() => void run(async () => {
+          const selected = await pickFile({ title: "Add Asset", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "glb", "gltf"] });
+          if (typeof selected === "string" && selected) {
+            const name = selected.split("/").pop() || selected;
+            await executeCommand("project.add_asset", { path: selected, kind: "image", name, image: name, load: false });
+            onToast(`Added ${name}`);
+          }
+        }, true)}>+ Add Asset</button>
+      </div>
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingTop: 8 }}>
+        {visible.map((asset) => (
+          <div key={asset.id} style={{ width: 150, flex: "0 0 auto", border: "1px solid var(--border, #2a313c)", borderRadius: 6, overflow: "hidden" }}>
+            {/\.(png|jpe?g|webp|gif|svg)$/i.test(asset.path || "")
+              ? <img src={fileUrl(asset.path)} alt="" style={{ width: "100%", height: 84, objectFit: "cover", display: "block" }} />
+              : <div className="muted" style={{ height: 84, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{asset.kind === "model_3d" ? "3D RIG" : "PART"}</div>}
+            <div style={{ padding: "6px 8px" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={asset.name || asset.id}>{asset.name || asset.id}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, marginTop: 2 }}>
+                <button className="ghost" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => void run(async () => {
+                  await executeCommand("character.open", { id: asset.id });
+                  await executeCommand("ui.set", { view: "animation" });
+                })}>{subtitle(asset)}</button>
+                <button id={`stage-asset-remove-${asset.id}`} className="ghost" title={`Remove ${asset.name || asset.id}`} onClick={() => void run(() => executeCommand("project.remove_asset", { id: asset.id }), true)}>×</button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {!visible.length && <p className="muted">{tab === "plates" ? "No background plates registered yet." : "No character cutouts registered yet."}</p>}
+      </div>
+    </section>
+  );
+};
 const colors:Record<string,string>={incomplete:"#ed8796",review:"#eabb62",complete:"#5bd69b"};
 const title=(page:Page)=>page.slots.find(slot=>/^(cover_title|world_heading|char_heading|scene_title|scene_id)$/.test(slot.label))?.text||`${page.archetype} ${page.page+1}`;
 const friendly=(label:string)=>label.replace(/^(cover|world|char|scene)_/,"").replace(/^songmap_action_(\d+)$/,"Scene $1 · action and location").replace(/^songmap_(\d+)$/,"Scene $1 · visual").replace(/_/g," ");
@@ -58,6 +133,7 @@ export const StoryboardView:React.FC<Props>=({projectPath,storyboard,onRefresh,o
     await action("Saving field…",async()=>{await executeCommand("storyboard.set",{page:page.page,[isImage(slot)?"images":"fields"]:{[slot.label]:value},_expected_project:projectPath});setDrafts(old=>{const next={...old};delete next[key];return next;});setEditing(null);},true);
   };
   return <div id="view-storyboard" className="storyboard-layout" data-document-dirty={Object.keys(drafts).length>0} data-document-saving={busy==="Saving field…"} data-document-label="Storyboard fields">
+    <StageAssets onToast={onToast} />
     <aside className="sb-panel sb-index"><header><h2>Storyboard &amp; design index</h2><p>DesignCraft · {pages.length} pages</p></header>
       <button id="storyboard-refresh" className="ghost" disabled={!!busy} onClick={()=>void action("Refreshing…",async()=>{await load();await onRefresh();})}>Sync &amp; refresh</button>
       <nav aria-label="Storyboard pages">{pages.map((item,index)=>{const status=check.pages?.find(p=>p.page===item.page)?.status||"incomplete";return <button id={`sb-nav-${item.page+1}`} key={item.page} className={`sb-page-card ${page?.page===item.page?"selected":""}`} aria-current={page?.page===item.page?"page":undefined} onClick={()=>{setPageIndex(index);setEditing(null);}}>

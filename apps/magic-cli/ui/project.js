@@ -100,9 +100,7 @@ class ProjectView {
     }
     host.replaceChildren(
       el("div", { class: "project-workspace-stack", id: "project-workspace-stack" },
-        this.projectFilesPanel(),
-        this.stageAssetsSection(),
-        this.setupCard(false)
+        this.projectFilesPanel()
       )
     );
   }
@@ -296,31 +294,6 @@ class ProjectView {
       ),
       el("div", { class: "pf-list", id: "pf-list" }, ...listBody)
     );
-  }
-  stageAssetsSection() {
-    const assets = this.state.data?.assets?.assets || [];
-    return stageAssetsPanel(assets, {
-      project: this.state.project,
-      tab: this.stageTab,
-      prefix: "stage-asset",
-      onTabChange: (nextTab) => {
-        this.stageTab = nextTab;
-        this.renderContents();
-      },
-      onAddAsset: (event) => this.importAsset(event),
-      onOpen: (assetId) => {
-        if (typeof openAnimation === "function")
-          openAnimation(assetId);
-      },
-      onRemove: async (assetId) => {
-        try {
-          await this.command("project.remove_asset", { id: assetId });
-          toast(`Removed ${assetId}`);
-        } catch (err) {
-          toast(String(err));
-        }
-      }
-    });
   }
   async revealFile(path) {
     try {
