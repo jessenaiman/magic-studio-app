@@ -32,4 +32,22 @@ impl Session {
     pub fn save_document(&mut self, kind: &'static str, path: &Path, value: Value) -> Result<()> {
         self.edit_document(kind, path, value)?.save()
     }
+
+    /// The project document `D` from the open project's folder, loaded on first use and reloaded
+    /// when another writer changed it. `Ok(None)`: the file does not exist yet.
+    pub fn doc<D: crate::doc_state::ProjectDoc>(&mut self, dir: &Path) -> Result<Option<D>> {
+        let path = D::path(dir);
+        match self.document(D::KIND, &path)? {
+            Some(doc) => serde_json::from_value(doc.value.clone())
+                .map(Some)
+                .map_err(|e| EngineError::InvalidParams(format!("{} is not a valid {} document: {e}", path.display(), D::KIND))),
+            None => Ok(None),
+        }
+    }
+
+    /// Store `doc` as one undoable edit of the project document `D` and write it.
+    pub fn save_doc<D: crate::doc_state::ProjectDoc>(&mut self, dir: &Path, doc: &D) -> Result<()> {
+        let value = serde_json::to_value(doc).map_err(|e| EngineError::InvalidParams(format!("cannot encode {}: {e}", D::KIND)))?;
+        self.save_document(D::KIND, &D::path(dir), value)
+    }
 }

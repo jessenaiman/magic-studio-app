@@ -561,18 +561,28 @@ pub(crate) fn timing(anim: &mut Value) {
     }
 }
 
-/// The session document kind of the lyric design (`design/words.json`).
-pub(crate) const WORDS_DOC: &str = "words";
+/// The lyric design (`design/words.json`). Its content stays JSON until its schema is typed;
+/// the type gives it one identity, path and save path through the session.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct WordsDesign(pub Value);
+
+impl crate::doc_state::ProjectDoc for WordsDesign {
+    const KIND: &'static str = "words";
+    fn path(dir: &Path) -> std::path::PathBuf {
+        document_path(dir)
+    }
+}
 
 /// The lyric design from the session's open documents, loaded on first use and reloaded when
 /// another writer changed the file (`session/documents.rs`).
 pub(crate) fn load(s: &mut Session, dir: &Path) -> Result<Option<Value>> {
-    Ok(s.document(WORDS_DOC, &document_path(dir))?.map(|d| d.value.clone()))
+    Ok(s.doc::<WordsDesign>(dir)?.map(|d| d.0))
 }
 
 /// Store the lyric design as a session edit and write it.
 pub(crate) fn save(s: &mut Session, dir: &Path, doc: &Value) -> Result<()> {
-    s.save_document(WORDS_DOC, &document_path(dir), doc.clone())
+    s.save_doc(dir, &WordsDesign(doc.clone()))
 }
 
 fn group_caption_lines(src: &[&Value]) -> Vec<[usize; 2]> {

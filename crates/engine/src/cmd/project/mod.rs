@@ -128,18 +128,14 @@ pub fn write_project_file(s: &Session) -> Result<()> {
         crate::link_watch::save_guard(path, s.project_stamp.get())?;
     }
     let doc = merged_document(s, path);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let text = serde_json::to_string_pretty(&doc).map_err(|e| EngineError::InvalidParams(format!("cannot encode project: {e}")))?;
-    craft_atomic::atomic_write(path, text.as_bytes())?;
-    s.project_stamp.set(crate::link_watch::FileStamp::of(path));
+    let (stamp, written) = crate::doc_state::write_json(path, &doc)?;
+    s.project_stamp.set(stamp);
     if s.record_user_state {
         crate::change_marker::invalidate();
     }
     s.project_saves.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if s.record_user_state {
-        crate::activity::stored(path, text.len());
+        crate::activity::stored(path, written);
     }
     Ok(())
 }

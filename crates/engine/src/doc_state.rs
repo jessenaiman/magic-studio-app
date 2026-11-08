@@ -7,9 +7,34 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::{EngineError, Result};
+
+/// A file Magic owns in a project folder, read and written only through the session
+/// ([`crate::Session::doc`], [`crate::Session::save_doc`]): atomic, guarded against outside
+/// changes by its [`FileStamp`], and undoable. A new kind of project file is one type with this
+/// impl; no view or command writes the file itself.
+pub trait ProjectDoc: Serialize + DeserializeOwned {
+    /// The session's name for this kind of document.
+    const KIND: &'static str;
+    /// Where the document lives in the project folder `dir`.
+    fn path(dir: &Path) -> PathBuf;
+}
+
+/// Write `value` to `path` as pretty JSON through [`craft_atomic::atomic_write`], creating the
+/// folder, and return the file's new stamp and size. The one JSON writer for Magic's files:
+/// callers apply their own outside-change guard first.
+pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<(Option<FileStamp>, usize)> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let payload = serde_json::to_vec_pretty(value).map_err(|e| EngineError::InvalidParams(format!("cannot encode {}: {e}", path.display())))?;
+    craft_atomic::atomic_write(path, &payload)?;
+    Ok((FileStamp::of(path), payload.len()))
+}
 
 /// Backwards-compatible alias: the stamp type lives in [`crate::link_watch`].
 pub use crate::link_watch::FileStamp;
@@ -61,12 +86,7 @@ impl DocState {
     /// document last matched it, so their work is never silently overwritten.
     pub fn save(&mut self) -> Result<()> {
         crate::link_watch::save_guard(&self.path, self.stamp)?;
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let payload = serde_json::to_vec_pretty(&self.value).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-        craft_atomic::atomic_write(&self.path, &payload)?;
-        self.stamp = crate::link_watch::FileStamp::of(&self.path);
+        self.stamp = write_json(&self.path, &self.value)?.0;
         self.dirty = false;
         Ok(())
     }
