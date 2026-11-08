@@ -116,7 +116,6 @@ export const App: React.FC = () => {
       void importDroppedArtwork(event.payload.paths, project, executeCommand).then(async count => {
         await refreshProject();
         if (disposed || liveState.current.projectPath !== project) return;
-        for (const frame of document.querySelectorAll("iframe")) frame.contentWindow?.postMessage({magicAssetsImported:project}, location.origin);
         setView("project");
         showToast(`Imported ${count} artwork file${count === 1 ? "" : "s"} · choose where to place them`);
       }).catch(error => { if (!disposed) showToast(`Artwork import failed: ${error}`); })
@@ -148,7 +147,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     // The footer lives across view switches, so refresh the single engine snapshot it reads
-    // when returning from an iframe editor; stages/context must not go stale in the shell.
+    // when switching views in the editor; stages/context must not go stale in the shell.
     if (projectPath && initialized.current) void refreshProject().catch(error => showToast(`Project refresh failed: ${error}`));
   }, [view]);
 

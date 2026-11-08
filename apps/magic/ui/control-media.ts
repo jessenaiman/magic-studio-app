@@ -1,5 +1,4 @@
 // Read native media state without seeking, playing, or changing the source.
-// Use tag names rather than instanceof so same-origin iframe media is included.
 export function mediaState(element: Element) {
   if (!/^(VIDEO|AUDIO)$/.test(element.tagName)) return undefined;
   const media = element as HTMLMediaElement;

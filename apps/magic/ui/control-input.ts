@@ -26,13 +26,7 @@ const BUTTONS: Record<string, number> = { left: 0, middle: 1, right: 2 };
 const MAX_TYPED_CHARACTERS = 10_000;
 
 export function surfacesOf(root: Document = document, x = 0, y = 0): Surface[] {
-  const found: Surface[] = [{ doc: root, x, y }];
-  for (const frame of root.querySelectorAll<HTMLIFrameElement>("iframe")) {
-    if (!frame.getClientRects().length) continue;
-    // External video players keep their own origin and stay opaque.
-    try { const child = frame.contentDocument; if (child) { const rect = frame.getBoundingClientRect(); found.push(...surfacesOf(child, x + rect.x, y + rect.y)); } } catch { /* cross-origin */ }
-  }
-  return found;
+  return [{ doc: root, x, y }];
 }
 
 export function findElement(id: string): HTMLElement | null {
@@ -92,18 +86,8 @@ export function locate(spec: Locator): Target {
     return { doc: element.ownerDocument, element, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
   }
   let x = finite(params, "x"), y = finite(params, "y");
-  let doc = document;
-  let element = doc.elementFromPoint(x, y);
-  for (let depth = 0; element instanceof HTMLIFrameElement && depth < 8; depth++) {
-    let inner: Document | null = null;
-    try { inner = element.contentDocument; } catch { /* cross-origin */ }
-    if (!inner) break;
-    const rect = element.getBoundingClientRect();
-    x -= rect.x; y -= rect.y; doc = inner;
-    const next = doc.elementFromPoint(x, y);
-    if (!next) break;
-    element = next;
-  }
+  const doc = document;
+  const element = doc.elementFromPoint(x, y);
   if (!element) throw new Error(`Nothing is drawn at (${params.x}, ${params.y})`);
   return { doc, element, x, y };
 }
@@ -237,14 +221,8 @@ export function scroll(params: Params) {
 }
 
 function deepActive(): { doc: Document; element: Element } {
-  let doc = document;
-  let element: Element | null = doc.activeElement;
-  for (let depth = 0; element instanceof HTMLIFrameElement && depth < 8; depth++) {
-    let inner: Document | null = null;
-    try { inner = element.contentDocument; } catch { /* cross-origin */ }
-    if (!inner) break;
-    doc = inner; element = doc.activeElement;
-  }
+  const doc = document;
+  const element: Element | null = doc.activeElement;
   return { doc, element: element ?? doc.body };
 }
 

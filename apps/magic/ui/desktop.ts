@@ -64,29 +64,15 @@ export async function connectDesktop(
         case "ui.inspect": case "ui.state": {
           watchViolations();
           const alerts = surfaces().flatMap(({ doc }) => Array.from(doc.querySelectorAll('[role="alert"]')).map(element => element.textContent?.trim()).filter((s): s is string => Boolean(s)));
-          const workspaces = Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe[id^="restored-"]')).map(frame => {
-            let doc: Document | null = null;
-            try { doc = frame.contentDocument; } catch { /* cross-origin */ }
-            const feedback = (doc?.defaultView as unknown as { acFeedback?: { snapshot: () => Record<string, unknown> } })?.acFeedback?.snapshot();
-            const hostError = frame.closest<HTMLElement>("[data-workspace-error]")?.dataset.workspaceError;
-            const errors = Array.isArray(feedback?.errors) ? [...feedback.errors] : [];
-            if (hostError && !errors.some(e => (e as { message?: string })?.message === hostError)) errors.push({ message: hostError, source: "host" });
-            return { title: frame.title || doc?.title || frame.id, visible: frame.getClientRects().length > 0, feedback: feedback ? {
-              rendered: feedback.rendered, phase: hostError ? "error" : feedback.phase, project: feedback.project, view: feedback.view,
-              errors, pending_invokes: feedback.pending_invokes,
-              draft_fields: feedback.draft_fields, last_frontend_command: feedback.last_frontend_command, theatre: feedback.theatre, animation: feedback.animation, authoring: feedback.authoring,
-            } : hostError ? { rendered: false, phase: "error", errors } : undefined };
-          });
-          const workspaceErrors = workspaces.flatMap(w => (w.feedback?.errors || []).map(err => ({ ...(err as Record<string, unknown>), workspace: w.title })));
           result = { ...(inspect() as Record<string, unknown>),
             viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
             focus: input.focusedElement(),
-            errors: [...shellErrors, ...workspaceErrors],
+            errors: [...shellErrors],
             cspViolations: violations,
             os: await getOsInfo().catch(() => null),
             notification: await notificationPermission().catch(() => false),
             alerts,
-            workspaces }; break;
+            workspaces: [] }; break;
         }
         case "ui.elements": {
           allowKeys(params, "ui.elements", ["prefix", "unidentified"]);
@@ -147,7 +133,6 @@ export async function connectDesktop(
             requestAuthoringTime(project,params.time);
           }
           setView(view);
-          if (params.time !== undefined) for (const frame of document.querySelectorAll("iframe")) frame.contentWindow?.postMessage({magicReviewTime:true},location.origin);
           result = { ok: true, requestedView: view }; break;
         }
         case "ui.click": result = input.click(params); break;

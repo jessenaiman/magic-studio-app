@@ -246,7 +246,6 @@ svg { width: var(--size-18); height: var(--size-18); fill: none; stroke: current
    come from the composition as --w, --h and --scale. */
 .stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: thin solid var(--line); border-radius: var(--radius);
   background: radial-gradient(120% 90% at 50% 35%, var(--surface-2), var(--surface) 55%, var(--bg)); }
-.stage > iframe { position: absolute; left: 0; top: 0; width: var(--w); height: var(--h); transform: scale(var(--scale)); transform-origin: 0 0; border: 0; background: transparent; }
 
 /* One lane: a named track of blocks on a section's span. Block positions come
    as --start/--len and the playhead as --at; a look sets the fill. */

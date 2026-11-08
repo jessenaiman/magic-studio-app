@@ -11,8 +11,7 @@ import { useCallback } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 /**
- * Restored workspaces run in an iframe whose `tauri-adapter.js` exposes the host's clipboard
- * as `window.__TAURI__.clipboardManager`; the desktop shell uses the plugin directly.
+ * Word style clipboard hooks using the Tauri clipboard-manager plugin.
  */
 interface LegacyClipboard {
   readText?: () => Promise<string>;
