@@ -7,6 +7,7 @@ class ProjectView {
   pfSort = "type";
   pfGroup = true;
   pfSearch = "";
+  pfPreviewPath = null;
   pfCollapsedGroups = new Set();
   stageTab = "characters";
   constructor(state) {
@@ -104,34 +105,42 @@ class ProjectView {
       )
     );
   }
-  fileDetail(file) {
-    if (file.badge === "DC" && this.state.data?.storyboard?.page_count) {
-      const sb = this.state.data.storyboard;
-      const unfilled = sb.count ?? 0;
-      return `${sb.page_count} pages · ${unfilled} unfilled`;
-    }
-    return file.detail || "";
-  }
   projectFilesPanel() {
-    const rawFiles = this.state.data?.trunk?.files || [];
-    const sb = this.state.data?.storyboard;
-    const allFiles = rawFiles.map((f) => ({ ...f, displayDetail: this.fileDetail(f) }));
+    const inventory = this.state.data?.trunk;
+    const allFiles = inventory?.files || [];
+    const isImage = (file) => file.is_image;
+    const matchesType = (file, type) => {
+      if (type === "all") return true;
+      if (type === "assets") return file.assets.length > 0;
+      if (type === "craft") return file.is_craft_project;
+      if (type === "filmcraft") return file.badge === "FC";
+      if (type === "effectcraft") return file.badge === "EC";
+      if (type === "photocraft") return file.badge === "PC";
+      if (type === "vectorcraft") return file.badge === "VC" || file.badge === "SVG";
+      if (type === "video") return /\.(mp4|mov|webm|mkv)$/i.test(file.path || "");
+      return file.group === type;
+    };
     const counts = {
       all: allFiles.length,
+      assets: allFiles.filter((file) => matchesType(file, "assets")).length,
       craft: allFiles.filter((f) => f.is_craft_project).length,
+      filmcraft: allFiles.filter((file) => matchesType(file, "filmcraft")).length,
+      effectcraft: allFiles.filter((file) => matchesType(file, "effectcraft")).length,
+      photocraft: allFiles.filter((file) => matchesType(file, "photocraft")).length,
+      vectorcraft: allFiles.filter((file) => matchesType(file, "vectorcraft")).length,
+      video: allFiles.filter((file) => matchesType(file, "video")).length,
       design_pdf: allFiles.filter((f) => f.group === "design_pdf").length,
       effect_film: allFiles.filter((f) => f.group === "effect_film").length,
       photo_vector: allFiles.filter((f) => f.group === "photo_vector").length,
       texture_3d: allFiles.filter((f) => f.group === "texture_3d").length,
-      audio_words: allFiles.filter((f) => f.group === "audio_words").length
+      audio_words: allFiles.filter((f) => f.group === "audio_words").length,
+      project_files: allFiles.filter((f) => f.group === "project_files").length
     };
     const q = this.pfSearch.trim().toLowerCase();
     const filtered = allFiles.filter((f) => {
-      if (this.pfFilter === "craft" && !f.is_craft_project)
+      if (!matchesType(f, this.pfFilter))
         return false;
-      if (!["all", "craft"].includes(this.pfFilter) && f.group !== this.pfFilter)
-        return false;
-      if (q && !`${f.name} ${f.rel_dir} ${f.badge} ${f.group_label}`.toLowerCase().includes(q))
+      if (q && !`${f.name} ${f.rel_dir} ${f.badge} ${f.group_label} ${f.assets.map((asset) => `${asset.name} ${asset.id}`).join(" ")}`.toLowerCase().includes(q))
         return false;
       return true;
     });
@@ -142,47 +151,114 @@ class ProjectView {
         return (b.modified_ms || 0) - (a.modified_ms || 0);
       if (this.pfSort === "size")
         return (b.size_bytes || 0) - (a.size_bytes || 0);
-      return (a.group_order - b.group_order) || (a.craft_priority - b.craft_priority) || String(a.name).localeCompare(String(b.name));
+      return Number(Boolean(b.current_timeline)) - Number(Boolean(a.current_timeline)) || (a.group_order - b.group_order) || (a.craft_priority - b.craft_priority) || String(a.name).localeCompare(String(b.name));
     });
 
     const folderIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
-    const renderRow = (file, index, rowKey) => el("div", { class: "pf-row", "data-badge": file.badge },
-      el("span", { class: "pf-idx" }, String(index + 1)),
-      el("span", { class: `pf-badge pf-badge-${String(file.badge || "FILE").toLowerCase()}` }, file.badge || "FILE"),
-      el("span", { class: "pf-name", title: file.path }, file.name),
-      el("span", { class: "pf-dir", title: file.rel_dir }, file.rel_dir),
-      el("span", { class: "pf-meta" }, file.displayDetail),
-      el("div", { class: "pf-row-actions" },
+    const fileVisual = (file) => {
+      const family = file.visual_kind || "document";
+      let drawing = '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>';
+      if (family === "film") {
+        drawing = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/><path d="m10 9 5 3-5 3z"/>';
+      } else if (family === "motion") {
+        drawing = '<path d="m12 3 9 9-9 9-9-9z"/><path d="m9 9 6 3-6 3zM3 5h4M17 19h4"/>';
+      } else if (family === "design") {
+        drawing = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16M3 9h7M14 9h3M14 13h3"/>';
+      } else if (family === "vector") {
+        drawing = '<path d="m12 3 8 8-8 10-8-10zM12 3v10"/><circle cx="12" cy="14" r="2"/>';
+      } else if (family === "image") {
+        drawing = '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 6-5 4 3 4-6 4 8"/>';
+      } else if (family === "model") {
+        drawing = '<path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5"/>';
+      } else if (family === "audio") {
+        drawing = '<path d="M9 17V5l11-2v12M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>';
+      } else if (family === "project") {
+        drawing = '<path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/>';
+      }
+      return { family, icon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${drawing}</svg>` };
+    };
+    const renderActions = (file, rowKey) => {
+      const asset = file.assets[0];
+      const canAnimate = file.can_animate;
+      return el("div", { class: "pf-row-actions" },
         el("button", {
           id: `pf-open-${rowKey}`,
           class: "pf-open-btn",
           title: `${file.open_label} (${file.name})`,
+          disabled: !file.path,
           onclick: () => openPath(file.path)
         }, file.open_label || "Open"),
+        canAnimate ? el("button", {
+          id: `pf-animate-${rowKey}-${asset.id}`, class: "pf-open-btn",
+          "data-commands": "character.open", title: `Animate ${asset.name || asset.id}`,
+          onclick: () => openAnimation(asset.id)
+        }, "Animate") : null,
         el("button", {
           id: `pf-reveal-${rowKey}`,
           class: "pf-reveal-btn",
           title: `Reveal ${file.name} in folder`,
           "aria-label": `Reveal ${file.name} in folder`,
-          html: folderIcon,
+          html: folderIcon, disabled: !file.path,
           onclick: () => this.revealFile(file.path)
         })
-      )
+      );
+    };
+    const togglePreview = (file) => {
+      const scroll = $("pf-list")?.scrollTop || 0;
+      this.pfPreviewPath = file && this.pfPreviewPath !== file.path ? file.path : null;
+      this.renderContents();
+      if ($("pf-list")) $("pf-list").scrollTop = scroll;
+    };
+    const renderRow = (file, index, rowKey) => {
+      const visual = fileVisual(file);
+      return el("div", {
+      class: `pf-row pf-family-${visual.family}${this.pfPreviewPath === file.path ? " previewing" : ""}`, "data-badge": file.badge,
+      draggable: file.assets.length ? "true" : null,
+      ondragstart: (event) => {
+        const asset = file.assets[0];
+        if (!asset) return;
+        event.dataTransfer.setData("application/x-magicstudio-asset", asset.id);
+        event.dataTransfer.setData("text/plain", asset.id);
+        event.dataTransfer.effectAllowed = "copy";
+      }
+    },
+      isImage(file)
+        ? el("button", {
+            id: `pf-preview-${rowKey}`, class: "pf-file-icon pf-preview-trigger", html: visual.icon,
+            title: `Preview ${file.name}`, "aria-label": `Preview ${file.name}`, "aria-expanded": String(this.pfPreviewPath === file.path),
+            onclick: () => togglePreview(file)
+          })
+        : el("span", { class: "pf-file-icon", html: visual.icon }),
+      el("span", { class: "pf-file-label", title: file.path },
+        isImage(file)
+          ? el("button", { class: "pf-name pf-preview-name", title: `Preview ${file.name}`, onclick: () => togglePreview(file) }, file.assets[0]?.name || file.name)
+          : el("span", { class: "pf-name" }, file.assets[0]?.name || file.name),
+        el("span", { class: "pf-file-location", title: `${file.rel_dir}${file.name}` },
+          file.assets.length ? el("span", { class: "pf-asset-mark", title: "Registered asset", "aria-label": "Registered asset" }) : null,
+          `${file.rel_dir || "./"}${file.assets.length ? file.name : ""}`)),
+      el("span", { class: "pf-type", title: file.group_label }, file.badge || "FILE"),
+      el("span", { class: "pf-meta" }, file.detail),
+      renderActions(file, rowKey)
     );
+    };
+    const renderFiles = (files, prefix) => el("div", { class: "pf-group-rows" }, ...files.map((file, index) => renderRow(file, index, `${prefix}-${index}`)));
 
     const groupsOrder = [
-      ["design_pdf", "Design & PDF"],
-      ["effect_film", "Effect & Film"],
+      ["filmcraft", "FilmCraft"],
+      ["design_pdf", "DesignCraft & PDF"],
       ["photo_vector", "Photo & Vector"],
+      ["effectcraft", "EffectCraft"],
+      ["video", "Video & exports"],
       ["texture_3d", "3D & Texture"],
-      ["audio_words", "Audio & Lyrics"]
+      ["audio_words", "Audio & Lyrics"],
+      ["other_assets", "Other assets"],
+      ["project_files", "Project & supporting files"]
     ];
-    let rowCounter = 0;
     const listBody = !sorted.length
       ? [el("div", { class: "pf-empty" }, "No project files match the active filter.")]
       : this.pfGroup
         ? groupsOrder.map(([gKey, gLabel]) => {
-            const items = sorted.filter((f) => f.group === gKey);
+            const items = sorted.filter((f) => matchesType(f, gKey));
             if (!items.length)
               return null;
             const collapsed = this.pfCollapsedGroups.has(gKey);
@@ -199,10 +275,10 @@ class ProjectView {
                   this.renderContents();
                 }
               }, el("span", { class: "pf-group-arrow" }, collapsed ? "▸" : "▾"), ` ${gLabel} (${items.length})`),
-              collapsed ? null : el("div", { class: "pf-group-rows" }, ...items.map((item, idx) => renderRow(item, idx, `${gKey}-${rowCounter++}`)))
+              collapsed ? null : renderFiles(items, gKey)
             );
           })
-        : [el("div", { class: "pf-group-rows" }, ...sorted.map((item, idx) => renderRow(item, idx, `flat-${idx}`)))];
+        : [renderFiles(sorted, "flat")];
 
     const typeSelect = el("select", {
       id: "pf-type-filter",
@@ -214,12 +290,19 @@ class ProjectView {
       }
     },
       el("option", { value: "all", selected: this.pfFilter === "all" }, `Type: All Files (${counts.all})`),
+      el("option", { value: "assets", selected: this.pfFilter === "assets" }, `Type: Registered Assets (${counts.assets})`),
       el("option", { value: "craft", selected: this.pfFilter === "craft" }, `Type: Craft Projects (${counts.craft})`),
+      el("option", { value: "filmcraft", selected: this.pfFilter === "filmcraft" }, `Type: FilmCraft (${counts.filmcraft})`),
+      el("option", { value: "effectcraft", selected: this.pfFilter === "effectcraft" }, `Type: EffectCraft (${counts.effectcraft})`),
+      el("option", { value: "photocraft", selected: this.pfFilter === "photocraft" }, `Type: PhotoCraft (${counts.photocraft})`),
+      el("option", { value: "vectorcraft", selected: this.pfFilter === "vectorcraft" }, `Type: VectorCraft (${counts.vectorcraft})`),
+      el("option", { value: "video", selected: this.pfFilter === "video" }, `Type: Video & exports (${counts.video})`),
       el("option", { value: "design_pdf", selected: this.pfFilter === "design_pdf" }, `Type: Design & PDF (${counts.design_pdf})`),
       el("option", { value: "effect_film", selected: this.pfFilter === "effect_film" }, `Type: Effect & Film (${counts.effect_film})`),
       el("option", { value: "photo_vector", selected: this.pfFilter === "photo_vector" }, `Type: Photo & Vector (${counts.photo_vector})`),
       el("option", { value: "texture_3d", selected: this.pfFilter === "texture_3d" }, `Type: 3D & Texture (${counts.texture_3d})`),
-      el("option", { value: "audio_words", selected: this.pfFilter === "audio_words" }, `Type: Audio & Lyrics (${counts.audio_words})`)
+      el("option", { value: "audio_words", selected: this.pfFilter === "audio_words" }, `Type: Audio & Lyrics (${counts.audio_words})`),
+      el("option", { value: "project_files", selected: this.pfFilter === "project_files" }, `Type: Project & supporting files (${counts.project_files})`)
     );
 
     const sortSelect = el("select", {
@@ -268,10 +351,19 @@ class ProjectView {
       }
     });
 
-    void sb;
-    return el("section", { class: "pf-panel", id: "project-files-panel", "aria-label": "Project Files" },
+    const previewFile = sorted.find((file) => file.path === this.pfPreviewPath && isImage(file));
+    const preview = previewFile ? el("section", { class: "pf-preview", id: "pf-preview-panel", "aria-label": `Preview ${previewFile.name}` },
+      el("img", { src: window.__TAURI__.core.convertFileSrc(previewFile.path), alt: previewFile.name, decoding: "async" }),
+      el("div", { class: "pf-preview-detail" },
+        el("strong", {}, previewFile.assets[0]?.name || previewFile.name),
+        el("span", { class: "muted" }, `${previewFile.rel_dir}${previewFile.name}`),
+        renderActions(previewFile, "preview")),
+      el("button", { id: "pf-preview-close", class: "pf-reveal-btn", "aria-label": "Close preview", title: "Close preview", onclick: () => togglePreview(null) }, "×")) : null;
+
+    return el("section", { class: "pf-panel", id: "project-files-panel", "aria-label": "Project Files & Assets" },
       el("div", { class: "pf-header" },
-        el("strong", { class: "pf-title" }, "Project Files"),
+        el("div", { class: "pf-heading" }, el("strong", { class: "pf-title" }, "Project Files & Assets"),
+          el("span", { class: "pf-count" }, `${allFiles.length} files · ${inventory?.registered_asset_count || 0} registered assets`)),
         el("div", { class: "pf-toolbar" },
           typeSelect,
           sortSelect,
@@ -284,7 +376,11 @@ class ProjectView {
             id: "pf-paste",
             class: "pf-btn",
             onclick: () => this.pasteArtwork()
-          }, "Paste"),
+          }, "Paste artwork"),
+          el("button", {
+            id: "pf-add-asset", class: "pf-btn pf-btn-primary",
+            onclick: (event) => this.importAsset(event)
+          }, "+ Add Asset"),
           el("button", {
             id: "pf-import",
             class: "pf-btn pf-btn-primary",
@@ -292,6 +388,12 @@ class ProjectView {
           }, "+ Import File")
         )
       ),
+      inventory?.error ? el("div", { class: "pf-inventory-warning", role: "alert" }, `Unable to read project files: ${inventory.error}`) : null,
+      inventory?.external_assets?.length || inventory?.missing_assets?.length
+        ? el("div", { class: "pf-inventory-warning", role: "status" },
+            `${inventory.external_assets?.length || 0} external asset links · ${inventory.missing_assets?.length || 0} missing assets. These are not available as project files.`)
+        : null,
+      preview,
       el("div", { class: "pf-list", id: "pf-list" }, ...listBody)
     );
   }
@@ -483,13 +585,17 @@ class ProjectView {
       }
     }, el("span", { html: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 9l6 6 6-6"/><path d="M18 3H6c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM6 13l6-6-6-6zM12 15l-6 6 6 6z"/></svg>' })));
     box.append(this.buildSongBlock());
-    const assets = state.data?.assets?.assets || [], assetFiles = s.asset_files || [];
-    const filesDetails = assetFiles.length ? el("details", {}, el("summary", {}, `Project files (${assetFiles.length})`), ...assetFiles.map(fileButton)) : null;
-    const assetsHint = "Click any asset to open and animate it directly in the Animation stage.";
-    const assetsBody = [el("div", {class:"actions"}, el("button", { id: "asset-import", class: "start", onclick: (event) => this.importAsset(event) }, "Add asset"),
-      el("button", {id:"asset-paste",class:"ghost",onclick:() => this.pasteArtwork()}, "Paste artwork")), projectAssetGrid(assets, { prefix: "asset" }), el("p", { class: "why" }, assetsHint), filesDetails];
-    box.append(this.block("assets", ICONS.animate, "Assets", `${assets.length} assets`, this.ready("assets"), assetsBody, this.prerequisite("assets").state));
-    box.append(this.block("animate", ICONS.animate, "Animate", `${assets.length} objects`, this.ready("animate"), el("p", { class: "why" }, "Choose an asset above to animate it."), this.prerequisite("animate").state));
+    const assets = state.data?.assets?.assets || [];
+    if (state.view !== "project") {
+      const assetFiles = s.asset_files || [];
+      const filesDetails = assetFiles.length ? el("details", {}, el("summary", {}, `Project files (${assetFiles.length})`), ...assetFiles.map(fileButton)) : null;
+      const assetsHint = "Click any asset to open and animate it directly in the Animation stage.";
+      const assetsBody = [el("div", {class:"actions"}, el("button", { id: "asset-import", class: "start", onclick: (event) => this.importAsset(event) }, "Add asset"),
+        el("button", {id:"asset-paste",class:"ghost",onclick:() => this.pasteArtwork()}, "Paste artwork")), projectAssetGrid(assets, { prefix: "asset" }), el("p", { class: "why" }, assetsHint), filesDetails];
+      box.append(this.block("assets", ICONS.animate, "Assets", `${assets.length} assets`, this.ready("assets"), assetsBody, this.prerequisite("assets").state));
+    }
+    if (state.view !== "project")
+      box.append(this.block("animate", ICONS.animate, "Animate", `${assets.length} objects`, this.ready("animate"), el("p", { class: "why" }, "Choose an asset above to animate it."), this.prerequisite("animate").state));
     box.append(el("button", { id: "project-close-apps", class: "ghost", onclick: () => closeAppsOpenedByMagic() }, "Close apps opened by Magic"));
     if (typeof imagePromptBlock === "function")
       $("magic-image-tools")?.replaceChildren(imagePromptBlock());

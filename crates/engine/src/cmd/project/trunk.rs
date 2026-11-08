@@ -4,12 +4,13 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::cmd::project::cmd_project_add_asset;
 use crate::cmd::project::workshop::{IMAGE_EXTENSIONS, project_dir, song_seconds};
 use crate::workspace::{AUDIO_EXTENSIONS, has_extension, resolve_workspace_path};
-use crate::{EngineError, Result, Session};
+use crate::{EngineError, ProjectAsset, Result, Session};
 
 const CRAFT_DOC_EXTS: &[&str] =
     &["designcraft", "idml", "ecproj", "fcproj", "pcraft", "psd", "vectorcraft", "vcraft", "drawcraft", "tcraft", "mcraft", "cadcraft", "solidcraft"];
@@ -24,10 +25,68 @@ struct FileClass {
     is_craft_project: bool,
 }
 
+/// Engine-owned inventory of the files belonging to one Magic project.
+/// Asset registration enriches a file record; it never creates a second UI catalogue.
+#[derive(Serialize)]
+struct ProjectFiles {
+    ok: bool,
+    project_dir: PathBuf,
+    count: usize,
+    registered_asset_count: usize,
+    files: Vec<ProjectFile>,
+    external_assets: Vec<ProjectAsset>,
+    missing_assets: Vec<ProjectAsset>,
+}
+
+#[derive(Serialize)]
+struct ProjectFile {
+    name: String,
+    path: PathBuf,
+    rel_dir: String,
+    group: &'static str,
+    group_label: &'static str,
+    group_order: u8,
+    craft_priority: u8,
+    badge: &'static str,
+    open_label: &'static str,
+    is_craft_project: bool,
+    is_image: bool,
+    visual_kind: &'static str,
+    current_timeline: bool,
+    can_animate: bool,
+    assets: Vec<ProjectAsset>,
+    size_bytes: u64,
+    modified_ms: u64,
+    detail: String,
+}
+
+fn visual_kind(class: &FileClass) -> &'static str {
+    match class.badge {
+        "FC" | "MP4" | "MOV" | "WEBM" => "film",
+        "EC" => "motion",
+        "DC" | "PDF" => "design",
+        "VC" | "SVG" => "vector",
+        "PC" | "PNG" | "JPG" | "WEBP" => "image",
+        "MP3" | "WAV" | "FLAC" => "audio",
+        "MAGIC" => "project",
+        _ if class.group == "texture_3d" => "model",
+        _ => "document",
+    }
+}
+
 fn classify_file(path: &Path) -> Option<FileClass> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_ascii_lowercase();
     match ext.as_str() {
+        "magic" => Some(FileClass {
+            group: "project_files",
+            group_label: "Project & supporting files",
+            group_order: 6,
+            craft_priority: 0,
+            badge: "MAGIC",
+            open_label: "Open",
+            is_craft_project: true,
+        }),
         "designcraft" | "idml" => Some(FileClass {
             group: "design_pdf",
             group_label: "Design & PDF",
@@ -178,7 +237,20 @@ fn classify_file(path: &Path) -> Option<FileClass> {
             open_label: "Open",
             is_craft_project: false,
         }),
-        _ => None,
+        _ => Some(FileClass {
+            group: "project_files",
+            group_label: "Project & supporting files",
+            group_order: 6,
+            craft_priority: 4,
+            badge: match ext.as_str() {
+                "json" | "jsonl" => "JSON",
+                "py" | "js" | "ts" | "html" | "css" => "CODE",
+                "lock" => "LOCK",
+                _ => "FILE",
+            },
+            open_label: "Open",
+            is_craft_project: false,
+        }),
     }
 }
 
@@ -266,15 +338,12 @@ fn inspect_detail(path: &Path, dir: &Path, badge: &str, size: u64, duration_sec:
     parts.join(" · ")
 }
 
-fn should_skip_dir(rel: &str, name: &str) -> bool {
-    if name.starts_with('.') || matches!(name, "node_modules" | "target" | "beats") {
-        return true;
-    }
-    matches!(rel, "film/frames" | "assets/drawings/storyboard-actions" | "artifacts/storyboard-images")
-}
-
-fn walk_project_files(root: &Path, current: &Path, depth: usize, connected: &BTreeSet<PathBuf>, out: &mut Vec<PathBuf>) {
-    if depth == 0 {
+fn walk_project_files(root: &Path, current: &Path, visited: &mut BTreeSet<PathBuf>, out: &mut Vec<PathBuf>) {
+    let Ok(canonical) = current.canonicalize() else {
+        return;
+    };
+    // A project index never traverses an external link or a directory cycle.
+    if !canonical.starts_with(root) || !visited.insert(canonical) {
         return;
     }
     let Ok(read_dir) = std::fs::read_dir(current) else {
@@ -283,28 +352,18 @@ fn walk_project_files(root: &Path, current: &Path, depth: usize, connected: &BTr
     let mut entries: Vec<PathBuf> = read_dir.flatten().map(|e| e.path()).collect();
     entries.sort();
     for entry in entries {
-        let Some(name) = entry.file_name().and_then(|n| n.to_str()) else {
+        let Ok(canonical) = entry.canonicalize() else {
             continue;
         };
-        if name.starts_with('.') || name.ends_with(".steps.jsonl") || name.ends_with(".attribution") {
+        if !canonical.starts_with(root) {
             continue;
         }
-        let rel = entry.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
         if entry.is_dir() {
-            if !should_skip_dir(&rel, name) {
-                walk_project_files(root, &entry, depth - 1, connected, out);
-            }
+            walk_project_files(root, &entry, visited, out);
             continue;
         }
         if !entry.is_file() {
             continue;
-        }
-        // Keep primary character cutouts connected in `.magic`, skip sliced internal rig part PNGs.
-        if rel.starts_with("assets/characters/") && rel.contains("/parts/") && has_extension(&entry, IMAGE_EXTENSIONS) {
-            let canon = entry.canonicalize().unwrap_or_else(|_| entry.clone());
-            if !connected.contains(&canon) && !connected.contains(&entry) {
-                continue;
-            }
         }
         out.push(entry);
     }
@@ -315,29 +374,27 @@ pub fn cmd_project_trunk(s: &mut Session, _params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let canon_dir = dir.canonicalize().unwrap_or_else(|_| dir.clone());
     let duration_sec = song_seconds(&dir);
-    let mut connected = BTreeSet::new();
+    let timeline = crate::cmd::film::film_path(s).ok().and_then(|p| p.canonicalize().ok());
+    let mut assets_by_path = std::collections::BTreeMap::<PathBuf, Vec<ProjectAsset>>::new();
+    let mut external_assets = Vec::new();
+    let mut missing_assets = Vec::new();
     for asset in &s.project_assets {
-        let Some(p) = &asset.path else { continue };
-        let abs = if p.is_absolute() { p.clone() } else { dir.join(p) };
-        connected.insert(abs.canonicalize().unwrap_or(abs));
-    }
-
-    let mut discovered = Vec::new();
-    walk_project_files(&canon_dir, &canon_dir, 5, &connected, &mut discovered);
-    if let Some(audio) = &s.song_audio
-        && audio.is_file()
-    {
-        let canon_audio = audio.canonicalize().unwrap_or_else(|_| audio.clone());
-        if !discovered.iter().any(|p| p == &canon_audio) {
-            discovered.push(canon_audio);
+        let Some(path) = asset.path.as_ref() else {
+            missing_assets.push(asset.clone());
+            continue;
+        };
+        let absolute = if path.is_absolute() { path.clone() } else { canon_dir.join(path) };
+        match absolute.canonicalize() {
+            Ok(canonical) if canonical.starts_with(&canon_dir) => assets_by_path.entry(canonical).or_default().push(asset.clone()),
+            Ok(_) => external_assets.push(asset.clone()),
+            Err(_) => missing_assets.push(asset.clone()),
         }
     }
+    let mut discovered = Vec::new();
+    walk_project_files(&canon_dir, &canon_dir, &mut BTreeSet::new(), &mut discovered);
 
     let mut rows = Vec::new();
     for path in discovered {
-        if s.project_path.as_ref().is_some_and(|mp| mp == &path) {
-            continue;
-        }
         let Some(cls) = classify_file(&path) else {
             continue;
         };
@@ -353,40 +410,58 @@ pub fn cmd_project_trunk(s: &mut Session, _params: &Value) -> Result<Value> {
                 if s.is_empty() { "./".to_string() } else { format!("{s}/") }
             })
             .unwrap_or_else(|| "linked/".to_string());
-        let detail = inspect_detail(&path, &canon_dir, cls.badge, size, duration_sec);
-        rows.push(json!({
-            "name": name,
-            "path": path,
-            "rel_dir": rel_dir,
-            "group": cls.group,
-            "group_label": cls.group_label,
-            "group_order": cls.group_order,
-            "craft_priority": cls.craft_priority,
-            "badge": cls.badge,
-            "open_label": cls.open_label,
-            "is_craft_project": cls.is_craft_project,
-            "size_bytes": size,
-            "modified_ms": modified_ms,
-            "detail": detail,
-        }));
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let assets = assets_by_path.get(&canonical).cloned().unwrap_or_default();
+        let current_timeline = timeline.as_ref() == Some(&canonical);
+        let can_animate = !rel_dir.starts_with("motion/")
+            && !rel_dir.starts_with("lettering/")
+            && assets
+                .first()
+                .is_some_and(|asset| matches!(asset.kind.as_str(), "image" | "model_3d" | "character" | "cutout_rig" | "poses" | "turnaround" | "anim_3d"));
+        let mut detail = inspect_detail(&path, &canon_dir, cls.badge, size, duration_sec);
+        if current_timeline {
+            detail = format!("Current timeline · {detail}");
+        }
+        rows.push(ProjectFile {
+            name,
+            is_image: has_extension(&path, IMAGE_EXTENSIONS),
+            visual_kind: visual_kind(&cls),
+            path,
+            rel_dir,
+            group: cls.group,
+            group_label: cls.group_label,
+            group_order: cls.group_order,
+            craft_priority: cls.craft_priority,
+            badge: cls.badge,
+            open_label: cls.open_label,
+            is_craft_project: cls.is_craft_project,
+            current_timeline,
+            can_animate,
+            assets,
+            size_bytes: size,
+            modified_ms,
+            detail,
+        });
     }
 
     rows.sort_by(|a, b| {
-        let ga = a["group_order"].as_u64().unwrap_or(99);
-        let gb = b["group_order"].as_u64().unwrap_or(99);
-        let pa = a["craft_priority"].as_u64().unwrap_or(99);
-        let pb = b["craft_priority"].as_u64().unwrap_or(99);
-        let na = a["name"].as_str().unwrap_or_default();
-        let nb = b["name"].as_str().unwrap_or_default();
-        ga.cmp(&gb).then_with(|| pa.cmp(&pb)).then_with(|| na.to_ascii_lowercase().cmp(&nb.to_ascii_lowercase()))
+        b.current_timeline
+            .cmp(&a.current_timeline)
+            .then_with(|| a.group_order.cmp(&b.group_order))
+            .then_with(|| a.craft_priority.cmp(&b.craft_priority))
+            .then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
     });
 
-    Ok(json!({
-        "ok": true,
-        "project_dir": canon_dir,
-        "count": rows.len(),
-        "files": rows,
-    }))
+    serde_json::to_value(ProjectFiles {
+        ok: true,
+        project_dir: canon_dir,
+        count: rows.len(),
+        registered_asset_count: s.project_assets.len(),
+        files: rows,
+        external_assets,
+        missing_assets,
+    })
+    .map_err(|e| EngineError::InvalidParams(e.to_string()))
 }
 
 fn target_subfolder_for_ext(ext: &str) -> &'static str {

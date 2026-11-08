@@ -6,7 +6,8 @@
 //! here open the file in `designcraft-engine`, change labelled frames, and save it back.
 //! There is no second data model: the file is the storyboard.
 
-use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -54,6 +55,19 @@ struct PageSlots {
     /// The spread's own rectangle `[x0, y0, x1, y1]`, the space slot `bounds` are given in.
     bounds: [f64; 4],
     slots: Vec<Slot>,
+}
+
+/// One image the document places, and every frame that shows it.
+///
+/// Images are DesignCraft assets referenced by frame content; the same asset can be placed more
+/// than once (a shared reference plate), so placements are grouped by asset.
+struct PlacedImage {
+    /// The document asset's name, the file name the image was imported under.
+    name: String,
+    /// The document's file link as written, when it records one.
+    link: Option<String>,
+    /// `(page index, slot label)` for each frame that places it.
+    placements: Vec<(usize, String)>,
 }
 
 /// Inspector groups, in the order the Storyboard view lists them.
@@ -481,6 +495,40 @@ impl Board {
         }
         Ok(pages)
     }
+
+    /// Every image the document places, with the frames that place it, in document order.
+    ///
+    /// This reads the saved document rather than the page slots so an image with no label still
+    /// counts as placed: future generation reads the document's links, not the slot table.
+    fn placed_images(&mut self) -> Result<Vec<PlacedImage>> {
+        let doc = read_designcraft_document_json(self.work_path())?;
+        let assets = &doc["assets"];
+        let mut images: Vec<PlacedImage> = Vec::new();
+        let mut by_asset: HashMap<u64, usize> = HashMap::new();
+        for (page, spread) in doc["spreads"].as_array().into_iter().flatten().enumerate() {
+            for item in spread["items"].as_array().into_iter().flatten() {
+                if item["content"]["type"].as_str() != Some("graphic") {
+                    continue;
+                }
+                let Some(asset) = item["content"]["asset"].as_u64() else { continue };
+                let index = match by_asset.entry(asset) {
+                    Entry::Occupied(entry) => *entry.get(),
+                    Entry::Vacant(entry) => {
+                        let record = &assets[asset.to_string()];
+                        images.push(PlacedImage {
+                            name: record["name"].as_str().unwrap_or_default().to_string(),
+                            link: record["link"].as_str().map(str::to_string),
+                            placements: Vec::new(),
+                        });
+                        *entry.insert(images.len() - 1)
+                    }
+                };
+                let label = item["label"].as_str().unwrap_or_default().to_string();
+                images[index].placements.push((page, label));
+            }
+        }
+        Ok(images)
+    }
 }
 
 /// Slot rectangles `[x0, y0, x1, y1]` for the contact strip with `n` pictures, and its band.
@@ -721,12 +769,14 @@ fn fix_command(label: &str) -> String {
     format!("magic-cli storyboard set --label {label} --text {label}=<text>")
 }
 
-/// `storyboard.check`: the fields that still hold the template's default.
+/// `storyboard.check`: the fields that still hold the template's default, and placed artwork the
+/// project's asset catalog does not name.
 ///
 /// A slot whose text still matches a template default containing a bracketed line is unfilled. A hidden
 /// hint is not one of them: the hint is hidden once its image is placed. The command that
 /// fills a slot is reported with it, so a missing block traces straight to the CLI call that
-/// changes it.
+/// changes it. An image the document places but the catalog does not name is reported under
+/// `untraced`, with the `project.add_asset` call that registers it.
 pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
     completion(s, p)
 }
@@ -736,7 +786,17 @@ pub fn cmd_storyboard_check(s: &mut Session, p: &Value) -> Result<Value> {
 pub(crate) struct CompletionCache {
     path: PathBuf,
     stamp: crate::link_watch::FileStamp,
+    /// The project asset catalog the report was traced against (`id`, file), so connecting an
+    /// asset refreshes the report even when the document itself has not changed.
+    catalog: Vec<(String, PathBuf)>,
     report: Value,
+}
+
+/// The session's project asset catalog as a comparable list: sorted `(id, file)` pairs.
+fn catalog_fingerprint(s: &Session) -> Vec<(String, PathBuf)> {
+    let mut catalog: Vec<(String, PathBuf)> = s.project_assets.iter().map(|asset| (asset.id.clone(), asset.path.clone().unwrap_or_default())).collect();
+    catalog.sort();
+    catalog
 }
 
 /// Saved DesignCraft document completeness, shared by CLI and the workspace indicators.
@@ -748,15 +808,194 @@ pub(crate) struct CompletionCache {
 pub(crate) fn completion(s: &Session, p: &Value) -> Result<Value> {
     let path = doc_path(s, p)?;
     let stamp = crate::link_watch::FileStamp::of(&path);
-    if let Some(cached) = s.storyboard_completion.borrow().as_ref().filter(|c| c.path == path && Some(c.stamp) == stamp) {
+    let catalog = catalog_fingerprint(s);
+    if let Some(cached) = s.storyboard_completion.borrow().as_ref().filter(|c| c.path == path && Some(c.stamp) == stamp && c.catalog == catalog) {
         return Ok(cached.report.clone());
     }
-    let report = read_completion(&path)?;
-    *s.storyboard_completion.borrow_mut() = stamp.map(|stamp| CompletionCache { path, stamp, report: report.clone() });
+    let report = read_completion(s, &path)?;
+    *s.storyboard_completion.borrow_mut() = stamp.map(|stamp| CompletionCache { path, stamp, catalog, report: report.clone() });
     Ok(report)
 }
 
-fn read_completion(path: &Path) -> Result<Value> {
+/// A file's identity for matching: its canonical path when the file exists, else the path as written.
+fn file_identity(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The project asset catalog, in the two forms a document link can match.
+struct Catalog {
+    /// Canonical paths of the catalog's files.
+    files: HashSet<PathBuf>,
+    /// The catalog's paths relative to the project, for a project that has moved since the
+    /// document was saved (a copy keeps absolute links to where the project used to live).
+    relative: HashSet<PathBuf>,
+}
+
+impl Catalog {
+    /// Whether a document link names a catalog file.
+    ///
+    /// A link inside the project matches by canonical path; a link that still names an old
+    /// project folder matches when it ends with the catalog's project-relative path, the same
+    /// relocation tolerance [`crate::cmd::project`] applies to catalog paths when it opens a
+    /// project.
+    fn traces(&self, link: &Path) -> bool {
+        self.files.contains(&file_identity(link)) || self.relative.iter().any(|relative| link.ends_with(relative))
+    }
+}
+
+/// The project's asset catalog as comparable paths.
+fn catalog_index(s: &Session) -> Catalog {
+    let dir = s.project_path.as_deref().and_then(Path::parent);
+    let mut catalog = Catalog { files: HashSet::new(), relative: HashSet::new() };
+    for path in s.project_assets.iter().filter_map(|asset| asset.path.as_deref()) {
+        catalog.files.insert(file_identity(path));
+        if let Some(relative) = dir.and_then(|dir| path.strip_prefix(dir).ok()).filter(|relative| !relative.as_os_str().is_empty()) {
+            catalog.relative.insert(relative.to_path_buf());
+        }
+    }
+    catalog
+}
+
+/// The project's own copy of a link saved against another folder, when the project has one.
+///
+/// A project moved or copied after its storyboard was saved keeps absolute links to the old
+/// location. Like [`crate::cmd::project`] does for catalog paths, the link is re-rooted at the
+/// project's own `assets/`, `storyboard/`, ... folder when that file exists, so the report and the
+/// fix name the file the project actually has.
+fn rerooted(project: &Path, link: &Path) -> Option<PathBuf> {
+    const MARKERS: &[&str] = &["/hyperframes/", "/assets/", "/storyboard/", "/animation/", "/design/", "/lettering/", "/film/"];
+    let text = link.to_string_lossy();
+    MARKERS.iter().find_map(|marker| {
+        let at = text.find(marker)?;
+        let candidate = project.join(&text[at + 1..]);
+        candidate.is_file().then_some(candidate)
+    })
+}
+
+/// The real `project.add_asset` call that registers a placed file.
+///
+/// `project.add_asset` takes `{path, name?, id?, kind?, character?, background?, image?}`; a file
+/// outside the project is copied in, so it also needs one destination folder.
+fn register_fix(path: &Path, outside: bool) -> String {
+    let mut params = serde_json::Map::new();
+    params.insert("path".into(), json!(path.to_string_lossy()));
+    params.insert("kind".into(), json!("image"));
+    if outside {
+        let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("image");
+        params.insert("image".into(), json!(stem));
+    }
+    format!("magic-cli exec project.add_asset --params {}", shell_quoted(&Value::Object(params).to_string()))
+}
+
+/// A POSIX shell word for text that may hold quotes, so a printed fix command always runs.
+fn shell_quoted(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+/// One placed image that no project asset names, and the pages that place it.
+struct Untraced {
+    name: String,
+    /// The link as reported: project-relative inside the project, absolute otherwise.
+    path: Option<String>,
+    /// The `project.add_asset` call that registers the file; `None` when the document names none.
+    fix: Option<String>,
+    /// The first slot label that places it.
+    label: String,
+    /// Every `(page, label)` that places it.
+    placements: Vec<(usize, String)>,
+    /// Why the link alone does not resolve to a catalog entry, when it explains the miss.
+    reason: Option<String>,
+}
+
+impl Untraced {
+    /// The pages that place the image, in document order.
+    fn pages(&self) -> Vec<usize> {
+        let mut pages: Vec<usize> = self.placements.iter().map(|(page, _)| *page).collect();
+        pages.sort_unstable();
+        pages.dedup();
+        pages
+    }
+
+    /// The entry one page reports, with that page's own slot label.
+    fn json(&self, page: usize) -> Value {
+        let label = self.placements.iter().find(|(at, _)| *at == page).map(|(_, label)| label.clone()).unwrap_or_else(|| self.label.clone());
+        let fix = self.fix.clone().unwrap_or_else(|| {
+            let label = shell_quoted(&label);
+            format!("magic-cli storyboard set --label {label} --image {label}=<path>")
+        });
+        let mut entry = json!({
+            "label": label,
+            "name": self.name,
+            "path": self.path,
+            "pages": self.pages(),
+            "fix": fix,
+        });
+        if let Some(reason) = &self.reason {
+            entry["reason"] = json!(reason);
+        }
+        entry
+    }
+}
+
+/// The images the document places that no project asset names, matched by canonical file path.
+///
+/// The document links each image by file path and the frame stores no Magic asset id, so the
+/// project's catalog is the registration a link has to match. A link the catalog does not have is
+/// artwork the project would lose track of, and future generation would not find it.
+fn untraced_images(s: &Session, b: &mut Board) -> Result<Vec<Untraced>> {
+    // Without an open project there is no catalog to trace against; the check degrades to fields.
+    let Some(project) = s.project_path.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let dir = project.parent().unwrap_or(Path::new("."));
+    let catalog = catalog_index(s);
+    let document = b.path().to_path_buf();
+    let mut untraced = Vec::new();
+    for image in b.placed_images()? {
+        let label = image.placements.first().map(|(_, label)| label.clone()).unwrap_or_default();
+        let Some(raw) = image.link.as_deref() else {
+            untraced.push(Untraced {
+                name: image.name,
+                path: None,
+                fix: None,
+                label,
+                placements: image.placements,
+                reason: Some("the document records no file link".into()),
+            });
+            continue;
+        };
+        let Ok(path) = craft_docpath::resolve_absolute(raw, Some(&document)) else {
+            untraced.push(Untraced {
+                name: image.name,
+                path: Some(raw.to_string()),
+                fix: None,
+                label,
+                placements: image.placements,
+                reason: Some("the link is not a local file path".into()),
+            });
+            continue;
+        };
+        // A link from where the project used to live names the project's own copy when it has one.
+        let local = if path.starts_with(dir) { path } else { rerooted(dir, &path).unwrap_or(path) };
+        if catalog.traces(&local) {
+            continue;
+        }
+        let relative = local.strip_prefix(dir).ok();
+        let reason = if !local.exists() {
+            Some("the file is missing".to_string())
+        } else if relative.is_none() {
+            Some("the file is outside the project".to_string())
+        } else {
+            None
+        };
+        let path_text = relative.map(|relative| relative.to_string_lossy().into_owned()).unwrap_or_else(|| local.to_string_lossy().into_owned());
+        let fix = register_fix(&local, relative.is_none());
+        untraced.push(Untraced { name: image.name, path: Some(path_text), fix: Some(fix), label, placements: image.placements, reason });
+    }
+    Ok(untraced)
+}
+
+fn read_completion(s: &Session, path: &Path) -> Result<Value> {
     let mut b = Board::open(path)?;
     let pages = b.pages()?;
     let defaults = template_defaults()?;
@@ -799,15 +1038,21 @@ fn read_completion(path: &Path) -> Result<Value> {
     }
     let preflight = b.run("preflight.run", json!({}))?;
     let errors = preflight["errors"].as_u64().unwrap_or(0);
+    let untraced = untraced_images(s, &mut b)?;
     for (page, slots) in report.iter_mut().zip(&pages) {
-        // Each editable slot: incomplete (unfilled, or an error on its frame), review (other
-        // findings on its frame), empty (an image slot nothing requires), or complete.
-        let unfilled: std::collections::HashSet<String> =
-            page["unfilled"].as_array().into_iter().flatten().filter_map(|u| u["label"].as_str().map(str::to_string)).collect();
+        // Images on this page that no project asset names make the page incomplete.
+        let stranded: HashSet<&str> =
+            untraced.iter().flat_map(|image| image.placements.iter().filter(|(at, _)| *at == slots.index).map(|(_, label)| label.as_str())).collect();
+        let page_untraced: Vec<Value> =
+            untraced.iter().filter(|image| image.placements.iter().any(|(at, _)| *at == slots.index)).map(|image| image.json(slots.index)).collect();
+        let has_untraced = !page_untraced.is_empty();
+        // Each editable slot: incomplete (unfilled, untraced artwork, or an error on its frame),
+        // review (other findings on its frame), empty (an image slot nothing requires), or complete.
+        let unfilled: HashSet<String> = page["unfilled"].as_array().into_iter().flatten().filter_map(|u| u["label"].as_str().map(str::to_string)).collect();
         let mut slot_report = serde_json::Map::new();
         for slot in slots.slots.iter().filter(|s| s.editable()) {
             let findings: Vec<&Value> = preflight["issues"].as_array().into_iter().flatten().filter(|issue| issue["item"].as_u64() == Some(slot.id)).collect();
-            let missing = unfilled.contains(&slot.label);
+            let missing = unfilled.contains(&slot.label) || stranded.contains(slot.label.as_str());
             let status = if missing || findings.iter().any(|f| f["severity"] == "error") {
                 "incomplete"
             } else if !findings.is_empty() {
@@ -822,7 +1067,7 @@ fn read_completion(path: &Path) -> Result<Value> {
         }
         page["slots"] = Value::Object(slot_report);
         let issues: Vec<Value> = preflight["issues"].as_array().into_iter().flatten().filter(|issue| issue["page"] == page["page"]).cloned().collect();
-        page["status"] = json!(if page["unfilled"].as_array().is_some_and(|v| !v.is_empty()) {
+        page["status"] = json!(if has_untraced || page["unfilled"].as_array().is_some_and(|v| !v.is_empty()) {
             "incomplete"
         } else if !issues.is_empty() {
             "review"
@@ -830,10 +1075,11 @@ fn read_completion(path: &Path) -> Result<Value> {
             "complete"
         });
         page["issues"] = json!(issues);
+        page["untraced"] = json!(page_untraced);
     }
-    let complete = !pages.is_empty() && count == 0 && errors == 0;
-    Ok(json!({"ok": true, "path": b.path(), "count": count, "page_count":pages.len(),
-        "complete":complete, "status":if count > 0 || pages.is_empty() { "incomplete" } else if errors > 0 { "review" } else { "complete" },
+    let complete = !pages.is_empty() && count == 0 && errors == 0 && untraced.is_empty();
+    Ok(json!({"ok": true, "path": b.path(), "count": count, "untraced": untraced.len(), "page_count":pages.len(),
+        "complete":complete, "status":if count > 0 || pages.is_empty() || !untraced.is_empty() { "incomplete" } else if errors > 0 { "review" } else { "complete" },
         "pages": report, "preflight":preflight}))
 }
 
