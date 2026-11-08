@@ -180,6 +180,20 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
         return Ok(out);
     }
 
+    if let Some(path) = project.filter(|p| p.is_file())
+        && let Some((first, rest)) = resolved.split_first()
+        && let Some(first_result) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, save && rest.is_empty())
+    {
+        let mut out = vec![first_result?];
+        for (index, (id, params)) in rest.iter().enumerate() {
+            let last = index + 1 == rest.len();
+            let result = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save && last)
+                .unwrap_or_else(|| Err(EngineError::ExternalTool("effectcraft".into(), format!("EffectCraft closed during {id}"))))?;
+            out.push(result);
+        }
+        return Ok(out);
+    }
+
     let target_path = project.map(Path::to_path_buf).unwrap_or_else(|| dir.join("scratch.ecproj"));
     let mut doc = crate::craft_hub::CraftDoc::open_or_create(crate::CraftTarget::Effect, &target_path)?;
     let borrowed: Vec<(&str, Value)> = resolved.iter().map(|(id, params)| (id.as_str(), params.clone())).collect();
@@ -439,6 +453,37 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         "clip": (clip || gif).then_some(&out), "frames": frames}))
 }
 
+/// What the Animation tab shows: the characters, and the selection with its frame and last clip.
+pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
+    let list = cmd_character_list(s, &json!({}))?;
+    let all = list["characters"].as_array().cloned().unwrap_or_default();
+    let views_of = |c: &Value| c["views"].as_array().into_iter().flatten().filter_map(|v| v["view"].as_str().map(str::to_owned)).collect::<Vec<_>>();
+    let characters: Vec<Value> = all.iter().map(|c| json!({"id": c["id"], "views": views_of(c)})).collect();
+    let chosen = p["character"].as_str().and_then(|id| all.iter().find(|c| c["id"] == id)).or_else(|| all.iter().find(|c| !views_of(c).is_empty()));
+    let Some(character) = chosen else {
+        return Ok(json!({"ok": true, "characters": characters, "selected": null}));
+    };
+    let id = character["id"].as_str().unwrap_or_default();
+    let view = p["view"].as_str().map(str::to_owned).or_else(|| views_of(character).first().cloned()).unwrap_or_else(|| "front".into());
+    let time = p["time"].as_f64().unwrap_or(0.0).max(0.0);
+    let frame = cmd_character_frame(s, &json!({"character": id, "view": view, "time": time})).ok().map(|f| f["frame"].clone());
+    let folder = character_folder(&crate::workshop::project_dir(s)?, id);
+    let clip = [folder.join(&view).join("clips"), folder.join("clips")]
+        .iter()
+        .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().flatten())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "mov" || ext == "mp4"))
+        .max_by_key(|path| std::fs::metadata(path).and_then(|m| m.modified()).ok());
+    Ok(json!({"ok": true, "characters": characters, "selected": {"character": id, "view": view, "time": time, "frame": frame, "clip": clip}}))
+}
+
+/// Add an image or model file as a character, named after the file.
+pub fn cmd_character_import(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = p["path"].as_str().ok_or_else(|| bad("path=<file> is required"))?;
+    let name = Path::new(path).file_stem().and_then(|n| n.to_str()).unwrap_or("character");
+    crate::project::cmd_project_add_asset(s, &json!({"path": path, "character": crate::workspace::sanitize_asset_id(name), "name": name, "kind": "image"}))
+}
+
 /// Key one transform value of one part at one time (a canvas drag).
 pub fn cmd_character_set(s: &mut Session, p: &Value) -> Result<Value> {
     let view = View::from_params(s, p)?;
@@ -469,6 +514,10 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(bad(format!("app must be effectcraft, photocraft or blender, not {other}")));
         }
     };
-    crate::workspace::open_editor(app, &file)?;
+    if app == "effectcraft" {
+        crate::CraftHub::open_live(crate::CraftTarget::Effect, &file)?;
+    } else {
+        crate::workspace::open_editor(app, &file)?;
+    }
     Ok(json!({"ok": true, "app": app, "file": file, "document": {"app": app, "file": file}}))
 }

@@ -198,6 +198,31 @@ impl CraftHub {
         }
     }
 
+    /// Opens `file` in the installed app on its control port, launching the app if it is not
+    /// running, so later commands reach that window through [`CraftHub::try_live`].
+    pub fn open_live(target: CraftTarget, file: &Path) -> Result<Value> {
+        let addr = target_addr(target)?;
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok() {
+            return Self::live_execute(target, None, "file.open", &json!({"path": file}));
+        }
+        Command::new(crate::workspace::resolve_tool(target.name()))
+            .arg("--control")
+            .arg(addr.port().to_string())
+            .arg(file)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| EngineError::ExternalTool(target.name().into(), e.to_string()))?;
+        for _ in 0..120 {
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok() {
+                return Ok(json!({"ok": true, "port": addr.port()}));
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        Err(EngineError::ExternalTool(target.name().into(), format!("did not open its control port {addr}")))
+    }
+
     /// The standard loopback control address for `target` (`<PORT_ENV>` override or suite default).
     pub fn control_addr(target: CraftTarget) -> Result<SocketAddr> {
         target_addr(target)

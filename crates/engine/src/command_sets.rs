@@ -776,6 +776,21 @@ fn specs_character() -> Vec<CommandSpec> {
             crate::cmd::character::cmd_character_save_marks
         ),
         query!("character.list", "Characters and Their App Files", "{}", crate::cmd::character::cmd_character_list),
+        query!(
+            "animation.view",
+            "What the Animation Tab Shows",
+            "{\"character\":\"optional id\",\"view\":\"optional\",\"time\":0}",
+            crate::cmd::character::cmd_animation_view
+        ),
+        cmd!(
+            "character.import",
+            "Add a Character from a File",
+            ["Animation"],
+            None,
+            "{\"path\":\"image or model file\"}",
+            always,
+            crate::cmd::character::cmd_character_import
+        ),
         query!("character.actions", "Actions in the Shared Pose Table", "{}", crate::cmd::character::cmd_character_actions),
         cmd!(
             "character.mark",
