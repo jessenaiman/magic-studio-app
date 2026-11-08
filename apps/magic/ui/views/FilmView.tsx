@@ -26,7 +26,9 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
       const f = await executeCommand<FilmStatusResponse>("video.film");
       setFilm(f);
       setStatusText(
-        f.timeline?.exists
+        f.storyboard_stale
+          ? "The storyboard changed after this timeline was built"
+          : f.timeline?.exists
           ? "Timeline ready — open it in FilmCraft"
           : "No film timeline yet — click Assemble to build .fcproj",
       );

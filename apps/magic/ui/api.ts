@@ -324,6 +324,7 @@ export interface FilmStatusResponse {
   preview: FilmFileStatus;
   export?: FilmFileStatus;
   preview_stale?: boolean;
+  storyboard_stale?: boolean;
 }
 
 export interface TimelineClip {

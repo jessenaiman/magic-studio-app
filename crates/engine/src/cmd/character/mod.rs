@@ -151,7 +151,27 @@ fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
     out
 }
 
-/// Run EffectCraft commands via live `--control` (when the project is open) or [`crate::craft_hub::CraftDoc`].
+/// Runs `steps` in the open EffectCraft window, or `None` if it does not have `path` open.
+pub(crate) fn effect_in_window(path: &Path, steps: &[(String, Value)], save: bool) -> Option<Result<Vec<Value>>> {
+    let (first, rest) = steps.split_first()?;
+    let first_result = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, save && rest.is_empty())?;
+    let mut out = match first_result {
+        Ok(value) => vec![value],
+        Err(error) => return Some(Err(error)),
+    };
+    for (index, (id, params)) in rest.iter().enumerate() {
+        let last = index + 1 == rest.len();
+        match crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save && last) {
+            Some(Ok(value)) => out.push(value),
+            Some(Err(error)) => return Some(Err(error)),
+            None => return Some(Err(EngineError::ExternalTool("effectcraft".into(), format!("EffectCraft closed during {id}")))),
+        }
+    }
+    Some(Ok(out))
+}
+
+/// Run EffectCraft commands in the open EffectCraft window when it has this project, otherwise
+/// through [`crate::craft_hub::CraftDoc`] and the installed CLI.
 pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], save: bool) -> Result<Vec<Value>> {
     let base = project.and_then(Path::parent).unwrap_or(dir);
     let mut resolved = Vec::with_capacity(steps.len());
@@ -181,17 +201,9 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
     }
 
     if let Some(path) = project.filter(|p| p.is_file())
-        && let Some((first, rest)) = resolved.split_first()
-        && let Some(first_result) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, save && rest.is_empty())
+        && let Some(result) = effect_in_window(path, &resolved, save)
     {
-        let mut out = vec![first_result?];
-        for (index, (id, params)) in rest.iter().enumerate() {
-            let last = index + 1 == rest.len();
-            let result = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save && last)
-                .unwrap_or_else(|| Err(EngineError::ExternalTool("effectcraft".into(), format!("EffectCraft closed during {id}"))))?;
-            out.push(result);
-        }
-        return Ok(out);
+        return result;
     }
 
     let target_path = project.map(Path::to_path_buf).unwrap_or_else(|| dir.join("scratch.ecproj"));
@@ -453,15 +465,29 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         "clip": (clip || gif).then_some(&out), "frames": frames}))
 }
 
+/// The project's own animation documents, which live outside the character folders.
+fn animation_documents(s: &Session) -> Result<Vec<Value>> {
+    let root = crate::workshop::project_dir(s)?;
+    let mut paths: Vec<PathBuf> = ["motion", "lettering"]
+        .iter()
+        .flat_map(|folder| std::fs::read_dir(root.join(folder)).into_iter().flatten().flatten())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "ecproj"))
+        .collect();
+    paths.sort();
+    Ok(paths.iter().map(|path| json!({"name": path.file_stem().map(|n| n.to_string_lossy().into_owned()), "path": path})).collect())
+}
+
 /// What the Animation tab shows: the characters, and the selection with its frame and last clip.
 pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
     let list = cmd_character_list(s, &json!({}))?;
     let all = list["characters"].as_array().cloned().unwrap_or_default();
     let views_of = |c: &Value| c["views"].as_array().into_iter().flatten().filter_map(|v| v["view"].as_str().map(str::to_owned)).collect::<Vec<_>>();
     let characters: Vec<Value> = all.iter().map(|c| json!({"id": c["id"], "views": views_of(c)})).collect();
+    let documents = animation_documents(s)?;
     let chosen = p["character"].as_str().and_then(|id| all.iter().find(|c| c["id"] == id)).or_else(|| all.iter().find(|c| !views_of(c).is_empty()));
     let Some(character) = chosen else {
-        return Ok(json!({"ok": true, "characters": characters, "selected": null}));
+        return Ok(json!({"ok": true, "characters": characters, "documents": documents, "selected": null}));
     };
     let id = character["id"].as_str().unwrap_or_default();
     let view = p["view"].as_str().map(str::to_owned).or_else(|| views_of(character).first().cloned()).unwrap_or_else(|| "front".into());
@@ -474,7 +500,20 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|ext| ext == "mov" || ext == "mp4"))
         .max_by_key(|path| std::fs::metadata(path).and_then(|m| m.modified()).ok());
-    Ok(json!({"ok": true, "characters": characters, "selected": {"character": id, "view": view, "time": time, "frame": frame, "clip": clip}}))
+    Ok(
+        json!({"ok": true, "characters": characters, "documents": documents, "selected": {"character": id, "view": view, "time": time, "frame": frame, "clip": clip}}),
+    )
+}
+
+/// `animation.open {path}`: a project animation document in the EffectCraft window.
+pub fn cmd_animation_open(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = p["path"]
+        .as_str()
+        .map(|raw| crate::workspace::resolve_workspace_path(s, raw))
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "ecproj"))
+        .ok_or_else(|| bad("path=<existing .ecproj> is required"))?;
+    crate::CraftHub::open_live(crate::CraftTarget::Effect, &path)?;
+    Ok(json!({"ok": true, "app": "effectcraft", "file": path, "document": {"app": "effectcraft", "file": path}}))
 }
 
 /// Add an image or model file as a character, named after the file.

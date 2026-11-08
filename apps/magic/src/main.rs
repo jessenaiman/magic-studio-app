@@ -264,7 +264,7 @@ fn diag(message: std::fmt::Arguments) {
 fn main() {
     let cli = Cli::parse();
     // Validate before creating windows; never silently start without the requested listener.
-    let token = std::env::var("MAGIC_CONTROL_TOKEN").unwrap_or_default();
+    let token = if cli.control.is_some() { magic::workspace::ensure_control_token().unwrap_or_default() } else { String::new() };
     if cli.control.is_some() && (token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit())) {
         diag(format_args!("MAGIC_CONTROL_TOKEN must contain 64 hexadecimal characters"));
         std::process::exit(2);

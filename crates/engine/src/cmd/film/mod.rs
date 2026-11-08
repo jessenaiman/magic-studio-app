@@ -407,9 +407,15 @@ pub fn cmd_video_film(s: &mut Session, p: &Value) -> Result<Value> {
     let preview = file_info(&f.preview());
     let (out, options) = export_validation::destination(&f, p);
     let export = file_info(&out);
-    let validation = export_validation::status(&f, &out, &options, false);
+    let mut validation = export_validation::status(&f, &out, &options, false);
     let stale = |v: &Value| v["exists"] == true && v["modified"].as_u64() < project["modified"].as_u64();
-    Ok(json!({"ok": true, "timeline": project, "preview": preview, "export": export,
+    let storyboard = file_info(&f.dir.join("storyboard.designcraft"));
+    let storyboard_stale = project["exists"] == true && storyboard["exists"] == true && storyboard["modified"].as_u64() > project["modified"].as_u64();
+    if storyboard_stale {
+        validation["valid"] = json!(false);
+        validation["reason"] = json!("The storyboard changed after this timeline was built; update the film from the storyboard first");
+    }
+    Ok(json!({"ok": true, "timeline": project, "preview": preview, "export": export, "storyboard": storyboard, "storyboard_stale": storyboard_stale,
         "preview_stale": stale(&preview), "export_stale": !validation["valid"].as_bool().unwrap_or(false),
         "export_ready": validation["valid"] == true, "validation": validation, "export_options": options}))
 }

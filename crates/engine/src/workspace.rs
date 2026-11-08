@@ -12,6 +12,34 @@ use serde_json::Value;
 use crate::{EngineError, Result};
 
 /// Return the canonical current Magic Studio workspace, independent of the caller working directory.
+fn control_token_file() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
+    Some(base.join("magic/control-token"))
+}
+
+/// The control token: `MAGIC_CONTROL_TOKEN`, else the private token file the desktop creates.
+pub fn control_token() -> Option<String> {
+    std::env::var("MAGIC_CONTROL_TOKEN").ok().filter(|t| !t.is_empty()).or_else(|| Some(std::fs::read_to_string(control_token_file()?).ok()?.trim().to_owned()))
+}
+
+/// The token for a desktop starting its control port, creating the private file on first use.
+pub fn ensure_control_token() -> Result<String> {
+    if let Some(token) = control_token() {
+        return Ok(token);
+    }
+    use std::io::{Read, Write};
+    use std::os::unix::fs::OpenOptionsExt;
+    let path = control_token_file().ok_or_else(|| EngineError::InvalidParams("no home folder for the control token".into()))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut bytes = [0_u8; 32];
+    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path)?.write_all(token.as_bytes())?;
+    Ok(token)
+}
+
 /// Removes credentials this engine holds from a child process's environment.
 ///
 /// The app keeps `MAGIC_CONTROL_TOKEN` (the loopback control credential) and, when a Craft AI
@@ -312,6 +340,16 @@ pub fn cmd_effect_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
     } else {
         return Err(EngineError::InvalidParams("id=<effectcraft command> or steps=[...] is required".into()));
     };
+    let named: Vec<(String, Value)> = steps
+        .iter()
+        .filter_map(|step| {
+            let id = step["id"].as_str().or_else(|| step["command"].as_str())?;
+            Some((id.to_owned(), step.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))))
+        })
+        .collect();
+    if let Some(results) = crate::cmd::character::effect_in_window(&path, &named, p["save"] == true) {
+        return Ok(serde_json::json!({"ok": true, "path": path, "results": results?, "via": "effectcraft window"}));
+    }
     let cli = find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     let mut cmd = std::process::Command::new(&cli);
     cmd.arg("--json").arg("--project").arg(&path).arg("run").arg("--commands").arg("-");

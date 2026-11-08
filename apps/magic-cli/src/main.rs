@@ -438,7 +438,7 @@ fn control_address(spec: &str) -> String {
 
 fn call_live_control(bridge: Option<&str>, method: &str, params: Value) -> Result<Value, String> {
     let spec = bridge.ok_or("Live UI commands require --bridge ADDRESS")?;
-    let mut remote = magic_mcp::Remote::new(control_address(spec), std::env::var("MAGIC_CONTROL_TOKEN").ok());
+    let mut remote = magic_mcp::Remote::new(control_address(spec), magic::workspace::control_token());
     magic_mcp::Backend::execute(&mut remote, method, params)
 }
 
@@ -613,7 +613,7 @@ fn main() {
             }
             Some(Cmd::Mcp) => {
                 if let Some(addr) = cli.bridge {
-                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(control_address(&addr), std::env::var("MAGIC_CONTROL_TOKEN").ok()));
+                    let mut srv = magic_mcp::Server::new(magic_mcp::Remote::new(control_address(&addr), magic::workspace::control_token()));
                     srv.serve().map_err(|e| e.to_string())?;
                 } else {
                     let session = session.take().ok_or("no headless session: use --bridge for the live app")?;

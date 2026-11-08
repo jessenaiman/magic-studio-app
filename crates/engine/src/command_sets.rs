@@ -777,6 +777,15 @@ fn specs_character() -> Vec<CommandSpec> {
             crate::cmd::character::cmd_character_save_marks
         ),
         query!("character.list", "Characters and Their App Files", "{}", crate::cmd::character::cmd_character_list),
+        cmd!(
+            "animation.open",
+            "Open an Animation Document in EffectCraft",
+            ["Animation"],
+            None,
+            "{\"path\":\".ecproj path\"}",
+            always,
+            crate::cmd::character::cmd_animation_open
+        ),
         query!(
             "animation.view",
             "What the Animation Tab Shows",

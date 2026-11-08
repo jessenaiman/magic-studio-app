@@ -10,6 +10,7 @@ interface AnimationViewProps {
 
 interface AnimationState {
   characters: Array<{ id: string; name?: string; views: string[] }>;
+  documents: Array<{ name: string; path: string }>;
   selected: { character: string; view: string; time: number; frame?: string; clip?: string } | null;
 }
 
@@ -63,6 +64,11 @@ export const AnimationView: React.FC<AnimationViewProps> = ({ projectPath, asset
           <button key={c.id} id={`char-select-${c.id}`} className={c.id === selected?.character ? "start" : "ghost"} style={{ textAlign: "left", justifyContent: "space-between" }} onClick={() => void show({ character: c.id })}>
             <span>{c.name || c.id}</span>
             <span className="muted" style={{ fontSize: "11px" }}>{c.views.join(", ")}</span>
+          </button>
+        ))}
+        {state?.documents.map((doc) => (
+          <button key={doc.path} className="ghost" style={{ textAlign: "left", fontSize: "12px" }} disabled={busy} onClick={() => void run("animation.open", { path: doc.path }, `Opened ${doc.name} in EffectCraft`)}>
+            {doc.name}
           </button>
         ))}
         {assets.map((asset) => (
