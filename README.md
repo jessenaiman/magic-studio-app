@@ -79,7 +79,6 @@ cargo build -p magic -p magic-cli --locked
 # Run the Tauri desktop: apps/magic/README.md#run-the-desktop
 cargo xtask ci
 cargo xtask layers
-cargo xtask assets
 ```
 Asset rights metadata is pending; SonarCloud, WASM and translations are not configured.
 
@@ -96,35 +95,49 @@ copy `target/release/magic` where you want it. (`bundle.active` is off in `tauri
 installer package is made.) There is no `cargo xtask install`. Run the desktop as described in
 [apps/magic/README.md](apps/magic/README.md#run-the-desktop).
 
-Ensure `~/.cargo/bin` is on your `PATH`, then launch `magic` (with a control port and token for
-agent use, see [apps/magic/README.md](apps/magic/README.md#run-the-desktop)).
+Ensure `~/.cargo/bin` is on your `PATH`, then launch `magic` (with `--control <PORT>` and `MAGIC_CONTROL_TOKEN`
+for live CLI/MCP control; see [apps/magic/README.md](apps/magic/README.md#run-the-desktop)).
+
+References for the desktop build and Tauri shell:
+- [Desktop setup & plugin table](apps/magic/README.md) · [Control protocol & MCP](docs/control-protocol.md) · [Layer architecture](docs/architecture.md)
+- Upstream references: [ArtCraft Tauri dev setup (`storytold/artcraft`)](https://github.com/storytold/artcraft/blob/main/_docs/dev_setup.md) · [Tauri v2 capabilities (`v2.tauri.app`)](https://v2.tauri.app/security/capabilities/)
 
 Open **File → Application Settings** and choose an existing **Production project
 root** outside the checkout. This selects the destination for new projects;
 it does not move existing ones.
 
-An installed app opens without a provider key. Supported Craft document operations
-use linked Rust libraries. Opening a separate native editor requires its installed
+An installed app opens without a provider key. Shared foundation crates come from
+[`storytold/craft-libs`](https://github.com/storytold/craft-libs), while sibling Craft applications
+(DesignCraft, EffectCraft, FilmCraft, PhotoCraft, VectorCraft, DeckCraft, TextureCraft) are driven
+through [`CraftHub`](crates/engine/src/craft_hub/mod.rs) over `--control` or their installed `<app>-cli`
+binaries on `PATH`. Opening a separate native editor requires its installed
 application. HyperFrames and FFmpeg remain external runtimes. See the
 [production guide](apps/magic/agent.md).
-The [setup guide](apps/magic/README.md) covers installer
+The [setup guide](apps/magic/README.md) covers build
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
-## CLI
+## CLI and Live `--control` / `--bridge`
 
-The CLI uses the application's command registry:
+`magic-cli` shares the Rust command registry with the desktop app. Omit `--bridge` to run headlessly in-process, or pass `--bridge 127.0.0.1:<PORT>` (with matching `MAGIC_CONTROL_TOKEN` in the environment) to drive a running `magic --control <PORT>` window with no silent headless fallback:
 
 ```sh
+# Headless (in-process engine session)
 magic-cli --help
 magic-cli commands
-magic-cli commands project
-magic-cli studio open /absolute/path/Song.magic
+magic-cli --project /absolute/path/Song.magic exec project.identity
+
+# Live desktop control & MCP bridge (modeled on FilmCraft & EffectCraft)
+export MAGIC_CONTROL_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+./target/release/magic --control 9876 --view project --project /absolute/path/Song.magic &
+magic-cli --bridge 127.0.0.1:9876 ui inspect
+magic-cli --bridge 127.0.0.1:9876 exec project.save
+magic-cli --bridge 127.0.0.1:9876 mcp
 ```
 
-The [Magic command guide](apps/magic/SKILL.md) explains project targeting
-and independent session bindings. Craft document operations use their linked
-Rust libraries where integrated. Magic retains its genuine command-line interface.
+References for what the CLI, `--control`, `--bridge`, and MCP are doing:
+- Local contracts: [Control protocol & MCP](docs/control-protocol.md) · [Command & bridge contract](apps/magic/MAGIC.md) · [Magic command guide](apps/magic/SKILL.md) · [`CraftHub` bridge](crates/engine/src/craft_hub/mod.rs)
+- Upstream Craft references: [FilmCraft control protocol (`storytold/filmcraft`)](https://github.com/storytold/filmcraft/blob/main/docs/control-protocol.md) · [FilmCraft CLI `--bridge` (`apps/filmcraft-cli/src/main.rs`)](https://github.com/storytold/filmcraft/blob/main/apps/filmcraft-cli/src/main.rs) · [EffectCraft MCP (`storytold/effectcraft`)](https://github.com/storytold/effectcraft/blob/main/docs/mcp.md) · [EffectCraft control protocol (`storytold/effectcraft`)](https://github.com/storytold/effectcraft/blob/main/docs/control-protocol.md) · [Shared foundation crates (`storytold/craft-libs`)](https://github.com/storytold/craft-libs)
 
 ## Contributing
 
