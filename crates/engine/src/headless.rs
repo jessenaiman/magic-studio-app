@@ -107,7 +107,7 @@ pub fn run_cli(args: Vec<String>) -> i32 {
 }
 
 fn attach_or_open_project(s: &mut Session, id: &str, params: &Value, persistent: bool) -> Result<(), String> {
-    if matches!(id, "project.open" | "project.new" | "project.intake" | "project.attach" | "project.identity") {
+    if matches!(id, "project.open" | "project.new" | "project.attach" | "project.identity") {
         return Ok(());
     }
     let Some(target) = params["project"].as_str() else {

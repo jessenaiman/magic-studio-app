@@ -53,7 +53,19 @@ pub(crate) struct CraftDoc {
 }
 
 /// Commands that only read the document, so a batch of them needs no save of the work copy.
-const READ_ONLY: &[&str] = &["document.inspect", "object.findByLabel", "story.get", "preflight.run", "comp.open", "prop.get"];
+const READ_ONLY: &[&str] = &[
+    "document.inspect",
+    "object.findByLabel",
+    "story.get",
+    "preflight.run",
+    "comp.open",
+    "comp.info",
+    "project.summary",
+    "layer.info",
+    "layer.tree",
+    "prop.get",
+    "puppet.info",
+];
 
 impl CraftDoc {
     /// Copy `path` to a private work file. Refuses when the file changes during the copy.

@@ -101,6 +101,6 @@ pub fn command(_: &mut Session, params: &Value) -> Result<Value> {
         "config": store.path(),
         "persisted": persisted,
         "source": if persisted { "saved production setting" } else { "production default" },
-        "overrides": "project.intake root= or path= applies only to that request; recent history never changes this setting",
+        "overrides": "project.new root= or path= applies only to that request; recent history never changes this setting",
     }))
 }
