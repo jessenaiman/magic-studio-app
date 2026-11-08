@@ -1,27 +1,39 @@
-//! Words design validation and effect installation (`words.effect_install`, `kinetic_design`, `line_design`, `text_effect`).
+//! Words design validation and effect registration (`words.effect_install`, `kinetic_design`, `line_design`, `text_effect`).
 use crate::{Result, Session};
 use serde_json::{Value, json};
 use std::{fs, path::Path};
 
 use super::{FONTS, KINETIC_LIBRARY, MOVES, invalid, one_of};
 
-/// `words.effect_install`: install one HyperFrames registry effect into the project with the
-/// pinned HyperFrames (`hyperframes add`). Needs the network; already-installed effects are left as they are.
+/// `words.effect_install`: register an EffectCraft preset/overlay effect in `lettering/effects/<name>.json`.
 pub fn cmd_words_effect_install(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
-    let hf = dir.join("hyperframes");
     let name = p["name"]
         .as_str()
         .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
-        .ok_or_else(|| invalid("name must be a registry effect name (letters, digits or '-')"))?;
-    let found = || [format!("compositions/components/{name}.html"), format!("compositions/{name}.html")].into_iter().find(|p| hf.join(p).is_file());
-    if let Some(src) = found() {
-        return Ok(json!({"name":name,"src":src,"installed":false,"already":true}));
+        .ok_or_else(|| invalid("name must be a valid effect name (letters, digits or '-')"))?;
+    let rel = format!("lettering/effects/{name}.json");
+    let target = dir.join(&rel);
+    if target.is_file() {
+        return Ok(json!({"name":name,"src":rel,"installed":false,"already":true}));
     }
-    let cli = crate::cmd::film::video_target::resolve_video_cli(p["resolve_video_cli"].as_str(), Some(&hf))?;
-    let out = crate::workspace::run_tool_in(&hf, &cli.to_string_lossy(), &["add".into(), name.into(), "--json".into(), "--no-clipboard".into()])?;
-    let src = found().ok_or_else(|| invalid(format!("hyperframes add {name} wrote no {name}.html: {}", out.trim())))?;
-    Ok(json!({"name":name,"src":src,"installed":true,"already":false,"receipt":serde_json::from_str::<Value>(&out).unwrap_or(json!(out.trim()))}))
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let spec = json!({
+        "name": name,
+        "engine": "effectcraft",
+        "text_variable": "text",
+        "cues": true,
+        "variables": {
+            "text": {"id": "text", "type": "string", "role": "content"},
+            "cues": {"id": "cues", "type": "string", "role": "timing"},
+            "color": {"id": "color", "type": "string"},
+            "speed": {"id": "speed", "type": "number"}
+        }
+    });
+    crate::doc_state::write_file(&target, serde_json::to_vec_pretty(&spec).map_err(|e| invalid(e.to_string()))?)?;
+    Ok(json!({"name":name,"src":rel,"installed":true,"already":false}))
 }
 
 fn hex_color(v: &Value) -> Option<Value> {
@@ -214,8 +226,6 @@ fn validate_line_item<'a>(item: &'a Value, words: &[Value], placed: &mut Vec<&'a
         normalized["native_motion"] = config;
         normalized["motion_keys"] = keys;
     }
-    // Native motion lives in lettering/lyrics.ecproj; words.json keeps only the binding to
-    // that comp and layer (plus the key read-back above).
     if let Some(raw) = item.get("native_motion_binding").filter(|binding| !binding.is_null()) {
         let binding = raw.as_object().ok_or_else(|| invalid("native_motion_binding must be an object"))?;
         let comp = binding.get("comp").and_then(Value::as_object).ok_or_else(|| invalid("native_motion_binding.comp must name the comp id and name"))?;
@@ -313,35 +323,25 @@ pub(crate) fn line_design(words: &[Value], design: &Value) -> Result<Value> {
     Ok(json!({"items":items,"draws":draws}))
 }
 
-fn declared_variables(component: &str) -> Vec<Value> {
-    let Some(at) = component.find("data-composition-variables='") else {
-        return Vec::new();
-    };
-    let rest = &component[at + "data-composition-variables='".len()..];
-    rest.split('\'').next().and_then(|raw| serde_json::from_str(raw).ok()).unwrap_or_default()
-}
-
-pub(crate) fn text_effect(hf: &Path, choice: &Value) -> Result<Value> {
+pub(crate) fn text_effect(dir: &Path, choice: &Value) -> Result<Value> {
     let name = choice["name"]
         .as_str()
         .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
         .ok_or_else(|| invalid("effect name must be letters, digits or '-'"))?;
-    let src = format!("compositions/components/{name}.html");
-    let component =
-        fs::read_to_string(hf.join(&src)).map_err(|_| invalid(format!("{name} is not installed in this project; run words.effect_install first")))?;
-    let declared = declared_variables(&component);
-    let text = declared
-        .iter()
-        .find(|v| v["type"] == "string" && v["role"] == "content")
-        .and_then(|v| v["id"].as_str())
-        .ok_or_else(|| invalid(format!("{name} takes no text, so it cannot show a lyric line")))?;
-    let cues = declared.iter().any(|v| v["id"] == "cues");
+    let rel = format!("lettering/effects/{name}.json");
+    let path = dir.join(&rel);
+    if !path.is_file() {
+        return Err(invalid(format!("{name} is not installed in this project; run words.effect_install first")));
+    }
+    let spec: Value = serde_json::from_slice(&fs::read(&path)?).map_err(|e| invalid(e.to_string()))?;
+    let text = spec["text_variable"].as_str().unwrap_or("text");
+    let cues = spec["cues"].as_bool().unwrap_or(true);
     let mut variables = serde_json::Map::new();
     for (key, value) in choice["variables"].as_object().into_iter().flatten() {
-        if key == text || key == "cues" || !declared.iter().any(|v| v["id"] == json!(key)) {
+        if key == text || key == "cues" || spec["variables"].get(key).is_none() {
             return Err(invalid(format!("{name} has no settable variable {key}")));
         }
         variables.insert(key.clone(), value.clone());
     }
-    Ok(json!({"name":name,"src":src,"text_variable":text,"cues":cues,"variables":variables}))
+    Ok(json!({"name":name,"src":rel,"text_variable":text,"cues":cues,"variables":variables}))
 }

@@ -1,11 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
-import { StudioFilmstrips } from "../components/StudioFilmstrips";
+import React, { useEffect, useState } from "react";
 import { FilmExportButton } from "../components/FilmExportButton";
 import {
   executeCommand,
-  fileUrl,
   FilmStatusResponse,
-  TimelineResponse,
 } from "../api";
 import "../film.css";
 
@@ -16,7 +13,6 @@ interface FilmViewProps {
 
 export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
   const [film, setFilm] = useState<FilmStatusResponse | null>(null);
-  const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
   const [statusText, setStatusText] = useState<string>("Loading film…");
   const [busy, setBusy] = useState<boolean>(false);
   const [exportFormat, setExportFormat] = useState<string>("h264");
@@ -24,30 +20,16 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
   const [captionSidecar, setCaptionSidecar] = useState<string>("");
   const [exportRange, setExportRange] = useState<string>("entire");
   const [exportSettingsEdited, setExportSettingsEdited] = useState(false);
-  const [playhead, setPlayhead] = useState<number>(0);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const refreshFilm = async () => {
     try {
       const f = await executeCommand<FilmStatusResponse>("video.film");
       setFilm(f);
-      if (f.preview?.exists) {
-        setStatusText(
-          f.preview_stale
-            ? "Preview is older than timeline — click Preview to re-render"
-            : "Preview ready",
-        );
-      } else if (f.timeline?.exists) {
-        setStatusText("Timeline exists — click Preview or Export");
-      } else {
-        setStatusText("No film timeline yet — click Assemble to build .fcproj");
-      }
-      if (f.timeline?.exists) {
-        const tl = await executeCommand<TimelineResponse>("video.timeline");
-        setTimeline(tl);
-      } else {
-        setTimeline(null);
-      }
+      setStatusText(
+        f.timeline?.exists
+          ? "Timeline ready — open it in FilmCraft"
+          : "No film timeline yet — click Assemble to build .fcproj",
+      );
     } catch (err) {
       setStatusText(String(err));
     }
@@ -88,13 +70,6 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
     );
   };
 
-  const videoSrc = film?.preview?.exists && !film.preview_stale
-    ? `${fileUrl(film.preview.path)}?v=${film.preview.modified || 0}`
-    : film?.export?.exists
-      ? `${fileUrl(film.export.path)}?v=${film.export.modified || 0}`
-      : "";
-
-
   return (
     <div
       id="view-studio"
@@ -130,30 +105,6 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
             }
           >
             Assemble
-          </button>
-          <button
-            id="film-preview"
-            className="start"
-            disabled={busy}
-            onClick={() =>
-              void runFilmAction("Preview", () =>
-                executeCommand("video.preview"),
-              )
-            }
-          >
-            Preview
-          </button>
-          <button
-            id="film-frame"
-            className="ghost"
-            disabled={busy || !film?.timeline?.exists}
-            onClick={() =>
-              void runFilmAction(`Export Frame @ ${playhead.toFixed(1)}s`, () =>
-                executeCommand("video.frame", { seconds: playhead }),
-              )
-            }
-          >
-            Grab Frame ({playhead.toFixed(1)}s)
           </button>
           <button
             id="film-open"
@@ -264,9 +215,6 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
       </div>
 
       </details>
-
-      <StudioFilmstrips project={projectPath} timeline={timeline} videoSrc={videoSrc}
-        revision={film?.timeline?.modified || 0} playhead={playhead} onTime={setPlayhead} videoRef={videoRef} />
     </div>
   );
 };

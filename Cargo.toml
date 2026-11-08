@@ -14,16 +14,32 @@ repository = "https://github.com/jessenaiman/magic-studio-app"
 magic = { package = "magic-engine", path = "crates/engine" }
 magic-mcp = { path = "crates/mcp" }
 
+# Craft engines and domain crates (`storytold/*`, version-independent git tracking for `cargo update`)
+designcraft-engine = { git = "https://github.com/storytold/designcraft" }
+designcraft-render = { git = "https://github.com/storytold/designcraft" }
+effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
+effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
+filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
+filmcraft-media = { git = "https://github.com/storytold/filmcraft" }
+filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
+photocraft-engine = { git = "https://github.com/storytold/photocraft" }
+texturecraft-formats = { git = "https://github.com/storytold/texturecraft" }
+vectorcraft-engine = { git = "https://github.com/storytold/vectorcraft", default-features = false }
+
 # Shared Craft libraries (`storytold/craft-libs`, version-independent git tracking for `cargo update`)
 craft-atomic = { git = "https://github.com/storytold/craft-libs" }
 craft-audio = { git = "https://github.com/storytold/craft-libs", features = ["decode", "peaks"] }
+craft-dialogs = { git = "https://github.com/storytold/craft-libs" }
 craft-doc = { git = "https://github.com/storytold/craft-libs" }
 craft-docpath = { git = "https://github.com/storytold/craft-libs" }
+craft-ecproj-format = { git = "https://github.com/storytold/craft-libs" }
+craft-media = { git = "https://github.com/storytold/craft-libs", default-features = false }
+craft-pcraft-format = { git = "https://github.com/storytold/craft-libs" }
 craft-settings = { git = "https://github.com/storytold/craft-libs" }
 craft-update = { git = "https://github.com/storytold/craft-libs" }
-
-# Craft backend crates
-filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
+craft-vectorcraft-format = { git = "https://github.com/storytold/craft-libs" }
 
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
 craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }
@@ -70,3 +86,10 @@ overflow-checks = false
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[patch.crates-io]
+krilla = { git = "https://github.com/storytold/craft-libs" }
+hayro = { git = "https://github.com/storytold/craft-libs" }
+hayro-interpret = { git = "https://github.com/storytold/craft-libs" }
+hayro-syntax = { git = "https://github.com/storytold/craft-libs" }
+hayro-jbig2 = { git = "https://github.com/storytold/craft-libs" }

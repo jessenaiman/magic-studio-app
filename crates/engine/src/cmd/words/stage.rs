@@ -1,70 +1,15 @@
 //! Words stage views, reading, saving, and drawing link management.
 use super::compose::{kinetic_design, line_design, text_effect};
 use crate::cmd::words::{
-    ACTIONS, ENTRANCES, EXITS, KINETIC_LIBRARY, aligned, default_document, document_path, fill_untimed, invalid, load, reference, save, studio_times, tag_attr,
-    timing, with_sung_sections, word_time_key,
+    ACTIONS, ENTRANCES, EXITS, HOLD_TICK, KINETIC_LIBRARY, aligned, default_document, document_path, fill_untimed, invalid, load, reference, save,
+    studio_times, timing, with_sung_sections, word_tick, word_time_key,
 };
+use crate::time::{Tick, parse_tick};
 use crate::{Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
-
-const LYRICS_ONLY_STYLE: &str = r#"<style data-magic="lyrics-only">
-[data-composition-id] * { visibility: hidden !important; }
-.lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip * { visibility: visible !important; }
-#title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*="captions.html"] { visibility: hidden !important; }
-html, body, [data-composition-id] { background: #1b2430 !important; }
-</style>"#;
-
-fn stage_only_style(html: &str) -> String {
-    let mut visuals: Vec<(String, u64, f64, f64)> = Vec::new();
-    let mut from = 0;
-    while let Some(open) = html[from..].find('<').map(|i| i + from) {
-        let close = html[open..].find('>').map_or(html.len(), |i| i + open + 1);
-        let tag = &html[open..close];
-        from = close;
-        let is_media =
-            (tag.starts_with("<video") || tag.starts_with("<img")) && tag_attr(tag, "class").is_some_and(|c| c.split_whitespace().any(|c| c == "clip"));
-        if !is_media {
-            continue;
-        }
-        let num = |k: &str| tag_attr(tag, k).and_then(|v| v.parse::<f64>().ok());
-        if let (Some(id), Some(start)) = (tag_attr(tag, "id"), num("data-start")) {
-            visuals.push((id.to_owned(), num("data-track-index").unwrap_or(0.0) as u64, start, start + num("data-duration").unwrap_or(f64::MAX)));
-        }
-    }
-    let cast: Vec<String> =
-        visuals.iter().filter(|(_, track, a, b)| visuals.iter().any(|(_, t, x, y)| t < track && x < b && a < y)).map(|(id, ..)| format!("#{id}")).collect();
-    let hide = if cast.is_empty() { String::new() } else { format!("{} {{ visibility: hidden !important; }}\n", cast.join(", ")) };
-    format!(
-        "<style data-magic=\"stage\">\n{hide}#stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .caption, [data-composition-src*=\"captions.html\"] {{ visibility: hidden !important; }}\n</style>"
-    )
-}
-
-const SCENE_ONLY_STYLE: &str = r#"<style data-magic="scene-only">
-#stage-fill, #title, .lyric-word-clip, .lyric-word-clip *, .lyric-design-clip, .lyric-design-clip *, .lyric-drawing-clip, .lyric-drawing-clip *, .caption, [data-composition-src*="captions.html"] { visibility: hidden !important; }
-</style>"#;
-
-fn without_video_media(html: &str) -> String {
-    let mut out = html.to_owned();
-    while let Some(start) = out.find("<video") {
-        let end = out[start..].find("</video>").map(|i| start + i + 8).or_else(|| out[start..].find('>').map(|i| start + i + 1)).unwrap_or(out.len());
-        out.replace_range(start..end, "");
-    }
-    let mut from = 0;
-    while let Some(rel) = out[from..].find("<img") {
-        let start = from + rel;
-        let end = out[start..].find('>').map(|i| start + i + 1).unwrap_or(out.len());
-        let tag = &out[start..end];
-        if tag_attr(tag, "id").is_some_and(|id| id.starts_with("scene-")) {
-            from = end;
-        } else {
-            out.replace_range(start..end, "");
-        }
-    }
-    out
-}
 
 fn is_image_file(p: &Path) -> bool {
     p.is_file() && p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg" | "webp"))
@@ -132,137 +77,27 @@ fn assign_default_backgrounds(doc: &mut Value, images: &[Value]) {
     }
 }
 
-pub(crate) fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Result<String> {
-    let images = project_backdrop_images(s, dir);
-    let asset = images
-        .iter()
-        .find(|a| a["id"].as_str() == Some(asset_id))
-        .and_then(|a| a["path"].as_str())
-        .map(std::path::PathBuf::from)
-        .ok_or_else(|| invalid("The scene image is no longer in this project"))?;
-    let bytes = fs::read(&asset)?;
-    let name = format!("{:x}.{}", Sha256::digest(&bytes), asset.extension().and_then(|e| e.to_str()).unwrap_or("png"));
-    let path = dir.join("hyperframes/compositions/words/backdrops").join(&name);
-    fs::create_dir_all(path.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
-    if !path.is_file() {
-        crate::doc_state::write_file(&path, bytes)?;
-    }
-    Ok(name)
-}
-
-fn resolve_requested_backdrop<'a>(animations: &'a [Value], full: &'a Value, id: &str) -> Option<&'a str> {
-    animations
-        .iter()
-        .find(|a| a["animation_id"] == id)
-        .and_then(|a| a["background_asset"].as_str())
-        .or_else(|| animations.iter().find_map(|a| a["background_asset"].as_str()))
-        .or_else(|| full["images"].as_array()?.first()?.get("id")?.as_str())
-}
-
-fn build_backdrop_tags(s: &Session, dir: &Path, animations: &[Value], base_name: &str, has_scene_plates: bool) -> String {
-    let mut tags = if has_scene_plates {
-        String::new()
-    } else {
-        format!(
-            "<img data-lyrics-backdrop src=\"compositions/words/backdrops/{base_name}\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0\">"
-        )
-    };
-    for (idx, anim) in animations.iter().enumerate() {
-        if has_scene_plates && anim["background_custom"].as_bool() != Some(true) {
-            continue;
-        }
-        let Some(asset_id) = anim["background_asset"].as_str() else {
-            continue;
-        };
-        let Ok(name) = stage_backdrop_file(s, dir, asset_id) else {
-            continue;
-        };
-        let anchor = anim["song_anchor"].as_f64().unwrap_or(0.0);
-        let start = if idx == 0 { 0.0 } else { anchor };
-        let raw_dur = anim["authored_duration"].as_f64().unwrap_or(10.0);
-        let end = animations.get(idx + 1).and_then(|next| next["song_anchor"].as_f64()).unwrap_or(anchor + raw_dur + 5.0);
-        let duration = (end - start).max(raw_dur);
-        tags.push_str(&format!(
-            "<img id=\"backdrop-{idx}\" class=\"clip\" data-lyrics-backdrop src=\"compositions/words/backdrops/{name}\" data-start=\"{start:.3}\" data-duration=\"{duration:.3}\" data-track-index=\"0\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1\">"
-        ));
-    }
-    tags
-}
-
-fn still_stage(s: &mut Session, html: &str, id: &str) -> Result<String> {
-    let dir = crate::cmd::words::workspace_dir(s)?;
-    let full = cmd_words_read(s, &json!({}))?;
-    let animations = full["document"]["animations"].as_array().cloned().unwrap_or_default();
-    let requested = resolve_requested_backdrop(&animations, &full, id).ok_or_else(|| invalid("Choose this verse's scene image"))?;
-    let base_name = stage_backdrop_file(s, &dir, requested)?;
-    let tags = build_backdrop_tags(s, &dir, &animations, &base_name, html.contains("id=\"scene-"));
-    let mut out = without_video_media(html);
-    let root = out
-        .find("data-composition-id=\"main\"")
-        .or_else(|| out.find("id=\"root\""))
-        .or_else(|| out.find("data-composition-id=\""))
-        .and_then(|i| out[i..].find('>').map(|j| i + j + 1))
-        .ok_or_else(|| invalid("The video has no main composition root"))?;
-    out.insert_str(root, &tags);
-    Ok(out)
-}
-
-fn lyrics_view_style_and_name(show: &str, html: &str) -> Result<(String, &'static str)> {
-    match show {
-        "still" => Ok((
-            "<style data-magic=\"still\">#stage-fill, #title, .caption, .lyric-word-clip, .lyric-word-clip *, [data-composition-src*=\"captions.html\"] { visibility: hidden !important; }</style>".to_owned(),
-            "still-stage",
-        )),
-        "lyrics" => Ok((LYRICS_ONLY_STYLE.to_owned(), "lyrics-only")),
-        "scene" => Ok((SCENE_ONLY_STYLE.to_owned(), "scene-only")),
-        "stage" => Ok((stage_only_style(html), "stage")),
-        other => Err(invalid(format!("show must be stage, lyrics or scene, not {other}"))),
-    }
-}
-
-fn write_if_changed(file: &Path, content: &str) -> Result<bool> {
-    let written = fs::read_to_string(file).ok().as_deref() != Some(content);
-    if written {
-        if let Some(parent) = file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        crate::doc_state::write_file(file, content)?;
-    }
-    Ok(written)
-}
-
 pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
-    let hf = dir.join("hyperframes");
-    let html = fs::read_to_string(hf.join("index.html")).map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
     let show = p["show"].as_str().unwrap_or("lyrics");
-    let html = if show == "still" {
-        let id = p["animation_id"].as_str().ok_or_else(|| invalid("still needs animation_id"))?;
-        still_stage(s, &html, id)?
-    } else {
-        html
-    };
-    let (style, name) = lyrics_view_style_and_name(show, &html)?;
-    if name != "stage" && name != "still-stage" && !html.contains("lyric-word-clip") {
-        return Err(invalid("The video has no lyric word clips (class lyric-word-clip) to show on their own"));
+    if !matches!(show, "still" | "lyrics" | "scene" | "stage") {
+        return Err(invalid(format!("show must be stage, still, lyrics or scene, not {show}")));
     }
-    let head = html.find("</head>").ok_or_else(|| invalid("The video's index.html has no </head>; nothing written"))?;
-    let derived = format!("{}{style}\n{}", &html[..head], &html[head..]);
-    let src = format!("compositions/words/{name}.html");
-    let file = hf.join(&src);
-    let written = write_if_changed(&file, &derived)?;
-    if written {
-        let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
+    if show == "still" && p["animation_id"].as_str().is_none() {
+        return Err(invalid("still needs animation_id"));
     }
+    let ecproj = dir.join("lettering/lyrics.ecproj");
+    let doc_path = document_path(&dir);
+    let bytes = fs::read(&ecproj).or_else(|_| fs::read(&doc_path)).unwrap_or_default();
     Ok(json!({
-        "src": src,
-        "file": file,
-        "written": written,
-        "video_sha256": format!("{:x}", Sha256::digest(html.as_bytes()))
+        "ok": true,
+        "show": show,
+        "src": format!("lettering/{show}.ecproj"),
+        "file": ecproj,
+        "written": false,
+        "video_sha256": format!("{:x}", Sha256::digest(&bytes))
     }))
 }
-
-const EFFECT_KINDS: &[(&str, &str)] = &[("text", "word by word text reveal")];
 
 fn runtime_effectcraft_tools() -> Value {
     let steps = [
@@ -311,8 +146,13 @@ fn runtime_filmcraft_tools() -> Value {
             })
             .unwrap_or(Value::Null)
     };
-    let effects: Vec<Value> = run("effects.list").as_array().cloned().into_iter().flatten()
-        .map(|fx| json!({"id": fx["id"], "name": fx["name"], "category": fx.get("folder").or_else(|| fx.get("category")).unwrap_or(&Value::Null), "kind": fx["kind"]})).collect();
+    let effects: Vec<Value> = run("effects.list")
+        .as_array()
+        .cloned()
+        .into_iter()
+        .flatten()
+        .map(|fx| json!({"id": fx["id"], "name": fx["name"], "category": fx.get("folder").or_else(|| fx.get("category")).unwrap_or(&Value::Null), "kind": fx["kind"]}))
+        .collect();
     let presets = run("presets.list");
     json!({
         "effects": effects,
@@ -395,54 +235,49 @@ pub(crate) fn runtime_words_tools(lib: &Value) -> Value {
     })
 }
 
-pub fn cmd_words_effects(s: &mut Session, p: &Value) -> Result<Value> {
-    let dir = crate::cmd::words::workspace_dir(s)?;
-    let hf = dir.join("hyperframes");
-    let cli = crate::cmd::film::video_target::resolve_video_cli(p["resolve_video_cli"].as_str(), Some(&hf))?;
-    let wanted = p["kind"].as_str();
-    if let Some(kind) = wanted
-        && !EFFECT_KINDS.iter().any(|(k, _)| *k == kind)
+pub fn cmd_words_effects(_s: &mut Session, p: &Value) -> Result<Value> {
+    if let Some(kind) = p["kind"].as_str()
+        && kind != "text"
     {
-        return Err(invalid(format!("kind must be one of {}", EFFECT_KINDS.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(", "))));
-    }
-    let mut kinds = serde_json::Map::new();
-    for (kind, query) in EFFECT_KINDS.iter().filter(|(k, _)| wanted.is_none_or(|w| w == *k)) {
-        let out = crate::workspace::run_tool_in(&hf, &cli.to_string_lossy(), &["catalog".into(), "--query".into(), (*query).into(), "--json".into()])?;
-        let found: Value = serde_json::from_str(&out).map_err(|e| invalid(format!("HyperFrames catalog answered with something other than JSON: {e}")))?;
-        let effects: Vec<Value> = found["results"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|r| json!({"name":r["name"],"type":r["type"],"title":r["title"],"description":r["description"],"tags":r["tags"]}))
-            .collect();
-        kinds.insert((*kind).into(), json!({"query":query,"tier":found["tier"],"effects":effects}));
+        return Err(invalid("kind must be one of text"));
     }
     let kinetic_library: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
+    let tools = runtime_words_tools(&kinetic_library);
+    let text_presets = tools["effectcraft"]["text_presets"].clone();
     Ok(json!({
-        "source": "hyperframes registry + craft engines",
-        "kinds": kinds,
-        "tools": runtime_words_tools(&kinetic_library)
+        "source": "effectcraft + filmcraft",
+        "kinds": {
+            "text": {
+                "query": "word by word text reveal",
+                "tier": "native",
+                "effects": text_presets
+            }
+        },
+        "tools": tools
     }))
 }
 
-fn append_kinetic_cues(anim: &Value, words: &[Value], lib: &Value, anchor: f64, section_end: f64, cues: &mut Vec<Value>) {
+fn append_kinetic_cues(anim: &Value, words: &[Value], lib: &Value, anchor: Tick, section_end: Tick, cues: &mut Vec<Value>) {
     let k = &anim["kinetic"];
     for (i, d) in k["draws"].as_array().into_iter().flatten().enumerate() {
         let Some(word) = words.iter().find(|w| w["word_id"] == d["word_id"]) else {
             continue;
         };
-        let Some(word_anchor) = word["start"].as_f64() else {
+        let Some(word_anchor) = word_tick(word, "start_tick", "start") else {
             continue;
         };
-        let start = (word_anchor + d["offset"].as_f64().unwrap_or(0.0)).max(0.0);
+        let offset = d.get("offset").and_then(parse_tick).unwrap_or(Tick::ZERO);
+        let start = Tick((word_anchor.0 + offset.0).max(0));
         let Some(stroke) = d.get("drawing").filter(|v| v.is_object()).or_else(|| d["stroke"].as_str().and_then(|key| lib["strokes"].get(key))) else {
             continue;
         };
         if d["track"] == "lettering" || (d["track"].is_null() && stroke["track"] == "lettering") {
             continue;
         }
-        let duration = d["duration"].as_f64().or_else(|| stroke["draw"].as_f64()).unwrap_or(1.0);
-        let end = start + duration + d["hold"].as_f64().unwrap_or(1.0);
+        let duration = d.get("duration").and_then(parse_tick).or_else(|| stroke.get("draw").and_then(parse_tick)).unwrap_or(HOLD_TICK);
+        let hold = d.get("hold").and_then(parse_tick).unwrap_or(HOLD_TICK);
+        let end = start + duration + hold;
+        let draw_end = start + duration;
         cues.push(json!({
             "id": format!("{}-draw-{i}", anim["animation_id"].as_str().unwrap_or("words")),
             "kind": "drawing",
@@ -453,47 +288,58 @@ fn append_kinetic_cues(anim: &Value, words: &[Value], lib: &Value, anchor: f64, 
             "name": stroke["name"],
             "stroke": stroke,
             "index": i,
-            "anchor": word_anchor,
+            "anchor_tick": word_anchor.0,
+            "anchor": word_anchor.seconds(),
             "color": d.get("color").unwrap_or(&k["style"]["hero_color"]),
-            "start": start,
-            "end": end,
-            "draw_end": start + duration
+            "start_tick": start.0,
+            "end_tick": end.0,
+            "draw_end_tick": draw_end.0,
+            "start": start.seconds(),
+            "end": end.seconds(),
+            "draw_end": draw_end.seconds()
         }));
     }
     if let Some(key) = k["overlay"].as_str().filter(|key| *key != "none")
         && let Some(overlay) = lib["overlays"].get(key)
     {
-        let start = (anchor + k["overlay_offset"].as_f64().unwrap_or(0.0)).max(0.0);
-        let duration = k["overlay_duration"].as_f64().unwrap_or(section_end - anchor);
+        let offset = k.get("overlay_offset").and_then(parse_tick).unwrap_or(Tick::ZERO);
+        let start = Tick((anchor.0 + offset.0).max(0));
+        let duration = k.get("overlay_duration").and_then(parse_tick).unwrap_or(section_end - anchor);
+        let end = start + duration;
         cues.push(json!({
             "id": format!("{}-overlay", anim["animation_id"].as_str().unwrap_or("words")),
             "kind": "overlay",
             "animation_id": anim["animation_id"],
             "name": overlay["name"],
             "overlay": key,
-            "anchor": anchor,
-            "start": start,
-            "end": start + duration,
+            "anchor_tick": anchor.0,
+            "anchor": anchor.seconds(),
+            "start_tick": start.0,
+            "end_tick": end.0,
+            "start": start.seconds(),
+            "end": end.seconds(),
             "word_ids": []
         }));
     }
 }
 
-fn append_static_design_cues(anim: &Value, words: &[Value], section_end: f64, cues: &mut Vec<Value>) {
+fn append_static_design_cues(anim: &Value, words: &[Value], section_end: Tick, cues: &mut Vec<Value>) {
     for (line_id, design) in anim["design"].as_object().into_iter().flatten() {
         let line: Vec<_> = words.iter().filter(|w| w["line_id"] == *line_id).collect();
-        let Some(start) = line.first().and_then(|w| w["start"].as_f64()) else {
+        let Some(start) = line.first().and_then(|w| word_tick(w, "start_tick", "start")) else {
             continue;
         };
         let end = words
             .iter()
-            .find(|w| w["line_id"] != *line_id && w["start"].as_f64().is_some_and(|t| t > start))
-            .and_then(|w| w["start"].as_f64())
+            .find(|w| w["line_id"] != *line_id && word_tick(w, "start_tick", "start").is_some_and(|t| t > start))
+            .and_then(|w| word_tick(w, "start_tick", "start"))
             .unwrap_or(section_end);
         for (i, d) in design["draws"].as_array().into_iter().flatten().enumerate() {
             let paths = d["paths"].as_array().into_iter().flatten();
-            let from = paths.clone().filter_map(|p| p["from"].as_f64()).reduce(f64::min).unwrap_or(0.0);
-            let to = paths.clone().filter_map(|p| p["to"].as_f64()).reduce(f64::max).unwrap_or(from);
+            let from = paths.clone().filter_map(|p| p.get("from").and_then(parse_tick)).min().unwrap_or(Tick::ZERO);
+            let to = paths.clone().filter_map(|p| p.get("to").and_then(parse_tick)).max().unwrap_or(from);
+            let cue_start = start + from;
+            let draw_end = (start + to).min(end);
             cues.push(json!({
                 "id": format!("{}-{line_id}-draw-{i}", anim["animation_id"].as_str().unwrap_or("words")),
                 "kind": "drawing",
@@ -502,41 +348,48 @@ fn append_static_design_cues(anim: &Value, words: &[Value], section_end: f64, cu
                 "word_ids": line.iter().map(|w| w["word_id"].clone()).collect::<Vec<_>>(),
                 "name": d["name"],
                 "stroke": {"view_box": d["view_box"], "d": paths.filter_map(|p| p["d"].as_str()).collect::<Vec<_>>().join(" ")},
-                "start": start + from,
-                "end": end,
-                "draw_end": (start + to).min(end)
+                "start_tick": cue_start.0,
+                "end_tick": end.0,
+                "draw_end_tick": draw_end.0,
+                "start": cue_start.seconds(),
+                "end": end.seconds(),
+                "draw_end": draw_end.seconds()
             }));
         }
     }
 }
 
-fn hydrate_animation_times(anim: &mut Value, times: &std::collections::HashMap<String, (f64, f64)>) {
+fn hydrate_animation_times(anim: &mut Value, times: &std::collections::HashMap<String, (Tick, Tick)>) {
     let scope = anim["scope"].clone();
     for w in anim["words"].as_array_mut().into_iter().flatten() {
         if let Some((a, b)) = w["word_id"].as_str().and_then(|id| times.get(&word_time_key(&scope, id))) {
-            w["start"] = json!(a);
-            w["end"] = json!(b);
+            w["start_tick"] = json!(a.0);
+            w["end_tick"] = json!(b.0);
+            w["start"] = json!(a.seconds());
+            w["end"] = json!(b.seconds());
         }
     }
     fill_untimed(anim);
     timing(anim);
 }
 
-fn graphic_cues(doc: &Value, lib: &Value, times: &std::collections::HashMap<String, (f64, f64)>) -> Vec<Value> {
+fn graphic_cues(doc: &Value, lib: &Value, times: &std::collections::HashMap<String, (Tick, Tick)>) -> Vec<Value> {
     let mut cues = Vec::new();
     for source in doc["animations"].as_array().into_iter().flatten() {
         let mut anim = source.clone();
         hydrate_animation_times(&mut anim, times);
         let words = anim["words"].as_array().cloned().unwrap_or_default();
-        let anchor = anim["song_anchor"].as_f64().unwrap_or(0.0);
-        let section_end = anchor + anim["authored_duration"].as_f64().unwrap_or(0.0);
+        let anchor = anim["song_anchor_tick"].as_i64().map(Tick).or_else(|| anim["song_anchor"].as_f64().map(Tick::from_seconds_f64)).unwrap_or(Tick::ZERO);
+        let dur =
+            anim["authored_duration_tick"].as_i64().map(Tick).or_else(|| anim["authored_duration"].as_f64().map(Tick::from_seconds_f64)).unwrap_or(Tick::ZERO);
+        let section_end = anchor + dur;
         if anim["kinetic"].is_object() {
             append_kinetic_cues(&anim, &words, lib, anchor, section_end, &mut cues);
         } else {
             append_static_design_cues(&anim, &words, section_end, &mut cues);
         }
     }
-    cues.sort_by(|a, b| a["start"].as_f64().partial_cmp(&b["start"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
+    cues.sort_by_key(|a| a["start_tick"].as_i64().unwrap_or(0));
     cues
 }
 
@@ -578,9 +431,7 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
         doc["animations"] = json!([anim]);
     }
     apply_display_text_for_read(&mut doc);
-    let video = fs::read_to_string(dir.join("hyperframes/index.html")).unwrap_or_default();
-    let in_video: Vec<&str> =
-        video.split("data-magic-words=\"").skip(1).filter_map(|rest| rest.split('"').next()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    let in_video: Vec<String> = fs::read(dir.join("design/words-applied.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     let kinetic_library: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let tools = runtime_words_tools(&kinetic_library);
     let graphics = graphic_cues(&doc, &kinetic_library, &studio_times(s));
@@ -594,24 +445,10 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
         "path": document_path(&dir),
         "document": doc,
         "in_video": in_video,
-        "fonts": video_fonts(&dir.join("hyperframes"), &video),
+        "fonts": [],
         "kinetic_library": kinetic_library,
         "tools": tools
     }))
-}
-
-fn video_fonts(hf: &Path, video: &str) -> Vec<Value> {
-    video
-        .split("@font-face")
-        .skip(1)
-        .filter_map(|rule| {
-            let rule = rule.split('}').next()?;
-            let family = rule.split("font-family:").nth(1)?.split([';', '}']).next()?.trim().trim_matches(['"', '\'']).to_owned();
-            let url = rule.split("url(").nth(1)?.split(')').next()?.trim().trim_matches(['"', '\'']);
-            let weight = rule.split("font-weight:").nth(1).and_then(|w| w.split([';', '}']).next()).map(str::trim).unwrap_or("400");
-            Some(json!({"family":family,"path":hf.join(url),"weight":weight}))
-        })
-        .collect()
 }
 
 pub(crate) fn one_of(value: &Value, allowed: &[&str], what: &str) -> Result<Value> {
@@ -686,7 +523,7 @@ fn apply_design_and_effects(dir: &Path, anim: &mut Value, id: &str, p: &Value) -
             if track != "text" {
                 return Err(invalid(format!("effects.{track}: only the text track takes registry effects so far")));
             }
-            anim["effects"][track] = if choice.is_null() { Value::Null } else { text_effect(&dir.join("hyperframes"), choice)? };
+            anim["effects"][track] = if choice.is_null() { Value::Null } else { text_effect(dir, choice)? };
         }
     }
     Ok(())
@@ -782,7 +619,7 @@ fn move_drawing_between_sections(doc: &mut Value, si: usize, ti: usize, index: u
     Ok(target_index)
 }
 
-fn resolve_target_word_time(doc: &Value, ti: usize, word: &str, times: &std::collections::HashMap<String, (f64, f64)>) -> Result<f64> {
+fn resolve_target_word_time(doc: &Value, ti: usize, word: &str, times: &std::collections::HashMap<String, (Tick, Tick)>) -> Result<Tick> {
     let w = doc["animations"][ti]["words"]
         .as_array()
         .into_iter()
@@ -792,7 +629,7 @@ fn resolve_target_word_time(doc: &Value, ti: usize, word: &str, times: &std::col
     let at = times
         .get(&word_time_key(&doc["animations"][ti]["scope"], word))
         .map(|t| t.0)
-        .or_else(|| w["start"].as_f64())
+        .or_else(|| word_tick(w, "start_tick", "start"))
         .ok_or_else(|| invalid("The target word has no known timing"))?;
     if !doc["animations"][ti]["kinetic"].is_object() {
         return Err(invalid("Choose a word in a kinetic lyric section"));
@@ -807,11 +644,12 @@ fn check_link_revisions(doc: &Value, si: usize, ti: usize, p: &Value) -> Result<
     Ok(doc["animations"][si]["source_revision"].as_u64() == Some(expected) && doc["animations"][ti]["source_revision"].as_u64() == Some(target_expected))
 }
 
-fn prepare_relinked_drawing(doc: &Value, si: usize, index: usize, word: &str, cue_start: f64, at: f64) -> Result<Value> {
+fn prepare_relinked_drawing(doc: &Value, si: usize, index: usize, word: &str, cue_start: Tick, at: Tick) -> Result<Value> {
     let mut drawing =
         doc["animations"][si]["kinetic"]["draws"].as_array().and_then(|d| d.get(index)).cloned().ok_or_else(|| invalid("Drawing index is stale"))?;
+    let offset = cue_start - at;
     drawing["word_id"] = json!(word);
-    drawing["offset"] = json!(cue_start - at);
+    drawing["offset"] = json!(offset.seconds());
     if drawing["color"].is_null() {
         drawing["color"] = doc["animations"][si]["kinetic"]["style"]["hero_color"].clone();
     }
@@ -826,7 +664,7 @@ fn parse_link_request(p: &Value) -> Result<(&str, &str, &str, usize)> {
     Ok((source, target, word, index))
 }
 
-fn find_source_cue_start(s: &mut Session, doc: &Value, source: &str, index: usize, ti: usize, word: &str) -> Result<(f64, f64)> {
+fn find_source_cue_start(s: &mut Session, doc: &Value, source: &str, index: usize, ti: usize, word: &str) -> Result<(Tick, Tick)> {
     let lib: Value = serde_json::from_str(KINETIC_LIBRARY).map_err(|e| invalid(e.to_string()))?;
     let times = studio_times(s);
     let cues = graphic_cues(doc, &lib, &times);
@@ -835,7 +673,7 @@ fn find_source_cue_start(s: &mut Session, doc: &Value, source: &str, index: usiz
         .find(|c| c["animation_id"] == source && c["index"].as_u64() == Some(index as u64))
         .ok_or_else(|| invalid("Select a drawing clip to relink"))?;
     let at = resolve_target_word_time(doc, ti, word, &times)?;
-    let cue_start = cue["start"].as_f64().unwrap_or(at);
+    let cue_start = word_tick(cue, "start_tick", "start").unwrap_or(at);
     Ok((cue_start, at))
 }
 
@@ -857,7 +695,8 @@ pub fn cmd_words_link(s: &mut Session, p: &Value) -> Result<Value> {
         "animation_id": target,
         "index": target_index,
         "word_id": word,
-        "start": cue_start,
+        "start_tick": cue_start.0,
+        "start": cue_start.seconds(),
         "changed_sections": if si == ti { vec![source] } else { vec![source, target] }
     }))
 }

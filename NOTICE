@@ -6,6 +6,6 @@ This product includes software developed by the ArtCraft project
 (https://github.com/storytold/artcraft) and the Craft shared libraries
 (craft-libs, craft-ai-integrations), used under MIT OR Apache-2.0.
 
-HyperFrames/Remotion and FFmpeg are external runtimes that the application
+Remotion and FFmpeg are external runtimes that the application
 invokes; they are not distributed with this repository. Installed ArtCraft
 Craft apps are separate works under their own licenses.

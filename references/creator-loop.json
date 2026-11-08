@@ -22,7 +22,7 @@
     },
     {
       "id": "core",
-      "label": "HyperFrames"
+      "label": "FilmCraft"
     },
     {
       "id": "truth",
@@ -109,7 +109,7 @@
       "lane": "core",
       "col": 2,
       "type": "backend",
-      "label": "HyperFrames Core",
+      "label": "FilmCraft",
       "height": 44,
       "width": 119
     },
@@ -264,7 +264,7 @@
         "Nudge → See It Again: move small details · clean artifacts · the 20%",
         "Magic Studio: wrapper — project book · skills · panels",
         "Cheap 80% Build: song → composition",
-        "HyperFrames Core: composition · timeline · render",
+        "FilmCraft: composition · timeline · render",
         "Save = the Edit: lands in the composition",
         "Storyboard Deck: already paid for in tokens",
         "Drift Check: deck vs video — loudly, never silent rot",
@@ -278,7 +278,7 @@
       "label": "Upload audio",
       "view": "Project · Song",
       "command": "magic-cli workshop set-audio path=\"<recording>\"",
-      "pipeline": "Link the complete recording and the artist’s original lyric sheet. The current audio intake also initializes the HyperFrames project.",
+      "pipeline": "Link the complete recording and the artist’s original lyric sheet.",
       "verify": "Play the linked recording and open the artist’s document."
     },
     {

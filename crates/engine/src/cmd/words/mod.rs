@@ -1,8 +1,8 @@
 //! Words: editable visible lyric animations built from the artist's canonical lines, timed by
-//! the hidden transcript reference. The reference (heard words, their order and times) is never
-//! edited or exported; mismatches against the artist's words are reported, never substituted.
-//! Text and timing are not editable here: `words.save` changes only style, emphasis, motion and
-//! each line's design (where its words sit, their lettering and moves, and drawn strokes).
+//! the hidden transcript reference in [`Tick`]s (`filmcraft_time::Tick`).
+//! The reference (heard words, their order and times) is never edited or exported; mismatches
+//! against the artist's words are reported, never substituted.
+use crate::time::{TICKS_PER_SECOND, Tick, parse_tick};
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -12,7 +12,6 @@ use std::{
 };
 
 pub mod compose;
-// The lyrics, layout and lettering modules live here with the words domain.
 pub mod lettering;
 pub mod lyrics;
 pub(crate) mod lyrics_layout;
@@ -23,6 +22,23 @@ pub(crate) mod stage;
 pub(crate) mod validate;
 
 pub use compose::{cmd_words_apply, cmd_words_compose, cmd_words_design, cmd_words_effect_install, cmd_words_track};
+pub(crate) use stage::one_of;
+pub use stage::{cmd_words_effects, cmd_words_link, cmd_words_lyrics_view, cmd_words_read, cmd_words_save};
+
+pub(crate) const ACTIONS: &[&str] = &["none", "wave", "tiny", "swim", "no", "cry", "big", "float"];
+pub(crate) const ENTRANCES: &[&str] = &["pop", "fade", "rise", "none"];
+pub(crate) const EXITS: &[&str] = &["fade", "drop", "none"];
+pub(crate) const MOVES: &[&str] = &["quiet", "sleep", "settle", "fall", "pop", "rise", "east", "west", "loop"];
+pub(crate) const FONTS: &[&str] = &["song", "serif", "sans"];
+/// 0.4 seconds in FilmCraft ticks (`254_016_000_000 * 2 / 5`).
+pub(crate) const LEAD_IN_TICK: Tick = Tick(101_606_400_000);
+/// 1.0 second in FilmCraft ticks.
+pub(crate) const HOLD_TICK: Tick = Tick(TICKS_PER_SECOND);
+pub(crate) const KINETIC_LIBRARY: &str = include_str!("../../../../../pipeline/templates/kinetic-library.json");
+
+pub(crate) fn invalid(message: impl Into<String>) -> EngineError {
+    EngineError::InvalidParams(message.into())
+}
 
 pub(crate) fn workspace_dir(s: &Session) -> Result<PathBuf> {
     if let Some(folder) = &s.lyrics_workspace {
@@ -52,7 +68,7 @@ pub fn cmd_words_workspace(s: &mut Session, params: &Value) -> Result<Value> {
         let audio = if let Some(raw) = params["audio"].as_str() {
             Some(crate::workspace::song_audio_path(s, raw)?)
         } else {
-            crate::cmd::film::video_target::discover_contained_audio(&folder).or_else(|| {
+            {
                 let files = [&folder, &folder.join("audio")]
                     .into_iter()
                     .flat_map(|dir| fs::read_dir(dir).into_iter().flatten().flatten())
@@ -66,7 +82,7 @@ pub fn cmd_words_workspace(s: &mut Session, params: &Value) -> Result<Value> {
                     })
                     .collect::<Vec<_>>();
                 (files.len() == 1).then(|| files[0].clone())
-            })
+            }
         };
         if s.lyrics_workspace.as_ref() != Some(&folder) {
             s.close_documents();
@@ -75,19 +91,6 @@ pub fn cmd_words_workspace(s: &mut Session, params: &Value) -> Result<Value> {
         s.song_audio = audio;
     }
     Ok(json!({"ok":true,"standalone":s.lyrics_workspace.is_some(),"path":s.lyrics_workspace,"audio":s.song_audio}))
-}
-
-pub(crate) const ACTIONS: &[&str] = &["none", "wave", "tiny", "swim", "no", "cry", "big", "float"];
-pub(crate) const ENTRANCES: &[&str] = &["pop", "fade", "rise", "none"];
-pub(crate) const EXITS: &[&str] = &["fade", "drop", "none"];
-pub(crate) const MOVES: &[&str] = &["quiet", "sleep", "settle", "fall", "pop", "rise", "east", "west", "loop"];
-pub(crate) const FONTS: &[&str] = &["song", "serif", "sans"];
-const LEAD_IN: f64 = 0.4;
-pub(crate) const HOLD: f64 = 1.0;
-pub(crate) const KINETIC_LIBRARY: &str = include_str!("../../../../../pipeline/templates/kinetic-library.json");
-
-pub(crate) fn invalid(message: impl Into<String>) -> EngineError {
-    EngineError::InvalidParams(message.into())
 }
 
 fn norm(text: &str) -> String {
@@ -100,6 +103,10 @@ pub(crate) fn document_path(dir: &Path) -> PathBuf {
 
 fn heard_text(w: &Value) -> &str {
     w["text"].as_str().or_else(|| w["word"].as_str()).unwrap_or_default().trim()
+}
+
+pub(crate) fn word_tick(w: &Value, tick_key: &str, sec_key: &str) -> Option<Tick> {
+    w.get(tick_key).and_then(Value::as_i64).map(Tick).or_else(|| w.get(sec_key).and_then(parse_tick))
 }
 
 pub(crate) fn reference(dir: &Path) -> Result<(PathBuf, String, Vec<Value>)> {
@@ -182,17 +189,19 @@ fn attach_reference_timing(words: &mut [Value], heard: &[Value], heard_norm: &[S
             None => "missing",
         };
         let (start, end, source) = match (found, status) {
-            (Some(j), "match") => (heard[*j]["start"].clone(), heard[*j]["end"].clone(), "reference"),
+            (Some(j), "match") => (word_tick(&heard[*j], "start_tick", "start"), word_tick(&heard[*j], "end_tick", "end"), "reference"),
             _ => match word["forced"].as_array() {
-                Some(f) => (f[0].clone(), f[1].clone(), "forced_alignment"),
-                None => (Value::Null, Value::Null, "none"),
+                Some(f) => (f.first().and_then(parse_tick), f.get(1).and_then(parse_tick), "forced_alignment"),
+                None => (None, None, "none"),
             },
         };
         word["ref_index"] = json!(found);
         word["heard"] = found.map_or(Value::Null, |j| json!(heard_text(&heard[j])));
         word["status"] = json!(status);
-        word["start"] = start;
-        word["end"] = end;
+        word["start_tick"] = start.map_or(Value::Null, |t| json!(t.0));
+        word["end_tick"] = end.map_or(Value::Null, |t| json!(t.0));
+        word["start"] = start.map_or(Value::Null, |t| json!(t.seconds()));
+        word["end"] = end.map_or(Value::Null, |t| json!(t.seconds()));
         word["timing_source"] = json!(source);
     }
 }
@@ -201,7 +210,7 @@ pub(crate) fn aligned(s: &mut Session) -> Result<Value> {
     aligned_in(&crate::cmd::words::workspace_dir(s)?)
 }
 
-/// The artist's words in sung order with transcript timing, for a project folder.
+/// The artist's words in sung order with transcript timing in `Tick`s, for a project folder.
 pub(crate) fn aligned_in(dir: &Path) -> Result<Value> {
     let dir = dir.to_path_buf();
     let lyrics = crate::cmd::words::lyrics::song_lyrics_in(&dir)?;
@@ -219,13 +228,15 @@ pub(crate) fn aligned_in(dir: &Path) -> Result<Value> {
         .filter(|w| w["status"] != "match")
         .map(|w| json!({"word_id":w["word_id"],"line_id":w["line_id"],"canonical":w["text"],"heard":w["heard"],"kind":w["status"]}))
         .collect();
+    let half_second = TICKS_PER_SECOND / 2;
     let disagreements: Vec<Value> = words
         .iter()
         .filter(|w| w["timing_source"] == "reference")
         .filter_map(|w| {
             let forced = w["forced"].as_array()?;
-            let (rs, fs) = (w["start"].as_f64()?, forced[0].as_f64()?);
-            ((rs - fs).abs() > 0.5).then(|| json!({"word_id":w["word_id"],"text":w["text"],"reference":[w["start"], w["end"]],"measured":forced}))
+            let rs = word_tick(w, "start_tick", "start")?;
+            let fs = forced.first().and_then(parse_tick)?;
+            ((rs.0 - fs.0).abs() > half_second).then(|| json!({"word_id":w["word_id"],"text":w["text"],"reference":[w["start"], w["end"]],"measured":forced}))
         })
         .collect();
     for word in &mut words {
@@ -261,153 +272,80 @@ pub fn cmd_words_align(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(report)
 }
 
-pub(crate) fn tag_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
-    let needle = format!(" {name}=\"");
-    let at = tag.find(&needle)? + needle.len();
-    tag[at..].split('"').next()
-}
-
-type RawClip = (String, String, f64, f64, Option<String>, Option<u64>);
-
-fn strip_html_tags(inner: &str) -> String {
-    let mut text = String::new();
-    let mut in_tag = false;
-    for c in inner.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            c if !in_tag => text.push(c),
-            _ => {}
+/// Inspect the project's lyric timing track in `Tick`s and report section overlaps.
+pub fn cmd_words_studio_track(s: &mut Session, _params: &Value) -> Result<Value> {
+    let dir = crate::cmd::words::workspace_dir(s)?;
+    let source = document_path(&dir);
+    let (doc, _) = match load(s, &dir)? {
+        Some(doc) => (with_sung_sections(doc, &aligned(s)?)?, true),
+        None => (default_document(&aligned(s)?)?, false),
+    };
+    let mut sections = Vec::new();
+    let mut clip_count = 0usize;
+    for anim in doc["animations"].as_array().into_iter().flatten() {
+        let scope = &anim["scope"];
+        let mut clips = Vec::new();
+        for w in anim["words"].as_array().into_iter().flatten() {
+            let Some(start) = word_tick(w, "start_tick", "start") else { continue };
+            let end = word_tick(w, "end_tick", "end").unwrap_or(start);
+            let dur = Tick((end.0 - start.0).max(0));
+            let wid = w["word_id"].as_str().unwrap_or_default();
+            clips.push(json!({
+                "clip_id": wid.replace("/w", "-"),
+                "word_id": wid,
+                "line_id": w["line_id"],
+                "text": w["text"],
+                "start_tick": start.0,
+                "duration_tick": dur.0,
+                "start": start.seconds(),
+                "duration": dur.seconds()
+            }));
         }
-    }
-    text.trim().to_owned()
-}
-
-fn parse_lyric_word_clips(html: &str) -> Vec<RawClip> {
-    let mut clips = Vec::new();
-    let mut from = 0;
-    while let Some(open) = html[from..].find('<').map(|i| i + from) {
-        let close = html[open..].find('>').map_or(html.len(), |i| i + open + 1);
-        let tag = &html[open..close];
-        from = close;
-        if !tag_attr(tag, "class").is_some_and(|c| c.split_whitespace().any(|c| c == "lyric-word-clip")) {
+        if clips.is_empty() {
             continue;
         }
-        let (Some(id), Some(start), Some(duration)) = (
-            tag_attr(tag, "id"),
-            tag_attr(tag, "data-start").and_then(|v| v.parse::<f64>().ok()),
-            tag_attr(tag, "data-duration").and_then(|v| v.parse::<f64>().ok()),
-        ) else {
-            continue;
-        };
-        let inner = html[close..].split("</div>").next().unwrap_or_default();
-        clips.push((
-            id.to_owned(),
-            strip_html_tags(inner),
-            start,
-            duration,
-            tag_attr(tag, "data-section").map(str::to_owned),
-            tag_attr(tag, "data-occurrence").and_then(|v| v.parse::<u64>().ok()),
-        ));
-    }
-    clips
-}
-
-fn match_line_clips(clips: &[RawClip], used: &mut [bool], section: &Value, line: &Value) -> Vec<Value> {
-    let sung = line["sung_id"].as_str().or(line["id"].as_str()).unwrap_or_default();
-    if sung.is_empty() {
-        return Vec::new();
-    }
-    let mut by_word: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
-    for (i, (id, _, _, _, scope, occurrence)) in clips.iter().enumerate() {
-        let Some(n) = id.rsplit_once('-').filter(|(head, _)| *head == sung || head.ends_with(&format!("-{sung}"))).and_then(|(_, n)| n.parse::<usize>().ok())
-        else {
-            continue;
-        };
-        if scope.as_deref().is_some_and(|v| Some(v) != section["section"].as_str()) || occurrence.is_some_and(|v| Some(v) != section["occurrence"].as_u64()) {
-            continue;
-        }
-        by_word.entry(n).or_default().push(i);
-    }
-    let repeat = section["occurrence"].as_u64().unwrap_or(1).saturating_sub(1) as usize;
-    let mut found = Vec::new();
-    for (n, mut candidates) in by_word {
-        candidates.sort_by(|a, b| clips[*a].2.total_cmp(&clips[*b].2));
-        let pick = if candidates.len() == 1 || clips[candidates[0]].5.is_some() { 0 } else { repeat };
-        if let Some(&i) = candidates.get(pick) {
-            let (id, text, start, duration, _, _) = &clips[i];
-            used[i] = true;
-            found.push(json!({"clip_id":id,"word_id":format!("{sung}/w{n}"),"line_id":line["id"],"text":text,"start":start,"duration":duration}));
-        }
-    }
-    found
-}
-
-fn detect_design_overlaps(html: &str, sections: &[Value]) -> Vec<Value> {
-    let mut placed: std::collections::HashMap<String, (f64, f64)> = std::collections::HashMap::new();
-    let mut from = 0;
-    while let Some(open) = html[from..].find('<').map(|i| i + from) {
-        let close = html[open..].find('>').map_or(html.len(), |i| i + open + 1);
-        let tag = &html[open..close];
-        from = close;
-        if !tag_attr(tag, "class").is_some_and(|c| c.split_whitespace().any(|c| c == "lyric-design-clip")) {
-            continue;
-        }
-        if let (Some(id), Some(s), Some(d)) = (
-            tag_attr(tag, "data-magic-words").or_else(|| tag_attr(tag, "id")),
-            tag_attr(tag, "data-start").and_then(|v| v.parse::<f64>().ok()),
-            tag_attr(tag, "data-duration").and_then(|v| v.parse::<f64>().ok()),
-        ) {
-            placed.insert(id.to_owned(), (s, s + d));
-        }
+        clip_count += clips.len();
+        let start_tick = anim["song_anchor_tick"].as_i64().map(Tick).or_else(|| anim["song_anchor"].as_f64().map(Tick::from_seconds_f64)).unwrap_or(Tick::ZERO);
+        let dur_tick =
+            anim["authored_duration_tick"].as_i64().map(Tick).or_else(|| anim["authored_duration"].as_f64().map(Tick::from_seconds_f64)).unwrap_or(Tick::ZERO);
+        let end_tick = start_tick + dur_tick;
+        sections.push(json!({
+            "animation_id": anim["animation_id"],
+            "section": scope["section"],
+            "occurrence": scope["occurrence"],
+            "start_tick": start_tick.0,
+            "end_tick": end_tick.0,
+            "start": start_tick.seconds(),
+            "end": end_tick.seconds(),
+            "clips": clips
+        }));
     }
     let mut overlaps = Vec::new();
+    let tolerance = TICKS_PER_SECOND / 20; // 50ms in ticks
     for i in 0..sections.len().saturating_sub(1) {
-        let cur_id =
-            format!("words-{}-{}", sections[i]["section"].as_str().unwrap_or("lyrics").replace("_", "-"), sections[i]["occurrence"].as_u64().unwrap_or(1));
-        let next_id = format!(
-            "words-{}-{}",
-            sections[i + 1]["section"].as_str().unwrap_or("lyrics").replace("_", "-"),
-            sections[i + 1]["occurrence"].as_u64().unwrap_or(1)
-        );
-        let cur_end = placed.get(&cur_id).map(|(_, e)| *e).or_else(|| sections[i]["end"].as_f64()).unwrap_or(0.0);
-        let next_start = sections[i + 1]["start"].as_f64().unwrap_or(f64::INFINITY);
-        if cur_end > next_start + 0.05 {
+        let cur_end = sections[i]["end_tick"].as_i64().unwrap_or(0);
+        let next_start = sections[i + 1]["start_tick"].as_i64().unwrap_or(i64::MAX);
+        if cur_end > next_start + tolerance {
+            let mid = Tick((next_start + cur_end) / 2);
             overlaps.push(json!({
-                "first_section": cur_id,
-                "second_section": next_id,
-                "start": (next_start * 100.0).round() / 100.0,
-                "end": (cur_end * 100.0).round() / 100.0,
-                "at": (((next_start + cur_end) * 0.5) * 100.0).round() / 100.0
+                "first_section": sections[i]["animation_id"],
+                "second_section": sections[i + 1]["animation_id"],
+                "start_tick": next_start,
+                "end_tick": cur_end,
+                "at_tick": mid.0,
+                "start": Tick(next_start).seconds(),
+                "end": Tick(cur_end).seconds(),
+                "at": mid.seconds()
             }));
         }
     }
-    overlaps
-}
-
-pub fn cmd_words_studio_track(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = crate::cmd::words::workspace_dir(s)?;
-    let path = dir.join("hyperframes/index.html");
-    let html = fs::read_to_string(&path).map_err(|_| invalid("This project has no HyperFrames video yet; run video.init first"))?;
-    let clips = parse_lyric_word_clips(&html);
-    let lyrics = crate::cmd::words::lyrics::cmd_song_lyrics(s, &json!({}))?;
-    let mut used = vec![false; clips.len()];
-    let mut sections = Vec::new();
-    for section in lyrics["sections"].as_array().into_iter().flatten() {
-        let mut found: Vec<Value> =
-            section["lines"].as_array().into_iter().flatten().flat_map(|line| match_line_clips(&clips, &mut used, section, line)).collect();
-        if found.is_empty() {
-            continue;
-        }
-        found.sort_by(|a, b| a["start"].as_f64().partial_cmp(&b["start"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
-        let start = found.iter().filter_map(|c| c["start"].as_f64()).fold(f64::INFINITY, f64::min);
-        let end = found.iter().filter_map(|c| Some(c["start"].as_f64()? + c["duration"].as_f64()?)).fold(0.0, f64::max);
-        sections.push(json!({"section":section["section"],"label":section["label"],"occurrence":section["occurrence"],"start":start,"end":end,"clips":found}));
-    }
-    let overlaps = detect_design_overlaps(&html, &sections);
-    let unmatched: Vec<&str> = clips.iter().zip(&used).filter(|(_, u)| !**u).map(|((id, ..), _)| id.as_str()).collect();
-    let preview_url = (params["preview_status"] == true).then(|| crate::cmd::film::video_target::video_server_info(&dir, "hyperframes")["url"].clone());
-    Ok(json!({"source":path,"preview_url":preview_url,"clip_count":clips.len(),"sections":sections,"overlaps":overlaps,"unmatched":unmatched}))
+    Ok(json!({
+        "source": source,
+        "clip_count": clip_count,
+        "sections": sections,
+        "overlaps": overlaps,
+        "unmatched": []
+    }))
 }
 
 pub fn cmd_words_overlaps(s: &mut Session, p: &Value) -> Result<Value> {
@@ -419,9 +357,6 @@ pub fn cmd_words_overlaps(s: &mut Session, p: &Value) -> Result<Value> {
         "overlaps": overlaps
     }))
 }
-
-pub(crate) use stage::one_of;
-pub use stage::{cmd_words_effects, cmd_words_link, cmd_words_lyrics_view, cmd_words_read, cmd_words_save};
 
 pub(crate) fn with_sung_sections(mut doc: Value, report: &Value) -> Result<Value> {
     let fresh = default_document(report)?["animations"].as_array().cloned().unwrap_or_default();
@@ -475,6 +410,8 @@ pub(crate) fn default_document(report: &Value) -> Result<Value> {
             "line_id": w["line_id"],
             "sung_id": w["sung_id"],
             "ref_index": w["ref_index"],
+            "start_tick": w["start_tick"],
+            "end_tick": w["end_tick"],
             "start": w["start"],
             "end": w["end"],
             "timing_source": w["timing_source"],
@@ -502,18 +439,26 @@ pub(crate) fn word_time_key(scope: &Value, id: &str) -> String {
     format!("{}#{}:{id}", scope["section"].as_str().unwrap_or(""), scope["occurrence"].as_u64().unwrap_or(1))
 }
 
-pub(crate) fn studio_times(s: &mut Session) -> std::collections::HashMap<String, (f64, f64)> {
-    let track = cmd_words_studio_track(s, &json!({})).unwrap_or(Value::Null);
-    track["sections"]
+pub(crate) fn studio_times(s: &mut Session) -> std::collections::HashMap<String, (Tick, Tick)> {
+    let Ok(dir) = workspace_dir(s) else {
+        return std::collections::HashMap::new();
+    };
+    let track_file = dir.join("design/words-track.json");
+    let Ok(bytes) = fs::read(track_file) else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(track) = serde_json::from_slice::<Value>(&bytes) else {
+        return std::collections::HashMap::new();
+    };
+    track["clips"]
         .as_array()
         .into_iter()
         .flatten()
-        .flat_map(|sec| {
-            sec["clips"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(move |c| Some((word_time_key(sec, c["word_id"].as_str()?), (c["start"].as_f64()?, c["start"].as_f64()? + c["duration"].as_f64()?))))
+        .filter_map(|c| {
+            let key = word_time_key(c, c["word_id"].as_str()?);
+            let start = word_tick(c, "start_tick", "start")?;
+            let end = word_tick(c, "end_tick", "end")?;
+            Some((key, (start, end)))
         })
         .collect()
 }
@@ -522,7 +467,16 @@ pub(crate) fn fill_untimed(anim: &mut Value) {
     let Some(words) = anim["words"].as_array_mut() else {
         return;
     };
-    let timed = |w: &Value| w["start"].is_number() && w["end"].is_number();
+    let timed = |w: &Value| word_tick(w, "start_tick", "start").is_some() && word_tick(w, "end_tick", "end").is_some();
+    for w in words.iter_mut() {
+        if let (Some(st), Some(et)) = (word_tick(w, "start_tick", "start"), word_tick(w, "end_tick", "end")) {
+            w["start_tick"] = json!(st.0);
+            w["end_tick"] = json!(et.0);
+            w["start"] = json!(st.seconds());
+            w["end"] = json!(et.seconds());
+        }
+    }
+    let default_word_step = Tick(TICKS_PER_SECOND * 7 / 20); // 0.35s in ticks
     let mut i = 0;
     while i < words.len() {
         if timed(&words[i]) {
@@ -530,20 +484,24 @@ pub(crate) fn fill_untimed(anim: &mut Value) {
             continue;
         }
         let run_end = (i..words.len()).find(|&k| timed(&words[k])).unwrap_or(words.len());
-        let before = (0..i).rev().find(|&k| timed(&words[k])).and_then(|k| words[k]["end"].as_f64());
-        let after = words.get(run_end).and_then(|w| w["start"].as_f64());
-        let n = (run_end - i) as f64;
+        let before = (0..i).rev().find(|&k| timed(&words[k])).and_then(|k| word_tick(&words[k], "end_tick", "end"));
+        let after = words.get(run_end).and_then(|w| word_tick(w, "start_tick", "start"));
+        let n = (run_end - i) as i64;
+        let span = Tick(default_word_step.0 * n);
         let (from, to) = match (before, after) {
             (Some(a), Some(b)) if b > a => (a, b),
-            (Some(a), _) => (a, a + 0.35 * n),
-            (None, Some(b)) => ((b - 0.35 * n).max(0.0), b),
+            (Some(a), _) => (a, a + span),
+            (None, Some(b)) => (Tick((b.0 - span.0).max(0)), b),
             (None, None) => return,
         };
-        let step = (to - from) / n;
+        let step = Tick((to.0 - from.0) / n.max(1));
         for (k, w) in words[i..run_end].iter_mut().enumerate() {
-            let start = from + step * k as f64;
-            w["start"] = json!((start * 1e6).round() / 1e6);
-            w["end"] = json!(((start + step) * 1e6).round() / 1e6);
+            let start = Tick(from.0 + step.0 * k as i64);
+            let end = start + step;
+            w["start_tick"] = json!(start.0);
+            w["end_tick"] = json!(end.0);
+            w["start"] = json!(start.seconds());
+            w["end"] = json!(end.seconds());
             w["timing_source"] = json!("interpolated");
         }
         i = run_end;
@@ -551,18 +509,24 @@ pub(crate) fn fill_untimed(anim: &mut Value) {
 }
 
 pub(crate) fn timing(anim: &mut Value) {
-    let times: Vec<(f64, f64)> = anim["words"].as_array().into_iter().flatten().filter_map(|w| Some((w["start"].as_f64()?, w["end"].as_f64()?))).collect();
-    if let (Some(first), Some(last)) = (times.iter().map(|t| t.0).reduce(f64::min), times.iter().map(|t| t.1).reduce(f64::max)) {
-        let lead_in = LEAD_IN.min(first);
-        anim["lead_in"] = json!(lead_in);
-        anim["hold"] = json!(HOLD);
-        anim["song_anchor"] = json!(first - lead_in);
-        anim["authored_duration"] = json!((last + HOLD) - (first - lead_in));
+    let times: Vec<(Tick, Tick)> =
+        anim["words"].as_array().into_iter().flatten().filter_map(|w| Some((word_tick(w, "start_tick", "start")?, word_tick(w, "end_tick", "end")?))).collect();
+    if let (Some(first), Some(last)) = (times.iter().map(|t| t.0).min(), times.iter().map(|t| t.1).max()) {
+        let lead_in = LEAD_IN_TICK.min(first);
+        let anchor = first - lead_in;
+        let duration = (last + HOLD_TICK) - anchor;
+        anim["lead_in_tick"] = json!(lead_in.0);
+        anim["hold_tick"] = json!(HOLD_TICK.0);
+        anim["song_anchor_tick"] = json!(anchor.0);
+        anim["authored_duration_tick"] = json!(duration.0);
+        anim["lead_in"] = json!(lead_in.seconds());
+        anim["hold"] = json!(HOLD_TICK.seconds());
+        anim["song_anchor"] = json!(anchor.seconds());
+        anim["authored_duration"] = json!(duration.seconds());
     }
 }
 
-/// The lyric design (`design/words.json`). Its content stays JSON until its schema is typed;
-/// the type gives it one identity, path and save path through the session.
+/// The lyric design (`design/words.json`).
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub(crate) struct WordsDesign(pub Value);
@@ -574,13 +538,10 @@ impl crate::doc_state::ProjectDoc for WordsDesign {
     }
 }
 
-/// The lyric design from the session's open documents, loaded on first use and reloaded when
-/// another writer changed the file (`session/documents.rs`).
 pub(crate) fn load(s: &mut Session, dir: &Path) -> Result<Option<Value>> {
     Ok(s.doc::<WordsDesign>(dir)?.map(|d| d.0))
 }
 
-/// Store the lyric design as a session edit and write it.
 pub(crate) fn save(s: &mut Session, dir: &Path, doc: &Value) -> Result<()> {
     s.save_doc(dir, &WordsDesign(doc.clone()))
 }
@@ -609,10 +570,14 @@ pub(crate) fn printed_caption_words(aligned: &Value) -> (Vec<Value>, Vec<[usize;
     let mut words: Vec<Value> = src
         .iter()
         .map(|w| {
+            let st = word_tick(w, "start_tick", "start");
+            let et = word_tick(w, "end_tick", "end");
             json!({
                 "text": w["text"],
-                "start": w["start"],
-                "end": w["end"],
+                "start_tick": st.map(|t| t.0),
+                "end_tick": et.map(|t| t.0),
+                "start": st.map(Tick::seconds),
+                "end": et.map(Tick::seconds),
                 "word_id": w["word_id"],
                 "line": w["sung_id"],
                 "section": w["section"],
@@ -620,87 +585,31 @@ pub(crate) fn printed_caption_words(aligned: &Value) -> (Vec<Value>, Vec<[usize;
             })
         })
         .collect();
+    let step_300ms = TICKS_PER_SECOND * 3 / 10;
+    let step_350ms = TICKS_PER_SECOND * 7 / 20;
     let mut i = 0;
     while i < words.len() {
-        if words[i]["start"].is_f64() {
+        if words[i]["start_tick"].is_i64() {
             i += 1;
             continue;
         }
-        let j = (i..words.len()).find(|&k| words[k]["start"].is_f64()).unwrap_or(words.len());
-        let before = if i > 0 { words[i - 1]["end"].as_f64().unwrap_or(0.0) } else { 0.0 };
-        let next = words.get(j).and_then(|w| w["start"].as_f64()).unwrap_or(before + 0.3 * (j - i) as f64);
-        let prev = before.max(next - 0.35 * (j - i) as f64);
-        let step = (next - prev).max(0.0) / (j - i) as f64;
+        let j = (i..words.len()).find(|&k| words[k]["start_tick"].is_i64()).unwrap_or(words.len());
+        let count = (j - i) as i64;
+        let before = if i > 0 { words[i - 1]["end_tick"].as_i64().unwrap_or(0) } else { 0 };
+        let next = words.get(j).and_then(|w| w["start_tick"].as_i64()).unwrap_or(before + step_300ms * count);
+        let prev = before.max(next - step_350ms * count);
+        let step = (next - prev).max(0) / count.max(1);
         for (n, w) in words[i..j].iter_mut().enumerate() {
-            w["start"] = json!(prev + step * n as f64);
-            w["end"] = json!(prev + step * (n + 1) as f64);
+            let st = Tick(prev + step * n as i64);
+            let et = Tick(prev + step * (n as i64 + 1));
+            w["start_tick"] = json!(st.0);
+            w["end_tick"] = json!(et.0);
+            w["start"] = json!(st.seconds());
+            w["end"] = json!(et.seconds());
         }
         i = j;
     }
     (words, group_caption_lines(&src))
-}
-
-pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Result<Value> {
-    let index = dir.join("hyperframes/index.html");
-    let host = fs::read_to_string(&index).unwrap_or_default();
-    let designed: std::collections::BTreeSet<&str> = host.split("data-magic-words=\"").skip(1).filter_map(|r| r.split("\"").next()).collect();
-    let open: Vec<Value> = aligned["words"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|w| {
-            let id = format!("words-{}-{}", w["section"].as_str().unwrap_or("lyrics").replace("_", "-"), w["occurrence"].as_u64().unwrap_or(1));
-            !designed.contains(id.as_str())
-        })
-        .cloned()
-        .collect();
-    let (words, groups) = printed_caption_words(&json!({"words": open}));
-    let comp = dir.join("hyperframes/compositions");
-    let dest = comp.join("captions.html");
-    if words.is_empty() {
-        let marker = "data-composition-src=\"compositions/captions.html\"";
-        let kept: Vec<&str> = host.lines().filter(|l| !l.contains(marker)).collect();
-        if kept.len() != host.lines().count() {
-            crate::doc_state::write_file(&index, kept.join("\n") + "\n")?;
-        }
-        return Ok(json!({"ok":true,"caption_track":"removed: every section is designed","source":dest,"designed":designed}));
-    }
-    let duration =
-        crate::cmd::film::video_target::probe_audio_duration(s.song_audio.as_deref())?.max(words.iter().filter_map(|w| w["end"].as_f64()).fold(0.0, f64::max));
-    let kept = if dest.is_file() {
-        let version = (1..).map(|n| comp.join(format!("captions.v{n}.html"))).find(|p| !p.exists()).ok_or_else(|| invalid("No available caption version"))?;
-        fs::copy(&dest, &version)?;
-        Some(version)
-    } else {
-        None
-    };
-    crate::cmd::film::video_target::write_caption_source(&dest, &words, &groups, duration)?;
-    let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&words).map_err(|e| invalid(e.to_string()))?));
-    let receipt = dir.join("hyperframes/.magic-captions.json");
-    crate::doc_state::write_file(
-        &receipt,
-        serde_json::to_vec_pretty(&json!({
-            "source_kind": "artist_lines",
-            "input_sha256": digest,
-            "word_count": words.len(),
-            "groups": groups.len(),
-            "duration": duration,
-            "previous_source": kept,
-            "grouping": "one group per printed line; long lines in two halves"
-        }))
-        .map_err(|e| invalid(e.to_string()))?,
-    )?;
-    Ok(json!({
-        "ok": true,
-        "source": dest,
-        "previous_source": kept,
-        "provenance": receipt,
-        "words": words.len(),
-        "groups": groups.len(),
-        "first": words.first(),
-        "last": words.last(),
-        "next": "hyperframes snapshot <project>/hyperframes --at <t> to check, then render"
-    }))
 }
 
 fn build_caption_line_map(aligned: &Value, by_line: bool) -> std::collections::HashMap<u64, String> {
@@ -717,16 +626,17 @@ fn build_caption_line_map(aligned: &Value, by_line: bool) -> std::collections::H
 }
 
 fn format_srt_cues(cues: &[(String, Vec<&Value>)]) -> String {
-    let clock = |t: f64| {
-        let ms = (t * 1000.0).round() as u64;
+    let clock = |t: Tick| {
+        let ms = (t.0.max(0) as u128 * 1000 / TICKS_PER_SECOND as u128) as u64;
         format!("{:02}:{:02}:{:02},{:03}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000)
     };
+    let min_dur = Tick(TICKS_PER_SECOND / 10);
     let mut srt = String::new();
     for (n, (_, words)) in cues.iter().enumerate() {
-        let start = words.iter().filter_map(|w| w["start"].as_f64()).reduce(f64::min).unwrap_or(0.0);
-        let end = words.iter().filter_map(|w| w["end"].as_f64()).reduce(f64::max).unwrap_or(start);
+        let start = words.iter().filter_map(|w| word_tick(w, "start_tick", "start")).min().unwrap_or(Tick::ZERO);
+        let end = words.iter().filter_map(|w| word_tick(w, "end_tick", "end")).max().unwrap_or(start);
         let text = words.iter().filter_map(|w| w["text"].as_str().or_else(|| w["word"].as_str())).collect::<Vec<_>>().join(" ");
-        srt.push_str(&format!("{}\n{} --> {}\n{text}\n\n", n + 1, clock(start), clock(end.max(start + 0.1))));
+        srt.push_str(&format!("{}\n{} --> {}\n{text}\n\n", n + 1, clock(start), clock(end.max(start + min_dur))));
     }
     srt
 }
@@ -750,9 +660,6 @@ pub fn cmd_words_captions(s: &mut Session, p: &Value) -> Result<Value> {
         if let Some((_, group)) = cues.last_mut() {
             group.push(w);
         }
-    }
-    if p["to"] == "video" {
-        return captions_to_video(s, &dir, &aligned);
     }
     let srt = format_srt_cues(&cues);
     let out = p["out"].as_str().map(PathBuf::from).unwrap_or_else(|| dir.join("lyrics.captions.srt"));

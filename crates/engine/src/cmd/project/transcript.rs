@@ -257,7 +257,7 @@ fn transcript_stem(s: &Session) -> String {
 
 fn ensure_no_existing_transcript(dir: &Path, stem: &str) -> Result<()> {
     for old in transcript_files(dir) {
-        if old != dir.join(format!("{stem}.transcript.json")) && old != dir.join("transcript.json") && old != dir.join("hyperframes/transcript.json") {
+        if old != dir.join(format!("{stem}.transcript.json")) && old != dir.join("transcript.json") {
             return Err(EngineError::InvalidParams(format!("project already has a transcript: {} (remove it first)", old.display())));
         }
     }

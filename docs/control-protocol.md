@@ -62,7 +62,7 @@ A parameter a method does not name is an error (`unknown parameter ...`), never 
 
 Pointer, key and text input are **DOM events dispatched by the page**, not operating-system
 input. They reach every handler and the defaults listed above, but they cannot trigger CSS
-`:hover` or native drag-and-drop and do not reach cross-origin frames (the HyperFrames preview).
+`:hover` or native drag-and-drop and do not reach cross-origin frames.
 Coordinates are window coordinates, the same space as the bounds `ui.elements` returns.
 
 View names: `home`, `project` (alias `projects`), `storyboard`, `design` (alias

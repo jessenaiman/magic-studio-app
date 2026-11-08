@@ -288,7 +288,7 @@ fn inspect_detail(path: &Path, dir: &Path, badge: &str, size: u64, duration_sec:
         "PC" | "VC" | "EC" => {
             if badge == "EC"
                 && path.file_name().and_then(|n| n.to_str()) == Some("lyrics.ecproj")
-                && let Some(lines) = words_line_count(dir).or_else(|| srt_cue_count(&dir.join("hyperframes/transcript.srt")))
+                && let Some(lines) = words_line_count(dir)
             {
                 parts.push(format!("{lines} timed lines"));
             }

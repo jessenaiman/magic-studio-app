@@ -7,7 +7,6 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tauri::Emitter;
-use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default)]
 pub(super) struct Lifecycle {
@@ -136,7 +135,7 @@ pub(super) fn native_close(app: &tauri::AppHandle) {
     std::thread::spawn(move || {
         if let Err(error) = exit(&handle, false) {
             let _ = handle.emit("magic-lifecycle-blocked", json!({"error":error}));
-            handle.dialog().message(error).title("Unsaved work or active operation").kind(tauri_plugin_dialog::MessageDialogKind::Warning).show(|_| {});
+            super::dialogs::warn(&handle, "Unsaved work or active operation", error);
         }
         desktop.lifecycle.native_request.store(false, Ordering::Release);
     });

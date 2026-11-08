@@ -4,7 +4,6 @@
 
 pub mod assembly;
 mod export_validation;
-pub mod video_target;
 
 use std::path::{Path, PathBuf};
 
@@ -365,6 +364,7 @@ pub(crate) fn media_duration_ticks(filename: &Path, require_video: bool) -> Resu
     Ok(duration)
 }
 
+#[allow(dead_code)]
 pub(crate) fn media_duration(filename: &Path, require_video: bool) -> Result<f64> {
     media_duration_ticks(filename, require_video).map(|t| t.seconds())
 }

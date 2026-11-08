@@ -53,7 +53,7 @@ clock, and save the changes. Visual design preserves the source words and timing
 ## Studio: bring the film together
 
 Open **Studio** and choose **Start the studio** when it is off.
-Arrange and preview the linked HyperFrames composition, bringing the song,
+Arrange and preview the linked FilmCraft timeline, bringing the song,
 artwork, animation, and lettering together. Composition files stay in the project.
 Fidget's project conversation is available from the top bar when you need help.
 
@@ -112,7 +112,7 @@ An installed app opens without a provider key. Shared foundation crates come fro
 (DesignCraft, EffectCraft, FilmCraft, PhotoCraft, VectorCraft, TextureCraft) are driven
 through [`CraftHub`](crates/engine/src/craft_hub/mod.rs) over `--control` or their installed `<app>-cli`
 binaries on `PATH`. Opening a separate native editor requires its installed
-application. HyperFrames and FFmpeg remain external runtimes. See the
+application. FFmpeg remains an external runtime. See the
 [production guide](apps/magic/agent.md).
 The [setup guide](apps/magic/README.md) covers build
 options and development builds. Update native code or embedded UI by rebuilding

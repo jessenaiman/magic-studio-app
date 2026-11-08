@@ -454,22 +454,6 @@ pub(crate) fn acquire_tool_slot() -> ToolSlotGuard {
     ToolSlotGuard
 }
 
-/// Run an external command-line tool in `cwd`, capturing stdout as a String.
-pub(crate) fn run_tool_in(cwd: &Path, tool: &str, args: &[String]) -> Result<String> {
-    let _slot = acquire_tool_slot();
-    let executable = if !tool.contains('/') { resolve_tool(tool) } else { tool.to_string() };
-    let output =
-        std::process::Command::new(&executable).current_dir(cwd).args(args).output().map_err(|e| EngineError::ExternalTool(tool.to_string(), e.to_string()))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let detail = if stderr.trim().is_empty() { stdout.trim().to_string() } else { stderr.trim().to_string() };
-        Err(EngineError::ExternalTool(tool.to_string(), format!("exit {:?}: {detail}", output.status.code())))
-    }
-}
-
 /// Audio file extensions recognized by the workshop.
 pub(crate) const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "m4a", "aac", "ogg"];
 

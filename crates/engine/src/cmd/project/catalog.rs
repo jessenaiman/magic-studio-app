@@ -111,8 +111,7 @@ fn readiness(path: &Path) -> Value {
             .ok()
             .is_some_and(|document| document["words"].as_array().is_some_and(|words| !words.is_empty()))
     });
-    let editor_ready = dir.join("hyperframes/index.html").is_file()
-        || doc["workshop"]["video_project"].as_str().is_some_and(|v| !v.is_empty() && (dir.join(v).exists() || Path::new(v).exists()));
+    let editor_ready = doc["workshop"]["video_project"].as_str().is_some_and(|v| !v.is_empty() && (dir.join(v).exists() || Path::new(v).exists()));
     let next = if !audio {
         "Choose existing song audio"
     } else if !transcript {

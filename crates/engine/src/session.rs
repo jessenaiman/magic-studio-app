@@ -28,7 +28,7 @@ pub struct Session {
     pub project_path: Option<PathBuf>,
     /// Folder opened directly by the standalone Lyrics editor.
     pub lyrics_workspace: Option<PathBuf>,
-    /// Where the final video project lives (HyperFrames/Remotion/FilmCraft). Single source of truth.
+    /// Where the final video project lives (Remotion/FilmCraft). Single source of truth.
     pub video_project_path: Option<PathBuf>,
     /// `Some("animation")` for a character study (Animation only, no song or
     /// storyboard); `None` for a song project.
@@ -43,13 +43,13 @@ pub struct Session {
     pub project_stamp: std::cell::Cell<Option<crate::link_watch::FileStamp>>,
     /// The last storyboard `completion` report, reused while its document is unchanged.
     pub(crate) storyboard_completion: std::cell::RefCell<Option<crate::cmd::storyboard::CompletionCache>>,
-    /// The selected recording; uploads use the copy inside the contained HyperFrames project.
+    /// The selected recording; uploads use the copy inside the project.
     pub song_audio: Option<PathBuf>,
     /// Editable song details, stored only in this project's `.magic` document.
     pub song: crate::cmd::song::song_metadata::SongMetadata,
     /// Whether the user approved the workshop draft PDF.
     pub draft_approved: bool,
-    /// The contained HyperFrames video project.
+    /// The linked video project.
     pub video_target: String,
     /// Currently active asset id in the session.
     pub active_asset: Option<String>,
@@ -86,7 +86,7 @@ impl Default for Session {
             song_audio: None,
             song: crate::cmd::song::song_metadata::SongMetadata::default(),
             draft_approved: false,
-            video_target: "hyperframes".into(),
+            video_target: "filmcraft".into(),
             active_asset: None,
             last_result: None,
             project_saves: std::sync::atomic::AtomicU64::new(0),

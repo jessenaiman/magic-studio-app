@@ -3,9 +3,8 @@
 //!
 //! Related workshop submodules:
 //! - [`crate::cmd::project::intake`]: Audio/target linking, file intake, panel splitting, draft approval, and file catalog
-//! - [`crate::cmd::project::transcript`]: Stage 2 transcript validation, SRT captions, and HyperFrames audio/beat analysis
+//! - [`crate::cmd::project::transcript`]: Stage 2 transcript validation and SRT captions
 //! - [`crate::cmd::storyboard`]: Storyboard chapters and PDF generation
-//! - [`crate::cmd::film::video_target`]: Video target scaffolding and preview servers
 
 use std::path::{Path, PathBuf};
 
@@ -13,13 +12,9 @@ use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
 
-use crate::cmd::film::video_target::{target_project_chip, target_project_path};
 use crate::workspace::{has_extension, workspace_root};
 
-// Re-export video target, intake and transcript handlers so `crate::workshop::*` callers continue to work.
-pub use crate::cmd::film::video_target::{
-    cmd_video_init, cmd_video_place_track, cmd_video_render, cmd_video_server_start, cmd_video_server_stop, cmd_video_snapshot,
-};
+// Re-export intake and transcript handlers so `crate::workshop::*` callers continue to work.
 pub use crate::cmd::project::intake::{
     cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_remove, cmd_workshop_set_audio, cmd_workshop_set_target,
     cmd_workshop_split_panels,
@@ -36,7 +31,7 @@ pub(crate) const STORYBOARD_PDF: &str = "storyboard.pdf";
 /// Static images for video tracks (characters, props, backgrounds), ideally transparent.
 pub(crate) const ASSETS_DIR: &str = "assets";
 /// Video targets the song can be edited in; Remotion is the default.
-pub const VIDEO_TARGETS: &[&str] = &["remotion", "filmcraft", "hyperframes"];
+pub const VIDEO_TARGETS: &[&str] = &["remotion", "filmcraft"];
 /// FilmCraft time base: ticks per second.
 pub(crate) const SEQUENCE_TICKS_PER_SECOND: f64 = 254_016_000_000.0;
 
@@ -115,10 +110,10 @@ pub(crate) fn brief_header(dir: &Path) -> String {
 pub(crate) fn stage_body(s: &Session, dir: &Path, stage: &str) -> String {
     let target = s.video_target.as_str();
     match stage {
-        "song" => "Stage 1 — Song. Link the song audio (scaffolds hyperframes/ and tags data-timeline-role=\"music\") and optional liner notes.\n  magic-cli exec workshop.set_audio path=<song>\n  magic-cli exec workshop.add kind=liner_notes paths='[\"<file>\"]'".to_string(),
+        "song" => "Stage 1 — Song. Link the song audio and optional liner notes.\n  magic-cli exec workshop.set_audio path=<song>\n  magic-cli exec workshop.add kind=liner_notes paths='[\"<file>\"]'".to_string(),
         "transcript" => format!(
             "Stage 2 — Transcription & music analysis. Transcribe word timings, export captions, and analyze sections/beats.\n  magic-cli exec audio.analyze\nAlready have a transcript? magic-cli exec workshop.import_transcript path=<file> captions=<srt>\nVideo target: {target}.{}",
-            skill_hints(s, dir, &[match target { "hyperframes" => "hyperframes-cli", "filmcraft" => "filmcraft", _ => "remotion-best-practices" }])
+            skill_hints(s, dir, &[match target { "filmcraft" => "filmcraft", _ => "remotion-best-practices" }])
         ),
         "reference" => format!(
             "Stage 3 — Reference art. Add 16:9 scene plates under `assets/backgrounds/`, then approve.\n  magic-cli exec project.add_asset path=<image>\n  magic-cli exec workshop.approve_draft{}",
@@ -146,10 +141,6 @@ pub(crate) fn files_in(dir: &Path, only: Option<&[&str]>) -> Vec<PathBuf> {
 }
 
 pub(crate) fn transcript_files(dir: &Path) -> Vec<PathBuf> {
-    let native = dir.join("hyperframes/transcript.json");
-    if native.is_file() {
-        return vec![native];
-    }
     files_in(dir, Some(&["json"])).into_iter().filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".transcript.json"))).collect()
 }
 
@@ -228,7 +219,7 @@ pub(crate) fn project_dir(s: &Session) -> Result<PathBuf> {
         .ok_or_else(|| EngineError::InvalidParams("no project is open; use project.new or project.open".into()))
 }
 
-fn workshop_transcript_summary(dir: &Path, video_target: &str, transcripts: &[PathBuf], target_chip: &Value) -> (Value, Vec<String>, bool, String, Vec<Value>) {
+fn workshop_transcript_summary(dir: &Path, video_target: &str, transcripts: &[PathBuf]) -> (Value, Vec<String>, bool, String, Vec<Value>) {
     let source = transcripts.first().cloned();
     let doc = source.as_ref().and_then(|p| transcript_document(p).ok()).unwrap_or(Value::Null);
     let errors = transcript_problems(&doc);
@@ -252,7 +243,6 @@ fn workshop_transcript_summary(dir: &Path, video_target: &str, transcripts: &[Pa
             outputs.push(file_chip(&file));
         }
     }
-    outputs.push(target_chip.clone());
     (doc, errors, valid, why, outputs)
 }
 
@@ -270,39 +260,6 @@ fn workshop_reference_state(s: &Session, dir: &Path, panels: &[PathBuf]) -> (Pat
         (true, true) => "Reference art approved.",
     };
     (pdf, has_ref_art, approved, why)
-}
-
-/// What the HyperFrames video project still needs, as warnings and next steps.
-fn diagnose_video_setup(s: &Session, dir: &Path) -> Value {
-    let mut warnings: Vec<&str> = Vec::new();
-    let mut next: Vec<&str> = Vec::new();
-    let hf = dir.join("hyperframes");
-    if !hf.join("hyperframes.json").is_file() {
-        warnings.push("HyperFrames project (hyperframes/hyperframes.json) is missing.");
-        next.push("Run `magic-cli exec workshop.set_audio path=<song.wav>` to scaffold hyperframes/ and link the song.");
-        return json!({"warnings": warnings, "next_steps": next});
-    }
-    if s.video_project_path.as_ref().is_none_or(|p| !p.exists()) {
-        warnings.push("Project file is not linked to hyperframes/hyperframes.json.");
-        next.push("Run `magic-cli exec video.init target=hyperframes` to link the HyperFrames project.");
-    }
-    if let Ok(html) = std::fs::read_to_string(hf.join("index.html"))
-        && html.contains("<audio")
-        && !html.contains("data-timeline-role=\"music\"")
-    {
-        warnings.push("hyperframes/index.html <audio> is missing data-timeline-role=\"music\" (required by `hyperframes beats`).");
-        next.push("Run `magic-cli exec audio.analyze` to tag the music track and generate beat/section analysis.");
-    }
-    if !hf.join("audio-analysis.json").is_file() {
-        warnings.push("hyperframes/audio-analysis.json is missing (sections/onsets/moments not analyzed).");
-        next.push("Run `magic-cli exec audio.analyze` to generate transcript.json, transcript.srt, audio-analysis.json, and beats/.");
-    }
-    let has_beats = std::fs::read_dir(hf.join("beats")).into_iter().flatten().flatten().any(|e| e.path().extension().is_some_and(|x| x == "json"));
-    if !has_beats {
-        warnings.push("hyperframes/beats/*.json beat grid is missing.");
-        next.push("Run `hyperframes beats hyperframes --json` or `magic-cli exec audio.analyze` to build the Studio beat grid.");
-    }
-    json!({"warnings": warnings, "next_steps": next})
 }
 
 /// Workshop status: what each stage needs, whether complete, asset riggability, server state.
@@ -323,26 +280,17 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         (true, true) => "Song audio linked and ready (liner notes optional).",
         (true, false) => "Song and liner notes are in place.",
     };
-    let active_target_path = target_project_path(s, &dir, target);
-    let target_chip = target_project_chip(s, &dir, target);
-    let target_project = json!({"target": target, "path": active_target_path, "ready": active_target_path.is_some(), "chip": target_chip});
-    let targets: Vec<Value> = VIDEO_TARGETS
-        .iter()
-        .map(|t| {
-            let path = target_project_path(s, &dir, t);
-            json!({"target": t, "selected": *t == target, "path": path, "exists": path.is_some()})
-        })
-        .collect();
+    let targets: Vec<Value> = VIDEO_TARGETS.iter().map(|t| json!({"target": t, "selected": *t == target})).collect();
     let (supplied_transcript, transcript_errors, transcript_valid, transcript_why, transcript_outputs) =
-        workshop_transcript_summary(&dir, target, &transcripts, &target_chip);
+        workshop_transcript_summary(&dir, target, &transcripts);
     let animated = workshop_animated_assets(s);
     let mut stages = vec![
         json!({"id": "song", "title": "Song", "done": audio_ok, "why": song_why,
             "inputs": s.song_audio.iter().map(|p| file_chip(p)).chain(liner.iter().map(|p| file_chip(p))).collect::<Vec<_>>(),
-            "outputs": vec![target_chip], "brief": stage_brief(s, &dir, "song")}),
+            "outputs": Vec::<Value>::new(), "brief": stage_brief(s, &dir, "song")}),
         json!({"id": "transcript", "title": "Transcription & transcoding", "done": transcript_valid, "why": transcript_why,
             "inputs": s.song_audio.iter().map(|p| file_chip(p)).collect::<Vec<_>>(), "outputs": transcript_outputs,
-            "document": supplied_transcript, "problems": transcript_errors, "target": target_project, "brief": stage_brief(s, &dir, "transcript")}),
+            "document": supplied_transcript, "problems": transcript_errors, "brief": stage_brief(s, &dir, "transcript")}),
         json!({"id": "reference", "title": "Reference art", "done": has_ref_art && approved, "optional": true, "why": reference_why,
             "inputs": panels.iter().map(|p| file_chip(p)).collect::<Vec<_>>(),
             "outputs": std::iter::once(file_chip(&pdf)).chain(assets.iter().map(|p| file_chip(p))).collect::<Vec<_>>(),
@@ -358,8 +306,7 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
     let storyboard_complete = storyboard["complete"] == true;
     let complete = setup_ready && storyboard_complete;
     let studio_info = studio(&dir);
-    let effective_video_project = s.video_project_path.clone().or_else(|| active_target_path.clone());
-    let diag = diagnose_video_setup(s, &dir);
+    let effective_video_project = s.video_project_path.clone();
     let mut status = json!({
         "ok": true,
         "project_dir": dir,
@@ -375,8 +322,6 @@ pub(crate) fn workshop_status(s: &Session) -> Result<Value> {
         "studio": {"name": studio_info.name, "intent": studio_info.intent, "source": studio_info.source},
         "video_project_path": effective_video_project,
         "video_project_exists": effective_video_project.as_ref().is_some_and(|p| p.exists()),
-        "diagnostics": diag,
-        "next_steps": diag["next_steps"],
         "stages": stages
     });
     status["prerequisites"] = prerequisites(&status);

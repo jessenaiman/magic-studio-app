@@ -181,7 +181,7 @@ fn disc_parent_coral_outline(id: &str) -> Option<Value> {
     }
 }
 
-/// Convert a HyperFrames/Studio `parts/rig.json` into `parts.json` marks without needing Codex.
+/// Convert a Studio `parts/rig.json` into `parts.json` marks without needing Codex.
 fn import_rig_marks(s: &mut Session, view: &View, p: &Value) -> Result<Option<Value>> {
     let Some(char_dir) = view.dir.parent() else {
         return Ok(None);

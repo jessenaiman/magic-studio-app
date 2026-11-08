@@ -6,6 +6,7 @@ mod asset_scope;
 mod capture;
 mod clipboard_image;
 mod control;
+mod dialogs;
 mod lifecycle;
 
 use clap::Parser;
@@ -146,6 +147,7 @@ fn dispatch(app: &tauri::AppHandle, id: &str, params: Value, notify: bool) -> Re
         }
         "ui.screenshot" => return screenshot(app, &params),
         "ui.resize" => return resize(app, &params),
+        "ui.dialog.state" | "ui.dialog.override" => return dialogs::control(app, id, &params),
         "ui.feedback" | "ui.look" => return ui_request(app, "ui.inspect", params),
         id if id.starts_with("ui.") => return ui_request(app, id, params),
         _ => {}
@@ -289,7 +291,6 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_log::Builder::default()
@@ -307,7 +308,7 @@ fn main() {
                 lifecycle::native_close(window.app_handle());
             }
         })
-        .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, record_ui_error, ui_reply, session_snapshot])
+        .invoke_handler(tauri::generate_handler![execute_command, desktop_ready, record_ui_error, ui_reply, session_snapshot, dialogs::pick_file])
         .setup(move |app| {
             if let Some(path) = &cli.project {
                 dispatch(app.handle(), "project.open", json!({"path":path}), false)?;

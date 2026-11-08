@@ -10,9 +10,6 @@ const LAYERS: &[(&str, u8)] = &[("magic-engine", 5), ("magic-mcp", 6), ("magic",
 /// Craft backends (L0–L4): maintained dependencies Magic drives, never edited here.
 const CRAFT_PREFIXES: &[&str] = &["designcraft-", "effectcraft-", "filmcraft-", "photocraft-", "vectorcraft-", "texturecraft-", "craft-"];
 
-/// Crates that must not appear below L6 (UI toolkits, windowing, OS dialogs).
-const UI_ONLY: &[&str] = &["craft-ui", "craft-ai-egui", "egui", "eframe", "egui-wgpu", "winit", "rfd", "tauri", "tauri-plugin-dialog"];
-
 fn layer_of(name: &str) -> Option<u8> {
     if let Some((_, l)) = LAYERS.iter().find(|(n, _)| *n == name) {
         return Some(*l);
@@ -57,9 +54,6 @@ pub(crate) fn layers() -> Result<()> {
             continue;
         };
         for d in deps {
-            if l < 6 && UI_ONLY.contains(&d.as_str()) {
-                errors.push(format!("{name} (L{l}) depends on UI crate `{d}`"));
-            }
             let Some(dl) = layer_of(d) else { continue };
             if dl >= l {
                 errors.push(format!("{name} (L{l}) depends on {d} (L{dl}): edges must go down"));

@@ -1,5 +1,4 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { arch, eol, exeExtension, family, locale, platform, type as osTypeFn, version } from "@tauri-apps/plugin-os";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { formatOsInfo, type OsInfo } from "./os-info";
@@ -351,7 +350,7 @@ export interface TimelineResponse {
 }
 
 // Long-task notification set (#113): only the heavy producers notify, never scrub-time queries.
-const NOTIFY_IDS = new Set(["video.assemble", "video.export", "video.render", "image.generate"]);
+const NOTIFY_IDS = new Set(["video.assemble", "video.export", "image.generate"]);
 const NOTIFY_PREFIXES = ["scribbles."];
 
 let longTaskLabels: Map<string, string> | null = null;
@@ -393,12 +392,5 @@ export async function pickFile(options: {
   directory?: boolean;
   multiple?: boolean;
 }): Promise<string | string[] | null> {
-  return openFileDialog({
-    title: options.title,
-    directory: options.directory,
-    multiple: options.multiple,
-    filters: options.extensions
-      ? [{ name: options.title, extensions: options.extensions }]
-      : undefined,
-  });
+  return invoke("pick_file", { options });
 }

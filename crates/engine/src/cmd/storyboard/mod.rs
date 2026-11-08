@@ -863,7 +863,7 @@ fn catalog_index(s: &Session) -> Catalog {
 /// project's own `assets/`, `storyboard/`, ... folder when that file exists, so the report and the
 /// fix name the file the project actually has.
 fn rerooted(project: &Path, link: &Path) -> Option<PathBuf> {
-    const MARKERS: &[&str] = &["/hyperframes/", "/assets/", "/storyboard/", "/animation/", "/design/", "/lettering/", "/film/"];
+    const MARKERS: &[&str] = &["/assets/", "/storyboard/", "/animation/", "/design/", "/lettering/", "/film/"];
     let text = link.to_string_lossy();
     MARKERS.iter().find_map(|marker| {
         let at = text.find(marker)?;

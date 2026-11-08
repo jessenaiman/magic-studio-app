@@ -9,9 +9,8 @@ use crate::project::{
     cmd_project_remove_asset, cmd_project_save, cmd_project_trunk, cmd_project_update_asset,
 };
 use crate::workshop::{
-    cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_video_init, cmd_video_server_start, cmd_video_server_stop, cmd_workshop_add,
-    cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_import_transcript, cmd_workshop_remove, cmd_workshop_set_audio, cmd_workshop_set_target,
-    cmd_workshop_split_panels, cmd_workshop_status,
+    cmd_audio_analyze, cmd_project_search, cmd_query_list, cmd_workshop_add, cmd_workshop_approve_draft, cmd_workshop_files, cmd_workshop_import_transcript,
+    cmd_workshop_remove, cmd_workshop_set_audio, cmd_workshop_set_target, cmd_workshop_split_panels, cmd_workshop_status,
 };
 
 // ---------- CommandSpec + registry ----------
@@ -25,11 +24,8 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"words.design"
             | b"words.letter"
             | b"video.assemble"
-            | b"video.init"
             | b"audio.analyze"
             | b"workshop.split_panels"
-            | b"video.snapshot"
-            | b"video.render"
             | b"image.generate"
             | b"video.frame"
             | b"video.export"
@@ -478,12 +474,7 @@ fn specs_words_part1() -> Vec<CommandSpec> {
             always,
             crate::cmd::words::cmd_words_lyrics_view
         ),
-        query!(
-            "words.effects",
-            "Effects from the HyperFrames Registry",
-            "{\"kind\":\"optional: text, drawing or background\"}",
-            crate::cmd::words::cmd_words_effects
-        ),
+        query!("words.effects", "Effects", "{\"kind\":\"optional: text, drawing or background\"}", crate::cmd::words::cmd_words_effects),
         cmd!(
             "words.effect_install",
             "Install a Registry Effect",
@@ -575,7 +566,7 @@ fn specs_words_part2() -> Vec<CommandSpec> {
         ),
         cmd!(
             "words.compose",
-            "Compose Words Track (HyperFrames)",
+            "Compose Words Track",
             ["Design"],
             None,
             "{\"animation_id\":\"words-chorus-1\",\"instance_id\":\"optional: isolated composition for a repeated placement\"}",
@@ -631,20 +622,11 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
             "Set Song Audio",
             ["Workshop"],
             None,
-            "{\"path\": \"song audio file; creates the HyperFrames project and starts Studio\", \"resolve_video_cli\": \"optional absolute executable\"}",
+            "{\"path\": \"song audio file\", \"resolve_video_cli\": \"optional absolute executable\"}",
             always,
             cmd_workshop_set_audio
         ),
-        cmd!(
-            "video.place_track",
-            "Place a rendered track in HyperFrames",
-            ["Video"],
-            None,
-            "{\"id\":\"clip id\",\"path\":\"video file\",\"start\":0,\"duration\":2,\"rect\":[0,0,300,500],\"scene\":14,\"generation_receipt\":\"optional native image generation.json; links source poses and character\",\"character\":\"optional registered source motion asset; requires track\",\"track\":\"optional source motion track; requires character\",\"playback_rate\":1}",
-            always,
-            crate::cmd::film::video_target::cmd_video_place_track
-        ),
-        cmd!("workshop.set_target", "Set Video Target", ["Workshop"], None, "{\"target\": \"hyperframes\"}", always, cmd_workshop_set_target),
+        cmd!("workshop.set_target", "Set Video Target", ["Workshop"], None, "{\"target\": \"filmcraft\"}", always, cmd_workshop_set_target),
         cmd!(
             "workshop.add",
             "Add Liner Notes / Panels / Assets",
@@ -695,54 +677,15 @@ fn specs_workshop_and_video() -> Vec<CommandSpec> {
 }
 
 fn specs_video_and_intake() -> Vec<CommandSpec> {
-    vec![
-        cmd!(
-            "video.init",
-            "Initialize Target Video Project",
-            ["Workshop"],
-            None,
-            "{\"target\": \"optional hyperframes\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH, no npx install\", \"captions\": true, \"assemble\": false}",
-            always,
-            cmd_video_init
-        ),
-        cmd!(
-            "video.server_start",
-            "Start Video Editor Web Server",
-            ["Workshop"],
-            None,
-            "{\"target\": \"optional hyperframes\", \"port\": \"optional; HyperFrames selects an available port by default\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
-            always,
-            cmd_video_server_start
-        ),
-        cmd!("video.server_stop", "Stop Video Editor Web Server", ["Workshop"], None, "{}", always, cmd_video_server_stop),
-        cmd!(
-            "video.snapshot",
-            "Take one exact frame from HyperFrames",
-            ["Video"],
-            None,
-            "{\"target\": \"optional hyperframes\", \"at\": \"seconds or array of seconds\", \"out\": \"output PNG path for one time; directory for multiple times\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
-            always,
-            crate::cmd::film::video_target::cmd_video_snapshot
-        ),
-        cmd!(
-            "video.render",
-            "Render HyperFrames composition",
-            ["Video"],
-            None,
-            "{\"target\": \"optional hyperframes\", \"out\": \"output path\", \"fps\": \"frames per second (default 24)\", \"workers\": \"bounded worker count (default 4, max 16)\", \"start/end\": \"unsupported by official HyperFrames CLI; any supplied value is rejected\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH\"}",
-            always,
-            crate::cmd::film::video_target::cmd_video_render
-        ),
-        cmd!(
-            "audio.analyze",
-            "Analyze Song (HyperFrames)",
-            ["File"],
-            None,
-            "{\"audio\": \"optional, default: the project's song\", \"overwrite\": false, \"analyze_beats\": true, \"model\": \"large-v3\", \"resolve_video_cli\": \"optional absolute official executable; otherwise HYPERFRAMES_CLI or PATH; no npx install\"}",
-            always,
-            cmd_audio_analyze
-        ),
-    ]
+    vec![cmd!(
+        "audio.analyze",
+        "Analyze Song",
+        ["File"],
+        None,
+        "{\"audio\": \"optional, default: the project's song\", \"overwrite\": false, \"analyze_beats\": true, \"model\": \"large-v3\", \"resolve_video_cli\": \"optional absolute executable\"}",
+        always,
+        cmd_audio_analyze
+    )]
 }
 
 fn specs_diagnostics() -> Vec<CommandSpec> {

@@ -43,7 +43,7 @@ fn opened_path(path: &str, project: &Path) -> PathBuf {
         if raw.exists() {
             return raw.to_path_buf();
         }
-        for marker in ["/hyperframes/", "/assets/", "/storyboard/", "/animation/", "/design/", "/lettering/", "/film/"] {
+        for marker in ["/assets/", "/storyboard/", "/animation/", "/design/", "/lettering/", "/film/"] {
             if let Some(idx) = path.find(marker) {
                 let candidate = parent.join(&path[idx + 1..]);
                 if candidate.exists() {
@@ -261,34 +261,17 @@ fn recent_warning(s: &Session, path: &Path, requested: bool) -> Vec<Value> {
     }
 }
 
-fn link_existing_video_project(s: &mut Session, dir: &Path, steps: &mut Vec<Value>) {
-    if !dir.join("hyperframes/index.html").is_file() {
-        return;
-    }
-    let _ = crate::cmd::film::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
-    s.video_project_path = crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target);
-    if s.song_audio.is_none() {
-        s.song_audio = crate::cmd::film::video_target::discover_contained_audio(dir);
-    }
-    let _ = crate::cmd::film::video_target::ensure_native_captions(s, dir);
-    steps.push(json!({"command": "video.link_existing", "status": "linked existing hyperframes project and contained audio"}));
-}
-
-/// Auto-initialize HyperFrames and process audio when `project.new` is given `audio` (or link existing `hyperframes/`).
-fn bootstrap_new_project_workshop(s: &mut Session, path: &Path, params: &Value) -> Vec<Value> {
+/// Process audio when `project.new` is given `audio`.
+fn bootstrap_new_project_workshop(s: &mut Session, _path: &Path, params: &Value) -> Vec<Value> {
     let mut steps = Vec::new();
-    let Some(dir) = path.parent() else {
-        return steps;
-    };
     let Some(raw_audio) = params.get("audio").and_then(Value::as_str).filter(|v| !v.is_empty()) else {
-        link_existing_video_project(s, dir, &mut steps);
         return steps;
     };
     if params["skip_audio_setup"] == true {
         return steps;
     }
     match crate::cmd::project::workshop::cmd_workshop_set_audio(s, &json!({"path": raw_audio, "resolve_video_cli": params["resolve_video_cli"]})) {
-        Ok(_) => steps.push(json!({"command": "workshop.set_audio", "status": "complete; HyperFrames initialized and audio linked"})),
+        Ok(_) => steps.push(json!({"command": "workshop.set_audio", "status": "complete; audio linked"})),
         Err(e) => {
             steps.push(json!({"command": "workshop.set_audio", "status": "failed", "error": e.to_string()}));
             return steps;
@@ -431,100 +414,14 @@ pub fn cmd_project_open(s: &mut Session, params: &Value) -> Result<Value> {
 }
 
 fn repair_opened_workshop_links(s: &mut Session, path: &Path) {
-    let Some(dir) = path.parent() else {
-        return;
-    };
     let mut changed = false;
     if let Ok(doc) = read_project_document(path)
         && project_is_dirty(s, &doc)
     {
         changed = true;
     }
-    if dir.join("hyperframes/index.html").is_file() {
-        let _ = crate::cmd::film::video_target::ensure_music_audio_role(&dir.join("hyperframes"));
-        if s.video_project_path.as_ref().is_none_or(|p| !p.is_file())
-            && let Some(vp) = crate::cmd::film::video_target::target_project_path(s, dir, &s.video_target)
-        {
-            s.video_project_path = Some(vp);
-            changed = true;
-        }
-        if s.song_audio.as_ref().is_none_or(|p| !p.is_file())
-            && let Some(audio) = crate::cmd::film::video_target::discover_contained_audio(dir)
-        {
-            s.song_audio = Some(audio);
-            changed = true;
-        }
-        sync_hyperframes_storyboard(s, dir);
-    }
     if changed {
         let _ = write_project_file(s);
-    }
-}
-
-/// When opening a HyperFrames project with `storyboard/scene-1.md`..`scene-6.md` and
-/// `storyboard/scene-N-reference.png`, populate `storyboard.designcraft` if it is missing or still
-/// has only the single blank template scene.
-fn sync_hyperframes_storyboard(s: &mut Session, dir: &Path) {
-    if !dir.join("storyboard/scene-1.md").is_file() {
-        return;
-    }
-    let sb_path = dir.join("storyboard.designcraft");
-    if !sb_path.is_file() {
-        let _ = crate::cmd::storyboard::cmd_storyboard_new(s, &json!({"path": &sb_path}));
-    }
-    let Ok(scenes_val) = crate::cmd::storyboard::cmd_storyboard_scenes(s, &json!({"path": &sb_path})) else {
-        return;
-    };
-    let existing = scenes_val["scenes"].as_array().cloned().unwrap_or_default();
-    let needs_seed =
-        existing.len() <= 1 && existing.first().and_then(|sc| sc["fields"]["title"].as_str()).is_none_or(|t| t.trim().is_empty() || t.contains('['));
-    if !needs_seed {
-        return;
-    }
-    let title = s.project_path.as_ref().and_then(|p| p.file_stem()).and_then(|n| n.to_str()).unwrap_or("Project").to_string();
-    for idx in 1..=12_usize {
-        let md_path = dir.join(format!("storyboard/scene-{idx}.md"));
-        if !md_path.is_file() {
-            break;
-        }
-        let Ok(md) = std::fs::read_to_string(&md_path) else { continue };
-        let scene_title = md.lines().find_map(|l| l.strip_prefix("# ")).map(str::trim).unwrap_or("Scene").to_string();
-        let time = md.lines().find_map(|l| l.strip_prefix("time:")).map(str::trim).unwrap_or("").to_string();
-        let ref_rel = md
-            .lines()
-            .find_map(|l| l.strip_prefix("reference:"))
-            .map(str::trim)
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("storyboard/scene-{idx}-reference.png"));
-        let purpose = md.lines().find_map(|l| l.strip_prefix("- Scene plan:")).map(str::trim).unwrap_or("").to_string();
-        let mut fields = json!({
-            "running_title": title,
-            "scene_id": format!("SCENE {idx:02}"),
-            "title": scene_title,
-            "time": time,
-            "purpose": purpose,
-        });
-        if let Some(prompt_idx) = md.find("## Reference prompt") {
-            let prompt_body: String = md[prompt_idx..].lines().skip(1).take_while(|l| !l.starts_with("## ")).collect::<Vec<_>>().join(" ").trim().to_string();
-            if !prompt_body.is_empty() {
-                fields["exact_prompt"] = json!(prompt_body);
-            }
-        }
-        let mut params = json!({
-            "path": &sb_path,
-            "fields": fields,
-        });
-        let ref_abs = dir.join(&ref_rel);
-        if ref_abs.is_file() {
-            params["images"] = json!({"hero_image": ref_abs});
-        }
-        if idx == 1 {
-            params["scene"] = json!(1);
-            let _ = crate::cmd::storyboard::cmd_storyboard_set(s, &params);
-        } else {
-            params["archetype"] = json!("scene");
-            let _ = crate::cmd::storyboard::cmd_storyboard_add(s, &params);
-        }
     }
 }
 

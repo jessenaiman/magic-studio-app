@@ -6,7 +6,7 @@
 //!   - `project` — .magic lifecycle + connect/load/remove/update assets
 //!   - `workshop` — workshop/storyboard/video/assets/audio + search
 //!   - `lyrics`, `words`, `lettering` — timed words and kinetic typography
-//!   - `video_target`, `assembly` — HyperFrames preview/render and FilmCraft assembly
+//!   - `assembly` — FilmCraft assembly
 //!
 //! This file keeps only the `CommandSpec` registry, `command_specs()`, `find()`,
 //! `check_param_types()`, and the `build()` array wiring every id to its handler.

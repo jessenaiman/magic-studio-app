@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::cmd::film::video_target::ensure_video_target_project;
 use crate::cmd::project::cmd_project_add_asset;
 use crate::cmd::project::workshop::{
     ASSETS_DIR, IMAGE_EXTENSIONS, STORYBOARD_DIR, STORYBOARD_PDF, VIDEO_TARGETS, files_in, panel_files, project_dir, transcript_files, video_project_path,
@@ -54,13 +53,12 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
 }
 
 pub fn cmd_workshop_set_target(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
+    project_dir(s)?;
     let target = params.get("target").and_then(Value::as_str).unwrap_or("filmcraft");
     if !VIDEO_TARGETS.contains(&target) {
         return Err(EngineError::InvalidParams(format!("target must be one of {VIDEO_TARGETS:?}")));
     }
     s.video_target = target.into();
-    s.video_project_path = ensure_video_target_project(s, &dir, target).ok();
     crate::cmd::project::write_project_file(s)?;
     workshop_status(s)
 }

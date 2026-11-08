@@ -1,7 +1,7 @@
-// Read-only: sample when each HyperFrames clip is visible by running the composition's own
+// Read-only: sample when each clip is visible by running the composition's own
 // per-frame script (`renderFishAt` / `renderAt`) against a minimal DOM stand-in.
 //
-//   bun pipeline/sample_cutout_windows.mjs <hyperframes dir>
+//   bun pipeline/sample_cutout_windows.mjs <composition dir>
 //
 // Prints JSON to stdout and writes nothing. A clip's visibility at time t is the product of the
 // opacity the script gives the clip element and each of its ancestors in index.html. Clips whose
@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import vm from 'node:vm';
 
 const dir = process.argv[2];
-if (!dir) { console.error('usage: sample_cutout_windows.mjs <hyperframes dir>'); process.exit(2); }
+if (!dir) { console.error('usage: sample_cutout_windows.mjs <composition dir>'); process.exit(2); }
 const html = readFileSync(join(dir, 'index.html'), 'utf8');
 const VOID = new Set(['img', 'br', 'hr', 'input', 'meta', 'link', 'source', 'path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline', 'use', 'stop']);
 const attr = (tag, name) => tag.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1];

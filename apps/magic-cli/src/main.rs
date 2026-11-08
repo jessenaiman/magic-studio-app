@@ -5,7 +5,7 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{Value, json};
 use std::io::BufRead;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(
@@ -14,9 +14,15 @@ use std::path::{Path, PathBuf};
     after_help = "LIVE MAGIC: magic --control 9876 (share MAGIC_CONTROL_TOKEN with clients)\n  magic-cli --bridge 127.0.0.1:9876 ui inspect\n  magic-cli --bridge 127.0.0.1:9876 ui elements prefix=tab-\n  magic-cli --bridge 127.0.0.1:9876 ui click tab-animation\n  magic-cli --bridge 127.0.0.1:9876 ui key Ctrl+K\n  magic-cli --bridge 127.0.0.1:9876 ui screenshot /tmp/magic.png\n  magic-cli --bridge 127.0.0.1:9876 mcp\nSTORYBOARD: magic-cli --project song.magic storyboard open\n  designcraft-cli app --port 9877 --method document.inspect\n  designcraft-cli mcp --connect 9877\n  storyboard check reports unfilled template slots, untraced artwork and layout issues. View navigation stays unrestricted."
 )]
 pub struct Cli {
-    /// Open this .magic project first (or use the last opened project from session file)
+    /// Open this .magic project first (headless)
     #[arg(long, global = true)]
     pub project: Option<String>,
+    /// Save the project back to --project when done
+    #[arg(long, global = true)]
+    pub save: bool,
+    /// Save the project to this path when done
+    #[arg(long, global = true)]
+    pub save_as: Option<String>,
     /// Connect to a running `magic --control <PORT>` window
     #[arg(long, global = true)]
     pub bridge: Option<String>,
@@ -42,6 +48,8 @@ enum Cmd {
     Commands { filter: Option<String> },
     /// Describe one command as JSON
     Describe { id: String },
+    /// Inspect project or timeline state as JSON
+    Inspect { target: Option<String> },
     /// Run one command (`exec <id> [key=value ...]` or `--params '<json>'`)
     Exec {
         command: String,
@@ -397,22 +405,6 @@ fn storyboard_params(command: &SbCmd, document: Option<&str>) -> Result<(String,
     Ok((id, Value::Object(p)))
 }
 
-fn session_file() -> PathBuf {
-    std::env::var_os("MAGIC_SESSION_FILE")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/magic/cli_session.json")))
-        .unwrap_or_else(|| PathBuf::from(".magic_session.json"))
-}
-
-fn load_saved_project() -> Option<String> {
-    let text = std::fs::read_to_string(session_file()).ok()?;
-    serde_json::from_str::<Value>(&text).ok()?.get("project")?.as_str().map(str::to_owned)
-}
-
-fn save_project(path: Option<&str>) {
-    let _ = magic::write_file(session_file(), json!({ "project": path }).to_string());
-}
-
 fn emit(v: &Value) {
     println!("{}", serde_json::to_string_pretty(v).unwrap_or_default());
 }
@@ -454,15 +446,7 @@ fn exec_one(s: &mut magic::Session, id: &str, params: Value, dry: bool) -> Resul
     if dry {
         return Ok(json!({ "dry_run": true, "id": id, "params": params }));
     }
-    let res = s.execute(id, params).map_err(|e| e.to_string())?;
-    if id == "project.open" || id == "project.new" {
-        if let Some(p) = s.project_path.as_ref().and_then(|p| p.to_str()) {
-            save_project(Some(p));
-        }
-    } else if id == "project.close" {
-        save_project(None);
-    }
-    Ok(res)
+    s.execute(id, params).map_err(|e| e.to_string())
 }
 
 fn dispatch(session: &mut Option<magic::Session>, bridge: Option<&str>, id: &str, params: Value, dry: bool) -> Result<Value, String> {
@@ -474,6 +458,32 @@ fn dispatch(session: &mut Option<magic::Session>, bridge: Option<&str>, id: &str
         let session = session.as_mut().ok_or("no headless session: a bridge runs commands in the live app")?;
         exec_one(session, id, params, false)
     }
+}
+
+fn finish_save(
+    session: &mut Option<magic::Session>,
+    bridge: Option<&str>,
+    save: bool,
+    save_as: Option<&str>,
+    project: Option<&str>,
+    dry: bool,
+) -> Result<(), String> {
+    if dry {
+        return Ok(());
+    }
+    if let Some(path) = save_as {
+        dispatch(session, bridge, "project.save", json!({ "path": path }), false)?;
+    } else if save {
+        match project {
+            Some(path) => {
+                dispatch(session, bridge, "project.save", json!({ "path": path }), false)?;
+            }
+            None => {
+                dispatch(session, bridge, "project.save", json!({}), false)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn ui_action(action: &str, target: Option<String>, mut args: Vec<String>, raw: Option<&str>) -> Result<(String, Value), String> {
@@ -530,24 +540,24 @@ fn main() {
     }
     let mut session = (!live).then(magic::Session::user_session);
     if !live
-        && let Some(proj) = cli.project.clone().or_else(load_saved_project)
-        && std::path::Path::new(&proj).is_file()
+        && let Some(proj) = cli.project.as_deref()
+        && let Some(session) = session.as_mut()
+        && let Err(err) = session.execute("project.open", json!({ "path": proj }))
     {
-        if let Some(session) = session.as_mut() {
-            let _ = session.execute("project.open", json!({ "path": proj }));
-        }
-        if cli.project.is_some() {
-            save_project(Some(&proj));
-        }
+        eprintln!("{}", json!({ "ok": false, "error": err.to_string() }));
+        std::process::exit(1);
     }
     let outcome: Result<(), String> = (|| {
         let bridge = cli.bridge.as_deref();
+        let project = cli.project.as_deref();
+        let save_as = cli.save_as.as_deref();
         if let Some(id) = cli.command_id.as_deref() {
             if cli.command.is_some() {
                 return Err("Use --command or a subcommand, not both.".into());
             }
             let params = parse_params(&[], cli.params.as_deref())?;
             emit(&dispatch(&mut session, bridge, id, params, cli.dry_run)?);
+            finish_save(&mut session, bridge, cli.save, save_as, project, cli.dry_run)?;
             return Ok(());
         }
         match cli.command {
@@ -562,10 +572,24 @@ fn main() {
                 let v = magic::find_command(&id).map(|c| c.describe()).ok_or_else(|| format!("Unknown command '{id}'"))?;
                 emit(&v);
             }
+            Some(Cmd::Inspect { target }) => {
+                let what = target.as_deref().unwrap_or("all");
+                let v = match what {
+                    "project" => dispatch(&mut session, bridge, "project.status", json!({}), false)?,
+                    "timeline" | "sequence" => dispatch(&mut session, bridge, "film.timeline", json!({}), false)?,
+                    "all" => json!({
+                        "project": dispatch(&mut session, bridge, "project.status", json!({}), false)?,
+                        "timeline": dispatch(&mut session, bridge, "film.timeline", json!({}), false).unwrap_or(Value::Null),
+                    }),
+                    other => return Err(format!("inspect: unknown `{other}` (project | timeline)")),
+                };
+                emit(&v);
+            }
             Some(Cmd::Exec { command, params, arguments }) => {
                 let p = parse_params(&arguments, params.as_deref())?;
                 let out = dispatch(&mut session, bridge, &command, p, cli.dry_run)?;
                 emit(&out);
+                finish_save(&mut session, bridge, cli.save, save_as, project, cli.dry_run)?;
             }
             Some(Cmd::Run { file }) => {
                 let reader: Box<dyn BufRead> = if file == "-" {
@@ -585,6 +609,7 @@ fn main() {
                     let res = dispatch(&mut session, bridge, id, params, cli.dry_run)?;
                     println!("{}", json!({ "line": n + 1, "ok": true, "result": res }));
                 }
+                finish_save(&mut session, bridge, cli.save, save_as, project, cli.dry_run)?;
             }
             Some(Cmd::Mcp) => {
                 if let Some(addr) = cli.bridge {
@@ -604,20 +629,18 @@ fn main() {
                 let res = if cli.dry_run { json!({ "dry_run": true, "id": method, "params": params }) } else { call_live_control(bridge, &method, params)? };
                 emit(&res);
             }
-            Some(Cmd::Storyboard { project, document, command }) => {
-                if bridge.is_some() && project.is_some() {
+            Some(Cmd::Storyboard { project: sb_project, document, command }) => {
+                if bridge.is_some() && sb_project.is_some() {
                     return Err("storyboard --project cannot be combined with --bridge; use exec project.open path=...".into());
                 }
-                // A project named here applies to this invocation only: it is not written to
-                // the session file, so the next command still works on the same project.
-                if let Some(proj) = project.as_deref()
-                    && Path::new(proj).is_file()
+                if let Some(proj) = sb_project.as_deref()
                     && let Some(session) = session.as_mut()
                 {
-                    let _ = session.execute("project.open", json!({ "path": proj }));
+                    session.execute("project.open", json!({ "path": proj })).map_err(|e| e.to_string())?;
                 }
                 let (id, params) = storyboard_params(&command, document.as_deref())?;
                 emit(&dispatch(&mut session, bridge, &id, params, cli.dry_run)?);
+                finish_save(&mut session, bridge, cli.save, save_as, sb_project.as_deref().or(project), cli.dry_run)?;
             }
             Some(Cmd::Registry(tokens)) => {
                 let (id, rest) = resolve_shorthand(&tokens)?;
@@ -641,6 +664,7 @@ fn main() {
                 }
                 let p = parse_params(&kv, raw.as_deref())?;
                 emit(&dispatch(&mut session, bridge, &id, p, cli.dry_run)?);
+                finish_save(&mut session, bridge, cli.save, save_as, project, cli.dry_run)?;
             }
         }
         Ok(())
