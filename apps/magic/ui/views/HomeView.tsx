@@ -132,16 +132,10 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
     }
     setBusy(true);
     try {
-      const slug = newName
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      const dir = `${newRoot || "/tmp"}/${slug || "song"}`;
-      const magicPath = `${dir}/${newName.trim()}.magic`;
-      await executeCommand("project.new", {
+      // The engine makes <root>/<slug>/<name>.magic and refuses a missing folder.
+      const created = await executeCommand<{ project: string }>("project.new", {
         name: newName.trim(),
-        path: magicPath,
+        root: newRoot,
       });
       if (newAudio) {
         await executeCommand("workshop.set_audio", { path: newAudio });
@@ -149,7 +143,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
       setCreating(false);
       setNewAudio("");
       setAudioDropStem(null);
-      await onOpenProject(magicPath);
+      await onOpenProject(created.project);
     } catch (err) {
       onToast(String(err));
     } finally {

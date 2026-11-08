@@ -145,13 +145,39 @@ pub fn write_project_file(s: &Session) -> Result<()> {
 }
 
 /// Resolve and canonicalize a project path, appending `.magic` when missing.
+/// A project folder name from its title: lowercase letters and digits, runs of anything else
+/// as one `-` (`Make It Sound Human!` -> `make-it-sound-human`).
+fn project_slug(name: &str) -> String {
+    let mut slug = String::new();
+    for c in name.trim().chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c.to_ascii_lowercase());
+        } else if !slug.ends_with('-') && !slug.is_empty() {
+            slug.push('-');
+        }
+    }
+    slug.trim_end_matches('-').to_string()
+}
+
+/// The `.magic` file a command names: `path`, or `root` + `name` as `<root>/<slug>/<name>.magic`.
 pub(crate) fn project_file_path(s: &Session, params: &Value) -> Result<PathBuf> {
-    let raw = params
-        .get("path")
-        .and_then(Value::as_str)
-        .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| EngineError::InvalidParams("missing project 'path'".into()))?;
-    let mut path = crate::workspace::resolve_workspace_path(s, raw);
+    let text = |key: &str| params.get(key).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty());
+    let raw = match (text("path"), text("root"), text("name")) {
+        (Some(path), _, _) => path.to_string(),
+        (None, Some(root), Some(name)) => {
+            if name.contains(['/', '\\']) {
+                return Err(EngineError::InvalidParams("a project name cannot contain / or \\".into()));
+            }
+            let slug = project_slug(name);
+            if slug.is_empty() {
+                return Err(EngineError::InvalidParams("a project name needs at least one letter or digit".into()));
+            }
+            Path::new(root).join(slug).join(format!("{name}.magic")).to_string_lossy().into_owned()
+        }
+        (None, None, _) => return Err(EngineError::InvalidParams("give the project `path`, or a `root` folder and a `name`".into())),
+        (None, Some(_), None) => return Err(EngineError::InvalidParams("give the project `name` to create it in `root`".into())),
+    };
+    let mut path = crate::workspace::resolve_workspace_path(s, &raw);
     if path.extension().is_none_or(|e| !e.eq_ignore_ascii_case("magic")) {
         path.as_mut_os_string().push(".magic");
     }
@@ -168,6 +194,8 @@ fn reset_for_project(s: &mut Session, path: PathBuf, assets: Vec<crate::ProjectA
         cwd: s.cwd.clone(),
         record_user_state: s.record_user_state,
         agent_selection: s.agent_selection.clone(),
+        // The window's control listener outlives the project it has open.
+        control_address: s.control_address,
         project_assets: assets,
         project_path: Some(path),
         project_stamp: std::cell::Cell::new(stamp),
@@ -181,9 +209,31 @@ fn project_index(s: &Session, params: &Value) -> Result<usize> {
     s.project_assets.iter().position(|a| a.id == id).ok_or_else(|| EngineError::InvalidParams(format!("project asset '{id}' is not connected")))
 }
 
-/// List connected project assets and the active one.
+/// Where an asset sits in the project's layout: `background` under `assets/backgrounds/`,
+/// `character` under `assets/characters/`, otherwise `image`. The import destinations
+/// (`background=`, `character=`, `image=`) put files there, so the folder is the role.
+fn asset_role(dir: Option<&Path>, path: Option<&Path>) -> &'static str {
+    let first = dir.zip(path).and_then(|(dir, path)| path.strip_prefix(dir.join("assets")).ok()).and_then(|rest| rest.components().next());
+    match first.map(|c| c.as_os_str()) {
+        Some(folder) if folder == "backgrounds" => "background",
+        Some(folder) if folder == "characters" => "character",
+        _ => "image",
+    }
+}
+
+/// List connected project assets, each with its `role`, and the active one.
 pub fn cmd_project_list_assets(s: &mut Session, _: &Value) -> Result<Value> {
-    Ok(json!({"assets": s.project_assets, "active_asset": s.active_asset, "project": s.project_path}))
+    let dir = s.project_path.as_deref().and_then(Path::parent);
+    let assets = s
+        .project_assets
+        .iter()
+        .map(|asset| {
+            let mut entry = serde_json::to_value(asset).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
+            entry["role"] = json!(asset_role(dir, asset.path.as_deref()));
+            Ok(entry)
+        })
+        .collect::<Result<Vec<Value>>>()?;
+    Ok(json!({"assets": assets, "active_asset": s.active_asset, "project": s.project_path}))
 }
 
 // Navigation history is optional global state; a valid project remains created/open if it is unavailable.

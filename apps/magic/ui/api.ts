@@ -129,6 +129,8 @@ export interface ProjectAsset {
   id: string;
   name: string;
   kind?: string;
+  /** From `project.list_assets`: the project folder the file sits in. */
+  role?: "background" | "character" | "image";
   path?: string;
   character?: string;
   preview?: string;

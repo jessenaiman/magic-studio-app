@@ -377,7 +377,7 @@ fn specs_project() -> Vec<CommandSpec> {
             "New Project",
             ["File"],
             Some("Cmd+N"),
-            "{\"path\":\"folder/name.magic\",\"mode\":\"project (song, default) | animation (character study: Animation only, reusable in projects)\",\"audio\":\"optional song audio\",\"overwrite\":false}",
+            "{\"path\":\"folder/name.magic, or root + name\",\"root\":\"folder to create <slug>/<name>.magic in\",\"name\":\"project title\",\"mode\":\"project (song, default) | animation (character study: Animation only, reusable in projects)\",\"audio\":\"optional song audio\",\"overwrite\":false}",
             always,
             cmd_project_new
         ),

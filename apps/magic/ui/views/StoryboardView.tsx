@@ -6,17 +6,12 @@ import "../storyboard.css";
 
 interface Props {projectPath:string;storyboard?:StoryboardData;onRefresh:()=>Promise<void>;onToast:(message:string)=>void}
 
-const isPlate = (asset: ProjectAsset) => {
-  const path = (asset.path || "").replace(/\\/g, "/").toLowerCase();
-  const name = (asset.name || asset.id || "").toLowerCase();
-  return path.includes("/backgrounds/") || path.includes("/plates/") || /\b(background|backdrop|plate|world|clearing|river)\b/.test(name);
-};
 
-// Stage Assets & Animate (moved here from the Project view): characters and scene plates
+// Stage Assets & Animate (moved here from the Project view): characters and backgrounds
 // staged for the storyboard. Cards keep their original actions.
 const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast }) => {
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
-  const [tab, setTab] = useState<"characters" | "plates">("characters");
+  const [tab, setTab] = useState<"characters" | "backgrounds">("characters");
   const load = useCallback(async () => {
     try {
       const snapshot = await invoke<{ data?: { assets?: { assets?: ProjectAsset[] } } }>("session_snapshot");
@@ -28,11 +23,11 @@ const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast
   useEffect(() => {
     void load();
   }, [load]);
-  const plates = assets.filter(isPlate);
-  const characters = assets.filter((asset) => !isPlate(asset));
-  const visible = tab === "plates" ? plates : characters;
+  const backgrounds = assets.filter((asset) => asset.role === "background");
+  const characters = assets.filter((asset) => asset.role !== "background");
+  const visible = tab === "backgrounds" ? backgrounds : characters;
   const subtitle = (asset: ProjectAsset) =>
-    isPlate(asset) ? "Scene Plate · Storyboard →" : asset.kind === "model_3d" || /\.(glb|gltf)$/i.test(asset.path || "") ? "3D Rig · Animate →" : "Cutout · Animate →";
+    asset.role === "background" ? "Background · Storyboard →" : asset.kind === "model_3d" ? "3D Rig · Animate →" : "Cutout · Animate →";
   const run = async (fn: () => Promise<unknown>, refresh = false) => {
     try {
       await fn();
@@ -46,14 +41,16 @@ const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast
       <div className="sb-stage-bar">
         <strong>Stage Assets &amp; Animate <span className="muted">({assets.length})</span></strong>
         <button id="stage-tab-characters" className={tab === "characters" ? "start" : "ghost"} onClick={() => setTab("characters")}>Characters / Animate ({characters.length})</button>
-        <button id="stage-tab-plates" className={tab === "plates" ? "start" : "ghost"} onClick={() => setTab("plates")}>Backgrounds &amp; Plates ({plates.length})</button>
+        <button id="stage-tab-plates" className={tab === "backgrounds" ? "start" : "ghost"} onClick={() => setTab("backgrounds")}>Backgrounds ({backgrounds.length})</button>
         <button id="stage-add-asset" className="ghost sb-stage-add" onClick={() => void run(async () => {
           const selected = await pickFile({ title: "Add Asset", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "glb", "gltf"] });
           if (typeof selected === "string" && selected) {
-            // The engine decides the kind (image or 3D model) from the file; `image` names the
-            // assets/images/<name>/ folder an outside image is copied into.
+            // The engine decides the kind (image or 3D model) from the file. The destination
+            // names the folder an outside image is copied into, and so its role: the
+            // Backgrounds tab adds to assets/backgrounds/<name>/.
             const name = (selected.split(/[/\\]/).pop() || selected).replace(/\.[^.]+$/, "");
-            const added = await executeCommand<{ asset_id: string }>("project.add_asset", { path: selected, name, image: name, load: false });
+            const destination = tab === "backgrounds" ? { background: name } : { image: name };
+            const added = await executeCommand<{ asset_id: string }>("project.add_asset", { path: selected, name, ...destination, load: false });
             onToast(`Added ${added.asset_id}`);
           }
         }, true)}>+ Add Asset</button>
@@ -90,7 +87,7 @@ const StageAssets: React.FC<{ onToast: (message: string) => void }> = ({ onToast
             </div>
           </div>
         ))}
-        {!visible.length && <p className="muted">{tab === "plates" ? "No background plates registered yet." : "No character cutouts registered yet."}</p>}
+        {!visible.length && <p className="muted">{tab === "backgrounds" ? "No backgrounds registered yet." : "No character cutouts registered yet."}</p>}
       </div>
     </section>
   );
