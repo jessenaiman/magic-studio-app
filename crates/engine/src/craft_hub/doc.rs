@@ -52,16 +52,32 @@ pub(crate) struct CraftDoc {
 }
 
 /// Commands that only read the document, so a batch of them needs no save of the work copy.
-const READ_ONLY: &[&str] = &["document.inspect", "object.findByLabel", "story.get", "preflight.run"];
+const READ_ONLY: &[&str] = &["document.inspect", "object.findByLabel", "story.get", "preflight.run", "comp.open", "prop.get"];
 
 impl CraftDoc {
     /// Copy `path` to a private work file. Refuses when the file changes during the copy.
     pub(crate) fn open(target: CraftTarget, path: &Path) -> Result<Self> {
+        Self::from_source(target, path, path)
+    }
+
+    /// Open `path` if it exists on disk, or prepare a fresh work path to create it.
+    pub(crate) fn open_or_create(target: CraftTarget, path: &Path) -> Result<Self> {
+        if path.is_file() {
+            return Self::open(target, path);
+        }
+        let work_dir = ScopedTempDir::new(&format!("magic-{}-work", target.name()))?;
+        let name = path.file_name().ok_or_else(|| EngineError::InvalidParams(format!("{} has no file name", path.display())))?;
+        let work_path = work_dir.0.join(name);
+        Ok(Self { target, path: path.to_path_buf(), work_path, stamp: None, _work_dir: work_dir })
+    }
+
+    /// Copy `source` to a private work file whose `save` writes atomically to `path`.
+    pub(crate) fn from_source(target: CraftTarget, source: &Path, path: &Path) -> Result<Self> {
         let stamp = FileStamp::of(path);
         let work_dir = ScopedTempDir::new(&format!("magic-{}-work", target.name()))?;
         let name = path.file_name().ok_or_else(|| EngineError::InvalidParams(format!("{} has no file name", path.display())))?;
         let work_path = work_dir.0.join(name);
-        std::fs::copy(path, &work_path)?;
+        std::fs::copy(source, &work_path)?;
         crate::link_watch::save_guard(path, stamp)?;
         Ok(Self { target, path: path.to_path_buf(), work_path, stamp, _work_dir: work_dir })
     }
@@ -80,13 +96,17 @@ impl CraftDoc {
     /// changes it, and return each step's result.
     pub(crate) fn batch(&mut self, steps: &[(&str, Value)]) -> Result<Vec<Value>> {
         let mutates = steps.iter().any(|(id, _)| !READ_ONLY.contains(id));
-        let mut cmd = batch_command(self.target, &self.work_path, mutates)?;
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut cmd = batch_command(self.target, &self.work_path, steps, mutates)?;
+        let use_stdin = !matches!(self.target, CraftTarget::Photo);
+        if use_stdin {
+            cmd.stdin(Stdio::piped());
+        }
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         let tool = |e: std::io::Error| EngineError::ExternalTool(self.target.cli_name().into(), e.to_string());
         let mut child = cmd.spawn().map_err(tool)?;
-        let payload: Vec<Value> = steps.iter().map(|(id, params)| json!({"command": id, "params": params})).collect();
-        let bytes = serde_json::to_vec(&payload).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
-        if let Some(mut stdin) = child.stdin.take() {
+        if use_stdin && let Some(mut stdin) = child.stdin.take() {
+            let payload: Vec<Value> = steps.iter().map(|(id, params)| json!({"command": id, "params": params})).collect();
+            let bytes = serde_json::to_vec(&payload).map_err(|e| EngineError::InvalidParams(e.to_string()))?;
             stdin.write_all(&bytes).map_err(tool)?;
         }
         let out = child.wait_with_output().map_err(tool)?;
@@ -97,8 +117,13 @@ impl CraftDoc {
         if !out.status.success() {
             return Err(EngineError::ExternalTool(self.target.cli_name().into(), String::from_utf8_lossy(&out.stderr).trim().to_string()));
         }
-        let report = report.ok_or_else(|| EngineError::ExternalTool(self.target.cli_name().into(), "batch reply is not JSON".into()))?;
-        Ok(report["results"].as_array().cloned().unwrap_or_default())
+        if let Some(report) = report {
+            if let Some(list) = report.as_array().or_else(|| report["result"].as_array()) {
+                return Ok(list.iter().map(|e| e.get("result").cloned().unwrap_or_else(|| e.clone())).collect());
+            }
+            return Ok(report["results"].as_array().cloned().unwrap_or_default());
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()).collect())
     }
 
     /// Replace the original with the work copy. Refuses when another writer changed the
@@ -112,9 +137,8 @@ impl CraftDoc {
     }
 }
 
-/// The app's command line that reads a JSON batch on stdin against `work`, saving it in place
-/// when `save` is set.
-fn batch_command(target: CraftTarget, work: &Path, save: bool) -> Result<Command> {
+/// The app's command line that runs `steps` against `work`, saving it in place when `save` is set.
+fn batch_command(target: CraftTarget, work: &Path, steps: &[(&str, Value)], save: bool) -> Result<Command> {
     let cli = crate::workspace::find_executable(target.cli_name()).map_err(|e| EngineError::ExternalTool(target.cli_name().into(), e.to_string()))?;
     let mut cmd = Command::new(cli);
     match target {
@@ -124,8 +148,42 @@ fn batch_command(target: CraftTarget, work: &Path, save: bool) -> Result<Command
                 cmd.arg("--save").arg(work);
             }
         }
+        CraftTarget::Effect => {
+            cmd.arg("--json");
+            if work.is_file() {
+                cmd.arg("--project").arg(work);
+                if save {
+                    cmd.arg("--save");
+                }
+            } else {
+                cmd.arg("--empty");
+                if save {
+                    cmd.arg("--save-as").arg(work);
+                }
+            }
+            cmd.arg("run").arg("--commands").arg("-");
+        }
+        CraftTarget::Photo => {
+            cmd.arg("run").arg(work);
+            for (id, params) in steps {
+                cmd.arg("--cmd").arg(id).arg("--params").arg(params.to_string());
+            }
+            if save {
+                cmd.arg("--out").arg(work).arg("--in-place");
+            }
+        }
+        CraftTarget::Vector => {
+            cmd.arg("run");
+            if work.is_file() {
+                cmd.arg("--in").arg(work);
+            }
+            cmd.arg("--commands").arg("-");
+            if save {
+                cmd.arg("--export").arg(work);
+            }
+        }
         other => {
-            return Err(EngineError::ExternalTool(other.cli_name().into(), "document batches are routed through CraftHub for DesignCraft only so far".into()));
+            return Err(EngineError::ExternalTool(other.cli_name().into(), "document batches are not supported for this target yet".into()));
         }
     }
     Ok(cmd)

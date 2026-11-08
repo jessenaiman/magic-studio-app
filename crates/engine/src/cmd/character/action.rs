@@ -109,37 +109,47 @@ pub fn cmd_character_action(s: &mut Session, p: &Value) -> Result<Value> {
     let (action, keys) = action_keys(&table, name)?;
     let mut parts = view.parts()?;
     let (saved, at) = library_slot(&parts, name, p);
-    if let Some(range) = saved.filter(|_| p["rekey"] != true) {
-        return Ok(json!({"ok": true, "action": name, "start": range["start"], "end": range["end"],
-            "loop": action["loop"], "ecproj": project, "keyed": false}));
-    }
-    let rest = rest_positions(&parts)?;
-    let when = Placement {
-        at,
-        duration: action["duration"].as_f64().unwrap_or(1.0),
-        times: p["times"].as_u64().unwrap_or(1).clamp(1, 64),
-        mirror: action["mirror"] == true,
-    };
-    let end = when.at + when.duration * when.times as f64;
-    let mut steps = vec![step("comp.open", json!({"comp": view.comp()}))];
-    steps.extend(rest_keys(&rest, when.at, when.mirror));
-    steps.extend(rest_keys(&rest, end, when.mirror));
-    let mut keyed = Vec::new();
-    for (layer, channels) in keys.as_object().into_iter().flatten() {
-        let Some(position) = rest.get(layer) else {
-            continue;
+    let (start, end, keyed_layers, was_keyed) = if let Some(range) = saved.filter(|_| p["rekey"] != true) {
+        (range["start"].as_f64().unwrap_or(0.0), range["end"].as_f64().unwrap_or(1.0), Vec::new(), false)
+    } else {
+        let rest = rest_positions(&parts)?;
+        let when = Placement {
+            at,
+            duration: action["duration"].as_f64().unwrap_or(1.0),
+            times: p["times"].as_u64().unwrap_or(1).clamp(1, 64),
+            mirror: action["mirror"] == true,
         };
-        steps.extend(channel_keys(layer, channels, *position, &when));
-        keyed.push(layer.clone());
+        let end = when.at + when.duration * when.times as f64;
+        let mut steps = vec![step("comp.open", json!({"comp": view.comp()}))];
+        steps.extend(rest_keys(&rest, when.at, when.mirror));
+        steps.extend(rest_keys(&rest, end, when.mirror));
+        let mut keyed = Vec::new();
+        for (layer, channels) in keys.as_object().into_iter().flatten() {
+            let Some(position) = rest.get(layer) else {
+                continue;
+            };
+            steps.extend(channel_keys(layer, channels, *position, &when));
+            keyed.push(layer.clone());
+        }
+        steps.push(step("comp.settings", json!({"duration": end.max(10.0) + GAP})));
+        steps.push(step("keys.selectAll", json!({})));
+        steps.push(step("keys.easyEase", json!({})));
+        effectcraft(&view.dir, Some(&project), &steps, true)?;
+        parts["actions"][name] = json!({"start": when.at, "end": end, "times": when.times});
+        view.write_parts(&parts)?;
+        (when.at, end, keyed, true)
+    };
+    let mut reply = json!({
+        "ok": true, "action": name, "layers": keyed_layers, "start": start, "end": end,
+        "loop": action["loop"], "ecproj": project, "keyed": was_keyed
+    });
+    if p["render"] == true {
+        let fps = p["fps"].as_u64().unwrap_or(24);
+        let rendered = super::cmd_character_render(s, &json!({"character": view.id, "view": view.view, "start": start, "end": end, "fps": fps}))?;
+        reply["frames"] = rendered["frames"].clone();
+        reply["fps"] = json!(fps);
     }
-    steps.push(step("comp.settings", json!({"duration": end.max(10.0) + GAP})));
-    steps.push(step("keys.selectAll", json!({})));
-    steps.push(step("keys.easyEase", json!({})));
-    effectcraft(&view.dir, Some(&project), &steps, true)?;
-    parts["actions"][name] = json!({"start": when.at, "end": end, "times": when.times});
-    view.write_parts(&parts)?;
-    Ok(json!({"ok": true, "action": name, "layers": keyed, "start": when.at, "end": end,
-        "loop": action["loop"], "ecproj": project, "keyed": true}))
+    Ok(reply)
 }
 
 /// Each action of the pose table as the panels list it: the drawn views it plays in, its

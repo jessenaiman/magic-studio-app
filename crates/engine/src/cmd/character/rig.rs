@@ -100,8 +100,10 @@ pub fn cmd_character_rig(s: &mut Session, p: &Value) -> Result<Value> {
             }
         }
     }
-    steps.push(step("file.saveAs", json!({"path": project})));
-    effectcraft(&view.dir, None, &steps, true)?;
+    if project.is_file() {
+        let _ = std::fs::remove_file(&project);
+    }
+    effectcraft(&view.dir, Some(&project), &steps, true)?;
     record_rest(&view, &project, parts)?;
     Ok(json!({"ok": true, "ecproj": project, "comp": view.comp(), "layers": list.len() + 1,
         "next": format!("character.action character={} view={} action=idle", view.id, view.view)}))

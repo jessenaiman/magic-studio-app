@@ -60,28 +60,16 @@ fn photocraft_cli() -> Result<std::path::PathBuf> {
 }
 
 pub(crate) fn photocraft_run(input: &std::path::Path, steps: &[(&str, Value)], output: Option<&std::path::Path>) -> Result<()> {
-    // Via installed photocraft-cli (system app pattern). Steps are --cmd/--params pairs.
-    let cli = photocraft_cli()?;
-    let mut cmd = std::process::Command::new(&cli);
-    cmd.arg("run").arg(input);
-    for (id, params) in steps {
-        cmd.arg("--cmd").arg(id).arg("--params").arg(params.to_string());
-    }
     if let Some(out) = output {
         if out == input {
             return Err(crate::EngineError::InvalidParams(format!("refusing to overwrite input {}", input.display())));
         }
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        cmd.arg("--out").arg(out);
-    }
-    let out = cmd.output().map_err(|e| crate::EngineError::ExternalTool("photocraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(crate::EngineError::ExternalTool(
-            "photocraft-cli".into(),
-            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr)),
-        ));
+        let mut doc = crate::craft_hub::CraftDoc::from_source(crate::CraftTarget::Photo, input, out)?;
+        doc.batch(steps)?;
+        doc.save()?;
+    } else {
+        let mut doc = crate::craft_hub::CraftDoc::open(crate::CraftTarget::Photo, input)?;
+        doc.batch(steps)?;
     }
     Ok(())
 }
@@ -198,26 +186,75 @@ fn export_layers(view: &View, psd: &std::path::Path) -> Result<serde_json::Map<S
     Ok(out)
 }
 
+/// Resolve an optional clean body-plate image (without overlapping front fins/limbs) for the root layer.
+fn resolve_body_plate(view: &View, parts: &Value) -> Option<std::path::PathBuf> {
+    parts["body_plate"]
+        .as_str()
+        .or_else(|| parts["torso_image"].as_str())
+        .map(|p| {
+            let path = std::path::Path::new(p);
+            if path.is_absolute() { path.to_path_buf() } else { view.dir.join(path) }
+        })
+        .filter(|p| p.is_file())
+        .or_else(|| view.dir.parent().map(|c| c.join("parts/source/body-plate_v1.png")).filter(|p| p.is_file()))
+}
+
 pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
+    if p["parts"].is_array() {
+        super::cmd_character_save_marks(s, p)?;
+    }
     let view = View::from_params(s, p)?;
     let mut parts = view.parts()?;
     let list = part_list(&parts)?.clone();
     let root = root_part(&list)?.to_string();
-    let image = parts["image"].as_str().map(|i| view.dir.join(i)).filter(|i| i.is_file()).ok_or_else(|| bad("parts.json image is missing"))?;
     let psd = view.file("psd");
     let pcraft = view.file("pcraft");
-    let root_idx = list.iter().position(|p| p["id"].as_str() == Some(&root)).unwrap_or(0);
-    let mut args = Vec::new();
-    cmd(&mut args, "layer.renameLayer", Some(json!({"name": root})));
-    for part in list[root_idx + 1..].iter().rev() {
-        cut_part(&mut args, part, &root, false)?;
-    }
-    for part in list[..root_idx].iter().rev() {
-        cut_part(&mut args, part, &root, true)?;
-    }
-    trim_root_part(&mut args, &list[root_idx], &root)?;
-    cmd(&mut args, "file.saveACopy", Some(json!({"path": psd, "overwrite": true})));
-    photocraft_run(&image, &args, Some(&pcraft))?;
+    let pre_cut: Vec<(String, std::path::PathBuf)> = list
+        .iter()
+        .filter_map(|part| {
+            let id = part["id"].as_str()?.to_string();
+            let raw = part["source"].as_str()?;
+            let path = std::path::Path::new(raw);
+            let full = if path.is_absolute() { path.to_path_buf() } else { view.dir.join(path) };
+            full.is_file().then_some((id, full))
+        })
+        .collect();
+    let image = if pre_cut.len() == list.len() && !pre_cut.is_empty() {
+        let drawing = view.dir.join(format!("{}-{}-drawing.png", view.id, view.view));
+        let mut args = vec![("layer.renameLayer", json!({"name": &pre_cut[0].0}))];
+        for (id, file) in &pre_cut[1..] {
+            cmd(&mut args, "file.placeEmbedded", Some(json!({"path": file})));
+            cmd(&mut args, "layer.renameLayer", Some(json!({"name": id})));
+        }
+        cmd(&mut args, "layer.rasterize.allLayers", None);
+        cmd(&mut args, "file.saveACopy", Some(json!({"path": &psd, "overwrite": true})));
+        cmd(&mut args, "file.saveACopy", Some(json!({"path": &drawing, "overwrite": true})));
+        photocraft_run(&pre_cut[0].1, &args, Some(&pcraft))?;
+        parts["image"] = json!(drawing.file_name().map(|n| n.to_string_lossy().into_owned()));
+        drawing
+    } else {
+        let image = parts["image"].as_str().map(|i| view.dir.join(i)).filter(|i| i.is_file()).ok_or_else(|| bad("parts.json image is missing"))?;
+        let root_idx = list.iter().position(|p| p["id"].as_str() == Some(&root)).unwrap_or(0);
+        let mut args = Vec::new();
+        cmd(&mut args, "layer.renameLayer", Some(json!({"name": root})));
+        for part in list[root_idx + 1..].iter().rev() {
+            cut_part(&mut args, part, &root, false)?;
+        }
+        for part in list[..root_idx].iter().rev() {
+            cut_part(&mut args, part, &root, true)?;
+        }
+        if let Some(plate) = resolve_body_plate(&view, &parts) {
+            cmd(&mut args, "layer.select", Some(json!({"name": root})));
+            cmd(&mut args, "file.placeEmbedded", Some(json!({"path": plate})));
+            cmd(&mut args, "layer.rasterize.layer", None);
+            cmd(&mut args, "layer.mergeDown", None);
+            cmd(&mut args, "layer.renameLayer", Some(json!({"name": root})));
+        }
+        trim_root_part(&mut args, &list[root_idx], &root)?;
+        cmd(&mut args, "file.saveACopy", Some(json!({"path": &psd, "overwrite": true})));
+        photocraft_run(&image, &args, Some(&pcraft))?;
+        image
+    };
     let bounds = layer_bounds(&psd)?;
     let files = export_layers(&view, &psd)?;
     for part in parts["parts"].as_array_mut().into_iter().flatten() {
@@ -233,6 +270,13 @@ pub fn cmd_character_cut(s: &mut Session, p: &Value) -> Result<Value> {
         parts["silhouette_points"] = json!(silhouette_pts.len());
     }
     view.write_parts(&parts)?;
-    Ok(json!({"ok": true, "psd": psd, "pcraft": pcraft, "layers": bounds,
-        "next": format!("character.rig character={} view={}", view.id, view.view)}))
+    let mut reply = json!({"ok": true, "psd": psd, "pcraft": pcraft, "layers": bounds,
+        "next": format!("character.rig character={} view={}", view.id, view.view)});
+    if p["rig"] == true {
+        let rigged = super::cmd_character_rig(s, p)?;
+        reply["ecproj"] = rigged["ecproj"].clone();
+        reply["comp"] = rigged["comp"].clone();
+        reply["next"] = rigged["next"].clone();
+    }
+    Ok(reply)
 }

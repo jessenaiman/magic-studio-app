@@ -130,11 +130,10 @@ class DrawnActionPlayer extends ActionPlayer {
     motion.stageHeader.rename(msg);
     setScribblesLoadingWidget(true, msg, "scribbles-work.gif");
     try {
-      const keyed = await motionCommand("character.action", { character: motion.character, view, action });
-      const render = await motionCommand("character.render", { character: motion.character, view, start: keyed.start, end: keyed.end, fps: CHARACTER_FPS });
-      await characterStage.preload(render.frames);
+      const keyed = await motionCommand("character.action", { character: motion.character, view, action, render: true, fps: CHARACTER_FPS });
+      await characterStage.preload(keyed.frames);
       motion.view = view;
-      await this.show(action, { duration: keyed.end - keyed.start, loop: keyed.loop === true, fps: CHARACTER_FPS, frames: render.frames, start: keyed.start }, play);
+      await this.show(action, { duration: keyed.end - keyed.start, loop: keyed.loop === true, fps: CHARACTER_FPS, frames: keyed.frames, start: keyed.start }, play);
     } catch (error) {
       toast(String(error));
       motion.stageHeader.rename(`${motion.character} · ${error}`);
@@ -226,12 +225,9 @@ function characterPreparePanel() {
     id: "character-cut-rig",
     class: "start",
     "data-commands": "character.cut character.rig",
-    onclick: () => busy("PhotoCraft is cutting, EffectCraft is rigging…", async () => {
-      if (characterStage.marks)
-        await motionCommand("character.save_marks", { character: motion.character, view: view.view, parts: characterStage.marks });
-      await motionCommand("character.cut", { character: motion.character, view: view.view });
-      await motionCommand("character.rig", { character: motion.character, view: view.view });
-    })
+    onclick: () => busy("PhotoCraft is cutting, EffectCraft is rigging…", () =>
+      motionCommand("character.cut", { character: motion.character, view: view.view, rig: true, ...(characterStage.marks ? { parts: characterStage.marks } : {}) })
+    )
   }, "Cut & rig");
   save.disabled = cutRig.disabled = !view?.marked;
   const open = (app, label) => el("button", {

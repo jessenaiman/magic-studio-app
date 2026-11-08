@@ -51,8 +51,20 @@ pub(crate) fn character_folder(project_dir: &Path, id: &str) -> PathBuf {
     root.join(id)
 }
 
-/// Find an initial cutout drawing in `<character_folder>/parts/` when no `<view>/parts.json` exists yet.
+/// Find an initial cutout drawing for `<character_folder>` when no `<view>/parts.json` exists yet.
+/// Prefers the intact cast/lineup composite over partial layer files in `parts/`.
 pub(crate) fn find_initial_cutout(char_folder: &Path) -> Option<PathBuf> {
+    if let (Some(name), Some(project)) = (char_folder.file_name().and_then(|n| n.to_str()), char_folder.parent().and_then(Path::parent)) {
+        for candidate in [
+            project.join("hyperframes/assets/cast").join(format!("{name}.png")),
+            project.join("assets/characters/approved-crops").join(format!("{name}_from-lineup-v2.png")),
+            char_folder.join("parts/source/body-plate_v1.png"),
+        ] {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
     let parts_dir = char_folder.join("parts");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&parts_dir)
         .ok()?
@@ -140,11 +152,8 @@ fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
     out
 }
 
-/// Run EffectCraft commands via live `--control` (when the project is open) or `effectcraft-cli`.
+/// Run EffectCraft commands via live `--control` (when the project is open) or [`crate::craft_hub::CraftDoc`].
 pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], save: bool) -> Result<Vec<Value>> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
     let base = project.and_then(Path::parent).unwrap_or(dir);
     let mut resolved = Vec::with_capacity(steps.len());
     for step in steps {
@@ -172,50 +181,14 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
         return Ok(out);
     }
 
-    let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    let mut cmd = Command::new(&cli);
-    cmd.arg("--json");
-    match project {
-        Some(path) if path.is_file() => {
-            cmd.arg("--project").arg(path);
-            if save {
-                cmd.arg("--save");
-            }
-        }
-        Some(path) => {
-            cmd.arg("--empty");
-            if save {
-                if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                cmd.arg("--save-as").arg(path);
-            }
-        }
-        None => {
-            cmd.arg("--empty");
-        }
+    let target_path = project.map(Path::to_path_buf).unwrap_or_else(|| dir.join("scratch.ecproj"));
+    let mut doc = crate::craft_hub::CraftDoc::open_or_create(crate::CraftTarget::Effect, &target_path)?;
+    let borrowed: Vec<(&str, Value)> = resolved.iter().map(|(id, params)| (id.as_str(), params.clone())).collect();
+    let out = doc.batch(&borrowed)?;
+    if save && project.is_some() {
+        doc.save()?;
     }
-    cmd.arg("run").arg("--commands").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    let payload: Vec<Value> = resolved.iter().map(|(id, params)| json!({"command": id, "params": params})).collect();
-    let payload_bytes = serde_json::to_vec(&payload).map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(&payload_bytes).map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    }
-    let out = child.wait_with_output().map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
-    if !out.status.success() {
-        return Err(EngineError::ExternalTool(
-            "effectcraft-cli".into(),
-            format!("exit {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()),
-        ));
-    }
-    let parsed: Value =
-        serde_json::from_slice(&out.stdout).map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), format!("invalid JSON output: {e}")))?;
-    let list = parsed
-        .as_array()
-        .or_else(|| parsed["result"].as_array())
-        .ok_or_else(|| EngineError::ExternalTool("effectcraft-cli".into(), format!("expected array result from run, got {parsed}")))?;
-    Ok(list.iter().map(|entry| entry.get("result").cloned().unwrap_or_else(|| entry.clone())).collect())
+    Ok(out)
 }
 
 pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_side: u32, output: &Path) -> Result<()> {
