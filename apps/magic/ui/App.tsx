@@ -8,6 +8,7 @@ import { executeCommand, toggleWindowSnap, WorkshopData } from "./api";
 import { FilmView } from "./views/FilmView";
 import { GalleryView } from "./views/GalleryView";
 import { HomeView } from "./views/HomeView";
+import { MayhemView } from "./views/MayhemView";
 import { PreservedStoryboard } from "./views/StoryboardView";
 
 export type ViewMode =
@@ -18,7 +19,8 @@ export type ViewMode =
   | "motion"
   | "gallery"
   | "animation"
-  | "studio";
+  | "studio"
+  | "mayhem";
 
 const formatClock = (sec: number): string => {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
@@ -238,8 +240,9 @@ export const App: React.FC = () => {
               ["gallery", "Gallery"],
               ["animation", "Animation"],
               ["studio", "Studio"],
+              ["mayhem", "Mayhem"],
             ] as Array<[ViewMode, string]>
-          ).filter(([id]) => projectPath || id === "gallery").map(([id, label]) => (
+          ).filter(([id]) => projectPath || id === "gallery" || id === "mayhem").map(([id, label]) => (
             <button
               key={id}
               id={`tab-${id}`}
@@ -357,7 +360,9 @@ export const App: React.FC = () => {
       <div style={{ overflow: "hidden", height: "100%" }}>
         {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
         {projectPath && <PreservedStoryboard key={`storyboard-${projectPath}`} active={view === "storyboard"} projectPath={projectPath} storyboard={data?.storyboard} onRefresh={() => refreshProject()} onToast={showToast} />}
-        {view === "gallery" ? <GalleryView /> : view === "home" || !projectPath ? (
+        {view === "gallery" ? <GalleryView /> : view === "mayhem" ? (
+          <MayhemView onToast={showToast} />
+        ) : view === "home" || !projectPath ? (
           <HomeView onOpenProject={openProject} onToast={showToast} />
         ) : view === "studio" ? (
           <FilmView projectPath={projectPath} onToast={showToast} />

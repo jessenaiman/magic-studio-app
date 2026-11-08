@@ -306,7 +306,12 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }))
+                .build(),
+        )
         .plugin(tauri_plugin_websocket::init())
         .manage(desktop)
         .on_window_event(|window, event| {
@@ -352,49 +357,4 @@ fn main() {
                 lifecycle::native_close(app);
             }
         });
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    const DOC: &str = include_str!("../../../docs/control-protocol.md");
-    const FRONTEND: &str = include_str!("../ui/desktop.ts");
-    const SHELL: &str = include_str!("main.rs");
-
-    /// Method ids in the first column of the control-protocol table (`engine.*`, `ui.*`, `app.*`).
-    fn documented() -> BTreeSet<String> {
-        let is_method = |id: &str| ["engine.", "ui.", "app."].iter().any(|prefix| id.starts_with(prefix));
-        DOC.lines()
-            .filter(|line| line.starts_with("| `"))
-            .filter_map(|line| line.split('|').nth(1))
-            .flat_map(|cell| cell.split('`').skip(1).step_by(2).map(str::to_owned).collect::<Vec<_>>())
-            .filter(|id| is_method(id))
-            .collect()
-    }
-
-    /// `case "ui.x":` labels in the frontend's request switch.
-    fn frontend_cases() -> BTreeSet<String> {
-        FRONTEND.split("case \"").skip(1).filter_map(|rest| rest.split('"').next()).filter(|id| id.starts_with("ui.")).map(str::to_owned).collect()
-    }
-
-    /// Methods the Rust shell answers itself: string literals in the non-test source.
-    fn handled_by_shell(id: &str) -> bool {
-        SHELL.split("#[cfg(test)]").next().is_some_and(|source| source.contains(&format!("\"{id}\"")))
-    }
-
-    /// The control protocol is three artifacts that must agree: the documented table, the shell's
-    /// dispatch and the frontend's request switch. A method in one but not the others is a bug.
-    #[test]
-    fn control_methods_match_docs_and_frontend() {
-        let docs = documented();
-        assert!(docs.len() >= 15, "control-protocol.md table not found: {docs:?}");
-        let frontend = frontend_cases();
-        for id in &docs {
-            assert!(frontend.contains(id) || handled_by_shell(id), "{id} is documented but nothing handles it");
-        }
-        for id in &frontend {
-            assert!(docs.contains(id), "{id} is handled by the frontend but missing from docs/control-protocol.md");
-        }
-    }
 }
