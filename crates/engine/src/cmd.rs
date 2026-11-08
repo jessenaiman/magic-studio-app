@@ -3,6 +3,7 @@
 //! the control channel and the MCP server all go through it.
 
 pub mod character;
+pub mod commit;
 pub mod film;
 pub mod project;
 pub mod song;

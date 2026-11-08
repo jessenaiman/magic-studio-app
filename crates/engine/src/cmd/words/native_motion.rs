@@ -413,3 +413,18 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
     }
     Ok(reply)
 }
+
+/// `effect.save`: persist `lettering/lyrics.ecproj` with EffectCraft `file.save`.
+///
+/// Runs the single `file.save` command through `effectcraft` with `save: true`, so a live
+/// EffectCraft saves its open document and a headless run writes the work copy back to the
+/// project. `shot.commit` calls this before `film.save` and `project.save`.
+pub fn cmd_effect_save(s: &mut Session, _p: &Value) -> Result<Value> {
+    let dir = crate::cmd::words::workspace_dir(s)?;
+    let project = project_path(&dir);
+    if !project.is_file() {
+        return Err(invalid("No lettering/lyrics.ecproj in this project; build the lettering first"));
+    }
+    effectcraft(&dir, Some(&project), &[step("file.save", json!({}))], true)?;
+    Ok(json!({"ok": true, "project": project}))
+}

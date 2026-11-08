@@ -471,6 +471,17 @@ pub fn cmd_video_open(s: &mut Session, _: &Value) -> Result<Value> {
     Ok(json!({"ok": true, "timeline": project, "document": {"app":"filmcraft", "file":project}}))
 }
 
+/// Save the film `.fcproj` with FilmCraft `file.save`.
+///
+/// Sends the single `file.save` command through the shared `run_steps` runner with `save: false`,
+/// so `file.save` is the one save and is never wrapped in `--save` (which would save twice).
+pub fn cmd_film_save(s: &mut Session, _: &Value) -> Result<Value> {
+    let f = film(s)?;
+    let project = f.require()?.to_path_buf();
+    run_steps(Some(&project), false, false, &[json!({"id": "file.save", "params": {}})])?;
+    Ok(json!({"ok": true, "project": project}))
+}
+
 /// FilmCraft's time unit: ticks per second.
 const TICKS: f64 = 254_016_000_000.0;
 
