@@ -2,8 +2,9 @@
 
 **Songs into animated films.**
 
-Plan scenes, animate artwork, design lyrics, and compose a music video in one
-desktop workspace. The native app and CLI share the same Rust engine.
+Magic Studio turns a song into an animated music video — storyboard, lyric
+lettering, character animation and final assembly in one Rust engine, driven by
+the desktop app, `magic-cli` or MCP.
 
 [Install](#install) · [Production guide](apps/magic/agent.md) ·
 [Documentation](docs/README.md) · [Contributing](#contributing)
@@ -131,11 +132,19 @@ magic-cli exec agent.config '{}'             # verify the agent, model and AI ro
 ```
 
 Choose a different installed agent with `agent.models` / `agent.use`; no settings
-screen is needed. Image generation stays on Codex (`image.provider = "codex"`), and
-`prefs.set` / `prefs.get` edit the rest of `config.toml`. The complete guide,
-including the shared Craft AI connection store and troubleshooting, is
-[docs/ai-setup.md](docs/ai-setup.md); copyable files live in
-[examples/](examples).
+screen is needed. `agent.config` previews a selection for the window,
+`agent.persist` saves the current one, and `agent.use` does both. Image
+generation stays on Codex (`image.provider = "codex"`); `prefs.set` / `prefs.get`
+edit `config.toml`, including `scribbles.model`.
+
+Two limits are worth knowing. The CLI you run must be built from this checkout
+(`cargo install --locked --path apps/magic-cli --force`); an older binary rejects
+newer settings keys with `unknown setting`. And the newer Craft AI roles
+(`fidget`, `scribbles`, `scribbles-mark`) read the shared connection store at
+`~/.config/ArtCraft/ai/connections.json` (`CRAFT_AI_DIR` overrides it); until one
+exists they report `unavailable — no model is chosen`, which does not block image
+generation or chat. Copyable starting files: [examples/agent.json](examples/agent.json)
+and [examples/config.toml](examples/config.toml).
 
 ## CLI and Live `--control` / `--bridge`
 
@@ -170,4 +179,4 @@ Use the source setup guide for development; rebuild after editing embedded UI.
 ## Credits
 
 Magic Studio is a project by **Jesse Naiman**, incorporating and modifying
-OpenMontage by calesthio and its contributors. See [LICENSE](LICENSE) and component notices for upstream authorship and licensing.
+OpenMontage by calesthio and its contributors. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE), plus [NOTICE](NOTICE), and component notices for upstream authorship and licensing.
