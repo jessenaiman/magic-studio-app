@@ -1,6 +1,7 @@
 import { AnimationView } from "./views/AnimationView";
 import { LyricsView } from "./views/LyricsView";
 import { AppFooter } from "./components/AppFooter";
+import { StageAssets } from "./components/StageAssets";
 import { Tooltip } from "./components/Tooltip";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -12,6 +13,7 @@ import { FilmView } from "./views/FilmView";
 import { GalleryView } from "./views/GalleryView";
 import { HomeView } from "./views/HomeView";
 import { MayhemView } from "./views/MayhemView";
+import { ProjectView } from "./views/ProjectView";
 import { PreservedStoryboard } from "./views/StoryboardView";
 
 export type ViewMode =
@@ -34,6 +36,9 @@ const formatClock = (sec: number): string => {
 export const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>("home");
   const [projectPath, setProjectPath] = useState<string | null>(null);
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | undefined>(undefined);
+  const [assetsOpen, setAssetsOpen] = useState<boolean>(false);
+  const [assetsPinned, setAssetsPinned] = useState<boolean>(false);
   const [data, setData] = useState<WorkshopData | null>(null);
   const [toastMsg, setToastMsg] = useState<string>("");
   const [toastVisible, setToastVisible] = useState<boolean>(false);
@@ -71,9 +76,17 @@ export const App: React.FC = () => {
     initialized.current = true;
   };
 
-  const openProject = async (path: string, initialView: ViewMode = "project") => {
+  const navigateTo = useCallback((nextView: ViewMode, characterId?: string) => {
+    if (characterId) {
+      setSelectedCharacterId(characterId);
+    }
+    setView(nextView);
+  }, []);
+
+  const openProject = async (path: string, initialView: ViewMode = "project", characterId?: string) => {
     setBusy(true);
     try {
+      setSelectedCharacterId(characterId);
       await executeCommand("project.open", { path });
       await refreshProject();
       setView(initialView);
@@ -149,6 +162,9 @@ export const App: React.FC = () => {
     // The footer lives across view switches, so refresh the single engine snapshot it reads
     // when switching views in the editor; stages/context must not go stale in the shell.
     if (projectPath && initialized.current) void refreshProject().catch(error => showToast(`Project refresh failed: ${error}`));
+    if (!assetsPinned) {
+      setAssetsOpen(false);
+    }
   }, [view]);
 
   useEffect(() => {
@@ -212,18 +228,39 @@ export const App: React.FC = () => {
           </Tooltip>
 
           {projectPath ? (
-            <button
-              id="tab-project"
-              className={`top-project-pill ${view === "project" ? "active" : ""}`}
-              onClick={() => setView("project")}
-              title={`Project workspace · ${projectName}`}
-            >
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z" />
-                <path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z" />
-              </svg>
-              <span id="project-name">{projectName}</span>
-            </button>
+            <>
+              <button
+                id="tab-project"
+                className={`top-project-pill ${view === "project" ? "active" : ""}`}
+                onClick={() => setView("project")}
+                title={`Project workspace · ${projectName}`}
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z" />
+                  <path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z" />
+                </svg>
+                <span id="project-name">{projectName}</span>
+              </button>
+              <Tooltip label={assetsPinned ? "Asset Drawer pinned open across views" : assetsOpen ? "Hide horizontal Asset Drawer" : "Open horizontal Asset Drawer (can be pinned)"}>
+                <button
+                  id="app-assets-drawer-btn"
+                  type="button"
+                  className={`top-assets-pill ${assetsOpen || assetsPinned ? "active" : ""}`}
+                  aria-expanded={assetsOpen || assetsPinned}
+                  onClick={() => {
+                    if (assetsPinned) {
+                      setAssetsPinned(false);
+                      setAssetsOpen(false);
+                    } else {
+                      setAssetsOpen((v) => !v);
+                    }
+                  }}
+                >
+                  <span>Assets ({Math.max((data?.characters?.length ?? 0) + (data?.assets?.assets?.filter((a) => a.role === "background").length ?? 0), data?.assets?.assets?.length ?? 0)})</span>
+                  <span className="chev">{assetsPinned ? "📌" : assetsOpen ? "▴" : "▾"}</span>
+                </button>
+              </Tooltip>
+            </>
           ) : (
             <span id="project-name" className="muted app-project-name" >
               {projectName}
@@ -373,6 +410,42 @@ export const App: React.FC = () => {
         </div>
       </header>
 
+      {/* Persistent Horizontal Asset Drawer attached below the top menu bar across project views (hidden by default, pinnable) */}
+      {projectPath && view !== "home" && view !== "gallery" && view !== "mayhem" && (
+        <StageAssets
+          projectPath={projectPath}
+          view={view}
+          data={data}
+          open={assetsOpen || assetsPinned}
+          pinned={assetsPinned}
+          onToggleOpen={() => {
+            if (assetsPinned) {
+              setAssetsPinned(false);
+              setAssetsOpen(false);
+            } else {
+              setAssetsOpen((v) => !v);
+            }
+          }}
+          onTogglePin={() => {
+            setAssetsPinned((p) => {
+              const next = !p;
+              if (next) setAssetsOpen(true);
+              return next;
+            });
+          }}
+          selectedCharacterId={selectedCharacterId}
+          onSelectCharacter={(charId, goAnim) => {
+            setSelectedCharacterId(charId);
+            if (goAnim && view !== "animation") {
+              setView("animation");
+            }
+          }}
+          onNavigate={navigateTo}
+          onRefresh={() => refreshProject()}
+          onToast={showToast}
+        />
+      )}
+
       {/* Main Content Area */}
       <div className="app-view-host">
         {view === "gallery" ? (
@@ -386,7 +459,10 @@ export const App: React.FC = () => {
         ) : view === "animation" ? (
           <AnimationView
             projectPath={projectPath}
+            initialCharacterId={selectedCharacterId}
+            characters={data?.characters || []}
             assets={data?.assets?.assets || []}
+            onSelectCharacter={(charId) => setSelectedCharacterId(charId)}
             onRefresh={() => refreshProject()}
             onToast={showToast}
           />
@@ -396,10 +472,18 @@ export const App: React.FC = () => {
             audioPath={songAudioPath || undefined}
             onToast={showToast}
           />
+        ) : view === "project" ? (
+          <ProjectView
+            projectPath={projectPath}
+            data={data}
+            onRefresh={() => refreshProject()}
+            onNavigate={navigateTo}
+            onToast={showToast}
+          />
         ) : (
           <PreservedStoryboard
             key={`storyboard-${projectPath}`}
-            active={view === "storyboard" || view === "project"}
+            active={view === "storyboard"}
             projectPath={projectPath}
             storyboard={data?.storyboard}
             onRefresh={() => refreshProject()}

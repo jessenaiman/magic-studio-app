@@ -54,6 +54,7 @@ pub(crate) fn character_folder(project_dir: &Path, id: &str) -> PathBuf {
 /// Find an initial cutout drawing for `<character_folder>` when no `<view>/parts.json` exists yet.
 /// Prefers the intact cast/lineup composite over partial layer files in `parts/`.
 pub(crate) fn find_initial_cutout(char_folder: &Path) -> Option<PathBuf> {
+    let folder_name = char_folder.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     if let (Some(name), Some(project)) = (char_folder.file_name().and_then(|n| n.to_str()), char_folder.parent().and_then(Path::parent).and_then(Path::parent))
     {
         for candidate in
@@ -64,22 +65,133 @@ pub(crate) fn find_initial_cutout(char_folder: &Path) -> Option<PathBuf> {
             }
         }
     }
+    for named in [
+        char_folder.join("assembled.png"),
+        char_folder.join("cutout.png"),
+        char_folder.join(format!("{folder_name}-clean.png")),
+        char_folder.join(format!("{folder_name}-drawing.png")),
+        char_folder.join("flow-original.png"),
+    ] {
+        if named.is_file() {
+            return Some(named);
+        }
+    }
     let parts_dir = char_folder.join("parts");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&parts_dir)
-        .ok()?
+    if let Ok(rd) = std::fs::read_dir(&parts_dir) {
+        let mut files: Vec<PathBuf> =
+            rd.flatten().map(|e| e.path()).filter(|p| p.is_file() && crate::workspace::has_extension(p, &["png", "webp", "jpg", "jpeg"])).collect();
+        files.sort();
+        if let Some(first) = files.into_iter().next() {
+            return Some(first);
+        }
+    }
+    let sing_frame = char_folder.join("sprites/sing/frames/frame_0001.png");
+    if sing_frame.is_file() {
+        return Some(sing_frame);
+    }
+    if let Some(sp) =
+        std::fs::read_dir(char_folder.join("sprites")).ok().and_then(|rd| rd.flatten().map(|e| e.path().join("frames/frame_0001.png")).find(|p| p.is_file()))
+    {
+        return Some(sp);
+    }
+    if let Ok(rd) = std::fs::read_dir(char_folder) {
+        let mut direct: Vec<PathBuf> =
+            rd.flatten().map(|e| e.path()).filter(|p| p.is_file() && crate::workspace::has_extension(p, &["png", "webp", "jpg", "jpeg"])).collect();
+        direct.sort();
+        if let Some(first) = direct.into_iter().next() {
+            return Some(first);
+        }
+    }
+    None
+}
+
+pub(crate) fn find_dir_ecproj(dir: &Path, id: &str, folder_name: &str, view: &str, is_flat: bool) -> Option<PathBuf> {
+    let mut candidates = vec![dir.join(format!("{id}-{view}.ecproj")), dir.join(format!("{folder_name}-{view}.ecproj"))];
+    if is_flat {
+        candidates.extend([
+            dir.join(format!("{folder_name}-rig.ecproj")),
+            dir.join(format!("{id}-rig.ecproj")),
+            dir.join(format!("{folder_name}.ecproj")),
+            dir.join(format!("{id}.ecproj")),
+        ]);
+    }
+    for c in candidates {
+        if c.is_file() {
+            return Some(c);
+        }
+    }
+    let mut all: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.is_file() && crate::workspace::has_extension(p, &["png", "webp", "jpg", "jpeg"]))
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "ecproj"))
         .collect();
-    files.sort();
-    files.into_iter().next()
+    all.sort();
+    all.iter().find(|p| p.file_stem().and_then(|s| s.to_str()).is_none_or(|s| !s.contains("before-"))).cloned().or_else(|| all.into_iter().next())
+}
+
+pub(crate) fn ensure_ecproj_footage_paths(ecproj_path: &Path) {
+    let Ok(text) = std::fs::read_to_string(ecproj_path) else { return };
+    let Ok(mut doc) = serde_json::from_str::<Value>(&text) else { return };
+    let Some(ecproj_dir) = ecproj_path.parent() else { return };
+    let mut changed = false;
+    if let Some(items) = doc.get_mut("items").and_then(Value::as_object_mut) {
+        for item in items.values_mut() {
+            let Some(kind) = item.get_mut("kind").and_then(Value::as_object_mut) else { continue };
+            if kind.get("type").and_then(Value::as_str) != Some("Footage") {
+                continue;
+            }
+            let Some(raw_path) = kind.get("path").and_then(Value::as_str).map(str::to_owned) else { continue };
+            if raw_path.is_empty() || Path::new(&raw_path).is_file() {
+                continue;
+            }
+            let file_name = Path::new(&raw_path).file_name();
+            let mut candidates = Vec::new();
+            if let Some(fname) = file_name {
+                candidates.push(ecproj_dir.join(fname));
+                candidates.push(ecproj_dir.join("layers").join(fname));
+            }
+            if raw_path.contains("/magic/") {
+                candidates.push(PathBuf::from(raw_path.replace("/magic/", "/magic-studio/")));
+            }
+            if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+                kind.insert("path".to_string(), json!(found));
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        let _ = crate::doc_state::write_json(ecproj_path, &doc);
+    }
+}
+
+pub(crate) fn ecproj_active_comp_name(ecproj_path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(ecproj_path).ok()?;
+    let doc: Value = serde_json::from_str(&text).ok()?;
+    let items = doc.get("items")?.as_object()?;
+    if let Some(active_id) = doc.get("activeComp").and_then(Value::as_u64)
+        && let Some(name) = items.get(&active_id.to_string()).and_then(|it| it.get("name")).and_then(Value::as_str).filter(|s| !s.is_empty())
+    {
+        return Some(name.to_owned());
+    }
+    for item in items.values() {
+        if item.get("kind").and_then(|k| k.get("type")).and_then(Value::as_str) == Some("Comp")
+            && let Some(name) = item.get("name").and_then(Value::as_str).filter(|s| !s.is_empty())
+        {
+            return Some(name.to_owned());
+        }
+    }
+    None
 }
 
 /// One drawn view of one character.
 pub(crate) struct View {
     pub id: String,
+    pub folder_name: String,
     pub view: String,
     pub dir: PathBuf,
+    pub is_flat: bool,
 }
 
 impl View {
@@ -92,16 +204,50 @@ impl View {
         }
         let project_dir = crate::workshop::project_dir(s)?;
         let char_dir = character_folder(&project_dir, &raw_id);
+        let folder_name = char_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| raw_id.clone());
         let id = char_dir.file_name().map(|n| crate::workspace::sanitize_asset_id(&n.to_string_lossy())).filter(|s| !s.is_empty()).unwrap_or(raw_id);
-        let dir = char_dir.join(&view);
-        Ok(Self { id, view, dir })
+        let sub_dir = char_dir.join(&view);
+        let (dir, is_flat) = if sub_dir.is_dir() {
+            (sub_dir, false)
+        } else if view == "front"
+            && char_dir.is_dir()
+            && (char_dir.join("parts.json").is_file() || find_dir_ecproj(&char_dir, &id, &folder_name, &view, true).is_some())
+        {
+            (char_dir, true)
+        } else {
+            (sub_dir, false)
+        };
+        Ok(Self { id, folder_name, view, dir, is_flat })
     }
 
     pub(crate) fn file(&self, ext: &str) -> PathBuf {
+        if ext == "ecproj"
+            && let Some(found) = find_dir_ecproj(&self.dir, &self.id, &self.folder_name, &self.view, self.is_flat)
+        {
+            return found;
+        }
+        if ext == "psd" {
+            for candidate in [
+                self.dir.join(format!("{}-{}.psd", self.id, self.view)),
+                self.dir.join(format!("{}-{}.psd", self.folder_name, self.view)),
+                self.dir.join(format!("{}-parts.psd", self.folder_name)),
+                self.dir.join(format!("{}.psd", self.folder_name)),
+            ] {
+                if candidate.is_file() {
+                    return candidate;
+                }
+            }
+        }
         self.dir.join(format!("{}-{}.{ext}", self.id, self.view))
     }
 
     pub(crate) fn comp(&self) -> String {
+        let ecproj = self.file("ecproj");
+        if ecproj.is_file()
+            && let Some(comp_name) = ecproj_active_comp_name(&ecproj)
+        {
+            return comp_name;
+        }
         format!("{}-{}", self.id, self.view)
     }
 
@@ -182,6 +328,10 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
         resolved.push((id.to_string(), params));
     }
 
+    if let Some(p) = project.filter(|p| p.is_file()) {
+        ensure_ecproj_footage_paths(p);
+    }
+
     if let Some(path) = project.filter(|p| p.is_file())
         && let Some(first) = resolved.first()
         && let Some(first_res) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, false)
@@ -217,6 +367,7 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
 }
 
 pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_side: u32, output: &Path) -> Result<()> {
+    ensure_ecproj_footage_paths(project);
     // Via installed effectcraft-cli render-frame (system app pattern)
     let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     if let Some(parent) = output.parent() {
@@ -244,6 +395,7 @@ pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_si
 }
 
 pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value> {
+    ensure_ecproj_footage_paths(project);
     let cli = crate::workspace::find_executable("effectcraft-cli").map_err(|e| EngineError::ExternalTool("effectcraft-cli".into(), e.to_string()))?;
     let output_str = params["output"].as_str().ok_or_else(|| bad("output path is required for effectcraft_render"))?;
     let output_path = Path::new(output_str);
@@ -354,24 +506,38 @@ pub fn cmd_character_list(s: &mut Session, _: &Value) -> Result<Value> {
                 let drawing = std::fs::read_to_string(dir.join("parts.json"))
                     .ok()
                     .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-                    .and_then(|p| p["image"].as_str().map(|i| dir.join(i)))
+                    .and_then(|p| p["image"].as_str().or_else(|| p["source"].as_str()).map(|i| dir.join(i)))
+                    .filter(|p| p.is_file())
                     .or_else(|| {
                         let staged = dir.join(format!("{canonical_id}-{v}-drawing.png"));
                         staged.is_file().then_some(staged)
+                    })
+                    .or_else(|| {
+                        let staged = dir.join(format!("{id}-{v}-drawing.png"));
+                        staged.is_file().then_some(staged)
                     });
                 json!({"view": v, "parts": dir.join("parts.json").is_file(), "drawing": drawing,
-                    "psd": has("psd"), "ecproj": has("ecproj")})
+                    "psd": has("psd"), "ecproj": find_dir_ecproj(&dir, &canonical_id, &id, v, false).is_some()})
             })
             .collect();
-        if views.is_empty()
-            && let Some(cutout) = find_initial_cutout(&folder)
-        {
-            views.push(json!({"view": "front", "parts": false, "drawing": cutout, "psd": false, "ecproj": false}));
+        if views.is_empty() {
+            let flat_ecproj = find_dir_ecproj(&folder, &canonical_id, &id, "front", true);
+            let flat_parts = folder.join("parts.json").is_file();
+            let flat_psd = folder.join(format!("{id}-parts.psd")).is_file() || folder.join(format!("{id}.psd")).is_file();
+            let cutout = std::fs::read_to_string(folder.join("parts.json"))
+                .ok()
+                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                .and_then(|p| p["image"].as_str().or_else(|| p["source"].as_str()).map(|i| folder.join(i)))
+                .filter(|p| p.is_file())
+                .or_else(|| find_initial_cutout(&folder));
+            if flat_ecproj.is_some() || flat_parts || cutout.is_some() {
+                views.push(json!({"view": "front", "parts": flat_parts, "drawing": cutout, "psd": flat_psd, "ecproj": flat_ecproj.is_some()}));
+            }
         }
         let tripo_3d = tripo::inspect_character_3d(s, &project_dir, &canonical_id);
         let sprites = sprite_summaries(&folder);
         if !views.is_empty() || !sprites.is_empty() || tripo_3d["available"].as_bool() == Some(true) {
-            out.push(json!({"id": canonical_id, "views": views, "sprites": sprites, "tripo_3d": tripo_3d}));
+            out.push(json!({"id": canonical_id, "name": id, "views": views, "sprites": sprites, "tripo_3d": tripo_3d}));
         }
     }
     Ok(json!({"ok": true, "characters": out}))
@@ -385,7 +551,7 @@ pub fn cmd_character_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let side = p["max_side"].as_u64().unwrap_or(900).clamp(64, 4096);
     let frames = view.dir.join("frames");
     std::fs::create_dir_all(&frames)?;
-    let out = frames.join(format!("{}-{:07.3}.png", view.comp(), time));
+    let out = frames.join(format!("{}-{}-{:07.3}.png", view.id, view.view, time));
     effectcraft_frame(&project, &view.comp(), time, side as u32, &out)?;
     Ok(json!({"ok": true, "frame": out, "time": time, "project": project}))
 }
@@ -397,7 +563,7 @@ fn rendered_pngs(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// The folder, `.ecproj` and comp to render: a sprite (`sprite=<name>`) or a rigged view.
-fn render_target(s: &Session, p: &Value) -> Result<(PathBuf, PathBuf, String)> {
+fn render_target(s: &Session, p: &Value) -> Result<(PathBuf, PathBuf, String, String)> {
     if let Some(name) = p["sprite"].as_str() {
         let id = p["character"].as_str().map(crate::workspace::sanitize_asset_id).ok_or_else(|| bad("character=<id> is required"))?;
         let dir = sprite::sprite_dir(s, &id, name)?;
@@ -406,11 +572,12 @@ fn render_target(s: &Session, p: &Value) -> Result<(PathBuf, PathBuf, String)> {
         if !project.is_file() {
             return Err(bad(format!("{} is missing; run character.sprite first", project.display())));
         }
-        return Ok((dir, project, comp));
+        return Ok((dir, project, comp.clone(), comp));
     }
     let view = View::from_params(s, p)?;
     let project = view.require("ecproj", "character.rig")?;
-    Ok((view.dir.clone(), project, view.comp()))
+    let safe_stem = format!("{}-{}", view.id, view.view);
+    Ok((view.dir.clone(), project, safe_stem, view.comp()))
 }
 
 /// Render a time range as a PNG sequence (canvas playback) or a ProRes 4444 clip with alpha
@@ -427,8 +594,8 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
         let name = crate::workspace::sanitize_asset_id(name);
         (dir.join("film"), project, name, p["comp"].clone())
     } else {
-        let (base, project, comp) = render_target(s, p)?;
-        (base, project, comp.clone(), json!(comp))
+        let (base, project, safe_stem, comp) = render_target(s, p)?;
+        (base, project, safe_stem, json!(comp))
     };
     let start = p["start"].as_f64().unwrap_or(0.0).max(0.0);
     let end = p["end"].as_f64().filter(|e| *e > start).unwrap_or(start + 1.0);
@@ -467,7 +634,7 @@ pub fn cmd_character_render(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// A character's sprite cycles: name, EffectCraft project and newest animated preview.
-fn sprite_summaries(folder: &Path) -> Vec<Value> {
+pub(crate) fn sprite_summaries(folder: &Path) -> Vec<Value> {
     let newest = |dir: &Path, ext: &str| {
         std::fs::read_dir(dir)
             .into_iter()
@@ -480,12 +647,75 @@ fn sprite_summaries(folder: &Path) -> Vec<Value> {
     let mut dirs: Vec<PathBuf> =
         std::fs::read_dir(folder.join("sprites")).into_iter().flatten().flatten().map(|entry| entry.path()).filter(|path| path.is_dir()).collect();
     dirs.sort();
-    dirs.iter()
+    let mut out: Vec<Value> = dirs
+        .iter()
         .filter_map(|dir| {
             let ecproj = newest(dir, "ecproj")?;
-            Some(json!({"name": dir.file_name().map(|n| n.to_string_lossy().into_owned()), "ecproj": ecproj, "preview": newest(&dir.join("clips"), "gif")}))
+            let frames = rendered_pngs(&dir.join("frames")).unwrap_or_default();
+            let meta: Value = std::fs::read_to_string(dir.join("sprite.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
+            let fps = meta["fps"].as_u64().unwrap_or(24);
+            let duration = meta["cycle_seconds"].as_f64().unwrap_or_else(|| frames.len() as f64 / fps.max(1) as f64);
+            Some(json!({
+                "name": dir.file_name().map(|n| n.to_string_lossy().into_owned()),
+                "ecproj": ecproj,
+                "preview": newest(&dir.join("clips"), "gif"),
+                "frames": frames,
+                "fps": fps,
+                "duration": duration,
+            }))
         })
-        .collect()
+        .collect();
+
+    // Also include rendered EffectCraft action sequences under `<view>/frames/<range>/` or `<folder>/frames/<range>/`.
+    let folder_name = folder.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let id = crate::workspace::sanitize_asset_id(folder_name);
+    let mut view_dirs: Vec<(PathBuf, bool, &str)> =
+        ["front", "side", "back"].into_iter().filter(|v| folder.join(v).is_dir()).map(|v| (folder.join(v), false, v)).collect();
+    if view_dirs.is_empty() && folder.join("frames").is_dir() {
+        view_dirs.push((folder.to_path_buf(), true, "front"));
+    }
+    for (vdir, is_flat, vname) in view_dirs {
+        let Some(ecproj) = find_dir_ecproj(&vdir, &id, folder_name, vname, is_flat) else { continue };
+        let actions_map = std::fs::read_to_string(vdir.join("parts.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .and_then(|p| p.get("actions").and_then(Value::as_object).cloned())
+            .unwrap_or_default();
+        let mut seq_dirs: Vec<PathBuf> =
+            std::fs::read_dir(vdir.join("frames")).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        seq_dirs.sort();
+        for seq_dir in seq_dirs {
+            let frames = rendered_pngs(&seq_dir).unwrap_or_default();
+            if frames.is_empty() {
+                continue;
+            }
+            let raw_dir_name = seq_dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let mut cycle_name = raw_dir_name.clone();
+            let mut duration = frames.len() as f64 / 24.0;
+            for (act_name, spec) in &actions_map {
+                if let (Some(st), Some(en)) = (spec.get("start").and_then(Value::as_f64), spec.get("end").and_then(Value::as_f64)) {
+                    let suffix = format!("-{st:.2}-{en:.2}");
+                    if raw_dir_name.ends_with(&suffix) {
+                        cycle_name = act_name.clone();
+                        duration = (en - st).max(0.1);
+                        break;
+                    }
+                }
+            }
+            if out.iter().any(|existing| existing["name"].as_str() == Some(cycle_name.as_str())) {
+                continue;
+            }
+            out.push(json!({
+                "name": cycle_name,
+                "ecproj": ecproj,
+                "preview": newest(&vdir.join("clips"), "gif"),
+                "frames": frames,
+                "fps": 24,
+                "duration": duration,
+            }));
+        }
+    }
+    out
 }
 
 /// The project's own animation documents, which live outside the character folders.
@@ -518,8 +748,11 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
     let id = character["id"].as_str().unwrap_or_default();
     let view = p["view"].as_str().map(str::to_owned).or_else(|| views_of(character).first().cloned()).unwrap_or_else(|| "front".into());
     let time = p["time"].as_f64().unwrap_or(0.0).max(0.0);
-    let frame = cmd_character_frame(s, &json!({"character": id, "view": view, "time": time})).ok().map(|f| f["frame"].clone());
     let folder = character_folder(&crate::workshop::project_dir(s)?, id);
+    let frame = cmd_character_frame(s, &json!({"character": id, "view": view, "time": time}))
+        .ok()
+        .map(|f| f["frame"].clone())
+        .or_else(|| find_initial_cutout(&folder).map(|p| json!(p)));
     let clip = [folder.join(&view).join("clips"), folder.join("clips")]
         .iter()
         .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().flatten())
@@ -538,15 +771,44 @@ pub fn cmd_animation_open(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|raw| crate::workspace::resolve_workspace_path(s, raw))
         .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "ecproj"))
         .ok_or_else(|| bad("path=<existing .ecproj> is required"))?;
+    ensure_ecproj_footage_paths(&path);
     crate::CraftHub::open_live(crate::CraftTarget::Effect, &path)?;
     Ok(json!({"ok": true, "app": "effectcraft", "file": path, "document": {"app": "effectcraft", "file": path}}))
 }
 
-/// Add an image or model file as a character, named after the file.
+/// Add an image, EffectCraft `.ecproj`, or model file as a character, named after the file.
 pub fn cmd_character_import(s: &mut Session, p: &Value) -> Result<Value> {
-    let path = p["path"].as_str().ok_or_else(|| bad("path=<file> is required"))?;
-    let name = Path::new(path).file_stem().and_then(|n| n.to_str()).unwrap_or("character");
-    crate::project::cmd_project_add_asset(s, &json!({"path": path, "character": crate::workspace::sanitize_asset_id(name), "name": name, "kind": "image"}))
+    let raw_path = p["path"].as_str().ok_or_else(|| bad("path=<file> is required"))?;
+    let source = crate::workspace::resolve_workspace_path(s, raw_path);
+    if source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("ecproj")) {
+        if !source.is_file() {
+            return Err(bad(format!("{} does not exist", source.display())));
+        }
+        let stem = source.file_stem().and_then(|n| n.to_str()).unwrap_or("character");
+        let clean_stem = stem.trim_end_matches("-rig").trim_end_matches("-front");
+        let char_id = p["character"]
+            .as_str()
+            .map(crate::workspace::sanitize_asset_id)
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| crate::workspace::sanitize_asset_id(clean_stem));
+        let project_dir = crate::workshop::project_dir(s)?;
+        let char_dir = project_dir.join("assets/characters").join(&char_id);
+        std::fs::create_dir_all(&char_dir)?;
+        let file_name = source.file_name().ok_or_else(|| bad("invalid .ecproj filename"))?;
+        let dest = if source.starts_with(project_dir.join("assets/characters")) {
+            source.clone()
+        } else {
+            let d = char_dir.join(file_name);
+            if source != d {
+                std::fs::copy(&source, &d)?;
+            }
+            d
+        };
+        ensure_ecproj_footage_paths(&dest);
+        return Ok(json!({"ok": true, "character": char_id, "ecproj": dest}));
+    }
+    let name = Path::new(raw_path).file_stem().and_then(|n| n.to_str()).unwrap_or("character");
+    crate::project::cmd_project_add_asset(s, &json!({"path": raw_path, "character": crate::workspace::sanitize_asset_id(name), "name": name, "kind": "image"}))
 }
 
 /// Key one transform value of one part at one time (a canvas drag).
@@ -580,6 +842,7 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
         }
     };
     if app == "effectcraft" {
+        ensure_ecproj_footage_paths(&file);
         crate::CraftHub::open_live(crate::CraftTarget::Effect, &file)?;
     } else {
         crate::workspace::open_editor(app, &file)?;

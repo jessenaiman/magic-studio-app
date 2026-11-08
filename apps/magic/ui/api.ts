@@ -163,6 +163,38 @@ export interface ProjectAsset {
   preview?: string;
 }
 
+export interface TrunkFile {
+  name: string;
+  path: string;
+  rel_dir: string;
+  group: string;
+  group_label: string;
+  group_order: number;
+  craft_priority: number;
+  badge: string;
+  open_label: string;
+  is_craft_project: boolean;
+  is_image: boolean;
+  visual_kind: string;
+  current_timeline: boolean;
+  can_animate: boolean;
+  assets: ProjectAsset[];
+  size_bytes: number;
+  modified_ms: number;
+  detail: string;
+}
+
+export interface TrunkInventory {
+  ok?: boolean;
+  project_dir?: string;
+  count?: number;
+  registered_asset_count?: number;
+  files?: TrunkFile[];
+  external_assets?: ProjectAsset[];
+  missing_assets?: ProjectAsset[];
+  error?: string;
+}
+
 export interface WorkshopData {
   project?: string;
   name?: string;
@@ -179,6 +211,8 @@ export interface WorkshopData {
   assets?: {
     assets?: ProjectAsset[];
   };
+  trunk?: TrunkInventory;
+  characters?: CharacterSummary[];
 }
 
 export interface WordsWordItem {
@@ -249,12 +283,36 @@ export interface Character3D {
   video_previews?: string[];
 }
 
+export interface CharacterSpriteSummary {
+  name: string;
+  ecproj: string;
+  preview?: string;
+  frames?: string[];
+  fps?: number;
+  duration?: number;
+}
+
+export interface CharacterViewSummary {
+  view: string;
+  drawing?: string;
+  size?: [number, number];
+  status?: string;
+  parts?: CharacterPart[];
+  actions?: Record<string, { start: number; end: number; times?: number }>;
+  marked?: boolean;
+  cut?: boolean;
+  rigged?: boolean;
+  ecproj?: string;
+  psd?: boolean;
+  revision?: number;
+}
+
 export interface CharacterSummary {
   tripo_3d?: Character3D;
   id: string;
   name?: string;
-  views?: string[];
-  sprites?: string[];
+  views?: Array<string | CharacterViewSummary>;
+  sprites?: Array<string | CharacterSpriteSummary>;
   shots?: string[];
   ecproj?: string;
   pcraft?: string;
@@ -264,22 +322,29 @@ export interface CharacterSummary {
 export interface CharacterPart {
   id: string;
   name?: string;
-  parent?: string;
+  parent?: string | null;
   visible?: boolean;
   joint?: [number, number];
+  outline?: Array<[number, number]>;
+  file?: string;
+}
+
+export interface CharacterActionDef {
+  id: string;
+  views?: string[];
+  duration?: number;
+  loop?: boolean;
+  model?: { clips?: string[]; yaw?: number };
 }
 
 export interface CharacterMetaResponse {
   tripo_3d?: Character3D;
   character?: string;
-  views?: Array<{
-    view: string;
-    parts?: CharacterPart[];
-    actions?: string[];
-    ecproj?: string;
-  }>;
+  skeleton?: string;
+  views?: CharacterViewSummary[];
   parts?: CharacterPart[];
-  actions?: string[];
+  actions?: CharacterActionDef[];
+  sprites?: CharacterSpriteSummary[];
   shots?: Array<{
     name?: string;
     path: string;

@@ -217,8 +217,11 @@ pub fn cmd_project_snapshot(s: &mut Session, _: &Value) -> Result<Value> {
     let status = crate::cmd::project::workshop::workshop_status(s)?;
     let assets = cmd_project_list_assets(s, &json!({}))?;
     let trunk = s.execute("project.trunk", json!({})).unwrap_or_else(|error| json!({"files": [], "error": error.to_string()}));
+    let characters = s.execute("character.list", json!({})).ok().and_then(|res| res.get("characters").cloned()).unwrap_or_else(|| json!([]));
     let storyboard = status.get("storyboard").cloned().unwrap_or(Value::Null);
-    Ok(json!({"project": project, "data": {"project": project, "status": status, "storyboard": storyboard, "assets": assets, "trunk": trunk}}))
+    Ok(
+        json!({"project": project, "data": {"project": project, "status": status, "storyboard": storyboard, "assets": assets, "trunk": trunk, "characters": characters}}),
+    )
 }
 
 /// Where an asset sits in the project's layout: `background` under `assets/backgrounds/`,

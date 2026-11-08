@@ -19,7 +19,15 @@ pub(crate) fn sprite_dir(s: &Session, id: &str, name: &str) -> Result<PathBuf> {
 /// using PhotoCraft's native `image.crop` → `image.trim` → `image.canvasSize` pipeline.
 fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32), lock_baseline: bool) -> Result<Vec<PathBuf>> {
     let clean_sheet = dir.join("sheet-cutout.png");
-    crate::cmd::character::cut::photocraft_run(sheet, &[("layer.removeBackground", json!({"refine": true}))], Some(&clean_sheet))?;
+    crate::cmd::character::cut::photocraft_run(
+        sheet,
+        &[
+            ("select.magicWand", json!({"x": 2, "y": 2, "tolerance": 56, "contiguous": false, "antiAlias": true})),
+            ("layer.layerMask.hideSelection", json!({})),
+            ("select.deselect", json!({})),
+        ],
+        Some(&clean_sheet),
+    )?;
     let (w, h) = crate::cmd::character::cut::photocraft_dimensions(&clean_sheet)?;
     let (cols, rows) = grid;
     let (cw, ch) = (w / cols, h / rows);
@@ -49,7 +57,7 @@ fn crop_frames(dir: &Path, sheet: &Path, grid: (u32, u32), lock_baseline: bool) 
 
 pub fn cmd_character_sprite(s: &mut Session, p: &Value) -> Result<Value> {
     let id = p["character"].as_str().map(crate::workspace::sanitize_asset_id).ok_or_else(|| bad("character=<id> is required"))?;
-    let action = p["action"].as_str().ok_or_else(|| bad("action=<walk|jump|…> is required"))?;
+    let action = p["action"].as_str().or_else(|| p["name"].as_str()).ok_or_else(|| bad("action=<walk|jump|…> is required"))?;
     let name = p["name"].as_str().unwrap_or(action).to_string();
     let sheet = p["sheet"]
         .as_str()
@@ -61,7 +69,10 @@ pub fn cmd_character_sprite(s: &mut Session, p: &Value) -> Result<Value> {
     let duration = p["duration"].as_f64().unwrap_or(4.0).clamp(0.5, 600.0);
     let dir = sprite_dir(s, &id, &name)?;
     std::fs::create_dir_all(&dir)?;
-    std::fs::copy(&sheet, dir.join("sheet.png"))?;
+    let target_sheet = dir.join("sheet.png");
+    if sheet.canonicalize().ok() != target_sheet.canonicalize().ok() {
+        std::fs::copy(&sheet, &target_sheet)?;
+    }
     let lock_baseline = !matches!(action, "jump" | "fly");
     let frames = crop_frames(&dir, &dir.join("sheet.png"), grid, lock_baseline)?;
     let comp = format!("{id}-{name}");

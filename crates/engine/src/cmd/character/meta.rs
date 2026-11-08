@@ -15,14 +15,54 @@ fn revision(path: &Path) -> u64 {
 
 fn view_summary(view: &View) -> Value {
     let parts = view.parts().unwrap_or(Value::Null);
-    let drawing = parts["image"].as_str().map(|i| view.dir.join(i));
+    let drawing = parts["image"]
+        .as_str()
+        .or_else(|| parts["source"].as_str())
+        .map(|i| view.dir.join(i))
+        .filter(|p| p.is_file())
+        .or_else(|| super::find_initial_cutout(&view.dir));
     let ecproj = view.file("ecproj");
+    let layers_dir = view.dir.join("layers");
+    let enriched_parts = parts["parts"].as_array().map(|arr| {
+        arr.iter()
+            .map(|p| {
+                let mut item = p.clone();
+                if item["joint"].is_null() && item["pivot"].is_array() {
+                    item["joint"] = item["pivot"].clone();
+                }
+                let explicit_file = item["file"].as_str().map(|f| view.dir.join(f)).filter(|f| f.is_file());
+                if let Some(ef) = explicit_file {
+                    item["file"] = json!(ef);
+                } else if let Some(id) = item["id"].as_str() {
+                    let layer_png = layers_dir.join(format!("{id}.png"));
+                    let direct_png = view.dir.join(format!("{id}.png"));
+                    if layer_png.is_file() {
+                        item["file"] = json!(layer_png);
+                    } else if direct_png.is_file() {
+                        item["file"] = json!(direct_png);
+                    } else if let Some(ref d) = drawing {
+                        item["file"] = json!(d);
+                    }
+                }
+                item
+            })
+            .collect::<Vec<_>>()
+    });
+    let size = if parts["size"].is_array() {
+        parts["size"].clone()
+    } else if parts["canvas"].is_array() {
+        parts["canvas"].clone()
+    } else if let Some(ref d) = drawing {
+        super::cut::photocraft_dimensions(d).ok().or_else(|| image::image_dimensions(d).ok()).map(|(w, h)| json!([w, h])).unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
     json!({
         "view": view.view,
         "drawing": drawing,
-        "size": parts["size"],
+        "size": size,
         "status": parts["status"],
-        "parts": parts["parts"],
+        "parts": enriched_parts.map(Value::Array).unwrap_or_else(|| parts["parts"].clone()),
         "actions": parts["actions"],
         "marked": parts["parts"].is_array(),
         "cut": view.file("psd").is_file(),
@@ -39,7 +79,7 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
         let mut params = p.clone();
         params["view"] = json!(name);
         let view = View::from_params(s, &params)?;
-        if view.dir.is_dir() {
+        if view.dir.is_dir() && (!view.is_flat || name == "front") {
             views.push(view_summary(&view));
         }
     }
@@ -72,8 +112,9 @@ pub fn cmd_character_meta(s: &mut Session, p: &Value) -> Result<Value> {
     let table: Value = serde_json::from_str(POSES).map_err(|e| bad(e.to_string()))?;
     let actions = super::action::action_summaries(&table);
     let tripo_3d = super::tripo::inspect_character_3d(s, &project_dir, &char_id);
+    let sprites = super::sprite_summaries(&char_folder);
     Ok(json!({"ok": true, "character": char_id, "skeleton": table["skeleton"],
-        "views": views, "actions": actions, "tripo_3d": tripo_3d}))
+        "views": views, "actions": actions, "sprites": sprites, "tripo_3d": tripo_3d}))
 }
 
 fn check_part(part: &Value, known: &[Value]) -> Result<()> {

@@ -19,6 +19,7 @@ designcraft-engine = { git = "https://github.com/storytold/designcraft" }
 designcraft-render = { git = "https://github.com/storytold/designcraft" }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 effectcraft-host = { git = "https://github.com/storytold/effectcraft" }
+effectcraft-ui-egui = { git = "https://github.com/storytold/effectcraft" }
 filmcraft-audio-dsp = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-captions = { git = "https://github.com/storytold/filmcraft" }
 filmcraft-engine = { git = "https://github.com/storytold/filmcraft", features = ["whisper", "speech-download"] }
@@ -38,6 +39,7 @@ craft-docpath = { git = "https://github.com/storytold/craft-libs" }
 craft-keymap = { git = "https://github.com/storytold/craft-libs" }
 craft-media = { git = "https://github.com/storytold/craft-libs", default-features = false }
 craft-settings = { git = "https://github.com/storytold/craft-libs" }
+craft-ui = { git = "https://github.com/storytold/craft-libs", features = ["serde", "native-windows"] }
 craft-update = { git = "https://github.com/storytold/craft-libs" }
 
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)

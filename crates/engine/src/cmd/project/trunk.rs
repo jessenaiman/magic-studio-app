@@ -299,7 +299,13 @@ fn inspect_detail(path: &Path, dir: &Path, badge: &str, size: u64, duration_sec:
                 if !info.supported {
                     parts.push("newer schema".to_string());
                 } else if parts.is_empty() {
-                    parts.push(format!("v{}", info.version));
+                    if let Ok(outline) = craft_doc::outline(&bytes, &craft_doc::Limits::default())
+                        && !outline.layers.is_empty()
+                    {
+                        parts.push(format!("v{} · {} layers", info.version, outline.layers.len()));
+                    } else {
+                        parts.push(format!("v{}", info.version));
+                    }
                 }
             }
             parts.push(human_size(size));
@@ -383,7 +389,9 @@ pub fn cmd_project_trunk(s: &mut Session, _params: &Value) -> Result<Value> {
             missing_assets.push(asset.clone());
             continue;
         };
-        let absolute = if path.is_absolute() { path.clone() } else { canon_dir.join(path) };
+        let raw_str = path.to_string_lossy();
+        let absolute = craft_docpath::resolve_absolute(&raw_str, s.project_path.as_deref())
+            .unwrap_or_else(|_| if path.is_absolute() { path.clone() } else { canon_dir.join(path) });
         match absolute.canonicalize() {
             Ok(canonical) if canonical.starts_with(&canon_dir) => assets_by_path.entry(canonical).or_default().push(asset.clone()),
             Ok(_) => external_assets.push(asset.clone()),

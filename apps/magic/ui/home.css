@@ -507,3 +507,25 @@
 .card-pill-dot.song { background-color: #5bd69b; }
 .card-pill-dot.lyrics { background-color: #7fe0b3; }
 .card-pill-dot.studio { background-color: #eabb62; }
+.card-pill-dot.character { background-color: #baa5eb; }
+
+.card-pill.character {
+  color: #d7cbf7;
+  border-color: rgba(186, 165, 235, 0.35);
+  background: rgba(186, 165, 235, 0.12);
+}
+
+.card-media.character-stage {
+  background: radial-gradient(circle at 50% 50%, #1d2634 0%, #0b0e12 80%);
+  padding: 10px;
+}
+
+.card-media.character-stage img {
+  object-fit: contain;
+}
+
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}

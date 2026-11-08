@@ -14,10 +14,11 @@ interface DialProps {
   unit?: string;
   disabled?: boolean;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
 }
 
-export function Dial({ id, label, value, min, max, step = 1, unit = "", disabled = false, onChange }: DialProps) {
-  const start = useRef<{ y: number; value: number } | null>(null);
+export function Dial({ id, label, value, min, max, step = 1, unit = "", disabled = false, onChange, onCommit }: DialProps) {
+  const start = useRef<{ y: number; value: number; latest: number } | null>(null);
   const clamp = (next: number) => Math.min(max, Math.max(min, Number(next.toFixed(6))));
   const fraction = (value - min) / (max - min || 1);
   const readout = `${Number(value.toFixed(2))}${unit}`;
@@ -34,25 +35,49 @@ export function Dial({ id, label, value, min, max, step = 1, unit = "", disabled
       aria-valuenow={value}
       aria-valuetext={readout}
       aria-disabled={disabled}
-      title="Drag up or down · Shift for fine adjustment · arrow keys to step"
+      title="Drag up or down · Shift for fine adjustment · Escape to cancel · arrow keys to step"
       onPointerDown={(event) => {
         if (disabled) return;
         event.preventDefault();
-        start.current = { y: event.clientY, value };
+        event.currentTarget.focus();
+        start.current = { y: event.clientY, value, latest: value };
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
         const from = start.current;
         if (!from || disabled) return;
-        onChange(clamp(from.value + (from.y - event.clientY) * step * (event.shiftKey ? 0.1 : 1)));
+        const next = clamp(from.value + (from.y - event.clientY) * step * (event.shiftKey ? 0.1 : 1));
+        from.latest = next;
+        onChange(next);
       }}
-      onPointerUp={() => { start.current = null; }}
-      onPointerCancel={() => { start.current = null; }}
+      onPointerUp={() => {
+        const from = start.current;
+        start.current = null;
+        if (from && from.latest !== from.value) {
+          onCommit?.(from.latest);
+        }
+      }}
+      onPointerCancel={() => {
+        const from = start.current;
+        start.current = null;
+        if (from) {
+          onChange(from.value);
+        }
+      }}
       onKeyDown={(event) => {
+        if (event.key === "Escape" && start.current) {
+          event.preventDefault();
+          const initial = start.current.value;
+          start.current = null;
+          onChange(initial);
+          return;
+        }
         const delta = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[event.key] ?? 0;
         if (!delta || disabled) return;
         event.preventDefault();
-        onChange(clamp(value + delta * step * (event.shiftKey ? 10 : 1)));
+        const next = clamp(value + delta * step * (event.shiftKey ? 10 : 1));
+        onChange(next);
+        onCommit?.(next);
       }}
     >
       <svg viewBox="0 0 48 48" aria-hidden="true">

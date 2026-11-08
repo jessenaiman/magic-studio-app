@@ -30,6 +30,9 @@ serde_json = { workspace = true }
 tauri = { version = "2", features = ["protocol-asset"] }
 craft-dialogs = { workspace = true }
 craft-keymap = { workspace = true }
+craft-ui = { workspace = true }
+effectcraft-engine = { workspace = true }
+effectcraft-ui-egui = { workspace = true }
 filmcraft-engine = { workspace = true }
 filmcraft-ui-egui = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "clipboard", "wayland", "x11"] }
