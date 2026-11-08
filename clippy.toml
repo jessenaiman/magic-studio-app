@@ -6,3 +6,6 @@ disallowed-types = [
     { path = "egui::ComboBox", reason = "use craft_ui::ComboBox: egui's combo box menu can't grow back while open (egui#5225)" },
 ]
 cognitive-complexity-threshold = 30
+disallowed-methods = [
+    { path = "std::fs::write", reason = "use magic::write_file (doc_state::write_file): atomic, so a crash never leaves a half-written file" },
+]

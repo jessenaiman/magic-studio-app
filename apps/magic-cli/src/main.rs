@@ -410,11 +410,7 @@ fn load_saved_project() -> Option<String> {
 }
 
 fn save_project(path: Option<&str>) {
-    let file = session_file();
-    if let Some(dir) = file.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::write(&file, json!({ "project": path }).to_string());
+    let _ = magic::write_file(session_file(), json!({ "project": path }).to_string());
 }
 
 fn emit(v: &Value) {

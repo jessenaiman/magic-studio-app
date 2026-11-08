@@ -34,8 +34,9 @@ pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<(Option<
 }
 
 /// Write `bytes` to `path` through [`craft_atomic::atomic_write`], creating the folder. The one
-/// file writer for the engine: a reader never sees a half-written file, whatever the content.
-pub(crate) fn write_file(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> Result<()> {
+/// file writer for Magic (`std::fs::write` is disallowed in `clippy.toml`): a reader never sees a
+/// half-written file, whatever the content.
+pub fn write_file(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> Result<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;

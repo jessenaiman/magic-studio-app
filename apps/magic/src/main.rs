@@ -83,7 +83,7 @@ fn screenshot(app: &tauri::AppHandle, params: &Value) -> Result<Value, String> {
     };
     let target = capture::target_path(path)?;
     let png = capture::snapshot(&main_window(app)?)?;
-    std::fs::write(&target, &png).map_err(|e| format!("could not write {}: {e}", target.display()))?;
+    magic::write_file(&target, &png).map_err(|e| format!("could not write {}: {e}", target.display()))?;
     let (width, height) = capture::png_size(&png).unwrap_or((0, 0));
     Ok(json!({"ok": true, "path": target, "width": width, "height": height, "bytes": png.len()}))
 }

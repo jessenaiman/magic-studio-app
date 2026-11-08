@@ -82,6 +82,7 @@ pub mod workspace;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
 pub use craft_hub::{CraftHub, CraftTarget};
+pub use doc_state::write_file;
 pub use error::{EngineError, Result};
 pub use session::{Asset, ProjectAsset, Session};
 // Backwards-compatible re-exports for the project domain now under `cmd::project`.
