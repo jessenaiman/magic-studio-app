@@ -151,11 +151,11 @@ pub fn cmd_prepare_motion(s: &mut Session, p: &Value) -> Result<Value> {
         {"id":"prop.set","params":{"layer":"Character","path":"geometryOptions/animationSpeed","value":if option=="paced" {85}else{100}}}
     ]);
     let script = folder.join("effectcraft.json");
-    std::fs::write(&script, serde_json::to_vec_pretty(&steps).map_err(|e| bad(e.to_string()))?)?;
+    crate::doc_state::write_file(&script, serde_json::to_vec_pretty(&steps).map_err(|e| bad(e.to_string()))?)?;
     let mut native_steps = steps.as_array().cloned().ok_or_else(|| bad("EffectCraft steps must be an array"))?;
     native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
     let result = crate::cmd::character::effectcraft(&dir, None, &native_steps, true)?;
     let manifest = json!({"character":character,"clip":clip,"option":option,"source":source,"source_sha256":fingerprint,"script":script,"project":project,"rendered":false,"status":"ready-for-preview","resource_policy":"one subject; no render during preparation","filmcraft_handoff":"Render a chosen short clip from this EffectCraft project, then import the result into FilmCraft; source rig remains unchanged"});
-    std::fs::write(folder.join("option.json"), serde_json::to_vec_pretty(&manifest).map_err(|e| bad(e.to_string()))?)?;
+    crate::doc_state::write_file(folder.join("option.json"), serde_json::to_vec_pretty(&manifest).map_err(|e| bad(e.to_string()))?)?;
     Ok(json!({"ok":true,"project":project,"script":script,"option":option,"source_sha256":fingerprint,"rendered":false,"effectcraft":result}))
 }

@@ -145,7 +145,7 @@ pub(crate) fn stage_backdrop_file(s: &Session, dir: &Path, asset_id: &str) -> Re
     let path = dir.join("hyperframes/compositions/words/backdrops").join(&name);
     fs::create_dir_all(path.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
     if !path.is_file() {
-        fs::write(&path, bytes)?;
+        crate::doc_state::write_file(&path, bytes)?;
     }
     Ok(name)
 }
@@ -226,7 +226,7 @@ fn write_if_changed(file: &Path, content: &str) -> Result<bool> {
         if let Some(parent) = file.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(file, content)?;
+        crate::doc_state::write_file(file, content)?;
     }
     Ok(written)
 }

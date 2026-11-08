@@ -100,9 +100,10 @@ impl View {
         serde_json::from_str(&text).map_err(|e| bad(format!("{}: {e}", path.display())))
     }
 
+    /// Write `parts.json` atomically. Not an undoable session document: the commands that change
+    /// it also change PhotoCraft and EffectCraft files that undo cannot restore.
     pub(crate) fn write_parts(&self, parts: &Value) -> Result<()> {
-        let text = serde_json::to_string_pretty(parts).map_err(|e| bad(e.to_string()))?;
-        std::fs::write(self.dir.join("parts.json"), text)?;
+        crate::doc_state::write_json(&self.dir.join("parts.json"), parts)?;
         Ok(())
     }
 

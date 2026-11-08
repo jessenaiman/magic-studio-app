@@ -28,12 +28,20 @@ pub trait ProjectDoc: Serialize + DeserializeOwned {
 /// folder, and return the file's new stamp and size. The one JSON writer for Magic's files:
 /// callers apply their own outside-change guard first.
 pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<(Option<FileStamp>, usize)> {
-    if let Some(parent) = path.parent() {
+    let payload = serde_json::to_vec_pretty(value).map_err(|e| EngineError::InvalidParams(format!("cannot encode {}: {e}", path.display())))?;
+    write_file(path, &payload)?;
+    Ok((FileStamp::of(path), payload.len()))
+}
+
+/// Write `bytes` to `path` through [`craft_atomic::atomic_write`], creating the folder. The one
+/// file writer for the engine: a reader never sees a half-written file, whatever the content.
+pub(crate) fn write_file(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> Result<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
-    let payload = serde_json::to_vec_pretty(value).map_err(|e| EngineError::InvalidParams(format!("cannot encode {}: {e}", path.display())))?;
-    craft_atomic::atomic_write(path, &payload)?;
-    Ok((FileStamp::of(path), payload.len()))
+    craft_atomic::atomic_write(path, bytes.as_ref())?;
+    Ok(())
 }
 
 /// Backwards-compatible alias: the stamp type lives in [`crate::link_watch`].

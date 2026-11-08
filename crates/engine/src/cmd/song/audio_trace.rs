@@ -106,7 +106,7 @@ impl AudioTrace {
                 json!(if hash.is_some() { "unknown original producer; existing outputs reused without ASR" } else { "unknown; no transcript file exists yet" });
         }
         v["analysis_attempt"] = self.data.clone();
-        fs::write(&self.path, serde_json::to_vec_pretty(&v).map_err(|e| EngineError::InvalidParams(e.to_string()))?)
+        crate::doc_state::write_json(&self.path, &v)
             .map_err(|e| EngineError::InvalidParams(format!("Cannot save audio receipt {}: {e}", self.path.display())))?;
         Ok(())
     }

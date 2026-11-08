@@ -38,7 +38,7 @@ pub fn workflow(_: &mut Session, p: &Value) -> Result<Value> {
         let text = p["value"].as_str().filter(|v| !v.trim().is_empty()).ok_or_else(|| invalid("Workflow text cannot be empty"))?;
         row[field] = json!(text);
         let temporary = dir.join("creator-loop.pending");
-        fs::write(&temporary, serde_json::to_vec_pretty(&doc).map_err(|e| invalid(&e.to_string()))?)?;
+        crate::doc_state::write_file(&temporary, serde_json::to_vec_pretty(&doc).map_err(|e| invalid(&e.to_string()))?)?;
         fs::rename(temporary, &path)?;
         doc
     } else {

@@ -477,7 +477,7 @@ fn beat_analysis(
     if analysis["items"].as_array().is_none_or(Vec::is_empty) {
         return Err(EngineError::InvalidParams(format!("HyperFrames audio returned no recording analysis: {analysis}")));
     }
-    std::fs::write(hf.join("audio-analysis.json"), serde_json::to_vec_pretty(&analysis).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
+    crate::doc_state::write_file(hf.join("audio-analysis.json"), serde_json::to_vec_pretty(&analysis).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
     ran.push("hyperframes audio → audio-analysis.json");
     if let Some(step) = crate::cmd::film::video_target::detect_audio_beats(hf, runtime) {
         ran.push(step);

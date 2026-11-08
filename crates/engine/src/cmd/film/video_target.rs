@@ -144,7 +144,7 @@ pub(crate) fn ensure_music_audio_role(hf_dir: &Path) -> Result<()> {
     let html = std::fs::read_to_string(&entry)?;
     if html.contains("<audio") && !html.contains("data-timeline-role=\"music\"") {
         let updated = html.replacen("<audio", "<audio data-timeline-role=\"music\"", 1);
-        std::fs::write(&entry, updated)?;
+        crate::doc_state::write_file(&entry, updated)?;
     }
     Ok(())
 }
@@ -227,7 +227,7 @@ pub(crate) fn write_caption_source(dest: &Path, words: &[Value], groups: &[[usiz
         .replace("__AC_DURATION__", &duration.to_string());
     let parent = dest.parent().ok_or_else(|| EngineError::InvalidParams(format!("Caption destination has no parent: {}", dest.display())))?;
     std::fs::create_dir_all(parent)?;
-    std::fs::write(dest, html)?;
+    crate::doc_state::write_file(dest, html)?;
     Ok(())
 }
 
@@ -306,7 +306,7 @@ fn caption_reuse(dest: &Path, receipt: &Path, digest: &str) -> Result<CaptionReu
 fn write_caption_receipt(receipt: &Path, digest: &str, dest: &Path, transcript: &Path, words: &[Value], duration: f64) -> Result<()> {
     let source_hash = format!("{:x}", Sha256::digest(std::fs::read(dest)?));
     let receipt_bytes=serde_json::to_vec_pretty(&json!({"input_sha256":digest,"source_sha256":source_hash,"transcript":transcript,"word_count":words.len(),"duration":duration,"grouping":"provisional deterministic batches of five; no semantic or listening review claimed","source":"official caption-highlight; native caption-group classes"})).map_err(|e|EngineError::InvalidParams(e.to_string()))?;
-    std::fs::write(receipt, receipt_bytes)?;
+    crate::doc_state::write_file(receipt, receipt_bytes)?;
     Ok(())
 }
 
@@ -366,7 +366,7 @@ pub(crate) fn ensure_native_captions(s: &Session, dir: &Path) -> Result<Value> {
         }
     }
     if mount_caption_track(&mut host, duration)? {
-        std::fs::write(&entry, host)?;
+        crate::doc_state::write_file(&entry, host)?;
     }
     Ok(
         json!({"ready":true,"source":dest,"provenance":receipt,"word_count":words.len(),"duration_sec":duration,"reused_existing_source":reused,"grouping_review":"provisional; native timing preserved; no semantic correction or auditory verification"}),
@@ -729,7 +729,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
     std::fs::copy(&entry, &backup_path)?;
     let at = find_scene_insertion_offset(&cleaned, comp_end);
     let updated_html = format!("{}\n{}{}", &cleaned[..at], tag, &cleaned[at..]);
-    std::fs::write(&entry, updated_html)?;
+    crate::doc_state::write_file(&entry, updated_html)?;
 
     let mut merged = existing.as_object().cloned().unwrap_or_default();
     if let Some(req_obj) = request.as_object() {
@@ -753,7 +753,7 @@ fn place_track_in_hyperframes(project: &Path, request: &Value) -> Result<Value> 
         merged.insert("source_generation".into(), gen_info);
     }
     let out_val = Value::Object(merged);
-    std::fs::write(&existing_path, serde_json::to_vec_pretty(&out_val).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
+    crate::doc_state::write_file(&existing_path, serde_json::to_vec_pretty(&out_val).map_err(|e| EngineError::InvalidParams(e.to_string()))?)?;
     Ok(out_val)
 }
 

@@ -259,7 +259,10 @@ fn write_prompts(s: &Session, params: &Value, panels: &[PathBuf], image: &Path) 
             continue;
         };
         let out = panel.with_extension("prompt.md");
-        std::fs::write(&out, format!("{text}\n\nSource: {source} (panel {} of {})\n", i + 1, image.file_name().and_then(|n| n.to_str()).unwrap_or_default()))?;
+        crate::doc_state::write_file(
+            &out,
+            format!("{text}\n\nSource: {source} (panel {} of {})\n", i + 1, image.file_name().and_then(|n| n.to_str()).unwrap_or_default()),
+        )?;
         written.push(out);
     }
     Ok(written)

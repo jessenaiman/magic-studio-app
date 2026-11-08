@@ -64,7 +64,7 @@ fn generate_via_openai_api(prompt: &str, key: &str, endpoint: Option<&str>, out:
     let cleaned: String = b64.chars().filter(|c| !c.is_ascii_whitespace()).collect();
     let bytes = craft_ai_core::payload::base64_decode(&cleaned).ok_or_else(|| invalid("Failed to decode base64 image data from API"))?;
 
-    fs::write(out, bytes).map_err(|e| invalid(&format!("Failed to write PNG: {e}")))?;
+    crate::doc_state::write_file(out, bytes).map_err(|e| invalid(&format!("Failed to write PNG: {e}")))?;
     Ok(())
 }
 
@@ -173,7 +173,7 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         "status": "ready"
     });
 
-    let _ = fs::write(&receipt_path, serde_json::to_vec_pretty(&record).unwrap_or_default());
+    let _ = crate::doc_state::write_file(&receipt_path, serde_json::to_vec_pretty(&record).unwrap_or_default());
 
     Ok(record)
 }

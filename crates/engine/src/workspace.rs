@@ -342,7 +342,7 @@ pub fn cmd_vector_exec(s: &mut crate::Session, p: &Value) -> Result<Value> {
         .or_else(|_| find_executable("vectorcraft"))
         .map_err(|e| EngineError::ExternalTool("vectorcraft-cli".into(), e.to_string()))?;
     let tmp = std::env::temp_dir().join(format!("magic-vector-{}.json", std::process::id()));
-    std::fs::write(&tmp, serde_json::to_vec(&steps).unwrap_or_default())?;
+    crate::doc_state::write_file(&tmp, serde_json::to_vec(&steps).unwrap_or_default())?;
     let mut cmd = std::process::Command::new(&cli);
     cmd.arg("run").arg("--commands").arg(&tmp);
     if path.is_file() {

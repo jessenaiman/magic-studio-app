@@ -21,7 +21,7 @@ pub(crate) fn run(_dir: &Path, project: &Path, fresh: bool, steps: &[Value]) -> 
     if !fresh && let Ok(earlier) = std::fs::read_to_string(&file) {
         body = earlier + &body;
     }
-    std::fs::write(&file, &body)?;
+    crate::doc_state::write_file(&file, &body)?;
     crate::cmd::film::run(project, fresh, steps)
 }
 

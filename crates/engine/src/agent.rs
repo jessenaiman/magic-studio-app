@@ -101,7 +101,7 @@ fn persist_selection(selection: &Value) -> Result<Value> {
         stored["extra_args"] = json!(extra);
     }
     fs::create_dir_all(path.parent().ok_or_else(|| invalid("App settings directory unavailable; selection not persisted"))?)?;
-    fs::write(&path, serde_json::to_vec_pretty(&stored).map_err(|_| invalid("Cannot encode the app settings; selection not persisted"))?)
+    crate::doc_state::write_file(&path, serde_json::to_vec_pretty(&stored).map_err(|_| invalid("Cannot encode the app settings; selection not persisted"))?)
         .map_err(|_| invalid("Cannot write the app settings; selection not persisted"))?;
     Ok(stored)
 }

@@ -191,7 +191,7 @@ fn run_lyrics_layout(dir: &Path, recipe_doc: &Value, doc: &Value, times: &std::c
     if let Some(parent) = input.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&input, serde_json::to_vec(&json!({"animations":animations})).map_err(|e| invalid(e.to_string()))?)?;
+    crate::doc_state::write_file(&input, serde_json::to_vec(&json!({"animations":animations})).map_err(|e| invalid(e.to_string()))?)?;
     Ok(crate::cmd::words::lyrics_layout::designs(recipe_doc, &animations))
 }
 
@@ -297,7 +297,7 @@ pub fn cmd_words_track(s: &mut Session, _: &Value) -> Result<Value> {
     let at = out.find("<audio").or_else(|| out.rfind("</div>")).ok_or_else(|| invalid("The video has no root composition to hold the lyric line"))?;
     let at = out[..at].rfind('\n').map_or(at, |n| n + 1);
     out.insert_str(at, &clips);
-    fs::write(&index, out)?;
+    crate::doc_state::write_file(&index, out)?;
     Ok(json!({
         "ok": true,
         "clips": words.len(),
@@ -364,7 +364,7 @@ fn soften_webgpu_shader_guard(hf: &Path) {
             "if(e)return;",
         );
     if next != js {
-        let _ = fs::write(&path, next);
+        let _ = crate::doc_state::write_file(&path, next);
     }
     let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
 }
@@ -393,8 +393,8 @@ fn mount_overlay(s: &mut Session, placement: &WordsPlacement<'_>, read: &Value, 
     let own_src = Path::new(src).with_file_name(format!("{own}.html")).to_string_lossy().into_owned();
     let source =
         fs::read_to_string(dir.join("hyperframes").join(src))?.replace(" data-requires-webgpu", "").replace("background: #000", "background: transparent");
-    let _ = fs::write(dir.join("hyperframes").join(src), &source);
-    fs::write(
+    let _ = crate::doc_state::write_file(dir.join("hyperframes").join(src), &source);
+    crate::doc_state::write_file(
         dir.join("hyperframes").join(&own_src),
         source.replace(&format!("\"{block}\""), &format!("\"{own}\"")).replace(&format!("'{block}'"), &format!("'{own}'")),
     )?;
@@ -535,7 +535,7 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
     let _ = fs::remove_dir_all(dir.join("hyperframes/.hyperframes/preview"));
     if html != original || use_it {
         let temporary = index.with_extension("html.tmp");
-        fs::write(&temporary, &html)?;
+        crate::doc_state::write_file(&temporary, &html)?;
         fs::rename(&temporary, &index)?;
     }
     receipt["changed"] = json!(html != original);
@@ -576,7 +576,7 @@ fn compose_drawing_subcompositions(
         }
         let own = format!("{composition_id}-drawing-{index}");
         let src = format!("compositions/words/{own}.html");
-        fs::write(hf.join(&src), kinetic_composition(&own_anim, &own, width, height, end - start, &shifted, "drawings")?)?;
+        crate::doc_state::write_file(hf.join(&src), kinetic_composition(&own_anim, &own, width, height, end - start, &shifted, "drawings")?)?;
         drawings.push(json!({"composition_id":own,"src":src,"start":start,"duration":end-start}));
     }
     Ok(drawings)
@@ -685,7 +685,7 @@ fn validate_words_compose_inputs(p: &Value, anim: &Value) -> Result<WordsCompose
 fn write_section_composition_file(hf: &Path, composition_id: &str, html: &str) -> Result<PathBuf> {
     let file = hf.join("compositions/words").join(format!("{composition_id}.html"));
     fs::create_dir_all(file.parent().ok_or_else(|| invalid("Output path has no parent"))?)?;
-    fs::write(&file, html)?;
+    crate::doc_state::write_file(&file, html)?;
     let _ = fs::remove_dir_all(hf.join(".hyperframes/preview"));
     Ok(file)
 }

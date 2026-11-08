@@ -661,7 +661,7 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
         let marker = "data-composition-src=\"compositions/captions.html\"";
         let kept: Vec<&str> = host.lines().filter(|l| !l.contains(marker)).collect();
         if kept.len() != host.lines().count() {
-            fs::write(&index, kept.join("\n") + "\n")?;
+            crate::doc_state::write_file(&index, kept.join("\n") + "\n")?;
         }
         return Ok(json!({"ok":true,"caption_track":"removed: every section is designed","source":dest,"designed":designed}));
     }
@@ -677,7 +677,7 @@ pub(crate) fn captions_to_video(s: &Session, dir: &Path, aligned: &Value) -> Res
     crate::cmd::film::video_target::write_caption_source(&dest, &words, &groups, duration)?;
     let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&words).map_err(|e| invalid(e.to_string()))?));
     let receipt = dir.join("hyperframes/.magic-captions.json");
-    fs::write(
+    crate::doc_state::write_file(
         &receipt,
         serde_json::to_vec_pretty(&json!({
             "source_kind": "artist_lines",
@@ -759,6 +759,6 @@ pub fn cmd_words_captions(s: &mut Session, p: &Value) -> Result<Value> {
     if let Some(parent) = out.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&out, &srt)?;
+    crate::doc_state::write_file(&out, &srt)?;
     Ok(json!({"ok":true,"path":out,"cues":cues.len(),"words":heard.len()}))
 }

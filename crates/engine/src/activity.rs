@@ -103,7 +103,7 @@ fn remember(path: &std::path::Path, event: &Value) -> std::io::Result<()> {
     rows.push(event.clone());
     let excess = rows.len().saturating_sub(HISTORY_LIMIT);
     let bytes = rows[excess..].iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n";
-    fs::write(path, bytes)?;
+    crate::doc_state::write_file(path, bytes).map_err(std::io::Error::other)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

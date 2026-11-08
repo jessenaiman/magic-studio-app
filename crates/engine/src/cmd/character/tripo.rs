@@ -92,7 +92,7 @@ fn write_json_pretty(path: &Path, value: &Value) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let text = serde_json::to_string_pretty(value).map_err(|e| bad(e.to_string()))?;
-    std::fs::write(path, format!("{text}\n"))?;
+    crate::doc_state::write_file(path, format!("{text}\n"))?;
     Ok(())
 }
 

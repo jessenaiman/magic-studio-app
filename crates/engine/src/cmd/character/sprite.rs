@@ -81,7 +81,7 @@ pub fn cmd_character_sprite(s: &mut Session, p: &Value) -> Result<Value> {
     let meta = json!({"character": id, "sprite": name, "action": action, "sheet": dir.join("sheet.png"),
         "source_sheet": sheet, "frames": frames.len(), "fps": fps, "cycle_seconds": frames.len() as f64 / fps as f64,
         "duration": duration, "mirror": p["mirror"] == true, "comp": comp, "ecproj": project});
-    std::fs::write(dir.join("sprite.json"), serde_json::to_string_pretty(&meta).map_err(|e| bad(e.to_string()))?)?;
+    crate::doc_state::write_json(&dir.join("sprite.json"), &meta)?;
     Ok(json!({"ok": true, "sprite": meta,
         "next": format!("character.render character={id} sprite={name} start=0 end={}", frames.len() as f64 / fps as f64)}))
 }

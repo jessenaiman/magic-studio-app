@@ -487,7 +487,7 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     std::fs::create_dir_all(&out)?;
     let (project, commands) = (out.join("lyrics.ecproj"), out.join("lyrics.steps.jsonl"));
     let jsonl: String = steps.iter().map(|v| format!("{v}\n")).collect();
-    std::fs::write(&commands, jsonl)?;
+    crate::doc_state::write_file(&commands, jsonl)?;
     let mut native_steps = steps;
     native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
     crate::cmd::character::effectcraft(&dir, None, &native_steps, true)?;
