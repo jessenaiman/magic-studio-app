@@ -1,9 +1,10 @@
 import { PreservedWorkspaces } from "./components/RestoredWorkspace";
+import { Tooltip } from "./components/Tooltip";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { importDroppedArtwork } from "./artwork-transfer";
 import { connectDesktop } from "./desktop";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { executeCommand, toggleWindowSnap, WorkshopData } from "./api";
 import { FilmView } from "./views/FilmView";
 import { GalleryView } from "./views/GalleryView";
@@ -39,9 +40,9 @@ export const App: React.FC = () => {
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMsg(msg);
-  };
+  }, []);
 
   const liveState = useRef({ view, projectPath, busy, toastMsg });
   liveState.current = { view, projectPath, busy, toastMsg };
@@ -186,10 +187,10 @@ export const App: React.FC = () => {
         }}
       >
         <div className="app-identity" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Tooltip label={projectPath ? "Return to Song Film Shelf (Home)" : "Magic Studio Home"}>
           <button
             id="brand"
             className="top-brand-btn"
-            title={projectPath ? "Return to Song Film Shelf (Home)" : "Magic Studio Home"}
             onClick={() => void closeProject()}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style={{ color: "#eabb62" }}>
@@ -197,6 +198,7 @@ export const App: React.FC = () => {
             </svg>
             {!projectPath && <span style={{ marginLeft: 6, fontWeight: 700 }}>Magic Studio</span>}
           </button>
+          </Tooltip>
 
           {projectPath ? (
             <button
@@ -217,14 +219,15 @@ export const App: React.FC = () => {
             </span>
           )}
 
+          <Tooltip label="Snap window to the top-right corner, or back to the center">
           <button
             id="window-snap"
             className="top-icon-ghost"
-            title="Snap window to the top-right corner, or back to the center"
             onClick={() => void toggleWindowSnap().then((to) => showToast(`Window moved to ${to}`)).catch((e) => showToast(String(e)))}
           >
             ⇱
           </button>
+          </Tooltip>
         </div>
 
         <nav
@@ -250,9 +253,9 @@ export const App: React.FC = () => {
               onClick={() => setView(id)}
             >
               {id === "storyboard" && (
+                <Tooltip label={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields; ${data?.storyboard?.preflight?.errors ?? 0} layout errors`}>
                 <span
                   aria-label={data?.storyboard?.complete ? "Storyboard complete" : "Storyboard incomplete"}
-                  title={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields; ${data?.storyboard?.preflight?.errors ?? 0} layout errors`}
                   style={{
                     color: data?.storyboard?.complete ? "#5bd69b" : data?.storyboard?.status === "review" ? "#eabb62" : "#ed8796",
                     marginRight: 5,
@@ -261,6 +264,7 @@ export const App: React.FC = () => {
                 >
                   ●
                 </span>
+                </Tooltip>
               )}
               {label}
             </button>
@@ -280,25 +284,26 @@ export const App: React.FC = () => {
                 onTimeUpdate={(e) => setAudioTime(e.currentTarget.currentTime)}
                 onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
               />
+              <Tooltip label={audioPlaying ? "Pause song preview" : "Play song preview"}>
               <button
                 id="app-audio-toggle"
                 className={`top-audio-pill ${audioPlaying ? "playing" : ""}`}
                 onClick={toggleTopAudio}
-                title={audioPlaying ? "Pause song preview" : "Play song preview"}
               >
                 <span className="top-audio-play-ico">{audioPlaying ? "⏸" : "▶"}</span>
                 <span className="top-audio-clock">
                   {formatClock(audioTime)} / {formatClock(audioDuration)}
                 </span>
               </button>
+              </Tooltip>
             </>
           )}
 
           <div className="top-craft-dock" aria-label="ArtCraft Suite">
-            <button
+            <Tooltip label="Open PhotoCraft">
+<button
               id="dock-photocraft"
               className="craft-dock-btn craft-photo"
-              title="Open PhotoCraft"
               onClick={() => void launchCraftApp("photocraft", "PhotoCraft")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -307,10 +312,11 @@ export const App: React.FC = () => {
                 <path d="m21 15-5-5L5 21" />
               </svg>
             </button>
-            <button
+            </Tooltip>
+            <Tooltip label="Open VectorCraft">
+<button
               id="dock-vectorcraft"
               className="craft-dock-btn craft-vector"
-              title="Open VectorCraft"
               onClick={() => void launchCraftApp("vectorcraft", "VectorCraft")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -320,10 +326,11 @@ export const App: React.FC = () => {
                 <path d="M8 7.5 11 16M16 7.5 13 16M8.5 6h7" />
               </svg>
             </button>
-            <button
+            </Tooltip>
+            <Tooltip label="Open DesignCraft">
+<button
               id="dock-designcraft"
               className="craft-dock-btn craft-design"
-              title="Open DesignCraft"
               onClick={() => void launchCraftApp("designcraft", "DesignCraft")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -331,20 +338,22 @@ export const App: React.FC = () => {
                 <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
               </svg>
             </button>
-            <button
+            </Tooltip>
+            <Tooltip label="Open EffectCraft">
+<button
               id="dock-effectcraft"
               className="craft-dock-btn craft-effect"
-              title="Open EffectCraft"
               onClick={() => void launchCraftApp("effectcraft", "EffectCraft")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                 <path d="M12 3l2.1 5.4L19.5 10.5l-5.4 2.1L12 18l-2.1-5.4L4.5 10.5l5.4-2.1L12 3z" />
               </svg>
             </button>
-            <button
+            </Tooltip>
+            <Tooltip label="Open FilmCraft">
+<button
               id="dock-filmcraft"
               className="craft-dock-btn craft-film"
-              title="Open FilmCraft"
               onClick={() => void launchCraftApp("filmcraft", "FilmCraft")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -352,6 +361,7 @@ export const App: React.FC = () => {
                 <path d="M7 4v16M17 4v16M3 10h18M3 15h4M17 15h4" />
               </svg>
             </button>
+            </Tooltip>
           </div>
         </div>
       </header>
