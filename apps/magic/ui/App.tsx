@@ -162,41 +162,25 @@ export const App: React.FC = () => {
   return (
     <div
       id="app-shell"
-      style={{
-        display: "grid",
-        gridTemplateRows: "52px 1fr 28px",
-        height: "100vh",
-        width: "100vw",
-        background: "var(--bg, #0e1116)",
-        color: "var(--text, #e6edf3)",
-        overflow: "hidden",
-      }}
+      className="app-shell"
     >
       {/* Top App Bar */}
       <header
         id="app-bar"
         data-tauri-drag-region="deep"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 14px",
-          background: "#0d1117",
-          borderBottom: "1px solid #232a35",
-          gap: "12px",
-        }}
+        className="app-bar"
       >
-        <div className="app-identity" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className="app-identity app-identity-row" >
           <Tooltip label={projectPath ? "Return to Song Film Shelf (Home)" : "Magic Studio Home"}>
           <button
             id="brand"
             className="top-brand-btn"
             onClick={() => void closeProject()}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style={{ color: "#eabb62" }}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="app-logo">
               <path d="M12 2l2.2 6.3L20.5 10.5l-6.3 2.2L12 19l-2.2-6.3L3.5 10.5l6.3-2.2L12 2zm6.5 12l1 2.8 2.8 1-2.8 1-1 2.8-1-2.8-2.8-1 2.8-1 1-2.8z" />
             </svg>
-            {!projectPath && <span style={{ marginLeft: 6, fontWeight: 700 }}>Magic Studio</span>}
+            {!projectPath && <span className="app-title">Magic Studio</span>}
           </button>
           </Tooltip>
 
@@ -214,7 +198,7 @@ export const App: React.FC = () => {
               <span id="project-name">{projectName}</span>
             </button>
           ) : (
-            <span id="project-name" className="muted" style={{ fontSize: "12px", fontWeight: 600 }}>
+            <span id="project-name" className="muted app-project-name" >
               {projectName}
             </span>
           )}
@@ -256,11 +240,7 @@ export const App: React.FC = () => {
                 <Tooltip label={data?.storyboard?.error || `${data?.storyboard?.count ?? 0} unfilled fields; ${data?.storyboard?.preflight?.errors ?? 0} layout errors`}>
                 <span
                   aria-label={data?.storyboard?.complete ? "Storyboard complete" : "Storyboard incomplete"}
-                  style={{
-                    color: data?.storyboard?.complete ? "#5bd69b" : data?.storyboard?.status === "review" ? "#eabb62" : "#ed8796",
-                    marginRight: 5,
-                    fontSize: 10,
-                  }}
+                  className={`app-storyboard-dot ${data?.storyboard?.complete ? "complete" : data?.storyboard?.status === "review" ? "review" : "incomplete"}`}
                 >
                   ●
                 </span>
@@ -367,7 +347,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* Main Content Area */}
-      <div style={{ overflow: "hidden", height: "100%" }}>
+      <div className="app-view-host">
         {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
         {projectPath && <PreservedStoryboard key={`storyboard-${projectPath}`} active={view === "storyboard"} projectPath={projectPath} storyboard={data?.storyboard} onRefresh={() => refreshProject()} onToast={showToast} />}
         {view === "gallery" ? <GalleryView /> : view === "mayhem" ? (
@@ -382,15 +362,7 @@ export const App: React.FC = () => {
       {/* Bottom Status Footer */}
       <footer
         id="app-footer"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 16px",
-          fontSize: "11px",
-          background: "#0d1117",
-          borderTop: "1px solid #232a35",
-        }}
+        className="app-status-footer"
       >
         <span id="footer-status">
           {busy ? "Working…" : toastMsg || (projectPath ? `Saved · ${projectPath}` : "Ready")}

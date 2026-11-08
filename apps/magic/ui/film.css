@@ -1,0 +1,9 @@
+/* Film view: header, action row and export settings (was inline styles in FilmView.tsx). */
+.film-view-layout { display: flex; flex-direction: column; gap: 12px; padding: 16px; height: 100%; overflow-y: auto; }
+.film-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: var(--surface-2, #181c22); padding: 12px 16px; border-radius: 8px; }
+.film-title { font-size: 16px; }
+.film-status { margin: 2px 0 0; font-size: 12px; }
+.film-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.film-export-settings { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: var(--surface-2, #181c22); padding: 10px 16px; border-radius: 8px; font-size: 12px; }
+.film-inline-field { display: flex; align-items: center; gap: 4px; }
+.film-export-actions { margin-left: auto; display: flex; gap: 6px; }

@@ -218,3 +218,17 @@ body.animation-mode :is(#tab-project, #tab-storyboard, #tab-design, #tab-studio,
   #app-bar #project-name { display:none; }
   #app-bar #mode-tabs { min-width:0; flex:1; overflow-x:auto; }
 }
+
+/* App shell, bar and footer (was inline styles in App.tsx). */
+.app-shell { display: grid; grid-template-rows: 52px 1fr 28px; height: 100vh; width: 100vw; background: var(--bg, #0e1116); color: var(--text, #e6edf3); overflow: hidden; }
+.app-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #0d1117; border-bottom: 1px solid #232a35; gap: 12px; }
+.app-identity-row { display: flex; align-items: center; gap: 8px; }
+.app-logo { color: #eabb62; }
+.app-title { margin-left: 6px; font-weight: 700; }
+.app-project-name { font-size: 12px; font-weight: 600; }
+.app-storyboard-dot { margin-right: 5px; font-size: 10px; }
+.app-storyboard-dot.complete { color: #5bd69b; }
+.app-storyboard-dot.review { color: #eabb62; }
+.app-storyboard-dot.incomplete { color: #ed8796; }
+.app-view-host { overflow: hidden; height: 100%; }
+.app-status-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 11px; background: #0d1117; border-top: 1px solid #232a35; }

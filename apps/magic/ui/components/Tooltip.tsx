@@ -72,7 +72,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ label, children, position = "b
   return (
     <span
       ref={triggerRef}
-      style={{ position: "relative", display: "inline-flex" }}
+      className="tooltip-trigger"
       onPointerEnter={show}
       onPointerLeave={hide}
       onPointerDown={hide}
@@ -88,24 +88,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ label, children, position = "b
             id={id}
             role="tooltip"
             ref={tipRef}
-            style={{
-              position: "fixed",
-              left: coords.x,
-              top: coords.y,
-              opacity: coords.ready ? 1 : 0,
-              transition: "opacity 150ms ease-out",
-              zIndex: 1000,
-              pointerEvents: "none",
-              padding: "4px 8px",
-              borderRadius: 3,
-              border: "1px solid var(--border, #2a313c)",
-              background: "var(--surface-2, #181c22)",
-              color: "var(--text, #e6edf3)",
-              font: "500 11px/1.4 ui-monospace, SFMono-Regular, monospace",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              whiteSpace: "nowrap",
-            }}
+            className={`magic-tooltip${coords.ready ? " ready" : ""}`} style={{ left: coords.x, top: coords.y }}
           >
             {label}
           </div>,

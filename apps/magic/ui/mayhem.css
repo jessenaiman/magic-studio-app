@@ -67,3 +67,14 @@
 .may-bars progress::-webkit-progress-value {background:var(--danger);border-radius:var(--radius-sm);}
 .may-dashboard .may-trend {height:8rem;}
 @media(max-width:680px){.may-dashboard,.may-dashboard .may-plots{grid-template-columns:1fr;}}
+
+/* Mayhem evidence browser (was inline styles in MayhemView.tsx). */
+.mayhem-layout { display: flex; height: 100%; min-height: 0; }
+.mayhem-sources { width: 280px; border-right: 1px solid var(--border, #2a313c); padding: 12px; overflow: auto; }
+.mayhem-main { flex: 1; min-width: 0; padding: 12px; overflow: auto; }
+.mayhem-heading { margin-top: 0; }
+.mayhem-note { font-size: 11px; }
+.mayhem-subheading { font-size: 12px; }
+.mayhem-source { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
+.mayhem-source-meta { font-size: 10px; }
+.mayhem-tail { background: var(--surface-2, #181c22); border: 1px solid var(--border, #2a313c); padding: 10px; font-size: 11px; white-space: pre-wrap; word-break: break-word; }

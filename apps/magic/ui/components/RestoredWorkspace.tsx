@@ -65,9 +65,9 @@ export const RestoredWorkspace: React.FC<Props> = ({ project, page, title, activ
     setReady(true);
     return () => { active = false; registry.delete(id); };
   }, [id, project]);
-  return <section id={`restored-${page.replace(/\.html$/, "")}`} data-workspace-error={error || undefined} style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-    {error && <div role="alert" style={{ color: "#ed8796", padding: "6px 12px", background: "#281b24", fontSize: 12 }}>{error}</div>}
-    {ready && <iframe ref={frame} id={id} onLoad={() => { frame.current?.contentWindow?.postMessage({ magicWorkspaceVisibility: true, active: visible }, location.origin); frame.current?.contentWindow?.postMessage({ magicAuthoringMode: modeRef.current }, location.origin); }} title={title} src={`/workspaces/${page}`} style={{ position: "relative", inset: "auto", border: 0, width: "100%", minHeight: 0, flex: 1 }} />}
+  return <section id={`restored-${page.replace(/\.html$/, "")}`} data-workspace-error={error || undefined} className="restored-workspace">
+    {error && <div role="alert" className="restored-workspace-error">{error}</div>}
+    {ready && <iframe ref={frame} id={id} onLoad={() => { frame.current?.contentWindow?.postMessage({ magicWorkspaceVisibility: true, active: visible }, location.origin); frame.current?.contentWindow?.postMessage({ magicAuthoringMode: modeRef.current }, location.origin); }} title={title} src={`/workspaces/${page}`} className="restored-workspace-frame" />}
   </section>;
 };
 
@@ -83,8 +83,8 @@ export function PreservedWorkspaces({ project, view, onToast }: { project: strin
   const [opened, setOpened] = useState<string[]>(PAGES[pageView] ? [pageView] : []);
   useEffect(() => { if (PAGES[pageView]) setOpened(previous => previous.includes(pageView) ? previous : [...previous, pageView]); }, [pageView]);
   const shown = PAGES[pageView] && !opened.includes(pageView) ? [...opened, pageView] : opened;
-  return <div style={{ display: PAGES[pageView] ? "block" : "none", height: "100%" }}>
-    {shown.map(mode => <div key={mode} style={{ display: mode === pageView ? "block" : "none", height: "100%" }}>
+  return <div className="restored-page"  hidden={!PAGES[pageView]}>
+    {shown.map(mode => <div key={mode} className="restored-page"  hidden={mode !== pageView}>
       <RestoredWorkspace project={project} page={PAGES[mode][0]} title={mode === "design" ? "Lyrics and Motion" : PAGES[mode][1]} active={mode === pageView} authoringMode={mode === "design" ? (authoring ? view : undefined) : undefined} onToast={onToast} />
     </div>)}
   </div>;

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { executeCommand } from "../api";
+import "../mayhem.css";
 
 // The Mayhem evidence surface: reads saved analyzer reports and the logs the runtimes and
 // gates already write. Opening this view never runs an analyzer and never polls.
@@ -44,36 +45,35 @@ export const MayhemView: React.FC<{ onToast: (message: string) => void }> = ({ o
   const age = (modified?: number) => (modified ? new Date(modified * 1000).toLocaleString() : "—");
 
   return (
-    <section id="view-mayhem" style={{ display: "flex", height: "100%", minHeight: 0 }}>
-      <aside style={{ width: 280, borderRight: "1px solid var(--border, #2a313c)", padding: 12, overflow: "auto" }}>
-        <h2 style={{ marginTop: 0 }}>Mayhem</h2>
-        <p className="muted" style={{ fontSize: 11 }}>
+    <section id="view-mayhem" className="mayhem-layout">
+      <aside className="mayhem-sources">
+        <h2 className="mayhem-heading">Mayhem</h2>
+        <p className="muted mayhem-note" >
           Read {readAt ? readAt.toLocaleTimeString() : "…"} · no background scans or polling
         </p>
         <button id="mayhem-refresh" className="start" onClick={() => void refresh()}>Refresh data</button>
-        <h3 className="muted" style={{ fontSize: 12 }}>Sources</h3>
+        <h3 className="muted mayhem-subheading" >Sources</h3>
         {sources.map((item, index) => (
           <button
             key={item.path}
             id={`mayhem-source-${index}`}
-            className={index === selected ? "start" : "ghost"}
-            style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 6 }}
+            className={`mayhem-source ${index === selected ? "start" : "ghost"}`}
             onClick={() => setSelected(index)}
           >
             {item.name}
-            <div className="muted" style={{ fontSize: 10 }}>{item.error ? "not present" : `${item.bytes ?? 0} bytes · ${age(item.modified)}`}</div>
+            <div className="muted mayhem-source-meta" >{item.error ? "not present" : `${item.bytes ?? 0} bytes · ${age(item.modified)}`}</div>
           </button>
         ))}
       </aside>
-      <main style={{ flex: 1, minWidth: 0, padding: 12, overflow: "auto" }}>
-        <h2 style={{ marginTop: 0 }}>{source?.name ?? "Mayhem"}</h2>
+      <main className="mayhem-main">
+        <h2 className="mayhem-heading">{source?.name ?? "Mayhem"}</h2>
         {data?.report?.error && <p className="muted">Analyzer report · {data.report.error}</p>}
         {source && (
           <>
-            <p className="muted" style={{ fontSize: 11 }}>
+            <p className="muted mayhem-note" >
               {source.path} · {source.error ?? `${source.bytes ?? 0} bytes · last write ${age(source.modified)}`}
             </p>
-            <pre id="mayhem-tail" style={{ background: "var(--surface-2, #181c22)", border: "1px solid var(--border, #2a313c)", padding: 10, fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            <pre id="mayhem-tail" className="mayhem-tail">
               {source.error ? source.error : source.tail?.trimEnd() || "(empty)"}
             </pre>
           </>

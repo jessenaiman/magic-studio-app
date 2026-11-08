@@ -456,20 +456,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onOpenProject, onToast }) =>
                     {pills.map((pil, i) => (
                       <span key={i} className={`card-pill ${pil.kind}`}>
                         <span
-                          style={{
-                            display: "inline-block",
-                            width: "6px",
-                            height: "6px",
-                            borderRadius: "50%",
-                            backgroundColor:
-                              pil.kind === "song"
-                                ? "#5bd69b"
-                                : pil.kind === "lyrics"
-                                  ? "#7fe0b3"
-                                  : pil.kind === "studio"
-                                    ? "#eabb62"
-                                    : "#7a8594",
-                          }}
+                          className={`card-pill-dot ${pil.kind}`}
                         />
                         {pil.label}
                       </span>

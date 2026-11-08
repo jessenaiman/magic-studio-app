@@ -1129,3 +1129,15 @@ svg.lyric-flow-arrows .lyric-flow-dot { fill: var(--depth-gold); stroke: var(--b
 #storyboard-rail nav button { text-align:left; padding:.45rem .6rem; }
 #storyboard-rail [aria-current=page] { border-color:var(--accent);color:var(--accent); }
 #storyboard-rail section { border-top:1px solid var(--line);padding:.75rem .5rem; }
+
+/* Restored workspaces (was inline styles in RestoredWorkspace.tsx). */
+.restored-workspace { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.restored-workspace-error { color: #ed8796; padding: 6px 12px; background: #281b24; font-size: 12px; }
+.restored-workspace-frame { position: relative; inset: auto; border: 0; width: 100%; min-height: 0; flex: 1; }
+.restored-page { height: 100%; }
+.restored-page[hidden] { display: none; }
+
+/* Tooltip (was inline styles in Tooltip.tsx); left/top stay on the element as measured geometry. */
+.tooltip-trigger { position: relative; display: inline-flex; }
+.magic-tooltip { position: fixed; opacity: 0; transition: opacity 150ms ease-out; z-index: 1000; pointer-events: none; padding: 4px 8px; border-radius: 3px; border: 1px solid var(--border, #2a313c); background: var(--surface-2, #181c22); color: var(--text, #e6edf3); font: 500 11px/1.4 ui-monospace, SFMono-Regular, monospace; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+.magic-tooltip.ready { opacity: 1; }

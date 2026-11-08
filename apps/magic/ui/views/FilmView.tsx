@@ -7,6 +7,7 @@ import {
   FilmStatusResponse,
   TimelineResponse,
 } from "../api";
+import "../film.css";
 
 interface FilmViewProps {
   projectPath: string;
@@ -97,43 +98,27 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
   return (
     <div
       id="view-studio"
-      className="film-view"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "12px",
-        padding: "16px",
-        height: "100%",
-        overflowY: "auto",
-      }}
+      className="film-view film-view-layout"
+      
     >
       {/* Top Action Bar */}
       <div
         id="film-head"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "10px",
-          background: "var(--surface-2, #181c22)",
-          padding: "12px 16px",
-          borderRadius: "8px",
-        }}
+        className="film-head"
       >
         <div>
-          <strong style={{ fontSize: "16px" }}>FilmCraft Studio</strong>
+          <strong className="film-title">FilmCraft Studio</strong>
           <p
             id="film-status"
-            className="muted"
+            className="muted film-status"
             role="status"
-            style={{ margin: "2px 0 0", fontSize: "12px" }}
+            
           >
             {statusText}
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+        <div className="film-actions">
           <button
             id="film-assemble"
             className="ghost"
@@ -191,19 +176,10 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
       <details id="film-export-settings">
       <summary id="film-export-settings-toggle" aria-label="Export settings and interchange" title="Export settings and interchange">⚙</summary>
       <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          alignItems: "center",
-          flexWrap: "wrap",
-          background: "var(--surface-2, #181c22)",
-          padding: "10px 16px",
-          borderRadius: "8px",
-          fontSize: "12px",
-        }}
+        className="film-export-settings"
       >
         <strong>Export Options:</strong>
-        <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <label className="film-inline-field">
           <span>Format</span>
           <select
             id="film-export-format"
@@ -220,7 +196,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           </select>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <label className="film-inline-field">
           <span>Range</span>
           <select
             id="film-export-range"
@@ -233,7 +209,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           </select>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <label className="film-inline-field">
           <input
             id="film-burn-captions"
             type="checkbox"
@@ -243,7 +219,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           <span>Burn Captions</span>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <label className="film-inline-field">
           <span>Sidecar</span>
           <select
             id="film-caption-sidecar"
@@ -256,7 +232,7 @@ export const FilmView: React.FC<FilmViewProps> = ({ projectPath, onToast }) => {
           </select>
         </label>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: "6px" }}>
+        <div className="film-export-actions">
           <button
             className="ghost"
             disabled={busy || !film?.timeline?.exists}
