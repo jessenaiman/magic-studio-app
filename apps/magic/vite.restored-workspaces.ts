@@ -17,6 +17,8 @@ export function restoredWorkspaces(): Plugin {
   };
   walk(source); files.set("tauri-adapter.js", adapter);
   files.delete("vendor/konva.bundle.js"); files.delete("vendor/rig-review.bundle.js");
+  // Converted modules are emitted as chunks (see buildStart); the legacy sources must not be copied over them.
+  files.delete("settings.js");
   files.set("animation-connection.js", fileURLToPath(new URL("./ui/workspaces/animation-connection.js", import.meta.url)));
   files.set("embedded.js", fileURLToPath(new URL("./ui/workspaces/embedded.js", import.meta.url)));
   files.set("project-workspace.html", join(source, "index.html"));
@@ -43,12 +45,17 @@ export function restoredWorkspaces(): Plugin {
         if (!path.startsWith("/workspaces/")) return next();
         const name = path.slice("/workspaces/".length);
         if (name === "vendor.js") { response.statusCode = 302; response.setHeader("Location", "/ui/workspaces/vendor.ts"); response.end(); return; }
+        if (name === "settings.js") { response.statusCode = 302; response.setHeader("Location", "/ui/workspaces/legacy/settings/main.tsx"); response.end(); return; }
         if (!files.has(name)) return next();
         const type = name.endsWith(".js") ? "text/javascript" : name.endsWith(".css") ? "text/css" : name.endsWith(".html") ? "text/html" : name.endsWith(".json") ? "application/json" : name.endsWith(".svg") ? "image/svg+xml" : name.endsWith(".gif") ? "image/gif" : name.endsWith(".png") ? "image/png" : "application/octet-stream";
         response.setHeader("Content-Type", type); response.setHeader("Cache-Control", "no-store"); response.end(content(name));
       });
     },
-    buildStart() { if (building) this.emitFile({ type: "chunk", id: fileURLToPath(new URL("./ui/workspaces/vendor.ts", import.meta.url)), fileName: "workspaces/vendor.js" }); },
+    buildStart() {
+      if (!building) return;
+      this.emitFile({ type: "chunk", id: fileURLToPath(new URL("./ui/workspaces/vendor.ts", import.meta.url)), fileName: "workspaces/vendor.js" });
+      this.emitFile({ type: "chunk", id: fileURLToPath(new URL("./ui/workspaces/legacy/settings/main.tsx", import.meta.url)), fileName: "workspaces/settings.js" });
+    },
     generateBundle() {
       for (const name of files.keys()) this.emitFile({ type: "asset", fileName: `workspaces/${name}`, source: content(name) });
     },
