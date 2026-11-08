@@ -177,6 +177,10 @@ function contextText(view: ViewMode, data: WorkshopData | null, projectPath: str
       const timeline = data?.status?.film_timeline;
       return timeline?.exists ? timeline.path || "Final FilmCraft timeline linked" : "No final FilmCraft timeline linked";
     }
+    case "design":
+      return `Lyrics · ${plural(facts.objects, "object")} in this project`;
+    case "motion":
+      return `Motion · ${plural(facts.objects, "object")} in this project`;
     case "animation": {
       const animate = data?.status?.stages?.find(entry => entry.id === "animate");
       const subjects = animate?.assets?.length ?? 0;
