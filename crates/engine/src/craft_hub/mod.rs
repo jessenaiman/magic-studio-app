@@ -28,6 +28,10 @@ pub enum CraftTarget {
 }
 
 impl CraftTarget {
+    /// Every Craft app Magic drives.
+    pub const ALL: [CraftTarget; 6] =
+        [CraftTarget::Film, CraftTarget::Photo, CraftTarget::Effect, CraftTarget::Vector, CraftTarget::Design, CraftTarget::Texture];
+
     /// The canonical application name (e.g. `filmcraft`).
     pub fn name(&self) -> &'static str {
         match self {

@@ -95,7 +95,7 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         "skills.limits" => params.get("max_words").is_none_or(Value::is_null) && params.get("max_steps").is_none_or(Value::is_null),
         "skills.diagram" => params.get("render").and_then(Value::as_bool) != Some(true),
         "agent.log" => params.get("refresh").and_then(Value::as_bool) != Some(true),
-        "app.doctor" => params.get("clean").and_then(Value::as_bool) != Some(true),
+        "app.doctor" => true,
         _ => false,
     }
 }

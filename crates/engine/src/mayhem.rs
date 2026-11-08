@@ -66,7 +66,9 @@ pub fn evidence(s: &mut Session, params: &Value) -> Result<Value> {
     let root = params["path"].as_str().map(PathBuf::from).unwrap_or_else(|| analytics_source_root(s));
     let report = saved(&root);
     let commands: Vec<_> = crate::command_specs().iter().map(|c| json!({"id":c.id,"label":c.label,"params":c.params})).collect();
+    let status = crate::cmd::project::workshop::workshop_status(s).unwrap_or(Value::Null);
     Ok(json!({"root":root,"report":report,"activity":crate::herdr::activity(s, params),"commands":commands,
         "cli_events":crate::activity::events(s, &json!({"limit":192}))?,
+        "monitoring": {"prerequisites": crate::cmd::project::workshop::prerequisites(&status)},
         "logs":logs(&root)}))
 }
