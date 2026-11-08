@@ -319,8 +319,9 @@ fn spatial_line_steps(recipe: &Value, line: &Line, design: &Value, shown: f64, g
         if let Some(keys) = item["motion_keys"].as_array().filter(|keys| !keys.is_empty()) {
             let (start, _) = item_word_time(line, item);
             // Generic controls use the same top-left box as the authored static
-            // text. Older hand-authored curves retain their point-text baseline.
-            let (origin_x, origin_y) = if item["native_motion"].is_object() {
+            // text. Older hand-authored curves retain their point-text baseline; the
+            // binding keeps a curve written straight into the ecproj on that box.
+            let (origin_x, origin_y) = if item["native_motion"].is_object() || item["native_motion_binding"]["box"].as_bool() == Some(true) {
                 text["box"] = json!([x, y, bw, bh]);
                 (x + bw / 2.0, y + bh / 2.0)
             } else {

@@ -214,6 +214,38 @@ fn validate_line_item<'a>(item: &'a Value, words: &[Value], placed: &mut Vec<&'a
         normalized["native_motion"] = config;
         normalized["motion_keys"] = keys;
     }
+    // Native motion lives in lettering/lyrics.ecproj; words.json keeps only the binding to
+    // that comp and layer (plus the key read-back above).
+    if let Some(raw) = item.get("native_motion_binding").filter(|binding| !binding.is_null()) {
+        let binding = raw.as_object().ok_or_else(|| invalid("native_motion_binding must be an object"))?;
+        let comp = binding.get("comp").and_then(Value::as_object).ok_or_else(|| invalid("native_motion_binding.comp must name the comp id and name"))?;
+        let layer = binding.get("layer").and_then(Value::as_object).ok_or_else(|| invalid("native_motion_binding.layer must name the layer id and name"))?;
+        let comp_id = comp.get("id").and_then(Value::as_u64).ok_or_else(|| invalid("native_motion_binding.comp.id must be a number"))?;
+        let layer_id = layer.get("id").and_then(Value::as_u64).ok_or_else(|| invalid("native_motion_binding.layer.id must be a number"))?;
+        let comp_name =
+            comp.get("name").and_then(Value::as_str).filter(|name| !name.is_empty()).ok_or_else(|| invalid("native_motion_binding.comp.name is required"))?;
+        let layer_name =
+            layer.get("name").and_then(Value::as_str).filter(|name| !name.is_empty()).ok_or_else(|| invalid("native_motion_binding.layer.name is required"))?;
+        let bound_ids: Vec<&str> = binding
+            .get("word_ids")
+            .and_then(Value::as_array)
+            .ok_or_else(|| invalid("native_motion_binding.word_ids must list the item's words"))?
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        if bound_ids != ids {
+            return Err(invalid("native_motion_binding.word_ids must match the item's words"));
+        }
+        let mut normalized_binding = json!({
+            "comp": {"id": comp_id, "name": comp_name},
+            "layer": {"id": layer_id, "name": layer_name},
+            "word_ids": ids
+        });
+        if let Some(boxed) = binding.get("box").and_then(Value::as_bool) {
+            normalized_binding["box"] = json!(boxed);
+        }
+        normalized["native_motion_binding"] = normalized_binding;
+    }
     Ok(normalized)
 }
 

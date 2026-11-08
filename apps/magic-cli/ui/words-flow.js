@@ -252,6 +252,75 @@ class WordsFlowController {
       c.setAttribute(k, v);
     return c;
   }
+  stageTrajectoryPath(points) {
+    if (points.length < 2)
+      return "";
+    let d = `M ${points[0][0].toFixed(1)} ${points[0][1].toFixed(1)}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const mid = [(points[i][0] + points[i + 1][0]) / 2, (points[i][1] + points[i + 1][1]) / 2];
+      d += ` Q ${points[i][0].toFixed(1)} ${points[i][1].toFixed(1)} ${mid[0].toFixed(1)} ${mid[1].toFixed(1)}`;
+    }
+    const last = points.at(-1);
+    return `${d} L ${last[0].toFixed(1)} ${last[1].toFixed(1)}`;
+  }
+  motionPoints(item) {
+    if (Array.isArray(item.motion_keys) && item.motion_keys.length >= 2)
+      return item.motion_keys.map((key) => [Number(key[1]) || 0, Number(key[2]) || 0]);
+    const config = item.native_motion;
+    if (config && String(config.property || "").endsWith("/position")) {
+      const pair = (value) => Array.isArray(value) ? [Number(value[0]) || 0, Number(value[1]) || 0] : [0, 0];
+      return [pair(config.from), pair(config.to)];
+    }
+    return [];
+  }
+  stageTrajectories(view) {
+    const world = view.querySelector(".lyric-canvas .lyric-world");
+    if (!world)
+      return;
+    world.querySelector(":scope > svg.lyric-motion-traces")?.remove();
+    const anim = wordsCurrent(), lineId = wordsPanel.line;
+    if (!anim || !lineId)
+      return;
+    const design = wordsDesign(anim, lineId), nodes = [...world.querySelectorAll(".lyric-item")];
+    const [W, H] = wordsWorld();
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "lyric-motion-traces");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("aria-hidden", "true");
+    let drawn = 0;
+    (design.items || []).forEach((item, i) => {
+      const node = nodes[i];
+      const selected = wordsPanel.item === i || !!node?.classList.contains("active");
+      if (!node || (!selected && !item.accent))
+        return;
+      const local = this.motionPoints(item);
+      if (local.length < 2)
+        return;
+      const extent = Math.max(...local.map((point) => Math.hypot(point[0] - local[0][0], point[1] - local[0][1])));
+      if (extent < 8)
+        return;
+      const center = [node.offsetLeft + node.offsetWidth / 2, node.offsetTop + node.offsetHeight / 2];
+      const points = local.map((point) => [center[0] + point[0], center[1] + point[1]]);
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute("class", "lyric-motion-trace-group");
+      group.setAttribute("data-line-id", lineId);
+      group.setAttribute("data-item-index", String(i));
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("class", `lyric-motion-trace${selected ? " selected" : ""}`);
+      path.setAttribute("d", this.stageTrajectoryPath(points));
+      const dot = (point, kind) => {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        for (const [key, value] of [["cx", point[0].toFixed(1)], ["cy", point[1].toFixed(1)], ["r", "9"], ["class", `lyric-motion-trace-dot lyric-motion-trace-${kind}`]])
+          circle.setAttribute(key, value);
+        return circle;
+      };
+      group.append(path, dot(points[0], "start"), dot(points.at(-1), "end"));
+      svg.append(group);
+      drawn++;
+    });
+    if (drawn)
+      world.append(svg);
+  }
   buildStageTetherGroup(view, box) {
     const activeLine = view.querySelector(".words-tl > .words-line.active");
     const canvas = view.querySelector(".lyric-canvas");
@@ -304,6 +373,7 @@ class WordsFlowController {
   }
   arrows(view) {
     view.querySelector(":scope > svg.words-arrows")?.remove();
+    this.stageTrajectories(view);
     if (wordsPanel.links.hidden)
       return;
     const lines = [...view.querySelectorAll(".words-tl > .words-line")], frames = [...view.querySelectorAll(".words-roll > .words-graphic")];

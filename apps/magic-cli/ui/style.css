@@ -852,6 +852,14 @@ svg.words-arrows .words-music-note { fill: var(--depth-gold); font-size: var(--t
 svg.words-arrows.front { z-index: 4; }
 svg.words-arrows.front .words-arrow-group { opacity: .22; }
 svg.words-arrows.front .words-arrow-group:is(.primary, .flowing) { opacity: 1; }
+/* A word group's spatial trajectory: the same dashed vocabulary as the flow tethers, drawn
+   in lyric-world coordinates so it scales with the stage. */
+.lyric-motion-traces { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:2; }
+.lyric-motion-trace { fill:none; stroke:var(--amber); stroke-width:5; stroke-dasharray:14 11; stroke-linecap:round; opacity:.9; }
+.lyric-motion-trace.selected { stroke:var(--accent); stroke-width:6; opacity:1; }
+.lyric-motion-trace-dot { stroke:var(--bg); stroke-width:3; }
+.lyric-motion-trace-start { fill:var(--accent); }
+.lyric-motion-trace-end { fill:var(--amber); }
 /* Kinetic layers under the stage: compact camera-lens filter ring and un-boxed swatches. */
 .words-shelf-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border: thin solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 88%, transparent); overflow-x: auto; }
 .words-shelf-bar > button { flex-shrink: 0; padding: var(--size-3) var(--size-8); font-size: var(--text-xs); height: auto; }

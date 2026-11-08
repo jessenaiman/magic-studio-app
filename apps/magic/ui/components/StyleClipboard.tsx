@@ -10,6 +10,19 @@
 import { useCallback } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 
+/**
+ * Restored workspaces run in an iframe whose `tauri-adapter.js` exposes the host's clipboard
+ * as `window.__TAURI__.clipboardManager`; the desktop shell uses the plugin directly.
+ */
+interface LegacyClipboard {
+  readText?: () => Promise<string>;
+  writeText?: (text: string) => Promise<void>;
+}
+const legacyClipboard = (): LegacyClipboard | undefined =>
+  (window as unknown as { __TAURI__?: { clipboardManager?: LegacyClipboard } }).__TAURI__?.clipboardManager;
+const clipboardRead = (): Promise<string> => legacyClipboard()?.readText?.() ?? readText();
+const clipboardWrite = (text: string): Promise<void> => legacyClipboard()?.writeText?.(text) ?? writeText(text);
+
 const STYLE_CLIPBOARD_MAX_BYTES = 128 * 1024;
 const STYLE_FONTS = ["song", "serif", "sans"];
 const STYLE_MOVES = ["quiet", "sleep", "settle", "fall", "pop", "rise", "east", "west", "loop"];
@@ -52,6 +65,9 @@ type StyleClipboardProps = {
   itemIndex: number;
   onChange: (next: { items: unknown[]; draws?: unknown[] }) => void;
   onToast: (message: string) => void;
+  /** Keep the legacy panel's id on the motion panel, not on this nested clipboard block. */
+  id?: string;
+  title?: string;
 };
 
 function validStyleColour(value: unknown): boolean {
@@ -149,13 +165,13 @@ function applyStyleClipboard(item: { [key: string]: unknown }, style: WordStyle)
   return result;
 }
 
-export function StyleClipboard({ design, itemIndex, onChange, onToast }: StyleClipboardProps) {
+export function StyleClipboard({ design, itemIndex, onChange, onToast, id = "native-word-controls", title = "Word style · clipboard" }: StyleClipboardProps) {
   const item = design.items?.[itemIndex] as { [key: string]: unknown } | undefined;
 
   const handleCopy = useCallback(async () => {
     try {
       if (!item) throw new Error("Select a word group first");
-      await writeText(styleClipboardText(item as WordStyle));
+      await clipboardWrite(styleClipboardText(item as WordStyle));
       onToast("Word style copied");
     } catch (error) {
       onToast(`Clipboard: ${error}`);
@@ -164,7 +180,7 @@ export function StyleClipboard({ design, itemIndex, onChange, onToast }: StyleCl
 
   const handlePaste = useCallback(async () => {
     try {
-      const text = await readText();
+      const text = await clipboardRead();
       const style = parseStyleClipboard(text);
       const updated = { ...design };
       const items = [...(updated.items as unknown[])];
@@ -179,8 +195,8 @@ export function StyleClipboard({ design, itemIndex, onChange, onToast }: StyleCl
   }, [design, itemIndex, onChange, onToast]);
 
   return (
-    <section id="native-word-controls" className="panel-body native-word-controls" aria-label="Native word motion controls">
-      <strong>Word style · clipboard</strong>
+    <section id={id} className="panel-body native-word-controls" aria-label={title}>
+      <strong>{title}</strong>
       <div className="words-selection-actions">
         <button id="words-copy-style" className="ghost" onClick={handleCopy}>
           Copy style

@@ -450,7 +450,12 @@ fn specs_words_part1() -> Vec<CommandSpec> {
         query!("words.align", "Artist Words vs Timing Reference", "{}", crate::cmd::words::cmd_words_align),
         query!("words.read", "Words Animations", "{\"animation_id\":\"optional\"}", crate::cmd::words::cmd_words_read),
         query!("words.preview_frame", "Native Saved Lyrics or Drawing Frame", r#"{"time":24.3,"kind":"lyrics|motion"}"#, crate::cmd::words::preview::frame),
-        query!("words.motion.properties", "Native Word Transform Properties", "{}", crate::cmd::words::native_motion::properties),
+        query!(
+            "words.motion.properties",
+            "Native Word Transform Properties",
+            "{\"line_id\":\"optional lyric line\",\"word_ids\":[\"optional word group\"]}",
+            crate::cmd::words::native_motion::properties
+        ),
         query!(
             "words.motion.curve",
             "Preview Native Word Transform Curve",

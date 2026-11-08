@@ -116,6 +116,8 @@
 .native-word-controls { display:grid; gap:8px; margin-bottom:8px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); }
 .native-motion-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .native-word-controls label { display:grid; gap:4px; font-size:var(--text-xs); color:var(--muted); }
+.word-motion-panel { display:grid; gap:8px; margin-bottom:8px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); }
+.word-motion-panel > .native-word-controls { margin:0; border:0; background:none; padding:0; }
 
 .authoring-preview-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px; }
 .authoring-preview-toolbar button { margin:0; }

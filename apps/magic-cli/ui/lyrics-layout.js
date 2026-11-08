@@ -197,7 +197,10 @@ if (typeof window !== "undefined") {
     }
     if (wordsPanel.read?.graphics?.length) cues.hidden = false;
     main.append(disclosure);
-    if (wordsPanel.presentationMode === "design") main.querySelector("#words-workspace-controls")?.prepend(nativeWordControls(anim));
+    if (wordsPanel.presentationMode === "design") {
+      const controls = main.querySelector("#words-workspace-controls");
+      if (controls && typeof nativeWordControls === "function") controls.prepend(nativeWordControls(anim));
+    }
     if (wordsPanel.presentationMode === "motion") {
       main.querySelector("#words-workspace-controls")?.prepend(existingDrawingControls(anim));
       const drawing = wordsDesign(anim, wordsPanel.line).draws?.[wordsPanel.selectedDrawingIndex || 0];
