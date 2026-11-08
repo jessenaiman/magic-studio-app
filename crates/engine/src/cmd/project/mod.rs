@@ -544,10 +544,11 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
     if !path.exists() {
         return Err(EngineError::InvalidParams(format!("asset path does not exist: {}", path.display())));
     }
-    let kind = params.get("kind").and_then(Value::as_str).unwrap_or("auto");
-    if !["auto", "image", "poses", "turnaround", "cutout_rig", "character", "model_3d", "anim_3d"].contains(&kind) {
+    let requested = params.get("kind").and_then(Value::as_str).unwrap_or("auto");
+    if !["auto", "image", "poses", "turnaround", "cutout_rig", "character", "model_3d", "anim_3d"].contains(&requested) {
         return Err(EngineError::InvalidParams("kind must be auto, image, poses, turnaround, cutout_rig, character, model_3d, or anim_3d".into()));
     }
+    let kind = asset_kind(requested, &path)?;
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("asset").to_owned();
     let name = params.get("name").and_then(Value::as_str).unwrap_or(&stem).trim().to_owned();
     if name.is_empty() {
@@ -565,12 +566,38 @@ fn asset_request(s: &Session, params: &Value) -> Result<AssetRequest> {
     })
 }
 
+/// File extensions an `image` asset may have.
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "tif", "tiff", "exr"];
+/// File extensions a `model_3d` asset may have.
+const MODEL_EXTENSIONS: &[&str] = &["glb", "gltf"];
+
+/// The asset kind a file's extension names, when it names one.
+fn file_kind(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+        Some("image")
+    } else if MODEL_EXTENSIONS.contains(&ext.as_str()) {
+        Some("model_3d")
+    } else {
+        None
+    }
+}
+
+/// The kind an asset is stored with: `auto` resolves from the file's extension, and an explicit
+/// `image` or `model_3d` must match it. Other kinds (rigs, pose sets, folders) are taken as given.
+fn asset_kind<'a>(requested: &'a str, path: &Path) -> Result<&'a str> {
+    let found = path.is_file().then(|| file_kind(path)).flatten();
+    match (requested, found) {
+        ("auto", Some(kind)) => Ok(kind),
+        ("image", Some("image")) | ("model_3d", Some("model_3d")) => Ok(requested),
+        ("image", _) => Err(EngineError::InvalidParams(format!("{} is not an image ({})", path.display(), IMAGE_EXTENSIONS.join(", ")))),
+        ("model_3d", _) => Err(EngineError::InvalidParams(format!("{} is not a 3D model ({})", path.display(), MODEL_EXTENSIONS.join(", ")))),
+        (kind, _) => Ok(kind),
+    }
+}
+
 fn outside_project_image(dir: &Path, source: &Path) -> bool {
-    !source.starts_with(dir)
-        && source
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| ["png", "jpg", "jpeg", "webp", "svg", "gif", "bmp", "tif", "tiff", "exr"].contains(&e.to_ascii_lowercase().as_str()))
+    !source.starts_with(dir) && file_kind(source) == Some("image")
 }
 
 fn asset_destination_folder(dir: &Path, params: &Value) -> Result<(PathBuf, PathBuf)> {
