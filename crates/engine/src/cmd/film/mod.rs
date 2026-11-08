@@ -509,7 +509,8 @@ fn track_rows(tracks: &Value, kind: &str, media: &Value) -> Vec<Value> {
                 })
                 .collect();
             let label = format!("{prefix}{}", i + 1);
-            json!({"id": t["id"], "label": label, "name": t.get("name").and_then(Value::as_str).unwrap_or(&label), "kind": kind, "enabled": t["enabled"], "clips": clips})
+            json!({"id": t["id"], "label": label, "name": t.get("name").and_then(Value::as_str).unwrap_or(&label), "kind": kind,
+                "role": crate::cmd::film::assembly::track_role(&label), "enabled": t["enabled"], "clips": clips})
         })
         .collect()
 }
@@ -534,7 +535,7 @@ pub fn cmd_video_place_clip(s: &mut Session, p: &Value) -> Result<Value> {
     let f = film(s)?;
     let clip = p["clip"].as_str().map(PathBuf::from).filter(|c| c.is_file()).ok_or_else(|| bad("clip=<rendered .mov or .mp4> is required"))?;
     let from = p["from"].as_f64().unwrap_or(0.0).max(0.0);
-    let track = p["track"].as_str().unwrap_or("V2");
+    let track = p["track"].as_str().unwrap_or(crate::cmd::film::assembly::CHARACTER_TRACK);
     // An animation study has no song to assemble from, so its first clip starts the film.
     if s.project_mode.is_some() && !f.project.is_file() {
         if let Some(folder) = f.project.parent() {

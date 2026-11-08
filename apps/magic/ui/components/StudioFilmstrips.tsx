@@ -54,8 +54,8 @@ export function StudioFilmstrips({project,timeline,videoSrc,revision,playhead,on
   useEffect(()=>{if(playing)return;let stop=false;frameImage(project,playhead,revision).then(path=>{if(!stop)setPoster(fileUrl(path));}).catch(()=>{});return()=>{stop=true;};},[project,revision,playhead,playing]);
   useEffect(()=>{setMediaError("");setMediaReady(false);setPlaying(false);},[videoSrc]);
   const tracks=timeline?.tracks||[], duration=timeline?.duration||1;
-  const backgrounds=(tracks.find(track=>track.label==="V1")?.clips||[]) as Clip[];
-  const characters=tracks.filter(track=>track.kind==="video"&&track.label!=="V1").flatMap(track=>track.clips).filter(clip=>/scene-|\/characters\//.test(clip.name+((clip as Clip).source_path||""))) as Clip[];
+  const backgrounds=tracks.filter(track=>track.role==="background").flatMap(track=>track.clips) as Clip[];
+  const characters=tracks.filter(track=>track.role==="character").flatMap(track=>track.clips) as Clip[];
   const scenes=backgrounds.length?backgrounds:tracks.filter(track=>track.kind==="video").flatMap(track=>track.clips).slice(0,16) as Clip[];
   const selected=scenes.findIndex(clip=>playhead>=clip.start&&playhead<clip.end);
   const scene=scenes[Math.max(0,selected)];

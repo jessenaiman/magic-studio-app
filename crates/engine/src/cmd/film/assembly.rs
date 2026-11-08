@@ -1,9 +1,29 @@
-//! `video.assemble`: the film put together by the linked FilmCraft engine. The song's audio on A1, the backgrounds on V1 from the times the caller gives, and the
-//! lettering render on V2; then an export. The editor project lives in the project folder
+//! `video.assemble`: the film put together by the linked FilmCraft engine. The song's audio on A1,
+//! the backgrounds on V1 from the times the caller gives, character shots on V2 and the lettering
+//! render on V3; then an export. The editor project lives in the project folder
 //! (`film/<song>.fcproj`) so it can be opened and refined in the editor itself.
 use crate::{EngineError, Result, Session};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+
+/// The film's track layout: scene backgrounds on V1, character shots on V2, lyric lettering on
+/// V3, the song on A1. Assembly places clips by it and `video.timeline` reports each track's role
+/// from it, so no view has to know which track holds what.
+pub(crate) const BACKGROUND_TRACK: &str = "V1";
+pub(crate) const CHARACTER_TRACK: &str = "V2";
+pub(crate) const LYRICS_TRACK: &str = "V3";
+pub(crate) const SONG_TRACK: &str = "A1";
+
+/// The role of the track `label` in the film's layout, when it has one.
+pub(crate) fn track_role(label: &str) -> Option<&'static str> {
+    match label {
+        BACKGROUND_TRACK => Some("background"),
+        CHARACTER_TRACK => Some("character"),
+        LYRICS_TRACK => Some("lyrics"),
+        SONG_TRACK => Some("song"),
+        _ => None,
+    }
+}
 
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::InvalidParams(message.into())
@@ -176,14 +196,14 @@ fn build_film(dir: &Path, project: &Path, film: &Inputs, fps: f64) -> Result<()>
     let nb = film.backgrounds.len();
     let (audio, stills, lyrics, shots) = (items[0], &items[1..=nb], items[nb + 1], &items[nb + 2..]);
     let times: Vec<f64> = film.backgrounds.iter().map(|(t, _)| *t).collect();
-    let mut place = vec![json!({"id": "timeline.place", "params": {"item": audio, "track": "A1", "seconds": 0, "insert": false, "video": false}})];
+    let mut place = vec![json!({"id": "timeline.place", "params": {"item": audio, "track": SONG_TRACK, "seconds": 0, "insert": false, "video": false}})];
     for ((from, length), item) in spans(&times, film.duration).into_iter().zip(stills) {
-        place.push(json!({"id": "timeline.place", "params": {"item": item, "track": "V1", "seconds": from, "insert": false, "duration": {"seconds": length}}}));
+        place.push(json!({"id": "timeline.place", "params": {"item": item, "track": BACKGROUND_TRACK, "seconds": from, "insert": false, "duration": {"seconds": length}}}));
     }
     for ((from, _), item) in film.characters.iter().zip(shots) {
-        place.push(json!({"id": "timeline.place", "params": {"item": item, "track": "V2", "seconds": from, "insert": false, "audio": false}}));
+        place.push(json!({"id": "timeline.place", "params": {"item": item, "track": CHARACTER_TRACK, "seconds": from, "insert": false, "audio": false}}));
     }
-    place.push(json!({"id": "timeline.place", "params": {"item": lyrics, "track": "V3", "seconds": 0, "insert": false, "audio": false}}));
+    place.push(json!({"id": "timeline.place", "params": {"item": lyrics, "track": LYRICS_TRACK, "seconds": 0, "insert": false, "audio": false}}));
     let placed = run(dir, project, false, &place)?;
     let clips: Vec<u64> = placed[1..=nb].iter().flat_map(|r| ids(r, "clips")).collect();
     run(dir, project, false, &[json!({"id": "clip.fillFrame", "params": {"clips": clips}})])?;

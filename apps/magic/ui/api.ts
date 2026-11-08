@@ -309,6 +309,8 @@ export interface TimelineTrack {
   id?: string;
   label: string;
   kind: "video" | "audio" | string;
+  /** From `video.timeline`: the track's place in the film layout. */
+  role?: "background" | "character" | "lyrics" | "song" | null;
   clips: TimelineClip[];
 }
 
