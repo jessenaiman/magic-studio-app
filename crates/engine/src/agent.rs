@@ -239,8 +239,41 @@ pub fn cmd_sprocket_models(s: &mut Session, _p: &Value) -> Result<Value> {
 /// per-session selection: the engine never writes shared defaults on its own.
 pub fn cmd_agent_persist(s: &mut Session, _p: &Value) -> Result<Value> {
     let selection = cmd_agent_config(s, &json!({}))?;
-    let stored = persist_selection(&selection)?;
-    Ok(json!({"ok":true,"persisted":true,"selection":{"agent":selection["agent"],"provider":selection["provider"],"model":selection["model"]},"path":stored}))
+    persist_selection(&selection)?;
+    let path = settings_base().map(|base| base.join("magic/agent.json"));
+    Ok(json!({
+        "ok": true,
+        "persisted": true,
+        "path": path,
+        "selection": {"agent": selection["agent"], "provider": selection["provider"], "model": selection["model"]}
+    }))
+}
+
+/// Select and save a chat agent in one step (`agent.use`): the documented setter for the
+/// window's selection and `~/.config/magic/agent.json`. Top-level keys, not a nested object, so
+/// the CLI and the web UI call the same command without translating shapes.
+pub fn cmd_agent_use(s: &mut Session, p: &Value) -> Result<Value> {
+    let mut patch = serde_json::Map::new();
+    for key in ["agent", "provider", "model", "thinking"] {
+        let Some(value) = p.get(key) else { continue };
+        let text = value.as_str().ok_or_else(|| invalid(format!("`{key}` must be a string")))?;
+        if text.len() > 256 || text.chars().any(char::is_control) {
+            return Err(invalid(format!("`{key}` is not a valid chat selection value")));
+        }
+        patch.insert(key.to_owned(), json!(text));
+    }
+    match p.get("extra_args") {
+        None => {}
+        Some(Value::Array(items)) if items.iter().all(Value::is_string) => {
+            patch.insert("extra_args".to_owned(), Value::Array(items.clone()));
+        }
+        Some(_) => return Err(invalid("`extra_args` must be an array of strings")),
+    }
+    if patch.is_empty() {
+        return Err(invalid("agent.use needs at least one of agent, provider, model, thinking or extra_args"));
+    }
+    cmd_agent_config(s, &json!({"selection": patch}))?;
+    cmd_agent_persist(s, &json!({}))
 }
 
 /// Switch Fidget's model, verified against the catalog and persisted for the app and the CLI.
@@ -327,13 +360,13 @@ pub fn cmd_agent_config(s: &mut Session, p: &Value) -> Result<Value> {
     {
         return Err(invalid(error));
     }
+    if p.get("persist").is_some() {
+        return Err(invalid("agent.config only previews a selection in this window; run `agent.persist` to save it (or use agent.use in one step)"));
+    }
     if let Some(patch) = p.get("selection") {
         apply_selection_patch(&mut value, patch)?;
     }
     s.agent_selection = Some(value.clone());
-    if p["persist"] == true {
-        persist_selection(&value)?;
-    }
     decorate_config(s, &mut value);
     Ok(value)
 }

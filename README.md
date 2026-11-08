@@ -117,6 +117,26 @@ The [setup guide](apps/magic/README.md) covers build
 options and development builds. Update native code or embedded UI by rebuilding
 and reinstalling the reviewed revision.
 
+## AI setup
+
+Magic holds no API keys. The inner chat agent is an installed agent CLI, and
+Scribbles generates images through the Codex subscription, so both are set up
+outside the app:
+
+```sh
+codex login                                  # required for image generation
+magic-cli exec agent.use \
+  '{"agent":"codex","provider":"codex","model":"gpt-6-luna"}'   # saves ~/.config/magic/agent.json
+magic-cli exec agent.config '{}'             # verify the agent, model and AI roles
+```
+
+Choose a different installed agent with `agent.models` / `agent.use`; no settings
+screen is needed. Image generation stays on Codex (`image.provider = "codex"`), and
+`prefs.set` / `prefs.get` edit the rest of `config.toml`. The complete guide,
+including the shared Craft AI connection store and troubleshooting, is
+[docs/ai-setup.md](docs/ai-setup.md); copyable files live in
+[examples/](examples).
+
 ## CLI and Live `--control` / `--bridge`
 
 `magic-cli` shares the Rust command registry with the desktop app. Omit `--bridge` to run headlessly in-process, or pass `--bridge 127.0.0.1:<PORT>` (with matching `MAGIC_CONTROL_TOKEN` in the environment) to drive a running `magic --control <PORT>` window with no silent headless fallback:

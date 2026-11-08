@@ -22,6 +22,7 @@ Tauri v2 facts that shape this project (versions are in `apps/magic/Cargo.toml`;
 | Understand how the pieces fit | [Architecture](architecture.md) |
 | Browse Rust modules, types, and source | [Build the Rust API reference](RUSTDOC.md) |
 | Use CLI or MCP commands | [Control protocol](control-protocol.md), [command architecture](../apps/magic/MAGIC.md) and [Magic skill](../apps/magic/SKILL.md) |
+| Configure the AI (agents, images, connections) | [AI setup](ai-setup.md) |
 | Contribute safely | [Architecture layers and rules](architecture.md) |
 
 

@@ -1,0 +1,12 @@
+# The AI-related part of ~/.config/magic/config.toml.
+# The app writes the full file; keep its other sections when you copy this in.
+schema_version = 1
+
+[image]
+# The only value today: images run through the Codex subscription (`codex login`).
+provider = "codex"
+
+[scribbles]
+provider = "codex"
+# Override with: magic-cli exec prefs.set '{"key":"scribbles.model","value":"gpt-6-luna"}'
+model = "gpt-6-luna"

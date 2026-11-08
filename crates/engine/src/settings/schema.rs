@@ -66,6 +66,7 @@ pub fn fields_with_cat() -> Vec<(&'static str, Field)> {
                 enabled_by: None,
             },
         ),
+        ("image", Field { key: "scribbles.model", label: "Scribbles model", kind: Kind::Text, wired: true, enabled_by: None }),
         (
             "lyrics",
             Field {

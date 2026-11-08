@@ -78,7 +78,7 @@ async function dispatchToEngine(command, params, _options) {
     case "agent_config":
       return nativeInvoke("execute_command", { id: "agent.config", params: {} });
     case "agent_config_save":
-      return nativeInvoke("execute_command", { id: "agent.config", params: params?.patch || {} });
+      return nativeInvoke("execute_command", { id: "agent.use", params: params?.patch || {} });
     case "open_path":
       return nativeInvoke("execute_command", { id: "workspace.open", params: { path: params?.path } });
     case "startup": {

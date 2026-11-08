@@ -2,7 +2,7 @@ use crate::commands::CommandSpec;
 use crate::commands::always;
 
 // Import command handlers into this module so the `build()` array can reference them.
-use crate::agent::{cmd_agent_config, cmd_agent_log, cmd_agent_models, cmd_agent_new_chat, cmd_agent_send, cmd_agent_session};
+use crate::agent::{cmd_agent_config, cmd_agent_log, cmd_agent_models, cmd_agent_new_chat, cmd_agent_send, cmd_agent_session, cmd_agent_use};
 use crate::doctor::cmd_app_doctor;
 use crate::project::{
     cmd_project_add_asset, cmd_project_close, cmd_project_import_file, cmd_project_list_assets, cmd_project_load_asset, cmd_project_new, cmd_project_open,
@@ -361,8 +361,17 @@ fn specs_agent_and_sprocket() -> Vec<CommandSpec> {
         query!(
             "agent.config",
             "Current Window Chat Selection",
-            "{\"selection\":{\"model\":\"optional active model; shared defaults unchanged\"}}",
+            "{\"selection\":{\"model\":\"optional preview only; nothing is saved (use agent.use or agent.persist)\"}}",
             cmd_agent_config
+        ),
+        cmd!(
+            "agent.use",
+            "Select and Save a Chat Agent",
+            ["Agent"],
+            None,
+            "{\"agent\":\"optional installed agent id (codex, opencode, claude, …)\",\"provider\":\"optional provider id from agent.models\",\"model\":\"optional model id from agent.models\",\"thinking\":\"optional reasoning effort\",\"extra_args\":[\"optional extra CLI arguments\"]}",
+            always,
+            cmd_agent_use
         ),
         query!("agent.models", "Available Chat Models", "{\"agent\":\"optional catalog adapter: opencode\"}", cmd_agent_models),
         cmd!("agent.new_chat", "New Agent Chat", ["Agent"], None, "{\"free_only\":false,\"image_task\":false}", always, cmd_agent_new_chat),
