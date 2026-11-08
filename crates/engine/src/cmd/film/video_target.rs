@@ -163,6 +163,7 @@ pub(crate) fn discover_contained_audio(dir: &Path) -> Option<PathBuf> {
 }
 
 /// Run `hyperframes beats <hf> --json` per hyperframes-cli/references/beats.md after ensuring `data-timeline-role="music"`.
+#[allow(dead_code)]
 pub(crate) fn detect_audio_beats(hf: &Path, runtime: &str) -> Option<&'static str> {
     let _ = ensure_music_audio_role(hf);
     if !hf.join("index.html").is_file() {

@@ -22,6 +22,9 @@ craft-docpath = { git = "https://github.com/storytold/craft-libs" }
 craft-settings = { git = "https://github.com/storytold/craft-libs" }
 craft-update = { git = "https://github.com/storytold/craft-libs" }
 
+# Craft backend crates
+filmcraft-time = { git = "https://github.com/storytold/filmcraft" }
+
 # Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
 craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }
 craft-ai-core = { git = "https://github.com/storytold/craft-ai-integrations" }

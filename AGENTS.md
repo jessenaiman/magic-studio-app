@@ -4,7 +4,7 @@
 
 ## Core Principles
 1. **Prove in the Live App, Project Files & Final Video First**: Keep `magic` open while working. Do **not** lead with synthetic TDD unit tests—prove every feature first through the live UI (`--bridge`), the saved project files on disk (`.magic`, `design/words.json`, `lettering/lyrics.ecproj`, `storyboard/storyboard.designcraft`, `film/*.fcproj`), and the rendered video output.
-2. **Talk to Craft Apps via `--control` / `<app>-cli` (`CraftHub`), Not Git Engine Deps**: Do **not** pull sibling Craft app repos (`designcraft`, `effectcraft`, `filmcraft`, `photocraft`, `vectorcraft`, `texturecraft`) into `Cargo.toml` as linked Rust crates. Route all Craft app operations through [`crates/engine/src/craft_hub/mod.rs`](crates/engine/src/craft_hub/mod.rs) (`--control` loopback TCP when open live, or installed `<app>-cli` on `PATH`—see commits `cbb8c293` & `0eb2367c`). Only shared foundation crates (`storytold/craft-libs`: `craft-settings`, `craft-atomic`, `craft-doc` with `info.supported` gating, `craft-docpath`, `craft-audio`) and `storytold/craft-ai-integrations` belong in `Cargo.toml` (version-independent git tracking, update via `cargo update`).
+2. **Use ArtCraft Crates & `--control` / `<app>-cli` (`CraftHub`)**: Link shared Craft libraries (`storytold/craft-libs`, `storytold/craft-ai-integrations`, `filmcraft-time`, etc.) and drive live/headless Craft apps via [`crates/engine/src/craft_hub/mod.rs`](crates/engine/src/craft_hub/mod.rs) (`--control` loopback TCP when open live, or installed `<app>-cli` on `PATH`). Never generate or splice HTML/CSS/JS inside Rust engine modules.
 3. **One Engine, Thin Shell, Credentials in Rust**: `crates/engine` (`Session::execute`) is the single command dispatch shared by the desktop UI (`apps/magic`) and CLI (`apps/magic-cli`). Remote API credentials stay in Rust (`image_generation.rs` via `ureq`, `skills_registry.rs` via `curl`); webview `http:default` in `capabilities/default.json` is strictly loopback-only (`http://127.0.0.1:*`, `http://localhost:*`) with explicit `deny` on `https://api.openai.com/*` and `https://api.storyteller.ai/*`. User preferences live only in `config.toml` (`craft_settings`). Artist words and actions are strictly read-only. Never vendor external egui/wiki audit docs into Tauri React—link them instead.
 4. **Paths & Authority Docs**: The desktop app lives at `apps/magic/` (`apps/magic/src/`, `apps/magic/ui/`, `apps/magic/capabilities/default.json`, `apps/magic/tauri.conf.json`). Ecosystem references: `storytold/artcraft`, `storytold/artcraft-services`, `storytold/craft-wiki`, `storytold/craft-libs`.
 
@@ -29,8 +29,9 @@ target/debug/magic-cli --bridge 127.0.0.1:9876 ui set "view=motion"
 target/debug/magic-cli --bridge 127.0.0.1:9876 ui screenshot /tmp/magic-live.png
 
 # 4. Run engine commands in the live session or headlessly
-target/debug/magic-cli --bridge 127.0.0.1:9876 project open "path=/path/to/Project.magic"
-target/debug/magic-cli --bridge 127.0.0.1:9876 project save
+target/debug/magic-cli --bridge 127.0.0.1:9876 exec project.open "path=/path/to/Project.magic"
+target/debug/magic-cli --bridge 127.0.0.1:9876 exec project.save
+target/debug/magic-cli --project "/path/to/Project.magic" inspect project
 target/debug/magic-cli commands
 ```
 

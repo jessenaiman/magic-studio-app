@@ -296,12 +296,6 @@ fn specs_ui_inspection() -> Vec<CommandSpec> {
             always,
             requires_ui
         ),
-        query!(
-            "studio.cues",
-            "Cues at a Song Time / Uses of a Clip (read-only)",
-            "{\"project\":\"existing .magic path\",\"at\":43.2,\"clip\":\"clip id; give at or clip\"}",
-            crate::cmd::film::studio_cues::cues
-        ),
         cmd!("workspace.open", "Open a File in Its Craft Editor", ["File"], None, "{\"path\":\"file path\"}", always, crate::workspace::cmd_workspace_open),
         cmd!(
             "photo.exec",

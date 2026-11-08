@@ -1,5 +1,6 @@
-//! Validation receipts bind FilmCraft exports to their settings and native sources.
-use super::{Film, Path, PathBuf, Result, TICKS, Value, bad, export_params, json, probe_media, run_steps};
+//! Validation receipts bind FilmCraft exports to their settings and native sources using [`Tick`]s.
+use super::{Film, Path, PathBuf, Result, Value, bad, export_params, json, probe_media, run_steps};
+use crate::time::{TICKS_PER_SECOND, Tick, parse_raw_tick, parse_tick};
 
 fn receipt_path(f: &Film) -> PathBuf {
     f.dir.join("exports/.magic-export-receipt.json")
@@ -12,7 +13,6 @@ fn read_receipt(f: &Film) -> Value {
 pub(super) fn destination(f: &Film, p: &Value) -> (PathBuf, Value) {
     let receipt = read_receipt(f);
     let mut options = receipt["options"].as_object().cloned().unwrap_or_default();
-    // The shared native exporter allowlist drops request metadata and UI-only fields.
     let allowed = export_params(Path::new(""), false, p);
     for (key, value) in allowed.as_object().into_iter().flatten() {
         if !matches!(key.as_str(), "path" | "wait") && (p.get(key).is_some() || !options.contains_key(key)) {
@@ -69,8 +69,6 @@ fn check_live_timeline(project: &Path, report: &Value) -> Result<()> {
     }
 }
 
-/// A matching live editor owns its unsaved edits. Never silently validate a
-/// headless export of an older saved file while that editor is dirty.
 pub(super) fn require_clean_live(project: &Path) -> Result<()> {
     if let Some(report) = crate::CraftHub::try_live(crate::CraftTarget::Film, project, "project.inspect", &json!({}), false) {
         check_live_timeline(project, &report?)?;
@@ -117,7 +115,6 @@ pub(super) fn context(f: &Film, out: &Path, options: &Value) -> Result<Value> {
             if referenced && sig["exists"] != true {
                 return Err(bad(format!("Source media is missing: {}", path.display())));
             }
-            // A fresh final movie cannot validate stale lettering against newer authored design.
             if sig["exists"] == true && path == f.dir.join("lettering/lyrics.mov") {
                 let movie_time = std::fs::metadata(&path)?.modified()?;
                 for dependency in ["design/words.json", "lettering/lyrics.ecproj"] {
@@ -134,10 +131,15 @@ pub(super) fn context(f: &Film, out: &Path, options: &Value) -> Result<Value> {
 
 fn probe(out: &Path, resolved: &Value) -> Result<Value> {
     let info = probe_media(out).map_err(|e| bad(format!("Export probe failed: {e}")))?;
-    let seconds = info["duration"].as_f64().map(|ticks| ticks / TICKS).or_else(|| info["duration"]["ticks"].as_f64().map(|ticks| ticks / TICKS)).unwrap_or(0.0);
-    let expected = resolved["range"]["seconds"].as_f64().ok_or_else(|| bad("Native export settings omit expected duration"))?;
-    if !seconds.is_finite() || seconds <= 0.0 || (seconds - expected).abs() > 0.15 {
-        return Err(bad(format!("Export duration {seconds:.3}s differs from native range {expected:.3}s")));
+    let actual_ticks = parse_raw_tick(&info["duration"]).unwrap_or(Tick::ZERO);
+    let expected_ticks = resolved["range"]
+        .get("ticks")
+        .and_then(parse_raw_tick)
+        .or_else(|| resolved["range"].get("seconds").and_then(parse_tick))
+        .ok_or_else(|| bad("Native export settings omit expected duration"))?;
+    let tolerance = Tick(TICKS_PER_SECOND * 15 / 100);
+    if actual_ticks.0 <= 0 || (actual_ticks - expected_ticks).abs() > tolerance {
+        return Err(bad(format!("Export duration {} ticks differs from native range {} ticks", actual_ticks.0, expected_ticks.0)));
     }
     let format = resolved["settings"]["format"].as_str().unwrap_or("h264");
     let audio_only = matches!(format, "wav" | "flac" | "aac" | "mp3" | "aiff");
@@ -151,7 +153,6 @@ fn probe(out: &Path, resolved: &Value) -> Result<Value> {
     if (audio_only || resolved["settings"]["includeAudio"] == true) && format != "gif" && audio_streams.is_none_or(|a| a.is_empty()) {
         return Err(bad("Export has no expected audio stream"));
     }
-    // Decode a few native samples via filmcraft-cli bench-decode when video is present.
     if !audio_only {
         let cli = crate::workspace::find_executable("filmcraft-cli").map_err(|e| bad(e.to_string()))?;
         let dec = std::process::Command::new(cli).args(["bench-decode", "--frames", "2"]).arg(out).output().map_err(|e| bad(e.to_string()))?;
@@ -159,7 +160,13 @@ fn probe(out: &Path, resolved: &Value) -> Result<Value> {
             return Err(bad(format!("Export frame decode failed: {}", String::from_utf8_lossy(&dec.stderr).trim())));
         }
     }
-    Ok(json!({"valid":true,"duration_seconds":seconds,"expected_duration_seconds":expected,"format":format,"media":info}))
+    Ok(json!({
+        "valid": true,
+        "duration_ticks": actual_ticks.0,
+        "expected_duration_ticks": expected_ticks.0,
+        "format": format,
+        "media": info,
+    }))
 }
 
 fn receipt_matches(receipt: &Value, current: &Value) -> std::result::Result<(), String> {

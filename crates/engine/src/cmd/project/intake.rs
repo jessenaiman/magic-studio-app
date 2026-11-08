@@ -11,10 +11,9 @@ use crate::cmd::project::workshop::{
     ASSETS_DIR, IMAGE_EXTENSIONS, STORYBOARD_DIR, STORYBOARD_PDF, VIDEO_TARGETS, files_in, panel_files, project_dir, transcript_files, video_project_path,
     workshop_asset_files, workshop_status,
 };
-use crate::workspace::{has_extension, resolve_workspace_path, run_tool_in, song_audio_path};
+use crate::workspace::{has_extension, resolve_workspace_path, song_audio_path};
 use crate::{EngineError, Result, Session};
 
-/// numbered_prompts parses panel descriptions from a generating prompt.
 fn numbered_prompts(text: &str) -> std::collections::BTreeMap<usize, String> {
     let mut out = std::collections::BTreeMap::new();
     let mut current: Option<usize> = None;
@@ -42,74 +41,30 @@ fn numbered_prompts(text: &str) -> std::collections::BTreeMap<usize, String> {
     out
 }
 
-/// The audio already connected to this project: the session path, else the copy beside the video.
-fn connected_audio(s: &Session, dir: &Path, audio: &Path) -> Option<PathBuf> {
-    s.song_audio
-        .clone()
-        .filter(|path| path.is_file())
-        .or_else(|| audio.file_name().map(|name| dir.join("hyperframes").join(name)).filter(|path| path.is_file()))
-}
-
-/// Same path, or the same bytes: relinking an identical recording is not a change.
-fn same_audio(old: &Path, audio: &Path) -> bool {
-    old == audio || std::fs::read(old).ok().zip(std::fs::read(audio).ok()).is_some_and(|(old, new)| old == new)
-}
-
-type AudioState = (Option<PathBuf>, String, Option<PathBuf>);
-
-fn audio_state(s: &Session) -> AudioState {
-    (s.song_audio.clone(), s.video_target.clone(), s.video_project_path.clone())
-}
-
-fn restore_audio_state(s: &mut Session, previous: AudioState) {
-    (s.song_audio, s.video_target, s.video_project_path) = previous;
-}
-
-/// The HyperFrames project and its preview server, then the project file that records both.
-fn hyperframes_setup(s: &mut Session, params: &Value) -> Result<Value> {
-    let video =
-        crate::cmd::film::video_target::cmd_video_init(s, &json!({"target":"hyperframes","captions":false,"resolve_video_cli":params["resolve_video_cli"]}))?;
-    let preview = crate::cmd::film::video_target::cmd_video_server_start(s, &json!({"resolve_video_cli":params["resolve_video_cli"]}))?;
-    crate::cmd::project::write_project_file(s)?;
-    Ok(json!({"ok":true,"video":video,"preview":preview}))
-}
-
 pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> {
-    let dir = project_dir(s)?;
+    let _dir = project_dir(s)?;
     let raw = params.get("path").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("missing audio 'path'".into()))?;
     let audio = song_audio_path(s, raw)?;
-    let exists = ensure_video_target_project(s, &dir, "hyperframes").is_ok();
-    let connected = connected_audio(s, &dir, &audio);
-    let unchanged = connected.as_ref().is_some_and(|old| same_audio(old, &audio));
-    if exists && !unchanged {
-        return Err(EngineError::InvalidParams("This HyperFrames project already has a timeline. Update its audio in HyperFrames before relinking the recording; the existing project was preserved".into()));
-    }
-    let previous = audio_state(s);
-    s.song_audio =
-        Some(if exists && unchanged { connected.ok_or_else(|| EngineError::InvalidParams("Existing audio connection is unavailable".into()))? } else { audio });
-    s.video_target = "hyperframes".into();
-    let setup = hyperframes_setup(s, params);
-    if setup.is_err() {
-        restore_audio_state(s, previous);
-        crate::cmd::project::write_project_file(s)?;
-    }
-    setup
+    s.song_audio = Some(audio.clone());
+    s.video_target = "filmcraft".into();
+    crate::cmd::project::write_project_file(s)?;
+    let mut status = workshop_status(s)?;
+    status["audio"] = json!(audio);
+    Ok(status)
 }
 
 pub fn cmd_workshop_set_target(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    let target = params.get("target").and_then(Value::as_str).unwrap_or_default();
+    let target = params.get("target").and_then(Value::as_str).unwrap_or("filmcraft");
     if !VIDEO_TARGETS.contains(&target) {
         return Err(EngineError::InvalidParams(format!("target must be one of {VIDEO_TARGETS:?}")));
     }
     s.video_target = target.into();
-    // The new target's project replaces the old one; failing to scaffold it leaves none, never the previous target's.
     s.video_project_path = ensure_video_target_project(s, &dir, target).ok();
     crate::cmd::project::write_project_file(s)?;
     workshop_status(s)
 }
 
-/// The template folder a kind maps to, and the extensions it accepts.
 fn add_folder(params: &Value) -> Result<(&'static str, Option<&'static [&'static str]>)> {
     match params.get("kind").and_then(Value::as_str) {
         Some("liner_notes") => Ok(("liner-notes", None)),
@@ -128,7 +83,6 @@ fn requested_paths(s: &Session, params: &Value) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-/// A source file must exist, and must be an image when the folder only takes images.
 fn require_addable(path: &Path, only: Option<&[&str]>) -> Result<()> {
     if !path.is_file() {
         return Err(EngineError::InvalidParams(format!("file not found: {}", path.display())));
@@ -141,7 +95,6 @@ fn require_addable(path: &Path, only: Option<&[&str]>) -> Result<()> {
     Ok(())
 }
 
-/// Panels are numbered from the existing count; other folders keep their file name.
 fn destination_for(path: &Path, folder: &str, target: &Path, next_panel: &mut u32) -> Result<PathBuf> {
     if folder != STORYBOARD_DIR {
         let name = path.file_name().ok_or_else(|| EngineError::InvalidParams("bad file name".into()))?;
@@ -153,7 +106,6 @@ fn destination_for(path: &Path, folder: &str, target: &Path, next_panel: &mut u3
     Ok(target.join(name))
 }
 
-/// Copy without ever overwriting different bytes at the destination.
 fn place_file(path: &Path, dest: &Path) -> Result<()> {
     if dest == path {
         return Ok(());
@@ -170,7 +122,6 @@ fn place_file(path: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Static assets can become rig subjects when the call asks for animation.
 fn connect_subjects(s: &mut Session, params: &Value, added: &[PathBuf], folder: &str) -> Result<Vec<String>> {
     let animate = params.get("animate").and_then(Value::as_bool).unwrap_or(false) || params.get("subject").and_then(Value::as_str).is_some();
     if folder != ASSETS_DIR || !animate {
@@ -198,7 +149,6 @@ fn connect_subjects(s: &mut Session, params: &Value, added: &[PathBuf], folder: 
     Ok(connected)
 }
 
-/// Copies liner notes, storyboard panels or static assets into the template folders.
 pub fn cmd_workshop_add(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let (folder, only) = add_folder(params)?;
@@ -222,8 +172,6 @@ pub fn cmd_workshop_add(s: &mut Session, params: &Value) -> Result<Value> {
     Ok(status)
 }
 
-/// Cuts a storyboard grid into storyboard/panel-NN.png with PhotoCraft.
-/// Grid shape and inset, defaulting to 3x2 panels with an 8px inset.
 fn grid_dims(params: &Value) -> (u32, u32, u32) {
     let columns = params.get("columns").and_then(Value::as_u64).unwrap_or(3).max(1) as u32;
     let rows = params.get("rows").and_then(Value::as_u64).unwrap_or(2).max(1) as u32;
@@ -231,22 +179,25 @@ fn grid_dims(params: &Value) -> (u32, u32, u32) {
     (columns, rows, inset)
 }
 
-/// One PhotoCraft crop per panel, written as storyboard/panel-NN.png.
 fn crop_panels(_dir: &Path, image: &Path, out_dir: &Path, columns: u32, rows: u32, inset: u32, (cw, ch): (u32, u32)) -> Result<Vec<PathBuf>> {
+    let src = image::open(image)?;
     let mut panels = Vec::new();
     for r in 0..rows {
         for c in 0..columns {
             let n = r * columns + c + 1;
             let out = out_dir.join(format!("panel-{n:02}.png"));
-            let rect = json!({"x": c * cw + inset, "y": r * ch + inset, "width": cw - 2 * inset, "height": ch - 2 * inset});
-            crate::cmd::character::cut::photocraft_run(image, &[("image.crop", rect)], Some(&out))?;
+            let x = c * cw + inset;
+            let y = r * ch + inset;
+            let w = cw - 2 * inset;
+            let h = ch - 2 * inset;
+            let cropped = src.crop_imm(x, y, w, h);
+            cropped.save(&out)?;
             panels.push(out);
         }
     }
     Ok(panels)
 }
 
-/// A numbered prompt beside each panel whose prompt file has that panel number.
 fn write_prompts(s: &Session, params: &Value, panels: &[PathBuf], image: &Path) -> Result<Vec<PathBuf>> {
     let mut written = Vec::new();
     let Some(prompt_file) = params.get("prompts").and_then(Value::as_str).map(|p| resolve_workspace_path(s, p)) else {
@@ -268,7 +219,6 @@ fn write_prompts(s: &Session, params: &Value, panels: &[PathBuf], image: &Path) 
     Ok(written)
 }
 
-/// Cuts a storyboard grid into storyboard/panel-NN.png with PhotoCraft.
 pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
     let image = params
@@ -292,7 +242,6 @@ pub fn cmd_workshop_split_panels(s: &mut Session, params: &Value) -> Result<Valu
     Ok(status)
 }
 
-/// Approve or unapprove the workshop draft.
 pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Value> {
     project_dir(s)?;
     let approved = params.get("approved").and_then(Value::as_bool).unwrap_or(true);
@@ -301,89 +250,80 @@ pub fn cmd_workshop_approve_draft(s: &mut Session, params: &Value) -> Result<Val
     workshop_status(s)
 }
 
-/// Every file the workshop knows about, grouped by stage.
-/// Every stage's files, then any other file in the project folder that none of them named.
-fn collected_files(s: &Session, dir: &Path) -> Vec<Value> {
-    let mut files = Vec::new();
-    if let Some(audio) = &s.song_audio {
-        files.push(file_entry("audio", audio, true));
-    }
-    for f in files_in(&dir.join("liner-notes"), None) {
-        files.push(file_entry("liner_notes", &f, true));
-    }
-    for t in &transcript_files(dir) {
-        files.push(file_entry("transcript", t, true));
-    }
-    if let Some(fcproj) = video_project_path(dir) {
-        files.push(file_entry("transcript", &fcproj, true));
-    }
-    for f in files_in(&dir.join(STORYBOARD_DIR), None) {
-        files.push(file_entry("storyboard", &f, true));
-    }
-    for f in workshop_asset_files(dir) {
-        files.push(file_entry("assets", &f, true));
-    }
-    let listed: Vec<PathBuf> = files.iter().filter_map(|f| f["path"].as_str().map(PathBuf::from)).collect();
-    for f in files_in(dir, None) {
-        if !listed.contains(&f) && Some(&f) != s.project_path.as_ref() {
-            files.push(file_entry("other", &f, true));
-        }
-    }
-    files
-}
-
-fn retain_group(files: &mut Vec<Value>, params: &Value) {
-    let Some(group) = params.get("group").and_then(Value::as_str).map(str::to_ascii_lowercase).filter(|g| !g.is_empty()) else {
+fn add_catalog_row(rows: &mut Vec<Value>, dir: &Path, kind: &str, path: PathBuf, filter: &str) {
+    let rel = path.strip_prefix(dir).unwrap_or(&path).to_string_lossy().into_owned();
+    if !filter.is_empty() && !rel.to_ascii_lowercase().contains(filter) && !kind.to_ascii_lowercase().contains(filter) {
         return;
-    };
-    files.retain(|f| f["group"].as_str().is_some_and(|g| g.to_ascii_lowercase() == group));
+    }
+    let bytes = std::fs::metadata(&path).map(|m| m.len()).ok();
+    rows.push(json!({"kind": kind, "name": rel, "path": path, "bytes": bytes}));
 }
 
-fn retain_query(files: &mut Vec<Value>, params: &Value) {
-    let Some(q) = params.get("filter").or_else(|| params.get("query")).and_then(Value::as_str).map(str::to_ascii_lowercase).filter(|q| !q.is_empty()) else {
-        return;
-    };
-    files.retain(|f| ["name", "path", "group"].iter().any(|key| f[key].as_str().is_some_and(|v| v.to_ascii_lowercase().contains(&q))));
-}
-
-/// Every file the workshop knows about, grouped by stage.
 pub fn cmd_workshop_files(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    let mut files = collected_files(s, &dir);
-    retain_group(&mut files, params);
-    retain_query(&mut files, params);
-    Ok(json!({"ok": true, "project_dir": dir, "count": files.len(), "files": files}))
+    let filter = params.get("filter").and_then(Value::as_str).map(str::to_ascii_lowercase).unwrap_or_default();
+    let mut rows = Vec::new();
+    if let Some(audio) = s.song_audio.clone().filter(|p| p.is_file()) {
+        add_catalog_row(&mut rows, &dir, "audio", audio, &filter);
+    }
+    for p in files_in(&dir.join("liner-notes"), None) {
+        add_catalog_row(&mut rows, &dir, "liner_notes", p, &filter);
+    }
+    for p in transcript_files(&dir) {
+        add_catalog_row(&mut rows, &dir, "transcript", p, &filter);
+    }
+    for p in panel_files(&dir) {
+        add_catalog_row(&mut rows, &dir, "panel", p, &filter);
+    }
+    let pdf = dir.join(STORYBOARD_PDF);
+    if pdf.is_file() {
+        add_catalog_row(&mut rows, &dir, "storyboard_pdf", pdf, &filter);
+    }
+    for p in workshop_asset_files(&dir) {
+        add_catalog_row(&mut rows, &dir, "asset", p, &filter);
+    }
+    if let Some(vp) = video_project_path(&dir) {
+        add_catalog_row(&mut rows, &dir, "video_project", vp, &filter);
+    }
+    Ok(json!({"ok": true, "project_dir": dir, "count": rows.len(), "files": rows}))
 }
 
-/// Removes a workshop file: song audio is only unlinked; project-folder files go to trash.
+fn trash_destination(trash_dir: &Path, file_name: &std::ffi::OsStr) -> PathBuf {
+    let mut dest = trash_dir.join(file_name);
+    let mut n = 2u32;
+    while dest.exists() {
+        let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+        let ext = Path::new(file_name).extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+        dest = trash_dir.join(format!("{stem}-{n}{ext}"));
+        n += 1;
+    }
+    dest
+}
+
 pub fn cmd_workshop_remove(s: &mut Session, params: &Value) -> Result<Value> {
     let dir = project_dir(s)?;
-    let raw = params.get("path").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("missing 'path'".into()))?;
-    let path = resolve_workspace_path(s, raw);
-    if s.song_audio.as_ref() == Some(&path) {
+    let raw = params.get("path").and_then(Value::as_str).ok_or_else(|| EngineError::InvalidParams("missing 'path' to remove".into()))?;
+    let target = resolve_workspace_path(s, raw);
+    let canon_dir = dir.canonicalize()?;
+    let canon_target = target.canonicalize().map_err(|_| EngineError::InvalidParams(format!("file not found: {}", target.display())))?;
+    if !canon_target.starts_with(&canon_dir) || canon_target == canon_dir {
+        return Err(EngineError::InvalidParams("can only remove files inside the open project folder".into()));
+    }
+    if Some(&canon_target) == s.project_path.as_ref().and_then(|p| p.canonicalize().ok()).as_ref() {
+        return Err(EngineError::InvalidParams("refusing to remove the .magic project file itself".into()));
+    }
+    let trash_dir = dir.join(".trash");
+    std::fs::create_dir_all(&trash_dir)?;
+    let file_name = canon_target.file_name().ok_or_else(|| EngineError::InvalidParams("invalid file name".into()))?;
+    let moved_to = trash_destination(&trash_dir, file_name);
+    std::fs::rename(&canon_target, &moved_to)?;
+    if s.song_audio.as_ref().and_then(|p| p.canonicalize().ok()).as_ref() == Some(&canon_target) {
         s.song_audio = None;
-        crate::cmd::project::write_project_file(s)?;
-        let mut status = workshop_status(s)?;
-        status["unlinked"] = json!(path);
-        return Ok(status);
     }
-    let inside = path.canonicalize().ok().zip(dir.canonicalize().ok()).is_some_and(|(p, d)| p.starts_with(&d));
-    if !inside || Some(&path) == s.project_path.as_ref() || !path.is_file() {
-        return Err(EngineError::InvalidParams(format!("only files inside the project folder can be removed: {}", path.display())));
-    }
-    run_tool_in(&dir, "gio", &["trash".into(), path.to_string_lossy().into_owned()])?;
-    if path == dir.join(STORYBOARD_DIR).join(STORYBOARD_PDF) {
-        s.draft_approved = false;
-        crate::cmd::project::write_project_file(s)?;
-    }
+    s.project_assets.retain(|a| a.path.as_ref().and_then(|p| p.canonicalize().ok()).as_ref() != Some(&canon_target));
+    crate::cmd::project::write_project_file(s)?;
     let mut status = workshop_status(s)?;
-    status["trashed"] = json!(path);
+    status["removed"] = json!(canon_target);
+    status["trashed_to"] = json!(moved_to);
     Ok(status)
-}
-
-/// One row in the workshop file listing: group, name, path, size, exists, removable.
-fn file_entry(group: &str, path: &Path, removable: bool) -> Value {
-    let size = std::fs::metadata(path).map(|m| m.len()).ok();
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    json!({"group": group, "name": name, "path": path, "size": size, "exists": path.exists(), "removable": removable})
 }

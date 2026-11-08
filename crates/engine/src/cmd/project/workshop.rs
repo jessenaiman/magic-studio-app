@@ -54,6 +54,10 @@ pub(crate) fn song_seconds(dir: &Path) -> Option<f64> {
     seq.get("duration").and_then(Value::as_f64).map(|t| t / SEQUENCE_TICKS_PER_SECOND)
 }
 
+pub(crate) fn song_ticks(dir: &Path) -> Option<crate::time::Tick> {
+    song_seconds(dir).map(crate::time::Tick::from_seconds_f64)
+}
+
 /// The studio's own words, kept in data the user edits (never in code).
 #[derive(Clone, Default)]
 pub struct Studio {

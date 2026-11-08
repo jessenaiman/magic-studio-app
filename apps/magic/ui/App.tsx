@@ -1,4 +1,5 @@
-import { PreservedWorkspaces } from "./components/RestoredWorkspace";
+import { AnimationView } from "./views/AnimationView";
+import { LyricsView } from "./views/LyricsView";
 import { AppFooter } from "./components/AppFooter";
 import { Tooltip } from "./components/Tooltip";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
@@ -363,15 +364,37 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="app-view-host">
-        {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
-        {projectPath && <PreservedStoryboard key={`storyboard-${projectPath}`} active={view === "storyboard"} projectPath={projectPath} storyboard={data?.storyboard} onRefresh={() => refreshProject()} onToast={showToast} />}
-        {view === "gallery" ? <GalleryView /> : view === "mayhem" ? (
+        {view === "gallery" ? (
+          <GalleryView />
+        ) : view === "mayhem" ? (
           <MayhemView onToast={showToast} />
         ) : view === "home" || !projectPath ? (
           <HomeView onOpenProject={openProject} onToast={showToast} />
         ) : view === "studio" ? (
           <FilmView projectPath={projectPath} onToast={showToast} />
-        ) : null}
+        ) : view === "animation" ? (
+          <AnimationView
+            projectPath={projectPath}
+            assets={data?.assets?.assets || []}
+            onRefresh={() => refreshProject()}
+            onToast={showToast}
+          />
+        ) : view === "design" || view === "motion" ? (
+          <LyricsView
+            projectPath={projectPath}
+            audioPath={songAudioPath || undefined}
+            onToast={showToast}
+          />
+        ) : (
+          <PreservedStoryboard
+            key={`storyboard-${projectPath}`}
+            active={view === "storyboard" || view === "project"}
+            projectPath={projectPath}
+            storyboard={data?.storyboard}
+            onRefresh={() => refreshProject()}
+            onToast={showToast}
+          />
+        )}
       </div>
 
       {/* One footer outside the view host: it survives every view switch (issue #123). */}

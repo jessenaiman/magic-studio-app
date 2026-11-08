@@ -84,7 +84,6 @@ pub fn is_read_only_command(id: &str, params: &Value) -> bool {
         | "agent.session"
         | "agent.models"
         | "command.list"
-        | "studio.cues"
         | "ui.state"
         | "ui.feedback"
         | "ui.elements"

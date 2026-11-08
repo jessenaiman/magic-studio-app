@@ -1723,6 +1723,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "filmcraft-time"
+version = "0.17.0"
+source = "git+https://github.com/storytold/filmcraft#4a56be9cff419a5a9b16a25259c97dc823ca8bae"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3064,6 +3072,7 @@ dependencies = [
  "craft-docpath",
  "craft-settings",
  "craft-update",
+ "filmcraft-time",
  "flate2",
  "glam",
  "image",
