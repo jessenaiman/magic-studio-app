@@ -1029,6 +1029,16 @@ fn specs_character() -> Vec<CommandSpec> {
 /// Scribbles: Google Flow (Moppet Maker) app-window launcher, handoff asset ingestor, animated SVG builder, and video clip generator.
 fn specs_scribbles() -> Vec<CommandSpec> {
     vec![
+        cmd!("scribbles.connect", "Choose Codex for Scribbles (Craft AI)", ["Scribbles"], None, "{}", always, crate::craft_ai_codex::cmd_scribbles_connect),
+        cmd!(
+            "scribbles.consent",
+            "Agree to Send Drawing Requests to Codex",
+            ["Scribbles"],
+            None,
+            r#"{"agree":"true, from the person","term":"one_hour, one_day or until_revoked"}"#,
+            always,
+            crate::craft_ai_codex::cmd_scribbles_consent
+        ),
         cmd!(
             "scribbles.open",
             "Open Scribbles (Google Flow Moppet Maker or Storyboard Master Pack)",

@@ -66,10 +66,10 @@ fn codex_cached_images() -> Result<std::collections::HashSet<PathBuf>> {
 
 /// Draw with Codex's built-in image tool, attaching `references` as images. Only a PNG this run
 /// created counts: when Codex finishes without drawing, that is an error, never an older image.
-fn generate_via_guarded_codex(prompt: &str, references: &[PathBuf], dir: &Path, out: &Path) -> Result<()> {
+pub(crate) fn generate_via_guarded_codex(model: &str, prompt: &str, references: &[PathBuf], dir: &Path, out: &Path) -> Result<()> {
     let before = codex_cached_images()?;
     let mut cmd = Command::new("codex");
-    cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write", "--cd"])
+    cmd.args(["exec", "--ephemeral", "--skip-git-repo-check", "--sandbox", "workspace-write", "--model", model, "--cd"])
         .arg(dir)
         .args(["--config", "model_reasoning_effort=\"low\""]);
     for reference in references {
@@ -122,7 +122,6 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
     let prompt = p["prompt"].as_str().map(str::trim).filter(|v| !v.is_empty()).ok_or_else(|| invalid("image.generate needs prompt=<description>"))?;
 
     let (out_png, receipt_path) = prepare_output_dir(s)?;
-    let work_dir = out_png.parent().ok_or_else(|| invalid("invalid output image path"))?;
 
     let settings = crate::project_settings::stored_settings();
     let img_settings = &settings["image"];
@@ -144,7 +143,7 @@ pub fn generate(s: &mut Session, p: &Value) -> Result<Value> {
         .collect::<Result<_>>()?;
 
     match provider {
-        "codex" => generate_via_guarded_codex(prompt, &references, work_dir, &out_png)?,
+        "codex" => crate::craft_ai_codex::draw(prompt, &references, &out_png)?,
         "flow" => generate_via_flow(prompt, &references, p["model"].as_str(), &out_png)?,
         // Images come from the subscription services only, never a paid image API.
         other => return Err(invalid(&format!("unknown image provider `{other}`: images are drawn through `codex` or `flow`"))),

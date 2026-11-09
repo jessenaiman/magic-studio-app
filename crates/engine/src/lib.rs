@@ -56,6 +56,7 @@ pub mod change_marker;
 pub mod cmd;
 pub mod command_sets;
 pub mod commands;
+pub mod craft_ai_codex;
 pub mod craft_hub;
 mod creation_loop;
 pub mod crew;

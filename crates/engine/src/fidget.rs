@@ -69,7 +69,7 @@ pub fn craft_ai_status() -> Value {
         Ok(id) => id,
         Err(e) => return json!({ "ok": false, "error": e.to_string() }),
     };
-    let role_reports: Vec<Value> = match AiClient::standard(app_id) {
+    let role_reports: Vec<Value> = match AiClient::standard(app_id).map(|client| client.with_factory(crate::craft_ai_codex::factory())) {
         Ok(client) => roles
             .iter()
             .map(|role| {

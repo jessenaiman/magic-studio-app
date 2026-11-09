@@ -6046,6 +6046,7 @@ dependencies = [
  "base64 0.23.1",
  "craft-ai-client",
  "craft-ai-core",
+ "craft-ai-native",
  "craft-atomic",
  "craft-audio",
  "craft-doc",
