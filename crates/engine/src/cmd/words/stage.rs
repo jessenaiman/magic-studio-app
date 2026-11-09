@@ -77,6 +77,31 @@ fn assign_default_backgrounds(doc: &mut Value, images: &[Value]) {
     }
 }
 
+fn inspect_lettering_ecproj(ecproj: &Path) -> Value {
+    let Ok(bytes) = fs::read(ecproj) else {
+        return Value::Null;
+    };
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        return Value::Null;
+    };
+    let Ok(head) = craft_ecproj_format::Head::read(text) else {
+        return Value::Null;
+    };
+    if craft_ecproj_format::check_schema(head.schema).is_err() {
+        return Value::Null;
+    }
+    let outline = craft_doc::outline(&bytes, &craft_doc::Limits::default()).ok();
+    let comp_count = outline.as_ref().map_or(0, |o| o.pages.len());
+    let layer_count: usize = outline.as_ref().map_or(0, |o| o.pages.iter().map(|p| p.layers.len()).sum());
+    json!({
+        "path": ecproj,
+        "saved_by": head.saved_by,
+        "schema": head.schema,
+        "comp_count": comp_count,
+        "layer_count": layer_count
+    })
+}
+
 pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
     let show = p["show"].as_str().unwrap_or("lyrics");
@@ -94,6 +119,7 @@ pub fn cmd_words_lyrics_view(s: &mut Session, p: &Value) -> Result<Value> {
         "show": show,
         "src": format!("lettering/{show}.ecproj"),
         "file": ecproj,
+        "ecproj": inspect_lettering_ecproj(&ecproj),
         "written": false,
         "video_sha256": format!("{:x}", Sha256::digest(&bytes))
     }))
@@ -155,26 +181,26 @@ fn runtime_filmcraft_tools() -> Value {
 }
 
 pub(crate) fn runtime_words_tools(lib: &Value) -> Value {
-    let move_meta = |m: &'static str| -> (&'static str, &'static str, &'static str, &'static str) {
+    let move_meta = |m: &'static str| -> (&'static str, &'static str, &'static str) {
         match m {
-            "quiet" => ("quiet", "Quiet", "Fades in and holds", "•"),
-            "sleep" => ("sleep", "Sleep", "Letters sink one by one", "☾"),
-            "settle" => ("settle", "Sparkle Settle", "Drops and squashes into place", "★"),
-            "fall" => ("fall", "Kinetic Tilt", "Drops down angled", "📐"),
-            "pop" => ("pop", "Bounce / Pop", "A quick swell on the beat", "⚡"),
-            "rise" => ("rise", "Fire / Impact", "Arcs up and away", "🔥"),
-            "east" => ("east", "Neon Drift", "Slides right", "✨"),
-            "west" => ("west", "Slide West", "Slides left", "←"),
-            "loop" => ("loop", "Wave / Loop", "Makes one continuous loop", "〰"),
-            _ => (m, m, "Motion act", "⚡"),
+            "quiet" => ("quiet", "Quiet", "Fades in and holds"),
+            "sleep" => ("sleep", "Sleep", "Letters sink one by one"),
+            "settle" => ("settle", "Settle", "Drops and settles into place"),
+            "fall" => ("fall", "Fall", "Drops down from above"),
+            "pop" => ("pop", "Pop", "Swells on the beat"),
+            "rise" => ("rise", "Rise", "Arcs up from below"),
+            "east" => ("east", "Slide East", "Slides right"),
+            "west" => ("west", "Slide West", "Slides left"),
+            "loop" => ("loop", "Loop", "Continuous wave"),
+            _ => (m, m, "Motion act"),
         }
     };
     let moves: Vec<Value> = ["quiet", "pop", "loop", "fall", "rise", "east", "west", "settle", "sleep"]
         .into_iter()
         .map(|key| {
-            let (id, name, does, icon) = move_meta(key);
+            let (id, name, does) = move_meta(key);
             let desc = lib["acts"][id]["does"].as_str().unwrap_or(does);
-            json!({"id": id, "name": name, "does": desc, "icon": icon})
+            json!({"id": id, "name": name, "does": desc})
         })
         .collect();
     let letterings = json!([
@@ -209,18 +235,16 @@ pub(crate) fn runtime_words_tools(lib: &Value) -> Value {
         {"id": "stack", "preview": "stack", "name": "Stack", "does": "Vertical stepped column"},
         {"id": "plain", "preview": "karaoke", "name": "Plain", "does": "Clean horizontal row"}
     ]);
-    let easings = json!([
-        {"id": "spring-out", "name": "Spring Out", "does": "Elastic overshoot settle"},
-        {"id": "elastic-pop", "name": "Elastic Pop", "does": "Snappy beat bounce"},
-        {"id": "cubic-bezier", "name": "Cubic Bezier", "does": "Smooth cinematic ease"},
-        {"id": "step-hold", "name": "Step Hold", "does": "Posterized frame hold"}
-    ]);
+    let easings = crate::animation_model::easing_catalog();
+    let properties = crate::animation_model::property_catalog();
     json!({
         "moves": moves,
         "letterings": letterings,
         "strokes": strokes,
         "choreographies": choreographies,
         "easings": easings,
+        "properties": properties,
+        "symbol_loop_modes": ["loop", "play_once", "single_frame"],
         "actions": ACTIONS,
         "entrances": ENTRANCES,
         "exits": EXITS,
@@ -472,10 +496,12 @@ pub fn cmd_words_read(s: &mut Session, p: &Value) -> Result<Value> {
     let graphics = graphic_cues(&doc, &kinetic_library, &studio_times(s));
     let images = project_backdrop_images(s, &dir);
     let scene_clips = project_scene_clips(&dir, &doc);
+    let ecproj = inspect_lettering_ecproj(&dir.join("lettering/lyrics.ecproj"));
     Ok(json!({
         "images": images,
         "scene_clips": scene_clips,
         "graphics": graphics,
+        "ecproj": ecproj,
         "ok": true,
         "saved": saved,
         "reference_changed": stale,

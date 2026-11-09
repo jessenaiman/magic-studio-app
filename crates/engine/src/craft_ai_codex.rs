@@ -194,7 +194,7 @@ fn run_backend(provider_id: &str, model: &str, prompt: &str, references: &[Vec<u
         let format = image::guess_format(data).map_err(engine)?;
         let extension = format.extensions_str().first().copied().unwrap_or("png");
         let path = dir.path().join(format!("reference-{index}.{extension}"));
-        std::fs::write(&path, data)?;
+        crate::write_file(&path, data)?;
         paths.push(path);
     }
     let out = dir.path().join("result.png");
@@ -433,7 +433,7 @@ pub(crate) fn draw_with(provider_override: Option<&str>, model_override: Option<
         _ => None,
     });
     let png = png.ok_or_else(|| engine("the job finished without an image"))?;
-    std::fs::write(out, png)?;
+    crate::write_file(out, png)?;
     Ok(())
 }
 

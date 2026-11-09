@@ -9,7 +9,7 @@ const LAYERS: &[(&str, u8)] =
     &[("craft-atomic", 0), ("craft-scribbles", 4), ("magic-engine", 5), ("magic-mcp", 6), ("magic", 7), ("magic-cli", 7), ("magic-tui", 7), ("xtask", 7)];
 
 /// Craft backends (L0–L4): maintained dependencies Magic drives, never edited here.
-const CRAFT_PREFIXES: &[&str] = &["designcraft-", "effectcraft-", "filmcraft-", "photocraft-", "vectorcraft-", "texturecraft-", "craft-"];
+const CRAFT_PREFIXES: &[&str] = &["anicraft-", "designcraft-", "effectcraft-", "filmcraft-", "photocraft-", "vectorcraft-", "texturecraft-", "craft-"];
 
 fn layer_of(name: &str) -> Option<u8> {
     if let Some((_, l)) = LAYERS.iter().find(|(n, _)| *n == name) {

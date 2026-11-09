@@ -80,29 +80,26 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
   const [rotation, setRotation] = useState<number>(0);
   const [scale, setScale] = useState<number>(100);
   const [opacity, setOpacity] = useState<number>(100);
-
-  const [ikActive, setIkActive] = useState<boolean>(true);
-  const [limbChain, setLimbChain] = useState<string>("Right Leg (torso → leg_R)");
-  const [poleBendClockwise, setPoleBendClockwise] = useState<boolean>(true);
-  const [torsoSecondaryFollow, setTorsoSecondaryFollow] = useState<boolean>(true);
-  const [ikTargetAngle, setIkTargetAngle] = useState<number>(0);
-
-  const [meshDensity, setMeshDensity] = useState<number>(96);
-  const [meshExpansion, setMeshExpansion] = useState<number>(6);
-  const [pinMode, setPinMode] = useState<"deform" | "starch" | "overlap">("starch");
-  const [pinStiffness, setPinStiffness] = useState<number>(65);
-  const [pinExtent, setPinExtent] = useState<number>(38);
-  const [followDelay, setFollowDelay] = useState<number>(0.1);
-
-  const [handHold, setHandHold] = useState<boolean>(true);
-  const [faceHold, setFaceHold] = useState<boolean>(true);
-  const [selectedGesture, setSelectedGesture] = useState<string>("wave");
-  const [gestureAngle, setGestureAngle] = useState<number>(0);
+  const [availableActions, setAvailableActions] = useState<Array<{ id: string; label: string }>>([]);
+  const [pinMode, setPinMode] = useState<"position" | "starch" | "overlap" | "bend">("position");
 
   const [placeTrack, setPlaceTrack] = useState<string>("V2");
   const [placeTime, setPlaceTime] = useState<number>(0);
   const [lastRenderedClip, setLastRenderedClip] = useState<string>("");
   const [busy, setBusy] = useState<boolean>(false);
+
+  useEffect(() => {
+    executeCommand<{ actions?: Array<{ id?: string; name?: string } | string> }>("character.actions", {})
+      .then((res) => {
+        const list = (res?.actions || []).map((a) => {
+          const id = typeof a === "string" ? a : a.id || a.name || "";
+          const label = id.replace(/^walk_/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          return { id, label };
+        }).filter((a) => a.id);
+        if (list.length > 0) setAvailableActions(list);
+      })
+      .catch(() => {});
+  }, []);
 
   const selectCharacter = async (charId: string, view = "front") => {
     if (!charId) return;
@@ -389,23 +386,31 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
     }
   };
 
-  const handleKeyTransform = async () => {
+  const handleKeyTransform = async (transformProps?: Record<string, unknown>) => {
     setBusy(true);
     try {
-      await commitBoneProperty("rotation", rotation);
-      onToast(`Keyed ${selectedBone}: rot=${rotation}°, scale=${scale}%, opacity=${opacity}%`);
-    } catch (err) {
-      onToast(String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleSolveIK = async () => {
-    setBusy(true);
-    try {
-      await commitBoneProperty("rotation", ikTargetAngle);
-      onToast(`Solved & Keyed 2-Bone IK on ${limbChain} (Target: ${ikTargetAngle}°)`);
+      const propsPayload = transformProps || {
+        rotation,
+        scale: [scale, scale],
+        opacity,
+      };
+      await executeCommand("character.set", {
+        character: selectedCharId,
+        view: selectedView,
+        part: selectedBone,
+        props: propsPayload,
+        time: currentTime,
+      });
+      setKeysRevision((n) => n + 1);
+      const frameRes = await executeCommand<{ frame?: string }>("character.frame", {
+        character: selectedCharId,
+        view: selectedView,
+        time: currentTime,
+      });
+      if (frameRes.frame) {
+        setFramePath(`${frameRes.frame}?t=${Date.now()}`);
+      }
+      onToast(`Keyed ${selectedBone} transform in EffectCraft (${Object.keys(propsPayload).join(", ")})`);
     } catch (err) {
       onToast(String(err));
     } finally {
@@ -669,40 +674,26 @@ export const AnimationView: React.FC<AnimationViewProps> = ({
         opacity={opacity}
         onChangeOpacity={setOpacity}
         onCommitOpacity={(val) => void commitBoneProperty("opacity", val)}
-        onKeyTransform={() => void handleKeyTransform()}
-        ikActive={ikActive}
-        onChangeIkActive={setIkActive}
-        limbChain={limbChain}
-        onChangeLimbChain={setLimbChain}
-        poleBendClockwise={poleBendClockwise}
-        onChangePoleBend={setPoleBendClockwise}
-        torsoSecondaryFollow={torsoSecondaryFollow}
-        onChangeTorsoFollow={setTorsoSecondaryFollow}
-        ikTargetAngle={ikTargetAngle}
-        onChangeIkTargetAngle={setIkTargetAngle}
-        onCommitIkTargetAngle={(val) => void commitBoneProperty("rotation", val)}
-        onSolveIK={() => void handleSolveIK()}
-        meshDensity={meshDensity}
-        onChangeMeshDensity={setMeshDensity}
-        meshExpansion={meshExpansion}
-        onChangeMeshExpansion={setMeshExpansion}
+        onKeyTransform={(propsPayload) => void handleKeyTransform(propsPayload)}
+        availableActions={availableActions}
+        rigKeys={rigKeys}
+        currentTime={currentTime}
         pinMode={pinMode}
         onChangePinMode={setPinMode}
-        pinStiffness={pinStiffness}
-        onChangePinStiffness={setPinStiffness}
-        pinExtent={pinExtent}
-        onChangePinExtent={setPinExtent}
-        followDelay={followDelay}
-        onChangeFollowDelay={setFollowDelay}
-        handHold={handHold}
-        onToggleHandHold={() => setHandHold((v) => !v)}
-        faceHold={faceHold}
-        onToggleFaceHold={() => setFaceHold((v) => !v)}
-        selectedGesture={selectedGesture}
-        onSelectGesture={setSelectedGesture}
-        gestureAngle={gestureAngle}
-        onChangeGestureAngle={setGestureAngle}
-        onCommitGestureAngle={(val) => void commitBoneProperty("rotation", val)}
+        onClearPath={() => {
+          setPathPoints([]);
+          setPathPointIdx(0);
+          setSizeStart(100);
+          setSizeEnd(100);
+        }}
+        onUndoPath={() => {
+          setPathPointIdx(Math.max(0, pathPoints.length - 2));
+          setPathPoints((prev) => prev.slice(0, -1));
+        }}
+        onApplyPath={() => {
+          setDuration(pathDuration);
+          void handleSavePath();
+        }}
         onRenderClip={() => void handleRenderClip()}
         placeTrack={placeTrack}
         onChangePlaceTrack={setPlaceTrack}

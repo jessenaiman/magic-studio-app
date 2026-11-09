@@ -305,6 +305,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "anicraft-actions"
+version = "0.1.0"
+source = "git+https://github.com/storytold/anicraft#ae8e789aa8e88eabecfb52aa50b6c00a46763a30"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "anicraft-audio"
+version = "0.1.0"
+source = "git+https://github.com/storytold/anicraft#ae8e789aa8e88eabecfb52aa50b6c00a46763a30"
+dependencies = [
+ "lewton",
+ "nanomp3",
+]
+
+[[package]]
+name = "anicraft-doc"
+version = "0.1.0"
+source = "git+https://github.com/storytold/anicraft#ae8e789aa8e88eabecfb52aa50b6c00a46763a30"
+dependencies = [
+ "anicraft-actions",
+ "anicraft-audio",
+ "anicraft-geom",
+ "png 0.17.16",
+ "serde",
+ "zune-jpeg",
+]
+
+[[package]]
+name = "anicraft-geom"
+version = "0.1.0"
+source = "git+https://github.com/storytold/anicraft#ae8e789aa8e88eabecfb52aa50b6c00a46763a30"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1504,7 +1542,7 @@ dependencies = [
  "craft-ai-core",
  "craft-ai-http",
  "craft-ai-media",
- "png",
+ "png 0.18.1",
  "serde_json",
  "ureq",
 ]
@@ -1566,7 +1604,7 @@ dependencies = [
  "craft-ai-media",
  "craft-ai-native",
  "libc",
- "png",
+ "png 0.18.1",
  "serde",
  "serde_json",
  "tempfile",
@@ -1623,7 +1661,7 @@ dependencies = [
  "craft-ai-core",
  "craft-ai-http",
  "craft-ai-media",
- "png",
+ "png 0.18.1",
  "serde_json",
  "ureq",
 ]
@@ -1645,7 +1683,7 @@ dependencies = [
  "craft-ai-core",
  "craft-ai-http",
  "image",
- "png",
+ "png 0.18.1",
  "tempfile",
  "ureq",
  "url",
@@ -5197,7 +5235,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d75e94d66081e4d8dcd098bd8dc5254800fea14a26389b298410158d834de167"
 dependencies = [
  "byteorder",
- "png",
+ "png 0.18.1",
 ]
 
 [[package]]
@@ -5417,7 +5455,7 @@ dependencies = [
  "image-webp",
  "moxcms",
  "num-traits",
- "png",
+ "png 0.18.1",
  "tiff",
  "zune-core",
  "zune-jpeg",
@@ -5812,6 +5850,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
+name = "lewton"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "777b48df9aaab155475a83a7df3070395ea1ac6902f5cd062b8f2b028075c030"
+dependencies = [
+ "byteorder",
+ "ogg",
+ "tinyvec",
+]
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6043,6 +6092,8 @@ dependencies = [
 name = "magic-engine"
 version = "0.17.0"
 dependencies = [
+ "anicraft-doc",
+ "anicraft-geom",
  "base64 0.23.1",
  "craft-ai-client",
  "craft-ai-core",
@@ -6051,6 +6102,7 @@ dependencies = [
  "craft-audio",
  "craft-doc",
  "craft-docpath 0.1.0 (git+https://github.com/storytold/craft-libs)",
+ "craft-ecproj-format 0.1.0 (git+https://github.com/storytold/craft-libs)",
  "craft-media 0.1.0 (git+https://github.com/storytold/craft-libs)",
  "craft-scribbles",
  "craft-settings",
@@ -6206,7 +6258,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "once_cell",
- "png",
+ "png 0.18.1",
  "serde",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",
@@ -6255,6 +6307,21 @@ dependencies = [
  "rustc-hash 1.1.0",
  "thiserror 2.0.21",
 ]
+
+[[package]]
+name = "nanomp3"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acd9a8d0592a17ee5211aae2f976e6dc2f6846135d1f49665b3f19a7afd23435"
+dependencies = [
+ "nanomp3-core",
+]
+
+[[package]]
+name = "nanomp3-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63fa2238e662d3d3c1a71168b3278f23422cf9bf76f6943ee6b1c2581d74eb5c"
 
 [[package]]
 name = "ndarray"
@@ -6943,6 +7010,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ogg"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6951b4e8bf21c8193da321bcce9c9dd2e13c858fe078bf9054a288b419ae5d6e"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7385,6 +7461,19 @@ dependencies = [
  "quick-xml 0.42.0",
  "serde",
  "time",
+]
+
+[[package]]
+name = "png"
+version = "0.17.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526"
+dependencies = [
+ "bitflags 1.3.2",
+ "crc32fast",
+ "fdeflate",
+ "flate2",
+ "miniz_oxide 0.8.9",
 ]
 
 [[package]]
@@ -9616,7 +9705,7 @@ dependencies = [
  "ico",
  "json-patch",
  "plist",
- "png",
+ "png 0.18.1",
  "proc-macro2",
  "quote",
  "semver",
@@ -10385,7 +10474,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "once_cell",
- "png",
+ "png 0.18.1",
  "serde",
  "thiserror 2.0.21",
  "windows-sys 0.61.2",

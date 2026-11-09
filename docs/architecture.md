@@ -18,7 +18,7 @@ Design principles:
 L7  apps/magic (desktop) · apps/magic-cli · apps/magic-tui · xtask
 L6  crates/mcp (magic-mcp)
 L5  crates/engine (magic-engine)
-L0-L4 Craft backends (designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
+L0-L4 Craft backends (anicraft-*, designcraft-*, effectcraft-*, filmcraft-*, photocraft-*,
     vectorcraft-*, texturecraft-*, craft-*, craft-ai-*) — pinned, never edited
 ```
 

@@ -138,58 +138,24 @@ pub(crate) fn find_dir_ecproj(dir: &Path, id: &str, folder_name: &str, view: &st
     all.iter().find(|p| p.file_stem().and_then(|s| s.to_str()).is_none_or(|s| !s.contains("before-"))).cloned().or_else(|| all.into_iter().next())
 }
 
-pub(crate) fn ensure_ecproj_footage_paths(ecproj_path: &Path) {
-    let Ok(text) = std::fs::read_to_string(ecproj_path) else { return };
-    let Ok(mut doc) = serde_json::from_str::<Value>(&text) else { return };
-    let Some(ecproj_dir) = ecproj_path.parent() else { return };
-    let mut changed = false;
-    if let Some(items) = doc.get_mut("items").and_then(Value::as_object_mut) {
-        for item in items.values_mut() {
-            let Some(kind) = item.get_mut("kind").and_then(Value::as_object_mut) else { continue };
-            if kind.get("type").and_then(Value::as_str) != Some("Footage") {
-                continue;
-            }
-            let Some(raw_path) = kind.get("path").and_then(Value::as_str).map(str::to_owned) else { continue };
-            if raw_path.is_empty() || Path::new(&raw_path).is_file() {
-                continue;
-            }
-            let file_name = Path::new(&raw_path).file_name();
-            let mut candidates = Vec::new();
-            if let Some(fname) = file_name {
-                candidates.push(ecproj_dir.join(fname));
-                candidates.push(ecproj_dir.join("layers").join(fname));
-            }
-            if raw_path.contains("/magic/") {
-                candidates.push(PathBuf::from(raw_path.replace("/magic/", "/magic-studio/")));
-            }
-            if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
-                kind.insert("path".to_string(), json!(found));
-                changed = true;
-            }
+pub(crate) fn check_ecproj_head(ecproj_path: &Path) -> Result<craft_ecproj_format::Head> {
+    let file = std::fs::File::open(ecproj_path).map_err(|e| bad(format!("{}: {e}", ecproj_path.display())))?;
+    let head = craft_ecproj_format::Head::read_from(std::io::BufReader::new(file)).map_err(|err| match err {
+        craft_ecproj_format::ReadError::TooNew { too_new, saved_by, .. } => {
+            let writer = saved_by.as_deref().unwrap_or("newer EffectCraft");
+            bad(format!("{}: saved by {writer}: {too_new}", ecproj_path.display()))
         }
-    }
-    if changed {
-        let _ = crate::doc_state::write_json(ecproj_path, &doc);
-    }
+        other => bad(format!("{}: {other}", ecproj_path.display())),
+    })?;
+    craft_ecproj_format::check_schema(head.schema).map_err(|e| bad(format!("{}: {e}", ecproj_path.display())))?;
+    Ok(head)
 }
 
-pub(crate) fn ecproj_active_comp_name(ecproj_path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(ecproj_path).ok()?;
-    let doc: Value = serde_json::from_str(&text).ok()?;
-    let items = doc.get("items")?.as_object()?;
-    if let Some(active_id) = doc.get("activeComp").and_then(Value::as_u64)
-        && let Some(name) = items.get(&active_id.to_string()).and_then(|it| it.get("name")).and_then(Value::as_str).filter(|s| !s.is_empty())
-    {
-        return Some(name.to_owned());
-    }
-    for item in items.values() {
-        if item.get("kind").and_then(|k| k.get("type")).and_then(Value::as_str) == Some("Comp")
-            && let Some(name) = item.get("name").and_then(Value::as_str).filter(|s| !s.is_empty())
-        {
-            return Some(name.to_owned());
-        }
-    }
-    None
+pub(crate) fn ecproj_first_comp_name(ecproj_path: &Path) -> Option<String> {
+    let _ = check_ecproj_head(ecproj_path).ok()?;
+    let bytes = std::fs::read(ecproj_path).ok()?;
+    let outline = craft_doc::outline(&bytes, &craft_doc::Limits::default()).ok()?;
+    outline.pages.first().map(|p| p.name.clone()).filter(|s| !s.is_empty())
 }
 
 /// One drawn view of one character.
@@ -251,7 +217,7 @@ impl View {
     pub(crate) fn comp(&self) -> String {
         let ecproj = self.file("ecproj");
         if ecproj.is_file()
-            && let Some(comp_name) = ecproj_active_comp_name(&ecproj)
+            && let Some(comp_name) = ecproj_first_comp_name(&ecproj)
         {
             return comp_name;
         }
@@ -304,27 +270,8 @@ fn resolve_effectcraft_params(base: &Path, id: &str, params: &Value) -> Value {
     out
 }
 
-/// Runs `steps` in the open EffectCraft window, or `None` if it does not have `path` open.
-pub(crate) fn effect_in_window(path: &Path, steps: &[(String, Value)], save: bool) -> Option<Result<Vec<Value>>> {
-    let (first, rest) = steps.split_first()?;
-    let first_result = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, save && rest.is_empty())?;
-    let mut out = match first_result {
-        Ok(value) => vec![value],
-        Err(error) => return Some(Err(error)),
-    };
-    for (index, (id, params)) in rest.iter().enumerate() {
-        let last = index + 1 == rest.len();
-        match crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save && last) {
-            Some(Ok(value)) => out.push(value),
-            Some(Err(error)) => return Some(Err(error)),
-            None => return Some(Err(EngineError::ExternalTool("effectcraft".into(), format!("EffectCraft closed during {id}")))),
-        }
-    }
-    Some(Ok(out))
-}
-
-/// Run EffectCraft commands in the open EffectCraft window when it has this project, otherwise
-/// through [`crate::craft_hub::CraftDoc`] and the installed CLI.
+/// Run EffectCraft commands in the open EffectCraft window (`studio.rs` or `--control`) when it
+/// has this project open, otherwise directly in the shared in-memory `effectcraft_engine::Session`.
 pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], save: bool) -> Result<Vec<Value>> {
     let base = project.and_then(Path::parent).unwrap_or(dir);
     let mut resolved = Vec::with_capacity(steps.len());
@@ -336,45 +283,14 @@ pub(crate) fn effectcraft(dir: &Path, project: Option<&Path>, steps: &[Value], s
     }
 
     if let Some(p) = project.filter(|p| p.is_file()) {
-        ensure_ecproj_footage_paths(p);
+        check_ecproj_head(p)?;
     }
 
-    if let Some(path) = project.filter(|p| p.is_file())
-        && let Some(first) = resolved.first()
-        && let Some(first_res) = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, &first.0, &first.1, false)
-    {
-        let mut out = Vec::with_capacity(resolved.len());
-        out.push(first_res?);
-        for (idx, (id, params)) in resolved.iter().enumerate().skip(1) {
-            let save_step = save && idx + 1 == resolved.len();
-            let v = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, id, params, save_step)
-                .unwrap_or_else(|| Err(EngineError::ExternalTool("effectcraft".into(), format!("lost live control connection during {id}"))))?;
-            out.push(v);
-        }
-        if save && resolved.len() == 1 {
-            let _ = crate::CraftHub::try_live(crate::CraftTarget::Effect, path, "file.save", &json!({}), false);
-        }
-        return Ok(out);
-    }
-
-    if let Some(path) = project.filter(|p| p.is_file())
-        && let Some(result) = effect_in_window(path, &resolved, save)
-    {
-        return result;
-    }
-
-    let target_path = project.map(Path::to_path_buf).unwrap_or_else(|| dir.join("scratch.ecproj"));
-    let mut doc = crate::craft_hub::CraftDoc::open_or_create(crate::CraftTarget::Effect, &target_path)?;
-    let borrowed: Vec<(&str, Value)> = resolved.iter().map(|(id, params)| (id.as_str(), params.clone())).collect();
-    let out = doc.batch(&borrowed)?;
-    if save && project.is_some() {
-        doc.save()?;
-    }
-    Ok(out)
+    crate::craft_hub::run_effect_steps(project, save, &resolved)
 }
 
 pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_side: u32, output: &Path) -> Result<()> {
-    ensure_ecproj_footage_paths(project);
+    check_ecproj_head(project)?;
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -389,7 +305,7 @@ pub(crate) fn effectcraft_frame(project: &Path, comp: &str, seconds: f64, max_si
 }
 
 pub(crate) fn effectcraft_render(project: &Path, params: Value) -> Result<Value> {
-    ensure_ecproj_footage_paths(project);
+    check_ecproj_head(project)?;
     let output_str = params["output"].as_str().ok_or_else(|| bad("output path is required for effectcraft_render"))?;
     let output_path = Path::new(output_str);
     if let Some(parent) = output_path.parent() {
@@ -784,9 +700,29 @@ pub fn cmd_animation_view(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|ext| ext == "mov" || ext == "mp4"))
         .max_by_key(|path| std::fs::metadata(path).and_then(|m| m.modified()).ok());
-    Ok(
-        json!({"ok": true, "characters": characters, "documents": documents, "selected": {"character": id, "view": view, "animation_style": character["animation_style"], "animation_styles": character["animation_styles"], "time": time, "frame": frame, "clip": clip, "sprites": character["sprites"]}}),
-    )
+    Ok(json!({
+        "ok": true,
+        "characters": characters,
+        "documents": documents,
+        "easings": crate::animation_model::easing_catalog(),
+        "properties": crate::animation_model::property_catalog(),
+        "symbol_loop_modes": ["loop", "play_once", "single_frame"],
+        "selected": {
+            "character": id,
+            "view": view,
+            "animation_style": character["animation_style"],
+            "animation_styles": character["animation_styles"],
+            "time": time,
+            "frame": frame,
+            "clip": clip,
+            "sprites": character["sprites"],
+            "symbol": {
+                "kind": "graphic",
+                "loop_mode": p.get("loop_mode").and_then(Value::as_str).unwrap_or("loop"),
+                "first_frame": p.get("first_frame").and_then(Value::as_u64).unwrap_or(0),
+            }
+        }
+    }))
 }
 
 /// `animation.open {path}`: a project animation document in the EffectCraft window.
@@ -796,9 +732,11 @@ pub fn cmd_animation_open(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|raw| crate::workspace::resolve_workspace_path(s, raw))
         .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "ecproj"))
         .ok_or_else(|| bad("path=<existing .ecproj> is required"))?;
-    ensure_ecproj_footage_paths(&path);
+    let head = check_ecproj_head(&path)?;
     crate::CraftHub::open_live(crate::CraftTarget::Effect, &path)?;
-    Ok(json!({"ok": true, "app": "effectcraft", "file": path, "document": {"app": "effectcraft", "file": path}}))
+    Ok(
+        json!({"ok": true, "app": "effectcraft", "file": path, "saved_by": head.saved_by, "schema": head.schema, "document": {"app": "effectcraft", "file": path}}),
+    )
 }
 
 /// Add an image, EffectCraft `.ecproj`, or model file as a character, named after the file.
@@ -809,6 +747,7 @@ pub fn cmd_character_import(s: &mut Session, p: &Value) -> Result<Value> {
         if !source.is_file() {
             return Err(bad(format!("{} does not exist", source.display())));
         }
+        let head = check_ecproj_head(&source)?;
         let stem = source.file_stem().and_then(|n| n.to_str()).unwrap_or("character");
         let clean_stem = stem.trim_end_matches("-rig").trim_end_matches("-front");
         let char_id = p["character"]
@@ -829,27 +768,70 @@ pub fn cmd_character_import(s: &mut Session, p: &Value) -> Result<Value> {
             }
             d
         };
-        ensure_ecproj_footage_paths(&dest);
-        return Ok(json!({"ok": true, "character": char_id, "ecproj": dest}));
+        return Ok(json!({"ok": true, "character": char_id, "ecproj": dest, "saved_by": head.saved_by, "schema": head.schema}));
     }
     let name = Path::new(raw_path).file_stem().and_then(|n| n.to_str()).unwrap_or("character");
     crate::project::cmd_project_add_asset(s, &json!({"path": raw_path, "character": crate::workspace::sanitize_asset_id(name), "name": name, "kind": "image"}))
 }
 
-/// Key one transform value of one part at one time (a canvas drag).
+/// Key one or more transform values, visibility, or stack order of one part at one time.
 pub fn cmd_character_set(s: &mut Session, p: &Value) -> Result<Value> {
     let view = View::from_params(s, p)?;
     let project = view.require("ecproj", "character.rig")?;
     let part = p["part"].as_str().ok_or_else(|| bad("part=<layer> is required"))?;
-    let prop = p["prop"].as_str().unwrap_or("rotation");
-    if !matches!(prop, "position" | "rotation" | "scale" | "anchor" | "opacity") {
-        return Err(bad("prop must be position, rotation, scale, anchor or opacity"));
-    }
-    let value = p.get("value").cloned().ok_or_else(|| bad("value is required"))?;
     let time = p["time"].as_f64().unwrap_or(0.0);
-    let key = json!({"layer": part, "path": format!("transform/{prop}"), "time": time,
-        "timeBase": "comp", "value": value});
-    effectcraft(&view.dir, Some(&project), &[step("comp.open", json!({"comp": view.comp()})), step("prop.addKey", key)], true)?;
+    let mut steps = vec![step("comp.open", json!({"comp": view.comp()}))];
+
+    if let Some(props_obj) = p.get("props").and_then(Value::as_object) {
+        for (prop, value) in props_obj {
+            if !matches!(prop.as_str(), "position" | "rotation" | "scale" | "anchor" | "opacity") {
+                return Err(bad("props keys must be position, rotation, scale, anchor or opacity"));
+            }
+            steps.push(step(
+                "prop.addKey",
+                json!({
+                    "layer": part,
+                    "path": format!("transform/{prop}"),
+                    "time": time,
+                    "timeBase": "comp",
+                    "value": value
+                }),
+            ));
+        }
+        effectcraft(&view.dir, Some(&project), &steps, true)?;
+        return Ok(json!({"ok": true, "project": project, "part": part, "props": props_obj.keys().collect::<Vec<_>>(), "time": time}));
+    }
+
+    let prop = p["prop"].as_str().unwrap_or("rotation");
+    let value = p.get("value").cloned().ok_or_else(|| bad("value is required"))?;
+    match prop {
+        "visible" => {
+            let vis = value.as_bool().unwrap_or(true);
+            steps.push(step("layer.setSwitch", json!({"layer": part, "switch": "video", "value": vis})));
+        }
+        "arrange" => {
+            let to = value.as_str().unwrap_or("forward");
+            if !matches!(to, "front" | "forward" | "backward" | "back") {
+                return Err(bad("arrange value must be front, forward, backward or back"));
+            }
+            steps.push(step("layer.select", json!({"layer": part})));
+            steps.push(step("layer.arrange", json!({"layers": [part], "to": to})));
+        }
+        "position" | "rotation" | "scale" | "anchor" | "opacity" => {
+            steps.push(step(
+                "prop.addKey",
+                json!({
+                    "layer": part,
+                    "path": format!("transform/{prop}"),
+                    "time": time,
+                    "timeBase": "comp",
+                    "value": value
+                }),
+            ));
+        }
+        _ => return Err(bad("prop must be position, rotation, scale, anchor, opacity, visible or arrange")),
+    }
+    effectcraft(&view.dir, Some(&project), &steps, true)?;
     Ok(json!({"ok": true, "project": project, "part": part, "prop": prop, "time": time}))
 }
 
@@ -867,7 +849,7 @@ pub fn cmd_character_open(s: &mut Session, p: &Value) -> Result<Value> {
         }
     };
     if app == "effectcraft" {
-        ensure_ecproj_footage_paths(&file);
+        check_ecproj_head(&file)?;
         crate::CraftHub::open_live(crate::CraftTarget::Effect, &file)?;
     } else {
         crate::workspace::open_editor(app, &file)?;

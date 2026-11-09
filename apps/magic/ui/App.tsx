@@ -1,6 +1,6 @@
 import { AnimationView } from "./views/AnimationView";
 import { FidgetPanel } from "./components/FidgetPanel";
-import { PreservedWorkspaces } from "./components/RestoredWorkspace";
+import { LyricsView } from "./views/LyricsView";
 import { AppFooter } from "./components/AppFooter";
 import { StageAssets } from "./components/StageAssets";
 import { Tooltip } from "./components/Tooltip";
@@ -516,10 +516,12 @@ export const App: React.FC = () => {
             onToast={showToast}
           />
         ) : view === "design" || view === "motion" ? (
-          <PreservedWorkspaces
+          <LyricsView
             key={projectPath}
-            project={projectPath}
-            view={view}
+            projectPath={projectPath}
+            mode={view}
+            onModeChange={(nextMode) => setView(nextMode)}
+            onNavigateStudio={() => setView("studio")}
             onToast={showToast}
           />
         ) : view === "project" ? (

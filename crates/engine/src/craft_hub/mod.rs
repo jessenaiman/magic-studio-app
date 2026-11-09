@@ -122,13 +122,12 @@ fn target_token(target: CraftTarget) -> Option<String> {
 pub type FilmHost = Box<dyn Fn(&Path, &str, &Value) -> Option<std::result::Result<Value, String>> + Send + Sync>;
 pub type OpenHost = Box<dyn Fn(&Path) -> std::result::Result<Value, String> + Send + Sync>;
 
+type CachedSession<S> = std::sync::Mutex<Option<(PathBuf, Option<std::time::SystemTime>, S)>>;
 static FILM_HOST: std::sync::OnceLock<FilmHost> = std::sync::OnceLock::new();
 static EFFECT_HOST: std::sync::OnceLock<FilmHost> = std::sync::OnceLock::new();
 static EFFECT_OPEN_HOST: std::sync::OnceLock<OpenHost> = std::sync::OnceLock::new();
-static HEADLESS_FILM: std::sync::OnceLock<std::sync::Mutex<Option<(PathBuf, Option<std::time::SystemTime>, filmcraft_engine::Session)>>> =
-    std::sync::OnceLock::new();
-static HEADLESS_EFFECT: std::sync::OnceLock<std::sync::Mutex<Option<(PathBuf, Option<std::time::SystemTime>, effectcraft_engine::Session)>>> =
-    std::sync::OnceLock::new();
+static HEADLESS_FILM: std::sync::OnceLock<CachedSession<filmcraft_engine::Session>> = std::sync::OnceLock::new();
+static HEADLESS_EFFECT: std::sync::OnceLock<CachedSession<effectcraft_engine::Session>> = std::sync::OnceLock::new();
 static FILMCRAFT_GPU_INIT: std::sync::Once = std::sync::Once::new();
 
 struct GpuFrameRenderer(filmcraft_gpu::ExportRenderer);
@@ -156,6 +155,87 @@ pub(crate) fn ensure_filmcraft_gpu() {
             filmcraft_gpu::ExportRenderer::new().map(|r| Box::new(GpuFrameRenderer(r)) as Box<dyn filmcraft_export::FrameRenderer>)
         });
     });
+}
+
+pub(crate) fn run_effect_steps(project: Option<&Path>, save: bool, steps: &[(String, Value)]) -> Result<Vec<Value>> {
+    let borrowed: Vec<(&str, Value)> = steps.iter().map(|(id, params)| (id.as_str(), params.clone())).collect();
+    let starts_fresh = borrowed.iter().any(|(id, _)| *id == "file.new");
+    if !starts_fresh
+        && let Some(path) = project.filter(|p| p.is_file())
+        && let Some(live_res) = try_live_batch(CraftTarget::Effect, path, &borrowed, save)
+    {
+        if save
+            && let Some(cache) = HEADLESS_EFFECT.get()
+            && let Ok(mut guard) = cache.lock()
+        {
+            *guard = None;
+        }
+        return live_res;
+    }
+
+    let cache = HEADLESS_EFFECT.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = cache.lock().map_err(|e| EngineError::CommandFailed("effectcraft".into(), e.to_string()))?;
+
+    if !starts_fresh && let Some(path) = project.filter(|p| p.is_file()) {
+        let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let mtime = std::fs::metadata(&canon).and_then(|m| m.modified()).ok();
+        let needs_open = match guard.as_ref() {
+            Some((loaded_path, loaded_mtime, _)) => loaded_path != &canon || *loaded_mtime != mtime,
+            None => true,
+        };
+        if needs_open {
+            let mut session = effectcraft_engine::Session::new();
+            session.execute("file.open", json!({ "path": canon })).map_err(|e| EngineError::CommandFailed("file.open".into(), e.to_string()))?;
+            *guard = Some((canon, mtime, session));
+        }
+        let Some((loaded_path, loaded_mtime, session)) = guard.as_mut() else {
+            return Err(EngineError::CommandFailed("effectcraft".into(), "EffectCraft session unavailable".into()));
+        };
+        let mut results = Vec::with_capacity(borrowed.len());
+        for (id, params) in &borrowed {
+            match session.execute(id, params.clone()) {
+                Ok(v) => results.push(v),
+                Err(e) => {
+                    *guard = None;
+                    return Err(EngineError::CommandFailed((*id).to_string(), e.to_string()));
+                }
+            }
+        }
+        if save {
+            if let Err(e) = session.execute("file.save", json!({})) {
+                *guard = None;
+                return Err(EngineError::CommandFailed("file.save".into(), e.to_string()));
+            }
+            *loaded_mtime = std::fs::metadata(&*loaded_path).and_then(|m| m.modified()).ok();
+        }
+        return Ok(results);
+    }
+
+    let mut session = effectcraft_engine::Session::new();
+    if !starts_fresh && let Some(path) = project.filter(|p| p.is_file()) {
+        session.execute("file.open", json!({ "path": path })).map_err(|e| EngineError::CommandFailed("file.open".into(), e.to_string()))?;
+    }
+    let mut results = Vec::with_capacity(borrowed.len());
+    for (id, params) in &borrowed {
+        let v = session.execute(id, params.clone()).map_err(|e| EngineError::CommandFailed((*id).to_string(), e.to_string()))?;
+        results.push(v);
+    }
+    if save && let Some(path) = project {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if !borrowed.iter().any(|(id, _)| *id == "file.save" || *id == "file.saveAs") {
+            let save_res =
+                if path.is_file() && !starts_fresh { session.execute("file.save", json!({})) } else { session.execute("file.saveAs", json!({ "path": path })) };
+            save_res.map_err(|e| EngineError::CommandFailed("file.save".into(), e.to_string()))?;
+        }
+    }
+    if let Some(path) = project.filter(|p| p.is_file()) {
+        let canon = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let mtime = std::fs::metadata(&canon).and_then(|m| m.modified()).ok();
+        *guard = Some((canon, mtime, session));
+    }
+    Ok(results)
 }
 
 pub(super) fn run_embedded_doc_batch(target: CraftTarget, input: &Path, work: &Path, steps: &[(&str, Value)], save: bool) -> Option<Result<Vec<Value>>> {

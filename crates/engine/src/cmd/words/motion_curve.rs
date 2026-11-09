@@ -70,16 +70,43 @@ pub(crate) fn curve(spec: &Value) -> Result<(Value, Value)> {
         last[column] = end;
     }
     let value = |numbers: &[f64]| if numbers.len() == 1 { json!(numbers[0]) } else { json!(numbers) };
-    let mut config = json!({"property":property,"from":value(&from),"to":value(&to),"duration":duration,"delay":delay});
+    let easing = spec.get("easing").map(crate::animation_model::parse_easing).unwrap_or(crate::animation_model::Easing::Linear);
+    let (bx1, by1, bx2, by2) = easing.as_bezier();
+    let loop_mode = crate::animation_model::parse_loop_mode(spec.get("loop_mode").and_then(Value::as_str));
+    let first_frame = spec.get("first_frame").and_then(Value::as_u64).unwrap_or(0) as u32;
+    let resolved_frame = crate::animation_model::evaluate_symbol_frame(loop_mode, first_frame, (duration * 30.0).round().max(1.0) as u32, 0);
+    let mut config = json!({
+        "property": property,
+        "from": value(&from),
+        "to": value(&to),
+        "duration": duration,
+        "delay": delay,
+        "easing": easing.label(),
+        "bezier": [bx1, by1, bx2, by2],
+        "symbol": {
+            "kind": "graphic",
+            "loop_mode": match loop_mode {
+                crate::animation_model::LoopMode::Loop => "loop",
+                crate::animation_model::LoopMode::PlayOnce => "play_once",
+                crate::animation_model::LoopMode::SingleFrame => "single_frame",
+            },
+            "first_frame": resolved_frame,
+        }
+    });
     if property == "transform/rotation" {
         config["speed"] = json!((to[0] - from[0]) / duration);
     }
-    let keys = if delay > 0.0 {
-        let mut held = first.clone();
-        held[0] = delay;
-        json!([first, held, last])
-    } else {
-        json!([first, last])
-    };
-    Ok((config, keys))
+    let sampled = crate::animation_model::sample_eased_curve(&from, &to, delay, duration, easing, 6);
+    let keys: Vec<Value> = sampled
+        .into_iter()
+        .map(|(time, vals)| {
+            let mut row = first.clone();
+            row[0] = time;
+            for (&column, &val) in columns.iter().zip(&vals) {
+                row[column] = val;
+            }
+            json!(row)
+        })
+        .collect();
+    Ok((config, json!(keys)))
 }

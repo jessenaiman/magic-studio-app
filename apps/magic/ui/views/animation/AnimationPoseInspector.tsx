@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   AnimationStyle,
   Character3DClip,
@@ -9,7 +9,8 @@ import {
   executeCommand,
   fileUrl,
 } from "../../api";
-import { Dial, Slider, Toggle } from "../../components/controls";
+import { Slider, Toggle } from "../../components/controls";
+import type { RigKeys } from "./AnimationTheatre";
 
 interface AnimationPoseInspectorProps {
   selectedCharId: string;
@@ -55,40 +56,15 @@ interface AnimationPoseInspectorProps {
   opacity: number;
   onChangeOpacity: (val: number) => void;
   onCommitOpacity: (val: number) => void;
-  onKeyTransform: () => void;
-  ikActive: boolean;
-  onChangeIkActive: (val: boolean) => void;
-  limbChain: string;
-  onChangeLimbChain: (val: string) => void;
-  poleBendClockwise: boolean;
-  onChangePoleBend: (val: boolean) => void;
-  torsoSecondaryFollow: boolean;
-  onChangeTorsoFollow: (val: boolean) => void;
-  ikTargetAngle: number;
-  onChangeIkTargetAngle: (val: number) => void;
-  onCommitIkTargetAngle: (val: number) => void;
-  onSolveIK: () => void;
-  meshDensity: number;
-  onChangeMeshDensity: (val: number) => void;
-  meshExpansion: number;
-  onChangeMeshExpansion: (val: number) => void;
-  pinMode: "deform" | "starch" | "overlap";
-  onChangePinMode: (mode: "deform" | "starch" | "overlap") => void;
-  pinStiffness: number;
-  onChangePinStiffness: (val: number) => void;
-  pinExtent: number;
-  onChangePinExtent: (val: number) => void;
-  followDelay: number;
-  onChangeFollowDelay: (val: number) => void;
-  handHold: boolean;
-  onToggleHandHold: () => void;
-  faceHold: boolean;
-  onToggleFaceHold: () => void;
-  selectedGesture: string;
-  onSelectGesture: (gesture: string) => void;
-  gestureAngle: number;
-  onChangeGestureAngle: (angle: number) => void;
-  onCommitGestureAngle: (angle: number) => void;
+  onKeyTransform: (propsPayload?: Record<string, unknown>) => void;
+  availableActions: Array<{ id: string; label: string }>;
+  rigKeys: RigKeys | null;
+  currentTime: number;
+  pinMode: "position" | "starch" | "overlap" | "bend";
+  onChangePinMode: (mode: "position" | "starch" | "overlap" | "bend") => void;
+  onClearPath: () => void;
+  onUndoPath: () => void;
+  onApplyPath: () => void;
   onRenderClip: () => void;
   placeTrack: string;
   onChangePlaceTrack: (val: string) => void;
@@ -100,13 +76,12 @@ interface AnimationPoseInspectorProps {
   onToast: (msg: string) => void;
 }
 
-const STANDARD_ACTIONS = [
+const FALLBACK_ACTIONS = [
   { id: "walk_left", btnId: "motion-action-left", label: "Left" },
   { id: "walk_right", btnId: "motion-action-right", label: "Right" },
   { id: "walk_up", btnId: "motion-action-up", label: "Up" },
   { id: "walk_down", btnId: "motion-action-down", label: "Down" },
   { id: "idle", btnId: "motion-action-idle", label: "Idle" },
-  { id: "walk_down", btnId: "motion-action-walk", label: "Walk" },
   { id: "jump", btnId: "motion-action-jump", label: "Jump" },
   { id: "turn", btnId: "motion-action-sway", label: "Turn" },
   { id: "wave", btnId: "motion-action-wave", label: "Wave" },
@@ -156,39 +131,14 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
   onChangeOpacity,
   onCommitOpacity,
   onKeyTransform,
-  ikActive,
-  onChangeIkActive,
-  limbChain,
-  onChangeLimbChain,
-  poleBendClockwise,
-  onChangePoleBend,
-  torsoSecondaryFollow,
-  onChangeTorsoFollow,
-  ikTargetAngle,
-  onChangeIkTargetAngle,
-  onCommitIkTargetAngle,
-  onSolveIK,
-  meshDensity,
-  onChangeMeshDensity,
-  meshExpansion,
-  onChangeMeshExpansion,
+  availableActions,
+  rigKeys,
+  currentTime,
   pinMode,
   onChangePinMode,
-  pinStiffness,
-  onChangePinStiffness,
-  pinExtent,
-  onChangePinExtent,
-  followDelay,
-  onChangeFollowDelay,
-  handHold,
-  onToggleHandHold,
-  faceHold,
-  onToggleFaceHold,
-  selectedGesture,
-  onSelectGesture,
-  gestureAngle,
-  onChangeGestureAngle,
-  onCommitGestureAngle,
+  onClearPath,
+  onUndoPath,
+  onApplyPath,
   onRenderClip,
   placeTrack,
   onChangePlaceTrack,
@@ -231,6 +181,51 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
     meta?.views?.find((v) => v.view === selectedView) || meta?.views?.[0];
   const parts: CharacterPart[] = activeViewSummary?.parts || meta?.parts || [];
   const activePart = parts.find((p) => p.id === selectedBone) || parts[0];
+
+  useEffect(() => {
+    const joint = activePart?.joint;
+    if (Array.isArray(joint) && joint.length === 2) {
+      setPartPosX(Math.round(joint[0]));
+      setPartPosY(Math.round(joint[1]));
+      setPartPivotX(Math.round(joint[0]));
+      setPartPivotY(Math.round(joint[1]));
+    }
+    const layerEntry = rigKeys?.layers?.find((l) => l.name === selectedBone);
+    if (layerEntry?.channels) {
+      const findChan = (p: string) =>
+        layerEntry.channels.find((c) => c.path === p || c.name?.toLowerCase() === p);
+      const firstVal = (p: string) => {
+        const ch = findChan(p);
+        return ch?.keys?.[0]?.value ?? ch?.samples?.[0]?.value;
+      };
+      const posVal = firstVal("transform/position");
+      if (Array.isArray(posVal) && posVal.length >= 2) {
+        setPartPosX(Math.round(Number(posVal[0]) || 0));
+        setPartPosY(Math.round(Number(posVal[1]) || 0));
+      }
+      const ancVal = firstVal("transform/anchor");
+      if (Array.isArray(ancVal) && ancVal.length >= 2) {
+        setPartPivotX(Math.round(Number(ancVal[0]) || 0));
+        setPartPivotY(Math.round(Number(ancVal[1]) || 0));
+      }
+      const scVal = firstVal("transform/scale");
+      if (Array.isArray(scVal) && scVal.length >= 2) {
+        setPartScaleX(Math.round(Number(scVal[0]) || 100));
+        setPartScaleY(Math.round(Number(scVal[1]) || 100));
+      }
+    }
+  }, [selectedBone, activePart, rigKeys]);
+
+  const actionsList = availableActions.length > 0
+    ? [
+        ...availableActions.map((a) => ({
+          id: a.id,
+          btnId: `motion-action-${a.id.replace(/^walk_/, "")}`,
+          label: a.label,
+        })),
+        { id: "rest", btnId: "motion-action-rest", label: "Rest" },
+      ]
+    : [...FALLBACK_ACTIONS];
 
   const isMarked = Boolean(activeViewSummary?.marked || parts.length > 0);
   const isCut = Boolean(activeViewSummary?.cut);
@@ -366,7 +361,7 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
         </summary>
         <div className="motion-section-body">
           <div className="motion-actions-grid" role="group" aria-label="Character actions">
-            {STANDARD_ACTIONS.map((act) => {
+            {actionsList.map((act) => {
               const spriteMatch = sprites.find((s) => s.name === act.id);
               const isPressed =
                 act.id === "rest"
@@ -396,7 +391,7 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               );
             })}
             {sprites
-              .filter((s) => !STANDARD_ACTIONS.some((a) => a.id === s.name))
+              .filter((s) => !actionsList.some((a) => a.id === s.name))
               .map((s) => {
                 const isPressed = selectedSprite?.name === s.name;
                 return (
@@ -847,11 +842,7 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="motion-path-clear"
               type="button"
               className="ghost"
-              onClick={() => {
-                onChangeSizeStart(100);
-                onChangeSizeEnd(100);
-                onToast("Cleared motion path");
-              }}
+              onClick={onClearPath}
             >
               Clear
             </button>
@@ -859,7 +850,7 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="motion-path-undo"
               type="button"
               className="ghost"
-              onClick={() => onToast("Reverted last path point")}
+              onClick={onUndoPath}
             >
               Undo point
             </button>
@@ -867,9 +858,8 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="motion-path-apply"
               type="button"
               className="start"
-              onClick={() =>
-                onToast(`Applied path (${pathX}, ${pathY}) · ${sizeStart}% → ${sizeEnd}%`)
-              }
+              disabled={busy}
+              onClick={onApplyPath}
             >
               Apply path
             </button>
@@ -983,9 +973,21 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="authoring-layer-back"
               type="button"
               className="ghost"
-              onClick={() => {
+              disabled={busy}
+              onClick={async () => {
                 setLayerDepth((d) => d - 1);
-                onToast(`Sent ${selectedBone} backward`);
+                try {
+                  await executeCommand("character.set", {
+                    character: selectedCharId,
+                    view: selectedView,
+                    part: selectedBone,
+                    prop: "arrange",
+                    value: "backward",
+                  });
+                  onToast(`Sent ${selectedBone} backward in EffectCraft`);
+                } catch (err) {
+                  onToast(String(err));
+                }
               }}
             >
               Send back
@@ -994,9 +996,21 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="authoring-layer-front"
               type="button"
               className="ghost"
-              onClick={() => {
+              disabled={busy}
+              onClick={async () => {
                 setLayerDepth((d) => d + 1);
-                onToast(`Brought ${selectedBone} forward`);
+                try {
+                  await executeCommand("character.set", {
+                    character: selectedCharId,
+                    view: selectedView,
+                    part: selectedBone,
+                    prop: "arrange",
+                    value: "forward",
+                  });
+                  onToast(`Brought ${selectedBone} forward in EffectCraft`);
+                } catch (err) {
+                  onToast(String(err));
+                }
               }}
             >
               Bring forward
@@ -1005,7 +1019,21 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="authoring-layer-apply"
               type="button"
               className="start"
-              onClick={() => onToast(`Applied layer order (${selectedBone}: ${layerDepth})`)}
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  await executeCommand("character.set", {
+                    character: selectedCharId,
+                    view: selectedView,
+                    part: selectedBone,
+                    prop: "arrange",
+                    value: layerDepth < 0 ? "back" : "front",
+                  });
+                  onToast(`Applied layer order (${selectedBone} → ${layerDepth < 0 ? "back" : "front"})`);
+                } catch (err) {
+                  onToast(String(err));
+                }
+              }}
             >
               Apply order
             </button>
@@ -1040,9 +1068,21 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
                     className="icon"
                     aria-pressed={!isHidden}
                     title={isHidden ? "Show layer" : "Hide layer"}
-                    onClick={() =>
-                      setHiddenParts((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
-                    }
+                    onClick={async () => {
+                      const nextHidden = !isHidden;
+                      setHiddenParts((prev) => ({ ...prev, [p.id]: nextHidden }));
+                      try {
+                        await executeCommand("character.set", {
+                          character: selectedCharId,
+                          view: selectedView,
+                          part: p.id,
+                          prop: "visible",
+                          value: !nextHidden,
+                        });
+                      } catch {
+                        // Local visibility state preserved if not rigged yet
+                      }
+                    }}
                   >
                     👁
                   </button>
@@ -1319,12 +1359,26 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
                 id="motion-bar-visible"
                 type="button"
                 className="ghost"
-                onClick={() =>
+                onClick={async () => {
+                  const nextHidden = !hiddenParts[selectedBone];
                   setHiddenParts((prev) => ({
                     ...prev,
-                    [selectedBone]: !prev[selectedBone],
-                  }))
-                }
+                    [selectedBone]: nextHidden,
+                  }));
+                  if (selectedCharId) {
+                    try {
+                      await executeCommand("character.set", {
+                        character: selectedCharId,
+                        view: selectedView,
+                        part: selectedBone,
+                        prop: "visible",
+                        value: !nextHidden,
+                      });
+                    } catch {
+                      // local preview still updates if character is unrigged
+                    }
+                  }
+                }}
               >
                 {hiddenParts[selectedBone] ? "Show part" : "Hide part"}
               </button>
@@ -1332,7 +1386,25 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
                 id="motion-show-all"
                 type="button"
                 className="ghost"
-                onClick={() => setHiddenParts({})}
+                onClick={async () => {
+                  const previouslyHidden = Object.keys(hiddenParts).filter((k) => hiddenParts[k]);
+                  setHiddenParts({});
+                  if (selectedCharId) {
+                    for (const partId of previouslyHidden) {
+                      try {
+                        await executeCommand("character.set", {
+                          character: selectedCharId,
+                          view: selectedView,
+                          part: partId,
+                          prop: "visible",
+                          value: true,
+                        });
+                      } catch {
+                        // ignore unrigged parts
+                      }
+                    }
+                  }
+                }}
               >
                 Show all parts
               </button>
@@ -1440,15 +1512,25 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="authoring-part-reset"
               type="button"
               className="ghost"
+              disabled={busy}
               onClick={() => {
                 onChangeRotation(0);
                 onChangeScale(100);
                 onChangeOpacity(100);
-                setPartPosX(0);
-                setPartPosY(0);
+                const joint = activePart?.joint || [0, 0];
+                setPartPosX(Math.round(joint[0]));
+                setPartPosY(Math.round(joint[1]));
+                setPartPivotX(Math.round(joint[0]));
+                setPartPivotY(Math.round(joint[1]));
                 setPartScaleX(100);
                 setPartScaleY(100);
-                onToast(`Reset ${selectedBone} to rest pose`);
+                onKeyTransform({
+                  position: [Math.round(joint[0]), Math.round(joint[1])],
+                  anchor: [Math.round(joint[0]), Math.round(joint[1])],
+                  scale: [100, 100],
+                  rotation: 0,
+                  opacity: 100,
+                });
               }}
             >
               Reset part
@@ -1458,199 +1540,84 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               type="button"
               className="start"
               disabled={busy}
-              onClick={onKeyTransform}
+              onClick={() =>
+                onKeyTransform({
+                  position: [partPosX, partPosY],
+                  anchor: [partPivotX, partPivotY],
+                  scale: [partScaleX, partScaleY],
+                  rotation,
+                  opacity,
+                })
+              }
             >
               Key {selectedBone} Transform
             </button>
           </div>
 
-          {/* Tucked Extra Controls: Hand Sprites & Facial States */}
-          <div className="seq-side-block">
-            <div className="anim-section-bar">
-              <span className="anim-subhead">Hand Sprites &amp; Gesture Swap</span>
-              <button
-                type="button"
-                className={`anim-hold-pill ${handHold ? "active" : ""}`}
-                onClick={onToggleHandHold}
-              >
-                • Hold
-              </button>
-            </div>
-            <div className="anim-gesture-row">
-              <div className="anim-gesture-buttons" style={{ flex: 1 }}>
-                {(["wave", "point", "fist", "open"] as const).map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    className={`anim-pill-btn ${selectedGesture === g ? "active" : ""}`}
-                    onClick={() => {
-                      onSelectGesture(g);
-                      onToast(`Swapped hand sprite to: ${g}`);
-                    }}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-              <Dial
-                id="gesture-angle"
-                label="Gesture Angle"
-                value={gestureAngle}
-                min={-180}
-                max={180}
-                step={5}
-                unit="°"
-                onChange={onChangeGestureAngle}
-                onCommit={onCommitGestureAngle}
-              />
-            </div>
-
-            <div className="anim-section-bar" style={{ marginTop: "var(--size-4)" }}>
-              <span className="anim-subhead">Facial States</span>
-              <button
-                type="button"
-                className={`anim-hold-pill ${faceHold ? "active" : ""}`}
-                onClick={onToggleFaceHold}
-              >
-                • Hold
-              </button>
-            </div>
-            <div className="anim-four-col">
-              {(["Neutral", "Happy", "Blink", "Sing"] as const).map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  className="anim-pill-btn"
-                  onClick={() => onToast(`Selected Facial State: ${label}`)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tucked Extra Controls: 2-Bone IK / FK Limb Solver */}
-          <div className="seq-side-block">
-            <span className="anim-subhead">2-Bone IK / FK Limb Solver</span>
-            <Toggle
-              id="ik-solver-active"
-              label="2-Bone IK Solver Active"
-              checked={ikActive}
-              onChange={onChangeIkActive}
-            />
-            <label className="anim-field-label">
-              <span>Limb Chain</span>
-              <select value={limbChain} onChange={(e) => onChangeLimbChain(e.target.value)}>
-                <option value="Right Leg (torso → leg_R)">Right Leg (torso → leg_R)</option>
-                <option value="Left Leg (torso → leg_L)">Left Leg (torso → leg_L)</option>
-                <option value="Right Arm (torso → arm_R)">Right Arm (torso → arm_R)</option>
-                <option value="Left Arm (torso → arm_L)">Left Arm (torso → arm_L)</option>
-              </select>
-            </label>
-            <Toggle
-              id="pole-bend-clockwise"
-              label="Pole Bend Clockwise"
-              checked={poleBendClockwise}
-              onChange={onChangePoleBend}
-            />
-            <Toggle
-              id="torso-secondary-follow"
-              label="Torso Secondary Follow"
-              checked={torsoSecondaryFollow}
-              onChange={onChangeTorsoFollow}
-            />
-            <Slider
-              id="ik-target-angle"
-              label="IK Target Angle"
-              control="dial"
-              value={ikTargetAngle}
-              min={-180}
-              max={180}
-              step={1}
-              unit="°"
-              onChange={onChangeIkTargetAngle}
-              onCommit={onCommitIkTargetAngle}
-            />
-            <button
-              id="anim-solve-ik"
-              type="button"
-              className="start anim-full-btn"
-              disabled={busy}
-              onClick={onSolveIK}
-            >
-              Solve &amp; Key 2-Bone IK
-            </button>
-          </div>
-
-          {/* Tucked Extra Controls: Puppet Mesh & Pin Stiffness (collapsed 1-line pill drawer by default) */}
+          {/* EffectCraft Puppet Pins (`character.puppet.addPin`) */}
           <details className="seq-side-block">
             <summary className="muted" style={{ cursor: "pointer", fontSize: "var(--text-xs)" }}>
-              Puppet Mesh &amp; Pin Stiffness ({pinMode} · {pinStiffness}%)
+              EffectCraft Puppet Pins ({pinMode})
             </summary>
             <div className="motion-section-body" style={{ padding: "var(--space-2) 0 0" }}>
-              <Slider
-                id="mesh-density"
-                label="Mesh Density"
-                value={meshDensity}
-                min={12}
-                max={256}
-                step={4}
-                unit=" tris"
-                onChange={onChangeMeshDensity}
-              />
-              <Slider
-                id="mesh-expansion"
-                label="Mesh Expansion"
-                value={meshExpansion}
-                min={0}
-                max={32}
-                step={1}
-                unit=" px"
-                onChange={onChangeMeshExpansion}
-              />
-              <div className="anim-three-col">
-                {(["deform", "starch", "overlap"] as const).map((mode) => (
+              <div className="motion-actions-grid">
+                {(["position", "starch", "overlap", "bend"] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
-                    className={`anim-pill-btn ${pinMode === mode ? "active" : ""}`}
+                    className="motion-action"
+                    aria-pressed={pinMode === mode}
                     onClick={() => onChangePinMode(mode)}
                   >
                     {mode}
                   </button>
                 ))}
               </div>
-              <Slider
-                id="pin-stiffness"
-                label="Pin Stiffness"
-                value={pinStiffness}
-                min={0}
-                max={100}
-                step={1}
-                unit="%"
-                onChange={onChangePinStiffness}
-              />
-              <Slider
-                id="pin-extent"
-                label="Pin Extent"
-                value={pinExtent}
-                min={0}
-                max={100}
-                step={1}
-                unit=" px"
-                onChange={onChangePinExtent}
-              />
-              <Slider
-                id="follow-delay-dial"
-                label="Follow Delay"
-                control="dial"
-                value={followDelay}
-                min={0}
-                max={1}
-                step={0.01}
-                unit="s"
-                onChange={onChangeFollowDelay}
-              />
+              <div className="motion-path-actions">
+                <button
+                  id="authoring-puppet-add-pin"
+                  type="button"
+                  className="ghost"
+                  disabled={busy}
+                  onClick={async () => {
+                    try {
+                      await executeCommand("character.puppet.addPin", {
+                        character: selectedCharId,
+                        view: selectedView,
+                        layer: selectedBone,
+                        kind: pinMode,
+                        position: [partPosX || 192, partPosY || 256],
+                      });
+                      onToast(`Added ${pinMode} puppet pin on ${selectedBone} at (${partPosX}, ${partPosY})`);
+                    } catch (err) {
+                      onToast(String(err));
+                    }
+                  }}
+                >
+                  Add {pinMode} pin
+                </button>
+                <button
+                  id="authoring-keyframe-ease"
+                  type="button"
+                  className="ghost"
+                  disabled={busy}
+                  onClick={async () => {
+                    try {
+                      await executeCommand("character.keyframe.easyEase", {
+                        character: selectedCharId,
+                        view: selectedView,
+                        layer: selectedBone,
+                        prop: "rotation",
+                      });
+                      onToast(`Applied Easy Ease to ${selectedBone} rotation keyframes`);
+                    } catch (err) {
+                      onToast(String(err));
+                    }
+                  }}
+                >
+                  Easy Ease
+                </button>
+              </div>
             </div>
           </details>
 
@@ -1764,7 +1731,7 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
 
           <div className="seq-side-block">
             <label className="seq-field">
-              <span>Pose reference</span>
+              <span>Pose frame (s)</span>
               <input
                 id="authoring-reference"
                 type="text"
@@ -1776,9 +1743,21 @@ export const AnimationPoseInspector: React.FC<AnimationPoseInspectorProps> = ({
               id="authoring-pose-export"
               type="button"
               className="ghost anim-full-btn"
-              onClick={() => onToast(`Captured pose frame (${poseRef})`)}
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  const res = await executeCommand<{ frame?: string }>("character.frame", {
+                    character: selectedCharId,
+                    view: selectedView,
+                    time: currentTime,
+                  });
+                  onToast(`Rendered pose frame at ${currentTime.toFixed(2)}s: ${res.frame?.split("/").pop() || poseRef}`);
+                } catch (err) {
+                  onToast(String(err));
+                }
+              }}
             >
-              Capture pending pose
+              Render current pose frame
             </button>
           </div>
         </div>

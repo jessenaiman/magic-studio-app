@@ -16,6 +16,10 @@ magic = { package = "magic-engine", path = "crates/engine" }
 magic-mcp = { path = "crates/mcp" }
 
 # Craft engines and domain crates (`storytold/*`, version-independent git tracking for `cargo update`)
+anicraft-doc = { git = "https://github.com/storytold/anicraft" }
+anicraft-engine = { git = "https://github.com/storytold/anicraft" }
+anicraft-geom = { git = "https://github.com/storytold/anicraft" }
+anicraft-render = { git = "https://github.com/storytold/anicraft" }
 effectcraft-engine = { git = "https://github.com/storytold/effectcraft" }
 effectcraft-ui-egui = { git = "https://github.com/storytold/effectcraft" }
 filmcraft-codecs = { git = "https://github.com/storytold/filmcraft" }
@@ -34,6 +38,7 @@ craft-audio = { git = "https://github.com/storytold/craft-libs", features = ["de
 craft-dialogs = { git = "https://github.com/storytold/craft-libs" }
 craft-doc = { git = "https://github.com/storytold/craft-libs" }
 craft-docpath = { git = "https://github.com/storytold/craft-libs" }
+craft-ecproj-format = { git = "https://github.com/storytold/craft-libs" }
 craft-keymap = { git = "https://github.com/storytold/craft-libs" }
 craft-media = { git = "https://github.com/storytold/craft-libs", default-features = false }
 craft-settings = { git = "https://github.com/storytold/craft-libs" }

@@ -492,41 +492,79 @@ fn open_rgba_flexible(path: &Path) -> Result<image::RgbaImage> {
 ///
 /// 1. Keys out chroma-green (`#00FF00`) or top-left corner background color and de-spills green fringes.
 /// 2. Strips full-width horizontal floor/divider lines that bleed across the bottom of cells.
-/// 3. Isolates the primary central connected component in each `(col, row)` cell so neighboring
-///    frames' snouts or tails that cross the cell boundary are removed.
-/// 4. Re-centers horizontally and locks the baseline (for grounded actions) or centers vertically
-///    (for airborne actions) inside `cw x ch` frame PNGs written via `craft_atomic::atomic_write`.
-pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u32, u32), lock_baseline: bool) -> Result<Vec<PathBuf>> {
-    let img = open_rgba_flexible(sheet_png)?;
-    let (w, h) = img.dimensions();
-    let (cols, rows) = (grid.0.max(1), grid.1.max(1));
-    let (cw, ch) = ((w / cols).max(1), (h / rows).max(1));
+fn find_best_cell_component(mask: &[bool], gw: usize, gh: usize) -> (Vec<usize>, usize) {
+    let mut visited = vec![false; gw * gh];
+    let mut comp_id = vec![0usize; gw * gh];
+    let mut best_comp = 0usize;
+    let mut best_score = 0.0_f64;
+    let mut cur_id = 0usize;
 
-    let corner = img.get_pixel(2.min(w - 1), 2.min(h - 1)).0;
-    let corner_is_green = is_chroma_green(corner[0], corner[1], corner[2], corner[3]);
-    let is_bg = |r: u8, g: u8, b: u8, a: u8| -> bool {
-        if a < 20 || is_chroma_green(r, g, b, a) {
-            return true;
-        }
-        if !corner_is_green && corner[3] > 200 {
-            let dr = (i32::from(r) - i32::from(corner[0])).abs();
-            let dg = (i32::from(g) - i32::from(corner[1])).abs();
-            let db = (i32::from(b) - i32::from(corner[2])).abs();
-            if dr + dg + db < 54 {
-                return true;
+    for gy in 0..gh {
+        for gx in 0..gw {
+            let start = gy * gw + gx;
+            if !mask[start] || visited[start] {
+                continue;
+            }
+            cur_id += 1;
+            let mut stack = vec![(gx, gy)];
+            visited[start] = true;
+            let mut cells = Vec::new();
+            let mut sum_x = 0.0_f64;
+            while let Some((cx, cy)) = stack.pop() {
+                comp_id[cy * gw + cx] = cur_id;
+                cells.push((cx, cy));
+                sum_x += cx as f64;
+                for (nx, ny) in [(cx.wrapping_sub(1), cy), (cx + 1, cy), (cx, cy.wrapping_sub(1)), (cx, cy + 1)] {
+                    if nx < gw && ny < gh {
+                        let ni = ny * gw + nx;
+                        if mask[ni] && !visited[ni] {
+                            visited[ni] = true;
+                            stack.push((nx, ny));
+                        }
+                    }
+                }
+            }
+            let mean_x = sum_x / (cells.len().max(1) as f64);
+            let center_dist = ((mean_x - (gw as f64 * 0.5)).abs() / (gw as f64 * 0.5)).min(1.0);
+            let centrality = 1.15 - 0.75 * center_dist;
+            let score = (cells.len() as f64) * centrality;
+            if score > best_score {
+                best_score = score;
+                best_comp = cur_id;
             }
         }
-        false
-    };
-
-    if frames_dir.is_dir() {
-        let _ = fs::remove_dir_all(frames_dir);
     }
-    fs::create_dir_all(frames_dir)?;
+    (comp_id, best_comp)
+}
 
-    // Pre-detect full-sheet horizontal divider/floor lines across the entire sheet width `w`.
-    // A real divider line spans across nearly the entire sheet including inter-cell gaps (> 92% of `w`)
-    // and is thin vertically (<= 4px).
+fn center_cell_frame(cell_buf: &image::RgbaImage, bounds: [u32; 4], cw: u32, ch: u32, lock_baseline: bool) -> image::RgbaImage {
+    let [min_x, min_y, max_x, max_y] = bounds;
+    let mut final_frame = image::RgbaImage::new(cw, ch);
+    if min_x <= max_x && min_y <= max_y {
+        let bw = max_x - min_x + 1;
+        let bh = max_y - min_y + 1;
+        let dst_x0 = (cw.saturating_sub(bw)) / 2;
+        let dst_y0 = if lock_baseline { ch.saturating_sub(bh).saturating_sub(4) } else { (ch.saturating_sub(bh)) / 2 };
+        for sy in min_y..=max_y {
+            for sx in min_x..=max_x {
+                let px = *cell_buf.get_pixel(sx, sy);
+                if px.0[3] > 0 {
+                    let dx = dst_x0 + (sx - min_x);
+                    let dy = dst_y0 + (sy - min_y);
+                    if dx < cw && dy < ch {
+                        final_frame.put_pixel(dx, dy, px);
+                    }
+                }
+            }
+        }
+    }
+    final_frame
+}
+
+fn compute_divider_rows<F>(img: &image::RgbaImage, w: u32, h: u32, is_bg: &F) -> Vec<bool>
+where
+    F: Fn(u8, u8, u8, u8) -> bool,
+{
     let mut full_row_fg = vec![0u32; h as usize];
     for y in 0..h {
         let mut count = 0u32;
@@ -550,10 +588,13 @@ pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u
             }
         }
     }
+    is_divider_row
+}
 
-    // Find `col` boundary X coordinates by searching near each ideal grid column split `(col * cw)`
-    // (`±28px`) for the vertical column with the fewest foreground pixels. This prevents wide characters'
-    // snouts or tails from being sliced by rigid uniform `col * cw` boundaries.
+fn compute_col_splits<F>(img: &image::RgbaImage, w: u32, h: u32, cols: u32, cw: u32, is_divider_row: &[bool], is_bg: &F) -> Vec<u32>
+where
+    F: Fn(u8, u8, u8, u8) -> bool,
+{
     let mut col_fg = vec![0u32; w as usize];
     for x in 0..w {
         let mut count = 0u32;
@@ -588,6 +629,43 @@ pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u
         col_splits.push(best_x);
     }
     col_splits.push(w);
+    col_splits
+}
+
+/// 3. Isolates the primary central connected component in each `(col, row)` cell so neighboring
+///    frames' snouts or tails that cross the cell boundary are removed.
+/// 4. Re-centers horizontally and locks the baseline (for grounded actions) or centers vertically
+///    (for airborne actions) inside `cw x ch` frame PNGs written via `craft_atomic::atomic_write`.
+pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u32, u32), lock_baseline: bool) -> Result<Vec<PathBuf>> {
+    let img = open_rgba_flexible(sheet_png)?;
+    let (w, h) = img.dimensions();
+    let (cols, rows) = (grid.0.max(1), grid.1.max(1));
+    let (cw, ch) = ((w / cols).max(1), (h / rows).max(1));
+
+    let corner = img.get_pixel(2.min(w - 1), 2.min(h - 1)).0;
+    let corner_is_green = is_chroma_green(corner[0], corner[1], corner[2], corner[3]);
+    let is_bg = |r: u8, g: u8, b: u8, a: u8| -> bool {
+        if a < 20 || is_chroma_green(r, g, b, a) {
+            return true;
+        }
+        if !corner_is_green && corner[3] > 200 {
+            let dr = (i32::from(r) - i32::from(corner[0])).abs();
+            let dg = (i32::from(g) - i32::from(corner[1])).abs();
+            let db = (i32::from(b) - i32::from(corner[2])).abs();
+            if dr + dg + db < 54 {
+                return true;
+            }
+        }
+        false
+    };
+
+    if frames_dir.is_dir() {
+        let _ = fs::remove_dir_all(frames_dir);
+    }
+    fs::create_dir_all(frames_dir)?;
+
+    let is_divider_row = compute_divider_rows(&img, w, h, &is_bg);
+    let col_splits = compute_col_splits(&img, w, h, cols, cw, &is_divider_row, &is_bg);
 
     let mut out = Vec::with_capacity((cols * rows) as usize);
     for idx in 0..(cols * rows) {
@@ -597,7 +675,6 @@ pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u
         let cell_w = (col_splits[(col + 1) as usize].saturating_sub(ox)).max(1);
         let oy = row * ch;
 
-        // Downsampled 4x4 grid inside this cell for connected-component isolation
         let step = 4u32;
         let gw = cell_w.div_ceil(step) as usize;
         let gh = ch.div_ceil(step) as usize;
@@ -608,76 +685,23 @@ pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u
                 for dy in 0..step {
                     for dx in 0..step {
                         let lx = gx as u32 * step + dx;
-                        if lx >= cell_w {
-                            continue;
-                        }
-                        let px = (ox + lx).min(w - 1);
                         let py = (oy + gy as u32 * step + dy).min(h - 1);
-                        if is_divider_row[py as usize] {
-                            continue;
-                        }
-                        let p = img.get_pixel(px, py).0;
-                        if !is_bg(p[0], p[1], p[2], p[3]) {
-                            fg_votes += 1;
-                        }
-                    }
-                }
-                if fg_votes >= 3 {
-                    mask[gy * gw + gx] = true;
-                }
-            }
-        }
-
-        // Connected components inside the cell: keep the main character body (largest component
-        // weighted toward the horizontal center of the cell) and drop severed snouts/tails on the left/right edges.
-        let mut visited = vec![false; gw * gh];
-        let mut comp_id = vec![0usize; gw * gh];
-        let mut best_comp = 0usize;
-        let mut best_score = 0.0_f64;
-        let mut cur_id = 0usize;
-
-        for gy in 0..gh {
-            for gx in 0..gw {
-                let start = gy * gw + gx;
-                if !mask[start] || visited[start] {
-                    continue;
-                }
-                cur_id += 1;
-                let mut stack = vec![(gx, gy)];
-                visited[start] = true;
-                let mut cells = Vec::new();
-                let mut sum_x = 0.0_f64;
-                while let Some((cx, cy)) = stack.pop() {
-                    comp_id[cy * gw + cx] = cur_id;
-                    cells.push((cx, cy));
-                    sum_x += cx as f64;
-                    for (nx, ny) in [(cx.wrapping_sub(1), cy), (cx + 1, cy), (cx, cy.wrapping_sub(1)), (cx, cy + 1)] {
-                        if nx < gw && ny < gh {
-                            let ni = ny * gw + nx;
-                            if mask[ni] && !visited[ni] {
-                                visited[ni] = true;
-                                stack.push((nx, ny));
+                        if lx < cell_w && !is_divider_row[py as usize] {
+                            let p = img.get_pixel((ox + lx).min(w - 1), py).0;
+                            if !is_bg(p[0], p[1], p[2], p[3]) {
+                                fg_votes += 1;
                             }
                         }
                     }
                 }
-                let mean_x = sum_x / (cells.len().max(1) as f64);
-                let center_dist = ((mean_x - (gw as f64 * 0.5)).abs() / (gw as f64 * 0.5)).min(1.0);
-                let centrality = 1.15 - 0.75 * center_dist;
-                let score = (cells.len() as f64) * centrality;
-                if score > best_score {
-                    best_score = score;
-                    best_comp = cur_id;
-                }
+                mask[gy * gw + gx] = fg_votes >= 3;
             }
         }
 
-        // Extract despilled pixels belonging to best_comp
+        let (comp_id, best_comp) = find_best_cell_component(&mask, gw, gh);
+
         let mut cell_buf = image::RgbaImage::new(cell_w, ch);
-        let mut min_x = cell_w;
-        let mut min_y = ch;
-        let mut max_x = 0u32;
-        let mut max_y = 0u32;
+        let mut bounds = [cell_w, ch, 0u32, 0u32];
 
         for ly in 0..ch {
             let py = (oy + ly).min(h - 1);
@@ -689,50 +713,25 @@ pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u
                 if is_bg(p[0], p[1], p[2], p[3]) {
                     continue;
                 }
-                let gx = (lx / step) as usize;
-                let gy = (ly / step) as usize;
-                let mut keep = false;
-                for ny in gy.saturating_sub(1)..=(gy + 1).min(gh - 1) {
-                    for nx in gx.saturating_sub(1)..=(gx + 1).min(gw - 1) {
-                        if comp_id[ny * gw + nx] == best_comp && best_comp > 0 {
-                            keep = true;
-                        }
-                    }
-                }
+                let (gx, gy) = ((lx / step) as usize, (ly / step) as usize);
+                let keep = best_comp > 0
+                    && (gy.saturating_sub(1)..=(gy + 1).min(gh - 1))
+                        .any(|ny| (gx.saturating_sub(1)..=(gx + 1).min(gw - 1)).any(|nx| comp_id[ny * gw + nx] == best_comp));
                 if !keep {
                     continue;
                 }
                 let clean = despill_rgba(p[0], p[1], p[2], p[3]);
                 if clean[3] > 0 {
                     cell_buf.put_pixel(lx, ly, image::Rgba(clean));
-                    min_x = min_x.min(lx);
-                    min_y = min_y.min(ly);
-                    max_x = max_x.max(lx);
-                    max_y = max_y.max(ly);
+                    bounds[0] = bounds[0].min(lx);
+                    bounds[1] = bounds[1].min(ly);
+                    bounds[2] = bounds[2].max(lx);
+                    bounds[3] = bounds[3].max(ly);
                 }
             }
         }
 
-        let mut final_frame = image::RgbaImage::new(cw, ch);
-        if min_x <= max_x && min_y <= max_y {
-            let bw = max_x - min_x + 1;
-            let bh = max_y - min_y + 1;
-            let dst_x0 = (cw.saturating_sub(bw)) / 2;
-            let dst_y0 = if lock_baseline { ch.saturating_sub(bh).saturating_sub(4) } else { (ch.saturating_sub(bh)) / 2 };
-            for sy in min_y..=max_y {
-                for sx in min_x..=max_x {
-                    let px = *cell_buf.get_pixel(sx, sy);
-                    if px.0[3] > 0 {
-                        let dx = dst_x0 + (sx - min_x);
-                        let dy = dst_y0 + (sy - min_y);
-                        if dx < cw && dy < ch {
-                            final_frame.put_pixel(dx, dy, px);
-                        }
-                    }
-                }
-            }
-        }
-
+        let final_frame = center_cell_frame(&cell_buf, bounds, cw, ch, lock_baseline);
         let frame_path = frames_dir.join(format!("frame_{:04}.png", idx + 1));
         let mut png_bytes = std::io::Cursor::new(Vec::new());
         final_frame
@@ -745,20 +744,25 @@ pub fn clean_and_crop_sprite_sheet(sheet_png: &Path, frames_dir: &Path, grid: (u
     Ok(out)
 }
 
-/// Reassemble an exploded `#00FF00` chroma-green `parts-sheet.png` into:
-/// 1. Individual transparent full-canvas layer PNGs (`<view_dir>/layers/<part_id>.png`) positioned
-///    on the character's skeleton so `character.cut` / `character.rig` can assemble a `.psd`, `.pcraft`, and `.ecproj`.
-/// 2. `<view_dir>/parts.json` with `plush-9` hierarchy (`torso`, `head`, `ear_L`, `ear_R`, `arm_L`, `arm_R`,
-///    `leg_L`, `leg_R`, `tail`), `[x, y]` joint pivots, and `pins` (`puppet.addPin` / `puppet.follow`).
-pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: &str, view: &str) -> Result<Value> {
-    let decoded = open_rgba_flexible(parts_sheet_png)?;
-    let (w, h) = decoded.dimensions();
-    fs::create_dir_all(view_dir)?;
-    let layers_dir = view_dir.join("layers");
-    fs::create_dir_all(&layers_dir)?;
+type Island = ([u32; 4], Vec<(u32, u32)>);
 
-    // Connected-component labeling on non-green pixels (downsampled 4x for fast island discovery)
-    let step = 4u32;
+struct AssignedPart {
+    part_id: &'static str,
+    parent: Option<&'static str>,
+    target_joint: [f64; 2],
+    pivot_uv: [f64; 2],
+    owner_idx: usize,
+    bbox: [u32; 4],
+}
+
+struct PartsGrid {
+    gw: u32,
+    gh: u32,
+    cell_owner: Vec<usize>,
+    boxes: Vec<(usize, [u32; 4])>,
+}
+
+fn discover_parts_islands(decoded: &image::RgbaImage, w: u32, h: u32, step: u32) -> PartsGrid {
     let gw = (w / step).max(1);
     let gh = (h / step).max(1);
     let mut mask = vec![false; (gw * gh) as usize];
@@ -772,7 +776,7 @@ pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: 
     }
 
     let mut visited = vec![false; (gw * gh) as usize];
-    let mut islands: Vec<([u32; 4], Vec<(u32, u32)>)> = Vec::new();
+    let mut islands: Vec<Island> = Vec::new();
     for gy in 0..gh {
         for gx in 0..gw {
             let idx = (gy * gw + gx) as usize;
@@ -797,7 +801,6 @@ pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: 
                     }
                 }
             }
-            // Ignore tiny specks (< 35 grid cells)
             if cells.len() >= 35 {
                 let x0 = (min_x * step).saturating_sub(step);
                 let y0 = (min_y * step).saturating_sub(step);
@@ -808,7 +811,6 @@ pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: 
         }
     }
 
-    // Sort islands by area descending so the largest island is `torso`, then classify the remaining 8 islands by spatial position
     islands.sort_by_key(|(_, cells)| std::cmp::Reverse(cells.len()));
     let mut cell_owner = vec![usize::MAX; (gw * gh) as usize];
     for (owner_idx, (_, cells)) in islands.iter().enumerate() {
@@ -817,47 +819,131 @@ pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: 
         }
     }
     let boxes: Vec<(usize, [u32; 4])> = islands.iter().enumerate().map(|(i, (b, _))| (i, *b)).collect();
-    let mut assigned: Vec<(&str, Option<&str>, [f64; 2], [f64; 2], usize, [u32; 4])> = Vec::new();
-    if let Some(&(torso_owner, torso_box)) = boxes.first() {
-        assigned.push(("torso", None, [500.0, 560.0], [0.50, 0.50], torso_owner, torso_box));
-        let mut rest: Vec<(usize, [u32; 4])> = boxes.iter().skip(1).take(8).copied().collect();
-        // Two smallest islands are the ears (`ear_L`, `ear_R`)
-        rest.sort_by_key(|(_, b)| b[2] * b[3]);
-        if rest.len() >= 2 {
-            let mut ears = [rest[0], rest[1]];
-            ears.sort_by_key(|(_, b)| b[0] + b[1] / 2);
-            assigned.push(("ear_L", Some("head"), [560.0, 225.0], [0.55, 0.85], ears[0].0, ears[0].1));
-            assigned.push(("ear_R", Some("head"), [680.0, 225.0], [0.45, 0.85], ears[1].0, ears[1].1));
-            rest.drain(0..2);
-        }
-        // Remaining 6 islands: top 2 are `tail` (left) and `head` (right); middle 2 are `arm_L` and `arm_R`; bottom 2 are `leg_L` and `leg_R`
-        rest.sort_by_key(|(_, b)| b[1] + b[3] / 2);
-        if rest.len() >= 2 {
-            let mut top2 = [rest[0], rest[1]];
-            top2.sort_by_key(|(_, b)| b[0]);
-            assigned.push(("tail", Some("torso"), [360.0, 520.0], [0.88, 0.35], top2[0].0, top2[0].1));
-            assigned.push(("head", Some("torso"), [615.0, 480.0], [0.25, 0.82], top2[1].0, top2[1].1));
-            rest.drain(0..2);
-        }
-        if rest.len() >= 2 {
-            let mut mid2 = [rest[0], rest[1]];
-            mid2.sort_by_key(|(_, b)| b[0]);
-            assigned.push(("arm_L", Some("torso"), [455.0, 535.0], [0.70, 0.22], mid2[0].0, mid2[0].1));
-            assigned.push(("arm_R", Some("torso"), [605.0, 540.0], [0.22, 0.22], mid2[1].0, mid2[1].1));
-            rest.drain(0..2);
-        }
-        if rest.len() >= 2 {
-            let mut bot2 = [rest[0], rest[1]];
-            bot2.sort_by_key(|(_, b)| b[0]);
-            assigned.push(("leg_L", Some("torso"), [435.0, 665.0], [0.48, 0.22], bot2[0].0, bot2[0].1));
-            assigned.push(("leg_R", Some("torso"), [575.0, 665.0], [0.48, 0.22], bot2[1].0, bot2[1].1));
-        }
+    PartsGrid { gw, gh, cell_owner, boxes }
+}
+
+fn assign_plush9_parts(boxes: &[(usize, [u32; 4])]) -> Vec<AssignedPart> {
+    let mut assigned = Vec::new();
+    let Some(&(torso_owner, torso_box)) = boxes.first() else {
+        return assigned;
+    };
+    assigned.push(AssignedPart {
+        part_id: "torso",
+        parent: None,
+        target_joint: [500.0, 560.0],
+        pivot_uv: [0.50, 0.50],
+        owner_idx: torso_owner,
+        bbox: torso_box,
+    });
+    let mut rest: Vec<(usize, [u32; 4])> = boxes.iter().skip(1).take(8).copied().collect();
+    rest.sort_by_key(|(_, b)| b[2] * b[3]);
+    if rest.len() >= 2 {
+        let mut ears = [rest[0], rest[1]];
+        ears.sort_by_key(|(_, b)| b[0] + b[1] / 2);
+        assigned.push(AssignedPart {
+            part_id: "ear_L",
+            parent: Some("head"),
+            target_joint: [560.0, 225.0],
+            pivot_uv: [0.55, 0.85],
+            owner_idx: ears[0].0,
+            bbox: ears[0].1,
+        });
+        assigned.push(AssignedPart {
+            part_id: "ear_R",
+            parent: Some("head"),
+            target_joint: [680.0, 225.0],
+            pivot_uv: [0.45, 0.85],
+            owner_idx: ears[1].0,
+            bbox: ears[1].1,
+        });
+        rest.drain(0..2);
     }
+    rest.sort_by_key(|(_, b)| b[1] + b[3] / 2);
+    if rest.len() >= 2 {
+        let mut top2 = [rest[0], rest[1]];
+        top2.sort_by_key(|(_, b)| b[0]);
+        assigned.push(AssignedPart {
+            part_id: "tail",
+            parent: Some("torso"),
+            target_joint: [360.0, 520.0],
+            pivot_uv: [0.88, 0.35],
+            owner_idx: top2[0].0,
+            bbox: top2[0].1,
+        });
+        assigned.push(AssignedPart {
+            part_id: "head",
+            parent: Some("torso"),
+            target_joint: [615.0, 480.0],
+            pivot_uv: [0.25, 0.82],
+            owner_idx: top2[1].0,
+            bbox: top2[1].1,
+        });
+        rest.drain(0..2);
+    }
+    if rest.len() >= 2 {
+        let mut mid2 = [rest[0], rest[1]];
+        mid2.sort_by_key(|(_, b)| b[0]);
+        assigned.push(AssignedPart {
+            part_id: "arm_L",
+            parent: Some("torso"),
+            target_joint: [455.0, 535.0],
+            pivot_uv: [0.70, 0.22],
+            owner_idx: mid2[0].0,
+            bbox: mid2[0].1,
+        });
+        assigned.push(AssignedPart {
+            part_id: "arm_R",
+            parent: Some("torso"),
+            target_joint: [605.0, 540.0],
+            pivot_uv: [0.22, 0.22],
+            owner_idx: mid2[1].0,
+            bbox: mid2[1].1,
+        });
+        rest.drain(0..2);
+    }
+    if rest.len() >= 2 {
+        let mut bot2 = [rest[0], rest[1]];
+        bot2.sort_by_key(|(_, b)| b[0]);
+        assigned.push(AssignedPart {
+            part_id: "leg_L",
+            parent: Some("torso"),
+            target_joint: [435.0, 665.0],
+            pivot_uv: [0.48, 0.22],
+            owner_idx: bot2[0].0,
+            bbox: bot2[0].1,
+        });
+        assigned.push(AssignedPart {
+            part_id: "leg_R",
+            parent: Some("torso"),
+            target_joint: [575.0, 665.0],
+            pivot_uv: [0.48, 0.22],
+            owner_idx: bot2[1].0,
+            bbox: bot2[1].1,
+        });
+    }
+    assigned
+}
+
+/// Reassemble an exploded `#00FF00` chroma-green `parts-sheet.png` into:
+/// 1. Individual transparent full-canvas layer PNGs (`<view_dir>/layers/<part_id>.png`) positioned
+///    on the character's skeleton so `character.cut` / `character.rig` can assemble a `.psd`, `.pcraft`, and `.ecproj`.
+/// 2. `<view_dir>/parts.json` with `plush-9` hierarchy (`torso`, `head`, `ear_L`, `ear_R`, `arm_L`, `arm_R`,
+///    `leg_L`, `leg_R`, `tail`), `[x, y]` joint pivots, and `pins` (`puppet.addPin` / `puppet.follow`).
+pub fn reassemble_parts_sheet(parts_sheet_png: &Path, view_dir: &Path, char_id: &str, view: &str) -> Result<Value> {
+    let decoded = open_rgba_flexible(parts_sheet_png)?;
+    let (w, h) = decoded.dimensions();
+    fs::create_dir_all(view_dir)?;
+    let layers_dir = view_dir.join("layers");
+    fs::create_dir_all(&layers_dir)?;
+
+    let step = 4u32;
+    let PartsGrid { gw, gh, cell_owner, boxes } = discover_parts_islands(&decoded, w, h, step);
+    let assigned = assign_plush9_parts(&boxes);
 
     let mut extracted = Vec::new();
     let mut assembled_canvas = image::RgbaImage::new(w, h);
 
-    for (part_id, parent, target_joint, pivot_uv, owner_idx, bbox) in &assigned {
+    for AssignedPart { part_id, parent, target_joint, pivot_uv, owner_idx, bbox } in &assigned {
         let [bx, by, bw, bh] = *bbox;
 
         // Place each extracted island on a full-canvas (w x h) transparent layer so its local socket `pivot_uv` lands on `target_joint`
@@ -1233,7 +1319,7 @@ pub fn ingest_id_marked_assets(project_root: &Path, source_dir: Option<&Path>) -
         }
         let Some((raw_code, raw_slot)) = stem.split_once("__") else { continue };
         let code = raw_code.trim().to_ascii_uppercase();
-        let slot_clean = raw_slot.split(|c: char| c == ' ' || c == '(' || c == '.').next().unwrap_or(raw_slot).trim().to_ascii_lowercase();
+        let slot_clean = raw_slot.split([' ', '(', '.']).next().unwrap_or(raw_slot).trim().to_ascii_lowercase();
         if code.is_empty() || slot_clean.is_empty() {
             continue;
         }

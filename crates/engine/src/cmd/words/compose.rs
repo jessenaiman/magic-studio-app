@@ -196,11 +196,11 @@ pub fn cmd_words_apply(s: &mut Session, p: &Value) -> Result<Value> {
         receipt["start"] = composed["song_anchor"].clone();
         receipt["drawings"] = composed["drawings"].clone();
     }
-    if let Ok(Some(mut doc)) = crate::cmd::words::load(s, &dir) {
-        if let Some(anim) = doc["animations"].as_array_mut().and_then(|a| a.iter_mut().find(|x| x["animation_id"] == id)) {
-            anim["in_video"] = json!(use_it);
-            let _ = crate::cmd::words::save(s, &dir, &doc);
-        }
+    if let Ok(Some(mut doc)) = crate::cmd::words::load(s, &dir)
+        && let Some(anim) = doc["animations"].as_array_mut().and_then(|a| a.iter_mut().find(|x| x["animation_id"] == id))
+    {
+        anim["in_video"] = json!(use_it);
+        let _ = crate::cmd::words::save(s, &dir, &doc);
     }
     Ok(receipt)
 }

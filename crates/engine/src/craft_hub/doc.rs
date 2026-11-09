@@ -74,17 +74,6 @@ impl CraftDoc {
         Self::from_source(target, path, path)
     }
 
-    /// Open `path` if it exists on disk, or prepare a fresh work path to create it.
-    pub(crate) fn open_or_create(target: CraftTarget, path: &Path) -> Result<Self> {
-        if path.is_file() {
-            return Self::open(target, path);
-        }
-        let work_dir = ScopedTempDir::new(&format!("magic-{}-work", target.name()))?;
-        let name = path.file_name().ok_or_else(|| EngineError::InvalidParams(format!("{} has no file name", path.display())))?;
-        let work_path = work_dir.0.join(name);
-        Ok(Self { target, path: path.to_path_buf(), input_path: work_path.clone(), work_path, stamp: None, live_synced: false, _work_dir: work_dir })
-    }
-
     /// Copy `source` to a private work file whose `save` writes atomically to `path`.
     pub(crate) fn from_source(target: CraftTarget, source: &Path, path: &Path) -> Result<Self> {
         let stamp = FileStamp::of(path);

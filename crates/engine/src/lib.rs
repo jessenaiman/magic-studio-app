@@ -52,6 +52,7 @@
 pub mod activity;
 pub mod agent;
 mod agent_run;
+pub mod animation_model;
 pub mod change_marker;
 pub mod cmd;
 pub mod command_sets;

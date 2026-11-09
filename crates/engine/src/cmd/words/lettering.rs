@@ -598,12 +598,11 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let (steps, summary) = build_steps_with_designs(&recipe, &designs, &all, duration);
     let out = dir.join("lettering");
     std::fs::create_dir_all(&out)?;
-    let (project, commands) = (out.join("lyrics.ecproj"), out.join("lyrics.steps.jsonl"));
-    let jsonl: String = steps.iter().map(|v| format!("{v}\n")).collect();
-    crate::doc_state::write_file(&commands, jsonl)?;
+    let project = out.join("lyrics.ecproj");
     let mut native_steps = steps;
     native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
     crate::cmd::character::effectcraft(&dir, None, &native_steps, true)?;
+    let head = crate::cmd::character::check_ecproj_head(&project)?;
     let should_render = p["render"].as_bool().unwrap_or(false) || p["studio"].as_bool().unwrap_or(false);
     let render = if !should_render {
         None
@@ -626,7 +625,8 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({
         "ok": true,
         "project": project,
-        "commands": commands,
+        "saved_by": head.saved_by,
+        "schema": head.schema,
         "render": render,
         "recipe": recipe_path,
         "duration_tick": duration.0,
