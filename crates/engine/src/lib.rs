@@ -64,7 +64,6 @@ pub mod doc_state;
 pub mod doctor;
 pub mod error;
 pub mod feedback_state;
-pub mod fidget;
 pub mod guard;
 pub mod headless;
 pub mod herdr;

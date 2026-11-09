@@ -59,10 +59,25 @@ function wordsSizeInput(anim) {
   return wordsViewController.sizeInput(anim);
 }
 function wordsSyncLiveSliders(it) {
-  if (it.size != null)
-    wordsPanel.tokenSliders?.size.setValue(it.size / 80);
-  if (it.rotate != null)
-    wordsPanel.tokenSliders?.rotate.setValue(it.rotate);
+  const s = wordsPanel.tokenSliders;
+  if (!s)
+    return;
+  if (it.size != null && s.size)
+    s.size.setValue(it.size);
+  if (it.rotate != null && s.rotate)
+    s.rotate.setValue(it.rotate);
+  if (it.skew != null && s.skew)
+    s.skew.setValue(it.skew);
+  if (it.skew_axis != null && s.skew_axis)
+    s.skew_axis.setValue(it.skew_axis);
+  if (it.scale_x != null && s.scale_x)
+    s.scale_x.setValue(it.scale_x);
+  if (it.scale_y != null && s.scale_y)
+    s.scale_y.setValue(it.scale_y);
+  if (it.tracking != null && s.tracking)
+    s.tracking.setValue(it.tracking);
+  if (it.stroke_width != null && s.stroke_width)
+    s.stroke_width.setValue(it.stroke_width);
 }
 addEventListener("pointermove", (event) => {
   const drag = wordsPanel.drag, anim = wordsCurrent();
@@ -74,10 +89,22 @@ addEventListener("pointermove", (event) => {
     return;
   if (drag.mode === "scale") {
     const sx = drag.corner?.includes("w") ? -1 : 1, sy = drag.corner?.includes("n") ? -1 : 1;
-    const delta = (sx * (event.clientX - drag.x) + sy * (event.clientY - drag.y)) / Math.max(0.15, drag.scale);
-    it.size = Math.max(24, Math.min(260, Math.round(drag.startSize + delta * 0.35)));
+    const dx = sx * (event.clientX - drag.x) / Math.max(0.15, drag.scale);
+    const dy = sy * (event.clientY - drag.y) / Math.max(0.15, drag.scale);
+    if (event.shiftKey) {
+      it.scale_x = Math.max(10, Math.min(400, Math.round((drag.startScaleX ?? 100) + dx * 0.45)));
+      it.scale_y = Math.max(10, Math.min(400, Math.round((drag.startScaleY ?? 100) + dy * 0.45)));
+    } else {
+      const delta = dx + dy;
+      it.size = Math.max(16, Math.min(480, Math.round(drag.startSize + delta * 0.35)));
+    }
   } else if (drag.mode === "rotate") {
-    it.rotate = Math.max(-45, Math.min(45, Math.round(drag.startRot + (event.clientX - drag.x) * 0.35)));
+    it.rotate = Math.max(-360, Math.min(360, Math.round(drag.startRot + (event.clientX - drag.x) * 0.6)));
+  } else if (drag.mode === "skew") {
+    it.skew = Math.max(-85, Math.min(85, Math.round((drag.startSkew ?? 0) + (event.clientX - drag.x) * 0.35)));
+    if (event.shiftKey) {
+      it.skew_axis = Math.max(-180, Math.min(180, Math.round((drag.startSkewAxis ?? 0) + (event.clientY - drag.y) * 0.45)));
+    }
   } else {
     it.x = Math.round(drag.from[0] + (event.clientX - drag.x) / Math.max(0.15, drag.scale));
     it.y = Math.round(drag.from[1] + (event.clientY - drag.y) / Math.max(0.15, drag.scale));
@@ -90,8 +117,10 @@ addEventListener("pointermove", (event) => {
 addEventListener("pointerup", () => {
   const drag = wordsPanel.drag;
   wordsPanel.drag = null;
-  if (drag?.moved)
+  if (drag?.moved) {
     wordsRender();
+    wordsStageController?.syncLiveEffectCraft?.();
+  }
 });
 addEventListener("keydown", (event) => {
   if (state.view !== "design" || event.key !== "Escape" || wordsPanel.item == null || /INPUT|SELECT|TEXTAREA/.test(event.target.tagName))
@@ -252,7 +281,7 @@ class WordsViewController {
     return [
       el("div", { class: "group-label" }, `Lettering for “${picks.map((i) => itemText(design.items[i])).join(" ")}”`),
       el("div", { class: "words-effects" }, ...letterings.map(([key, name, does, font, weight, italic]) => wordsCard(look === key, String(name), String(does), () => edit((d) => each(d, (x) => Object.assign(x, { font, weight, italic })))))),
-      el("div", { class: "words-head" }, el("label", { class: "field-row" }, "Colour", colour), el("label", { class: "field-row" }, outlined, "Outline", outline), range("Size", "size", 8, 600, "px"), range("Tilt", "rotate", -45, 45, "°"))
+      el("div", { class: "words-head" }, el("label", { class: "field-row" }, "Colour", colour), el("label", { class: "field-row" }, outlined, "Outline", outline), range("Size", "size", 16, 480, "px"), range("Rotate", "rotate", -360, 360, "°"), range("Skew", "skew", -85, 85, "°"))
     ];
   }
   options(anim) {
@@ -618,10 +647,16 @@ class WordsViewController {
       wordsPanel.scene = key === "scene";
       this.render();
     }), el("button", {
+      id: "words-sync-ecproj",
       class: "ghost",
-      title: "Build EffectCraft project (lettering/lyrics.ecproj) and render transparent lyrics.mov",
-      onclick: () => wordsStageController.renderLettering()
-    }, state.lyricsOnly ? "Render Lettering" : "Render Lyrics to Studio"), state.lyricsOnly ? null : el("button", {
+      title: "Save choreography & sync live EffectCraft surface (lettering/lyrics.ecproj)",
+      onclick: () => wordsStageController.save()
+    }, "Sync EffectCraft"), el("button", {
+      id: "words-open-ecproj",
+      class: "ghost",
+      title: "Open lettering/lyrics.ecproj in the live in-process EffectCraft surface",
+      onclick: () => wordsStageController.openEffectCraftSurface()
+    }, "EffectCraft Surface ↗"), state.lyricsOnly ? null : el("button", {
       class: "start",
       title: "Export the saved FilmCraft timeline or assemble a new one",
       onclick: () => wordsStageController.exportFilm()

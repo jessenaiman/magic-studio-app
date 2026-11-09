@@ -170,6 +170,9 @@ pub fn properties(s: &mut Session, p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
     let project = project_path(&dir);
     if !project.is_file() {
+        let _ = super::lettering::cmd_words_letter(s, &json!({"render": false}));
+    }
+    if !project.is_file() {
         return Err(invalid("No lettering/lyrics.ecproj in this project; build the lettering first"));
     }
     let read = stage::cmd_words_read(s, &json!({}))?;
@@ -178,8 +181,15 @@ pub fn properties(s: &mut Session, p: &Value) -> Result<Value> {
     let word_ids: Option<Vec<Value>> = p["word_ids"].as_array().cloned();
     let binding = find_binding(&document, line, word_ids.as_deref());
 
-    let info = effectcraft(&dir, Some(&project), &[step("comp.info", json!({"comp": COMP}))], false)?;
+    let info = effectcraft(
+        &dir,
+        Some(&project),
+        &[step("comp.info", json!({"comp": COMP})), step("text.animatorProperties", json!({})), step("text.presets", json!({}))],
+        false,
+    )?;
     let comp = info.first().cloned().unwrap_or(Value::Null);
+    let animator_properties = info.get(1).cloned().unwrap_or(json!([]));
+    let text_presets = info.get(2).cloned().unwrap_or(json!([]));
     let layers = comp["layers"].as_array().cloned().unwrap_or_default();
     let binding = binding.filter(|(_, _, binding)| binding["layer"]["id"].as_u64().is_some_and(|id| layer_by_id(&layers, id).is_some()));
     let layer = binding
@@ -204,6 +214,8 @@ pub fn properties(s: &mut Session, p: &Value) -> Result<Value> {
         "layer": {"id": layer["id"], "name": layer["name"], "in": layer["in"], "out": layer["out"]},
         "binding": binding,
         "properties": properties,
+        "animator_properties": animator_properties,
+        "text_presets": text_presets,
         "coordinate_mode": "offset from authored placement",
         "duration_range": [0.05, 8.0],
         "source_text_editable": false
@@ -288,6 +300,9 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
     let revision = p["expected_source_revision"].as_u64().ok_or_else(|| invalid("expected_source_revision is required"))?;
     let dir = crate::cmd::words::workspace_dir(s)?;
     let project = project_path(&dir);
+    if !project.is_file() {
+        let _ = super::lettering::cmd_words_letter(s, &json!({"render": false}));
+    }
     if !project.is_file() {
         return Err(invalid("No lettering/lyrics.ecproj in this project; build the lettering first"));
     }
@@ -422,6 +437,9 @@ pub fn set(s: &mut Session, p: &Value) -> Result<Value> {
 pub fn cmd_effect_save(s: &mut Session, _p: &Value) -> Result<Value> {
     let dir = crate::cmd::words::workspace_dir(s)?;
     let project = project_path(&dir);
+    if !project.is_file() {
+        let _ = super::lettering::cmd_words_letter(s, &json!({"render": false}));
+    }
     if !project.is_file() {
         return Err(invalid("No lettering/lyrics.ecproj in this project; build the lettering first"));
     }

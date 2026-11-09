@@ -125,13 +125,11 @@ pub fn frame(s: &mut Session, p: &Value) -> Result<Value> {
     let time =
         p["time"].as_f64().filter(|v| v.is_finite() && *v >= 0.0).ok_or_else(|| EngineError::InvalidParams("time must be nonnegative seconds".into()))?;
     let kind = p["kind"].as_str().unwrap_or("lyrics");
-    let layer_type = match kind {
-        "lyrics" => "Text",
-        "motion" => "Shape",
-        _ => return Err(EngineError::InvalidParams("kind must be lyrics or motion".into())),
-    };
     let dir = super::workspace_dir(s)?;
     let project = dir.join("lettering/lyrics.ecproj");
+    if !project.is_file() {
+        let _ = super::lettering::cmd_words_letter(s, &json!({"render": false}));
+    }
     if !project.is_file() {
         return Err(EngineError::InvalidParams("No saved EffectCraft lyrics composition; save the lyric design first".into()));
     }
@@ -148,6 +146,25 @@ pub fn frame(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let comp: Value = crate::CraftHub::execute(crate::CraftTarget::Effect, Some(&project), "comp.info", &json!({"comp": "Lyrics"}))
         .or_else(|_| crate::CraftHub::execute(crate::CraftTarget::Effect, Some(&project), "comp.info", &json!({})))?;
+    if kind == "stage" {
+        let scale = p["scale"].as_f64().unwrap_or(0.67).clamp(0.25, 1.0);
+        crate::workspace::cmd_effect_exec(
+            s,
+            &json!({"path":project,"save":false,"steps":[
+                {"id":"comp.open","params":{"comp":comp["id"]}},
+                {"id":"comp.saveFrameAs","params":{"path":out,"time":time,"scale":scale,"transparent":true}}
+            ]}),
+        )?;
+        if !out.is_file() {
+            return Err(EngineError::InvalidParams("EffectCraft did not produce the stage frame".into()));
+        }
+        return Ok(json!({"frame":out,"source":project,"kind":"stage","time":time,"sample_time":time,"native":"effectcraft"}));
+    }
+    let layer_type = match kind {
+        "lyrics" => "Text",
+        "motion" => "Shape",
+        _ => return Err(EngineError::InvalidParams("kind must be lyrics, motion, or stage".into())),
+    };
     let layers = comp["layers"].as_array().ok_or_else(|| EngineError::InvalidParams("EffectCraft returned no active composition layers".into()))?;
     let ids: Vec<Value> = layers.iter().filter(|l| l["type"] == layer_type).map(|l| l["id"].clone()).collect();
     if ids.is_empty() {

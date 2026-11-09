@@ -14,7 +14,7 @@ use craft_ai_client::{AiClient, ProviderFactory, RoleStatus, ToolDesk};
 use craft_ai_core::payload::Limits;
 use craft_ai_core::{
     AiError, AppId, CapabilityId, CapabilitySpec, Connection, ConsentLedger, ConsentTerm, ErrorKind, Event, InputRole, JobId, JobSnapshot, JobState, ModelId,
-    ModelInfo, Output, Payload, Provider, Request,
+    ModelInfo, Output, Payload, Provider, Request, Role, RoleId,
 };
 use craft_ai_native::shared::SharedStore;
 use serde_json::{Value, json};
@@ -39,6 +39,10 @@ fn engine(e: impl std::fmt::Display) -> EngineError {
     EngineError::CommandFailed("craft-ai".into(), e.to_string())
 }
 
+fn bad(message: impl Into<String>) -> EngineError {
+    EngineError::InvalidParams(message.into())
+}
+
 fn internal(e: impl std::fmt::Display) -> AiError {
     AiError::new(ErrorKind::Internal, e.to_string())
 }
@@ -54,6 +58,96 @@ fn label_for_provider(provider: &str) -> &'static str {
 fn image_spec() -> std::result::Result<CapabilitySpec, AiError> {
     let capability = CapabilityId::parse("image.generate").map_err(internal)?;
     Ok(CapabilitySpec::new(capability).accepting(InputRole::Prompt, 1).accepting(InputRole::Reference, MAX_REFERENCES).requiring(InputRole::Prompt))
+}
+
+/// Craft AI roles declared directly on the shared client. These are upstream
+/// `craft_ai_core::Role`s — no wrapper layer. Fidget text role, Scribbles image
+/// role, Scribbles-mark detector role.
+pub fn fidget_role() -> Result<Role> {
+    Ok(Role {
+        id: RoleId::new("fidget").map_err(|e| bad(e.to_string()))?,
+        label: "Fidget (Prompt & Markdown Template Architect)".into(),
+        capability: CapabilityId::parse("text.complete").map_err(|e| bad(e.to_string()))?,
+        inputs: vec![InputRole::Prompt, InputRole::System],
+    })
+}
+
+pub fn scribbles_role() -> Result<Role> {
+    Ok(Role {
+        id: RoleId::new("scribbles").map_err(|e| bad(e.to_string()))?,
+        label: "Scribbles (Template-Gated Character & Storyboard Artist)".into(),
+        capability: CapabilityId::parse("image.generate").map_err(|e| bad(e.to_string()))?,
+        inputs: vec![InputRole::Prompt, InputRole::Reference],
+    })
+}
+
+pub fn scribbles_mark_role() -> Result<Role> {
+    Ok(Role {
+        id: RoleId::new("scribbles-mark").map_err(|e| bad(e.to_string()))?,
+        label: "Scribbles Mark (Part & Joint Detector)".into(),
+        capability: CapabilityId::parse("image.detect").map_err(|e| bad(e.to_string()))?,
+        inputs: vec![InputRole::Prompt, InputRole::Source],
+    })
+}
+
+pub fn magic_ai_roles() -> Result<Vec<Role>> {
+    Ok(vec![fidget_role()?, scribbles_role()?, scribbles_mark_role()?])
+}
+
+/// Live Craft AI status (`AiClient::standard` + `ToolDesk`) for Magic roles.
+pub fn craft_ai_status() -> Value {
+    let roles = match magic_ai_roles() {
+        Ok(r) => r,
+        Err(e) => return json!({"ok": false, "error": e.to_string()}),
+    };
+    let app_id = match AppId::new("magic") {
+        Ok(id) => id,
+        Err(e) => return json!({"ok": false, "error": e.to_string()}),
+    };
+    let role_reports: Vec<Value> = match AiClient::standard(app_id).map(|client| client.with_factory(crate::craft_ai_codex::factory())) {
+        Ok(client) => roles
+            .iter()
+            .map(|role| {
+                let status = match client.status(role) {
+                    RoleStatus::Ready(ready) => json!({
+                        "state": "ready",
+                        "connection_id": ready.connection.as_str(),
+                        "connection_label": ready.connection_label,
+                        "model": ready.model.as_str(),
+                        "model_label": ready.model_label,
+                        "locality": format!("{:?}", ready.locality),
+                        "billing": format!("{:?}", ready.billing),
+                    }),
+                    RoleStatus::Unavailable { reason } => json!({
+                        "state": "unavailable",
+                        "reason": reason.to_string(),
+                    }),
+                };
+                json!({
+                    "id": role.id.as_str(),
+                    "label": role.label,
+                    "capability": role.capability.as_str(),
+                    "status": status,
+                })
+            })
+            .collect(),
+        Err(e) => roles
+            .iter()
+            .map(|role| {
+                json!({
+                    "id": role.id.as_str(),
+                    "label": role.label,
+                    "capability": role.capability.as_str(),
+                    "status": { "state": "unavailable", "reason": e.to_string() },
+                })
+            })
+            .collect(),
+    };
+    json!({
+        "ok": true,
+        "app_id": "magic",
+        "roles": role_reports,
+    })
 }
 
 pub(crate) fn models_for_provider(provider: &str) -> std::result::Result<Vec<ModelInfo>, AiError> {
@@ -270,7 +364,7 @@ pub fn ensure_connections_and_choice(provider: &str, model_override: Option<&str
         })
         .map_err(engine)?;
 
-    let role = crate::fidget::scribbles_role()?;
+    let role = scribbles_role()?;
     let active_conn_id = craft_ai_core::ConnectionId::new(canonical_provider).map_err(engine)?;
     let active_model_id = ModelId::new(chosen_model).map_err(engine)?;
     ToolDesk::new(client()?, shared, None).choose(&role, &active_conn_id, &active_model_id).map_err(engine)?;
@@ -315,7 +409,7 @@ pub(crate) fn draw_with(provider_override: Option<&str>, model_override: Option<
             )));
         }
     }
-    let role = crate::fidget::scribbles_role()?;
+    let role = scribbles_role()?;
     let client = client()?;
     if let RoleStatus::Unavailable { reason } = client.status(&role) {
         return Err(EngineError::InvalidParams(format!(
@@ -380,7 +474,7 @@ pub fn cmd_scribbles_connect(s: &mut Session, p: &Value) -> Result<Value> {
             { "id": AGY_PROVIDER, "label": label_for_provider(AGY_PROVIDER), "models": models_for_provider(AGY_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default() },
             { "id": FLOW_PROVIDER, "label": label_for_provider(FLOW_PROVIDER), "models": models_for_provider(FLOW_PROVIDER).map(|v| v.iter().map(|m| m.id.as_str().to_owned()).collect::<Vec<_>>()).unwrap_or_default() },
         ],
-        "craft_ai": crate::fidget::craft_ai_status(),
+        "craft_ai": craft_ai_status(),
     }))
 }
 
@@ -415,7 +509,7 @@ pub fn cmd_scribbles_consent(_: &mut Session, p: &Value) -> Result<Value> {
         None => vec![current_provider.clone()],
     };
 
-    let role = crate::fidget::scribbles_role()?;
+    let role = scribbles_role()?;
     let client = client()?;
     let file = client.consent_file().ok_or_else(|| engine("this system has no folder for the consent file"))?;
     let mut ledger: ConsentLedger = file.load_or_empty();

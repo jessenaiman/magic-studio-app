@@ -200,10 +200,33 @@ fn validate_line_item<'a>(item: &'a Value, words: &[Value], placed: &mut Vec<&'a
         "color": short_colour(&item["color"])?,
         "font": one_of(item.get("font").unwrap_or(&json!("song")), FONTS, "font")?,
         "outline": outline,
-        "rotate": bounded_num(&item["rotate"], "rotate", -45.0, 45.0)?,
+        "rotate": bounded_num(&item["rotate"], "rotate", -3600.0, 3600.0)?,
         "motion": one_of(&item["motion"], MOVES, "motion")?,
         "accent": accent
     });
+    apply_bounded_fields(
+        &mut normalized,
+        item,
+        "item",
+        &[
+            ("skew", -85.0, 85.0),
+            ("skew_axis", -360.0, 360.0),
+            ("scale_x", 10.0, 400.0),
+            ("scale_y", 10.0, 400.0),
+            ("tracking", -200.0, 1000.0),
+            ("stroke_width", 0.0, 60.0),
+            ("opacity", 0.0, 100.0),
+        ],
+    )?;
+    if let Some(preset) = item.get("preset").and_then(Value::as_str).filter(|s| !s.is_empty() && s.len() <= 64) {
+        normalized["preset"] = json!(preset);
+    }
+    if let Some(warp) = item.get("warp_path").filter(|v| !v.is_null()) {
+        normalized["warp_path"] = one_of(warp, &["none", "arc_up", "arc_down", "wave", "diagonal"], "warp_path")?;
+    }
+    if let Some(pc3d) = item.get("per_char_3d").and_then(Value::as_bool) {
+        normalized["per_char_3d"] = json!(pc3d);
+    }
     if let Some(raw) = item.get("motion_keys").filter(|keys| !keys.is_null()) {
         let keys = raw.as_array().filter(|keys| (2..=24).contains(&keys.len())).ok_or_else(|| invalid("motion_keys needs 2–24 keyframes"))?;
         let mut last = -1.0;

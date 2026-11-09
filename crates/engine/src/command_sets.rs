@@ -1080,7 +1080,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "fidget.prepare",
             "Prepare Final Drawing Prompt and References (Fidget)",
             r#"{"kind":"new|image|sheet|poses|actions|custom (default custom)","prompt":"character or drawing","reference":"image path or array","notes":"optional","action":"walk|run|jump|wave|turn|sing","provider":"optional","model":"optional","character":"optional id","project":"optional .magic","name":"optional","timeout_s":900}"#,
-            crate::fidget::cmd_fidget_prepare
+            crate::scribbles::cmd_fidget_prepare
         ),
         cmd!(
             "scribbles.generate",

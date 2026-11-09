@@ -348,7 +348,7 @@ fn decorate_config(s: &Session, value: &mut Value) {
             base.insert(key, val);
         }
     }
-    value["craft_ai"] = crate::fidget::craft_ai_status();
+    value["craft_ai"] = crate::craft_ai_codex::craft_ai_status();
     value["scope"] = json!("active engine/window; shared defaults read only at initialization");
 }
 
@@ -488,7 +488,7 @@ pub fn cmd_sprocket_send(s: &mut Session, params: &Value) -> Result<Value> {
     let template = params["template"].as_str().or_else(|| params["kind"].as_str()).unwrap_or("fidget-brief");
     let save_command = params["save_command"].as_str().unwrap_or("scribbles.generate");
     if let Some(raw_text) = result["text"].as_str() {
-        let formatted = crate::fidget::format_fidget_markdown(template, save_command, &["magic".into(), "fidget".into(), template.into()], None, raw_text);
+        let formatted = crate::scribbles::format_fidget_markdown(template, save_command, &["magic".into(), "fidget".into(), template.into()], None, raw_text);
         result["markdown"] = json!(formatted.clone());
         result["text"] = json!(formatted);
     }
@@ -496,7 +496,7 @@ pub fn cmd_sprocket_send(s: &mut Session, params: &Value) -> Result<Value> {
         "name": "Fidget",
         "role": "the app's own in-app Markdown prompt & template architect",
         "craft_role": "fidget",
-        "note": crate::fidget::FIDGET_NOTE,
+        "note": crate::scribbles::FIDGET_NOTE,
         "selection": selection,
         "selection_repaired": null,
         "selection_persisted": null
@@ -610,7 +610,7 @@ fn chat_task(params: &Value) -> Result<String> {
     } else if params["fidget_markdown"] == true {
         Ok(format!(
             "You are Fidget, Magic Studio's prompt & template architect (`craft_ai_core` role `fidget`). Rework the user's request into a structured Markdown document starting with YAML frontmatter (`---` with `role: fidget`, `template`, `tags`, `save_command`) followed immediately by `> {}`.\n",
-            crate::fidget::FIDGET_NOTE
+            crate::scribbles::FIDGET_NOTE
         ))
     } else {
         Ok(String::new())

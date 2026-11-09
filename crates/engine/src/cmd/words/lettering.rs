@@ -77,6 +77,22 @@ struct Look {
     size: f64,
     fill: String,
     outline: Option<String>,
+    stroke_width: Option<f64>,
+    tracking: Option<f64>,
+}
+
+fn is_dark_hex(hex: &str) -> bool {
+    let raw = hex.trim().trim_start_matches('#');
+    if raw.len() != 6 {
+        return false;
+    }
+    let Ok(rgb) = u32::from_str_radix(raw, 16) else {
+        return false;
+    };
+    let r = ((rgb >> 16) & 0xff) as f64;
+    let g = ((rgb >> 8) & 0xff) as f64;
+    let b = (rgb & 0xff) as f64;
+    (0.299 * r + 0.587 * g + 0.114 * b) < 88.0
 }
 
 fn colour(recipe: &Value, name: &Value) -> Option<String> {
@@ -96,12 +112,16 @@ fn look(recipe: &Value, spec: &Value) -> Look {
         "sans" => (font("sans", "Nimbus Sans"), "Regular"),
         _ => (font("sans", "Nimbus Sans"), "Bold"),
     };
+    let fill = colour(recipe, &spec["color"]).unwrap_or_else(|| "#000000".into());
+    let outline = colour(recipe, &spec["outline"]).or_else(|| is_dark_hex(&fill).then(|| "#FFF8E9".into()));
     Look {
         font,
         style,
         size: spec["size"].as_f64().unwrap_or(58.0),
-        fill: colour(recipe, &spec["color"]).unwrap_or_else(|| "#000000".into()),
-        outline: colour(recipe, &spec["outline"]),
+        fill,
+        outline,
+        stroke_width: spec["stroke_width"].as_f64(),
+        tracking: spec["tracking"].as_f64(),
     }
 }
 
@@ -117,12 +137,16 @@ fn item_look(recipe: &Value, item: &Value) -> Look {
         (_, true, _) => (font_fn("sans", "Nimbus Sans"), "Bold"),
         (_, false, _) => (font_fn("sans", "Nimbus Sans"), "Regular"),
     };
+    let fill = colour(recipe, &item["color"]).unwrap_or_else(|| "#173F49".into());
+    let outline = colour(recipe, &item["outline"]).or_else(|| is_dark_hex(&fill).then(|| "#FFF8E9".into()));
     Look {
         font,
         style,
         size: item["size"].as_f64().unwrap_or(58.0),
-        fill: colour(recipe, &item["color"]).unwrap_or_else(|| "#173F49".into()),
-        outline: colour(recipe, &item["outline"]),
+        fill,
+        outline,
+        stroke_width: item["stroke_width"].as_f64(),
+        tracking: item["tracking"].as_f64(),
     }
 }
 
@@ -207,13 +231,73 @@ fn stroke_steps(s: &Stroke<'_>, steps: &mut Vec<Value>) {
 
 fn text_params(look: &Look) -> Value {
     let mut p = json!({"font": look.font, "style": look.style, "size": look.size, "fill": look.fill});
+    if let Some(tracking) = look.tracking {
+        p["tracking"] = json!(tracking);
+    }
     if let Some(outline) = &look.outline {
-        p["stroke"] = json!(outline);
-        p["applyStroke"] = json!(true);
-        p["strokeWidth"] = json!((look.size * 0.08).max(3.0));
-        p["strokeOverFill"] = json!(false);
+        let sw = look.stroke_width.unwrap_or_else(|| (look.size * 0.08).max(3.0));
+        if sw > 0.0 {
+            p["stroke"] = json!(outline);
+            p["applyStroke"] = json!(true);
+            p["strokeWidth"] = json!(sw);
+            p["strokeOverFill"] = json!(false);
+        }
     }
     p
+}
+
+fn apply_item_effectcraft_props(layer_id: &str, item: &Value, bw: f64, bh: f64, ws: Tick, steps: &mut Vec<Value>) {
+    let sx = item["scale_x"].as_f64().unwrap_or(100.0);
+    let sy = item["scale_y"].as_f64().unwrap_or(100.0);
+    if (sx - 100.0).abs() > 1e-4 || (sy - 100.0).abs() > 1e-4 {
+        steps.push(step("prop.set", json!({"layer": layer_id, "path": "transform/scale", "value": [sx, sy, 100.0]})));
+    }
+    let skew = item["skew"].as_f64().unwrap_or(0.0);
+    let skew_axis = item["skew_axis"].as_f64().unwrap_or(0.0);
+    if skew.abs() > 1e-4 || skew_axis.abs() > 1e-4 {
+        steps.push(step("layer.addTextAnimator", json!({"layer": layer_id, "name": "Skew Design", "properties": ["skew"]})));
+        steps.push(step("prop.set", json!({"layer": layer_id, "path": "text/animators/animator/properties/skew", "value": skew})));
+        if skew_axis.abs() > 1e-4 {
+            steps.push(step("prop.set", json!({"layer": layer_id, "path": "text/animators/animator/properties/skewAxis", "value": skew_axis})));
+        }
+    }
+    if item["per_char_3d"].as_bool() == Some(true) {
+        steps.push(step("layer.enablePerChar3D", json!({"layer": layer_id, "enabled": true})));
+    }
+    if let Some(warp) = item["warp_path"].as_str().filter(|w| *w != "none") {
+        let cy = bh * 0.62;
+        let (verts, in_t, out_t) = match warp {
+            "arc_up" => (
+                json!([[0.0, cy + 28.0], [bw * 0.5, cy - 38.0], [bw, cy + 28.0]]),
+                json!([[0.0, 0.0], [-bw * 0.18, 0.0], [0.0, 0.0]]),
+                json!([[0.0, 0.0], [bw * 0.18, 0.0], [0.0, 0.0]]),
+            ),
+            "arc_down" => (
+                json!([[0.0, cy - 28.0], [bw * 0.5, cy + 38.0], [bw, cy - 28.0]]),
+                json!([[0.0, 0.0], [-bw * 0.18, 0.0], [0.0, 0.0]]),
+                json!([[0.0, 0.0], [bw * 0.18, 0.0], [0.0, 0.0]]),
+            ),
+            "wave" => (
+                json!([[0.0, cy], [bw * 0.33, cy - 30.0], [bw * 0.67, cy + 30.0], [bw, cy]]),
+                json!([[0.0, 0.0], [-bw * 0.1, 0.0], [-bw * 0.1, 0.0], [0.0, 0.0]]),
+                json!([[0.0, 0.0], [bw * 0.1, 0.0], [bw * 0.1, 0.0], [0.0, 0.0]]),
+            ),
+            "diagonal" => (json!([[0.0, cy + 32.0], [bw, cy - 32.0]]), json!([[0.0, 0.0], [0.0, 0.0]]), json!([[0.0, 0.0], [0.0, 0.0]])),
+            _ => (Value::Null, Value::Null, Value::Null),
+        };
+        if verts.is_array() {
+            steps.push(step(
+                "mask.new",
+                json!({"layer": layer_id, "vertices": verts, "inTangents": in_t, "outTangents": out_t, "closed": false, "mode": "none"}),
+            ));
+            steps.push(step("prop.set", json!({"layer": layer_id, "path": "text/pathOptions/path", "value": 1})));
+        }
+    }
+    if let Some(preset) = item["preset"].as_str().filter(|s| !s.is_empty()) {
+        steps.push(step("layer.select", json!({"layers": [layer_id]})));
+        steps.push(step("time.set", json!({"time": ws.max(Tick::ZERO).seconds()})));
+        steps.push(step("layer.applyTextPreset", json!({"layer": layer_id, "preset": preset})));
+    }
 }
 
 fn trim_steps(layer: Value, shown: Tick, gone: Tick) -> Vec<Value> {
@@ -363,13 +447,17 @@ fn spatial_line_steps(recipe: &Value, line: &Line, design: &Value, shown: Tick, 
             steps.push(step("prop.set", json!({"layer": layer_id, "path": "transform/rotation", "value": rot})));
         }
         let (ws, we) = item_word_time(line, item);
+        apply_item_effectcraft_props(&layer_id, item, bw, bh, ws, steps);
         let move_name = item["motion"].as_str().unwrap_or("quiet");
-        animate_range(&layer_id, (0, text_str.chars().count()), move_name, ws, we, steps);
-        if item["accent"].is_string() || move_name != "quiet" {
-            hero_summary = json!({"word": text_str, "motion": move_name, "at_tick": ws.0, "at": ws.seconds()});
+        if item["preset"].as_str().is_none_or(str::is_empty) {
+            animate_range(&layer_id, (0, text_str.chars().count()), move_name, ws, we, steps);
+        }
+        if item["accent"].is_string() || move_name != "quiet" || item["preset"].is_string() {
+            hero_summary = json!({"word": text_str, "motion": item["preset"].as_str().unwrap_or(move_name), "at_tick": ws.0, "at": ws.seconds()});
         }
         steps.extend(trim_steps(json!(layer_id), shown, gone));
-        for (time, value) in [(shown, 0), (shown + fade_tick, 100)] {
+        let max_opacity = item["opacity"].as_f64().unwrap_or(100.0);
+        for (time, value) in [(shown, 0.0), (shown + fade_tick, max_opacity)] {
             steps
                 .push(step("prop.addKey", json!({"layer": layer_id, "path": "transform/opacity", "value": value, "time": time.seconds(), "timeBase": "comp"})));
         }
@@ -516,7 +604,8 @@ pub fn cmd_words_letter(s: &mut Session, p: &Value) -> Result<Value> {
     let mut native_steps = steps;
     native_steps.push(json!({"command":"file.saveAs","params":{"path":project}}));
     crate::cmd::character::effectcraft(&dir, None, &native_steps, true)?;
-    let render = if p["render"] == false {
+    let should_render = p["render"].as_bool().unwrap_or(false) || p["studio"].as_bool().unwrap_or(false);
+    let render = if !should_render {
         None
     } else {
         let movie = out.join("lyrics.mov");
