@@ -262,17 +262,13 @@ fn apply_id_marked_assets_to_storyboard(s: &mut Session, marked: &[(String, Stri
     placed_summary
 }
 
-/// Generate an image through the configured provider (defaults to `"flow"` via Google Flow)
+/// Generate an image through the request's provider or the `image.provider` setting,
 /// or open Moppet Maker when called without a prompt.
 pub fn cmd_scribbles_generate(s: &mut Session, p: &Value) -> Result<Value> {
     if p["prompt"].as_str().is_none_or(|v| v.trim().is_empty()) {
         return cmd_scribbles_open(s, p);
     }
-    let mut req = p.clone();
-    if req.get("provider").is_none_or(Value::is_null) {
-        req["provider"] = json!("flow");
-    }
-    crate::image_generation::generate(s, &req)
+    crate::image_generation::generate(s, p)
 }
 
 /// Inspect Scribbles / Google Flow Moppet Maker and Storyboard Master Pack status and URLs.
@@ -594,7 +590,7 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
                         title: desc.clone(),
                         prompt: format!("{base_prompt} | FOCUS: {desc}"),
                         animation_style: "location_plate".into(),
-                        references: vec!["COVER".into()],
+                        references: Vec::new(),
                         reference_image: None,
                         existing_image: slot_image(&slots, slot),
                     });
@@ -646,7 +642,7 @@ pub fn cmd_scribbles_pack(s: &mut Session, p: &Value) -> Result<Value> {
                         title: desc.clone(),
                         prompt: format!("{base_prompt} | FOCUS: {desc}"),
                         animation_style: "cutout_rig".into(),
-                        references: vec!["COVER".into()],
+                        references: Vec::new(),
                         reference_image: locked_ref,
                         existing_image: slot_image(&slots, slot),
                     });

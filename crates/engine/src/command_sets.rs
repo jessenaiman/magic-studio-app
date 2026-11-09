@@ -1054,7 +1054,7 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             "Generate Image via Flow or Open Moppet Maker (Scribbles)",
             ["Scribbles"],
             None,
-            r#"{"prompt":"optional drawing prompt (if omitted, opens Moppet Maker)","provider":"optional; defaults to flow","character":"optional id","name":"optional"}"#,
+            r#"{"prompt":"optional drawing prompt (if omitted, opens Moppet Maker)","provider":"optional flow or codex; omitted uses the image.provider setting","character":"optional id","name":"optional"}"#,
             always,
             crate::scribbles::cmd_scribbles_generate
         ),
