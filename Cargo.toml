@@ -34,6 +34,10 @@ craft-settings = { git = "https://github.com/storytold/craft-libs" }
 craft-ui = { git = "https://github.com/storytold/craft-libs", features = ["serde", "native-windows"] }
 craft-update = { git = "https://github.com/storytold/craft-libs" }
 
+# Shared Craft AI integrations (`storytold/craft-ai-integrations`, version-independent git tracking)
+craft-ai-client = { git = "https://github.com/storytold/craft-ai-integrations" }
+craft-ai-core = { git = "https://github.com/storytold/craft-ai-integrations" }
+
 # CLI, TUI, MCP, desktop control, and system foundations
 eframe = { version = "0.37", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }

@@ -31,6 +31,13 @@ const fn is_long_running_id(id: &str) -> bool {
             | b"video.export"
             | b"video.preview"
             | b"scribbles.generate"
+            | b"scribbles.new"
+            | b"scribbles.image"
+            | b"scribbles.sheet"
+            | b"scribbles.poses"
+            | b"scribbles.actions"
+            | b"scribbles.layers"
+            | b"scribbles.custom"
             | b"scribbles.video"
             | b"scribbles.svg"
             | b"character.mark"
@@ -1049,16 +1056,85 @@ fn specs_scribbles() -> Vec<CommandSpec> {
             always,
             crate::scribbles::cmd_scribbles_ingest
         ),
+        query!(
+            "fidget.prepare",
+            "Prepare Final Drawing Prompt and References (Fidget)",
+            r#"{"kind":"new|image|sheet|poses|actions|custom (default custom)","prompt":"character or drawing","reference":"image path or array","notes":"optional","action":"walk|run|jump|wave|turn|sing","provider":"optional","model":"optional","character":"optional id","project":"optional .magic","name":"optional","timeout_s":900}"#,
+            crate::fidget::cmd_fidget_prepare
+        ),
         cmd!(
             "scribbles.generate",
-            "Generate Image via Flow or Open Moppet Maker (Scribbles)",
+            "Generate Final Drawing (Scribbles)",
             ["Scribbles"],
             None,
-            r#"{"prompt":"optional drawing prompt (if omitted, opens Moppet Maker)","provider":"optional flow or codex; omitted uses the image.provider setting","character":"optional id","name":"optional"}"#,
+            r#"{"prompt":"final drawing instructions (unchanged)","references":["optional project PNG paths; max 5"],"provider":"optional; settings scribbles.provider or image provider","model":"optional; settings scribbles.model or gpt-6-luna","project":"optional .magic","character":"optional id","transparent_background":true,"timeout_s":900,"name":"optional","fidget":"optional preparation metadata"}"#,
             always,
             crate::scribbles::cmd_scribbles_generate
         ),
-        query!("scribbles.templates", "Scribbles Flow Status", "{}", crate::scribbles::cmd_scribbles_templates),
+        query!("scribbles.templates", "Scribbles Templates", "{}", crate::scribbles::cmd_scribbles_templates),
+        cmd!(
+            "scribbles.new",
+            "New Character (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_new
+        ),
+        cmd!(
+            "scribbles.image",
+            "Redraw for Animation (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_image
+        ),
+        cmd!(
+            "scribbles.sheet",
+            "Turnaround Sheet (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_sheet
+        ),
+        cmd!(
+            "scribbles.poses",
+            "Pose Sheet (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_poses
+        ),
+        cmd!(
+            "scribbles.actions",
+            "Action Frames (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
+            always,
+            crate::scribbles::cmd_scribbles_actions
+        ),
+        cmd!(
+            "scribbles.layers",
+            "Overlapping Layers from One Image (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\",\"action\":\"walk|run|jump|wave|turn|sing\"}",
+            always,
+            crate::scribbles::cmd_scribbles_layers
+        ),
+        cmd!(
+            "scribbles.custom",
+            "Custom Drawing (Scribbles)",
+            ["Scribbles"],
+            None,
+            "{\"reference\":\"character image (needed except for new/custom)\",\"prompt\":\"the character (new) or the drawing (custom)\",\"notes\":\"optional\",\"model\":\"optional; default gpt-6-luna or settings scribbles.model\",\"character\":\"optional id\",\"name\":\"optional\"}",
+            always,
+            crate::scribbles::cmd_scribbles_custom
+        ),
         cmd!(
             "scribbles.video",
             "Generate Short Video Clip in Flow (Scribbles)",

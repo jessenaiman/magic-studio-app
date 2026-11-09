@@ -24,6 +24,8 @@ thiserror = { workspace = true }
 base64 = "0.23"
 
 # Craft engines and shared Craft libraries called directly in-process
+craft-ai-client = { workspace = true }
+craft-ai-core = { workspace = true }
 craft-atomic = { workspace = true }
 craft-audio = { workspace = true }
 craft-doc = { workspace = true }

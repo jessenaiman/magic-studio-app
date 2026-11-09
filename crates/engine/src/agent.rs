@@ -348,11 +348,7 @@ fn decorate_config(s: &Session, value: &mut Value) {
             base.insert(key, val);
         }
     }
-    value["scribbles"] = json!({
-        "provider": "flow",
-        "tool": "Moppet Maker",
-        "url": craft_scribbles::DEFAULT_MOPPET_MAKER_URL,
-    });
+    value["craft_ai"] = crate::fidget::craft_ai_status();
     value["scope"] = json!("active engine/window; shared defaults read only at initialization");
 }
 
@@ -485,10 +481,22 @@ pub fn cmd_sprocket_send(s: &mut Session, params: &Value) -> Result<Value> {
     if send.get("free_only").is_none() {
         send["free_only"] = json!(true);
     }
+    if send.get("fidget_markdown").is_none() {
+        send["fidget_markdown"] = json!(true);
+    }
     let mut result = cmd_agent_send(s, &send)?;
+    let template = params["template"].as_str().or_else(|| params["kind"].as_str()).unwrap_or("fidget-brief");
+    let save_command = params["save_command"].as_str().unwrap_or("scribbles.generate");
+    if let Some(raw_text) = result["text"].as_str() {
+        let formatted = crate::fidget::format_fidget_markdown(template, save_command, &["magic".into(), "fidget".into(), template.into()], None, raw_text);
+        result["markdown"] = json!(formatted.clone());
+        result["text"] = json!(formatted);
+    }
     result["sprocket"] = json!({
         "name": "Fidget",
-        "role": "the app's own in-app assistant",
+        "role": "the app's own in-app Markdown prompt & template architect",
+        "craft_role": "fidget",
+        "note": crate::fidget::FIDGET_NOTE,
         "selection": selection,
         "selection_repaired": null,
         "selection_persisted": null
@@ -596,8 +604,13 @@ fn chat_instructions(s: &Session) -> Result<String> {
 fn chat_task(params: &Value) -> Result<String> {
     if params["image_task"] == true {
         Ok(format!(
-            "You are Fidget, the bounded tasks, tools, and error-sniffing assistant (never image generation; Scribbles / Google Flow handles assets). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
+            "You are Fidget, the bounded tasks, tools, and error-sniffing assistant (never image generation; Scribbles handles image_gen). Use `{0} exec` diagnostic commands to inspect project state and UI errors, and report concise findings.\n",
             std::env::current_exe()?.display()
+        ))
+    } else if params["fidget_markdown"] == true {
+        Ok(format!(
+            "You are Fidget, Magic Studio's prompt & template architect (`craft_ai_core` role `fidget`). Rework the user's request into a structured Markdown document starting with YAML frontmatter (`---` with `role: fidget`, `template`, `tags`, `save_command`) followed immediately by `> {}`.\n",
+            crate::fidget::FIDGET_NOTE
         ))
     } else {
         Ok(String::new())
