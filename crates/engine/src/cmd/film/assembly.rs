@@ -224,6 +224,36 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
     Ok(out)
 }
 
+/// Gives the project its one FilmCraft film, with the song on A1, when it has none yet. A film
+/// that already exists is linked and left exactly as it is.
+pub(crate) fn ensure_song_film(s: &mut Session, audio: &Path) -> Result<PathBuf> {
+    let dir = crate::workshop::project_dir(s)?;
+    let wanted = crate::cmd::film::film_path(s)?;
+    if let Some(existing) = Some(wanted.clone()).filter(|p| p.is_file()).or_else(|| crate::cmd::project::workshop::video_project_path(&dir)) {
+        crate::cmd::film::link(s, &existing)?;
+        return Ok(existing);
+    }
+    if let Some(folder) = wanted.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    let name = s.project_path.as_ref().and_then(|p| p.file_stem()).map_or("Film".into(), |n| n.to_string_lossy().into_owned());
+    let song = dir.join(audio);
+    let made = run(
+        &dir,
+        &wanted,
+        true,
+        &[
+            json!({"id": "file.newProject", "params": {"name": name}}),
+            json!({"id": "file.newSequence", "params": {"name": name, "width": 1920, "height": 1080, "fps": FrameRate::FPS_30.as_f64()}}),
+            json!({"id": "file.import", "params": {"paths": [arg(&song)]}}),
+        ],
+    )?;
+    let item = made.get(2).map(|r| ids(r, "items")).unwrap_or_default().first().copied().ok_or_else(|| invalid("FilmCraft did not import the song"))?;
+    run(&dir, &wanted, false, &[json!({"id": "timeline.place", "params": {"item": item, "track": SONG_TRACK, "frame": 0, "insert": false, "video": false}})])?;
+    crate::cmd::film::link(s, &wanted)?;
+    Ok(wanted)
+}
+
 /// `video.assemble`: build `film/<song>.fcproj` from the song, backgrounds and lettering, then
 /// export `exports/<song>.mp4` unless `export` is false.
 pub fn cmd_video_assemble(s: &mut Session, p: &Value) -> Result<Value> {

@@ -47,6 +47,7 @@ pub fn cmd_workshop_set_audio(s: &mut Session, params: &Value) -> Result<Value> 
     s.song_audio = Some(audio.clone());
     s.video_target = "filmcraft".into();
     crate::cmd::project::write_project_file(s)?;
+    crate::cmd::film::assembly::ensure_song_film(s, &audio)?;
     let sb = dir.join("storyboard.designcraft");
     if !sb.is_file() {
         let _ = crate::cmd::storyboard::cmd_storyboard_new(s, &json!({"path": sb, "overwrite": false}));
