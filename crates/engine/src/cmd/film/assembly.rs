@@ -229,9 +229,9 @@ fn export(dir: &Path, project: &Path, name: &str) -> Result<PathBuf> {
 pub(crate) fn ensure_song_film(s: &mut Session, audio: &Path) -> Result<PathBuf> {
     let dir = crate::workshop::project_dir(s)?;
     let wanted = crate::cmd::film::film_path(s)?;
-    if let Some(existing) = Some(wanted.clone()).filter(|p| p.is_file()).or_else(|| crate::cmd::project::workshop::video_project_path(&dir)) {
-        crate::cmd::film::link(s, &existing)?;
-        return Ok(existing);
+    if wanted.is_file() {
+        crate::cmd::film::link(s, &wanted)?;
+        return Ok(wanted);
     }
     if let Some(folder) = wanted.parent() {
         std::fs::create_dir_all(folder)?;
