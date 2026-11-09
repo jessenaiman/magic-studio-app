@@ -273,7 +273,6 @@ export interface WordsReadResponse {
   document?: { animations?: WordsAnimation[] };
   in_video?: string[];
   fonts?: Array<{ family: string; path: string; weight?: string }>;
-  animations?: WordsAnimation[];
   audio?: string;
   recipe_path?: string;
 }

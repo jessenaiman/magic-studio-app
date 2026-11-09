@@ -1,5 +1,5 @@
 import { AnimationView } from "./views/AnimationView";
-import { LyricsView } from "./views/LyricsView";
+import { PreservedWorkspaces } from "./components/RestoredWorkspace";
 import { AppFooter } from "./components/AppFooter";
 import { StageAssets } from "./components/StageAssets";
 import { Tooltip } from "./components/Tooltip";
@@ -483,6 +483,7 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="app-view-host">
+        {projectPath && <PreservedWorkspaces key={projectPath} project={projectPath} view={view} onToast={showToast} />}
         {view === "gallery" ? (
           <GalleryView />
         ) : view === "mayhem" ? (
@@ -501,13 +502,8 @@ export const App: React.FC = () => {
             onRefresh={() => refreshProject()}
             onToast={showToast}
           />
-        ) : view === "design" || view === "motion" ? (
-          <LyricsView
-            projectPath={projectPath}
-            audioPath={songAudioPath || undefined}
-            onToast={showToast}
-          />
-        ) : view === "project" ? (
+        
+        ) : view === "design" || view === "motion" ? null : view === "project" ? (
           <ProjectView
             projectPath={projectPath}
             data={data}

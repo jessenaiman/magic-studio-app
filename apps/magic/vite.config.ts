@@ -1,11 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { restoredWorkspaces } from "./vite.restored-workspaces.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [react(), restoredWorkspaces()],
   clearScreen: false,
   build: {
     outDir: "dist",
